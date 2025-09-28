@@ -35,6 +35,9 @@ class RuleLibrary:
                 framework_mappings={
                     "cis": ["5.1.4"],
                     "nist_800_53": ["CM-3"],
+                    "soc2": ["CC8.1"],
+                    "iso27001": ["A.12.1.1"],
+                    "pci_dss": ["2.1"]
                 },
                 rationale="Public repositories without branch protection allow direct pushes to main branches, bypassing code review",
                 remediation="Enable branch protection with required pull request reviews for the default branch"
@@ -51,6 +54,9 @@ class RuleLibrary:
                     "cis": ["5.1.1"],
                     "nist_800_53": ["IA-2(1)"],
                     "cwe": ["CWE-287"],
+                    "soc2": ["CC6.1", "CC6.2"],
+                    "iso27001": ["A.9.2.1", "A.9.4.2"],
+                    "pci_dss": ["7.1.1", "8.3.1"]
                 },
                 rationale="Admin users without 2FA present high risk of account compromise",
                 remediation="Enable two-factor authentication for all admin users"
