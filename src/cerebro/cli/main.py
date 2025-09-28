@@ -16,6 +16,8 @@ from cerebro.findings.evaluator import RuleEvaluator
 from cerebro.rules.engine import rule_engine
 from cerebro.query.engine import QueryEngine
 from cerebro.providers.tables import register_all_provider_tables
+from cerebro.auditability.evidence_bundles import get_evidence_manager
+from cerebro.auditability.transparency_log import get_transparency_log
 
 app = typer.Typer(name="cerebro", help="Cerebro Security System of Record CLI")
 console = Console()
@@ -417,6 +419,96 @@ def tables(
             rprint(f"[red]Error listing tables: {e}[/red]")
     
     asyncio.run(_tables())
+
+
+@app.command()
+def evidence(
+    action: str = typer.Argument(..., help="Action: export, verify, list"),
+    bundle_path: Optional[str] = typer.Option(None, "--bundle", "-b", help="Evidence bundle file path"),
+    finding_id: Optional[str] = typer.Option(None, "--finding", help="Finding ID for evidence export"),
+    output_dir: str = typer.Option("./evidence", "--output", "-o", help="Output directory for evidence bundles"),
+):
+    """Manage cryptographic evidence bundles."""
+    async def _evidence():
+        evidence_manager = get_evidence_manager()
+        
+        if action == "export":
+            if not finding_id:
+                rprint("[red]Finding ID required for evidence export[/red]")
+                return
+            
+            try:
+                rprint(f"[blue]Creating evidence bundle for finding {finding_id}...[/blue]")
+                
+                # Create evidence bundle
+                bundle = await evidence_manager.create_finding_evidence_bundle(
+                    finding_id=finding_id,
+                    created_by="cli_user",
+                    organization_id="default_org"
+                )
+                
+                # Seal the bundle
+                seal_result = await bundle.seal_bundle()
+                
+                # Export to file
+                output_path = f"{output_dir}/{bundle.metadata.bundle_id}.evb"
+                exported_path = await bundle.export_bundle(output_path)
+                
+                rprint(f"[green]Evidence bundle created successfully[/green]")
+                rprint(f"Bundle ID: {bundle.metadata.bundle_id}")
+                rprint(f"Evidence items: {len(bundle.evidence_items)}")
+                rprint(f"Exported to: {exported_path}")
+                rprint(f"Bundle hash: {seal_result['bundle_hash']}")
+                
+            except Exception as e:
+                rprint(f"[red]Evidence export failed: {e}[/red]")
+        
+        elif action == "verify":
+            if not bundle_path:
+                rprint("[red]Bundle path required for verification[/red]")
+                return
+            
+            try:
+                rprint(f"[blue]Verifying evidence bundle: {bundle_path}[/blue]")
+                
+                verification_result = await evidence_manager.verify_bundle(bundle_path)
+                
+                if verification_result["valid"]:
+                    rprint(f"[green]✓ Bundle verification PASSED[/green]")
+                    rprint(f"Bundle ID: {verification_result['bundle_id']}")
+                    
+                    for check in verification_result["checks"]:
+                        rprint(f"  ✓ {check}")
+                else:
+                    rprint(f"[red]✗ Bundle verification FAILED[/red]")
+                    
+                    for error in verification_result["errors"]:
+                        rprint(f"  ✗ {error}")
+                
+            except Exception as e:
+                rprint(f"[red]Bundle verification error: {e}[/red]")
+        
+        elif action == "list":
+            try:
+                transparency_log = get_transparency_log()
+                log_summary = await transparency_log.get_log_summary()
+                
+                rprint("[blue]Transparency Log Summary[/blue]")
+                rprint(f"Total entries: {log_summary['total_entries']}")
+                rprint(f"Latest sequence: {log_summary['latest_sequence']}")
+                rprint(f"Log period: {log_summary.get('log_start', 'N/A')} to {log_summary.get('log_end', 'N/A')}")
+                
+                if log_summary.get('entries_by_type'):
+                    rprint("\nEntries by type:")
+                    for entry_type, count in log_summary['entries_by_type'].items():
+                        rprint(f"  {entry_type}: {count}")
+                
+                rprint(f"\nPublic key fingerprint: {log_summary.get('public_key_fingerprint', 'N/A')}")
+                
+            except Exception as e:
+                rprint(f"[red]Failed to list evidence: {e}[/red]")
+    
+    asyncio.run(_evidence())
 
 
 if __name__ == "__main__":
