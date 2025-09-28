@@ -44,35 +44,47 @@ async def collect_organization(
 async def collect_organization_background(
     org_id: UUID,
     request: CollectionRequest,
-    background_tasks: BackgroundTasks,
-    collector_manager: CollectorManager = Depends(get_collector_manager),
     db: AsyncSession = Depends(get_db)
 ):
-    """Start background collection for an organization."""
+    """Start background collection for an organization using Celery."""
+    from cerebro.tasks.collection_tasks import collect_organization_task
+    
     # Verify organization exists
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
     
-    async def collect_task():
-        try:
-            result = await collector_manager.collect_organization(
-                str(org_id),
-                providers=request.providers,
-                resource_types=request.resource_types
-            )
-            # Could store result or send notification here
-        except Exception as e:
-            # Log error
-            pass
-    
-    background_tasks.add_task(collect_task)
+    # Schedule background task
+    task = collect_organization_task.delay(
+        str(org_id),
+        provider_filter=request.providers,
+        resource_types=request.resource_types
+    )
     
     return {
         "message": "Collection started in background",
+        "task_id": task.id,
         "org_id": org_id,
         "providers": request.providers,
         "resource_types": request.resource_types
+    }
+
+
+@router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """Get background task status."""
+    from cerebro.tasks.celery_app import celery_app
+    
+    task = celery_app.AsyncResult(task_id)
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return {
+        "task_id": task_id,
+        "status": task.status,
+        "result": task.result,
+        "info": task.info
     }
 
 

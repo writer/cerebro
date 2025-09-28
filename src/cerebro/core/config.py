@@ -88,6 +88,17 @@ class Settings(BaseSettings):
         default="Security System of Record API", description="API description"
     )
     
+    # Redis/Celery Configuration
+    redis_url: str = Field(
+        default="redis://localhost:6379/0", description="Redis URL for Celery"
+    )
+    celery_broker_url: Optional[str] = Field(
+        default=None, description="Celery broker URL (defaults to redis_url)"
+    )
+    celery_result_backend: Optional[str] = Field(
+        default=None, description="Celery result backend (defaults to redis_url)"
+    )
+    
     class Config:
         """Pydantic config."""
         env_file = ".env"

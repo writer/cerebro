@@ -122,29 +122,28 @@ async def get_finding_stats(
 @router.post("/organizations/{org_id}/generate")
 async def generate_findings(
     org_id: UUID,
-    background_tasks: BackgroundTasks,
     provider: Optional[str] = None,
-    finding_manager: FindingManager = Depends(get_finding_manager),
+    resource_types: Optional[List[str]] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Generate findings for an organization."""
+    """Generate findings for an organization using Celery."""
+    from cerebro.tasks.finding_tasks import generate_findings_task
+    
     # Verify organization exists
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
     
-    async def generate_task():
-        try:
-            result = await finding_manager.generate_findings(org, provider)
-            return result
-        except Exception as e:
-            # Log error
-            pass
-    
-    background_tasks.add_task(generate_task)
+    # Schedule background task
+    task = generate_findings_task.delay(
+        str(org_id),
+        provider=provider,
+        resource_types=resource_types
+    )
     
     return {
         "message": "Finding generation started",
+        "task_id": task.id,
         "org_id": org_id,
         "provider": provider
     }
