@@ -21,7 +21,7 @@ class GCPProvider(BaseProvider):
         self.project_id = project_id
     
     @property
-    def get_provider_name(self) -> str:
+    def name(self) -> str:
         """Get provider name."""
         return "gcp"
     

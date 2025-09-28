@@ -31,7 +31,7 @@ class GitHubProvider(BaseProvider):
         self._org: Optional[Organization] = None
     
     @property
-    def get_provider_name(self) -> str:
+    def name(self) -> str:
         """Get provider name."""
         return "github"
     

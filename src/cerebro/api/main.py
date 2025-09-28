@@ -1,11 +1,13 @@
 """Main FastAPI application."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
 import logging
 
 from cerebro.core.config import settings
-from .routers import organizations, accounts, resources, principals, rules, findings, collectors
+from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors
+from .auth import User, get_current_user
 
 # Configure logging
 logging.basicConfig(
@@ -24,16 +26,28 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Add CORS middleware
+# Add CORS middleware (restricted for production)
+allowed_origins = [
+    "http://localhost:3000",  # React dev server
+    "http://localhost:8080",  # Vue dev server  
+    "https://cerebro.yourdomain.com",  # Production UI
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include routers
+app.include_router(
+    auth.router,
+    prefix=f"{settings.api_v1_prefix}/auth",
+    tags=["authentication"]
+)
+
 app.include_router(
     organizations.router, 
     prefix=f"{settings.api_v1_prefix}/organizations",
@@ -91,6 +105,21 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.get("/health/db")
+async def health_db():
+    """Database health check endpoint."""
+    from cerebro.core.database import async_session_factory
+    from sqlalchemy import text
+    
+    try:
+        async with async_session_factory() as db:
+            await db.execute(text("SELECT 1"))
+            return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail=f"Database unhealthy: {str(e)}")
 
 
 if __name__ == "__main__":

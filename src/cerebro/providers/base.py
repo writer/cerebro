@@ -63,12 +63,12 @@ class BaseProvider(ABC):
     def __init__(self, account_id: UUID, **kwargs):
         """Initialize provider."""
         self.account_id = account_id
-        self.provider_name = self.get_provider_name()
+        self.provider_name = self.name
         self._client = None
         
     @property
     @abstractmethod
-    def get_provider_name(self) -> str:
+    def name(self) -> str:
         """Get the provider name (e.g., 'github', 'aws', 'gcp')."""
         pass
     
@@ -117,13 +117,13 @@ class BaseProvider(ABC):
     async def get_account_info(self) -> Dict[str, Any]:
         """Get account information."""
         return {
-            "provider": self.provider_name,
+            "provider": self.name,
             "account_id": str(self.account_id),
         }
     
     def normalize_resource_type(self, raw_type: str) -> str:
         """Normalize resource type name."""
-        return f"{self.provider_name}.{raw_type.lower()}"
+        return f"{self.name}.{raw_type.lower()}"
     
     def normalize_permission(self, permission: str) -> str:
         """Normalize permission name."""

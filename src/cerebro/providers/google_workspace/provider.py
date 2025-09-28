@@ -21,7 +21,7 @@ class GoogleWorkspaceProvider(BaseProvider):
         self.domain = domain
     
     @property
-    def get_provider_name(self) -> str:
+    def name(self) -> str:
         """Get provider name."""
         return "google_workspace"
     

@@ -16,6 +16,7 @@ from cerebro.core.models import (
 )
 from cerebro.providers.base import BaseProvider
 from cerebro.core.config import settings
+from cerebro.core.bulk_operations import BulkOperations
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class ConfigCollector:
     def __init__(self, db_session: AsyncSession):
         """Initialize collector."""
         self.db = db_session
+        self.bulk_ops = BulkOperations(db_session)
         
     async def collect_account(
         self,
@@ -54,7 +56,7 @@ class ConfigCollector:
         start_time = datetime.utcnow()
         result = CollectionResult(
             account_id=account.account_id,
-            provider=provider.get_provider_name
+            provider=provider.name
         )
         
         try:
@@ -100,34 +102,28 @@ class ConfigCollector:
         resource_types: Optional[List[str]],
         result: CollectionResult
     ) -> None:
-        """Collect resources from provider."""
+        """Collect resources from provider using bulk operations."""
         try:
+            # Collect all resources first
+            resources = []
             async for resource_info in provider.discover_resources(resource_types):
-                # Check if resource already exists
-                stmt = select(Resource).where(
-                    and_(
-                        Resource.account_id == account.account_id,
-                        Resource.provider == provider.get_provider_name,
-                        Resource.resource_type == resource_info.resource_type,
-                        Resource.external_id == resource_info.external_id
-                    )
+                resources.append({
+                    "resource_type": resource_info.resource_type,
+                    "external_id": resource_info.external_id,
+                    "name": resource_info.name,
+                    "parent_external_id": resource_info.parent_external_id,
+                })
+            
+            if resources:
+                # Bulk upsert resources
+                bulk_result = await self.bulk_ops.bulk_upsert_resources(
+                    account.account_id,
+                    provider.name,
+                    resources
                 )
-                existing_resource = await self.db.scalar(stmt)
-                
-                if not existing_resource:
-                    # Create new resource
-                    resource = Resource(
-                        account_id=account.account_id,
-                        provider=provider.get_provider_name,
-                        resource_type=resource_info.resource_type,
-                        external_id=resource_info.external_id,
-                        name=resource_info.name,
-                        parent_external_id=resource_info.parent_external_id
-                    )
-                    self.db.add(resource)
-                    result.resources_discovered += 1
-                    logger.debug(f"Discovered new resource: {resource_info.external_id}")
-                
+                result.resources_discovered += bulk_result["processed"]
+                logger.info(f"Bulk processed {bulk_result['processed']} resources")
+            
         except Exception as e:
             error_msg = f"Failed to collect resources: {e}"
             logger.error(error_msg)
@@ -139,33 +135,28 @@ class ConfigCollector:
         account: Account,
         result: CollectionResult
     ) -> None:
-        """Collect principals from provider."""
+        """Collect principals from provider using bulk operations."""
         try:
+            # Collect all principals first
+            principals = []
             async for principal_info in provider.discover_principals():
-                # Check if principal already exists
-                stmt = select(Principal).where(
-                    and_(
-                        Principal.account_id == account.account_id,
-                        Principal.provider == provider.get_provider_name,
-                        Principal.external_id == principal_info.external_id
-                    )
+                principals.append({
+                    "principal_type": principal_info.principal_type,
+                    "external_id": principal_info.external_id,
+                    "email": principal_info.email,
+                    "display_name": principal_info.display_name,
+                    "is_human": principal_info.is_human,
+                })
+            
+            if principals:
+                # Bulk upsert principals
+                bulk_result = await self.bulk_ops.bulk_upsert_principals(
+                    account.account_id,
+                    provider.name,
+                    principals
                 )
-                existing_principal = await self.db.scalar(stmt)
-                
-                if not existing_principal:
-                    # Create new principal
-                    principal = Principal(
-                        account_id=account.account_id,
-                        provider=provider.get_provider_name,
-                        principal_type=principal_info.principal_type,
-                        external_id=principal_info.external_id,
-                        email=principal_info.email,
-                        display_name=principal_info.display_name,
-                        is_human=principal_info.is_human
-                    )
-                    self.db.add(principal)
-                    result.principals_discovered += 1
-                    logger.debug(f"Discovered new principal: {principal_info.external_id}")
+                result.principals_discovered += bulk_result["processed"]
+                logger.info(f"Bulk processed {bulk_result['processed']} principals")
                 
         except Exception as e:
             error_msg = f"Failed to collect principals: {e}"
@@ -184,7 +175,7 @@ class ConfigCollector:
             stmt = select(Resource).where(
                 and_(
                     Resource.account_id == account.account_id,
-                    Resource.provider == provider.get_provider_name
+                    Resource.provider == provider.name
                 )
             )
             resources = await self.db.scalars(stmt)
@@ -249,7 +240,7 @@ class ConfigCollector:
                 stmt = select(Principal).where(
                     and_(
                         Principal.account_id == account.account_id,
-                        Principal.provider == provider.get_provider_name,
+                        Principal.provider == provider.name,
                         Principal.external_id == iam_permission.principal_external_id
                     )
                 )
@@ -265,7 +256,7 @@ class ConfigCollector:
                     stmt = select(Resource).where(
                         and_(
                             Resource.account_id == account.account_id,
-                            Resource.provider == provider.get_provider_name,
+                            Resource.provider == provider.name,
                             Resource.external_id == iam_permission.resource_external_id
                         )
                     )
@@ -274,7 +265,7 @@ class ConfigCollector:
                 # Create IAM edge (always append-only)
                 iam_edge = IamEdge(
                     account_id=account.account_id,
-                    provider=provider.get_provider_name,
+                    provider=provider.name,
                     principal_id=principal.principal_id,
                     resource_id=resource.resource_id if resource else None,
                     permission=iam_permission.permission,
