@@ -4,7 +4,7 @@
 
 When audit committees ask "prove what happened," commercial security platforms often lack the necessary audit trail. Cerebro provides complete visibility into cloud and SaaS security configurations with an immutable audit trail designed for forensic investigation. Supports enterprises that require both security monitoring and regulatory compliance.
 
-## 🎯 Three Core Differentiators
+## 🎯 Four Core Differentiators
 
 ### **1. Append-Only Forensic Ledger**
 Every configuration change, permission grant, and security finding is preserved with cryptographic integrity. When regulators ask "who had access to customer data on March 15th at 2:30 PM?", you have the provable answer.
@@ -14,6 +14,9 @@ Write security policies once, run anywhere. Common Expression Language (CEL) rul
 
 ### **3. Cross-Provider Identity Stitching**
 Automatically correlate john.doe@company.com across GitHub, AWS IAM, Google Workspace, Okta, and Microsoft 365. Surface privilege escalation paths and access inconsistencies that single-provider tools miss completely.
+
+### **4. Zero-ETL SQL Query Engine**
+Query security data in real-time using SQL without complex ETL pipelines. Inspired by Steampipe's approach, but purpose-built for security operations. `SELECT * FROM okta_user WHERE mfa_enabled = false` works instantly against live data.
 
 ## 🏢 Trust + Control vs. SaaS Speed
 
@@ -153,6 +156,65 @@ CREDENTIAL_ENCRYPTION_KEY=your-fernet-key-here
 
 ## 🎯 Usage Examples
 
+### **SQL Security Queries (Zero-ETL)**
+
+Cerebro includes a Steampipe-inspired SQL engine for real-time security data analysis:
+
+```bash
+# Execute SQL queries against security data
+cerebro query "SELECT * FROM aws_ec2_instance WHERE state = 'running' LIMIT 10"
+
+# Find users without MFA across providers  
+cerebro query "SELECT username, email, mfa_enabled FROM okta_user WHERE mfa_enabled = false"
+
+# List high-severity GitHub vulnerabilities
+cerebro query "SELECT repository, severity, created_at FROM github_vulnerability_alert WHERE severity = 'high'"
+
+# Cross-provider security analysis
+cerebro query "SELECT provider, COUNT(*) as resource_count FROM (
+  SELECT 'aws' as provider FROM aws_ec2_instance 
+  UNION ALL 
+  SELECT 'github' as provider FROM github_repository
+) GROUP BY provider"
+
+# Interactive SQL session
+cerebro query  # Starts interactive mode
+
+# List available security tables
+cerebro tables
+
+# Show table schema
+cerebro tables --provider aws
+```
+
+### **API-Based SQL Queries**
+
+```bash
+# Execute SQL via REST API
+curl -X POST "http://localhost:8000/api/v1/query/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "SELECT instance_id, state FROM aws_ec2_instance WHERE state = '\''running'\'' LIMIT 5"}'
+
+# List available security tables
+curl "http://localhost:8000/api/v1/query/tables" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get table schema
+curl "http://localhost:8000/api/v1/query/tables/okta_user" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Query examples and templates
+curl "http://localhost:8000/api/v1/query/examples" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### **Available Security Tables**
+
+**AWS**: `aws_ec2_instance`, `aws_iam_user`, `aws_security_group`  
+**Okta**: `okta_user`, `okta_application`, `okta_group`  
+**GitHub**: `github_repository`, `github_vulnerability_alert`, `github_secret_scanning_alert`
+
 ### **Data Collection**
 
 ```bash
@@ -202,6 +264,37 @@ curl "http://localhost:8000/api/v1/principals/{principal_id}/permissions" \
 # Identity cluster analysis
 curl "http://localhost:8000/api/v1/identity/clusters?org_id={org_id}" \
   -H "Authorization: Bearer $TOKEN"
+
+# Identity anomaly detection
+curl "http://localhost:8000/api/v1/analysis/identity/anomalies?org_id={org_id}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### **Advanced Security Analysis**
+
+```bash
+# Blast radius analysis (compromise impact)
+curl "http://localhost:8000/api/v1/analysis/blast-radius" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"principal_id": "user123", "org_id": "org456"}'
+
+# Forensic replay (historical state reconstruction)
+curl "http://localhost:8000/api/v1/analysis/forensic-replay" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"timestamp": "2024-03-15T14:30:00Z", "org_id": "org456"}'
+
+# Change impact analysis
+curl "http://localhost:8000/api/v1/analysis/change-replay" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"config_snapshot_id": "snapshot123"}'
+
+# Compliance evidence generation
+curl "http://localhost:8000/api/v1/analysis/compliance/soc2/evidence" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"org_id": "org456", "period_start": "2024-01-01", "period_end": "2024-12-31"}'
 ```
 
 ### **Rule Management**
@@ -231,11 +324,12 @@ cerebro/
 │   │   ├── blast_radius.py    # Compromise impact analysis
 │   │   ├── forensic_replay.py # Historical state reconstruction
 │   │   ├── change_replay.py   # Retroactive rule analysis
-│   │   └── anomaly_detection.py # ML-based anomaly detection
+│   │   └── identity_anomaly.py # ML-based identity anomaly detection
 │   ├── api/                   # FastAPI application
 │   │   ├── routers/          # API endpoints by domain
 │   │   │   ├── analysis.py   # Advanced analysis endpoints
 │   │   │   ├── auth.py       # Authentication endpoints
+│   │   │   ├── query.py      # SQL query engine endpoints
 │   │   │   └── ...           # Other domain endpoints
 │   │   ├── auth.py           # JWT authentication system
 │   │   └── main.py           # Application entry point
@@ -273,7 +367,16 @@ cerebro/
 │   │   ├── google_workspace/ # Google Workspace integration
 │   │   ├── okta/            # Okta integration
 │   │   ├── m365/            # Microsoft 365 integration
+│   │   ├── tables/          # Provider SQL table implementations
+│   │   │   ├── aws_tables.py # AWS security tables
+│   │   │   ├── okta_tables.py # Okta identity tables
+│   │   │   └── github_tables.py # GitHub security tables
 │   │   └── base.py          # Provider interface
+│   ├── query/                # Zero-ETL SQL query engine (Steampipe-inspired)
+│   │   ├── engine.py         # SQL parsing and execution
+│   │   ├── registry.py       # Security table registry
+│   │   ├── schema.py         # Standardized security schemas
+│   │   └── table.py          # Abstract table interface
 │   ├── rules/                # CEL rule engine and library
 │   └── tasks/                # Background task processing
 ├── migrations/               # Database schema migrations

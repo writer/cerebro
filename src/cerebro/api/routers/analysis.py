@@ -4,6 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -13,9 +14,13 @@ from cerebro.api.auth import require_read_findings
 from cerebro.analysis.blast_radius import BlastRadiusAnalyzer
 from cerebro.analysis.forensic_replay import ForensicReplayEngine
 from cerebro.analysis.change_replay import ChangeReplayEngine
+from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult
+from cerebro.compliance.generator import ComplianceEvidenceGenerator
+from cerebro.compliance.frameworks import list_frameworks, get_framework
 from cerebro.rules.engine import rule_engine
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class BlastRadiusRequest(BaseModel):
@@ -34,6 +39,12 @@ class ChangeReplayRequest(BaseModel):
     start_time: datetime
     end_time: datetime
     providers: Optional[List[str]] = None
+
+
+class IdentityAnomalyRequest(BaseModel):
+    org_id: UUID
+    principal_id: Optional[UUID] = None
+    lookback_days: int = 30
 
 
 @router.post("/organizations/{org_id}/blast-radius")
@@ -261,3 +272,304 @@ async def what_if_rule_analysis(
     except Exception as e:
         logger.error(f"What-if rule analysis failed: {e}")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@router.get("/organizations/{org_id}/identity/anomalies")
+async def get_identity_anomalies(
+    org_id: UUID,
+    principal_id: Optional[UUID] = Query(None, description="Specific principal to analyze"),
+    lookback_days: int = Query(default=30, description="Days to look back for baseline"),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_read_findings)
+):
+    """Detect identity anomalies using machine learning."""
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    try:
+        detector = IdentityAnomalyDetector(lookback_days=lookback_days)
+        anomalies = await detector.analyze_identity_anomalies(
+            str(org_id), 
+            str(principal_id) if principal_id else None
+        )
+        
+        return {
+            "org_id": str(org_id),
+            "analysis_period": {
+                "lookback_days": lookback_days,
+                "analyzed_at": datetime.now().isoformat()
+            },
+            "total_anomalies": len(anomalies),
+            "anomalies": [
+                {
+                    "principal_id": anomaly.principal_id,
+                    "anomaly_type": anomaly.anomaly_type.value,
+                    "risk_level": anomaly.risk_level.value,
+                    "score": anomaly.score,
+                    "confidence": anomaly.confidence,
+                    "description": anomaly.description,
+                    "details": anomaly.details,
+                    "detected_at": anomaly.detected_at.isoformat(),
+                    "recommended_actions": anomaly.recommended_actions
+                }
+                for anomaly in anomalies
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Identity anomaly detection failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Anomaly detection failed: {str(e)}")
+
+
+@router.get("/organizations/{org_id}/identity/anomalies/summary")
+async def get_identity_anomaly_summary(
+    org_id: UUID,
+    lookback_days: int = Query(default=30, description="Days to look back for baseline"),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_read_findings)
+):
+    """Get summary of identity anomalies for organization."""
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    try:
+        detector = IdentityAnomalyDetector(lookback_days=lookback_days)
+        summary = await detector.get_anomaly_summary(str(org_id))
+        
+        return {
+            "org_id": str(org_id),
+            "analysis_period": {
+                "lookback_days": lookback_days,
+                "period_start": summary["summary_period"][0].isoformat(),
+                "period_end": summary["summary_period"][1].isoformat()
+            },
+            "summary": {
+                "total_anomalies": summary["total_anomalies"],
+                "by_risk_level": summary["by_risk_level"],
+                "by_type": summary["by_type"],
+                "top_principals": summary["top_principals"]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Identity anomaly summary failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Summary generation failed: {str(e)}")
+
+
+@router.post("/organizations/{org_id}/identity/anomalies/analyze")
+async def analyze_identity_anomalies_post(
+    org_id: UUID,
+    request: IdentityAnomalyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_read_findings)
+):
+    """Run identity anomaly analysis with custom parameters."""
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    try:
+        detector = IdentityAnomalyDetector(lookback_days=request.lookback_days)
+        anomalies = await detector.analyze_identity_anomalies(
+            str(org_id),
+            str(request.principal_id) if request.principal_id else None
+        )
+        
+        return {
+            "request": {
+                "org_id": str(org_id),
+                "principal_id": str(request.principal_id) if request.principal_id else None,
+                "lookback_days": request.lookback_days
+            },
+            "results": {
+                "total_anomalies": len(anomalies),
+                "high_risk_count": len([a for a in anomalies if a.risk_level.value in ['high', 'critical']]),
+                "anomalies": [
+                    {
+                        "principal_id": anomaly.principal_id,
+                        "anomaly_type": anomaly.anomaly_type.value,
+                        "risk_level": anomaly.risk_level.value,
+                        "score": anomaly.score,
+                        "confidence": anomaly.confidence,
+                        "description": anomaly.description,
+                        "details": anomaly.details,
+                        "detected_at": anomaly.detected_at.isoformat(),
+                        "baseline_period": [
+                            anomaly.baseline_period[0].isoformat(),
+                            anomaly.baseline_period[1].isoformat()
+                        ],
+                        "recommended_actions": anomaly.recommended_actions
+                    }
+                    for anomaly in anomalies[:50]  # Limit results
+                ]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Identity anomaly analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+# Compliance Evidence Generation Endpoints
+@router.get("/compliance/frameworks")
+async def list_compliance_frameworks(
+    current_user = Depends(require_read_findings)
+):
+    """List all available compliance frameworks."""
+    frameworks = list_frameworks()
+    framework_details = []
+    
+    for framework_name in frameworks:
+        framework = get_framework(framework_name)
+        if framework:
+            automated_controls = len([c for c in framework.controls if c.automation_level == "automated"])
+            
+            framework_details.append({
+                "name": framework.name,
+                "key": framework_name,
+                "version": framework.version,
+                "description": framework.description,
+                "total_controls": len(framework.controls),
+                "automated_controls": automated_controls,
+                "automation_percentage": round((automated_controls / len(framework.controls)) * 100, 1)
+            })
+    
+    return {
+        "frameworks": framework_details,
+        "total_frameworks": len(framework_details)
+    }
+
+
+@router.get("/compliance/frameworks/{framework_name}")
+async def get_compliance_framework(
+    framework_name: str,
+    current_user = Depends(require_read_findings)
+):
+    """Get detailed information about a specific compliance framework."""
+    framework = get_framework(framework_name)
+    if not framework:
+        raise HTTPException(status_code=404, detail=f"Framework '{framework_name}' not found")
+    
+    controls_by_category = {}
+    for control in framework.controls:
+        if control.category not in controls_by_category:
+            controls_by_category[control.category] = []
+        
+        controls_by_category[control.category].append({
+            "control_id": control.control_id,
+            "title": control.title,
+            "description": control.description,
+            "control_type": control.control_type.value,
+            "automation_level": control.automation_level,
+            "frequency": control.frequency,
+            "required_evidence": [e.value for e in control.required_evidence],
+            "sql_queries_count": len(control.sql_queries)
+        })
+    
+    return {
+        "framework": {
+            "name": framework.name,
+            "key": framework_name,
+            "version": framework.version,
+            "description": framework.description
+        },
+        "summary": {
+            "total_controls": len(framework.controls),
+            "categories": len(controls_by_category),
+            "automated_controls": len([c for c in framework.controls if c.automation_level == "automated"]),
+            "semi_automated_controls": len([c for c in framework.controls if c.automation_level == "semi-automated"]),
+            "manual_controls": len([c for c in framework.controls if c.automation_level == "manual"])
+        },
+        "controls_by_category": controls_by_category
+    }
+
+
+@router.post("/organizations/{org_id}/compliance/{framework_name}/evidence")
+async def generate_compliance_evidence(
+    org_id: UUID,
+    framework_name: str,
+    period_start: Optional[str] = Query(None, description="Evidence period start (ISO format)"),
+    period_end: Optional[str] = Query(None, description="Evidence period end (ISO format)"),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_read_findings)
+):
+    """Generate compliance evidence report for an organization."""
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    framework = get_framework(framework_name)
+    if not framework:
+        raise HTTPException(status_code=404, detail=f"Framework '{framework_name}' not found")
+    
+    # Parse dates
+    from dateutil.parser import parse
+    try:
+        start_date = parse(period_start) if period_start else datetime.now() - timedelta(days=90)
+        end_date = parse(period_end) if period_end else datetime.now()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    
+    try:
+        generator = ComplianceEvidenceGenerator()
+        report = await generator.generate_compliance_report(
+            framework_name, str(org_id), start_date, end_date
+        )
+        
+        return {
+            "organization_id": str(org_id),
+            "framework": framework_name,
+            "report": report,
+            "generated_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Compliance evidence generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Evidence generation failed: {str(e)}")
+
+
+@router.get("/organizations/{org_id}/compliance/{framework_name}/status")
+async def get_compliance_status(
+    org_id: UUID,
+    framework_name: str,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(require_read_findings)
+):
+    """Get current compliance status for an organization and framework."""
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    framework = get_framework(framework_name)
+    if not framework:
+        raise HTTPException(status_code=404, detail=f"Framework '{framework_name}' not found")
+    
+    try:
+        generator = ComplianceEvidenceGenerator()
+        
+        # Generate quick status check
+        current_time = datetime.now()
+        status_report = await generator.generate_compliance_report(
+            framework_name, 
+            str(org_id),
+            current_time - timedelta(days=30),  # Last 30 days
+            current_time
+        )
+        
+        return {
+            "organization_id": str(org_id),
+            "framework": {
+                "name": framework.name,
+                "key": framework_name,
+                "version": framework.version
+            },
+            "status": status_report["summary"],
+            "last_assessed": current_time.isoformat(),
+            "assessment_period_days": 30
+        }
+        
+    except Exception as e:
+        logger.error(f"Compliance status check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
