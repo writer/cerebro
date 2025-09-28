@@ -10,10 +10,11 @@ import os
 
 from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, String, Boolean, DateTime, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
+from uuid import UUID
 
 from .database import Base
 from .config import settings
