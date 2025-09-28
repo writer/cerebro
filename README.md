@@ -10,10 +10,10 @@ When audit committees ask "prove what happened," commercial security platforms o
 Every configuration change, permission grant, and security finding is preserved with cryptographic integrity. When regulators ask "who had access to customer data on March 15th at 2:30 PM?", you have the provable answer.
 
 ### **2. Open CEL Rule Engine**  
-Write security policies once, run anywhere. Our Common Expression Language (CEL) rules work across AWS, GitHub, GCP, and Google Workspace without vendor lock-in. No proprietary rule formats or migration headaches.
+Write security policies once, run anywhere. Common Expression Language (CEL) rules work across AWS, GitHub, GCP, Google Workspace, Okta, and Microsoft 365 without vendor lock-in. No proprietary rule formats or migration headaches.
 
 ### **3. Cross-Provider Identity Stitching**
-Automatically correlate john.doe@company.com across GitHub, AWS IAM, and Google Workspace. Surface privilege escalation paths and access inconsistencies that single-provider tools miss completely.
+Automatically correlate john.doe@company.com across GitHub, AWS IAM, Google Workspace, Okta, and Microsoft 365. Surface privilege escalation paths and access inconsistencies that single-provider tools miss completely.
 
 ## 🏢 Trust + Control vs. SaaS Speed
 
@@ -227,42 +227,62 @@ make cli-rules action=create name="Custom Rule" \
 ```
 cerebro/
 ├── src/cerebro/
-│   ├── api/                    # FastAPI application
-│   │   ├── routers/           # API endpoints by domain
-│   │   ├── auth.py            # JWT authentication
-│   │   └── main.py            # Application entry point
-│   ├── application/           # Application services (hexagonal architecture)
-│   ├── cli/                   # Command-line interface
-│   ├── collectors/            # Configuration collection orchestration
-│   ├── core/                  # Core domain models and database
-│   │   ├── models.py          # Main database models
-│   │   ├── user_models.py     # User management models
+│   ├── analysis/              # Advanced analysis capabilities (MOAT FEATURES)
+│   │   ├── blast_radius.py    # Compromise impact analysis
+│   │   ├── forensic_replay.py # Historical state reconstruction
+│   │   ├── change_replay.py   # Retroactive rule analysis
+│   │   └── anomaly_detection.py # ML-based anomaly detection
+│   ├── api/                   # FastAPI application
+│   │   ├── routers/          # API endpoints by domain
+│   │   │   ├── analysis.py   # Advanced analysis endpoints
+│   │   │   ├── auth.py       # Authentication endpoints
+│   │   │   └── ...           # Other domain endpoints
+│   │   ├── auth.py           # JWT authentication system
+│   │   └── main.py           # Application entry point
+│   ├── application/          # Application services (hexagonal architecture)
+│   ├── cli/                  # Command-line interface
+│   ├── collectors/           # Configuration collection orchestration
+│   ├── core/                 # Core domain models and database
+│   │   ├── models.py         # Main database models
+│   │   ├── user_models.py    # User management models
 │   │   ├── identity_models.py # Identity cluster models
-│   │   ├── user_service.py    # User management operations
-│   │   ├── credential_service.py # Encrypted credential storage
+│   │   ├── credential_service.py # Envelope encryption with KMS
 │   │   └── bulk_operations.py # Performance-optimized DB ops
-│   ├── domain/                # Pure domain entities and ports
-│   ├── findings/              # Security finding management
-│   │   ├── producers/         # Provider-specific finding producers
-│   │   │   ├── github/       # GitHub security rules
-│   │   │   ├── aws/          # AWS security rules  
-│   │   │   └── cross_provider/ # Multi-provider rules
-│   │   ├── manager.py         # Finding lifecycle management
-│   │   └── evaluator.py       # Rule evaluation engine
-│   ├── infrastructure/        # External system adapters
-│   ├── providers/             # Cloud/SaaS provider integrations
-│   │   ├── github/           # GitHub API integration
-│   │   ├── aws/              # AWS API integration
-│   │   └── base.py           # Provider interface
-│   ├── rules/                 # CEL rule engine and library
-│   └── tasks/                 # Background task processing
-├── migrations/                # Database schema migrations
-├── tests/                     # Comprehensive test suite
-├── scripts/                   # Setup and maintenance scripts
-├── k8s/                      # Kubernetes deployment manifests
-├── docker-compose.yml        # Development environment
-├── Dockerfile               # Production container
-└── Makefile                 # Development automation
+│   ├── domain/               # Pure domain entities and ports
+│   ├── findings/             # Security finding management
+│   │   ├── producers/        # Provider-specific finding producers
+│   │   │   ├── github/      # GitHub security rules
+│   │   │   ├── aws/         # AWS security rules
+│   │   │   ├── okta/        # Okta security rules
+│   │   │   ├── m365/        # Microsoft 365 security rules
+│   │   │   └── cross_provider/ # Multi-provider correlation rules
+│   │   ├── manager.py        # Finding lifecycle management
+│   │   └── evaluator.py      # Rule evaluation engine
+│   ├── infrastructure/       # External system adapters
+│   ├── kms/                  # Key Management Service integrations
+│   │   ├── aws_kms.py       # AWS KMS adapter
+│   │   ├── gcp_kms.py       # Google Cloud KMS adapter
+│   │   ├── azure_kms.py     # Azure Key Vault adapter
+│   │   ├── vault_kms.py     # HashiCorp Vault adapter
+│   │   └── factory.py       # KMS provider factory
+│   ├── plugins/              # Plugin ecosystem for extensibility
+│   ├── providers/            # Cloud/SaaS provider integrations
+│   │   ├── github/          # GitHub API integration
+│   │   ├── aws/             # AWS API integration
+│   │   ├── gcp/             # Google Cloud integration
+│   │   ├── google_workspace/ # Google Workspace integration
+│   │   ├── okta/            # Okta integration
+│   │   ├── m365/            # Microsoft 365 integration
+│   │   └── base.py          # Provider interface
+│   ├── rules/                # CEL rule engine and library
+│   └── tasks/                # Background task processing
+├── migrations/               # Database schema migrations
+├── tests/                    # Comprehensive test suite
+├── scripts/                  # Setup and maintenance scripts
+├── k8s/                     # Kubernetes deployment manifests
+├── docker-compose.yml       # Development environment
+├── Dockerfile              # Production container
+└── Makefile                # Development automation
 ```
 
 ### **Development Commands (UV-Powered)**
@@ -312,9 +332,13 @@ uv run --with httpx python -c "import httpx; print('Works!')"
 ## 🔍 Comprehensive Security Coverage
 
 ### **Multi-Provider Analysis**
-- **GitHub**: 5 security rules covering repositories, users, and organization settings
-- **AWS**: 8 security rules covering S3, EC2, IAM, and network configurations  
-- **Cross-Provider**: 3 advanced rules for identity correlation and access consistency
+- **GitHub**: Repository security, branch protection, user access controls
+- **AWS**: S3, EC2, IAM comprehensive policy analysis  
+- **Google Cloud**: Storage, compute, IAM across projects
+- **Google Workspace**: Domain settings, user management, security policies
+- **Okta**: Identity provider security, MFA enforcement, application access
+- **Microsoft 365**: SharePoint, Teams, Exchange security configurations
+- **Cross-Provider**: Identity correlation, access consistency, privilege escalation detection
 - **Framework Mapping**: Every rule mapped to CIS, NIST 800-53, CWE, PCI DSS controls
 
 ### **Real-Time Detection**
@@ -379,9 +403,13 @@ kubectl apply -f k8s/production/
 | Feature | **Cerebro** | Wiz/Prisma/Orca |
 |---------|-------------|------------------|
 | **Data Sovereignty** | ✅ Self-hosted, your infrastructure | ❌ SaaS-only, their infrastructure |
+| **Provider Coverage** | ✅ 6 providers: AWS, GitHub, GCP, Workspace, Okta, M365 | ✅ Multiple cloud providers |
+| **Identity Coverage** | ✅ Complete SaaS + Cloud identity mapping | ⚠️ Primarily cloud-focused |
 | **Forensic Audit Trail** | ✅ Append-only with crypto integrity | ⚠️ Limited historical data |
 | **Rule Portability** | ✅ Open CEL expressions | ❌ Proprietary rule formats |
 | **Identity Stitching** | ✅ Cross-provider correlation | ⚠️ Single-provider views |
+| **Blast Radius Analysis** | ✅ Complete compromise impact mapping | ❌ Not available |
+| **Temporal Analysis** | ✅ Historical state reconstruction | ❌ Not available |
 | **API-First Design** | ✅ Complete REST API + CLI | ⚠️ GUI-focused with limited API |
 | **Deployment Control** | ✅ On-prem, cloud, or hybrid | ❌ SaaS-only |
 | **Vendor Lock-In** | ✅ None - open source | ❌ Complete lock-in |
@@ -391,6 +419,51 @@ kubectl apply -f k8s/production/
 **Choose Cerebro when:** Audit requirements, data sovereignty, rule portability, or vendor independence matter more than deployment speed.
 
 **Choose SaaS when:** You prioritize fastest deployment over data control and can accept vendor lock-in.
+
+## 🏰 Advanced Analysis Capabilities
+
+Cerebro includes unique analysis features that create lasting competitive advantage:
+
+### **Blast Radius Analysis**
+```bash
+# Analyze complete impact if any principal is compromised
+POST /api/v1/analysis/organizations/{org_id}/blast-radius
+{
+  "principal_id": "uuid",
+  "scenario_type": "credential_theft"
+}
+
+# Returns: directly accessible resources, escalation paths, 
+# cross-provider impact, mitigation recommendations
+```
+
+### **Forensic Replay Mode**
+```bash
+# Reconstruct system state at any historical point
+POST /api/v1/analysis/organizations/{org_id}/forensic-replay
+{
+  "target_time": "2024-03-15T14:30:00Z"
+}
+
+# Returns: who had access to what, configuration state,
+# active findings, security posture
+```
+
+### **Change Replay Engine**
+```bash
+# Simulate "what if this rule had been active last quarter"
+POST /api/v1/analysis/organizations/{org_id}/change-replay
+{
+  "rule_expression": "resource.resource_type == 'aws.s3.bucket' && config.public == true",
+  "start_time": "2024-01-01T00:00:00Z",
+  "end_time": "2024-03-31T23:59:59Z"
+}
+
+# Returns: findings that would have been generated,
+# rule effectiveness metrics, optimization recommendations
+```
+
+These capabilities are **unique to Cerebro** and cannot be replicated by commercial platforms due to our append-only architecture.
 
 ## 🤝 Contributing
 

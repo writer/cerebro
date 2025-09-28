@@ -56,6 +56,25 @@ class Settings(BaseSettings):
         default=None, description="Google Workspace customer ID"
     )
     
+    # Okta Integration
+    okta_api_token: Optional[str] = Field(
+        default=None, description="Okta API token"
+    )
+    okta_domain: Optional[str] = Field(
+        default=None, description="Okta domain (e.g., company.okta.com)"
+    )
+    
+    # Microsoft 365 Integration
+    m365_tenant_id: Optional[str] = Field(
+        default=None, description="Microsoft 365 tenant ID"
+    )
+    m365_client_id: Optional[str] = Field(
+        default=None, description="Microsoft 365 application client ID"
+    )
+    m365_client_secret: Optional[str] = Field(
+        default=None, description="Microsoft 365 application client secret"
+    )
+    
     # Logging
     log_level: str = Field(default="INFO", description="Log level")
     log_format: str = Field(default="json", description="Log format")
