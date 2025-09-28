@@ -1,15 +1,19 @@
-# 🚀 Cerebro Deployment Guide
+# 🚀 Cerebro Enterprise Deployment Guide
 
-This guide covers deploying Cerebro's Security System of Record in production environments.
+**Complete deployment guide for Cerebro Security System of Record**
+
+This guide covers deploying Cerebro in production environments with enterprise-grade security, monitoring, and scalability. Includes Docker, Kubernetes, and traditional deployment options.
 
 ## 📋 Prerequisites
 
 ### Infrastructure Requirements
 - **Database**: PostgreSQL 14+ with `pgcrypto` and `btree_gin` extensions
-- **Message Queue**: Redis 6+ for Celery task queue
-- **Python**: Python 3.11+ with Poetry
+- **Message Queue**: Redis 6+ for Celery task queue and caching
+- **Python**: Python 3.11+ with UV dependency management
 - **Compute**: Minimum 4GB RAM, 2 CPU cores for API server
 - **Workers**: 2-4 Celery workers depending on collection volume
+- **Storage**: Persistent volumes for database and Redis data
+- **Network**: Outbound HTTPS access to provider APIs
 
 ### External API Access
 - **GitHub**: Personal Access Token or GitHub App
@@ -27,7 +31,7 @@ psql -d cerebro -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 psql -d cerebro -c "CREATE EXTENSION IF NOT EXISTS btree_gin;"
 
 # Run migrations
-poetry run alembic upgrade head
+uv run alembic upgrade head
 ```
 
 ### 2. Environment Variables
@@ -147,15 +151,14 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install poetry
+# Install UV (much faster than Poetry)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Copy poetry files
-COPY pyproject.toml poetry.lock ./
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
 
-# Configure poetry
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev
+# Install dependencies with UV
+RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY . .

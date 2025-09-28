@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 # Environment
 PYTHON := python3
-POETRY := poetry
+UV := uv
 
 .PHONY: help
 help: ## Show this help message
@@ -10,11 +10,15 @@ help: ## Show this help message
 
 # Development
 .PHONY: install
-install: ## Install dependencies with Poetry
-	$(POETRY) install
+install: ## Install dependencies with UV
+	$(UV) sync
+
+.PHONY: install-dev
+install-dev: ## Install dependencies with dev extras
+	$(UV) sync --extra dev
 
 .PHONY: dev
-dev: install ## Setup development environment
+dev: install-dev ## Setup development environment
 	@echo "🚀 Setting up Cerebro development environment..."
 	cp .env.example .env
 	@echo "📝 Edit .env file with your configuration"
@@ -23,61 +27,61 @@ dev: install ## Setup development environment
 
 .PHONY: serve
 serve: ## Start development API server
-	$(POETRY) run uvicorn cerebro.api.main:app --reload --host 0.0.0.0 --port 8000
+	$(UV) run uvicorn cerebro.api.main:app --reload --host 0.0.0.0 --port 8000
 
 .PHONY: worker
 worker: ## Start Celery worker
-	$(POETRY) run celery -A cerebro.tasks.celery_app worker -l info
+	$(UV) run celery -A cerebro.tasks.celery_app worker -l info
 
 .PHONY: beat
 beat: ## Start Celery beat scheduler
-	$(POETRY) run celery -A cerebro.tasks.celery_app beat -l info
+	$(UV) run celery -A cerebro.tasks.celery_app beat -l info
 
 .PHONY: flower
 flower: ## Start Celery monitoring with Flower
-	$(POETRY) run celery -A cerebro.tasks.celery_app flower --port=5555
+	$(UV) run celery -A cerebro.tasks.celery_app flower --port=5555
 
 # Database
 .PHONY: db-migrate
 db-migrate: ## Run database migrations
-	$(POETRY) run alembic upgrade head
+	$(UV) run alembic upgrade head
 
 .PHONY: db-reset
 db-reset: ## Reset database (WARNING: destroys all data)
-	$(POETRY) run alembic downgrade base
-	$(POETRY) run alembic upgrade head
+	$(UV) run alembic downgrade base
+	$(UV) run alembic upgrade head
 
 .PHONY: db-migration
 db-migration: ## Create new migration (make db-migration MESSAGE="description")
-	$(POETRY) run alembic revision --autogenerate -m "$(MESSAGE)"
+	$(UV) run alembic revision --autogenerate -m "$(MESSAGE)"
 
 .PHONY: dev-data
 dev-data: ## Load development sample data
-	$(PYTHON) scripts/setup.py
+	$(UV) run python scripts/setup.py
 
 # Testing
 .PHONY: test
 test: ## Run all tests
-	$(POETRY) run pytest
+	$(UV) run pytest
 
 .PHONY: test-cov
 test-cov: ## Run tests with coverage
-	$(POETRY) run pytest --cov=cerebro --cov-report=html --cov-report=term
+	$(UV) run pytest --cov=cerebro --cov-report=html --cov-report=term
 
 .PHONY: test-watch
 test-watch: ## Run tests in watch mode
-	$(POETRY) run pytest-watch
+	$(UV) run pytest-watch
 
 # Code Quality  
 .PHONY: format
 format: ## Format code with Black and isort
-	$(POETRY) run black .
-	$(POETRY) run isort .
+	$(UV) run black .
+	$(UV) run isort .
 
 .PHONY: lint
 lint: ## Run linting checks
-	$(POETRY) run flake8 src/ tests/
-	$(POETRY) run mypy src/
+	$(UV) run flake8 src/ tests/
+	$(UV) run mypy src/
 
 .PHONY: check
 check: format lint test ## Run all quality checks
@@ -85,19 +89,19 @@ check: format lint test ## Run all quality checks
 # CLI Commands
 .PHONY: cli-org-create
 cli-org-create: ## Create organization (make cli-org-create NAME="Company")
-	$(POETRY) run python -m cerebro.cli org create --name "$(NAME)"
+	$(UV) run python -m cerebro.cli org create --name "$(NAME)"
 
 .PHONY: cli-collect
 cli-collect: ## Collect data (make cli-collect ORG="Company" PROVIDER=github)
-	$(POETRY) run python -m cerebro.cli collect "$(ORG)" --provider $(PROVIDER)
+	$(UV) run python -m cerebro.cli collect "$(ORG)" --provider $(PROVIDER)
 
 .PHONY: cli-findings
 cli-findings: ## Generate findings (make cli-findings ORG="Company")
-	$(POETRY) run python -m cerebro.cli findings generate --org-name "$(ORG)"
+	$(UV) run python -m cerebro.cli findings generate --org-name "$(ORG)"
 
 .PHONY: cli-rules
 cli-rules: ## List rules
-	$(POETRY) run python -m cerebro.cli rules list
+	$(UV) run python -m cerebro.cli rules list
 
 # Docker
 .PHONY: docker-build
@@ -118,7 +122,7 @@ docker-logs: ## View Docker Compose logs
 
 .PHONY: docker-test
 docker-test: ## Run tests in Docker
-	docker-compose exec cerebro-api poetry run pytest
+	docker-compose exec cerebro-api uv run pytest
 
 # Production Deployment
 .PHONY: deploy-staging
@@ -152,7 +156,7 @@ clean: ## Clean up temporary files
 .PHONY: providers-test
 providers-test: ## Test provider authentication
 	@echo "🔗 Testing provider authentication..."
-	$(POETRY) run python -c "
+	$(UV) run python -c "
 import asyncio
 from cerebro.infrastructure.provider_registry import get_provider_registry
 from cerebro.core.config import settings
@@ -181,7 +185,7 @@ asyncio.run(test_providers())
 .PHONY: findings-test
 findings-test: ## Test finding generation with sample data
 	@echo "🔍 Testing finding generation..."
-	$(POETRY) run python -c "
+	$(UV) run python -c "
 import asyncio
 from cerebro.findings.producers import producer_registry
 from cerebro.domain.entities import ResourceEntity, ConfigEntity

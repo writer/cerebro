@@ -2,8 +2,7 @@ FROM python:3.11-slim as build
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/app/.venv/bin:${PATH}"
+    PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
@@ -15,16 +14,14 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install --no-cache-dir poetry
+# Install UV
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Copy poetry configuration
-COPY pyproject.toml poetry.lock ./
+# Copy project configuration
+COPY pyproject.toml uv.lock ./
 
-# Configure poetry and install dependencies
-RUN poetry config virtualenvs.create true \
-    && poetry config virtualenvs.in-project true \
-    && poetry install --no-dev --no-interaction --no-ansi
+# Install dependencies
+RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY . .
@@ -48,6 +45,9 @@ COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/src /app/src
 COPY --from=build /app/migrations /app/migrations
 COPY --from=build /app/alembic.ini /app/alembic.ini
+
+# Copy UV binary
+COPY --from=build /bin/uv /bin/uv
 
 # Set up environment
 ENV PATH="/app/.venv/bin:${PATH}" \

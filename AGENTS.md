@@ -5,23 +5,23 @@ This document provides context for AI agents working on the Cerebro Security Sys
 ## Frequently Used Commands
 
 ### Development
-- **Start API server**: `uvicorn cerebro.api.main:app --reload`
-- **Run CLI**: `python -m cerebro.cli`
-- **Run tests**: `pytest`
-- **Type checking**: `mypy src/`
-- **Code formatting**: `black . && isort .`
-- **Linting**: `flake8 src/`
+- **Start API server**: `uv run uvicorn cerebro.api.main:app --reload`
+- **Run CLI**: `uv run python -m cerebro.cli`
+- **Run tests**: `uv run pytest`
+- **Type checking**: `uv run mypy src/`
+- **Code formatting**: `uv run black . && uv run isort .`
+- **Linting**: `uv run flake8 src/`
 
 ### Database
-- **Run migrations**: `alembic upgrade head`
-- **Create migration**: `alembic revision --autogenerate -m "description"`
-- **Reset database**: `alembic downgrade base && alembic upgrade head`
+- **Run migrations**: `uv run alembic upgrade head`
+- **Create migration**: `uv run alembic revision --autogenerate -m "description"`
+- **Reset database**: `uv run alembic downgrade base && uv run alembic upgrade head`
 
 ### CLI Operations
-- **Create organization**: `python -m cerebro.cli org create --name "Company Name"`
-- **List rules**: `python -m cerebro.cli rules list`
-- **Collect data**: `python -m cerebro.cli collect "Company Name" --provider github aws`
-- **Generate findings**: `python -m cerebro.cli findings generate --org-name "Company Name"`
+- **Create organization**: `uv run python -m cerebro.cli org create --name "Company Name"`
+- **List rules**: `uv run python -m cerebro.cli rules list`
+- **Collect data**: `uv run python -m cerebro.cli collect "Company Name" --provider github aws`
+- **Generate findings**: `uv run python -m cerebro.cli findings generate --org-name "Company Name"`
 
 ## Project Structure
 
@@ -162,7 +162,7 @@ cerebro/
 
 ### Production Requirements
 - PostgreSQL 14+ with required extensions
-- Python 3.11+ with poetry dependencies
+- Python 3.11+ with UV dependencies
 - Persistent storage for configuration data
 - Network access to provider APIs
 - Monitoring and logging infrastructure
@@ -181,7 +181,7 @@ See `.env.example` for complete configuration options including:
 - **Database connection**: Check PostgreSQL is running and credentials are correct
 - **Provider authentication**: Verify API tokens have required permissions
 - **Rule compilation**: Test CEL expressions in isolation
-- **Missing dependencies**: Run `poetry install` to update packages
+- **Missing dependencies**: Run `uv sync` to update packages
 
 ### Debugging
 - Enable debug logging with `LOG_LEVEL=DEBUG`
