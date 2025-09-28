@@ -14,6 +14,8 @@ from cerebro.collectors.manager import CollectorManager
 from cerebro.findings.manager import FindingManager
 from cerebro.findings.evaluator import RuleEvaluator
 from cerebro.rules.engine import rule_engine
+from cerebro.query.engine import QueryEngine
+from cerebro.providers.tables import register_all_provider_tables
 
 app = typer.Typer(name="cerebro", help="Cerebro Security System of Record CLI")
 console = Console()
@@ -291,6 +293,130 @@ def org(
                 rprint(f"[green]Organization '{name}' created successfully[/green]")
     
     asyncio.run(_org())
+
+
+@app.command()
+def query(
+    sql: Optional[str] = typer.Argument(None, help="SQL query to execute"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Read SQL from file"),
+    output: str = typer.Option("table", help="Output format: table, json"),
+    limit: Optional[int] = typer.Option(None, help="Limit results"),
+):
+    """Execute SQL queries against security data."""
+    async def _query():
+        # Initialize query engine
+        query_engine = QueryEngine()
+        register_all_provider_tables()
+        
+        # Get SQL query
+        query_sql = sql
+        if file:
+            try:
+                with open(file, 'r') as f:
+                    query_sql = f.read().strip()
+            except FileNotFoundError:
+                rprint(f"[red]File '{file}' not found[/red]")
+                return
+        
+        if not query_sql:
+            rprint("[red]Must provide SQL query or --file option[/red]")
+            return
+        
+        # Add LIMIT if specified
+        if limit and "LIMIT" not in query_sql.upper():
+            query_sql = f"{query_sql.rstrip(';')} LIMIT {limit}"
+        
+        try:
+            rprint(f"[blue]Executing: {query_sql}[/blue]")
+            result = await query_engine.execute_query(query_sql)
+            
+            if result.errors:
+                rprint("[red]Query execution failed:[/red]")
+                for error in result.errors:
+                    rprint(f"  - {error}")
+                return
+            
+            rprint(f"[green]Query completed in {result.execution_time_ms:.2f}ms[/green]")
+            rprint(f"[dim]Returned {result.total_rows} rows[/dim]")
+            
+            if not result.rows:
+                rprint("[yellow]No results returned[/yellow]")
+                return
+            
+            if output == "json":
+                import json
+                print(json.dumps(result.rows, indent=2, default=str))
+            else:
+                # Display as table
+                table = Table()
+                
+                # Add columns
+                for col in result.columns:
+                    table.add_column(col, style="cyan")
+                
+                # Add rows (limit to 50 for readability)
+                display_rows = result.rows[:50]
+                for row in display_rows:
+                    values = []
+                    for col in result.columns:
+                        value = row.get(col, "")
+                        # Truncate long values
+                        if isinstance(value, str) and len(value) > 50:
+                            value = value[:47] + "..."
+                        values.append(str(value))
+                    table.add_row(*values)
+                
+                console.print(table)
+                
+                if len(result.rows) > 50:
+                    rprint(f"[dim]... and {len(result.rows) - 50} more rows[/dim]")
+                    
+        except Exception as e:
+            rprint(f"[red]Error executing query: {e}[/red]")
+    
+    asyncio.run(_query())
+
+
+@app.command()
+def tables(
+    provider: Optional[str] = typer.Option(None, help="Filter by provider"),
+):
+    """List available security tables."""
+    async def _tables():
+        query_engine = QueryEngine()
+        register_all_provider_tables()
+        
+        try:
+            tables = await query_engine.list_tables(provider=provider)
+            
+            if not tables:
+                rprint("[yellow]No tables found[/yellow]")
+                return
+            
+            table = Table(title="Available Security Tables")
+            table.add_column("Name", style="cyan")
+            table.add_column("Provider", style="blue")
+            table.add_column("Columns", style="green")
+            table.add_column("Description", style="dim")
+            
+            for tbl in tables:
+                desc = tbl["description"]
+                if len(desc) > 60:
+                    desc = desc[:57] + "..."
+                
+                table.add_row(
+                    tbl["name"],
+                    tbl["provider"],
+                    str(tbl["columns"]),
+                    desc
+                )
+            
+            console.print(table)
+            
+        except Exception as e:
+            rprint(f"[red]Error listing tables: {e}[/red]")
+    
+    asyncio.run(_tables())
 
 
 if __name__ == "__main__":
