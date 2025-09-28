@@ -49,6 +49,13 @@ cerebro/
 - Add **type hints** for all functions
 - Use **docstrings** for modules, classes, and functions
 
+### File Organization
+- **One class per file** - Each producer, provider, or service gets its own file
+- **Descriptive file names** - Use snake_case matching the class name
+- **Provider separation** - Organize by provider: `findings/producers/github/`, `providers/aws/`
+- **No "god files"** - Split large files by responsibility (max 200 lines per file)
+- **Auto-discovery** - Use registry pattern with `@register_provider` decorators
+
 ### Database
 - All UUIDs use `UUID` type with `gen_random_uuid()` default
 - Timestamps use `DateTime(timezone=True)` 

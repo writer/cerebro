@@ -10,12 +10,44 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from cerebro.core.database import async_session_factory, engine
 from cerebro.core.models import Organization, Account, Rule, Policy
+from cerebro.core.user_service import UserService
 from cerebro.rules.library import RuleLibrary
+from cerebro.rules.rule_service import RuleService
 
 
 async def create_sample_data():
     """Create sample data for development."""
     async with async_session_factory() as db:
+        # Initialize user service
+        user_service = UserService(db)
+        
+        # Create default scopes
+        await user_service.create_default_scopes()
+        print("Created default scopes")
+        
+        # Create admin user
+        try:
+            admin_user = await user_service.create_admin_user(
+                username="admin",
+                email="admin@cerebro.local",
+                password="admin123!"
+            )
+            print(f"Created admin user: {admin_user.username}")
+        except ValueError as e:
+            print(f"Admin user already exists: {e}")
+        
+        # Create analyst user
+        try:
+            analyst_user = await user_service.create_user(
+                username="analyst",
+                email="analyst@cerebro.local", 
+                password="analyst123!",
+                scopes=["read:findings", "read:rules", "read:organizations", "read:resources"]
+            )
+            print(f"Created analyst user: {analyst_user.username}")
+        except ValueError as e:
+            print(f"Analyst user already exists: {e}")
+        
         # Create sample organization
         org = Organization(name="Acme Corp")
         db.add(org)
@@ -42,42 +74,20 @@ async def create_sample_data():
         await db.commit()
         print(f"Created accounts: GitHub, AWS")
         
-        # Create sample policy
-        policy = Policy(
-            org_id=org.org_id,
-            name="Security Baseline",
-            description="Basic security requirements for all resources",
-            framework="CIS"
-        )
-        db.add(policy)
-        await db.commit()
-        await db.refresh(policy)
+        # Initialize rule service and create rules from library
+        rule_service = RuleService(db)
+        rule_mapping = await rule_service.ensure_library_rules_exist(org.org_id)
+        print(f"Created {len(rule_mapping)} security rules from library")
         
-        # Load prebuilt rules
-        rule_templates = RuleLibrary.get_all_rules()
-        
-        for template in rule_templates[:5]:  # Add first 5 rules
-            rule = Rule(
-                policy_id=policy.policy_id,
-                name=template.name,
-                description=template.description,
-                provider=template.provider,
-                resource_types=template.resource_types,
-                expression_lang="cel",
-                expression=template.expression,
-                severity=template.severity,
-                cis=template.framework_mappings.get("cis", []),
-                nist_800_53=template.framework_mappings.get("nist_800_53", []),
-                cwe=template.framework_mappings.get("cwe", [])
-            )
-            db.add(rule)
-        
-        await db.commit()
-        print(f"Created {len(rule_templates[:5])} security rules")
+        # Sync rules with producers
+        producer_sync_result = await rule_service.sync_rules_with_producers(org.org_id)
+        print(f"Synced with producers: {producer_sync_result}")
         
         print("\n🎉 Sample data created successfully!")
         print(f"Organization ID: {org.org_id}")
-        print(f"Policy ID: {policy.policy_id}")
+        print(f"Admin user: admin / admin123!")
+        print(f"Analyst user: analyst / analyst123!")
+        print(f"Total rules: {len(rule_mapping) + producer_sync_result['created']}")
 
 
 async def run_database_migration():

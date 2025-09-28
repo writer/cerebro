@@ -4,8 +4,10 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.config import settings
+from cerebro.core.database import get_db
 from cerebro.api.auth import (
     Token, User, verify_password, create_access_token, get_current_user
 )
@@ -20,39 +22,31 @@ class LoginRequest(BaseModel):
     password: str
 
 
-# Mock user database - replace with real user management
-USERS_DB = {
-    "admin": {
-        "username": "admin",
-        "email": "admin@cerebro.local",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # secret
-        "is_admin": True,
-        "scopes": ["admin", "read:findings", "write:findings", "read:rules", "write:rules", "collect:data"]
-    },
-    "analyst": {
-        "username": "analyst", 
-        "email": "analyst@cerebro.local",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # secret
-        "is_admin": False,
-        "scopes": ["read:findings", "read:rules"]
-    }
-}
-
-
-def authenticate_user(username: str, password: str) -> dict:
+async def authenticate_user(username: str, password: str, db: AsyncSession) -> dict:
     """Authenticate user credentials."""
-    user = USERS_DB.get(username)
+    from cerebro.core.user_service import UserService
+    
+    user_service = UserService(db)
+    user = await user_service.authenticate_user(username, password)
+    
     if not user:
         return None
-    if not verify_password(password, user["hashed_password"]):
-        return None
-    return user
+    
+    # Get user scopes
+    scopes = await user_service.get_user_scopes(user.user_id)
+    
+    return {
+        "username": user.username,
+        "email": user.email,
+        "is_admin": user.is_admin,
+        "scopes": scopes
+    }
 
 
 @router.post("/token", response_model=Token)
-async def login(login_data: LoginRequest):
+async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Get access token via username/password."""
-    user = authenticate_user(login_data.username, login_data.password)
+    user = await authenticate_user(login_data.username, login_data.password, db)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -70,9 +64,12 @@ async def login(login_data: LoginRequest):
 
 
 @router.post("/token/basic", response_model=Token)
-async def login_basic(credentials: HTTPBasicCredentials = Depends(security)):
+async def login_basic(
+    credentials: HTTPBasicCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
     """Get access token via HTTP Basic auth."""
-    user = authenticate_user(credentials.username, credentials.password)
+    user = await authenticate_user(credentials.username, credentials.password, db)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

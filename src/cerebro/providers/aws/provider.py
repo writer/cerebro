@@ -385,50 +385,201 @@ class AWSProvider(BaseProvider):
         self,
         resource: Optional[ResourceInfo] = None
     ) -> AsyncGenerator[IamPermission, None]:
-        """Discover AWS IAM permissions."""
+        """Discover AWS IAM permissions with comprehensive policy evaluation."""
         if not self._session:
             await self.authenticate()
         
         loop = asyncio.get_event_loop()
         
-        # This is a simplified implementation
-        # In practice, AWS IAM analysis is very complex due to policy evaluation
-        def _get_iam_policies():
+        # Comprehensive IAM analysis
+        def _get_comprehensive_iam_permissions():
             iam = self._session.client('iam')
-            
-            # Get all users and their attached policies
-            users = []
-            paginator = iam.get_paginator('list_users')
-            for page in paginator.paginate():
-                users.extend(page['Users'])
-            
             permissions = []
             
-            for user in users:
-                # Get user policies
-                user_policies = iam.list_attached_user_policies(UserName=user['UserName'])
-                
-                for policy in user_policies['AttachedPolicies']:
-                    # Check if this is an admin policy
-                    is_admin = 'Administrator' in policy['PolicyName'] or policy['PolicyArn'] == 'arn:aws:iam::aws:policy/AdministratorAccess'
-                    
-                    permissions.append({
-                        'principal_arn': user['Arn'],
-                        'permission': policy['PolicyName'],
-                        'via': policy['PolicyArn'],
-                        'is_admin': is_admin
-                    })
+            # 1. User permissions
+            paginator = iam.get_paginator('list_users')
+            for page in paginator.paginate():
+                for user in page['Users']:
+                    user_permissions = self._analyze_user_permissions(iam, user)
+                    permissions.extend(user_permissions)
+            
+            # 2. Role permissions
+            paginator = iam.get_paginator('list_roles')
+            for page in paginator.paginate():
+                for role in page['Roles']:
+                    role_permissions = self._analyze_role_permissions(iam, role)
+                    permissions.extend(role_permissions)
+            
+            # 3. Group permissions
+            paginator = iam.get_paginator('list_groups')
+            for page in paginator.paginate():
+                for group in page['Groups']:
+                    group_permissions = self._analyze_group_permissions(iam, group)
+                    permissions.extend(group_permissions)
             
             return permissions
         
-        perms = await loop.run_in_executor(None, _get_iam_policies)
+        perms = await loop.run_in_executor(None, _get_comprehensive_iam_permissions)
         
         for perm in perms:
             yield IamPermission(
                 principal_external_id=perm['principal_arn'],
-                resource_external_id=resource.external_id if resource else None,
-                permission=f"aws.iam.{perm['permission']}",
+                resource_external_id=perm.get('resource_arn'),
+                permission=perm['permission'],
                 via=perm['via'],
                 effective_at=datetime.utcnow(),
                 is_admin=perm['is_admin']
             )
+    
+    def _analyze_user_permissions(self, iam, user: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Analyze all permissions for an IAM user."""
+        permissions = []
+        user_arn = user['Arn']
+        user_name = user['UserName']
+        
+        # 1. Directly attached managed policies
+        user_policies = iam.list_attached_user_policies(UserName=user_name)
+        for policy in user_policies['AttachedPolicies']:
+            is_admin = self._is_admin_policy(policy['PolicyArn'])
+            permissions.append({
+                'principal_arn': user_arn,
+                'permission': f"aws.iam.policy.{policy['PolicyName']}",
+                'via': f"direct_attachment:{policy['PolicyArn']}",
+                'is_admin': is_admin,
+                'resource_arn': None
+            })
+        
+        # 2. Inline user policies
+        inline_policies = iam.list_user_policies(UserName=user_name)
+        for policy_name in inline_policies['PolicyNames']:
+            policy_doc = iam.get_user_policy(UserName=user_name, PolicyName=policy_name)
+            statements = policy_doc['PolicyDocument'].get('Statement', [])
+            
+            for statement in statements:
+                if statement.get('Effect') == 'Allow':
+                    actions = statement.get('Action', [])
+                    if isinstance(actions, str):
+                        actions = [actions]
+                    
+                    for action in actions:
+                        is_admin = action == '*' or 'Admin' in action
+                        permissions.append({
+                            'principal_arn': user_arn,
+                            'permission': f"aws.action.{action}",
+                            'via': f"inline_policy:{policy_name}",
+                            'is_admin': is_admin,
+                            'resource_arn': None
+                        })
+        
+        # 3. Group memberships
+        user_groups = iam.get_groups_for_user(UserName=user_name)
+        for group in user_groups['Groups']:
+            group_permissions = self._analyze_group_permissions_for_user(iam, group, user_arn)
+            permissions.extend(group_permissions)
+        
+        return permissions
+    
+    def _analyze_role_permissions(self, iam, role: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Analyze permissions for an IAM role."""
+        permissions = []
+        role_arn = role['Arn']
+        role_name = role['RoleName']
+        
+        # Attached managed policies
+        role_policies = iam.list_attached_role_policies(RoleName=role_name)
+        for policy in role_policies['AttachedPolicies']:
+            is_admin = self._is_admin_policy(policy['PolicyArn'])
+            permissions.append({
+                'principal_arn': role_arn,
+                'permission': f"aws.iam.policy.{policy['PolicyName']}",
+                'via': f"role_attachment:{policy['PolicyArn']}",
+                'is_admin': is_admin,
+                'resource_arn': None
+            })
+        
+        # Inline role policies
+        inline_policies = iam.list_role_policies(RoleName=role_name)
+        for policy_name in inline_policies['PolicyNames']:
+            policy_doc = iam.get_role_policy(RoleName=role_name, PolicyName=policy_name)
+            statements = policy_doc['PolicyDocument'].get('Statement', [])
+            
+            for statement in statements:
+                if statement.get('Effect') == 'Allow':
+                    actions = statement.get('Action', [])
+                    if isinstance(actions, str):
+                        actions = [actions]
+                    
+                    for action in actions:
+                        is_admin = action == '*' or 'Admin' in action
+                        permissions.append({
+                            'principal_arn': role_arn,
+                            'permission': f"aws.action.{action}",
+                            'via': f"role_inline_policy:{policy_name}",
+                            'is_admin': is_admin,
+                            'resource_arn': None
+                        })
+        
+        return permissions
+    
+    def _analyze_group_permissions(self, iam, group: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Analyze permissions for an IAM group."""
+        permissions = []
+        group_arn = group['Arn']
+        group_name = group['GroupName']
+        
+        # Get group members
+        group_members = iam.get_group(GroupName=group_name)
+        member_arns = [user['Arn'] for user in group_members['Users']]
+        
+        # Attached managed policies
+        group_policies = iam.list_attached_group_policies(GroupName=group_name)
+        for policy in group_policies['AttachedPolicies']:
+            is_admin = self._is_admin_policy(policy['PolicyArn'])
+            
+            # Create permission for each group member
+            for member_arn in member_arns:
+                permissions.append({
+                    'principal_arn': member_arn,
+                    'permission': f"aws.iam.policy.{policy['PolicyName']}",
+                    'via': f"group_membership:{group_name}:{policy['PolicyArn']}",
+                    'is_admin': is_admin,
+                    'resource_arn': None
+                })
+        
+        return permissions
+    
+    def _analyze_group_permissions_for_user(
+        self, 
+        iam, 
+        group: Dict[str, Any], 
+        user_arn: str
+    ) -> List[Dict[str, Any]]:
+        """Analyze group permissions for a specific user."""
+        permissions = []
+        group_name = group['GroupName']
+        
+        # Attached managed policies
+        group_policies = iam.list_attached_group_policies(GroupName=group_name)
+        for policy in group_policies['AttachedPolicies']:
+            is_admin = self._is_admin_policy(policy['PolicyArn'])
+            permissions.append({
+                'principal_arn': user_arn,
+                'permission': f"aws.iam.policy.{policy['PolicyName']}",
+                'via': f"group_membership:{group_name}:{policy['PolicyArn']}",
+                'is_admin': is_admin,
+                'resource_arn': None
+            })
+        
+        return permissions
+    
+    def _is_admin_policy(self, policy_arn: str) -> bool:
+        """Check if a policy provides administrative access."""
+        admin_policies = [
+            'arn:aws:iam::aws:policy/AdministratorAccess',
+            'arn:aws:iam::aws:policy/IAMFullAccess',
+            'arn:aws:iam::aws:policy/PowerUserAccess'
+        ]
+        
+        return (policy_arn in admin_policies or 
+                'Administrator' in policy_arn or
+                'FullAccess' in policy_arn)

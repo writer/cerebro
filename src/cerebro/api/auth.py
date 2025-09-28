@@ -9,6 +9,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
 from cerebro.core.config import settings
+from cerebro.core.user_service import UserService
+from cerebro.core.database import get_db
 
 
 class Token(BaseModel):
@@ -80,17 +82,33 @@ def verify_token(token: str) -> TokenData:
         )
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> User:
     """Get the current authenticated user."""
     token_data = verify_token(credentials.credentials)
     
-    # In a real implementation, you'd fetch user from database
-    # For now, we'll create a mock user based on token data
+    # Fetch user from database
+    user_service = UserService(db)
+    db_user = await user_service.get_user_by_username(token_data.username)
+    
+    if not db_user or not db_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Get user scopes
+    scopes = await user_service.get_user_scopes(db_user.user_id)
+    
+    # Return domain user model
     user = User(
-        username=token_data.username,
-        email=f"{token_data.username}@example.com",
-        is_admin="admin" in token_data.scopes,
-        scopes=token_data.scopes
+        username=db_user.username,
+        email=db_user.email,
+        is_admin=db_user.is_admin,
+        scopes=scopes
     )
     
     return user
