@@ -60,8 +60,8 @@ class EC2InstancePublicIPProducer(BaseAWSProducer):
             # Get rule ID from context
             rule_id = context.get("rule_id") if context else None
             if not rule_id:
-                from cerebro.rules.rule_service import get_rule_by_name
-                rule_id = get_rule_by_name(self.rule_name)
+                from cerebro.rules.rule_service import get_rule_by_name_sync
+                rule_id = get_rule_by_name_sync(self.rule_name)
             
             # Check security groups for open ports
             security_groups = config.normalized_config.get("securityGroups", [])

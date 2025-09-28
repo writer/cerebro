@@ -55,13 +55,74 @@ async def get_principal(
 @router.get("/{principal_id}/permissions")
 async def get_principal_permissions(
     principal_id: UUID,
+    active_only: bool = True,
+    limit: int = 100,
+    offset: int = 0,
     db: AsyncSession = Depends(get_db)
 ):
     """Get permissions for a principal."""
+    from sqlalchemy import select, and_, or_, desc
+    from cerebro.core.models import IamEdge, Resource
+    
     principal = await db.get(Principal, principal_id)
     if not principal:
         raise HTTPException(status_code=404, detail="Principal not found")
     
-    # This would need to query IamEdge table
-    # Simplified for now
-    return {"principal_id": principal_id, "permissions": []}
+    # Query IAM edges for this principal
+    stmt = select(IamEdge).where(IamEdge.principal_id == principal_id)
+    
+    if active_only:
+        # Only show currently effective permissions
+        from datetime import datetime
+        now = datetime.utcnow()
+        stmt = stmt.where(
+            and_(
+                IamEdge.effective_at <= now,
+                or_(
+                    IamEdge.expires_at.is_(None),
+                    IamEdge.expires_at > now
+                )
+            )
+        )
+    
+    stmt = stmt.order_by(desc(IamEdge.effective_at)).offset(offset).limit(limit)
+    
+    iam_edges = await db.scalars(stmt)
+    
+    permissions = []
+    for edge in iam_edges:
+        # Get resource details if applicable
+        resource_info = None
+        if edge.resource_id:
+            resource = await db.get(Resource, edge.resource_id)
+            if resource:
+                resource_info = {
+                    "resource_id": str(resource.resource_id),
+                    "external_id": resource.external_id,
+                    "name": resource.name,
+                    "resource_type": resource.resource_type
+                }
+        
+        permissions.append({
+            "edge_id": str(edge.edge_id),
+            "permission": edge.permission,
+            "via": edge.via,
+            "effective_at": edge.effective_at.isoformat(),
+            "expires_at": edge.expires_at.isoformat() if edge.expires_at else None,
+            "is_admin": edge.is_admin,
+            "resource": resource_info
+        })
+    
+    return {
+        "principal_id": principal_id,
+        "principal_info": {
+            "external_id": principal.external_id,
+            "display_name": principal.display_name,
+            "email": principal.email,
+            "principal_type": principal.principal_type,
+            "provider": principal.provider
+        },
+        "permissions": permissions,
+        "total_permissions": len(permissions),
+        "active_only": active_only
+    }

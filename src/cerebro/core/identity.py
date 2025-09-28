@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
 from .models import Principal, Account
+from .identity_models import IdentityCluster, IdentityClusterMember, IdentityStitchingLog
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,10 @@ class IdentityStitcher:
             processed_ids.update(principal_ids)
         
         logger.info(f"Found {len(clusters)} identity clusters")
+        
+        # Save clusters to database
+        await self._save_identity_clusters(org_id, clusters)
+        
         return clusters
     
     def _group_by_email(self, principals: List[Principal]) -> Dict[str, List[Principal]]:
@@ -153,3 +158,86 @@ class IdentityStitcher:
                 }
         
         return None
+    
+    async def _save_identity_clusters(
+        self,
+        org_id: UUID,
+        clusters: List[IdentityCluster]
+    ) -> None:
+        """Save identity clusters to database."""
+        from .identity_models import IdentityCluster as DBIdentityCluster, IdentityClusterMember, IdentityStitchingLog
+        
+        saved_clusters = 0
+        
+        for cluster in clusters:
+            try:
+                # Check if cluster already exists
+                stmt = select(DBIdentityCluster).where(
+                    and_(
+                        DBIdentityCluster.org_id == org_id,
+                        DBIdentityCluster.cluster_name == cluster.cluster_id
+                    )
+                )
+                existing_cluster = await self.db.scalar(stmt)
+                
+                if existing_cluster:
+                    # Update existing cluster
+                    existing_cluster.confidence_score = cluster.confidence_score
+                    existing_cluster.stitching_evidence = cluster.stitching_evidence
+                    existing_cluster.updated_at = datetime.utcnow()
+                    db_cluster = existing_cluster
+                else:
+                    # Create new cluster
+                    db_cluster = DBIdentityCluster(
+                        org_id=org_id,
+                        cluster_name=cluster.cluster_id,
+                        confidence_score=cluster.confidence_score,
+                        stitching_method=cluster.stitching_evidence.get("method", "unknown"),
+                        stitching_evidence=cluster.stitching_evidence
+                    )
+                    self.db.add(db_cluster)
+                    await self.db.flush()  # Get cluster ID
+                
+                # Save cluster members
+                for principal in cluster.principals:
+                    # Check if member already exists
+                    stmt = select(IdentityClusterMember).where(
+                        and_(
+                            IdentityClusterMember.cluster_id == db_cluster.cluster_id,
+                            IdentityClusterMember.principal_id == principal.principal_id
+                        )
+                    )
+                    existing_member = await self.db.scalar(stmt)
+                    
+                    if not existing_member:
+                        member = IdentityClusterMember(
+                            cluster_id=db_cluster.cluster_id,
+                            principal_id=principal.principal_id,
+                            confidence_score=cluster.confidence_score,
+                            evidence=cluster.stitching_evidence,
+                            added_by="system"
+                        )
+                        self.db.add(member)
+                
+                saved_clusters += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to save identity cluster {cluster.cluster_id}: {e}")
+        
+        # Log the stitching operation
+        stitching_log = IdentityStitchingLog(
+            org_id=org_id,
+            operation="bulk_cluster_creation",
+            principals_affected=[p.external_id for cluster in clusters for p in cluster.principals],
+            confidence_threshold=0.6,  # Minimum threshold used
+            algorithm_version="1.0.0",
+            metadata={
+                "clusters_processed": len(clusters),
+                "clusters_saved": saved_clusters,
+                "method": "email_and_name_matching"
+            }
+        )
+        self.db.add(stitching_log)
+        
+        await self.db.commit()
+        logger.info(f"Saved {saved_clusters} identity clusters to database")

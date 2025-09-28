@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.config import settings
 from cerebro.core.user_service import UserService

@@ -63,8 +63,8 @@ class S3BucketPublicProducer(BaseAWSProducer):
             # Get rule ID from context
             rule_id = context.get("rule_id") if context else None
             if not rule_id:
-                from cerebro.rules.rule_service import get_rule_by_name
-                rule_id = get_rule_by_name(self.rule_name)
+                from cerebro.rules.rule_service import get_rule_by_name_sync
+                rule_id = get_rule_by_name_sync(self.rule_name)
             
             # Determine specific public access vectors
             access_vectors = []

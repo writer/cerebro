@@ -265,25 +265,37 @@ class RuleService:
 
 
 # Global helper function for use in producers
-async def get_rule_by_name(rule_name: str, db_session: Optional[AsyncSession] = None) -> UUID:
-    """Global helper to get rule ID by name."""
-    if not db_session:
-        # This is a fallback - in practice, context should provide rule ID
-        logger.warning(f"No database session provided for rule lookup: {rule_name}")
-        # Return a deterministic UUID based on rule name
-        import hashlib
-        name_hash = hashlib.sha256(rule_name.encode()).hexdigest()
-        return UUID(name_hash[:32])
+def get_rule_by_name_sync(rule_name: str) -> UUID:
+    """Synchronous helper to get rule ID by name using deterministic UUID."""
+    # Check cache first
+    rule_name_key = rule_name.lower().replace(" ", "_").replace(":", "").replace("-", "_")
     
+    if rule_name_key in _rule_name_cache:
+        return _rule_name_cache[rule_name_key]
+    
+    # Generate deterministic UUID based on rule name
+    import hashlib
+    name_hash = hashlib.sha256(rule_name.encode()).hexdigest()
+    # Take first 32 chars and format as UUID
+    uuid_str = f"{name_hash[:8]}-{name_hash[8:12]}-{name_hash[12:16]}-{name_hash[16:20]}-{name_hash[20:32]}"
+    rule_id = UUID(uuid_str)
+    
+    # Cache the result
+    _rule_name_cache[rule_name_key] = rule_id
+    
+    return rule_id
+
+
+# Async version for use with database
+async def get_rule_by_name_async(rule_name: str, db_session: AsyncSession) -> UUID:
+    """Async helper to get rule ID by name from database."""
     rule_service = RuleService(db_session)
     rule_id = await rule_service.get_rule_by_name(rule_name)
     
     if not rule_id:
-        # Create a deterministic UUID if rule not found
-        import hashlib
-        name_hash = hashlib.sha256(rule_name.encode()).hexdigest()
-        rule_id = UUID(name_hash[:32])
-        logger.warning(f"Rule not found, using deterministic UUID for {rule_name}: {rule_id}")
+        # Fall back to deterministic UUID
+        rule_id = get_rule_by_name_sync(rule_name)
+        logger.warning(f"Rule not found in DB, using deterministic UUID for {rule_name}: {rule_id}")
     
     return rule_id
 
