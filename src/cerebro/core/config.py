@@ -99,6 +99,43 @@ class Settings(BaseSettings):
         default=None, description="Celery result backend (defaults to redis_url)"
     )
     
+    # Key Management Service Configuration
+    kms_provider: str = Field(
+        default="local", description="KMS provider (aws, gcp, azure, vault, local)"
+    )
+    
+    # AWS KMS
+    aws_kms_key_id: Optional[str] = Field(
+        default=None, description="AWS KMS key ID for envelope encryption"
+    )
+    aws_kms_region: Optional[str] = Field(
+        default=None, description="AWS KMS region (defaults to aws_default_region)"
+    )
+    
+    # GCP KMS  
+    gcp_kms_key_name: Optional[str] = Field(
+        default=None, description="GCP KMS key resource name"
+    )
+    
+    # Azure Key Vault
+    azure_vault_url: Optional[str] = Field(
+        default=None, description="Azure Key Vault URL"
+    )
+    azure_key_name: Optional[str] = Field(
+        default=None, description="Azure Key Vault key name"
+    )
+    
+    # HashiCorp Vault
+    vault_url: Optional[str] = Field(
+        default=None, description="Vault server URL"
+    )
+    vault_mount_path: str = Field(
+        default="transit", description="Vault transit mount path"
+    )
+    vault_key_name: Optional[str] = Field(
+        default=None, description="Vault transit key name"
+    )
+    
     class Config:
         """Pydantic config."""
         env_file = ".env"

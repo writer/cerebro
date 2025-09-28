@@ -8,6 +8,7 @@ import json
 import base64
 import os
 
+import secrets
 from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, String, Boolean, DateTime, LargeBinary
@@ -18,6 +19,7 @@ from uuid import UUID
 
 from .database import Base
 from .config import settings
+from cerebro.kms.factory import get_kms
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,7 @@ class ProviderCredentialStore(Base):
     account_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     encrypted_credentials: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_dek: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)  # Data Encryption Key
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
@@ -47,27 +50,44 @@ class ProviderCredentialStore(Base):
 
 
 class CredentialService:
-    """Service for managing provider credentials securely."""
+    """Service for managing provider credentials with envelope encryption."""
     
     def __init__(self, db_session: AsyncSession):
         """Initialize credential service."""
         self.db = db_session
-        self._fernet = self._get_encryption_key()
+        self.kms = get_kms()
     
-    def _get_encryption_key(self) -> Fernet:
-        """Get or create encryption key for credentials."""
-        # In production, this should come from a key management service
-        key_env = os.getenv("CREDENTIAL_ENCRYPTION_KEY")
+    @staticmethod
+    def _generate_dek() -> bytes:
+        """Generate a data encryption key for envelope encryption."""
+        # Generate 32 random bytes and encode for Fernet
+        return base64.urlsafe_b64encode(secrets.token_bytes(32))
+    
+    async def _encrypt_with_envelope(self, credentials: dict) -> tuple[bytes, bytes]:
+        """Encrypt credentials using envelope encryption pattern."""
+        # 1. Generate random DEK
+        dek = self._generate_dek()
         
-        if key_env:
-            key = key_env.encode()
-        else:
-            # Generate deterministic key from secret_key for development
-            import hashlib
-            key_material = hashlib.sha256(settings.secret_key.encode()).digest()
-            key = base64.urlsafe_b64encode(key_material)
+        # 2. Encrypt credentials with DEK
+        fernet = Fernet(dek)
+        credentials_json = json.dumps(credentials)
+        encrypted_credentials = fernet.encrypt(credentials_json.encode())
         
-        return Fernet(key)
+        # 3. Encrypt DEK with KMS
+        encrypted_dek = await self.kms.encrypt(dek)
+        
+        return encrypted_credentials, encrypted_dek
+    
+    async def _decrypt_with_envelope(self, encrypted_credentials: bytes, encrypted_dek: bytes) -> dict:
+        """Decrypt credentials using envelope encryption pattern."""
+        # 1. Decrypt DEK with KMS
+        dek = await self.kms.decrypt(encrypted_dek)
+        
+        # 2. Decrypt credentials with DEK
+        fernet = Fernet(dek)
+        credentials_json = fernet.decrypt(encrypted_credentials)
+        
+        return json.loads(credentials_json.decode())
     
     async def store_credentials(
         self,
@@ -76,11 +96,10 @@ class CredentialService:
         credentials: Dict[str, Any],
         expires_at: Optional[datetime] = None
     ) -> bool:
-        """Store encrypted provider credentials."""
+        """Store encrypted provider credentials using envelope encryption."""
         try:
-            # Encrypt credentials
-            credentials_json = json.dumps(credentials)
-            encrypted_data = self._fernet.encrypt(credentials_json.encode())
+            # Encrypt credentials with envelope encryption
+            encrypted_credentials, encrypted_dek = await self._encrypt_with_envelope(credentials)
             
             # Check if credentials already exist
             stmt = select(ProviderCredentialStore).where(
@@ -94,7 +113,8 @@ class CredentialService:
             
             if existing:
                 # Update existing credentials
-                existing.encrypted_credentials = encrypted_data
+                existing.encrypted_credentials = encrypted_credentials
+                existing.encrypted_dek = encrypted_dek
                 existing.expires_at = expires_at
                 existing.updated_at = datetime.utcnow()
             else:
@@ -102,13 +122,14 @@ class CredentialService:
                 new_creds = ProviderCredentialStore(
                     account_id=account_id,
                     provider=provider,
-                    encrypted_credentials=encrypted_data,
+                    encrypted_credentials=encrypted_credentials,
+                    encrypted_dek=encrypted_dek,
                     expires_at=expires_at
                 )
                 self.db.add(new_creds)
             
             await self.db.commit()
-            logger.info(f"Stored credentials for provider {provider}")
+            logger.info(f"Stored encrypted credentials for provider {provider}")
             return True
             
         except Exception as e:
@@ -140,9 +161,11 @@ class CredentialService:
                 logger.warning(f"Credentials for {provider} have expired")
                 return None
             
-            # Decrypt credentials
-            decrypted_data = self._fernet.decrypt(cred_store.encrypted_credentials)
-            credentials = json.loads(decrypted_data.decode())
+            # Decrypt credentials using envelope encryption
+            credentials = await self._decrypt_with_envelope(
+                cred_store.encrypted_credentials,
+                cred_store.encrypted_dek
+            )
             
             return ProviderCredentials(
                 provider=provider,

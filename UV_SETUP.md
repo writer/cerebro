@@ -1,6 +1,6 @@
 # ⚡ UV Setup Guide for Cerebro
 
-Cerebro uses [UV](https://docs.astral.sh/uv/) for blazing-fast Python dependency management.
+Cerebro uses [UV](https://docs.astral.sh/uv/) for fast Python dependency management.
 
 ## 🚀 Why UV?
 

@@ -127,16 +127,37 @@ class CollectorManager:
         org_id: str,
         providers: Optional[List[str]] = None,
         interval_hours: int = 24
-    ) -> None:
-        """Schedule periodic collection (simple implementation)."""
-        # This is a basic implementation. In production, you'd use a proper scheduler
-        while True:
-            try:
-                logger.info(f"Starting scheduled collection for org {org_id}")
-                result = await self.collect_organization(org_id, providers)
-                logger.info(f"Scheduled collection completed: {result['summary']}")
-            except Exception as e:
-                logger.error(f"Scheduled collection failed: {e}")
-            
-            # Wait for next collection
-            await asyncio.sleep(interval_hours * 3600)
+    ) -> str:
+        """Schedule periodic collection using Celery beat."""
+        from cerebro.tasks.collection_tasks import collect_organization_task
+        from celery.schedules import crontab
+        
+        # Calculate cron schedule for interval
+        if interval_hours == 24:
+            schedule = crontab(hour=2, minute=0)  # Daily at 2 AM
+        elif interval_hours == 12:
+            schedule = crontab(hour="2,14", minute=0)  # Twice daily
+        elif interval_hours == 6:
+            schedule = crontab(hour="2,8,14,20", minute=0)  # Every 6 hours
+        else:
+            # Custom interval - use periodic schedule
+            from celery.schedules import schedule as celery_schedule
+            schedule = celery_schedule(run_every=interval_hours * 3600)
+        
+        # Schedule the task
+        from cerebro.tasks.celery_app import celery_app
+        
+        task_name = f"scheduled_collection_{org_id}_{'-'.join(providers or ['all'])}"
+        
+        celery_app.conf.beat_schedule[task_name] = {
+            'task': 'cerebro.tasks.collection_tasks.collect_organization_task',
+            'schedule': schedule,
+            'args': (org_id,),
+            'kwargs': {
+                'provider_filter': providers,
+                'resource_types': None
+            }
+        }
+        
+        logger.info(f"Scheduled collection for org {org_id} every {interval_hours} hours")
+        return task_name

@@ -90,15 +90,15 @@ graph TB
 ## Quick Start
 
 ### Prerequisites
-- **Python 3.11+** with UV for blazing-fast dependency management
+- **Python 3.11+** with UV dependency management
 - **PostgreSQL 14+** with `pgcrypto` and `btree_gin` extensions
 - **Redis 6+** for background task processing and caching
 - **Provider Access**: GitHub tokens, AWS credentials, GCP service accounts
 
-### ⚡ Blazing Fast Setup with UV
+### ⚡ Fast Setup with UV
 
 ```bash
-# Install UV (10-100x faster than pip/poetry)
+# Install UV
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and setup
@@ -274,7 +274,7 @@ make serve        # uv run uvicorn cerebro.api.main:app --reload
 make worker       # uv run celery worker (background processing)
 make flower       # uv run celery flower (task monitoring)
 
-# Code quality (lightning fast with UV)
+# Code quality
 make format       # uv run black . && uv run isort .
 make lint        # uv run flake8 + uv run mypy
 make test        # uv run pytest (with async support)
@@ -395,7 +395,7 @@ kubectl apply -f k8s/production/
 ## 🤝 Contributing
 
 1. **Fork the repository**
-2. **Create feature branch**: `git checkout -b feature/amazing-feature`
+2. **Create feature branch**: `git checkout -b feature/new-feature`
 3. **Follow code standards**: `make check` 
 4. **Add tests**: Maintain >90% coverage
 5. **Update documentation**: Include examples and usage
