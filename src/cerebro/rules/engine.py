@@ -7,7 +7,8 @@ from datetime import datetime
 from uuid import UUID
 import logging
 
-from cel_python import celtypes, Environment, CELEvalError
+import celpy
+from celpy import Environment, CELEvalError
 from cachetools import TTLCache
 
 from cerebro.core.config import settings
@@ -56,15 +57,15 @@ class RuleEngine:
     
     def _create_environment(self) -> Environment:
         """Create CEL environment with variable declarations."""
-        var_names = {
-            'resource': celtypes.MapType,
-            'config': celtypes.MapType,
-            'principal': celtypes.MapType,
-            'iam_edge': celtypes.MapType,
-            'org_config': celtypes.MapType,
-            'user_config': celtypes.MapType,
+        annotations = {
+            'resource': celpy.celtypes.MapType,
+            'config': celpy.celtypes.MapType,
+            'principal': celpy.celtypes.MapType,
+            'iam_edge': celpy.celtypes.MapType,
+            'org_config': celpy.celtypes.MapType,
+            'user_config': celpy.celtypes.MapType,
         }
-        return Environment(variables=var_names)
+        return Environment(annotations=annotations)
     
     def _get_cache_key(self, expression: str) -> str:
         """Generate cache key for expression."""

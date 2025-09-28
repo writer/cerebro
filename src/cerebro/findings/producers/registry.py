@@ -44,8 +44,9 @@ def auto_discover_producers(package_name: str = "cerebro.findings.producers") ->
                     attr = getattr(module, attr_name)
                     
                     if (isinstance(attr, type) and 
-                        issubclass(attr, BaseFindingProducer) and
-                        attr != BaseFindingProducer):
+                    issubclass(attr, BaseFindingProducer) and
+                    attr != BaseFindingProducer and
+                            not attr.__name__.startswith("Base")):
                         
                         try:
                             # Register the producer

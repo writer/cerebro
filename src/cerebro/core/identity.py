@@ -231,7 +231,7 @@ class IdentityStitcher:
             principals_affected=[p.external_id for cluster in clusters for p in cluster.principals],
             confidence_threshold=0.6,  # Minimum threshold used
             algorithm_version="1.0.0",
-            metadata={
+            operation_metadata={
                 "clusters_processed": len(clusters),
                 "clusters_saved": saved_clusters,
                 "method": "email_and_name_matching"

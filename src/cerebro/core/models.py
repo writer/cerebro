@@ -250,7 +250,7 @@ class EvidenceArtifact(Base):
     kind: Mapped[str] = mapped_column(String, nullable=False)
     uri: Mapped[Optional[str]] = mapped_column(String)
     blob: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
-    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    artifact_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
     
     # Relationships
     finding: Mapped["Finding"] = relationship(back_populates="evidence_artifacts")

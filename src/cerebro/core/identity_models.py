@@ -58,4 +58,4 @@ class IdentityStitchingLog(Base):
     confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False)
     algorithm_version: Mapped[str] = mapped_column(String(20), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
-    metadata: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=True)
+    operation_metadata: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=True)
