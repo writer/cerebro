@@ -13,6 +13,7 @@ from sqlalchemy import select, and_, or_
 from cerebro.core.models import Finding, Rule, Resource, Principal, Account, Organization
 from cerebro.rules import RuleResult
 from .evaluator import RuleEvaluator
+from .producers import ProducerBasedFindingService, producer_registry
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class FindingManager:
         """Initialize finding manager."""
         self.db = db_session
         self.evaluator = rule_evaluator
+        self.producer_service = ProducerBasedFindingService(producer_registry)
     
     async def generate_findings(
         self,
