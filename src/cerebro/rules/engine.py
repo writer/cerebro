@@ -7,7 +7,7 @@ from datetime import datetime
 from uuid import UUID
 import logging
 
-from celpy import celtypes, Environment, CELEvalError
+from cel_python import celtypes, Environment, CELEvalError
 from cachetools import TTLCache
 
 from cerebro.core.config import settings
