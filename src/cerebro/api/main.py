@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer
 import logging
 
 from cerebro.core.config import settings
-from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors
+from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis
 from .auth import User, get_current_user
 
 # Configure logging
@@ -88,6 +88,12 @@ app.include_router(
     collectors.router,
     prefix=f"{settings.api_v1_prefix}/collectors",
     tags=["collectors"]
+)
+
+app.include_router(
+    analysis.router,
+    prefix=f"{settings.api_v1_prefix}/analysis",
+    tags=["analysis"]
 )
 
 

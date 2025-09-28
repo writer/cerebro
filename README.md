@@ -2,7 +2,7 @@
 
 **The system of record for enterprise security: open, self-hosted, forensic-ready.**
 
-When audit committees ask "prove what happened," commercial security platforms fall short. Cerebro provides complete visibility into your cloud and SaaS security posture with an immutable audit trail that stands up to forensic investigation. Built for enterprises that need both security insights and regulatory compliance.
+When audit committees ask "prove what happened," commercial security platforms often lack the necessary audit trail. Cerebro provides complete visibility into cloud and SaaS security configurations with an immutable audit trail designed for forensic investigation. Supports enterprises that require both security monitoring and regulatory compliance.
 
 ## 🎯 Three Core Differentiators
 
@@ -19,7 +19,7 @@ Automatically correlate john.doe@company.com across GitHub, AWS IAM, and Google 
 
 **Wiz, Prisma, and Orca optimize for SaaS convenience.** They're fast to deploy but your security data lives in their infrastructure, rules use their proprietary formats, and audit trails have gaps.
 
-**Cerebro optimizes for auditability and developer ergonomics.** Everything runs in your infrastructure with complete data sovereignty. Open-source rule engine ensures no vendor lock-in. Append-only architecture provides forensic-grade audit trails.
+**Cerebro prioritizes auditability and operational control.** All components run in your infrastructure with data sovereignty. Open-source rule engine avoids vendor lock-in. Append-only architecture provides comprehensive audit trails.
 
 ## 📊 Enterprise Scale & Performance
 
@@ -434,4 +434,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built with ❤️ for security teams who need complete visibility without vendor lock-in.**
+Built for security teams who require audit trails and vendor independence.
