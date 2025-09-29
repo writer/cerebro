@@ -117,6 +117,15 @@ class JwtMetrics:
             jwt_verification_duration.labels(result=result).observe(duration)
     
     @staticmethod
+    def record_token_verified(result: str, algorithm: str, key_id: str):
+        """Record token verification result."""
+        jwt_tokens_verified.labels(
+            result=result,
+            algorithm=algorithm,
+            key_id=key_id
+        ).inc()
+    
+    @staticmethod
     def record_key_rotation(success: bool):
         """Record key rotation attempt."""
         status = "success" if success else "failed"
