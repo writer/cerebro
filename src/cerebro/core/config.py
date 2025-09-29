@@ -214,7 +214,7 @@ class Settings(BaseSettings):
     
     # Key Management Service Configuration
     kms_provider: str = Field(
-        default="local", description="KMS provider (aws, gcp, azure, vault, local)"
+        default="aws", description="KMS provider (aws, gcp, azure, vault, local) - local only for development"
     )
     
     # AWS KMS
@@ -265,13 +265,31 @@ class Settings(BaseSettings):
     @field_validator('kms_provider')
     @classmethod
     def validate_kms_provider(cls, v):
-        """Validate KMS provider is not local in production."""
+        """Validate KMS provider is secure for production environments."""
         environment = os.getenv('ENVIRONMENT', 'production').lower()
-        if v == "local" and environment not in ['dev', 'development', 'test', 'testing']:
-            raise ValueError(
-                "Local KMS provider is not allowed in production. "
-                "Use aws, gcp, azure, or vault KMS provider for production deployments."
+
+        if v == "local":
+            if environment not in ['dev', 'development', 'test', 'testing']:
+                raise ValueError(
+                    "Local KMS provider is INSECURE and not allowed in production. "
+                    "Local KMS uses predictable key derivation and is only suitable for development. "
+                    "Use aws, gcp, azure, or vault KMS provider for production deployments."
+                )
+            # Warn even in development
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Using local KMS provider with predictable key derivation. "
+                "This is insecure and should only be used for development/testing."
             )
+
+        # Validate that the provider is supported
+        valid_providers = {'aws', 'gcp', 'azure', 'vault', 'local'}
+        if v not in valid_providers:
+            raise ValueError(
+                f"Invalid KMS provider '{v}'. Must be one of: {', '.join(sorted(valid_providers))}"
+            )
+
         return v
 
     @field_validator('enable_provider_env_fallback')

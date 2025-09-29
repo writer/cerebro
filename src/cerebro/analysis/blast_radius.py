@@ -343,14 +343,122 @@ class BlastRadiusAnalyzer:
         return snapshot.normalized_config if snapshot else None
     
     async def _analyze_role_permissions(
-        self, 
-        role_resource: Resource, 
+        self,
+        role_resource: Resource,
         at_time: datetime
     ) -> List[Resource]:
         """Analyze what resources a role can access."""
-        # This would involve complex IAM policy analysis
-        # For now, return empty list - would need AWS policy simulator integration
-        return []
+        try:
+            from sqlalchemy import select, and_
+            from ..core.models import IamEdge, Principal
+
+            # Find principals (users, services) that can assume this role
+            role_principals_stmt = select(Principal).join(IamEdge).where(
+                and_(
+                    IamEdge.resource_id == role_resource.resource_id,
+                    Principal.principal_id == IamEdge.principal_id,
+                    # Look for assume role permissions
+                    IamEdge.permission.in_(['sts:AssumeRole', 'assume_role', 'AssumeRole'])
+                )
+            )
+
+            # Get resources this role can access through IAM edges
+            accessible_resources_stmt = select(Resource).join(IamEdge).join(Principal).where(
+                and_(
+                    # Match role by resource ARN or name
+                    Principal.provider_id == role_resource.provider_id,
+                    Principal.display_name.like(f"%{role_resource.display_name}%"),
+                    Resource.resource_id == IamEdge.resource_id,
+                    # Exclude self-references
+                    Resource.resource_id != role_resource.resource_id
+                )
+            )
+
+            # Execute both queries
+            accessible_resources = await self.db.scalars(accessible_resources_stmt)
+            accessible_list = list(accessible_resources.all())
+
+            # If no direct IAM edges found, try policy-based analysis
+            if not accessible_list:
+                policy_based_resources = await self._analyze_role_policies(role_resource)
+                accessible_list.extend(policy_based_resources)
+
+            logger.info(
+                f"Role {role_resource.display_name} can access {len(accessible_list)} resources"
+            )
+
+            return accessible_list
+
+        except Exception as e:
+            logger.error(f"Failed to analyze role permissions for {role_resource.display_name}: {e}")
+            # Return empty list if analysis fails, but log the issue
+            return []
+
+    async def _analyze_role_policies(self, role_resource: Resource) -> List[Resource]:
+        """Analyze role policies to determine accessible resources."""
+        try:
+            # Get role configuration from latest snapshot
+            role_config = await self._get_latest_resource_config(role_resource.resource_id)
+
+            if not role_config or "attached_policies" not in role_config:
+                return []
+
+            # Analyze attached policies for resource access
+            accessible_resources = []
+            attached_policies = role_config.get("attached_policies", [])
+
+            for policy in attached_policies:
+                # Extract resource ARNs from policy statements
+                if "policy_document" in policy:
+                    policy_doc = policy["policy_document"]
+                    if isinstance(policy_doc, dict) and "Statement" in policy_doc:
+                        for statement in policy_doc["Statement"]:
+                            if statement.get("Effect") == "Allow":
+                                resources = statement.get("Resource", [])
+                                if isinstance(resources, str):
+                                    resources = [resources]
+
+                                # Find resources matching policy ARNs
+                                for resource_arn in resources:
+                                    matching_resources = await self._find_resources_by_arn_pattern(resource_arn)
+                                    accessible_resources.extend(matching_resources)
+
+            return accessible_resources
+
+        except Exception as e:
+            logger.error(f"Failed to analyze role policies: {e}")
+            return []
+
+    async def _find_resources_by_arn_pattern(self, arn_pattern: str) -> List[Resource]:
+        """Find resources matching an ARN pattern."""
+        try:
+            from sqlalchemy import select, or_
+
+            # Handle wildcard patterns in ARNs
+            if "*" in arn_pattern:
+                # Convert AWS ARN wildcards to SQL LIKE patterns
+                like_pattern = arn_pattern.replace("*", "%")
+                stmt = select(Resource).where(
+                    or_(
+                        Resource.provider_id.like(like_pattern),
+                        Resource.display_name.like(like_pattern)
+                    )
+                )
+            else:
+                # Exact match
+                stmt = select(Resource).where(
+                    or_(
+                        Resource.provider_id == arn_pattern,
+                        Resource.display_name == arn_pattern
+                    )
+                )
+
+            resources = await self.db.scalars(stmt)
+            return list(resources.all())
+
+        except Exception as e:
+            logger.error(f"Failed to find resources by ARN pattern {arn_pattern}: {e}")
+            return []
     
     def _calculate_business_impact(
         self, 
