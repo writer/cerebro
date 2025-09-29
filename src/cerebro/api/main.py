@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer
 import logging
 
 from cerebro.core.config import settings
-from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified
+from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents
 from .routers import jwks
 from .auth import User, get_current_user
 
@@ -95,6 +95,12 @@ app.include_router(
     analysis.router,
     prefix=f"{settings.api_v1_prefix}/analysis",
     tags=["analysis"]
+)
+
+app.include_router(
+    agents.router,
+    prefix=f"{settings.api_v1_prefix}/agents",
+    tags=["agents"]
 )
 
 app.include_router(
