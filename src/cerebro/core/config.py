@@ -2,7 +2,7 @@
 
 import os
 from typing import Optional, List
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -208,7 +208,8 @@ class Settings(BaseSettings):
         default=None, description="Vault transit key name"
     )
     
-    @validator('secret_key')
+    @field_validator('secret_key')
+    @classmethod
     def validate_secret_key(cls, v):
         """Validate that secret key is not default value."""
         if v == "your-secret-key-here" or len(v) < 32:
@@ -220,7 +221,8 @@ class Settings(BaseSettings):
                 )
         return v
 
-    @validator('kms_provider')
+    @field_validator('kms_provider')
+    @classmethod
     def validate_kms_provider(cls, v):
         """Validate KMS provider is not local in production."""
         environment = os.getenv('ENVIRONMENT', 'production').lower()
@@ -231,7 +233,8 @@ class Settings(BaseSettings):
             )
         return v
 
-    @validator('enable_provider_env_fallback')
+    @field_validator('enable_provider_env_fallback')
+    @classmethod
     def validate_env_fallback(cls, v):
         """Validate provider env fallback is not enabled in production."""
         environment = os.getenv('ENVIRONMENT', 'production').lower()

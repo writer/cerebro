@@ -96,3 +96,86 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+disallow_any_generics = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
+no_implicit_reexport = true
+show_error_codes = true
+
+# Ignore missing imports for some third-party packages
+[[tool.mypy.overrides]]
+module = [
+    "celpy.*",
+    "boto3.*", 
+    "google.cloud.*",
+    "azure.*",
+    "hvac.*",
+    "msal.*",
+    "pygithub.*"
+]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "S",  # flake8-bandit (security)
+    "T20", # flake8-print
+    "UP", # pyupgrade
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "S101", # Use of assert
+    "S104", # Binding to all interfaces
+    "T201", # Print statements (allow in scripts)
+]
+
+[tool.ruff.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106"]  # Allow asserts and hardcoded passwords in tests
+"scripts/**/*.py" = ["T201"]  # Allow print statements in scripts
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "security: marks tests as security tests",
+    "performance: marks tests as performance tests",
+]
+
+[tool.coverage.run]
+source = ["src/cerebro"]
+omit = [
+    "*/tests/*",
+    "*/migrations/*", 
+    "*/scripts/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]

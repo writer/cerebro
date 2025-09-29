@@ -65,11 +65,7 @@ class TableDetailResponse(BaseResponse):
 @router.post("/execute", response_model=QueryResponse, summary="Execute SQL Query")
 async def execute_sql_query(
     request: QueryRequest,
-<<<<<<< HEAD
     current_user: User = Depends(require_scopes("query:execute"))
-=======
-    current_user: User = Depends(require_read_findings)
->>>>>>> 8f4e820fcf01343fd343688595ff2fdadf79d2b4
 ) -> QueryResponse:
     """
     Execute a SQL query against security tables.
