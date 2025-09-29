@@ -133,7 +133,8 @@ make dev && make db-migrate && make dev-data
 make docker-up
 
 # Access the platform
-open http://localhost:8000/docs  # API Documentation  
+open http://localhost:8000/docs  # API Documentation
+open http://localhost:3000       # Web UI (cerebro-frontend)
 open http://localhost:5555       # Task Monitor (Flower)
 ```
 
@@ -215,6 +216,7 @@ curl -N -X POST "http://localhost:8000/api/v1/agents/sessions/{id}/messages" \
 - **Intelligent Remediation**: Step-by-step instructions with effort estimates
 - **Real-time Streaming**: SSE support for live responses
 - **Full Audit Trail**: Every agent action logged and auditable
+- **Web UI**: Full-featured chat interface in cerebro-frontend with streaming
 
 **CLI Agent Commands:**
 ```bash
@@ -229,9 +231,16 @@ cerebro agents analytics   # Usage analytics
 **API Endpoints:**
 - `POST /api/v1/agents/sessions` - Create session
 - `GET /api/v1/agents/sessions` - List sessions
+- `GET /api/v1/agents/sessions/{id}` - Get session with messages
 - `POST /api/v1/agents/sessions/{id}/messages` - Send message (streaming/non-streaming)
 - `GET /api/v1/agents/sessions/{id}/messages` - Get message history
 - `GET /api/v1/agents/health` - Health check
+
+**Web Interface:**
+- Visit `http://localhost:3000/agents` in cerebro-frontend
+- Create sessions, chat with agents, view history
+- Real-time streaming responses with markdown rendering
+- Tool execution visualization
 
 See [docs/agents/API_INTEGRATION.md](docs/agents/API_INTEGRATION.md) for complete documentation.
 
