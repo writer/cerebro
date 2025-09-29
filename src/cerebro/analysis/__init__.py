@@ -3,7 +3,7 @@
 from .blast_radius import BlastRadiusAnalyzer, CompromiseScenario, ImpactAssessment
 from .forensic_replay import ForensicReplayEngine, HistoricalState
 from .change_replay import ChangeReplayEngine, RuleReplayResult
-from .anomaly_detection import IdentityAnomalyDetector, AnomalyResult
+# from .identity_anomaly import IdentityAnomalyDetector, AnomalyResult  # Requires sklearn
 
 __all__ = [
     "BlastRadiusAnalyzer",
@@ -13,6 +13,6 @@ __all__ = [
     "HistoricalState",
     "ChangeReplayEngine",
     "RuleReplayResult",
-    "IdentityAnomalyDetector",
-    "AnomalyResult",
+    # "IdentityAnomalyDetector",  # Requires sklearn
+    # "AnomalyResult",  # Requires sklearn
 ]

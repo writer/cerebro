@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(
         default=30, description="JWT token expiration in minutes"
     )
+    refresh_token_expire_days: int = Field(
+        default=7, description="JWT refresh token expiration in days"
+    )
     
     # GitHub Integration
     github_token: Optional[str] = Field(

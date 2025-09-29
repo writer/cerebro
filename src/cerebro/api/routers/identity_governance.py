@@ -5,7 +5,7 @@ Provides REST API for JML campaigns, access reviews, peer group analysis,
 and exception management.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
