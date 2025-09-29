@@ -11,12 +11,12 @@ When audit committees ask "prove what happened," commercial security platforms o
 - **REST API** - Programmatic access (`GET /api/v1/findings`)
 - **AI Agents** - Conversational interface powered by Claude (`"Show me critical findings"`)
 
-All three access the **same 16 tools**, query the **same PostgreSQL database**, and write to the **same audit trail**.
+All three access the **same 17 tools**, query the **same PostgreSQL database**, and write to the **same audit trail**.
 
 ### **Enterprise Security Features**
 
-1. **AI Security Agent System** 🔥 NEW: 16 Advanced Tools
-   - Claude-powered agents with 16 specialized security tools (up from 7)
+1. **AI Security Agent System** 🔥 NEW: 17 Advanced Tools
+   - Claude-powered agents with 17 specialized security tools (up from 7)
    - **NEW:** Forensic time travel, attack path simulation, smart summarization
    - **NEW:** Autonomous compliance testing with cryptographic evidence
    - Real-time streaming via SSE, full audit trails, security guardrails
@@ -116,7 +116,7 @@ Benchmarked with **50,000+ resources** across **500+ principals** in multi-cloud
 
 ### **Advanced Agent Tools (NEW)**
 
-Cerebro now includes **16 specialized security tools** that enable autonomous investigation, compliance testing, and forensic analysis:
+Cerebro now includes **17 specialized security tools** that enable autonomous investigation, compliance testing, and forensic analysis:
 
 **🔍 Forensic & Investigation**
 - `forensic_replay` - Reconstruct security state at any historical timestamp ("What permissions did user X have last month?")
@@ -143,6 +143,7 @@ Cerebro now includes **16 specialized security tools** that enable autonomous in
 
 **🧠 Knowledge & Context (NEW)**
 - `get_org_context` - Organizational awareness (repos, providers, tools, statistics) - instant agent understanding without user explanation
+- `get_system_context` - System/infrastructure context (database, deployment, provider health, system metrics)
 
 **Value Delivered:**
 - 70% reduction in SOC analyst toil

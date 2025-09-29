@@ -20,6 +20,7 @@ from .smart_summarizer import SmartFindingSummarizerTool
 from .compliance_tester import ComplianceControlTesterTool, EvidenceBundleBuilderTool
 from .identity_anomaly_hunter import IdentityAnomalyHunterTool
 from .org_context import GetOrgContextTool
+from .system_context import GetSystemContextTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -41,6 +42,7 @@ tool_registry.register(ComplianceControlTesterTool())
 tool_registry.register(EvidenceBundleBuilderTool())
 tool_registry.register(IdentityAnomalyHunterTool())
 tool_registry.register(GetOrgContextTool())
+tool_registry.register(GetSystemContextTool())
 
 __all__ = [
     "Tool",
@@ -66,4 +68,5 @@ __all__ = [
     "EvidenceBundleBuilderTool",
     "IdentityAnomalyHunterTool",
     "GetOrgContextTool",
+    "GetSystemContextTool",
 ]
