@@ -11,14 +11,17 @@ When audit committees ask "prove what happened," commercial security platforms o
 - **REST API** - Programmatic access (`GET /api/v1/findings`)
 - **AI Agents** - Conversational interface powered by Claude (`"Show me critical findings"`)
 
-All three access the **same 17 tools**, query the **same PostgreSQL database**, and write to the **same audit trail**.
+All three access the **same 21 tools**, query the **same PostgreSQL database**, and write to the **same audit trail**.
 
 ### **Enterprise Security Features**
 
-1. **AI Security Agent System** 🔥 NEW: 17 Advanced Tools
-   - Claude-powered agents with 17 specialized security tools (up from 7)
-   - **NEW:** Forensic time travel, attack path simulation, smart summarization
-   - **NEW:** Autonomous compliance testing with cryptographic evidence
+1. **AI Security Agent System** 🔥 NEW: 21 Advanced Tools
+   - Claude-powered agents with 21 specialized security tools (up from 7)
+   - **NEW:** Auto-context injection - agents understand environment from first message
+   - **NEW:** Session memory - agents remember context across conversations
+   - **NEW:** Code reading - agents can read and understand source code
+   - **EXISTING:** Forensic time travel, attack path simulation, smart summarization
+   - **EXISTING:** Autonomous compliance testing with cryptographic evidence
    - Real-time streaming via SSE, full audit trails, security guardrails
    - Natural language interface to entire platform
    - See [docs/agents/README.md](docs/agents/README.md) and [docs/claude-sdk-deep-integration.md](docs/claude-sdk-deep-integration.md)
@@ -112,11 +115,14 @@ Benchmarked with **50,000+ resources** across **500+ principals** in multi-cloud
 
 **Key Insight:** When an agent uses `findings_list` tool, it accesses the SAME findings engine as `GET /api/v1/findings` and `cerebro findings list`. One platform, three interfaces.
 
-**NEW:** Agents now have automatic organizational context via `get_org_context`, eliminating repetitive "What repos exist?" or "What providers do we support?" questions. Agents understand your environment from the first message.
+**NEW:** Agents now have:
+- **Auto-context injection** - Organizational and system context loaded automatically on session start
+- **Session memory** - Remember user preferences, corrections, and learned facts across conversations
+- **Code understanding** - Read source files, extract functions/classes, search for implementations
 
-### **Advanced Agent Tools (NEW)**
+### **Advanced Agent Tools**
 
-Cerebro now includes **17 specialized security tools** that enable autonomous investigation, compliance testing, and forensic analysis:
+Cerebro includes **21 specialized security tools** that enable autonomous investigation, compliance testing, and forensic analysis:
 
 **🔍 Forensic & Investigation**
 - `forensic_replay` - Reconstruct security state at any historical timestamp ("What permissions did user X have last month?")
@@ -141,9 +147,15 @@ Cerebro now includes **17 specialized security tools** that enable autonomous in
 - `timeline` - Incident timeline builder
 - `remediation` - Intelligent remediation with safety guardrails
 
-**🧠 Knowledge & Context (NEW)**
+**🧠 Knowledge & Context**
 - `get_org_context` - Organizational awareness (repos, providers, tools, statistics) - instant agent understanding without user explanation
 - `get_system_context` - System/infrastructure context (database, deployment, provider health, system metrics)
+- `remember_context` - Store facts and preferences for cross-session memory
+- `get_session_history` - Retrieve conversation history and learned context
+
+**📝 Code Understanding**
+- `read_code` - Read source files and extract specific functions/classes
+- `search_code` - Find code symbols across repository
 
 **Value Delivered:**
 - 70% reduction in SOC analyst toil
