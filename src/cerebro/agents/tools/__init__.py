@@ -14,6 +14,7 @@ from .query import QueryTool
 from .timeline import TimelineTool
 from .security_analysis import SecurityAnalysisTool
 from .remediation import RemediationTool
+from .forensic_replay import ForensicReplayTool, ChangeReplayTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -26,6 +27,8 @@ tool_registry.register(QueryTool())
 tool_registry.register(TimelineTool())
 tool_registry.register(SecurityAnalysisTool())
 tool_registry.register(RemediationTool())
+tool_registry.register(ForensicReplayTool())
+tool_registry.register(ChangeReplayTool())
 
 __all__ = [
     "Tool",
@@ -42,4 +45,6 @@ __all__ = [
     "TimelineTool",
     "SecurityAnalysisTool",
     "RemediationTool",
+    "ForensicReplayTool",
+    "ChangeReplayTool",
 ]
