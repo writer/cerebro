@@ -469,10 +469,13 @@ class SlackNotificationService:
         retry_count = 0
         last_error = None
 
+        # Decrypt webhook URL
+        webhook_url = await webhook.get_webhook_url()
+
         for attempt in range(self.max_retries + 1):
             try:
                 response = await self.client.post(
-                    webhook.webhook_url,
+                    webhook_url,
                     json=message,
                     headers={"Content-Type": "application/json"},
                 )

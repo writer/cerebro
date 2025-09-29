@@ -161,7 +161,6 @@ async def create_email_config(
         smtp_host=config_data.smtp_host,
         smtp_port=config_data.smtp_port,
         smtp_username=config_data.smtp_username,
-        smtp_password=config_data.smtp_password,  # TODO: Encrypt in production
         from_email=config_data.from_email,
         from_name=config_data.from_name,
         to_emails=config_data.to_emails,
@@ -175,6 +174,10 @@ async def create_email_config(
         email_metadata=config_data.email_metadata,
         created_by=current_user.username,
     )
+
+    # Encrypt password if provided
+    if config_data.smtp_password:
+        await email_config.set_smtp_password(config_data.smtp_password)
 
     db.add(email_config)
     await db.commit()
@@ -288,8 +291,16 @@ async def update_email_config(
 
     # Update fields
     update_dict = update_data.dict(exclude_unset=True)
+
+    # Handle password encryption separately
+    smtp_password = update_dict.pop("smtp_password", None)
+
     for field, value in update_dict.items():
         setattr(config, field, value)
+
+    # Encrypt password if provided
+    if smtp_password is not None:
+        await config.set_smtp_password(smtp_password)
 
     config.updated_at = datetime.utcnow()
 

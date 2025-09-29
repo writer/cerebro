@@ -442,6 +442,9 @@ class EmailNotificationService:
         retry_count = 0
         last_error = None
 
+        # Decrypt SMTP password if present
+        smtp_password = await config.get_smtp_password() if config.smtp_password else None
+
         for attempt in range(self.max_retries + 1):
             try:
                 # Send email synchronously (wrap in executor for async)
@@ -451,6 +454,7 @@ class EmailNotificationService:
                     config,
                     subject,
                     html_body,
+                    smtp_password,
                 )
 
                 # Success - log notification
@@ -521,7 +525,7 @@ class EmailNotificationService:
         )
 
     def _send_smtp_email(
-        self, config: EmailConfig, subject: str, html_body: str
+        self, config: EmailConfig, subject: str, html_body: str, smtp_password: Optional[str] = None
     ) -> None:
         """Send email via SMTP (synchronous)."""
         msg = MIMEMultipart("alternative")
@@ -539,13 +543,13 @@ class EmailNotificationService:
         if config.use_tls:
             with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10) as server:
                 server.starttls()
-                if config.smtp_username and config.smtp_password:
-                    server.login(config.smtp_username, config.smtp_password)
+                if config.smtp_username and smtp_password:
+                    server.login(config.smtp_username, smtp_password)
                 server.send_message(msg)
         else:
             with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10) as server:
-                if config.smtp_username and config.smtp_password:
-                    server.login(config.smtp_username, config.smtp_password)
+                if config.smtp_username and smtp_password:
+                    server.login(config.smtp_username, smtp_password)
                 server.send_message(msg)
 
 

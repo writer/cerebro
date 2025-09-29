@@ -143,7 +143,6 @@ async def create_slack_webhook(
             webhook_id=uuid4(),
             org_id=current_user.org_id,
             name=webhook_data.name,
-            webhook_url=str(webhook_data.webhook_url),
             channel=webhook_data.channel,
             enabled=webhook_data.enabled,
             severity_filter=webhook_data.severity_filter,
@@ -151,6 +150,9 @@ async def create_slack_webhook(
             event_types=webhook_data.event_types,
             created_by=current_user.email,
         )
+
+        # Encrypt webhook URL
+        await webhook.set_webhook_url(str(webhook_data.webhook_url))
 
         db.add(webhook)
         await db.commit()
@@ -284,7 +286,7 @@ async def update_slack_webhook(
         if webhook_data.name is not None:
             webhook.name = webhook_data.name
         if webhook_data.webhook_url is not None:
-            webhook.webhook_url = str(webhook_data.webhook_url)
+            await webhook.set_webhook_url(str(webhook_data.webhook_url))
         if webhook_data.channel is not None:
             webhook.channel = webhook_data.channel
         if webhook_data.enabled is not None:

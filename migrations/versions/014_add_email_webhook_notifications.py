@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers
-revision = '014_add_email_webhook_notifications'
+revision = '014'
 down_revision = '013_add_slack_integration'
 branch_labels = None
 depends_on = None

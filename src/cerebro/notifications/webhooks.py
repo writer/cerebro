@@ -436,7 +436,9 @@ class WebhookNotificationService:
 
         # Add HMAC signature if configured
         if config.use_hmac_signature and config.hmac_secret:
-            signature = self._generate_hmac_signature(payload_str, config.hmac_secret)
+            # Decrypt HMAC secret
+            hmac_secret = await config.get_hmac_secret()
+            signature = self._generate_hmac_signature(payload_str, hmac_secret)
             headers["X-Webhook-Signature"] = f"sha256={signature}"
 
         # Retry loop

@@ -190,9 +190,8 @@ async def create_webhook_config(
         http_method=config_data.http_method,
         headers=config_data.headers,
         payload_template=config_data.payload_template,
-        authentication=config_data.authentication,  # TODO: Encrypt in production
+        authentication=config_data.authentication,
         use_hmac_signature=config_data.use_hmac_signature,
-        hmac_secret=config_data.hmac_secret,  # TODO: Encrypt in production
         enabled=config_data.enabled,
         severity_filter=config_data.severity_filter,
         event_types=config_data.event_types,
@@ -200,6 +199,10 @@ async def create_webhook_config(
         webhook_metadata=config_data.webhook_metadata,
         created_by=current_user.username,
     )
+
+    # Encrypt HMAC secret if provided
+    if config_data.hmac_secret:
+        await webhook_config.set_hmac_secret(config_data.hmac_secret)
 
     db.add(webhook_config)
     await db.commit()
@@ -319,11 +322,19 @@ async def update_webhook_config(
 
     # Update fields
     update_dict = update_data.dict(exclude_unset=True)
+
+    # Handle HMAC secret encryption separately
+    hmac_secret = update_dict.pop("hmac_secret", None)
+
     for field, value in update_dict.items():
         if field == "url" and value:
             setattr(config, field, str(value))
         else:
             setattr(config, field, value)
+
+    # Encrypt HMAC secret if provided
+    if hmac_secret is not None:
+        await config.set_hmac_secret(hmac_secret)
 
     config.updated_at = datetime.utcnow()
 

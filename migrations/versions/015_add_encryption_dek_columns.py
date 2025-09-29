@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers
-revision = '015_add_encryption_dek_columns'
-down_revision = '014_add_email_webhook_notifications'
+revision = '015'
+down_revision = '014'
 branch_labels = None
 depends_on = None
 
@@ -31,18 +31,12 @@ def upgrade() -> None:
 
     # Update column types to LargeBinary for encrypted data
     # Note: This migration assumes no existing data or data will be migrated separately
-    op.alter_column('email_configs', 'smtp_password',
-                   existing_type=sa.Text(),
-                   type_=sa.LargeBinary(),
-                   existing_nullable=True)
-
-    op.alter_column('webhook_configs', 'hmac_secret',
-                   existing_type=sa.Text(),
-                   type_=sa.LargeBinary(),
-                   existing_nullable=True)
+    # Use raw SQL with USING clause for type conversion
+    op.execute('ALTER TABLE email_configs ALTER COLUMN smtp_password TYPE BYTEA USING smtp_password::bytea')
+    op.execute('ALTER TABLE webhook_configs ALTER COLUMN hmac_secret TYPE BYTEA USING hmac_secret::bytea')
+    op.execute('ALTER TABLE slack_webhooks ALTER COLUMN webhook_url TYPE BYTEA USING webhook_url::bytea')
 
     # authentication stays as JSONB (encrypted as JSON string then stored)
-    # webhook_url stays as Text (encrypted as bytes then stored)
 
 
 def downgrade() -> None:
@@ -58,12 +52,6 @@ def downgrade() -> None:
     op.drop_column('email_configs', 'smtp_password_dek')
 
     # Revert column types
-    op.alter_column('email_configs', 'smtp_password',
-                   existing_type=sa.LargeBinary(),
-                   type_=sa.Text(),
-                   existing_nullable=True)
-
-    op.alter_column('webhook_configs', 'hmac_secret',
-                   existing_type=sa.LargeBinary(),
-                   type_=sa.Text(),
-                   existing_nullable=True)
+    op.execute('ALTER TABLE slack_webhooks ALTER COLUMN webhook_url TYPE TEXT USING webhook_url::text')
+    op.execute('ALTER TABLE email_configs ALTER COLUMN smtp_password TYPE TEXT USING smtp_password::text')
+    op.execute('ALTER TABLE webhook_configs ALTER COLUMN hmac_secret TYPE TEXT USING hmac_secret::text')

@@ -306,7 +306,11 @@ class SlackWebhook(Base):
     webhook_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    webhook_url: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Encrypted webhook URL fields (envelope encryption)
+    webhook_url: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # Encrypted data
+    webhook_url_dek: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # Encrypted DEK
+
     channel: Mapped[Optional[str]] = mapped_column(String(255))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     severity_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
@@ -320,6 +324,29 @@ class SlackWebhook(Base):
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="slack_webhooks")
     notifications: Mapped[List["SlackNotification"]] = relationship(back_populates="webhook", cascade="all, delete-orphan")
+
+    async def get_webhook_url(self) -> Optional[str]:
+        """Decrypt webhook URL.
+
+        Returns:
+            Decrypted webhook URL or None
+        """
+        if not self.webhook_url or not self.webhook_url_dek:
+            return None
+
+        from cerebro.core.encryption import get_encryption_service
+        service = get_encryption_service()
+        return await service.decrypt_secret(self.webhook_url, self.webhook_url_dek)
+
+    async def set_webhook_url(self, url: str) -> None:
+        """Encrypt and set webhook URL.
+
+        Args:
+            url: Plaintext webhook URL to encrypt
+        """
+        from cerebro.core.encryption import get_encryption_service
+        service = get_encryption_service()
+        self.webhook_url, self.webhook_url_dek = await service.encrypt_secret(url)
 
 
 class SlackNotification(Base):
@@ -354,7 +381,11 @@ class EmailConfig(Base):
     smtp_host: Mapped[str] = mapped_column(String(255), nullable=False)
     smtp_port: Mapped[int] = mapped_column(Integer, default=587, nullable=False)
     smtp_username: Mapped[Optional[str]] = mapped_column(String(255))
-    smtp_password: Mapped[Optional[str]] = mapped_column(Text)  # Encrypted
+
+    # Encrypted password fields (envelope encryption)
+    smtp_password: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # Encrypted data
+    smtp_password_dek: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # Encrypted DEK
+
     from_email: Mapped[str] = mapped_column(String(255), nullable=False)
     from_name: Mapped[Optional[str]] = mapped_column(String(255))
     to_emails: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
@@ -372,6 +403,34 @@ class EmailConfig(Base):
 
     # Relationships
     notifications: Mapped[List["EmailNotification"]] = relationship(back_populates="config", cascade="all, delete-orphan")
+
+    async def get_smtp_password(self) -> Optional[str]:
+        """Decrypt SMTP password.
+
+        Returns:
+            Decrypted password or None
+        """
+        if not self.smtp_password or not self.smtp_password_dek:
+            return None
+
+        from cerebro.core.encryption import get_encryption_service
+        service = get_encryption_service()
+        return await service.decrypt_secret(self.smtp_password, self.smtp_password_dek)
+
+    async def set_smtp_password(self, password: Optional[str]) -> None:
+        """Encrypt and set SMTP password.
+
+        Args:
+            password: Plaintext password to encrypt
+        """
+        if password is None:
+            self.smtp_password = None
+            self.smtp_password_dek = None
+            return
+
+        from cerebro.core.encryption import get_encryption_service
+        service = get_encryption_service()
+        self.smtp_password, self.smtp_password_dek = await service.encrypt_secret(password)
 
 
 class EmailNotification(Base):
@@ -412,7 +471,12 @@ class WebhookConfig(Base):
     payload_template: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
     authentication: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
     use_hmac_signature: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    hmac_secret: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Encrypted HMAC secret fields (envelope encryption)
+    hmac_secret: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # Encrypted data
+    hmac_secret_dek: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # Encrypted DEK
+    # Note: authentication_dek also exists but authentication field stores encrypted data directly
+
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     severity_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
     event_types: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
@@ -424,6 +488,34 @@ class WebhookConfig(Base):
 
     # Relationships
     notifications: Mapped[List["WebhookNotification"]] = relationship(back_populates="config", cascade="all, delete-orphan")
+
+    async def get_hmac_secret(self) -> Optional[str]:
+        """Decrypt HMAC secret.
+
+        Returns:
+            Decrypted secret or None
+        """
+        if not self.hmac_secret or not self.hmac_secret_dek:
+            return None
+
+        from cerebro.core.encryption import get_encryption_service
+        service = get_encryption_service()
+        return await service.decrypt_secret(self.hmac_secret, self.hmac_secret_dek)
+
+    async def set_hmac_secret(self, secret: Optional[str]) -> None:
+        """Encrypt and set HMAC secret.
+
+        Args:
+            secret: Plaintext secret to encrypt
+        """
+        if secret is None:
+            self.hmac_secret = None
+            self.hmac_secret_dek = None
+            return
+
+        from cerebro.core.encryption import get_encryption_service
+        service = get_encryption_service()
+        self.hmac_secret, self.hmac_secret_dek = await service.encrypt_secret(secret)
 
 
 class WebhookNotification(Base):

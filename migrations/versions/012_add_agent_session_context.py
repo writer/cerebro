@@ -40,7 +40,7 @@ def upgrade() -> None:
 
         # Foreign keys
         sa.ForeignKeyConstraint(['session_id'], ['agent_sessions.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['org_id'], ['organizations.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['org_id'], ['orgs.org_id'], ondelete='CASCADE'),
 
         # Indexes for fast retrieval
         sa.Index('idx_agent_session_context_session_id', 'session_id'),
