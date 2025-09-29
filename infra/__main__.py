@@ -74,7 +74,8 @@ cerebro_secrets = secrets.create_secrets(
 database_stack = database.create_rds_postgres(
     name=f"cerebro-{environment}",
     vpc_id=vpc_stack["vpc_id"],
-    subnet_ids=vpc_stack["private_subnet_ids"],
+    subnet_ids=vpc_stack["database_subnet_ids"],
+    security_group_id=vpc_stack["db_security_group_id"],
     instance_class=config.get("dbInstanceClass") or "db.r6g.xlarge",
     allocated_storage=config.get_int("dbStorageSize") or 500,
     master_password=db_password,
@@ -100,7 +101,8 @@ if config.get_bool("enableReadReplicas"):
 redis_stack = cache.create_elasticache_redis(
     name=f"cerebro-{environment}",
     vpc_id=vpc_stack["vpc_id"],
-    subnet_ids=vpc_stack["private_subnet_ids"],
+    subnet_ids=vpc_stack["database_subnet_ids"],
+    security_group_id=vpc_stack["redis_security_group_id"],
     node_type=config.get("redisNodeType") or "cache.r6g.large",
     num_cache_nodes=3,
     auth_token=redis_password,
@@ -114,6 +116,7 @@ alb_stack = load_balancer.create_application_load_balancer(
     name=f"cerebro-{environment}",
     vpc_id=vpc_stack["vpc_id"],
     subnet_ids=vpc_stack["public_subnet_ids"],
+    security_group_id=vpc_stack["alb_security_group_id"],
     certificate_domain=domain,
 )
 
@@ -124,8 +127,8 @@ ecs_stack = compute.create_ecs_cluster(
     subnet_ids=vpc_stack["private_subnet_ids"],
     security_group_id=vpc_stack["app_security_group_id"],
     secrets_arn=cerebro_secrets.arn,
-    database_endpoint=database_stack["db_instance"].endpoint,
-    redis_endpoint=redis_stack["redis_cluster"].cache_nodes[0].address,
+    database_endpoint=database_stack["endpoint"],
+    redis_endpoint=redis_stack["primary_endpoint"],
     kms_key_id=kms_key.id,
     target_group_arn=alb_stack["target_group"].arn,
     api_min_instances=api_min_instances,
@@ -147,7 +150,7 @@ monitoring_stack = monitoring.create_monitoring(
         ecs_stack["beat_service"].name,
     ],
     db_instance_id=database_stack["db_instance"].id,
-    redis_cluster_id=redis_stack["redis_cluster"].id,
+    redis_cluster_id=redis_stack["replication_group"].id,
     log_retention_days=config.get_int("logRetentionDays") or 30,
 )
 
@@ -155,8 +158,8 @@ monitoring_stack = monitoring.create_monitoring(
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("api_url", pulumi.Output.concat("https://", domain))
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
-pulumi.export("db_endpoint", database_stack["db_instance"].endpoint)
-pulumi.export("redis_endpoint", redis_stack["redis_cluster"].cache_nodes[0].address)
+pulumi.export("db_endpoint", database_stack["endpoint"])
+pulumi.export("redis_endpoint", redis_stack["primary_endpoint"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("kms_key_id", kms_key.id)
 pulumi.export("secrets_arn", cerebro_secrets.arn)
@@ -168,7 +171,7 @@ if config.get_bool("enableFlower"):
 
 if len(read_replicas) > 0:
     pulumi.export("read_replica_endpoints", [
-        replica["db_instance"].endpoint for replica in read_replicas
+        replica["endpoint"] for replica in read_replicas
     ])
 
 # Export connection strings
@@ -176,7 +179,7 @@ pulumi.export("database_url", pulumi.Output.concat(
     "postgresql://cerebro:",
     db_password,
     "@",
-    database_stack["db_instance"].endpoint,
+    database_stack["endpoint"],
     "/cerebro"
 ))
 
@@ -184,6 +187,6 @@ pulumi.export("redis_url", pulumi.Output.concat(
     "rediss://:",
     redis_password,
     "@",
-    redis_stack["redis_cluster"].cache_nodes[0].address,
+    redis_stack["primary_endpoint"],
     ":6379/0"
 ))
