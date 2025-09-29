@@ -90,6 +90,27 @@ class Settings(BaseSettings):
         default=30, description="CEL compilation timeout in seconds"
     )
     
+    # Claude Code SDK / AI Agents
+    anthropic_api_key: Optional[str] = Field(
+        default=None, description="Anthropic API key for Claude integration"
+    )
+    claude_model: str = Field(
+        default="claude-3-5-sonnet-20241022", 
+        description="Claude model to use for agents"
+    )
+    claude_max_tokens: int = Field(
+        default=8192, description="Maximum tokens per Claude request"
+    )
+    claude_temperature: float = Field(
+        default=0.1, description="Claude temperature (0.0-1.0)"
+    )
+    agent_session_timeout_hours: int = Field(
+        default=24, description="Agent session timeout in hours"
+    )
+    agent_default_dry_run: bool = Field(
+        default=True, description="Default to dry-run for destructive agent actions"
+    )
+    
     # Collection Performance (Phase 1)
     collection_concurrency_limit: int = Field(
         default=16, description="Maximum concurrent config fetches per collection run"
