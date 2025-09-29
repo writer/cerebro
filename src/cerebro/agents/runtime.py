@@ -11,16 +11,13 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
 import structlog
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, create_sdk_mcp_server, tool
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from claude_agent_sdk.types import (
     AssistantMessage,
-    UserMessage,
     TextBlock,
     ToolUseBlock,
-    ToolResultBlock,
     ResultMessage,
     SystemMessage,
-    StreamEvent,
 )
 
 from cerebro.core.database import get_db
