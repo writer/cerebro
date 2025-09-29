@@ -12,6 +12,7 @@ from ...query.engine import QueryEngine, QueryResult
 from ...query.registry import get_registry
 from ...providers.tables import register_all_provider_tables
 from ..schemas.base import BaseResponse
+from ..auth import get_current_user, require_read_findings, User
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
@@ -62,7 +63,10 @@ class TableDetailResponse(BaseResponse):
 
 
 @router.post("/execute", response_model=QueryResponse, summary="Execute SQL Query")
-async def execute_sql_query(request: QueryRequest) -> QueryResponse:
+async def execute_sql_query(
+    request: QueryRequest,
+    current_user: User = Depends(require_read_findings)
+) -> QueryResponse:
     """
     Execute a SQL query against security tables.
     
@@ -102,7 +106,8 @@ async def execute_sql_query(request: QueryRequest) -> QueryResponse:
 
 @router.get("/tables", response_model=TablesResponse, summary="List Security Tables")
 async def list_security_tables(
-    provider: Optional[str] = Query(None, description="Filter by provider (aws, okta, github, etc.)")
+    provider: Optional[str] = Query(None, description="Filter by provider (aws, okta, github, etc.)"),
+    current_user: User = Depends(get_current_user)
 ) -> TablesResponse:
     """
     List all available security tables.
@@ -194,7 +199,7 @@ async def query_engine_health():
 
 # Common query examples endpoint
 @router.get("/examples", summary="Get Query Examples")
-async def get_query_examples():
+async def get_query_examples(current_user: User = Depends(get_current_user)):
     """
     Get example SQL queries for different security use cases.
     """
@@ -245,26 +250,43 @@ async def query_security_alerts(
     provider: Optional[str] = Query(None, description="Filter by provider"),
     severity: Optional[str] = Query(None, description="Filter by severity (critical, high, medium, low)"),
     since: Optional[str] = Query(None, description="Filter by creation date (ISO format)"),
-    limit: int = Query(100, description="Maximum results to return", ge=1, le=1000)
+    limit: int = Query(100, description="Maximum results to return", ge=1, le=1000),
+    current_user: User = Depends(require_read_findings)
 ):
     """Query security alerts with common filters."""
     
-    # Build SQL query dynamically
+    # Input validation
+    if provider and not provider.isalnum():
+        raise HTTPException(status_code=400, detail="Invalid provider parameter")
+    if severity and severity not in ["critical", "high", "medium", "low"]:
+        raise HTTPException(status_code=400, detail="Invalid severity parameter")
+    
+    # Build parameterized query safely
+    base_sql = "SELECT alert_id, repository_name, severity, created_at, title, description FROM github_vulnerability_alert"
     conditions = []
+    params = []
+    param_count = 0
+    
     if provider:
-        conditions.append(f"provider = '{provider}'")
+        param_count += 1
+        conditions.append(f"provider = ${param_count}")
+        params.append(provider)
     if severity:
-        conditions.append(f"severity = '{severity}'")
+        param_count += 1
+        conditions.append(f"severity = ${param_count}")
+        params.append(severity)
     if since:
-        conditions.append(f"created_at >= '{since}'")
+        param_count += 1
+        conditions.append(f"created_at >= ${param_count}")
+        params.append(since)
     
     where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-    
-    # Query multiple alert tables (simplified - would need UNION in full implementation)
-    sql = f"SELECT * FROM github_vulnerability_alert{where_clause} ORDER BY created_at DESC LIMIT {limit}"
+    param_count += 1
+    sql = f"{base_sql}{where_clause} ORDER BY created_at DESC LIMIT ${param_count}"
+    params.append(limit)
     
     try:
-        result = await query_engine.execute_query(sql)
+        result = await query_engine.execute_query(sql, params)
         
         return {
             "success": True,
@@ -286,25 +308,43 @@ async def query_users(
     provider: Optional[str] = Query(None, description="Filter by provider"),
     status: Optional[str] = Query(None, description="Filter by status"),
     mfa_enabled: Optional[bool] = Query(None, description="Filter by MFA status"),
-    limit: int = Query(100, description="Maximum results to return", ge=1, le=1000)
+    limit: int = Query(100, description="Maximum results to return", ge=1, le=1000),
+    current_user: User = Depends(require_read_findings)
 ):
     """Query user identities across providers."""
     
+    # Input validation
+    if provider and not provider.isalnum():
+        raise HTTPException(status_code=400, detail="Invalid provider parameter")
+    if status and not status.replace('_', '').isalnum():
+        raise HTTPException(status_code=400, detail="Invalid status parameter")
+    
+    # Build parameterized query safely
+    base_sql = "SELECT username, email, status, last_login, mfa_enabled FROM okta_user"
     conditions = []
+    params = []
+    param_count = 0
+    
     if provider:
-        conditions.append(f"provider = '{provider}'")
+        param_count += 1
+        conditions.append(f"provider = ${param_count}")
+        params.append(provider)
     if status:
-        conditions.append(f"status = '{status}'")
+        param_count += 1
+        conditions.append(f"status = ${param_count}")
+        params.append(status)
     if mfa_enabled is not None:
-        conditions.append(f"mfa_enabled = {str(mfa_enabled).lower()}")
+        param_count += 1
+        conditions.append(f"mfa_enabled = ${param_count}")
+        params.append(mfa_enabled)
     
     where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-    
-    # Default to Okta users (would expand for multi-provider queries)
-    sql = f"SELECT username, email, status, last_login, mfa_enabled FROM okta_user{where_clause} ORDER BY last_login DESC LIMIT {limit}"
+    param_count += 1
+    sql = f"{base_sql}{where_clause} ORDER BY last_login DESC LIMIT ${param_count}"
+    params.append(limit)
     
     try:
-        result = await query_engine.execute_query(sql)
+        result = await query_engine.execute_query(sql, params)
         
         return {
             "success": True, 

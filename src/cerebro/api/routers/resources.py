@@ -9,6 +9,7 @@ from sqlalchemy import select, and_, desc
 from cerebro.core.database import get_db
 from cerebro.core.models import Resource, ConfigSnapshot
 from cerebro.api.schemas import ResourceResponse, ConfigSnapshotResponse
+from cerebro.api.auth import get_current_user, User
 
 router = APIRouter()
 
@@ -20,6 +21,7 @@ async def list_resources(
     resource_type: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """List resources."""

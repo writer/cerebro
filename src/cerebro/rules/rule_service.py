@@ -199,7 +199,7 @@ class RuleService:
     
     async def sync_rules_with_producers(self, org_id: UUID) -> Dict[str, Any]:
         """Sync database rules with registered producers."""
-        from cerebro.findings.producers import producer_registry
+        from cerebro.core.interfaces import producer_registry
         
         # Get default policy
         stmt = select(Policy).where(

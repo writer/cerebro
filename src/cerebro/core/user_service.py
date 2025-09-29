@@ -294,9 +294,17 @@ class UserService:
         self,
         username: str = "admin",
         email: str = "admin@cerebro.local",
-        password: str = "admin123!",
+        password: Optional[str] = None,
     ) -> User:
         """Create default admin user."""
+        # Generate secure random password if not provided
+        if not password:
+            import secrets
+            import string
+            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+            password = ''.join(secrets.choice(alphabet) for _ in range(16))
+            logger.warning(f"Generated admin password: {password}")
+            
         # Create admin user
         admin_user = await self.create_user(
             username=username,

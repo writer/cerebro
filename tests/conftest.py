@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.pool import StaticPool
 
 from cerebro.core.database import Base
-from cerebro.core.models import Organization, Account, User
+from cerebro.core.models import Organization, Account
+from cerebro.core.user_models import User
 from cerebro.core.user_service import UserService
 
 

@@ -25,26 +25,32 @@ async def create_sample_data():
         await user_service.create_default_scopes()
         print("Created default scopes")
         
-        # Create admin user
+        # Create admin user with generated password
         try:
             admin_user = await user_service.create_admin_user(
                 username="admin",
-                email="admin@cerebro.local",
-                password="admin123!"
+                email="admin@cerebro.local"
+                # password will be auto-generated and logged
             )
             print(f"Created admin user: {admin_user.username}")
         except ValueError as e:
             print(f"Admin user already exists: {e}")
         
-        # Create analyst user
+        # Create analyst user with generated password  
         try:
+            import secrets
+            import string
+            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+            analyst_password = ''.join(secrets.choice(alphabet) for _ in range(16))
+            
             analyst_user = await user_service.create_user(
                 username="analyst",
                 email="analyst@cerebro.local", 
-                password="analyst123!",
+                password=analyst_password,
                 scopes=["read:findings", "read:rules", "read:organizations", "read:resources"]
             )
             print(f"Created analyst user: {analyst_user.username}")
+            print(f"Analyst password: {analyst_password}")
         except ValueError as e:
             print(f"Analyst user already exists: {e}")
         
