@@ -20,6 +20,11 @@ from ..core.events import emit_event
 logger = logging.getLogger(__name__)
 
 
+class QueryError(Exception):
+    """Exception raised when query parsing or execution fails."""
+    pass
+
+
 @dataclass
 class QueryResult:
     """Result of a SQL query execution."""
@@ -67,6 +72,18 @@ class SQLParser:
             
             # Extract query components
             table_name = self._extract_table_name(parsed)
+            
+            # Handle wildcard table patterns
+            registry = get_registry()
+            if '*' in table_name:
+                matching_tables = registry.find_tables_by_pattern(table_name)
+                if not matching_tables:
+                    raise QueryError(f"No tables match pattern '{table_name}'")
+                # For now, use the first matching table
+                # TODO: Implement UNION ALL for multiple tables
+                table_name = matching_tables[0]
+                logger.info(f"Expanded wildcard '{table_name}' to {matching_tables}")
+            
             selected_columns = self._extract_selected_columns(parsed)
             filters = self._extract_filters(parsed)
             order_by = self._extract_order_by(parsed)
