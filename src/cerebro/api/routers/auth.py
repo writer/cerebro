@@ -22,6 +22,18 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshTokenRequest(BaseModel):
+    """Refresh token request model."""
+    refresh_token: str
+
+
+class TokenResponse(BaseModel):
+    """Enhanced token response with refresh token."""
+    access_token: str
+    refresh_token: str
+    token_type: str
+
+
 async def authenticate_user(username: str, password: str, db: AsyncSession) -> dict:
     """Authenticate user credentials."""
     from cerebro.core.user_service import UserService
@@ -43,12 +55,15 @@ async def authenticate_user(username: str, password: str, db: AsyncSession) -> d
     }
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=TokenResponse)
 async def login_oauth2(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
     """OAuth2 login endpoint for frontend (expects FormData)."""
+    from cerebro.core.user_service import UserService
+    from cerebro.core.refresh_token_service import RefreshTokenService
+    
     user = await authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(
@@ -57,13 +72,31 @@ async def login_oauth2(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # Get user from database to get user_id
+    user_service = UserService(db)
+    db_user = await user_service.get_user_by_username(user["username"])
+    
+    # Generate access token
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user["username"], "scopes": user["scopes"]},
         expires_delta=access_token_expires
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    # Generate and store refresh token
+    refresh_token_service = RefreshTokenService(db)
+    refresh_token = refresh_token_service.generate_refresh_token()
+    await refresh_token_service.store_refresh_token(
+        user_id=db_user.user_id,
+        token=refresh_token,
+        expires_in_days=30
+    )
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
 
 
 @router.post("/token", response_model=Token)
@@ -197,6 +230,64 @@ async def refresh_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token"
         )
+
+
+@router.post("/refresh")
+async def refresh_access_token(
+    refresh_request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Refresh access token using refresh token."""
+    from cerebro.core.user_service import UserService
+    from cerebro.core.refresh_token_service import RefreshTokenService
+    
+    refresh_token_service = RefreshTokenService(db)
+    
+    # Verify refresh token and get user ID
+    user_id = await refresh_token_service.verify_refresh_token(refresh_request.refresh_token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token"
+        )
+    
+    # Get user details
+    user_service = UserService(db)
+    user = await user_service.get_user_by_id(user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive"
+        )
+    
+    # Get user scopes
+    scopes = await user_service.get_user_scopes(user_id)
+    
+    # Generate new access token
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": user.username, "scopes": scopes},
+        expires_delta=access_token_expires
+    )
+    
+    return {"access_token": access_token}
+
+
+@router.post("/logout")
+async def logout(
+    refresh_request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Logout and revoke refresh token."""
+    from cerebro.core.refresh_token_service import RefreshTokenService
+    
+    refresh_token_service = RefreshTokenService(db)
+    revoked = await refresh_token_service.revoke_refresh_token(refresh_request.refresh_token)
+    
+    if revoked:
+        return {"message": "Successfully logged out"}
+    else:
+        return {"message": "Token already invalid"}
 
 
 @router.get("/protected")
