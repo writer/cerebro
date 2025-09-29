@@ -443,13 +443,37 @@ class EmailNotificationService:
         last_error = None
 
         # Decrypt SMTP password if present
-        smtp_password = await config.get_smtp_password() if config.smtp_password else None
+        smtp_password = None
+        if config.smtp_password:
+            try:
+                smtp_password = await config.get_smtp_password()
+                if not smtp_password and config.smtp_username:
+                    raise ValueError("Failed to decrypt SMTP password")
+            except Exception as e:
+                logger.error(f"SMTP password decryption failed: {e}", exc_info=True)
+                # Log failure and abort
+                notification = EmailNotification(
+                    notification_id=notification_id,
+                    config_id=config.config_id,
+                    org_id=config.org_id,
+                    event_type=event_type,
+                    finding_id=finding_id,
+                    severity=severity,
+                    subject=subject,
+                    body_html=html_body,
+                    to_emails=config.to_emails,
+                    status="failed",
+                    error_message=f"Decryption error: {str(e)}",
+                    retry_count=0,
+                )
+                db.add(notification)
+                await db.commit()
+                return
 
         for attempt in range(self.max_retries + 1):
             try:
                 # Send email synchronously (wrap in executor for async)
-                await asyncio.get_event_loop().run_in_executor(
-                    None,
+                await asyncio.to_thread(
                     self._send_smtp_email,
                     config,
                     subject,

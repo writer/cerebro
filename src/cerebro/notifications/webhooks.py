@@ -436,10 +436,31 @@ class WebhookNotificationService:
 
         # Add HMAC signature if configured
         if config.use_hmac_signature and config.hmac_secret:
-            # Decrypt HMAC secret
-            hmac_secret = await config.get_hmac_secret()
-            signature = self._generate_hmac_signature(payload_str, hmac_secret)
-            headers["X-Webhook-Signature"] = f"sha256={signature}"
+            try:
+                # Decrypt HMAC secret
+                hmac_secret = await config.get_hmac_secret()
+                if not hmac_secret:
+                    raise ValueError("Failed to decrypt HMAC secret")
+                signature = self._generate_hmac_signature(payload_str, hmac_secret)
+                headers["X-Webhook-Signature"] = f"sha256={signature}"
+            except Exception as e:
+                logger.error(f"HMAC secret decryption failed for config {config.config_id}: {e}", exc_info=True)
+                # Log failure and abort
+                notification = WebhookNotification(
+                    notification_id=notification_id,
+                    config_id=config.config_id,
+                    org_id=config.org_id,
+                    event_type=event_type,
+                    finding_id=finding_id,
+                    severity=severity,
+                    payload=payload,
+                    status="failed",
+                    error_message=f"Decryption error: {str(e)}",
+                    retry_count=0,
+                )
+                db.add(notification)
+                await db.commit()
+                return
 
         # Retry loop
         for attempt in range(self.max_retries + 1):

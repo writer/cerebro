@@ -470,7 +470,34 @@ class SlackNotificationService:
         last_error = None
 
         # Decrypt webhook URL
-        webhook_url = await webhook.get_webhook_url()
+        try:
+            webhook_url = await webhook.get_webhook_url()
+            if not webhook_url:
+                raise ValueError("Failed to decrypt webhook URL")
+            if not webhook_url.startswith('https://hooks.slack.com/'):
+                raise ValueError(f"Invalid Slack webhook URL format")
+        except Exception as e:
+            logger.error(
+                "webhook_url_decryption_failed",
+                webhook_id=str(webhook.webhook_id),
+                error=str(e),
+            )
+            # Log failure and abort
+            notification = SlackNotification(
+                notification_id=notification_id,
+                webhook_id=webhook.webhook_id,
+                org_id=webhook.org_id,
+                event_type=event_type,
+                finding_id=finding_id,
+                severity=severity,
+                payload=message,
+                status="failed",
+                error_message=f"Decryption error: {str(e)}",
+                retry_count=0,
+            )
+            db.add(notification)
+            await db.commit()
+            return
 
         for attempt in range(self.max_retries + 1):
             try:
