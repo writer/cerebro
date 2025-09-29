@@ -5,12 +5,15 @@ This document provides context for AI agents working on the Cerebro Security Sys
 ## Frequently Used Commands
 
 ### Development
-- **Start API server**: `uv run uvicorn cerebro.api.main:app --reload`
-- **Run CLI**: `uv run python -m cerebro.cli`
-- **Run tests**: `uv run pytest`
-- **Type checking**: `uv run mypy src/`
-- **Code formatting**: `uv run black . && uv run isort .`
-- **Linting**: `uv run flake8 src/`
+- **Start API server**: `uv run uvicorn cerebro.api.main:app --reload` OR `make serve`
+- **Run CLI**: `uv run python -m cerebro.cli` OR `cerebro`
+- **Run tests**: `uv run pytest` OR `make test`
+- **Run single test**: `uv run pytest tests/test_file.py::test_function`
+- **Test with coverage**: `uv run pytest --cov=cerebro --cov-report=html` OR `make test-cov`
+- **Type checking**: `uv run mypy src/` OR `make lint`
+- **Code formatting**: `uv run black . && uv run isort .` OR `make format`
+- **Linting**: `uv run flake8 src/ tests/` OR `make lint`
+- **All quality checks**: `make check` (format + lint + test)
 
 ### Database
 - **Run migrations**: `uv run alembic upgrade head`
@@ -33,10 +36,18 @@ cerebro/
 │   ├── collectors/       # Configuration collectors
 │   ├── core/             # Core models & database
 │   ├── findings/         # Finding management
-│   ├── providers/        # Provider integrations
-│   └── rules/            # CEL rule engine
-├── migrations/           # Database migrations
+│   ├── providers/        # Provider integrations (AWS, GitHub, GCP, Azure)
+│   ├── rules/            # CEL rule engine
+│   ├── compliance/       # Compliance frameworks (CIS, NIST)
+│   ├── identity_governance/ # IAM analysis & governance
+│   ├── attack_path/      # Attack path modeling
+│   ├── oauth_risk/       # OAuth risk assessment
+│   ├── auditability/     # Audit trail & provenance
+│   ├── query/            # Query engine for temporal analysis
+│   └── tasks/            # Background task processing (Celery)
+├── migrations/           # Database migrations (Alembic)
 ├── tests/               # Test suite
+├── k8s/                 # Kubernetes deployment configs
 └── scripts/             # Utility scripts
 ```
 
