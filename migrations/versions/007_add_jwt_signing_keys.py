@@ -36,11 +36,11 @@ def upgrade() -> None:
     op.create_index('ix_jwt_signing_keys_is_active', 'jwt_signing_keys', ['is_active'])
     op.create_index('ix_jwt_signing_keys_expires_at', 'jwt_signing_keys', ['expires_at'])
     op.create_index('ix_jwt_signing_keys_created_at', 'jwt_signing_keys', ['created_at'])
-    
+
     # Partial index for active keys lookup
     op.execute("""
-        CREATE INDEX CONCURRENTLY ix_jwt_signing_keys_active_lookup
-        ON jwt_signing_keys (created_at DESC, expires_at) 
+        CREATE INDEX IF NOT EXISTS ix_jwt_signing_keys_active_lookup
+        ON jwt_signing_keys (created_at DESC, expires_at)
         WHERE is_active = true
     """)
 

@@ -41,14 +41,15 @@ def upgrade() -> None:
     op.create_index('ix_security_metric_snapshots_aggregation_period', 'security_metric_snapshots', ['aggregation_period'])
     
     # Composite index for time series queries
-    op.create_index('ix_security_metric_snapshots_org_metric_time', 'security_metric_snapshots', 
+    op.create_index('ix_security_metric_snapshots_org_metric_time', 'security_metric_snapshots',
                    ['org_id', 'metric_type', 'captured_at'])
-    
-    # Partial index for recent data
+
+    # Additional index for date-based queries
+    # Note: Partial index with NOW() not possible due to immutability requirements
+    # Using BRIN index for time-series data efficiency
     op.execute("""
-        CREATE INDEX CONCURRENTLY ix_security_metric_snapshots_recent
-        ON security_metric_snapshots (org_id, metric_type, captured_at DESC)
-        WHERE captured_at >= NOW() - INTERVAL '90 days'
+        CREATE INDEX IF NOT EXISTS ix_security_metric_snapshots_captured_at_brin
+        ON security_metric_snapshots USING BRIN (captured_at)
     """)
 
 

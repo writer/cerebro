@@ -35,10 +35,10 @@ def upgrade() -> None:
     op.create_index('ix_refresh_tokens_user_id', 'refresh_tokens', ['user_id'])
     op.create_index('ix_refresh_tokens_expires_at', 'refresh_tokens', ['expires_at'])
     op.create_index('ix_refresh_tokens_is_revoked', 'refresh_tokens', ['is_revoked'])
-    
+
     # Partial index for active tokens
     op.execute("""
-        CREATE INDEX CONCURRENTLY ix_refresh_tokens_active
+        CREATE INDEX IF NOT EXISTS ix_refresh_tokens_active
         ON refresh_tokens (user_id, expires_at)
         WHERE is_revoked = false
     """)
