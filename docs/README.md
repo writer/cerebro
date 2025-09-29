@@ -29,6 +29,8 @@ Learn how to use Cerebro:
 Connect Cerebro with your tools:
 
 - **[Slack](integrations/slack/SETUP.md)** - Real-time security notifications
+- **[Email](integrations/email/SETUP.md)** - SMTP email notifications with HTML templates
+- **[Webhooks](integrations/webhooks/SETUP.md)** - Generic HTTP webhooks with custom payloads
 - **[OCSF](integrations/ocsf/OCSF_INTEGRATION.md)** - Open Cybersecurity Schema Framework
 - **[NIST CSF 2.0](integrations/nist-csf/)** - Framework implementation
 - **[Cloud Providers](integrations/providers/README.md)** - AWS, GCP, Azure, Okta, GitHub
@@ -101,9 +103,9 @@ System design and internals:
 ### 🔔 Integrations
 
 - **Slack Notifications** ✅ - Real-time alerts
+- **Email Notifications** ✅ - SMTP with HTML templates
+- **Generic Webhooks** ✅ - Custom HTTP endpoints with Jinja2 templates
 - **OCSF Export** ✅ - Standards-based event format
-- **Email Notifications** (Coming soon)
-- **Generic Webhooks** (Coming soon)
 - **PagerDuty** (Planned)
 
 ---
