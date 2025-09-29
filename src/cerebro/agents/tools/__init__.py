@@ -23,6 +23,7 @@ from .org_context import GetOrgContextTool
 from .system_context import GetSystemContextTool
 from .session_memory import RememberContextTool, GetSessionHistoryTool
 from .code_reading import ReadCodeTool, SearchCodeTool
+from .nl_query import NaturalLanguageQueryTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -49,6 +50,7 @@ tool_registry.register(RememberContextTool())
 tool_registry.register(GetSessionHistoryTool())
 tool_registry.register(ReadCodeTool())
 tool_registry.register(SearchCodeTool())
+tool_registry.register(NaturalLanguageQueryTool())
 
 __all__ = [
     "Tool",
@@ -79,4 +81,5 @@ __all__ = [
     "GetSessionHistoryTool",
     "ReadCodeTool",
     "SearchCodeTool",
+    "NaturalLanguageQueryTool",
 ]
