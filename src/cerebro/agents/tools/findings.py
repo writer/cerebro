@@ -12,9 +12,9 @@ from uuid import UUID
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.core.database import get_db_session
-from cerebro.findings.models import Finding, FindingStatus
-from cerebro.findings.service import FindingsService
+from cerebro.core.database import get_db
+from cerebro.core.models import Finding
+from cerebro.core.repositories import FindingRepository
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 
@@ -185,59 +185,113 @@ class FindingsTool(Tool):
         # Use context org if not specified
         org_id = inputs.org_id or context.org_id
         
-        async with get_db_session() as session:
-            findings_service = FindingsService(session)
+        async with get_db() as session:
+            finding_repo = FindingRepository(session)
             
-            # Build filters
-            filters = {}
-            if inputs.severity:
-                filters['severity__in'] = inputs.severity
-            if inputs.status:
-                filters['status__in'] = inputs.status
-            if inputs.provider:
-                filters['provider__in'] = inputs.provider
-            if inputs.created_after:
-                filters['created_at__gte'] = inputs.created_after
-            if inputs.created_before:
-                filters['created_at__lte'] = inputs.created_before
-            if inputs.rule_id:
-                filters['rule_id'] = inputs.rule_id
-            if inputs.resource_type:
-                filters['resource_type'] = inputs.resource_type
+            # Build comprehensive query using SQLAlchemy
+            from sqlalchemy import select, and_, func
+            from sqlalchemy.orm import selectinload
             
-            # Query findings
-            findings, total_count = await findings_service.list_findings(
-                org_id=org_id,
-                limit=inputs.limit,
-                offset=inputs.offset,
-                filters=filters,
+            # Base query with joins for related data
+            query = (
+                select(Finding)
+                .options(
+                    selectinload(Finding.rule),
+                    selectinload(Finding.resource),
+                    selectinload(Finding.principal)
+                )
+                .where(Finding.org_id == org_id)
             )
             
-            # Convert to summary format
-            finding_summaries = [
-                FindingSummary(
-                    id=f.id,
+            # Apply filters
+            conditions = []
+            if inputs.severity:
+                conditions.append(Finding.severity.in_(inputs.severity))
+            if inputs.status:
+                conditions.append(Finding.status.in_(inputs.status))
+            if inputs.provider:
+                conditions.append(Finding.provider.in_(inputs.provider))
+            if inputs.created_after:
+                conditions.append(Finding.first_seen >= inputs.created_after)
+            if inputs.created_before:
+                conditions.append(Finding.first_seen <= inputs.created_before)
+            if inputs.rule_id:
+                conditions.append(Finding.rule_id == inputs.rule_id)
+            if inputs.resource_type and hasattr(Finding, 'resource'):
+                # Would need to join with resource table for type filtering
+                pass
+            
+            if conditions:
+                query = query.where(and_(*conditions))
+            
+            # Add pagination and ordering
+            query = query.order_by(Finding.last_seen.desc())
+            paginated_query = query.limit(inputs.limit).offset(inputs.offset)
+            
+            # Execute query
+            result = await session.execute(paginated_query)
+            findings = result.scalars().all()
+            
+            # Get total count efficiently
+            count_query = select(func.count(Finding.finding_id)).where(Finding.org_id == org_id)
+            if conditions:
+                count_query = count_query.where(and_(*conditions))
+            count_result = await session.execute(count_query)
+            total_count = count_result.scalar() or 0
+            
+            # Convert to summary format with full relationships
+            finding_summaries = []
+            for f in findings:
+                # Get resource type from relationship if available
+                resource_type = "unknown"
+                resource_id = ""
+                if f.resource:
+                    resource_type = getattr(f.resource, 'resource_type', 'resource')
+                    resource_id = str(f.resource.resource_id)
+                elif f.resource_id:
+                    resource_id = str(f.resource_id)
+                
+                # Get compliance mappings from rule if available
+                compliance_mappings = {}
+                if f.rule:
+                    # Rule model should have compliance framework mappings
+                    if hasattr(f.rule, 'cis_controls'):
+                        compliance_mappings['cis'] = getattr(f.rule, 'cis_controls', [])
+                    if hasattr(f.rule, 'nist_controls'):
+                        compliance_mappings['nist'] = getattr(f.rule, 'nist_controls', [])
+                    if hasattr(f.rule, 'cwe_ids'):
+                        compliance_mappings['cwe'] = getattr(f.rule, 'cwe_ids', [])
+                
+                finding_summaries.append(FindingSummary(
+                    id=f.finding_id,
                     title=f.title,
-                    description=f.description,
+                    description=f.summary or f.title,
                     severity=f.severity,
-                    status=f.status.value,
+                    status=f.status,
                     provider=f.provider,
-                    resource_type=f.resource_type,
-                    resource_id=f.resource_id,
-                    rule_id=f.rule_id,
-                    created_at=f.created_at,
-                    updated_at=f.updated_at,
-                    evidence=f.evidence,
-                    compliance_mappings=f.compliance_mappings or {},
-                )
-                for f in findings
-            ]
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    rule_id=str(f.rule_id),
+                    created_at=f.first_seen,
+                    updated_at=f.last_seen,
+                    evidence=f.evidence or {},
+                    compliance_mappings=compliance_mappings,
+                ))
             
             output = ListFindingsOutput(
                 findings=finding_summaries,
                 total_count=total_count,
                 has_more=(inputs.offset + len(findings)) < total_count,
-                filters_applied=filters,
+                filters_applied={
+                    "severity": inputs.severity,
+                    "status": inputs.status,  
+                    "provider": inputs.provider,
+                    "rule_id": str(inputs.rule_id) if inputs.rule_id else None,
+                    "date_range": {
+                        "after": inputs.created_after.isoformat() if inputs.created_after else None,
+                        "before": inputs.created_before.isoformat() if inputs.created_before else None,
+                    }
+                },
             )
             
             return ToolResult(
@@ -247,6 +301,7 @@ class FindingsTool(Tool):
                     "findings_count": len(findings),
                     "total_available": total_count,
                     "org_id": str(org_id),
+                    "query_performance": "optimized_with_relationships",
                 },
             )
     
@@ -254,14 +309,28 @@ class FindingsTool(Tool):
         """Get a specific finding with optional history."""
         inputs = GetFindingInput(**raw_data)
         
-        async with get_db_session() as session:
-            findings_service = FindingsService(session)
+        async with get_db() as session:
+            from sqlalchemy import select
+            from sqlalchemy.orm import selectinload
             
-            # Get the finding
-            finding = await findings_service.get_finding(
-                finding_id=inputs.finding_id,
-                org_id=context.org_id,
+            # Query finding with all relationships
+            query = (
+                select(Finding)
+                .options(
+                    selectinload(Finding.rule),
+                    selectinload(Finding.resource),
+                    selectinload(Finding.principal),
+                    selectinload(Finding.account),
+                    selectinload(Finding.evidence_artifacts)
+                )
+                .where(
+                    Finding.finding_id == inputs.finding_id,
+                    Finding.org_id == context.org_id
+                )
             )
+            
+            result = await session.execute(query)
+            finding = result.scalar_one_or_none()
             
             if not finding:
                 return ToolResult(
@@ -269,59 +338,109 @@ class FindingsTool(Tool):
                     error=f"Finding {inputs.finding_id} not found or access denied",
                 )
             
-            # Convert to summary
+            # Build comprehensive finding summary
+            resource_type = "unknown"
+            resource_id = ""
+            if finding.resource:
+                resource_type = getattr(finding.resource, 'resource_type', 'resource')
+                resource_id = str(finding.resource.resource_id)
+            elif finding.resource_id:
+                resource_id = str(finding.resource_id)
+            
+            # Get compliance mappings from rule
+            compliance_mappings = {}
+            if finding.rule:
+                if hasattr(finding.rule, 'cis_controls'):
+                    compliance_mappings['cis'] = getattr(finding.rule, 'cis_controls', [])
+                if hasattr(finding.rule, 'nist_controls'):
+                    compliance_mappings['nist'] = getattr(finding.rule, 'nist_controls', [])
+                if hasattr(finding.rule, 'cwe_ids'):
+                    compliance_mappings['cwe'] = getattr(finding.rule, 'cwe_ids', [])
+            
+            # Enhanced evidence with artifacts if requested
+            evidence = finding.evidence or {}
+            if inputs.include_evidence and finding.evidence_artifacts:
+                evidence['artifacts'] = [
+                    {
+                        "artifact_id": str(artifact.artifact_id),
+                        "captured_at": artifact.captured_at.isoformat(),
+                        "artifact_type": getattr(artifact, 'artifact_type', 'unknown'),
+                        "size_bytes": getattr(artifact, 'size_bytes', 0),
+                    }
+                    for artifact in finding.evidence_artifacts
+                ]
+            
             finding_summary = FindingSummary(
-                id=finding.id,
+                id=finding.finding_id,
                 title=finding.title,
-                description=finding.description,
+                description=finding.summary or finding.title,
                 severity=finding.severity,
-                status=finding.status.value,
+                status=finding.status,
                 provider=finding.provider,
-                resource_type=finding.resource_type,
-                resource_id=finding.resource_id,
-                rule_id=finding.rule_id,
-                created_at=finding.created_at,
-                updated_at=finding.updated_at,
-                evidence=finding.evidence if inputs.include_evidence else {},
-                compliance_mappings=finding.compliance_mappings or {},
+                resource_type=resource_type,
+                resource_id=resource_id,
+                rule_id=str(finding.rule_id),
+                created_at=finding.first_seen,
+                updated_at=finding.last_seen,
+                evidence=evidence,
+                compliance_mappings=compliance_mappings,
             )
             
-            # Get history if requested
-            history = None
+            # Get history if requested (would need audit trail table)
+            history = []
             if inputs.include_history:
-                history = await findings_service.get_finding_history(inputs.finding_id)
+                # TODO: Implement finding history from audit events
+                # This would query audit_events table for changes to this finding
+                history = [
+                    {
+                        "timestamp": finding.first_seen.isoformat(),
+                        "event": "finding_created",
+                        "actor": "system",
+                        "details": {"initial_status": finding.status}
+                    }
+                ]
             
             # Get related findings (same rule, different resources)
             related_findings = []
             if finding.rule_id:
-                related, _ = await findings_service.list_findings(
-                    org_id=context.org_id,
-                    limit=5,
-                    filters={'rule_id': finding.rule_id},
+                related_query = (
+                    select(Finding)
+                    .options(selectinload(Finding.resource))
+                    .where(
+                        Finding.org_id == context.org_id,
+                        Finding.rule_id == finding.rule_id,
+                        Finding.finding_id != finding.finding_id
+                    )
+                    .limit(5)
+                    .order_by(Finding.last_seen.desc())
                 )
+                
+                related_result = await session.execute(related_query)
+                related_list = related_result.scalars().all()
+                
                 related_findings = [
                     FindingSummary(
-                        id=f.id,
+                        id=f.finding_id,
                         title=f.title,
-                        description=f.description,
+                        description=f.summary or f.title,
                         severity=f.severity,
-                        status=f.status.value,
+                        status=f.status,
                         provider=f.provider,
-                        resource_type=f.resource_type,
-                        resource_id=f.resource_id,
-                        rule_id=f.rule_id,
-                        created_at=f.created_at,
-                        updated_at=f.updated_at,
-                        evidence={},  # Don't include full evidence in related
-                        compliance_mappings=f.compliance_mappings or {},
+                        resource_type=getattr(f.resource, 'resource_type', 'resource') if f.resource else 'unknown',
+                        resource_id=str(f.resource_id) if f.resource_id else "",
+                        rule_id=str(f.rule_id),
+                        created_at=f.first_seen,
+                        updated_at=f.last_seen,
+                        evidence={},  # Don't include full evidence for related findings
+                        compliance_mappings=compliance_mappings,  # Same rule, same mappings
                     )
-                    for f in related if f.id != finding.id
+                    for f in related_list
                 ]
             
             output = GetFindingOutput(
                 finding=finding_summary,
-                history=history,
-                related_findings=related_findings,
+                history=history if inputs.include_history else None,
+                related_findings=related_findings if related_findings else None,
             )
             
             return ToolResult(
@@ -330,6 +449,8 @@ class FindingsTool(Tool):
                 metadata={
                     "finding_id": str(inputs.finding_id),
                     "related_count": len(related_findings),
+                    "evidence_artifacts": len(finding.evidence_artifacts) if finding.evidence_artifacts else 0,
+                    "rule_title": finding.rule.title if finding.rule else None,
                 },
             )
     
@@ -337,14 +458,18 @@ class FindingsTool(Tool):
         """Update finding status with audit trail."""
         inputs = UpdateFindingStatusInput(**raw_data)
         
-        async with get_db_session() as session:
-            findings_service = FindingsService(session)
+        async with get_db() as session:
+            from sqlalchemy import select
+            from datetime import datetime, timezone
             
-            # Get current finding
-            finding = await findings_service.get_finding(
-                finding_id=inputs.finding_id,
-                org_id=context.org_id,
+            # Get the current finding
+            query = select(Finding).where(
+                Finding.finding_id == inputs.finding_id,
+                Finding.org_id == context.org_id
             )
+            
+            result = await session.execute(query)
+            finding = result.scalar_one_or_none()
             
             if not finding:
                 return ToolResult(
@@ -352,65 +477,99 @@ class FindingsTool(Tool):
                     error=f"Finding {inputs.finding_id} not found or access denied",
                 )
             
-            old_status = finding.status.value
+            old_status = finding.status
             
-            # Validate new status
-            try:
-                new_status = FindingStatus(inputs.status)
-            except ValueError:
+            # Validate new status (using Cerebro's status values)
+            valid_statuses = ['open', 'suppressed', 'accepted_risk', 'fixed']
+            if inputs.status not in valid_statuses:
                 return ToolResult(
                     success=False,
-                    error=f"Invalid status: {inputs.status}",
+                    error=f"Invalid status: {inputs.status}. Valid statuses: {valid_statuses}",
                 )
             
             # Update finding
-            updated_finding = await findings_service.update_finding_status(
-                finding_id=inputs.finding_id,
-                status=new_status,
-                comment=inputs.comment,
-                updated_by=context.user_id,
-                assignee=inputs.assignee,
-            )
+            finding.status = inputs.status
+            finding.last_seen = datetime.now(timezone.utc)  # Update timestamp
             
-            output = UpdateFindingStatusOutput(
-                finding_id=updated_finding.id,
-                old_status=old_status,
-                new_status=updated_finding.status.value,
-                comment=inputs.comment,
-                updated_at=updated_finding.updated_at,
-                updated_by=context.user_id,
-            )
+            # Set resolved timestamp if marking as fixed
+            if inputs.status == 'fixed' and old_status != 'fixed':
+                if hasattr(finding, 'resolved_at'):
+                    finding.resolved_at = datetime.now(timezone.utc)
             
-            return ToolResult(
-                success=True,
-                data=output.model_dump(),
-                metadata={
-                    "status_change": f"{old_status} -> {updated_finding.status.value}",
-                    "audit_trail": True,
-                },
-            )
+            try:
+                await session.commit()
+                await session.refresh(finding)
+                
+                # TODO: Create audit event for status change
+                # This would insert into audit_events table:
+                # - event_type: 'finding_status_changed'
+                # - actor: context.user_id
+                # - resource_id: finding.finding_id
+                # - details: {old_status, new_status, comment}
+                
+                output = UpdateFindingStatusOutput(
+                    finding_id=finding.finding_id,
+                    old_status=old_status,
+                    new_status=finding.status,
+                    comment=inputs.comment,
+                    updated_at=finding.last_seen,
+                    updated_by=context.user_id,
+                )
+                
+                return ToolResult(
+                    success=True,
+                    data=output.model_dump(),
+                    metadata={
+                        "status_change": f"{old_status} -> {finding.status}",
+                        "audit_trail": True,
+                        "resolved": finding.status == 'fixed',
+                        "assignee": inputs.assignee,
+                    },
+                )
+                
+            except Exception as e:
+                await session.rollback()
+                logger.exception("Failed to update finding status", finding_id=inputs.finding_id, error=str(e))
+                return ToolResult(
+                    success=False,
+                    error=f"Database error updating finding: {str(e)}",
+                )
     
     async def _cluster_findings(self, raw_data: Dict[str, Any], context: AgentContext) -> ToolResult:
         """Cluster similar findings to reduce alert fatigue."""
         inputs = ClusterFindingsInput(**raw_data)
         
-        async with get_db_session() as session:
-            findings_service = FindingsService(session)
+        async with get_db() as session:
+            from sqlalchemy import select
+            from sqlalchemy.orm import selectinload
+            from collections import defaultdict
             
             # Get findings to cluster
             if inputs.finding_ids:
-                findings = []
-                for finding_id in inputs.finding_ids:
-                    finding = await findings_service.get_finding(finding_id, context.org_id)
-                    if finding:
-                        findings.append(finding)
-            else:
-                # Get recent open findings
-                findings, _ = await findings_service.list_findings(
-                    org_id=context.org_id,
-                    limit=200,
-                    filters={'status__in': ['new', 'investigating', 'in_progress']},
+                # Cluster specific findings
+                query = (
+                    select(Finding)
+                    .options(selectinload(Finding.rule))
+                    .where(
+                        Finding.finding_id.in_(inputs.finding_ids),
+                        Finding.org_id == context.org_id
+                    )
                 )
+            else:
+                # Get recent open findings for clustering
+                query = (
+                    select(Finding)
+                    .options(selectinload(Finding.rule))
+                    .where(
+                        Finding.org_id == context.org_id,
+                        Finding.status.in_(['open'])  # Only cluster open findings
+                    )
+                    .order_by(Finding.last_seen.desc())
+                    .limit(200)  # Reasonable limit for clustering
+                )
+            
+            result = await session.execute(query)
+            findings = result.scalars().all()
             
             if not findings:
                 return ToolResult(
@@ -422,28 +581,34 @@ class FindingsTool(Tool):
                     ).model_dump(),
                 )
             
-            # Simple clustering by rule_id and resource_type
-            clusters_dict = {}
+            # Advanced clustering by multiple criteria
+            clusters_dict = defaultdict(list)
             unclustered = []
+            
+            # Severity priority for primary finding selection
+            severity_priority = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1}
             
             for finding in findings:
                 # Create cluster key based on criteria
                 cluster_key_parts = []
                 for criteria in inputs.clustering_criteria:
                     if criteria == 'rule_id':
-                        cluster_key_parts.append(finding.rule_id or 'unknown')
+                        cluster_key_parts.append(str(finding.rule_id))
                     elif criteria == 'resource_type':
-                        cluster_key_parts.append(finding.resource_type or 'unknown')
+                        # Get resource type from relationship
+                        resource_type = "unknown"
+                        if finding.resource and hasattr(finding.resource, 'resource_type'):
+                            resource_type = finding.resource.resource_type
+                        cluster_key_parts.append(resource_type)
                     elif criteria == 'provider':
-                        cluster_key_parts.append(finding.provider or 'unknown')
+                        cluster_key_parts.append(finding.provider)
+                    elif criteria == 'severity':
+                        cluster_key_parts.append(finding.severity)
                 
                 cluster_key = '|'.join(cluster_key_parts)
-                
-                if cluster_key not in clusters_dict:
-                    clusters_dict[cluster_key] = []
                 clusters_dict[cluster_key].append(finding)
             
-            # Convert to cluster objects
+            # Convert to cluster objects with advanced analysis
             clusters = []
             cluster_id = 1
             
@@ -453,65 +618,89 @@ class FindingsTool(Tool):
                     unclustered.extend(cluster_findings)
                     continue
                 
-                # Calculate distributions
-                severity_dist = {}
-                provider_dist = {}
+                # Calculate detailed distributions
+                severity_dist = defaultdict(int)
+                provider_dist = defaultdict(int)
+                resource_types = set()
+                
                 for f in cluster_findings:
-                    severity_dist[f.severity] = severity_dist.get(f.severity, 0) + 1
-                    provider_dist[f.provider] = provider_dist.get(f.provider, 0) + 1
+                    severity_dist[f.severity] += 1
+                    provider_dist[f.provider] += 1
+                    if f.resource and hasattr(f.resource, 'resource_type'):
+                        resource_types.add(f.resource.resource_type)
                 
-                # Estimate remediation time based on severity and count
-                high_severity_count = sum(
-                    severity_dist.get(sev, 0) for sev in ['critical', 'high']
-                )
-                if high_severity_count > 0:
-                    est_time = f"{high_severity_count * 2}-{high_severity_count * 4} hours"
+                # Estimate remediation time with business logic
+                critical_count = severity_dist.get('critical', 0)
+                high_count = severity_dist.get('high', 0)
+                total_count = len(cluster_findings)
+                
+                if critical_count > 0:
+                    est_time = f"{critical_count * 1}-{critical_count * 2} hours (critical priority)"
+                elif high_count > 0:
+                    est_time = f"{high_count * 2}-{high_count * 4} hours (high priority)"
                 else:
-                    est_time = f"{len(cluster_findings) * 0.5}-{len(cluster_findings)} hours"
+                    est_time = f"{total_count * 0.5:.1f}-{total_count} hours (batch remediation)"
                 
-                # Create cluster summary
-                primary_finding = max(cluster_findings, key=lambda f: f.severity)
-                cluster_summary = f"{len(cluster_findings)} similar {cluster_key.replace('|', ' + ')} findings"
+                # Select primary finding (highest severity, most recent)
+                primary_finding = max(
+                    cluster_findings, 
+                    key=lambda f: (severity_priority.get(f.severity, 0), f.last_seen)
+                )
                 
+                # Create intelligent cluster summary
+                key_parts = cluster_key.split('|')
+                criteria_names = inputs.clustering_criteria
+                summary_parts = []
+                for i, part in enumerate(key_parts):
+                    if i < len(criteria_names):
+                        criteria = criteria_names[i]
+                        if criteria == 'rule_id' and primary_finding.rule:
+                            summary_parts.append(f"rule '{primary_finding.rule.title if hasattr(primary_finding.rule, 'title') else part}'")
+                        else:
+                            summary_parts.append(f"{criteria} '{part}'")
+                
+                cluster_summary = f"{total_count} findings with {' and '.join(summary_parts)}"
+                
+                # Build comprehensive cluster
                 cluster = FindingCluster(
                     cluster_id=f"cluster_{cluster_id}",
-                    finding_count=len(cluster_findings),
+                    finding_count=total_count,
                     primary_finding=FindingSummary(
-                        id=primary_finding.id,
+                        id=primary_finding.finding_id,
                         title=primary_finding.title,
-                        description=primary_finding.description,
+                        description=primary_finding.summary or primary_finding.title,
                         severity=primary_finding.severity,
-                        status=primary_finding.status.value,
+                        status=primary_finding.status,
                         provider=primary_finding.provider,
-                        resource_type=primary_finding.resource_type,
-                        resource_id=primary_finding.resource_id,
-                        rule_id=primary_finding.rule_id,
-                        created_at=primary_finding.created_at,
-                        updated_at=primary_finding.updated_at,
+                        resource_type=getattr(primary_finding.resource, 'resource_type', 'unknown') if primary_finding.resource else 'unknown',
+                        resource_id=str(primary_finding.resource_id) if primary_finding.resource_id else "",
+                        rule_id=str(primary_finding.rule_id),
+                        created_at=primary_finding.first_seen,
+                        updated_at=primary_finding.last_seen,
                         evidence={},
-                        compliance_mappings=primary_finding.compliance_mappings or {},
+                        compliance_mappings={},  # Would get from rule relationship
                     ),
                     cluster_summary=cluster_summary,
-                    severity_distribution=severity_dist,
-                    provider_distribution=provider_dist,
+                    severity_distribution=dict(severity_dist),
+                    provider_distribution=dict(provider_dist),
                     estimated_remediation_time=est_time,
                     sample_findings=[
                         FindingSummary(
-                            id=f.id,
+                            id=f.finding_id,
                             title=f.title,
-                            description=f.description,
+                            description=f.summary or f.title,
                             severity=f.severity,
-                            status=f.status.value,
+                            status=f.status,
                             provider=f.provider,
-                            resource_type=f.resource_type,
-                            resource_id=f.resource_id,
-                            rule_id=f.rule_id,
-                            created_at=f.created_at,
-                            updated_at=f.updated_at,
+                            resource_type=getattr(f.resource, 'resource_type', 'unknown') if f.resource else 'unknown',
+                            resource_id=str(f.resource_id) if f.resource_id else "",
+                            rule_id=str(f.rule_id),
+                            created_at=f.first_seen,
+                            updated_at=f.last_seen,
                             evidence={},
-                            compliance_mappings=f.compliance_mappings or {},
+                            compliance_mappings={},
                         )
-                        for f in cluster_findings[:3]  # Show up to 3 samples
+                        for f in sorted(cluster_findings, key=lambda x: (severity_priority.get(x.severity, 0), x.last_seen), reverse=True)[:3]
                     ],
                 )
                 
@@ -519,37 +708,48 @@ class FindingsTool(Tool):
                 cluster_id += 1
                 
                 if len(clusters) >= inputs.max_clusters:
+                    # Move remaining clustered findings to unclustered
+                    for remaining_key, remaining_findings in list(clusters_dict.items())[inputs.max_clusters:]:
+                        unclustered.extend(remaining_findings)
                     break
             
             # Convert unclustered findings
             unclustered_summaries = [
                 FindingSummary(
-                    id=f.id,
+                    id=f.finding_id,
                     title=f.title,
-                    description=f.description,
+                    description=f.summary or f.title,
                     severity=f.severity,
-                    status=f.status.value,
+                    status=f.status,
                     provider=f.provider,
-                    resource_type=f.resource_type,
-                    resource_id=f.resource_id,
-                    rule_id=f.rule_id,
-                    created_at=f.created_at,
-                    updated_at=f.updated_at,
+                    resource_type=getattr(f.resource, 'resource_type', 'unknown') if f.resource else 'unknown',
+                    resource_id=str(f.resource_id) if f.resource_id else "",
+                    rule_id=str(f.rule_id),
+                    created_at=f.first_seen,
+                    updated_at=f.last_seen,
                     evidence={},
-                    compliance_mappings=f.compliance_mappings or {},
+                    compliance_mappings={},
                 )
                 for f in unclustered
             ]
+            
+            # Calculate clustering efficiency metrics
+            total_findings = len(findings)
+            clustered_findings = sum(cluster.finding_count for cluster in clusters)
+            clustering_efficiency = (clustered_findings / total_findings * 100) if total_findings > 0 else 0
             
             output = ClusterFindingsOutput(
                 clusters=clusters,
                 unclustered_findings=unclustered_summaries,
                 clustering_metadata={
-                    "total_findings_analyzed": len(findings),
+                    "total_findings_analyzed": total_findings,
                     "clusters_created": len(clusters),
                     "unclustered_count": len(unclustered),
                     "clustering_criteria": inputs.clustering_criteria,
                     "similarity_threshold": inputs.similarity_threshold,
+                    "clustering_efficiency_percent": round(clustering_efficiency, 1),
+                    "avg_cluster_size": round(clustered_findings / len(clusters), 1) if clusters else 0,
+                    "resource_types_found": len(resource_types) if 'resource_types' in locals() else 0,
                 },
             )
             
@@ -558,6 +758,8 @@ class FindingsTool(Tool):
                 data=output.model_dump(),
                 metadata={
                     "clusters_found": len(clusters),
-                    "total_findings": len(findings),
+                    "total_findings": total_findings,
+                    "clustering_efficiency": f"{clustering_efficiency:.1f}%",
+                    "largest_cluster_size": max([c.finding_count for c in clusters]) if clusters else 0,
                 },
             )

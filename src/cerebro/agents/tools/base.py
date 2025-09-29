@@ -20,8 +20,8 @@ from uuid import UUID
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.core.cel import CELEvaluator
-from cerebro.core.database import get_db_session
+from cerebro.rules.engine import RuleEngine
+from cerebro.core.database import get_db
 from cerebro.agents.models import (
     ToolInvocation,
     ToolInvocationStatus,
@@ -260,8 +260,8 @@ class ToolExecutor:
     and error handling for all tool invocations.
     """
     
-    def __init__(self, cel_evaluator: Optional[CELEvaluator] = None):
-        self.cel_evaluator = cel_evaluator or CELEvaluator()
+    def __init__(self, rule_engine: Optional[RuleEngine] = None):
+        self.rule_engine = rule_engine or RuleEngine()
     
     async def execute_tool(
         self,
@@ -362,10 +362,23 @@ class ToolExecutor:
         cel_context = context.build_cel_context(inputs)
         
         try:
-            result = await self.cel_evaluator.evaluate(
-                tool.cel_expression,
-                cel_context,
+            # Create evaluation context for rule engine
+            from cerebro.rules.engine import EvaluationContext
+            from uuid import uuid4
+            
+            eval_context = EvaluationContext(
+                resource=cel_context,  # Pass all context as resource for now
+                config=cel_context,
+                principal={"user_id": context.user_id, "org_id": str(context.org_id)}
             )
+            
+            rule_result = self.rule_engine.evaluate_rule(
+                rule_id=uuid4(),  # Generate temp UUID for this evaluation
+                expression=tool.cel_expression,
+                context=eval_context
+            )
+            
+            result = rule_result.matched
             
             # Update invocation with CEL details
             invocation.cel_policy_key = tool.cel_policy_key
@@ -409,7 +422,7 @@ class ToolExecutor:
         context: AgentContext,
     ) -> ToolInvocation:
         """Create and persist tool invocation record."""
-        async with get_db_session() as session:
+        async with get_db() as session:
             invocation = ToolInvocation(
                 session_id=context.session_id,
                 tool_name=tool.name,
@@ -424,7 +437,7 @@ class ToolExecutor:
     
     async def _update_invocation(self, invocation: ToolInvocation) -> None:
         """Update tool invocation in database."""
-        async with get_db_session() as session:
+        async with get_db() as session:
             await session.merge(invocation)
             await session.commit()
     
@@ -470,7 +483,7 @@ class ToolExecutor:
         reason: str,
     ) -> ToolResult:
         """Create approval request for tool invocation."""
-        async with get_db_session() as session:
+        async with get_db() as session:
             approval = ToolApproval(
                 org_id=invocation.session.org_id,  # type: ignore
                 tool_invocation_id=invocation.id,

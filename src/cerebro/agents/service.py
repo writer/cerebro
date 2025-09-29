@@ -13,7 +13,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from cerebro.core.database import get_db_session
+from cerebro.core.database import get_db
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
@@ -74,7 +74,7 @@ class AgentSessionService:
     ) -> Optional[AgentSession]:
         """Get an agent session by ID, optionally filtered by org."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             query = select(AgentSession).where(AgentSession.id == session_id)
             
             if org_id:
@@ -93,7 +93,7 @@ class AgentSessionService:
     ) -> tuple[List[AgentSession], int]:
         """List agent sessions for an organization."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Build base query
             query = select(AgentSession).where(AgentSession.org_id == org_id)
             count_query = select(AgentSession.id).where(AgentSession.org_id == org_id)
@@ -179,7 +179,7 @@ class AgentSessionService:
     ) -> Optional[Dict[str, Any]]:
         """Get session with its recent messages."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Get session with related data
             query = (
                 select(AgentSession)
@@ -247,7 +247,7 @@ class AgentSessionService:
     ) -> bool:
         """Delete an agent session (for development/testing only)."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Verify session exists and belongs to org
             session = await db_session.get(AgentSession, session_id)
             if not session or session.org_id != org_id:
@@ -279,7 +279,7 @@ class ToolApprovalService:
     ) -> tuple[List[ToolApproval], int]:
         """List pending tool approvals for an organization."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Get pending approvals
             query = (
                 select(ToolApproval)
@@ -312,7 +312,7 @@ class ToolApprovalService:
     ) -> Optional[ToolApproval]:
         """Get a specific tool approval."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             query = (
                 select(ToolApproval)
                 .options(selectinload(ToolApproval.tool_invocation))
@@ -332,7 +332,7 @@ class ToolApprovalService:
     ) -> Optional[ToolApproval]:
         """Approve a tool invocation."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Get approval
             approval = await self.get_approval(approval_id, org_id)
             if not approval or approval.status != ApprovalStatus.PENDING:
@@ -375,7 +375,7 @@ class ToolApprovalService:
     ) -> Optional[ToolApproval]:
         """Reject a tool invocation."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Get approval
             approval = await self.get_approval(approval_id, org_id)
             if not approval or approval.status != ApprovalStatus.PENDING:
@@ -410,7 +410,7 @@ class AgentAnalyticsService:
     ) -> Dict[str, Any]:
         """Get agent usage analytics for an organization."""
         
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Sessions by agent type
             agent_type_stats = await db_session.execute(
                 """

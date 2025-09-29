@@ -14,12 +14,12 @@ Key Components:
 - API: FastAPI endpoints for agent interactions
 """
 
-from .runtime import ClaudeRuntime
+from .runtime import CerebroClaudeRuntime
 from .service import AgentSessionService
 from .models import AgentSession, AgentMessage, ToolInvocation
 
 __all__ = [
-    "ClaudeRuntime",
+    "CerebroClaudeRuntime",
     "AgentSessionService", 
     "AgentSession",
     "AgentMessage",

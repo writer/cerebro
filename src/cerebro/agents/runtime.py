@@ -20,7 +20,7 @@ from claude_agent_sdk.types import (
     ToolResultBlock,
 )
 
-from cerebro.core.database import get_db_session
+from cerebro.core.database import get_db
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
@@ -60,7 +60,7 @@ class CerebroClaudeRuntime:
         title: Optional[str] = None,
     ) -> AgentSession:
         """Create a new agent session."""
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             session = AgentSession(
                 org_id=org_id,
                 agent_type=agent_type,
@@ -83,7 +83,7 @@ class CerebroClaudeRuntime:
     
     async def get_session(self, session_id: UUID) -> Optional[AgentSession]:
         """Get an existing agent session."""
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             return await db_session.get(AgentSession, session_id)
     
     async def send_message(
@@ -302,7 +302,7 @@ class CerebroClaudeRuntime:
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """Build conversation history for Claude context."""
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             messages = await db_session.execute(
                 """
                 SELECT role, content, created_at
@@ -331,7 +331,7 @@ class CerebroClaudeRuntime:
         content: Dict[str, Any],
     ) -> None:
         """Store message in database with append-only pattern."""
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             message = AgentMessage(
                 session_id=session_id,
                 role=role,
@@ -400,7 +400,7 @@ EXPERTISE: Attack path modeling, threat modeling, network analysis, defensive ar
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """Get messages from a session."""
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             messages = await db_session.execute(
                 """
                 SELECT id, role, content, created_at, input_tokens, output_tokens
@@ -426,7 +426,7 @@ EXPERTISE: Attack path modeling, threat modeling, network analysis, defensive ar
     
     async def get_session_metrics(self, session_id: UUID) -> Dict[str, Any]:
         """Get metrics for a session."""
-        async with get_db_session() as db_session:
+        async with get_db() as db_session:
             # Message counts and token usage
             message_stats = await db_session.execute(
                 """
