@@ -9,9 +9,11 @@ CEL policy checks, and append-only audit logging.
 from .base import Tool, ToolRegistry, AgentContext, ToolExecutor, tool, ToolPermissionLevel
 from .findings_list import FindingsListTool
 from .findings_update import FindingStatusUpdateTool
-from .rules import RulesTool  
+from .rules import RulesTool
 from .query import QueryTool
 from .timeline import TimelineTool
+from .security_analysis import SecurityAnalysisTool
+from .remediation import RemediationTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -22,6 +24,8 @@ tool_registry.register(FindingStatusUpdateTool())
 tool_registry.register(RulesTool())
 tool_registry.register(QueryTool())
 tool_registry.register(TimelineTool())
+tool_registry.register(SecurityAnalysisTool())
+tool_registry.register(RemediationTool())
 
 __all__ = [
     "Tool",
@@ -36,4 +40,6 @@ __all__ = [
     "RulesTool",
     "QueryTool",
     "TimelineTool",
+    "SecurityAnalysisTool",
+    "RemediationTool",
 ]
