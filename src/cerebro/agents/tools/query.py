@@ -77,80 +77,115 @@ class QueryTool(Tool):
                 
                 # Execute predefined queries based on query name
                 if query_inputs.query_name == "recent_config_changes":
-                    # Query recent configuration changes
-                    query = select(ConfigSnapshot).where(
-                        ConfigSnapshot.org_id == context.org_id
-                    ).order_by(ConfigSnapshot.collected_at.desc()).limit(query_inputs.limit)
-                    
+                    # Query recent configuration changes - must join through resource to get org
+                    from cerebro.core.models import Resource, Account
+
+                    query = (
+                        select(ConfigSnapshot, Resource)
+                        .join(Resource, ConfigSnapshot.resource_id == Resource.resource_id)
+                        .join(Account, Resource.account_id == Account.account_id)
+                        .where(Account.org_id == context.org_id)
+                        .order_by(ConfigSnapshot.captured_at.desc())
+                        .limit(query_inputs.limit)
+                    )
+
                     result = await session.execute(query)
-                    snapshots = result.scalars().all()
-                    
+                    rows = result.all()
+
                     results = [
                         {
-                            "snapshot_id": str(snap.config_snapshot_id),
-                            "provider": snap.provider,
-                            "resource_type": snap.resource_type,
-                            "collected_at": snap.collected_at.isoformat(),
-                            "change_summary": f"Config collected for {snap.resource_type}",
+                            "snapshot_id": str(snap.snapshot_id),
+                            "provider": resource.provider,
+                            "resource_type": resource.resource_type,
+                            "resource_name": resource.name or "unnamed",
+                            "captured_at": snap.captured_at.isoformat(),
+                            "change_summary": f"Config captured for {resource.resource_type}",
                         }
-                        for snap in snapshots
+                        for snap, resource in rows
                     ]
                 
                 elif query_inputs.query_name == "audit_events":
                     # Query audit events with parameters
                     hours_back = query_inputs.parameters.get("hours_back", 24)
-                    event_type = query_inputs.parameters.get("event_type")
-                    
-                    # Use properly parameterized SQL for audit events
-                    sql = text("""
-                        SELECT event_id, event_type, actor, resource_id, timestamp, details
-                        FROM audit_events 
-                        WHERE org_id = :org_id 
-                        AND timestamp >= NOW() - (:hours_back || ' hours')::interval
-                        AND (:event_type IS NULL OR event_type = :event_type)
-                        ORDER BY timestamp DESC
-                        LIMIT :limit
-                    """)
-                    
-                    result = await session.execute(sql, {
-                        "org_id": context.org_id,
-                        "hours_back": hours_back,
-                        "event_type": event_type,
-                        "limit": query_inputs.limit
-                    })
-                    
+                    action_filter = query_inputs.parameters.get("action")
+
+                    # Note: AuditEvent schema uses different field names than expected:
+                    # - occurred_at instead of timestamp
+                    # - action instead of event_type
+                    # - actor_external_id instead of actor
+                    # - resource_external_id instead of resource_id
+                    # - raw instead of details
+                    # - account_id instead of org_id (must join through Account)
+
+                    from datetime import timedelta
+                    time_threshold = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+
+                    from cerebro.core.models import Account
+
+                    query = (
+                        select(AuditEvent, Account)
+                        .join(Account, AuditEvent.account_id == Account.account_id)
+                        .where(Account.org_id == context.org_id)
+                        .where(AuditEvent.occurred_at >= time_threshold)
+                    )
+
+                    if action_filter:
+                        query = query.where(AuditEvent.action == action_filter)
+
+                    query = query.order_by(AuditEvent.occurred_at.desc()).limit(query_inputs.limit)
+
+                    result = await session.execute(query)
+                    rows = result.all()
+
                     results = [
                         {
-                            "event_id": str(row.event_id),
-                            "event_type": row.event_type,
-                            "actor": row.actor,
-                            "resource_id": row.resource_id,
-                            "timestamp": row.timestamp.isoformat(),
-                            "details": row.details,
+                            "event_id": str(event.event_id),
+                            "action": event.action,
+                            "actor": event.actor_external_id or "system",
+                            "resource": event.resource_external_id,
+                            "provider": event.provider,
+                            "occurred_at": event.occurred_at.isoformat(),
+                            "raw_event": event.raw,
                         }
-                        for row in result.mappings()
+                        for event, account in rows
                     ]
                 
                 elif query_inputs.query_name == "iam_permissions":
-                    # Query IAM permission edges
-                    principal_id = query_inputs.parameters.get("principal_id")
-                    
-                    query = select(IAMEdge).where(IAMEdge.org_id == context.org_id)
-                    if principal_id:
-                        query = query.where(IAMEdge.principal_id == principal_id)
-                    query = query.limit(query_inputs.limit)
-                    
+                    # Query IAM permission edges - Note: IamEdge uses edge_id not iam_edge_id
+                    # and effective_at not effective_date, and has account_id not org_id
+                    principal_id_param = query_inputs.parameters.get("principal_id")
+
+                    from cerebro.core.models import Account, IamEdge
+
+                    query = (
+                        select(IamEdge)
+                        .join(Account, IamEdge.account_id == Account.account_id)
+                        .where(Account.org_id == context.org_id)
+                    )
+
+                    if principal_id_param:
+                        try:
+                            principal_uuid = UUID(principal_id_param)
+                            query = query.where(IamEdge.principal_id == principal_uuid)
+                        except (ValueError, TypeError):
+                            logger.warning("Invalid principal_id format", principal_id=principal_id_param)
+
+                    query = query.order_by(IamEdge.effective_at.desc()).limit(query_inputs.limit)
+
                     result = await session.execute(query)
                     edges = result.scalars().all()
-                    
+
                     results = [
                         {
-                            "edge_id": str(edge.iam_edge_id),
+                            "edge_id": str(edge.edge_id),
                             "principal_id": str(edge.principal_id),
-                            "resource_id": str(edge.resource_id),
+                            "resource_id": str(edge.resource_id) if edge.resource_id else None,
                             "permission": edge.permission,
                             "provider": edge.provider,
-                            "effective_date": edge.effective_date.isoformat(),
+                            "effective_at": edge.effective_at.isoformat(),
+                            "expires_at": edge.expires_at.isoformat() if edge.expires_at else None,
+                            "is_admin": edge.is_admin,
+                            "via": edge.via,
                         }
                         for edge in edges
                     ]
@@ -158,27 +193,27 @@ class QueryTool(Tool):
                 elif query_inputs.query_name == "findings_timeline":
                     # Query findings over time
                     days_back = query_inputs.parameters.get("days_back", 30)
-                    
-                    sql = text("""
-                        SELECT 
-                            DATE(first_seen) as date,
-                            severity,
-                            COUNT(*) as count,
-                            provider
-                        FROM findings 
-                        WHERE org_id = :org_id 
-                        AND first_seen >= NOW() - (:days_back || ' days')::interval
-                        GROUP BY DATE(first_seen), severity, provider
-                        ORDER BY date DESC
-                        LIMIT :limit
-                    """)
-                    
-                    result = await session.execute(sql, {
-                        "org_id": context.org_id,
-                        "days_back": days_back,
-                        "limit": query_inputs.limit
-                    })
-                    
+
+                    from datetime import timedelta
+                    from sqlalchemy import func, cast, Date
+                    time_threshold = datetime.now(timezone.utc) - timedelta(days=days_back)
+
+                    query = (
+                        select(
+                            cast(Finding.first_seen, Date).label('date'),
+                            Finding.severity,
+                            Finding.provider,
+                            func.count(Finding.finding_id).label('count')
+                        )
+                        .where(Finding.org_id == context.org_id)
+                        .where(Finding.first_seen >= time_threshold)
+                        .group_by(cast(Finding.first_seen, Date), Finding.severity, Finding.provider)
+                        .order_by(cast(Finding.first_seen, Date).desc())
+                        .limit(query_inputs.limit)
+                    )
+
+                    result = await session.execute(query)
+
                     results = [
                         {
                             "date": row.date.isoformat(),
@@ -186,7 +221,7 @@ class QueryTool(Tool):
                             "count": row.count,
                             "provider": row.provider,
                         }
-                        for row in result.mappings()
+                        for row in result
                     ]
                 
                 else:

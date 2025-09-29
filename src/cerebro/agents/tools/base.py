@@ -315,7 +315,7 @@ class ToolExecutor:
             # Enforce dry-run for destructive tools unless explicitly approved
             if tool.permission_level == ToolPermissionLevel.WRITE_DESTRUCTIVE:
                 dry_run = dry_run or not cel_result.explicitly_approved
-            
+
             # CRITICAL: Set dry_run in context BEFORE execution
             execution_context = AgentContext(
                 session_id=context.session_id,
@@ -330,13 +330,30 @@ class ToolExecutor:
                 dry_run=dry_run,  # Pass dry_run to tool BEFORE execution
                 roles=context.roles,
             )
-            
+
             # Execute the tool with dry-run context
             invocation.status = ToolInvocationStatus.RUNNING
             await self._update_invocation(invocation)
-            
+
             result = await tool.execute(inputs, execution_context)
+
+            # ENFORCE: Mark result as dry-run and validate tool respected it
             result.dry_run = dry_run
+            if dry_run:
+                invocation.status = ToolInvocationStatus.DRY_RUN
+
+                # Safety check: Destructive tools in dry-run MUST provide preview
+                if tool.permission_level in [ToolPermissionLevel.WRITE_DESTRUCTIVE, ToolPermissionLevel.ADMIN]:
+                    if not result.preview:
+                        logger.warning(
+                            "Destructive tool did not provide dry-run preview",
+                            tool_name=tool.name,
+                            session_id=context.session_id
+                        )
+                        result.preview = {
+                            "warning": "Tool did not implement proper dry-run preview",
+                            "would_execute": str(inputs.model_dump()) if hasattr(inputs, 'model_dump') else str(inputs)
+                        }
             
             # Update invocation with results
             return await self._complete_invocation(invocation, result)

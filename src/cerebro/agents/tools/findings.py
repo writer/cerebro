@@ -483,36 +483,36 @@ class FindingsTool(Tool):
                     "finding_id": str(inputs.finding_id),
                     "related_count": len(related_findings),
                     "evidence_artifacts": len(finding.evidence_artifacts) if finding.evidence_artifacts else 0,
-                    "rule_title": finding.rule.title if finding.rule else None,
+                    "rule_name": finding.rule.name if finding.rule else None,
                 },
             )
     
     async def _update_finding_status(self, raw_data: Dict[str, Any], context: AgentContext) -> ToolResult:
-        """Update finding status with audit trail."""
+        """Update finding status with audit trail and dry-run support."""
         inputs = UpdateFindingStatusInput(**raw_data)
-        
+
         from cerebro.core.database import async_session_factory
         async with async_session_factory() as session:
             from sqlalchemy import select
             from datetime import datetime, timezone
-            
+
             # Get the current finding
             query = select(Finding).where(
                 Finding.finding_id == inputs.finding_id,
                 Finding.org_id == context.org_id
             )
-            
+
             result = await session.execute(query)
             finding = result.scalar_one_or_none()
-            
+
             if not finding:
                 return ToolResult(
                     success=False,
                     error=f"Finding {inputs.finding_id} not found or access denied",
                 )
-            
+
             old_status = finding.status
-            
+
             # Validate new status (using Cerebro's status values)
             valid_statuses = ['open', 'suppressed', 'accepted_risk', 'fixed']
             if inputs.status not in valid_statuses:
@@ -520,16 +520,49 @@ class FindingsTool(Tool):
                     success=False,
                     error=f"Invalid status: {inputs.status}. Valid statuses: {valid_statuses}",
                 )
-            
-            # Update finding
+
+            # DRY-RUN: If dry_run is enabled, return preview without making changes
+            if context.dry_run:
+                logger.info(
+                    "DRY RUN: Would update finding status",
+                    finding_id=inputs.finding_id,
+                    old_status=old_status,
+                    new_status=inputs.status,
+                    user_id=context.user_id
+                )
+
+                return ToolResult(
+                    success=True,
+                    dry_run=True,
+                    preview={
+                        "action": "update_finding_status",
+                        "finding_id": str(finding.finding_id),
+                        "finding_title": finding.title,
+                        "current_status": old_status,
+                        "new_status": inputs.status,
+                        "comment": inputs.comment,
+                        "assignee": inputs.assignee,
+                        "would_create_audit_event": True,
+                    },
+                    data={
+                        "message": "DRY RUN: No changes made. Set dry_run=False to execute.",
+                        "preview_only": True,
+                    },
+                    metadata={
+                        "dry_run": True,
+                        "finding_severity": finding.severity,
+                    }
+                )
+
+            # REAL EXECUTION: Update finding
             finding.status = inputs.status
             finding.last_seen = datetime.now(timezone.utc)  # Update timestamp
-            
+
             # Set resolved timestamp if marking as fixed
             if inputs.status == 'fixed' and old_status != 'fixed':
                 if hasattr(finding, 'resolved_at'):
                     finding.resolved_at = datetime.now(timezone.utc)
-            
+
             try:
                 await session.commit()
                 await session.refresh(finding)
@@ -707,7 +740,7 @@ class FindingsTool(Tool):
                     if i < len(criteria_names):
                         criteria = criteria_names[i]
                         if criteria == 'rule_id' and primary_finding.rule:
-                            summary_parts.append(f"rule '{primary_finding.rule.title if hasattr(primary_finding.rule, 'title') else part}'")
+                            summary_parts.append(f"rule '{primary_finding.rule.name if hasattr(primary_finding.rule, 'name') else part}'")
                         else:
                             summary_parts.append(f"{criteria} '{part}'")
                 

@@ -11,13 +11,16 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
 import structlog
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import (
     AssistantMessage,
     UserMessage,
     TextBlock,
     ToolUseBlock,
     ToolResultBlock,
+    ResultMessage,
+    SystemMessage,
+    StreamEvent,
 )
 
 from cerebro.core.database import get_db
@@ -28,6 +31,7 @@ from cerebro.agents.models import (
     AgentType,
 )
 from cerebro.agents.tools import tool_registry, ToolExecutor, AgentContext
+from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
 
 logger = structlog.get_logger(__name__)
 
@@ -97,83 +101,69 @@ class CerebroClaudeRuntime:
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Send a message to the agent and stream the response.
-        
+
+        The SDK now handles tool calling automatically via MCP servers.
+
         Yields dictionaries with:
-        - type: "text" | "tool_use" | "tool_result" | "error" | "complete"
+        - type: "text" | "tool_use" | "system" | "error" | "complete"
         - content: message content or tool data
         - metadata: additional information
         """
-        
+
         # Store user message
-        await self._store_message(session.id, MessageRole.USER, {"text": message})
-        
+        await self._store_message(session, MessageRole.USER, {"text": message})
+
         # Build agent context
         agent_context = await self._build_agent_context(session, user_id)
-        
-        # Get conversation history
-        conversation = await self._build_conversation_history(session)
-        
+
         try:
-            # Build conversation history from database
-            conversation_history = await self._build_conversation_history(session)
-            
-            # Get tool schemas from registry  
-            tools_schema = tool_registry.to_schema(agent_context.permission_level)
-            
-            # Build messages array for Claude
-            messages = []
-            
-            # Add conversation history
-            for hist_msg in conversation_history:
-                if hist_msg["role"] == "user":
-                    messages.append(UserMessage(content=[TextBlock(text=hist_msg["content"]["text"])]))
-                elif hist_msg["role"] == "assistant":
-                    # Reconstruct assistant message with tool calls if any
-                    content_blocks = []
-                    if "content" in hist_msg["content"]:
-                        for content_item in hist_msg["content"]["content"]:
-                            if content_item["type"] == "text":
-                                content_blocks.append(TextBlock(text=content_item["text"]))
-                            elif content_item["type"] == "tool_use":
-                                content_blocks.append(ToolUseBlock(
-                                    id=f"tool_{len(content_blocks)}",
-                                    name=content_item["tool_name"],
-                                    input=content_item["input"]
-                                ))
-                    if content_blocks:
-                        messages.append(AssistantMessage(content=content_blocks))
-            
-            # Add current user message
-            messages.append(UserMessage(content=[TextBlock(text=message)]))
-            
-            # Configure Claude options with tools
+            # Get available tools from registry based on permission level
+            available_tools = tool_registry.list_tools(agent_context.permission_level)
+
+            # Create MCP server from Cerebro tools
+            mcp_server = create_cerebro_mcp_server(
+                tools=available_tools,
+                context=agent_context,
+                executor=self.tool_executor,
+                server_name="cerebro",
+                server_version="1.0.0",
+            )
+
+            # Build allowed tools list (mcp__servername__toolname format)
+            allowed_tools = [f"mcp__cerebro__{tool.name}" for tool in available_tools]
+
+            # Configure Claude options with MCP server
             options = ClaudeAgentOptions(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 system_prompt=self._get_system_prompt(session.agent_type),
-                max_turns=4,  # Allow multiple turns for tool interactions
-                allowed_tools=[tool["name"] for tool in tools_schema],
+                mcp_servers={"cerebro": mcp_server},
+                allowed_tools=allowed_tools,
             )
-            
-            # Create Claude client with tools
+
+            # Track response data
+            assistant_content = []
+            tool_calls_count = 0
+            total_input_tokens = 0
+            total_output_tokens = 0
+
+            # Create Claude client and send query
             async with ClaudeSDKClient(options=options) as client:
-                
-                # Send messages with tool schemas
-                await client.send_messages(messages, tools=tools_schema)
-                
-                assistant_content = []
-                tool_calls = []
-                total_input_tokens = 0
-                total_output_tokens = 0
-                
-                async for response_msg in client.receive_response():
-                    
+                await client.connect()
+
+                # Send the user message
+                await client.query(message, session_id=str(session.id))
+
+                # Process streaming responses
+                async for response_msg in client.receive_messages():
+
+                    # Handle assistant messages
                     if isinstance(response_msg, AssistantMessage):
                         for block in response_msg.content:
-                            
+
                             if isinstance(block, TextBlock):
-                                # Stream text content
+                                # Stream text content to user
                                 if stream:
                                     yield {
                                         "type": "text",
@@ -181,116 +171,79 @@ class CerebroClaudeRuntime:
                                         "metadata": {"streaming": True}
                                     }
                                 assistant_content.append({"type": "text", "text": block.text})
-                            
+
                             elif isinstance(block, ToolUseBlock):
-                                # Execute tool call
-                                tool_call_id = block.id
+                                # Tool use - SDK handles execution automatically
                                 tool_name = block.name
                                 tool_input = block.input
-                                
+                                tool_call_id = block.id
+
                                 logger.info(
-                                    "Executing tool",
+                                    "Tool invoked by agent",
                                     tool_name=tool_name,
                                     session_id=session.id,
                                     tool_call_id=tool_call_id,
                                 )
-                                
+
+                                tool_calls_count += 1
+
                                 if stream:
                                     yield {
                                         "type": "tool_use",
                                         "content": {
                                             "tool_name": tool_name,
                                             "input": tool_input,
-                                            "status": "starting"
                                         },
                                         "metadata": {"tool_call_id": tool_call_id}
                                     }
-                                
-                                # Get tool from registry
-                                tool = tool_registry.get(tool_name)
-                                if not tool:
-                                    error_msg = f"Unknown tool: {tool_name}"
-                                    logger.error(error_msg, tool_name=tool_name)
-                                    
-                                    if stream:
-                                        yield {
-                                            "type": "tool_result",
-                                            "content": {
-                                                "tool_name": tool_name,
-                                                "success": False,
-                                                "error": error_msg
-                                            },
-                                            "metadata": {"tool_call_id": tool_call_id}
-                                        }
-                                    continue
-                                
-                                # Execute tool
-                                tool_result = await self.tool_executor.execute_tool(
-                                    tool=tool,
-                                    raw_inputs=tool_input,
-                                    context=agent_context,
-                                )
-                                
-                                if stream:
-                                    yield {
-                                        "type": "tool_result",
-                                        "content": {
-                                            "tool_name": tool_name,
-                                            "success": tool_result.success,
-                                            "data": tool_result.data,
-                                            "error": tool_result.error,
-                                            "requires_approval": tool_result.requires_approval,
-                                            "approval_id": str(tool_result.approval_id) if tool_result.approval_id else None,
-                                        },
-                                        "metadata": {"tool_call_id": tool_call_id}
-                                    }
-                                
-                                # CRITICAL: Send tool result back to Claude
-                                tool_result_content = ""
-                                if tool_result.success:
-                                    if tool_result.data:
-                                        # Format tool result for Claude
-                                        import json
-                                        tool_result_content = json.dumps(tool_result.data, indent=2)
-                                    else:
-                                        tool_result_content = "Tool executed successfully"
-                                else:
-                                    tool_result_content = f"Tool error: {tool_result.error}"
-                                
-                                # Send ToolResultBlock back to Claude to continue conversation
-                                tool_result_block = ToolResultBlock(
-                                    tool_use_id=tool_call_id,
-                                    content=[TextBlock(text=tool_result_content)]
-                                )
-                                
-                                await client.send_tool_result(tool_result_block)
-                                
-                                # Store tool call and result
+
                                 assistant_content.append({
                                     "type": "tool_use",
-                                    "tool_name": tool_name,
-                                    "input": tool_input,
-                                    "output": tool_result.model_dump(),
-                                })
-                                
-                                tool_calls.append({
                                     "tool_call_id": tool_call_id,
                                     "tool_name": tool_name,
-                                    "result": tool_result,
+                                    "input": tool_input,
                                 })
-                
-                # Get token usage from Claude response
-                if hasattr(response_msg, 'usage'):
-                    total_input_tokens = getattr(response_msg.usage, 'input_tokens', 0)
-                    total_output_tokens = getattr(response_msg.usage, 'output_tokens', 0)
-                
-                # Store assistant response with token usage
+
+                    # Handle system messages
+                    elif isinstance(response_msg, SystemMessage):
+                        logger.info(
+                            "System message received",
+                            subtype=response_msg.subtype,
+                            session_id=session.id,
+                        )
+
+                        if stream:
+                            yield {
+                                "type": "system",
+                                "content": {
+                                    "subtype": response_msg.subtype,
+                                    "data": response_msg.data,
+                                },
+                                "metadata": {}
+                            }
+
+                    # Handle result messages (token usage, completion)
+                    elif isinstance(response_msg, ResultMessage):
+                        # Extract token usage
+                        if hasattr(response_msg, 'usage') and response_msg.usage:
+                            usage = response_msg.usage
+                            total_input_tokens = getattr(usage, 'input_tokens', 0)
+                            total_output_tokens = getattr(usage, 'output_tokens', 0)
+
+                        logger.info(
+                            "Result message received",
+                            session_id=session.id,
+                            input_tokens=total_input_tokens,
+                            output_tokens=total_output_tokens,
+                        )
+
+                # Store assistant response with all content
                 await self._store_message(
-                    session.id,
+                    session,
                     MessageRole.ASSISTANT,
                     {
                         "content": assistant_content,
-                        "tool_calls": len(tool_calls),
+                        "tool_calls": tool_calls_count,
                         "token_usage": {
                             "input_tokens": total_input_tokens,
                             "output_tokens": total_output_tokens,
@@ -300,31 +253,31 @@ class CerebroClaudeRuntime:
                     input_tokens=total_input_tokens,
                     output_tokens=total_output_tokens,
                 )
-                
+
                 # Final completion message
                 if stream:
                     yield {
                         "type": "complete",
                         "content": {
                             "message_stored": True,
-                            "tool_calls_executed": len(tool_calls),
+                            "tool_calls_executed": tool_calls_count,
                         },
                         "metadata": {"session_id": str(session.id)}
                     }
-                
+
         except Exception as e:
             logger.exception("Agent message processing failed", session_id=session.id, error=str(e))
-            
+
             # Store error message
             await self._store_message(
-                session.id,
+                session,
                 MessageRole.ASSISTANT,
                 {
                     "error": str(e),
                     "type": "system_error",
                 }
             )
-            
+
             yield {
                 "type": "error",
                 "content": {
@@ -364,49 +317,22 @@ class CerebroClaudeRuntime:
                 "context": session.context,
             },
         )
-    
-    async def _build_conversation_history(
-        self,
-        session: AgentSession,
-        limit: int = 50,
-    ) -> List[Dict[str, Any]]:
-        """Build conversation history for Claude context."""
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            messages = await db_session.execute(
-                """
-                SELECT role, content, created_at
-                FROM agent_messages 
-                WHERE session_id = :session_id
-                ORDER BY created_at ASC
-                LIMIT :limit
-                """,
-                {"session_id": session.id, "limit": limit}
-            )
-            
-            conversation = []
-            for row in messages:
-                conversation.append({
-                    "role": row.role,
-                    "content": row.content,
-                    "timestamp": row.created_at.isoformat(),
-                })
-            
-            return conversation
-    
+
     async def _store_message(
         self,
-        session_id: UUID,
+        session: AgentSession,
         role: MessageRole,
         content: Dict[str, Any],
         input_tokens: Optional[int] = None,
         output_tokens: Optional[int] = None,
     ) -> None:
-        """Store message in database with append-only pattern."""
+        """Store message in database with append-only pattern and audit event."""
         from cerebro.core.database import async_session_factory
+
         async with async_session_factory() as db_session:
+            # Store agent message
             message = AgentMessage(
-                session_id=session_id,
+                session_id=session.id,
                 role=role,
                 content=content,
                 input_tokens=input_tokens,
@@ -414,29 +340,20 @@ class CerebroClaudeRuntime:
             )
             db_session.add(message)
             await db_session.commit()
-            
-            # Create audit event for message
-            from cerebro.core.models import AuditEvent
-            from uuid import uuid4
-            
-            audit_event = AuditEvent(
-                event_id=uuid4(),
-                org_id=session.org_id,  # Need to get this from session
-                event_type=f'agent_message_{role.value}',
-                actor=session.created_by if role == MessageRole.USER else 'claude_agent',
-                resource_id=str(session_id),
-                timestamp=datetime.now(timezone.utc),
-                details={
-                    "message_id": str(message.id),
-                    "role": role.value,
-                    "content_length": len(str(content)),
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "tool_calls": content.get("tool_calls", 0) if isinstance(content, dict) else 0,
-                }
+            await db_session.refresh(message)
+
+            # Create audit event - NOTE: AuditEvent schema requires account_id not org_id
+            # For now we skip audit events as the schema doesn't match Cerebro's org-centric model
+            # TODO: Refactor AuditEvent to support org-level events or create AgentAuditEvent table
+            logger.info(
+                "Agent message stored",
+                session_id=session.id,
+                message_id=message.id,
+                role=role.value,
+                org_id=session.org_id,
+                content_length=len(str(content)),
+                tool_calls=content.get("tool_calls", 0) if isinstance(content, dict) else 0,
             )
-            db_session.add(audit_event)
-            await db_session.commit()
     
     def _get_system_prompt(self, agent_type: AgentType) -> str:
         """Get system prompt for specific agent type."""

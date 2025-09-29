@@ -199,35 +199,35 @@ class FindingStatusUpdateTool(Tool):
                     if hasattr(finding, 'resolved_at'):
                         finding.resolved_at = datetime.now(timezone.utc)
                 
-                # Create comprehensive audit event in same transaction
-                audit_event = AuditEvent(
-                    event_id=uuid4(),
+                # Create comprehensive agent audit event
+                from cerebro.agents.audit import log_agent_event
+
+                audit_event = await log_agent_event(
                     org_id=context.org_id,
-                    event_type='finding_status_changed',
+                    session_id=context.session_id,
+                    event_type="finding_status_changed",
                     actor=context.user_id,
+                    agent_type=context.agent_type,
+                    tool_name=self.name,
+                    resource_type="finding",
                     resource_id=str(finding.finding_id),
-                    timestamp=finding.last_seen,
-                    details={
+                    event_data={
+                        "finding_title": finding.title,
                         "old_status": old_status,
                         "new_status": finding.status,
                         "comment": update_inputs.comment,
                         "assignee": update_inputs.assignee,
-                        "finding_id": str(finding.finding_id),
-                        "finding_title": finding.title,
-                        "rule_id": str(finding.rule_id),
                         "severity": finding.severity,
                         "provider": finding.provider,
-                        "agent_session_id": str(context.session_id),
-                        "tool_name": self.name,
-                    }
+                        "rule_id": str(finding.rule_id),
+                    },
+                    success=True,
                 )
-                session.add(audit_event)
                 
                 # Commit all changes atomically
                 await session.commit()
                 await session.refresh(finding)
-                await session.refresh(audit_event)
-                
+
                 output = UpdateFindingStatusOutput(
                     finding_id=finding.finding_id,
                     old_status=old_status,

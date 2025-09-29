@@ -95,68 +95,75 @@ class TimelineTool(Tool):
                 
                 # 1. Query audit events within the time range
                 if timeline_inputs.include_audit_events:
-                    audit_query = text("""
-                        SELECT event_id, event_type, actor, resource_id, timestamp, details
-                        FROM audit_events
-                        WHERE org_id = :org_id 
-                        AND timestamp BETWEEN :start_time AND :end_time
-                        ORDER BY timestamp ASC
-                    """)
-                    
-                    audit_result = await session.execute(audit_query, {
-                        "org_id": context.org_id,
-                        "start_time": timeline_inputs.start_time,
-                        "end_time": timeline_inputs.end_time
-                    })
-                    
-                    for row in audit_result:
+                    # Note: AuditEvent uses occurred_at not timestamp, account_id not org_id
+                    from cerebro.core.models import Account
+
+                    audit_query = (
+                        select(AuditEvent)
+                        .join(Account, AuditEvent.account_id == Account.account_id)
+                        .where(Account.org_id == context.org_id)
+                        .where(AuditEvent.occurred_at.between(timeline_inputs.start_time, timeline_inputs.end_time))
+                        .order_by(AuditEvent.occurred_at.asc())
+                    )
+
+                    audit_result = await session.execute(audit_query)
+                    audit_events = audit_result.scalars().all()
+
+                    for event in audit_events:
                         severity = "medium"
-                        if "error" in row.event_type.lower() or "fail" in row.event_type.lower():
+                        if "error" in event.action.lower() or "fail" in event.action.lower():
                             severity = "high"
-                        elif "login" in row.event_type.lower() or "access" in row.event_type.lower():
+                        elif "login" in event.action.lower() or "access" in event.action.lower():
                             severity = "low"
-                        
+
                         all_events.append(TimelineEvent(
-                            timestamp=row.timestamp,
-                            event_type=row.event_type,
+                            timestamp=event.occurred_at,
+                            event_type=event.action,
                             source="audit_events",
-                            actor=row.actor,
-                            resource_id=row.resource_id,
-                            description=f"Audit event: {row.event_type}",
-                            details=row.details or {},
+                            actor=event.actor_external_id or "system",
+                            resource_id=event.resource_external_id,
+                            description=f"Audit event: {event.action}",
+                            details={"provider": event.provider, "raw": event.raw},
                             severity=severity,
                         ))
-                    
+
                     sources_analyzed.append("audit_events")
                 
                 # 2. Query configuration changes within the time range
                 if timeline_inputs.include_config_changes:
-                    config_query = select(ConfigSnapshot).where(
-                        and_(
-                            ConfigSnapshot.org_id == context.org_id,
-                            ConfigSnapshot.collected_at.between(timeline_inputs.start_time, timeline_inputs.end_time)
-                        )
-                    ).order_by(ConfigSnapshot.collected_at.asc())
-                    
+                    # Note: ConfigSnapshot uses captured_at not collected_at, and has no org_id
+                    # Must join through Resource -> Account to filter by org
+                    from cerebro.core.models import Resource, Account
+
+                    config_query = (
+                        select(ConfigSnapshot, Resource)
+                        .join(Resource, ConfigSnapshot.resource_id == Resource.resource_id)
+                        .join(Account, Resource.account_id == Account.account_id)
+                        .where(Account.org_id == context.org_id)
+                        .where(ConfigSnapshot.captured_at.between(timeline_inputs.start_time, timeline_inputs.end_time))
+                        .order_by(ConfigSnapshot.captured_at.asc())
+                    )
+
                     config_result = await session.execute(config_query)
-                    config_snapshots = config_result.scalars().all()
-                    
-                    for snapshot in config_snapshots:
+                    config_rows = config_result.all()
+
+                    for snapshot, resource in config_rows:
                         all_events.append(TimelineEvent(
-                            timestamp=snapshot.collected_at,
+                            timestamp=snapshot.captured_at,
                             event_type="config_change",
                             source="config_snapshots",
                             actor="collector",
                             resource_id=str(snapshot.resource_id) if snapshot.resource_id else None,
-                            description=f"Configuration collected for {snapshot.resource_type} ({snapshot.provider})",
+                            description=f"Configuration captured for {resource.resource_type} ({resource.provider})",
                             details={
-                                "provider": snapshot.provider,
-                                "resource_type": snapshot.resource_type,
-                                "config_hash": snapshot.config_hash[:8] if snapshot.config_hash else None,
+                                "provider": resource.provider,
+                                "resource_type": resource.resource_type,
+                                "resource_name": resource.name or "unnamed",
+                                "config_sha": snapshot.config_sha.hex()[:8] if snapshot.config_sha else None,
                             },
                             severity="low",
                         ))
-                    
+
                     sources_analyzed.append("config_snapshots")
                 
                 # 3. Query findings created within the time range
