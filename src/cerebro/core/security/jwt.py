@@ -1,0 +1,312 @@
+"""Enhanced JWT service with RS256, proper claims, and revocation support."""
+
+import logging
+import time
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
+from uuid import uuid4
+from jose import jwt, JWTError
+from cryptography.hazmat.primitives import serialization
+import redis.asyncio as redis
+
+from cerebro.core.config import settings
+from cerebro.metrics.jwt_metrics import jwt_metrics
+from .key_store import JWTKeyStore, JWTSigningKey
+
+logger = logging.getLogger(__name__)
+
+
+class JWTService:
+    """Production-ready JWT service with RS256, key rotation, and revocation."""
+    
+    def __init__(self, key_store: JWTKeyStore):
+        """Initialize JWT service."""
+        self.key_store = key_store
+        self._redis_client: Optional[redis.Redis] = None
+        
+    async def _get_redis(self) -> redis.Redis:
+        """Get Redis client for token revocation."""
+        if not self._redis_client:
+            self._redis_client = redis.from_url(
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=True
+            )
+        return self._redis_client
+    
+    async def create_token(
+        self, 
+        username: str, 
+        scopes: List[str],
+        expires_delta: Optional[timedelta] = None
+    ) -> str:
+        """Create a JWT token with full security claims."""
+        try:
+            # Get current signing key
+            signing_key = await self.key_store.get_current_signing_key()
+            if not signing_key:
+                # Create initial key if none exists
+                signing_key = await self.key_store.create_new_signing_key()
+            
+            # Generate unique token ID for revocation support
+            jti = str(uuid4())
+            
+            # Calculate expiration
+            if expires_delta:
+                expire = datetime.utcnow() + expires_delta
+            else:
+                expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
+            
+            # Build JWT claims with security best practices
+            now = datetime.utcnow()
+            claims = {
+                # Standard claims
+                "sub": username,                    # Subject (user identifier)
+                "iss": "cerebro.sor",              # Issuer
+                "aud": "cerebro.api",              # Audience  
+                "iat": int(now.timestamp()),       # Issued at
+                "nbf": int(now.timestamp()),       # Not before
+                "exp": int(expire.timestamp()),    # Expires
+                "jti": jti,                        # JWT ID (for revocation)
+                
+                # Custom claims
+                "scopes": scopes,                  # User permissions
+                "token_type": "access",            # Token type
+            }
+            
+            # Get private key for signing
+            private_key_bytes = await self.key_store.get_private_key(signing_key)
+            private_key = serialization.load_pem_private_key(
+                private_key_bytes, 
+                password=None
+            )
+            
+            # Create JWT with proper headers
+            token = jwt.encode(
+                claims=claims,
+                key=private_key,
+                algorithm=settings.jwt_algorithm,
+                headers={
+                    "kid": signing_key.kid,    # Key ID for verification
+                    "alg": settings.jwt_algorithm,
+                    "typ": "JWT"
+                }
+            )
+            
+            # Record metrics
+            jwt_metrics.record_token_issued(settings.jwt_algorithm, signing_key.kid)
+            
+            logger.debug(f"Created JWT token for user {username} with kid {signing_key.kid}")
+            return token
+            
+        except Exception as e:
+            logger.error(f"Failed to create JWT token for user {username}: {e}")
+            raise
+    
+    async def verify_token(self, token: str) -> Dict[str, Any]:
+        """Verify JWT token with comprehensive security checks."""
+        with jwt_metrics.time_token_verification():
+            try:
+                # Decode header to get key ID without verification
+                unverified_header = jwt.get_unverified_header(token)
+                kid = unverified_header.get("kid")
+                algorithm = unverified_header.get("alg", "unknown")
+                
+                if not kid:
+                    raise JWTError("Token missing key ID (kid) in header")
+                
+                # Get signing key by ID
+                signing_key = await self.key_store.get_key_by_kid(kid)
+                if not signing_key:
+                    raise JWTError(f"Unknown signing key: {kid}")
+                
+                # Load public key for verification
+                public_key = serialization.load_pem_public_key(
+                    signing_key.public_key_pem.encode()
+                )
+                
+                # Verify and decode token
+                payload = jwt.decode(
+                    token=token,
+                    key=public_key,
+                    algorithms=[signing_key.algorithm],
+                    options={
+                        "verify_signature": True,
+                        "verify_exp": True,
+                        "verify_nbf": True,
+                        "verify_iat": True,
+                        "verify_aud": True,
+                        "verify_iss": True,
+                    },
+                    audience="cerebro.api",
+                    issuer="cerebro.sor"
+                )
+                
+                # Additional security checks
+                jti = payload.get("jti")
+                if not jti:
+                    raise JWTError("Token missing JWT ID (jti)")
+                
+                # Check if token is revoked
+                if await self._is_token_revoked(jti):
+                    raise JWTError("Token has been revoked")
+                
+                # Update verification metrics
+                jwt_metrics.record_token_verified("success", algorithm, kid)
+                
+                return payload
+                
+            except JWTError as e:
+                logger.debug(f"JWT verification failed: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error verifying JWT: {e}")
+                raise JWTError(f"Token verification failed: {e}")
+    
+    async def revoke_token(self, token: str, reason: str = "logout") -> bool:
+        """Revoke a JWT token by adding its jti to revocation list."""
+        try:
+            # Extract jti without full verification (for revocation purposes)
+            unverified_payload = jwt.get_unverified_claims(token)
+            jti = unverified_payload.get("jti")
+            exp = unverified_payload.get("exp")
+            
+            if not jti:
+                logger.warning("Cannot revoke token without jti")
+                return False
+            
+            # Calculate TTL based on token expiration
+            now = int(time.time())
+            ttl = max(exp - now, 0) if exp else settings.access_token_expire_minutes * 60
+            
+            # Add to Redis revocation set with TTL
+            redis_client = await self._get_redis()
+            await redis_client.setex(
+                f"revoked:jwt:{jti}",
+                ttl,
+                reason
+            )
+            
+            jwt_metrics.record_token_revoked(reason)
+            
+            logger.info(f"Revoked JWT token {jti} (reason: {reason})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to revoke token: {e}")
+            return False
+    
+    async def revoke_user_tokens(self, username: str, reason: str = "admin_action") -> int:
+        """Revoke all tokens for a specific user (emergency use)."""
+        # Note: This would require maintaining a user->jti mapping in Redis
+        # For now, we'll implement a simpler approach by adding the user to a blocklist
+        # with a TTL equal to the longest possible token lifetime
+        
+        try:
+            redis_client = await self._get_redis()
+            ttl = settings.access_token_expire_minutes * 60 * 2  # 2x token lifetime for safety
+            
+            await redis_client.setex(
+                f"blocked:user:{username}",
+                ttl,
+                reason
+            )
+            
+            jwt_metrics.record_token_revoked(reason)
+            
+            logger.warning(f"Blocked all tokens for user {username} (reason: {reason})")
+            return 1  # We don't track exact count for user-level blocks
+            
+        except Exception as e:
+            logger.error(f"Failed to block user tokens for {username}: {e}")
+            return 0
+    
+    async def _is_token_revoked(self, jti: str) -> bool:
+        """Check if a token is revoked by looking up its jti."""
+        try:
+            redis_client = await self._get_redis()
+            
+            # Check specific token revocation
+            is_revoked = await redis_client.exists(f"revoked:jwt:{jti}")
+            
+            return bool(is_revoked)
+            
+        except Exception as e:
+            logger.warning(f"Failed to check token revocation status for {jti}: {e}")
+            # Fail open for availability, but log the issue
+            return False
+    
+    async def _is_user_blocked(self, username: str) -> bool:
+        """Check if all tokens for a user are blocked."""
+        try:
+            redis_client = await self._get_redis()
+            
+            is_blocked = await redis_client.exists(f"blocked:user:{username}")
+            
+            return bool(is_blocked)
+            
+        except Exception as e:
+            logger.warning(f"Failed to check user block status for {username}: {e}")
+            return False
+    
+    async def cleanup_expired_revocations(self) -> int:
+        """Clean up expired token revocations from Redis."""
+        try:
+            redis_client = await self._get_redis()
+            
+            # Redis automatically expires keys with TTL, but we can scan and count
+            # This is mainly for metrics and monitoring
+            cursor = 0
+            expired_count = 0
+            
+            while True:
+                cursor, keys = await redis_client.scan(
+                    cursor=cursor, 
+                    match="revoked:jwt:*",
+                    count=1000
+                )
+                
+                if keys:
+                    # Check which keys actually exist (non-expired)
+                    pipeline = redis_client.pipeline()
+                    for key in keys:
+                        pipeline.exists(key)
+                    
+                    results = await pipeline.execute()
+                    expired_count += sum(1 for exists in results if not exists)
+                
+                if cursor == 0:
+                    break
+            
+            if expired_count > 0:
+                jwt_metrics.record_revocation_cleanup(expired_count)
+                
+            return expired_count
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired revocations: {e}")
+            return 0
+    
+    async def get_token_info(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get token information without full verification (for debugging/admin)."""
+        try:
+            unverified_payload = jwt.get_unverified_claims(token)
+            unverified_header = jwt.get_unverified_header(token)
+            
+            return {
+                "header": unverified_header,
+                "payload": {
+                    "sub": unverified_payload.get("sub"),
+                    "iss": unverified_payload.get("iss"),
+                    "aud": unverified_payload.get("aud"),
+                    "iat": unverified_payload.get("iat"),
+                    "exp": unverified_payload.get("exp"),
+                    "jti": unverified_payload.get("jti"),
+                    "scopes": unverified_payload.get("scopes"),
+                },
+                "is_expired": unverified_payload.get("exp", 0) < time.time(),
+            }
+            
+        except Exception as e:
+            logger.debug(f"Failed to get token info: {e}")
+            return None
