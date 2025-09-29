@@ -10,14 +10,16 @@ from cerebro.core.database import get_db
 from cerebro.core.models import Rule, Policy
 from cerebro.api.schemas import RuleCreate, RuleResponse
 from cerebro.rules.engine import rule_engine
+from cerebro.api.auth import get_current_user, require_read_rules, require_write_rules, User
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.post("/", response_model=RuleResponse)
 async def create_rule(
     rule: RuleCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_rules)
 ):
     """Create a new rule."""
     # Verify policy exists if provided
@@ -94,7 +96,8 @@ async def get_rule(
 async def update_rule(
     rule_id: UUID,
     rule_update: RuleCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_rules)
 ):
     """Update a rule."""
     db_rule = await db.get(Rule, rule_id)
@@ -130,7 +133,8 @@ async def update_rule(
 @router.delete("/{rule_id}")
 async def deactivate_rule(
     rule_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_rules)
 ):
     """Deactivate a rule (soft delete)."""
     rule = await db.get(Rule, rule_id)

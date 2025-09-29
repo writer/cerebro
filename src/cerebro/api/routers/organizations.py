@@ -9,14 +9,16 @@ from sqlalchemy import select
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.schemas import OrganizationCreate, OrganizationResponse
+from cerebro.api.auth import get_current_user, require_scopes, User
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.post("/", response_model=OrganizationResponse)
 async def create_organization(
     org: OrganizationCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("admin"))
 ):
     """Create a new organization."""
     db_org = Organization(name=org.name)
@@ -53,7 +55,8 @@ async def get_organization(
 @router.delete("/{org_id}")
 async def delete_organization(
     org_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("admin"))
 ):
     """Delete an organization."""
     org = await db.get(Organization, org_id)

@@ -11,8 +11,9 @@ from cerebro.core.models import Finding, Organization
 from cerebro.api.schemas import FindingResponse, FindingUpdate, FindingStats
 from cerebro.api.dependencies import get_finding_manager
 from cerebro.findings.manager import FindingManager
+from cerebro.api.auth import get_current_user, require_read_findings, require_write_findings, User
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/", response_model=List[FindingResponse])
@@ -58,7 +59,8 @@ async def get_finding(
 async def update_finding(
     finding_id: UUID,
     finding_update: FindingUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_findings)
 ):
     """Update finding status."""
     finding = await db.get(Finding, finding_id)
@@ -79,7 +81,8 @@ async def update_finding(
 async def suppress_finding(
     finding_id: UUID,
     reason: str,
-    finding_manager: FindingManager = Depends(get_finding_manager)
+    finding_manager: FindingManager = Depends(get_finding_manager),
+    current_user: User = Depends(require_write_findings)
 ):
     """Suppress a finding."""
     success = await finding_manager.suppress_finding(finding_id, reason)
@@ -93,7 +96,8 @@ async def suppress_finding(
 async def accept_risk(
     finding_id: UUID,
     reason: str,
-    finding_manager: FindingManager = Depends(get_finding_manager)
+    finding_manager: FindingManager = Depends(get_finding_manager),
+    current_user: User = Depends(require_write_findings)
 ):
     """Accept risk for a finding."""
     success = await finding_manager.accept_risk(finding_id, reason)

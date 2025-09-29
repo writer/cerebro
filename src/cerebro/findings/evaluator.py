@@ -105,14 +105,16 @@ class RuleEvaluator:
         """Evaluate rules across an entire organization."""
         results = {}
         
-        # Get all applicable rules
+        # Get all applicable rules for the organization
+        from cerebro.core.models import Policy
+        
+        # First get policy IDs for this organization
+        policy_subquery = select(Policy.policy_id).where(Policy.org_id == org.org_id)
+        
+        # Then get rules for those policies
         stmt = select(Rule).where(
             and_(
-                Rule.policy_id.in_(
-                    select(Rule.policy_id).join(Rule.policy).where(
-                        Rule.policy.has(org_id=org.org_id)
-                    )
-                ),
+                Rule.policy_id.in_(policy_subquery),
                 Rule.is_active == True
             )
         )

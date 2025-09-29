@@ -10,8 +10,9 @@ from cerebro.core.models import Organization
 from cerebro.api.schemas import CollectionRequest, CollectionResponse
 from cerebro.api.dependencies import get_collector_manager
 from cerebro.collectors.manager import CollectorManager
+from cerebro.api.auth import get_current_user, require_collect, User
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.post("/organizations/{org_id}/collect", response_model=CollectionResponse)
@@ -19,7 +20,8 @@ async def collect_organization(
     org_id: UUID,
     request: CollectionRequest,
     collector_manager: CollectorManager = Depends(get_collector_manager),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_collect)
 ):
     """Collect configuration data for an organization."""
     # Verify organization exists
@@ -44,7 +46,8 @@ async def collect_organization(
 async def collect_organization_background(
     org_id: UUID,
     request: CollectionRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_collect)
 ):
     """Start background collection for an organization using Celery."""
     from cerebro.tasks.collection_tasks import collect_organization_task

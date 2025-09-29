@@ -9,14 +9,16 @@ from sqlalchemy import select
 from cerebro.core.database import get_db
 from cerebro.core.models import Account, Organization
 from cerebro.api.schemas import AccountCreate, AccountResponse
+from cerebro.api.auth import get_current_user, require_scopes, User
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.post("/", response_model=AccountResponse)
 async def create_account(
     account: AccountCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("admin"))
 ):
     """Create a new account."""
     # Verify organization exists
@@ -82,7 +84,8 @@ async def get_account(
 @router.delete("/{account_id}")
 async def delete_account(
     account_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("admin"))
 ):
     """Delete an account."""
     account = await db.get(Account, account_id)

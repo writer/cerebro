@@ -93,7 +93,7 @@ class BaseFindingProducer(abc.ABC):
         
         # Generate fingerprint based on rule and resource
         fingerprint_str = f"{rule_id}|{resource.external_id}|{self.finding_name}"
-        finding.fingerprint = hashlib.sha256(fingerprint_str.encode()).hexdigest()[:16]
+        finding.fingerprint = hashlib.sha256(fingerprint_str.encode()).hexdigest()
         
         return finding
     

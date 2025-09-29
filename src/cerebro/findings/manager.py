@@ -223,7 +223,7 @@ class FindingManager:
             components.append(str(principal_id))
         
         fingerprint_str = "|".join(components)
-        return hashlib.sha256(fingerprint_str.encode()).hexdigest()[:16]
+        return hashlib.sha256(fingerprint_str.encode()).hexdigest()
     
     def _generate_finding_title(self, rule: Rule, resource: Resource) -> str:
         """Generate a human-readable title for the finding."""
@@ -289,26 +289,40 @@ class FindingManager:
         return list(await self.db.scalars(stmt))
     
     async def get_finding_stats(self, org_id: UUID) -> Dict[str, Any]:
-        """Get finding statistics for an organization."""
-        # This would typically use raw SQL for better performance
-        stmt = select(Finding).where(Finding.org_id == org_id)
-        all_findings = list(await self.db.scalars(stmt))
+        """Get finding statistics for an organization using efficient SQL aggregations."""
+        from sqlalchemy import func
         
-        stats = {
-            "total": len(all_findings),
-            "by_status": {},
-            "by_severity": {},
-            "by_provider": {},
+        # Get total count
+        total_stmt = select(func.count(Finding.finding_id)).where(Finding.org_id == org_id)
+        total_count = await self.db.scalar(total_stmt) or 0
+        
+        # Get counts by status
+        status_stmt = select(
+            Finding.status, 
+            func.count(Finding.finding_id)
+        ).where(Finding.org_id == org_id).group_by(Finding.status)
+        status_results = await self.db.execute(status_stmt)
+        by_status = {status: count for status, count in status_results.fetchall()}
+        
+        # Get counts by severity
+        severity_stmt = select(
+            Finding.severity, 
+            func.count(Finding.finding_id)
+        ).where(Finding.org_id == org_id).group_by(Finding.severity)
+        severity_results = await self.db.execute(severity_stmt)
+        by_severity = {severity: count for severity, count in severity_results.fetchall()}
+        
+        # Get counts by provider
+        provider_stmt = select(
+            Finding.provider, 
+            func.count(Finding.finding_id)
+        ).where(Finding.org_id == org_id).group_by(Finding.provider)
+        provider_results = await self.db.execute(provider_stmt)
+        by_provider = {provider: count for provider, count in provider_results.fetchall()}
+        
+        return {
+            "total": total_count,
+            "by_status": by_status,
+            "by_severity": by_severity,
+            "by_provider": by_provider,
         }
-        
-        for finding in all_findings:
-            # By status
-            stats["by_status"][finding.status] = stats["by_status"].get(finding.status, 0) + 1
-            
-            # By severity
-            stats["by_severity"][finding.severity] = stats["by_severity"].get(finding.severity, 0) + 1
-            
-            # By provider
-            stats["by_provider"][finding.provider] = stats["by_provider"].get(finding.provider, 0) + 1
-        
-        return stats

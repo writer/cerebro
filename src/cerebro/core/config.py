@@ -1,7 +1,8 @@
 """Configuration management for Cerebro."""
 
+import os
 from typing import Optional, List
-from pydantic import Field
+from pydantic import Field, validator
 from pydantic_settings import BaseSettings
 
 
@@ -16,8 +17,7 @@ class Settings(BaseSettings):
     
     # Security
     secret_key: str = Field(
-        default="your-secret-key-here",
-        description="Secret key for JWT tokens"
+        description="Secret key for JWT tokens - MUST be set in production"
     )
     algorithm: str = Field(default="HS256", description="JWT algorithm")
     access_token_expire_minutes: int = Field(
@@ -155,6 +155,29 @@ class Settings(BaseSettings):
         default=None, description="Vault transit key name"
     )
     
+    @validator('secret_key')
+    def validate_secret_key(cls, v):
+        """Validate that secret key is not default value."""
+        if v == "your-secret-key-here" or len(v) < 32:
+            environment = os.getenv('ENVIRONMENT', 'production').lower()
+            if environment not in ['dev', 'development', 'test', 'testing']:
+                raise ValueError(
+                    "SECRET_KEY must be set to a secure value (minimum 32 characters) in production. "
+                    "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+                )
+        return v
+
+    @validator('kms_provider')
+    def validate_kms_provider(cls, v):
+        """Validate KMS provider is not local in production."""
+        environment = os.getenv('ENVIRONMENT', 'production').lower()
+        if v == "local" and environment not in ['dev', 'development', 'test', 'testing']:
+            raise ValueError(
+                "Local KMS provider is not allowed in production. "
+                "Use aws, gcp, azure, or vault KMS provider for production deployments."
+            )
+        return v
+
     class Config:
         """Pydantic config."""
         env_file = ".env"

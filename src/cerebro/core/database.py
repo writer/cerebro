@@ -18,7 +18,12 @@ engine = create_async_engine(
     settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
     echo=False,  # Set to True for SQL logging
     pool_size=20,
-    max_overflow=0,
+    max_overflow=10,  # Allow some overflow for peak load
+    pool_pre_ping=True,  # Validate connections before use
+    pool_recycle=3600,  # Recycle connections every hour
+    execution_options={
+        "isolation_level": "READ_COMMITTED"
+    }
 )
 
 # Create session factory

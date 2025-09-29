@@ -12,8 +12,9 @@ from ...query.engine import QueryEngine, QueryResult
 from ...query.registry import get_registry
 from ...providers.tables import register_all_provider_tables
 from ..schemas.base import BaseResponse
+from ..auth import get_current_user, require_scopes, User
 
-router = APIRouter(prefix="/query", tags=["Query"])
+router = APIRouter(prefix="/query", tags=["Query"], dependencies=[Depends(get_current_user)])
 
 # Initialize query engine
 query_engine = QueryEngine()
@@ -62,7 +63,10 @@ class TableDetailResponse(BaseResponse):
 
 
 @router.post("/execute", response_model=QueryResponse, summary="Execute SQL Query")
-async def execute_sql_query(request: QueryRequest) -> QueryResponse:
+async def execute_sql_query(
+    request: QueryRequest,
+    current_user: User = Depends(require_scopes("query:execute"))
+) -> QueryResponse:
     """
     Execute a SQL query against security tables.
     

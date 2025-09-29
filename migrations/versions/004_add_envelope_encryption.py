@@ -16,16 +16,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add encrypted_dek column to provider_credentials
-    op.add_column('provider_credentials', 
-                  sa.Column('encrypted_dek', sa.LargeBinary(), nullable=True))
-    
-    # Note: In a real migration, you'd need to:
-    # 1. Back-fill existing rows by generating DEKs from old SECRET_KEY
-    # 2. Encrypt those DEKs with the chosen KMS
-    # 3. Update encrypted_dek column for all existing rows
-    # 4. Make encrypted_dek NOT NULL after back-fill
+    # This migration is now obsolete as the provider_credentials table
+    # is created in migration 005 with encrypted_dek column included
+    # Keeping this as no-op for migration history consistency
+    pass
 
 
 def downgrade() -> None:
-    op.drop_column('provider_credentials', 'encrypted_dek')
+    # No-op as the table creation/deletion is handled in migration 005
+    pass

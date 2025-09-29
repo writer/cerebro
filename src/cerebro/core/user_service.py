@@ -276,6 +276,7 @@ class UserService:
             ("write:findings", "Manage security findings"),
             ("collect:data", "Run data collection"),
             ("read:audit", "Read audit logs"),
+            ("query:execute", "Execute SQL queries"),
         ]
         
         for scope_name, description in default_scopes:
@@ -292,11 +293,27 @@ class UserService:
     
     async def create_admin_user(
         self,
-        username: str = "admin",
-        email: str = "admin@cerebro.local",
-        password: str = "admin123!",
+        username: str,
+        email: str,
+        password: str,
     ) -> User:
-        """Create default admin user."""
+        """Create admin user with provided credentials.
+        
+        This method requires explicit username, email, and password.
+        No defaults are provided for security.
+        """
+        import secrets
+        import os
+        
+        # Validate password strength in production
+        environment = os.getenv('ENVIRONMENT', 'production').lower()
+        if environment not in ['dev', 'development', 'test', 'testing']:
+            if len(password) < 12:
+                raise ValueError(
+                    "Admin password must be at least 12 characters in production. "
+                    f"Generate a secure password with: python -c 'import secrets; print(secrets.token_urlsafe(16))'"
+                )
+        
         # Create admin user
         admin_user = await self.create_user(
             username=username,
@@ -306,11 +323,11 @@ class UserService:
             scopes=[
                 "admin",
                 "read:organizations", "write:organizations",
-                "read:accounts", "write:accounts",
+                "read:accounts", "write:accounts", 
                 "read:resources", "read:principals",
                 "read:rules", "write:rules",
                 "read:findings", "write:findings",
-                "collect:data", "read:audit"
+                "collect:data", "read:audit", "query:execute"
             ]
         )
         

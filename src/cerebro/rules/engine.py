@@ -102,12 +102,15 @@ class RuleEngine:
             # Compile the expression
             compiled_ast = self.compile_rule(expression)
             
-            # Prepare evaluation context
+            # Create a program from the compiled AST
+            program = self._env.program(compiled_ast)
+            
+            # Prepare evaluation context (activation)
             eval_context = context.to_dict()
             
             # Evaluate the expression
             logger.debug(f"Evaluating rule {rule_id} with context keys: {list(eval_context.keys())}")
-            result = compiled_ast(**eval_context)
+            result = program.evaluate(eval_context)
             
             execution_time = (datetime.now() - start_time).total_seconds() * 1000
             

@@ -9,8 +9,9 @@ from sqlalchemy import select
 from cerebro.core.database import get_db
 from cerebro.core.models import Principal
 from cerebro.api.schemas import PrincipalResponse
+from cerebro.api.auth import get_current_user, require_scopes, User
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/", response_model=List[PrincipalResponse])
