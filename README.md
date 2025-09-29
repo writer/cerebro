@@ -625,10 +625,15 @@ class CustomSecurityProducer(BaseCustomProducer):
 ## 📚 Documentation
 
 - **[API Reference](http://localhost:8000/docs)** - Interactive OpenAPI documentation
-- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment instructions  
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions  
 - **[Developer Guide](AGENTS.md)** - Architecture and contribution guidelines
-- **[Security Rules](src/cerebro/rules/library.py)** - Complete rule library
-- **[Producer Guide](src/cerebro/findings/producers/)** - Custom rule development
+- **[Provider Setup](docs/PROVIDERS.md)** - Cloud and SaaS provider configuration
+- **[CEL Rules Tutorial](docs/CEL_RULES.md)** - Writing custom security rules
+- **[Database Schema](docs/DATABASE_SCHEMA.md)** - Complete schema reference
+- **[Query Engine Guide](docs/QUERY_ENGINE.md)** - Zero-ETL SQL security analytics
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Compliance Features](docs/COMPLIANCE_FEATURES.md)** - SOC2, ISO27001, PCI-DSS automation
+- **[UV Setup Guide](docs/UV_SETUP.md)** - Fast Python dependency management
 
 ## 📄 License
 
