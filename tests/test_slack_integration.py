@@ -49,15 +49,16 @@ def sample_webhook(sample_org):
 @pytest.fixture
 def sample_finding(sample_org):
     """Sample finding for testing."""
-    return Finding(
+    finding = Finding(
         finding_id=uuid4(),
         org_id=sample_org.org_id,
         title="S3 Bucket Publicly Accessible",
-        description="S3 bucket 'test-bucket' allows public read access",
         severity="critical",
         status="open",
-        created_at=datetime.now(timezone.utc),
     )
+    # Manually set created_at after instantiation
+    finding.created_at = datetime.now(timezone.utc)
+    return finding
 
 
 # ==================== Message Formatter Tests ====================

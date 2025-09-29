@@ -361,7 +361,8 @@ class AgentSessionContext(Base):
         index=True,
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
-    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    context_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        "metadata",
         JSONB,
         nullable=True,
         comment="Additional metadata about the context",

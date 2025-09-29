@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
 
-from cerebro.api.dependencies import get_db, get_current_user
-from cerebro.core.models import SlackWebhook, SlackNotification, User, Organization
+from cerebro.core.database import get_db
+from cerebro.api.auth import get_current_user, User
+from cerebro.core.models import SlackWebhook, SlackNotification, Organization
 
 logger = structlog.get_logger(__name__)
 

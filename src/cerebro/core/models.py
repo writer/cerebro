@@ -312,7 +312,7 @@ class SlackWebhook(Base):
     severity_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
     finding_type_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
     event_types: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
-    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    webhook_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column("metadata", JSONType)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     created_by: Mapped[Optional[str]] = mapped_column(String(255))

@@ -83,12 +83,14 @@ class SlackMessageFormatter:
             },
         ]
 
-        if finding.description:
+        # Add description if available
+        description = getattr(finding, 'description', None)
+        if description:
             blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Description:*\n{finding.description[:500]}",
+                    "text": f"*Description:*\n{description[:500]}",
                 },
             })
 
