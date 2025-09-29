@@ -114,23 +114,58 @@ class CerebroClaudeRuntime:
         conversation = await self._build_conversation_history(session)
         
         try:
-            # Configure Claude options
+            # Build conversation history from database
+            conversation_history = await self._build_conversation_history(session)
+            
+            # Get tool schemas from registry  
+            tools_schema = tool_registry.to_schema(agent_context.permission_level)
+            
+            # Build messages array for Claude
+            messages = []
+            
+            # Add conversation history
+            for hist_msg in conversation_history:
+                if hist_msg["role"] == "user":
+                    messages.append(UserMessage(content=[TextBlock(text=hist_msg["content"]["text"])]))
+                elif hist_msg["role"] == "assistant":
+                    # Reconstruct assistant message with tool calls if any
+                    content_blocks = []
+                    if "content" in hist_msg["content"]:
+                        for content_item in hist_msg["content"]["content"]:
+                            if content_item["type"] == "text":
+                                content_blocks.append(TextBlock(text=content_item["text"]))
+                            elif content_item["type"] == "tool_use":
+                                content_blocks.append(ToolUseBlock(
+                                    id=f"tool_{len(content_blocks)}",
+                                    name=content_item["tool_name"],
+                                    input=content_item["input"]
+                                ))
+                    if content_blocks:
+                        messages.append(AssistantMessage(content=content_blocks))
+            
+            # Add current user message
+            messages.append(UserMessage(content=[TextBlock(text=message)]))
+            
+            # Configure Claude options with tools
             options = ClaudeAgentOptions(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 system_prompt=self._get_system_prompt(session.agent_type),
-                max_turns=1,  # Single turn to maintain control
+                max_turns=4,  # Allow multiple turns for tool interactions
+                allowed_tools=[tool["name"] for tool in tools_schema],
             )
             
-            # Create Claude client
+            # Create Claude client with tools
             async with ClaudeSDKClient(options=options) as client:
                 
-                # Send message and get response
-                await client.query(message)
+                # Send messages with tool schemas
+                await client.send_messages(messages, tools=tools_schema)
                 
                 assistant_content = []
                 tool_calls = []
+                total_input_tokens = 0
+                total_output_tokens = 0
                 
                 async for response_msg in client.receive_response():
                     
@@ -210,6 +245,26 @@ class CerebroClaudeRuntime:
                                         "metadata": {"tool_call_id": tool_call_id}
                                     }
                                 
+                                # CRITICAL: Send tool result back to Claude
+                                tool_result_content = ""
+                                if tool_result.success:
+                                    if tool_result.data:
+                                        # Format tool result for Claude
+                                        import json
+                                        tool_result_content = json.dumps(tool_result.data, indent=2)
+                                    else:
+                                        tool_result_content = "Tool executed successfully"
+                                else:
+                                    tool_result_content = f"Tool error: {tool_result.error}"
+                                
+                                # Send ToolResultBlock back to Claude to continue conversation
+                                tool_result_block = ToolResultBlock(
+                                    tool_use_id=tool_call_id,
+                                    content=[TextBlock(text=tool_result_content)]
+                                )
+                                
+                                await client.send_tool_result(tool_result_block)
+                                
                                 # Store tool call and result
                                 assistant_content.append({
                                     "type": "tool_use",
@@ -224,14 +279,26 @@ class CerebroClaudeRuntime:
                                     "result": tool_result,
                                 })
                 
-                # Store assistant response
+                # Get token usage from Claude response
+                if hasattr(response_msg, 'usage'):
+                    total_input_tokens = getattr(response_msg.usage, 'input_tokens', 0)
+                    total_output_tokens = getattr(response_msg.usage, 'output_tokens', 0)
+                
+                # Store assistant response with token usage
                 await self._store_message(
                     session.id,
                     MessageRole.ASSISTANT,
                     {
                         "content": assistant_content,
                         "tool_calls": len(tool_calls),
-                    }
+                        "token_usage": {
+                            "input_tokens": total_input_tokens,
+                            "output_tokens": total_output_tokens,
+                            "total_tokens": total_input_tokens + total_output_tokens,
+                        }
+                    },
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
                 )
                 
                 # Final completion message
@@ -332,6 +399,8 @@ class CerebroClaudeRuntime:
         session_id: UUID,
         role: MessageRole,
         content: Dict[str, Any],
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
     ) -> None:
         """Store message in database with append-only pattern."""
         from cerebro.core.database import async_session_factory
@@ -340,8 +409,33 @@ class CerebroClaudeRuntime:
                 session_id=session_id,
                 role=role,
                 content=content,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
             db_session.add(message)
+            await db_session.commit()
+            
+            # Create audit event for message
+            from cerebro.core.models import AuditEvent
+            from uuid import uuid4
+            
+            audit_event = AuditEvent(
+                event_id=uuid4(),
+                org_id=session.org_id,  # Need to get this from session
+                event_type=f'agent_message_{role.value}',
+                actor=session.created_by if role == MessageRole.USER else 'claude_agent',
+                resource_id=str(session_id),
+                timestamp=datetime.now(timezone.utc),
+                details={
+                    "message_id": str(message.id),
+                    "role": role.value,
+                    "content_length": len(str(content)),
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "tool_calls": content.get("tool_calls", 0) if isinstance(content, dict) else 0,
+                }
+            )
+            db_session.add(audit_event)
             await db_session.commit()
     
     def _get_system_prompt(self, agent_type: AgentType) -> str:

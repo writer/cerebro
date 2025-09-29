@@ -71,11 +71,11 @@ class RulesTool(Tool):
     
     @property
     def input_schema(self) -> type:
-        return BaseModel  # Will route based on operation
+        return CompileRuleInput  # Default to compile operation
     
     @property
     def output_schema(self) -> type:
-        return BaseModel
+        return CompileRuleOutput
     
     @property
     def permission_level(self) -> ToolPermissionLevel:

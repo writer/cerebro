@@ -7,7 +7,8 @@ CEL policy checks, and append-only audit logging.
 """
 
 from .base import Tool, ToolRegistry, AgentContext, ToolExecutor, tool
-from .findings import FindingsTool
+from .findings_list import FindingsListTool
+from .findings_update import FindingStatusUpdateTool
 from .rules import RulesTool  
 from .query import QueryTool
 from .timeline import TimelineTool
@@ -15,8 +16,9 @@ from .timeline import TimelineTool
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
 
-# Register all available tools
-tool_registry.register(FindingsTool())
+# Register all available tools - split findings into separate tools
+tool_registry.register(FindingsListTool())
+tool_registry.register(FindingStatusUpdateTool())
 tool_registry.register(RulesTool())
 tool_registry.register(QueryTool())
 tool_registry.register(TimelineTool())
@@ -28,7 +30,8 @@ __all__ = [
     "ToolExecutor",
     "tool",
     "tool_registry",
-    "FindingsTool",
+    "FindingsListTool",
+    "FindingStatusUpdateTool", 
     "RulesTool",
     "QueryTool", 
     "TimelineTool",

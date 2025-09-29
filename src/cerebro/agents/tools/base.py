@@ -82,6 +82,10 @@ class AgentContext:
     permission_level: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY
     cel_context: Dict[str, Any] = None
     
+    # Execution controls
+    dry_run: bool = True  # Default to dry-run for safety
+    roles: List[str] = None  # User roles for RBAC
+    
     def __post_init__(self):
         if self.provider_scope is None:
             self.provider_scope = []
@@ -89,6 +93,8 @@ class AgentContext:
             self.finding_ids = []
         if self.cel_context is None:
             self.cel_context = {}
+        if self.roles is None:
+            self.roles = []
     
     def build_cel_context(self, inputs: Dict[str, Any] = None) -> Dict[str, Any]:
         """Build CEL evaluation context with session and input data."""
@@ -306,15 +312,30 @@ class ToolExecutor:
                         "POLICY_VIOLATION",
                     )
             
-            # Force dry run for destructive tools unless explicitly approved
+            # Enforce dry-run for destructive tools unless explicitly approved
             if tool.permission_level == ToolPermissionLevel.WRITE_DESTRUCTIVE:
                 dry_run = dry_run or not cel_result.explicitly_approved
             
-            # Execute the tool
+            # CRITICAL: Set dry_run in context BEFORE execution
+            execution_context = AgentContext(
+                session_id=context.session_id,
+                org_id=context.org_id,
+                user_id=context.user_id,
+                agent_type=context.agent_type,
+                provider_scope=context.provider_scope,
+                finding_ids=context.finding_ids,
+                incident_id=context.incident_id,
+                permission_level=context.permission_level,
+                cel_context=context.cel_context,
+                dry_run=dry_run,  # Pass dry_run to tool BEFORE execution
+                roles=context.roles,
+            )
+            
+            # Execute the tool with dry-run context
             invocation.status = ToolInvocationStatus.RUNNING
             await self._update_invocation(invocation)
             
-            result = await tool.execute(inputs, context)
+            result = await tool.execute(inputs, execution_context)
             result.dry_run = dry_run
             
             # Update invocation with results

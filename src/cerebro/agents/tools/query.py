@@ -101,12 +101,12 @@ class QueryTool(Tool):
                     hours_back = query_inputs.parameters.get("hours_back", 24)
                     event_type = query_inputs.parameters.get("event_type")
                     
-                    # Use raw SQL for audit events
+                    # Use properly parameterized SQL for audit events
                     sql = text("""
                         SELECT event_id, event_type, actor, resource_id, timestamp, details
                         FROM audit_events 
                         WHERE org_id = :org_id 
-                        AND timestamp >= NOW() - INTERVAL ':hours_back hours'
+                        AND timestamp >= NOW() - (:hours_back || ' hours')::interval
                         AND (:event_type IS NULL OR event_type = :event_type)
                         ORDER BY timestamp DESC
                         LIMIT :limit
@@ -128,7 +128,7 @@ class QueryTool(Tool):
                             "timestamp": row.timestamp.isoformat(),
                             "details": row.details,
                         }
-                        for row in result
+                        for row in result.mappings()
                     ]
                 
                 elif query_inputs.query_name == "iam_permissions":
@@ -167,7 +167,7 @@ class QueryTool(Tool):
                             provider
                         FROM findings 
                         WHERE org_id = :org_id 
-                        AND first_seen >= NOW() - INTERVAL ':days_back days'
+                        AND first_seen >= NOW() - (:days_back || ' days')::interval
                         GROUP BY DATE(first_seen), severity, provider
                         ORDER BY date DESC
                         LIMIT :limit
@@ -186,7 +186,7 @@ class QueryTool(Tool):
                             "count": row.count,
                             "provider": row.provider,
                         }
-                        for row in result
+                        for row in result.mappings()
                     ]
                 
                 else:

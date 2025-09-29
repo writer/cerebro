@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from cerebro.core.database import get_db
@@ -459,25 +459,25 @@ class AgentAnalyticsService:
         
         from cerebro.core.database import async_session_factory
         async with async_session_factory() as db_session:
-            # Sessions by agent type
+            # Sessions by agent type with proper parameterization
             agent_type_stats = await db_session.execute(
-                """
+                text("""
                 SELECT 
                     agent_type,
                     COUNT(*) as session_count,
                     COUNT(DISTINCT created_by) as unique_users
                 FROM agent_sessions 
                 WHERE org_id = :org_id
-                    AND created_at >= NOW() - INTERVAL ':days days'
+                    AND created_at >= NOW() - (:days || ' days')::interval
                 GROUP BY agent_type
                 ORDER BY session_count DESC
-                """,
+                """),
                 {"org_id": org_id, "days": days}
             )
             
             # Tool usage stats
             tool_stats = await db_session.execute(
-                """
+                text("""
                 SELECT 
                     ti.tool_name,
                     ti.status,
@@ -485,16 +485,16 @@ class AgentAnalyticsService:
                 FROM tool_invocations ti
                 JOIN agent_sessions s ON ti.session_id = s.id
                 WHERE s.org_id = :org_id
-                    AND ti.started_at >= NOW() - INTERVAL ':days days'
+                    AND ti.started_at >= NOW() - (:days || ' days')::interval
                 GROUP BY ti.tool_name, ti.status
                 ORDER BY invocation_count DESC
-                """,
+                """),
                 {"org_id": org_id, "days": days}
             )
             
-            # Token usage stats
+            # Token usage stats  
             token_stats = await db_session.execute(
-                """
+                text("""
                 SELECT 
                     s.agent_type,
                     SUM(COALESCE(m.input_tokens, 0)) as total_input_tokens,
@@ -504,24 +504,24 @@ class AgentAnalyticsService:
                 FROM agent_messages m
                 JOIN agent_sessions s ON m.session_id = s.id
                 WHERE s.org_id = :org_id
-                    AND m.created_at >= NOW() - INTERVAL ':days days'
+                    AND m.created_at >= NOW() - (:days || ' days')::interval
                 GROUP BY s.agent_type
-                """,
+                """),
                 {"org_id": org_id, "days": days}
             )
             
             # Approval workflow stats
             approval_stats = await db_session.execute(
-                """
+                text("""
                 SELECT 
                     status,
                     COUNT(*) as count,
                     AVG(EXTRACT(EPOCH FROM (decided_at - requested_at))/60) as avg_decision_time_minutes
                 FROM tool_approvals
                 WHERE org_id = :org_id
-                    AND requested_at >= NOW() - INTERVAL ':days days'
+                    AND requested_at >= NOW() - (:days || ' days')::interval
                 GROUP BY status
-                """,
+                """),
                 {"org_id": org_id, "days": days}
             )
             
@@ -529,8 +529,8 @@ class AgentAnalyticsService:
                 "org_id": str(org_id),
                 "analysis_period_days": days,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
-                "agent_type_usage": [dict(row) for row in agent_type_stats],
-                "tool_usage": [dict(row) for row in tool_stats],
-                "token_usage": [dict(row) for row in token_stats],
-                "approval_workflow": [dict(row) for row in approval_stats],
+                "agent_type_usage": [dict(row) for row in agent_type_stats.mappings()],
+                "tool_usage": [dict(row) for row in tool_stats.mappings()],
+                "token_usage": [dict(row) for row in token_stats.mappings()],
+                "approval_workflow": [dict(row) for row in approval_stats.mappings()],
             }
