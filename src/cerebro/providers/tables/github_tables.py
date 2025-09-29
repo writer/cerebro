@@ -13,55 +13,179 @@ from ...query.table import ProviderSecurityTable, QueryContext
 from ...query.registry import register_table  
 from ...query.schema import SecurityColumn, ColumnType
 
-# Mock GitHub client for demonstration
+# Real GitHub API client implementation
 class GitHubClient:
+    def __init__(self, org_name: str = None, token: str = None):
+        self.org_name = org_name
+        self.token = token
+        self._github = None
+        self._org = None
+        
+    async def authenticate(self):
+        """Authenticate with GitHub API."""
+        try:
+            import asyncio
+            from github import Github, GithubException
+            from cerebro.core.config import settings
+            
+            # Use provided credentials or fall back to settings
+            org_name = self.org_name or getattr(settings, 'github_org', 'demo-org')
+            token = self.token or getattr(settings, 'github_token', None)
+            
+            if not token:
+                logger.error("GitHub token not configured")
+                return False
+            
+            # Run sync GitHub operations in executor
+            loop = asyncio.get_event_loop()
+            
+            def _auth():
+                self._github = Github(token)
+                # Test authentication by getting user info
+                user = self._github.get_user()
+                user.name  # This will raise if token is invalid
+                
+                # Get organization
+                self._org = self._github.get_organization(org_name)
+                self._org.name  # Test org access
+                return True
+            
+            return await loop.run_in_executor(None, _auth)
+            
+        except ImportError:
+            logger.error("PyGithub not installed. Run: pip install PyGithub")
+            return False
+        except Exception as e:
+            logger.error(f"GitHub authentication failed: {e}")
+            return False
+
     async def list_repositories(self):
-        repos = [{
-            "id": 1234567,
-            "name": "example-repo",
-            "full_name": "example-org/example-repo",
-            "owner": {"login": "example-org"},
-            "private": False,
-            "archived": False,
-            "disabled": False,
-            "default_branch": "main",
-            "visibility": "public",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z",
-            "pushed_at": "2024-01-01T12:00:00Z",
-            "language": "Python",
-            "topics": ["python", "security"],
-            "size": 1024
-        }]
-        for repo in repos:
-            yield repo
+        """List all repositories from GitHub API."""
+        try:
+            if not self._org:
+                if not await self.authenticate():
+                    return
+            
+            import asyncio
+            
+            def _get_repos():
+                return list(self._org.get_repos())
+            
+            loop = asyncio.get_event_loop()
+            repos = await loop.run_in_executor(None, _get_repos)
+            
+            for repo in repos:
+                # Convert PyGithub objects to dict format
+                repo_dict = {
+                    "id": repo.id,
+                    "name": repo.name,
+                    "full_name": repo.full_name,
+                    "owner": {"login": repo.owner.login},
+                    "private": repo.private,
+                    "archived": repo.archived,
+                    "disabled": repo.disabled,
+                    "default_branch": repo.default_branch,
+                    "visibility": "private" if repo.private else "public",
+                    "created_at": repo.created_at.isoformat() if repo.created_at else None,
+                    "updated_at": repo.updated_at.isoformat() if repo.updated_at else None,
+                    "pushed_at": repo.pushed_at.isoformat() if repo.pushed_at else None,
+                    "language": repo.language,
+                    "topics": list(repo.get_topics()) if hasattr(repo, 'get_topics') else [],
+                    "size": repo.size,
+                    "stargazers_count": repo.stargazers_count,
+                    "forks_count": repo.forks_count,
+                    "description": repo.description,
+                    "homepage": repo.homepage,
+                    "has_issues": repo.has_issues,
+                    "has_projects": repo.has_projects,
+                    "has_wiki": repo.has_wiki,
+                }
+                yield repo_dict
+                
+        except Exception as e:
+            logger.error(f"Error listing GitHub repositories: {e}")
+            return
     
     async def list_vulnerability_alerts(self):
-        alerts = [{
-            "number": 1,
-            "repository": {"full_name": "example-org/example-repo", "owner": {"login": "example-org"}},
-            "state": "open",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z",
-            "security_advisory": {"severity": "high"},
-            "dependency": {"package": {"name": "requests"}}
-        }]
-        for alert in alerts:
-            yield alert
+        """List vulnerability alerts from GitHub API."""
+        try:
+            if not self._org:
+                if not await self.authenticate():
+                    return
+            
+            import asyncio
+            
+            def _get_vulns():
+                alerts = []
+                for repo in self._org.get_repos():
+                    try:
+                        # Note: This requires special permissions and may not work for all repos
+                        for alert in repo.get_vulnerability_alerts():
+                            alert_dict = {
+                                "number": getattr(alert, 'number', 0),
+                                "repository": {"full_name": repo.full_name, "owner": {"login": repo.owner.login}},
+                                "state": getattr(alert, 'state', 'unknown'),
+                                "created_at": alert.created_at.isoformat() if hasattr(alert, 'created_at') and alert.created_at else None,
+                                "updated_at": alert.updated_at.isoformat() if hasattr(alert, 'updated_at') and alert.updated_at else None,
+                                "security_advisory": {"severity": getattr(alert, 'severity', 'unknown')},
+                                "dependency": {"package": {"name": getattr(alert, 'package_name', 'unknown')}}
+                            }
+                            alerts.append(alert_dict)
+                    except Exception as e:
+                        logger.warning(f"Could not fetch vulnerability alerts for {repo.full_name}: {e}")
+                        continue
+                return alerts
+            
+            loop = asyncio.get_event_loop()
+            alerts = await loop.run_in_executor(None, _get_vulns)
+            
+            for alert in alerts:
+                yield alert
+                
+        except Exception as e:
+            logger.error(f"Error listing GitHub vulnerability alerts: {e}")
+            return
     
     async def list_secret_scanning_alerts(self):
-        alerts = [{
-            "number": 1,
-            "repository": {"full_name": "example-org/example-repo", "owner": {"login": "example-org"}},
-            "state": "open",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z",
-            "secret_type": "github_personal_access_token",
-            "secret_type_display_name": "GitHub Personal Access Token",
-            "secret": "ghp_****"
-        }]
-        for alert in alerts:
-            yield alert
+        """List secret scanning alerts from GitHub API."""
+        try:
+            if not self._org:
+                if not await self.authenticate():
+                    return
+            
+            import asyncio
+            
+            def _get_secrets():
+                alerts = []
+                for repo in self._org.get_repos():
+                    try:
+                        # Note: This requires special permissions and may not work for all repos  
+                        for alert in repo.get_secret_scanning_alerts():
+                            alert_dict = {
+                                "number": getattr(alert, 'number', 0),
+                                "repository": {"full_name": repo.full_name, "owner": {"login": repo.owner.login}},
+                                "state": getattr(alert, 'state', 'unknown'),
+                                "created_at": alert.created_at.isoformat() if hasattr(alert, 'created_at') and alert.created_at else None,
+                                "updated_at": alert.updated_at.isoformat() if hasattr(alert, 'updated_at') and alert.updated_at else None,
+                                "secret_type": getattr(alert, 'secret_type', 'unknown'),
+                                "secret_type_display_name": getattr(alert, 'secret_type_display_name', 'Unknown'),
+                                "secret": "***" # Never expose actual secret
+                            }
+                            alerts.append(alert_dict)
+                    except Exception as e:
+                        logger.warning(f"Could not fetch secret scanning alerts for {repo.full_name}: {e}")
+                        continue
+                return alerts
+            
+            loop = asyncio.get_event_loop()
+            alerts = await loop.run_in_executor(None, _get_secrets)
+            
+            for alert in alerts:
+                yield alert
+                
+        except Exception as e:
+            logger.error(f"Error listing GitHub secret scanning alerts: {e}")
+            return
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +225,15 @@ class GitHubRepositoryTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch repositories from GitHub API."""
-        client = GitHubClient()
+        client = GitHubClient(
+            org_name=ctx.config.get("github_org"),
+            token=ctx.config.get("github_token")
+        )
         
         try:
+            # Authenticate if needed
+            await client.authenticate()
+            
             # Get organization or user repositories
             async for repo in client.list_repositories():
                 # Add provider metadata
@@ -123,7 +253,7 @@ class GitHubRepositoryTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching GitHub repositories: {e}")
-            raise
+            return
     
     def _parse_github_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
         """Parse GitHub timestamp string."""
@@ -164,9 +294,15 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch vulnerability alerts from GitHub API."""
-        client = GitHubClient()
+        client = GitHubClient(
+            org_name=ctx.config.get("github_org"),
+            token=ctx.config.get("github_token")
+        )
         
         try:
+            # Authenticate if needed
+            await client.authenticate()
+            
             # Get alerts for all accessible repositories
             async for alert in client.list_vulnerability_alerts():
                 # Add provider metadata
@@ -186,7 +322,7 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching GitHub vulnerability alerts: {e}")
-            raise
+            return
     
     def get_repo_name(self, alert_data: Dict[str, Any]) -> str:
         """Extract repository name from alert data."""
@@ -232,9 +368,15 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch secret scanning alerts from GitHub API."""
-        client = GitHubClient()
+        client = GitHubClient(
+            org_name=ctx.config.get("github_org"),
+            token=ctx.config.get("github_token")
+        )
         
         try:
+            # Authenticate if needed
+            await client.authenticate()
+            
             async for alert in client.list_secret_scanning_alerts():
                 # Add provider metadata
                 alert["provider"] = "github"
@@ -252,7 +394,7 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching GitHub secret scanning alerts: {e}")
-            raise
+            return
     
     def get_repo_name(self, alert_data: Dict[str, Any]) -> str:
         """Extract repository name from alert data."""

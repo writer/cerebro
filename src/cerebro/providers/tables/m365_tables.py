@@ -15,94 +15,151 @@ from ...query.schema import SecurityColumn, ColumnType, SecuritySchema
 
 logger = logging.getLogger(__name__)
 
-# Mock M365 client for demonstration
+# Real Microsoft Graph client implementation
 class M365Client:
-    async def get_client(self, service: str):
-        return MockM365Service()
+    def __init__(self, tenant_id: str = None, client_id: str = None, client_secret: str = None):
+        self.tenant_id = tenant_id
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self._access_token = None
+        self._client = None
+        
+    async def authenticate(self):
+        """Authenticate with Microsoft Graph API."""
+        try:
+            import httpx
+            from cerebro.core.config import settings
+            
+            # Use provided credentials or fall back to settings
+            tenant_id = self.tenant_id or getattr(settings, 'm365_tenant_id', 'default-tenant')
+            client_id = self.client_id or getattr(settings, 'm365_client_id', None)
+            client_secret = self.client_secret or getattr(settings, 'm365_client_secret', None)
+            
+            if not client_id or not client_secret:
+                logger.error("M365 client credentials not configured")
+                return False
+            
+            # Get OAuth token
+            token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+            token_data = {
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://graph.microsoft.com/.default"
+            }
+            
+            async with httpx.AsyncClient() as temp_client:
+                response = await temp_client.post(token_url, data=token_data)
+                response.raise_for_status()
+                token_response = response.json()
+                self._access_token = token_response["access_token"]
+            
+            # Create Graph API client
+            self._client = httpx.AsyncClient(
+                base_url="https://graph.microsoft.com/v1.0",
+                headers={
+                    "Authorization": f"Bearer {self._access_token}",
+                    "Content-Type": "application/json"
+                },
+                timeout=30.0
+            )
+            
+            self.tenant_id = tenant_id
+            return True
+            
+        except ImportError:
+            logger.error("httpx not installed. Run: pip install httpx")
+            return False
+        except Exception as e:
+            logger.error(f"M365 authentication failed: {e}")
+            return False
     
     async def get_tenant_id(self) -> str:
-        return "12345678-1234-1234-1234-123456789012"
+        """Get tenant ID."""
+        return self.tenant_id or "unknown-tenant"
 
-class MockM365Service:
     async def list_users(self):
-        users = [{
-            "id": "12345678-abcd-efgh-ijkl-123456789012",
-            "userPrincipalName": "john.doe@contoso.com",
-            "displayName": "John Doe",
-            "givenName": "John",
-            "surname": "Doe",
-            "mail": "john.doe@contoso.com",
-            "mobilePhone": "+1-555-555-5555",
-            "officeLocation": "Seattle",
-            "preferredLanguage": "en-US",
-            "jobTitle": "Software Engineer",
-            "department": "Engineering",
-            "companyName": "Contoso Ltd",
-            "country": "United States",
-            "usageLocation": "US",
-            "accountEnabled": True,
-            "lastSignInDateTime": "2024-01-15T10:30:00Z",
-            "createdDateTime": "2024-01-01T00:00:00Z",
-            "assignedLicenses": [
-                {"skuId": "c7df2760-2c81-4ef7-b578-5b5392b571df"}  # Office 365 E5
-            ],
-            "signInActivity": {
-                "lastSignInDateTime": "2024-01-15T10:30:00Z",
-                "lastNonInteractiveSignInDateTime": "2024-01-15T09:15:00Z"
-            }
-        }]
-        for user in users:
-            yield user
+        """List all users from Microsoft Graph API."""
+        try:
+            if not self._client:
+                if not await self.authenticate():
+                    return
+                    
+            url = "/users"
+            params = {"$select": "id,userPrincipalName,displayName,givenName,surname,mail,mobilePhone,officeLocation,jobTitle,department,companyName,country,usageLocation,accountEnabled,createdDateTime,lastSignInDateTime,assignedLicenses,signInActivity"}
+            
+            while url:
+                response = await self._client.get(url, params=params if not url.startswith("http") else None)
+                response.raise_for_status()
+                data = response.json()
+                
+                for user in data.get("value", []):
+                    yield user
+                
+                # Handle pagination
+                url = data.get("@odata.nextLink")
+                if url and url.startswith("http"):
+                    # Remove base URL for next request
+                    url = url.replace("https://graph.microsoft.com/v1.0", "")
+                params = None  # Parameters are included in nextLink URL
+                
+        except Exception as e:
+            logger.error(f"Error listing M365 users: {e}")
+            return
     
     async def list_applications(self):
-        apps = [{
-            "id": "87654321-dcba-hgfe-lkji-210987654321",
-            "appId": "12345678-1234-1234-1234-123456789012",
-            "displayName": "Custom Business App",
-            "signInAudience": "AzureADMyOrg",
-            "createdDateTime": "2024-01-01T00:00:00Z",
-            "publisherDomain": "contoso.com",
-            "requiredResourceAccess": [
-                {
-                    "resourceAppId": "00000003-0000-0000-c000-000000000000",  # Microsoft Graph
-                    "resourceAccess": [
-                        {"id": "e1fe6dd8-ba31-4d61-89e7-88639da4683d", "type": "Scope"}  # User.Read
-                    ]
-                }
-            ],
-            "keyCredentials": [],
-            "passwordCredentials": []
-        }]
-        for app in apps:
-            yield app
+        """List all applications from Microsoft Graph API."""
+        try:
+            if not self._client:
+                if not await self.authenticate():
+                    return
+                    
+            url = "/applications"
+            params = {"$select": "id,appId,displayName,signInAudience,createdDateTime,publisherDomain,requiredResourceAccess,keyCredentials,passwordCredentials"}
+            
+            while url:
+                response = await self._client.get(url, params=params if not url.startswith("http") else None)
+                response.raise_for_status()
+                data = response.json()
+                
+                for app in data.get("value", []):
+                    yield app
+                
+                # Handle pagination
+                url = data.get("@odata.nextLink")
+                if url and url.startswith("http"):
+                    url = url.replace("https://graph.microsoft.com/v1.0", "")
+                params = None
+                
+        except Exception as e:
+            logger.error(f"Error listing M365 applications: {e}")
+            return
     
     async def list_conditional_access_policies(self):
-        policies = [{
-            "id": "11111111-2222-3333-4444-555555555555",
-            "displayName": "Require MFA for All Users",
-            "state": "enabled",
-            "conditions": {
-                "users": {
-                    "includeUsers": ["All"],
-                    "excludeUsers": []
-                },
-                "applications": {
-                    "includeApplications": ["All"]
-                },
-                "locations": {
-                    "includeLocations": ["All"],
-                    "excludeLocations": ["AllTrusted"]
-                }
-            },
-            "grantControls": {
-                "operator": "OR",
-                "builtInControls": ["mfa"]
-            },
-            "createdDateTime": "2024-01-01T00:00:00Z",
-            "modifiedDateTime": "2024-01-15T10:00:00Z"
-        }]
-        for policy in policies:
-            yield policy
+        """List Conditional Access policies from Microsoft Graph API."""
+        try:
+            if not self._client:
+                if not await self.authenticate():
+                    return
+                    
+            url = "/identity/conditionalAccess/policies"
+            
+            while url:
+                response = await self._client.get(url)
+                response.raise_for_status()
+                data = response.json()
+                
+                for policy in data.get("value", []):
+                    yield policy
+                
+                # Handle pagination
+                url = data.get("@odata.nextLink")
+                if url and url.startswith("http"):
+                    url = url.replace("https://graph.microsoft.com/v1.0", "")
+                    
+        except Exception as e:
+            logger.error(f"Error listing Conditional Access policies: {e}")
+            return
 
 
 class M365UserTable(ProviderSecurityTable):
@@ -140,19 +197,24 @@ class M365UserTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch users from Microsoft Graph API."""
-        client = M365Client()
+        client = M365Client(
+            tenant_id=ctx.config.get("m365_tenant_id"),
+            client_id=ctx.config.get("m365_client_id"),
+            client_secret=ctx.config.get("m365_client_secret")
+        )
         
         try:
-            graph_service = await client.get_client("graph")
+            # Authenticate if needed
+            await client.authenticate()
             
-            async for user in graph_service.list_users():
+            async for user in client.list_users():
                 # Transform M365 user to our schema
                 transformed_user = self._transform_m365_user(user, await client.get_tenant_id())
                 yield transformed_user
                 
         except Exception as e:
             logger.error(f"Error fetching M365 users: {e}")
-            raise
+            return
     
     def _transform_m365_user(self, m365_user: Dict[str, Any], tenant_id: str) -> Dict[str, Any]:
         """Transform M365 user data to our standard schema."""
@@ -238,12 +300,17 @@ class M365ApplicationTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch applications from Microsoft Graph API."""
-        client = M365Client()
+        client = M365Client(
+            tenant_id=ctx.config.get("m365_tenant_id"),
+            client_id=ctx.config.get("m365_client_id"),
+            client_secret=ctx.config.get("m365_client_secret")
+        )
         
         try:
-            graph_service = await client.get_client("graph")
+            # Authenticate if needed
+            await client.authenticate()
             
-            async for app in graph_service.list_applications():
+            async for app in client.list_applications():
                 # Add provider metadata
                 app["provider"] = "m365"
                 app["account_id"] = await client.get_tenant_id()
@@ -257,7 +324,7 @@ class M365ApplicationTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching M365 applications: {e}")
-            raise
+            return
     
     def check_credentials(self, app_data: Dict[str, Any]) -> bool:
         """Check if application has authentication credentials."""
@@ -311,12 +378,17 @@ class M365ConditionalAccessTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch Conditional Access policies from Microsoft Graph API."""
-        client = M365Client()
+        client = M365Client(
+            tenant_id=ctx.config.get("m365_tenant_id"),
+            client_id=ctx.config.get("m365_client_id"),
+            client_secret=ctx.config.get("m365_client_secret")
+        )
         
         try:
-            graph_service = await client.get_client("graph")
+            # Authenticate if needed
+            await client.authenticate()
             
-            async for policy in graph_service.list_conditional_access_policies():
+            async for policy in client.list_conditional_access_policies():
                 # Add provider metadata
                 policy["provider"] = "m365"
                 policy["account_id"] = await client.get_tenant_id()
@@ -330,7 +402,7 @@ class M365ConditionalAccessTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching M365 Conditional Access policies: {e}")
-            raise
+            return
     
     def check_all_users(self, policy_data: Dict[str, Any]) -> bool:
         """Check if policy applies to all users."""

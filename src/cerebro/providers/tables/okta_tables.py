@@ -13,55 +13,166 @@ from ...query.table import ProviderSecurityTable, QueryContext
 from ...query.registry import register_table
 from ...query.schema import SecurityColumn, ColumnType, SecuritySchema
 
-# Mock Okta client for demonstration
+# Real Okta API client implementation
 class OktaClient:
+    def __init__(self, domain: str = None, api_token: str = None):
+        self.domain = domain
+        self.api_token = api_token
+        self.base_url = f"https://{domain}" if domain else None
+        self._client = None
+        
+    async def authenticate(self):
+        """Authenticate with Okta API."""
+        try:
+            import httpx
+            from cerebro.core.config import settings
+            
+            # Use provided credentials or fall back to settings
+            domain = self.domain or getattr(settings, 'okta_domain', 'demo')
+            api_token = self.api_token or getattr(settings, 'okta_api_token', None)
+            
+            if not api_token:
+                logger.error("Okta API token not configured")
+                return False
+            
+            self.base_url = f"https://{domain}"
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                headers={
+                    "Authorization": f"SSWS {api_token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                timeout=30.0
+            )
+            
+            return True
+            
+        except ImportError:
+            logger.error("httpx not installed. Run: pip install httpx")
+            return False
+        except Exception as e:
+            logger.error(f"Okta authentication failed: {e}")
+            return False
+
     async def list_users(self, **params):
-        # Mock user data
-        users = [{
-            "id": "00u1234567890abcdef",
-            "status": "ACTIVE",
-            "created": "2024-01-01T00:00:00.000Z",
-            "lastUpdated": "2024-01-01T00:00:00.000Z",
-            "lastLogin": "2024-01-01T12:00:00.000Z",
-            "passwordChanged": "2024-01-01T00:00:00.000Z",
-            "profile": {
-                "login": "john.doe@example.com",
-                "firstName": "John",
-                "lastName": "Doe",
-                "email": "john.doe@example.com",
-                "mobilePhone": "+1-555-555-5555"
-            }
-        }]
-        for user in users:
-            yield user
+        """List all users from Okta API."""
+        try:
+            if not self._client:
+                if not await self.authenticate():
+                    return
+                    
+            url = "/api/v1/users"
+            
+            while url:
+                response = await self._client.get(url, params=params if not url.startswith("http") else None)
+                response.raise_for_status()
+                
+                users = response.json()
+                
+                # Handle both list and single object responses
+                if isinstance(users, list):
+                    for user in users:
+                        yield user
+                else:
+                    yield users
+                
+                # Handle pagination
+                links = response.headers.get("Link", "")
+                next_url = None
+                for link in links.split(","):
+                    if 'rel="next"' in link:
+                        next_url = link.split("<")[1].split(">")[0]
+                        break
+                
+                if next_url and next_url.startswith("http"):
+                    url = next_url.replace(self.base_url, "")
+                else:
+                    break
+                params = None  # Parameters are included in next URL
+                
+        except Exception as e:
+            logger.error(f"Error listing Okta users: {e}")
+            return
     
     async def list_applications(self):
-        apps = [{
-            "id": "0oa1234567890abcdef",
-            "name": "example_saml_app",
-            "label": "Example SAML App",
-            "status": "ACTIVE",
-            "created": "2024-01-01T00:00:00.000Z",
-            "lastUpdated": "2024-01-01T00:00:00.000Z",
-            "signOnMode": "SAML_2_0"
-        }]
-        for app in apps:
-            yield app
+        """List all applications from Okta API."""
+        try:
+            if not self._client:
+                if not await self.authenticate():
+                    return
+                    
+            url = "/api/v1/apps"
+            
+            while url:
+                response = await self._client.get(url)
+                response.raise_for_status()
+                
+                apps = response.json()
+                
+                # Handle both list and single object responses
+                if isinstance(apps, list):
+                    for app in apps:
+                        yield app
+                else:
+                    yield apps
+                
+                # Handle pagination
+                links = response.headers.get("Link", "")
+                next_url = None
+                for link in links.split(","):
+                    if 'rel="next"' in link:
+                        next_url = link.split("<")[1].split(">")[0]
+                        break
+                
+                if next_url and next_url.startswith("http"):
+                    url = next_url.replace(self.base_url, "")
+                else:
+                    break
+                    
+        except Exception as e:
+            logger.error(f"Error listing Okta applications: {e}")
+            return
     
     async def list_groups(self):
-        groups = [{
-            "id": "00g1234567890abcdef",
-            "created": "2024-01-01T00:00:00.000Z",
-            "lastUpdated": "2024-01-01T00:00:00.000Z",
-            "profile": {
-                "name": "Everyone",
-                "description": "All users in the organization"
-            },
-            "type": "BUILT_IN"
-        }]
-        for group in groups:
-            yield group
-
+        """List all groups from Okta API."""
+        try:
+            if not self._client:
+                if not await self.authenticate():
+                    return
+                    
+            url = "/api/v1/groups"
+            
+            while url:
+                response = await self._client.get(url)
+                response.raise_for_status()
+                
+                groups = response.json()
+                
+                # Handle both list and single object responses
+                if isinstance(groups, list):
+                    for group in groups:
+                        yield group
+                else:
+                    yield groups
+                
+                # Handle pagination
+                links = response.headers.get("Link", "")
+                next_url = None
+                for link in links.split(","):
+                    if 'rel="next"' in link:
+                        next_url = link.split("<")[1].split(">")[0]
+                        break
+                
+                if next_url and next_url.startswith("http"):
+                    url = next_url.replace(self.base_url, "")
+                else:
+                    break
+                    
+        except Exception as e:
+            logger.error(f"Error listing Okta groups: {e}")
+            return
+    
 logger = logging.getLogger(__name__)
 
 
@@ -94,9 +205,15 @@ class OktaUserTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch users from Okta API."""
-        client = OktaClient()
+        client = OktaClient(
+            domain=ctx.config.get("okta_domain"),
+            api_token=ctx.config.get("okta_api_token")
+        )
         
         try:
+            # Authenticate if needed
+            await client.authenticate()
+            
             # Build query parameters from context filters
             params = self._build_okta_query_params(ctx)
             
@@ -108,7 +225,7 @@ class OktaUserTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching Okta users: {e}")
-            raise
+            return
     
     def _build_okta_query_params(self, ctx: QueryContext) -> Dict[str, Any]:
         """Build Okta API query parameters from QueryContext."""
@@ -209,13 +326,19 @@ class OktaApplicationTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch applications from Okta API."""
-        client = OktaClient()
+        client = OktaClient(
+            domain=ctx.config.get("okta_domain"),
+            api_token=ctx.config.get("okta_api_token")
+        )
         
         try:
+            # Authenticate if needed
+            await client.authenticate()
+            
             async for app in client.list_applications():
                 # Add provider metadata
                 app["provider"] = "okta"
-                app["account_id"] = self._get_okta_domain()
+                app["account_id"] = ctx.config.get("okta_domain", "unknown-okta")
                 app["region"] = "global"
                 app["created_at"] = self._parse_okta_timestamp(app.get("created"))
                 app["updated_at"] = self._parse_okta_timestamp(app.get("lastUpdated"))
@@ -226,7 +349,7 @@ class OktaApplicationTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching Okta applications: {e}")
-            raise
+            return
     
     def _get_okta_domain(self) -> str:
         """Get Okta domain."""
@@ -272,13 +395,19 @@ class OktaGroupTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch groups from Okta API."""
-        client = OktaClient()
+        client = OktaClient(
+            domain=ctx.config.get("okta_domain"),
+            api_token=ctx.config.get("okta_api_token")
+        )
         
         try:
+            # Authenticate if needed
+            await client.authenticate()
+            
             async for group in client.list_groups():
                 # Add provider metadata
                 group["provider"] = "okta"
-                group["account_id"] = self._get_okta_domain()
+                group["account_id"] = ctx.config.get("okta_domain", "unknown-okta")
                 group["region"] = "global"
                 group["created_at"] = self._parse_okta_timestamp(group.get("created"))
                 group["updated_at"] = self._parse_okta_timestamp(group.get("lastUpdated"))
@@ -289,7 +418,7 @@ class OktaGroupTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching Okta groups: {e}")
-            raise
+            return
     
     def _get_okta_domain(self) -> str:
         """Get Okta domain.""" 

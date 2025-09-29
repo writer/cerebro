@@ -46,6 +46,7 @@ class QueryPlan:
     limit: Optional[int]
     offset: Optional[int]
     estimated_rows: Optional[int]
+    wildcard_tables: Optional[List[str]] = None  # Tables matched by wildcard pattern
 
 
 class SQLParser:
@@ -75,14 +76,18 @@ class SQLParser:
             
             # Handle wildcard table patterns
             registry = get_registry()
+            matching_tables = []
             if '*' in table_name:
                 matching_tables = registry.find_tables_by_pattern(table_name)
                 if not matching_tables:
                     raise QueryError(f"No tables match pattern '{table_name}'")
-                # For now, use the first matching table
-                # TODO: Implement UNION ALL for multiple tables
-                table_name = matching_tables[0]
-                logger.info(f"Expanded wildcard '{table_name}' to {matching_tables}")
+                logger.info(f"Expanded wildcard pattern '{table_name}' to {len(matching_tables)} tables: {matching_tables}")
+                
+                # For multiple tables, we'll handle UNION ALL in execution
+                if len(matching_tables) == 1:
+                    table_name = matching_tables[0]
+                    matching_tables = []  # Clear since we're using single table
+                # Otherwise, keep the original wildcard table name and matching_tables list
             
             selected_columns = self._extract_selected_columns(parsed)
             filters = self._extract_filters(parsed)
@@ -97,7 +102,8 @@ class SQLParser:
                 order_by=order_by,
                 limit=limit,
                 offset=offset,
-                estimated_rows=None
+                estimated_rows=None,
+                wildcard_tables=matching_tables if matching_tables else None
             )
             
         except Exception as e:
@@ -391,12 +397,15 @@ class QueryEngine:
                 "execution_time_ms": execution_time
             })
             
+            # Determine which tables were queried
+            tables_queried = plan.wildcard_tables if plan.wildcard_tables else [plan.table_name]
+            
             return QueryResult(
                 columns=columns,
                 rows=rows,
                 total_rows=len(rows),
                 execution_time_ms=execution_time,
-                tables_queried=[plan.table_name],
+                tables_queried=tables_queried,
                 errors=errors
             )
             
@@ -439,6 +448,11 @@ class QueryEngine:
     
     async def _execute_query_plan(self, plan: QueryPlan) -> List[Dict[str, Any]]:
         """Execute a validated query plan."""
+        # Handle wildcard tables with UNION ALL behavior
+        if plan.wildcard_tables:
+            return await self._execute_wildcard_query(plan)
+        
+        # Single table execution
         table = self.registry.get_table(plan.table_name)
         
         # Create query context
@@ -447,7 +461,8 @@ class QueryEngine:
             limit=plan.limit,
             offset=plan.offset,
             order_by=plan.order_by,
-            columns=plan.selected_columns if plan.selected_columns != ['*'] else None
+            columns=plan.selected_columns if plan.selected_columns != ['*'] else None,
+            config={}  # Empty config for now, could be extended to include provider credentials
         )
         
         # Fetch data from table
@@ -472,6 +487,64 @@ class QueryEngine:
             rows = rows[plan.offset:]
         
         return rows
+    
+    async def _execute_wildcard_query(self, plan: QueryPlan) -> List[Dict[str, Any]]:
+        """Execute query against multiple tables (UNION ALL behavior)."""
+        all_rows = []
+        
+        # For wildcard queries, we need to collect results from all matching tables
+        # We'll remove limit/offset from individual table queries and apply them at the end
+        ctx_no_limits = QueryContext(
+            filters=plan.filters,
+            limit=None,  # Don't limit individual tables
+            offset=None,  # Don't offset individual tables
+            order_by=None,  # Don't sort individual tables
+            columns=plan.selected_columns if plan.selected_columns != ['*'] else None,
+            config={}  # Empty config for now
+        )
+        
+        for table_name in plan.wildcard_tables:
+            try:
+                table = self.registry.get_table(table_name)
+                if not table:
+                    logger.warning(f"Table {table_name} not found in registry")
+                    continue
+                
+                # Fetch data from this table
+                table_rows = []
+                async for resource in table.list_resources(ctx_no_limits):
+                    # Apply column selection
+                    if ctx_no_limits.columns and ctx_no_limits.columns != ['*']:
+                        resource = {col: resource.get(col) for col in ctx_no_limits.columns}
+                    
+                    # Add table source metadata for debugging
+                    if '_table_source' not in resource:
+                        resource['_table_source'] = table_name
+                    
+                    table_rows.append(resource)
+                
+                logger.debug(f"Retrieved {len(table_rows)} rows from {table_name}")
+                all_rows.extend(table_rows)
+                
+            except Exception as e:
+                logger.error(f"Error querying table {table_name}: {e}")
+                continue
+        
+        logger.info(f"Wildcard query collected {len(all_rows)} total rows from {len(plan.wildcard_tables)} tables")
+        
+        # Apply sorting at engine level across all results
+        if plan.order_by:
+            all_rows = self._sort_rows(all_rows, plan.order_by)
+        
+        # Apply offset at engine level
+        if plan.offset:
+            all_rows = all_rows[plan.offset:]
+        
+        # Apply limit at engine level
+        if plan.limit:
+            all_rows = all_rows[:plan.limit]
+        
+        return all_rows
     
     def _sort_rows(self, rows: List[Dict[str, Any]], order_by: List[str]) -> List[Dict[str, Any]]:
         """Sort rows by specified columns."""

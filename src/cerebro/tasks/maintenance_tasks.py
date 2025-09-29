@@ -197,16 +197,18 @@ def update_identity_clusters_task(self, org_id: str):
                 if not org:
                     raise ValueError("Organization not found")
                 
-                # Initialize identity stitcher
-                identity_stitcher = IdentityStitcher(db)
+                # Initialize identity stitcher adapter
+                from cerebro.infrastructure.adapters import IdentityStitcherAdapter
+                identity_stitcher = IdentityStitcherAdapter(db)
                 
                 self.update_state(
                     state='PROGRESS',
                     meta={'status': 'Finding identity clusters', 'progress': 20}
                 )
                 
-                # Find identity clusters
-                clusters = await identity_stitcher.find_identity_clusters(UUID(org_id))
+                # Find identity clusters  
+                # Note: The adapter will get principals from the DB using the org_id
+                clusters = await identity_stitcher.find_identity_clusters(UUID(org_id), [])
                 
                 self.update_state(
                     state='PROGRESS',

@@ -29,6 +29,7 @@ class QueryContext:
     offset: Optional[int] = None
     order_by: Optional[List[str]] = None
     columns: Optional[List[str]] = None  # Specific columns to select
+    config: Optional[Dict[str, Any]] = None  # Configuration (e.g., provider credentials)
 
 
 class SecurityTable(ABC):

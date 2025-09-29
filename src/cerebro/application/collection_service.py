@@ -168,15 +168,20 @@ class CollectionService:
         principals: List[PrincipalEntity]
     ) -> None:
         """Perform identity stitching across providers."""
+        if not self.identity_stitcher:
+            logger.debug("No identity stitcher configured, skipping identity stitching")
+            return
+            
         try:
             clusters = await self.identity_stitcher.find_identity_clusters(org_id, principals)
             logger.info(f"Found {len(clusters)} identity clusters")
             
-            # Save identity clusters to repository
-            from cerebro.core.identity_cluster_repository import IdentityClusterRepository
-            cluster_repo = IdentityClusterRepository(self.db)
-            await cluster_repo.save_clusters(org_id, clusters)
-            logger.info(f"Saved {len(clusters)} identity clusters to repository")
+            # Save identity clusters through repository port
+            if hasattr(self.repository, 'save_identity_clusters'):
+                await self.repository.save_identity_clusters(org_id, clusters)
+                logger.info(f"Saved {len(clusters)} identity clusters to repository")
+            else:
+                logger.warning("Repository does not support identity cluster saving")
             
         except Exception as e:
             logger.error(f"Identity stitching failed: {e}")

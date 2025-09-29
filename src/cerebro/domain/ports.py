@@ -103,6 +103,14 @@ class RepositoryPort(Protocol):
     async def update_finding(self, finding_id: UUID, finding: FindingEntity) -> None:
         """Update an existing finding."""
         ...
+    
+    async def save_identity_clusters(
+        self,
+        org_id: UUID,
+        clusters: List[IdentityClusterEntity]
+    ) -> int:
+        """Save identity clusters."""
+        ...
 
 
 class RuleEnginePort(Protocol):

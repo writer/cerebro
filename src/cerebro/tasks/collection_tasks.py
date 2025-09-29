@@ -59,7 +59,14 @@ def collect_account_task(
                 
                 # Initialize services
                 repository = SQLAlchemyRepository(db)
-                collection_service = CollectionService(repository, None)  # No identity stitcher for now
+                
+                # Initialize identity stitcher if needed
+                identity_stitcher = None
+                if collection_config.get("enable_identity_stitching", False):
+                    from cerebro.infrastructure.adapters import IdentityStitcherAdapter
+                    identity_stitcher = IdentityStitcherAdapter(db)
+                
+                collection_service = CollectionService(repository, identity_stitcher)  # type: ignore
                 
                 # Update progress
                 self.update_state(

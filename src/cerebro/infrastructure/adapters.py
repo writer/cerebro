@@ -11,9 +11,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from cerebro.domain.entities import (
     ResourceEntity, PrincipalEntity, ConfigEntity, 
-    IamPermissionEntity, FindingEntity, RuleEntity
+    IamPermissionEntity, FindingEntity, RuleEntity, IdentityClusterEntity
 )
-from cerebro.domain.ports import RepositoryPort, RuleEnginePort
+from cerebro.domain.ports import RepositoryPort, RuleEnginePort, IdentityStitcherPort
 from cerebro.core.models import (
     Resource, Principal, ConfigSnapshot, IamEdge, Finding, Rule
 )
@@ -248,6 +248,46 @@ class SQLAlchemyRepository:
         db_finding.evidence = finding.evidence
         
         await self.db.commit()
+    
+    async def save_identity_clusters(
+        self,
+        org_id: UUID,
+        clusters: List[IdentityClusterEntity]
+    ) -> int:
+        """Save identity clusters."""
+        from cerebro.core.repositories import IdentityRepository
+        
+        identity_repo = IdentityRepository(self.db)
+        saved_count = 0
+        
+        for cluster in clusters:
+            # Check if cluster exists
+            existing_cluster = await identity_repo.get_cluster(org_id, cluster.cluster_id)
+            
+            if not existing_cluster:
+                # Create new cluster
+                db_cluster = await identity_repo.create_cluster(
+                    org_id=org_id,
+                    cluster_name=cluster.cluster_id,
+                    confidence_score=cluster.confidence_score,
+                    stitching_evidence=cluster.stitching_evidence
+                )
+                
+                # Add cluster members
+                for principal in cluster.principals:
+                    await identity_repo.add_cluster_member(
+                        cluster_id=db_cluster.id,
+                        principal_external_id=principal.external_id,
+                        provider=principal.provider,
+                        confidence_score=cluster.confidence_score
+                    )
+                
+                saved_count += 1
+            else:
+                logger.debug(f"Cluster {cluster.cluster_id} already exists, skipping")
+        
+        await self.db.commit()
+        return saved_count
 
 
 class CELRuleEngineAdapter:
@@ -347,3 +387,64 @@ class CELRuleEngineAdapter:
             results[rule.rule_id] = rule_results
         
         return results
+
+
+class IdentityStitcherAdapter:
+    """Identity stitcher adapter implementing IdentityStitcherPort."""
+    
+    def __init__(self, db_session: AsyncSession):
+        """Initialize identity stitcher adapter."""
+        self.db = db_session
+    
+    async def find_identity_clusters(
+        self,
+        org_id: UUID,
+        principals: List[PrincipalEntity]
+    ) -> List[IdentityClusterEntity]:
+        """Find identity clusters for given principals."""
+        from cerebro.core.identity import IdentityStitcher
+        
+        # Use the existing IdentityStitcher implementation
+        stitcher = IdentityStitcher(self.db)
+        
+        # The existing method expects an org_id and gets principals from DB
+        # but the port interface passes principals directly
+        # For now, we'll use the existing implementation
+        clusters = await stitcher.find_identity_clusters(org_id)
+        
+        # Convert to domain entities
+        domain_clusters = []
+        for cluster in clusters:
+            # Convert Principal models to PrincipalEntity
+            principal_entities = []
+            for principal in cluster.principals:
+                principal_entity = PrincipalEntity(
+                    external_id=principal.external_id,
+                    provider=principal.provider,
+                    principal_type=principal.principal_type,
+                    name=principal.name,
+                    email=principal.email,
+                    status=principal.status,
+                    metadata=principal.metadata or {}
+                )
+                principal_entities.append(principal_entity)
+            
+            cluster_entity = IdentityClusterEntity(
+                cluster_id=cluster.cluster_id,
+                principals=principal_entities,
+                confidence_score=cluster.confidence_score,
+                stitching_evidence=cluster.stitching_evidence
+            )
+            domain_clusters.append(cluster_entity)
+        
+        return domain_clusters
+    
+    async def get_unified_identity(
+        self,
+        principal: PrincipalEntity
+    ) -> Optional[IdentityClusterEntity]:
+        """Get unified identity for a principal."""
+        # This would require additional implementation in the core IdentityStitcher
+        # For now, return None as this is not implemented
+        logger.warning("get_unified_identity not implemented")
+        return None

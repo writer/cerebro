@@ -15,69 +15,181 @@ from ...query.schema import SecurityColumn, ColumnType
 
 logger = logging.getLogger(__name__)
 
-# Mock GCP client for demonstration
+# Real GCP client implementation
 class GCPClient:
-    async def get_client(self, service: str, project_id: str = "demo-project"):
-        return MockGCPService()
+    def __init__(self, project_id: str = None):
+        self.project_id = project_id
+        self._compute_client = None
+        self._storage_client = None
+        self._iam_client = None
+        self._credentials = None
+        
+    async def authenticate(self):
+        """Authenticate with GCP using default credentials."""
+        try:
+            from google.auth import default
+            self._credentials, detected_project = default()
+            
+            # Use detected project if not explicitly provided
+            if not self.project_id:
+                self.project_id = detected_project or "default-project"
+                
+            return True
+        except ImportError:
+            logger.error("GCP client libraries not installed. Run: pip install google-cloud-compute google-cloud-storage google-cloud-iam")
+            return False
+        except Exception as e:
+            logger.error(f"GCP authentication failed: {e}")
+            return False
+    
+    async def get_compute_client(self):
+        """Get compute client."""
+        if not self._compute_client:
+            try:
+                from google.cloud import compute_v1
+                if not self._credentials:
+                    await self.authenticate()
+                self._compute_client = compute_v1.InstancesClient(credentials=self._credentials)
+            except ImportError:
+                logger.error("google-cloud-compute not installed")
+                raise
+        return self._compute_client
+    
+    async def get_storage_client(self):
+        """Get storage client.""" 
+        if not self._storage_client:
+            try:
+                from google.cloud import storage
+                if not self._credentials:
+                    await self.authenticate()
+                self._storage_client = storage.Client(credentials=self._credentials, project=self.project_id)
+            except ImportError:
+                logger.error("google-cloud-storage not installed")
+                raise
+        return self._storage_client
+    
+    async def get_iam_client(self):
+        """Get IAM client."""
+        if not self._iam_client:
+            try:
+                from google.cloud import resourcemanager_v3
+                if not self._credentials:
+                    await self.authenticate()
+                self._iam_client = resourcemanager_v3.ProjectsClient(credentials=self._credentials)
+            except ImportError:
+                logger.error("google-cloud-resource-manager not installed")  
+                raise
+        return self._iam_client
     
     async def get_project_id(self) -> str:
-        return "demo-project-123456"
+        """Get project ID."""
+        if not self.project_id:
+            await self.authenticate()
+        return self.project_id or "unknown-project"
 
-class MockGCPService:
     async def list_instances(self):
-        instances = [{
-            "id": "1234567890123456789",
-            "name": "web-server-1",
-            "machineType": "projects/demo-project/zones/us-central1-a/machineTypes/n1-standard-1",
-            "status": "RUNNING",
-            "zone": "projects/demo-project/zones/us-central1-a",
-            "networkInterfaces": [{
-                "accessConfigs": [{"natIP": "34.123.45.67"}],
-                "networkIP": "10.128.0.2"
-            }],
-            "serviceAccounts": [{
-                "email": "compute@demo-project.iam.gserviceaccount.com",
-                "scopes": ["https://www.googleapis.com/auth/cloud-platform"]
-            }],
-            "creationTimestamp": "2024-01-01T12:00:00.000-08:00",
-            "tags": {"items": ["web", "production"]}
-        }]
-        for instance in instances:
-            yield instance
+        """List all compute instances."""
+        try:
+            from google.cloud import compute_v1
+            compute_client = await self.get_compute_client()
+            
+            request = compute_v1.AggregatedListInstancesRequest(project=self.project_id)
+            page_result = compute_client.aggregated_list(request=request)
+            
+            for zone, response in page_result:
+                if hasattr(response, 'instances') and response.instances:
+                    for instance in response.instances:
+                        # Convert protobuf instance to dict format
+                        instance_dict = {
+                            "id": str(instance.id),
+                            "name": instance.name,
+                            "machineType": instance.machine_type,
+                            "status": instance.status,
+                            "zone": zone,
+                            "networkInterfaces": [
+                                {
+                                    "networkIP": ni.network_i_p,
+                                    "accessConfigs": [
+                                        {"natIP": ac.nat_i_p} for ac in ni.access_configs
+                                    ] if ni.access_configs else []
+                                }
+                                for ni in instance.network_interfaces
+                            ],
+                            "serviceAccounts": [
+                                {
+                                    "email": sa.email,
+                                    "scopes": list(sa.scopes) if sa.scopes else []
+                                }
+                                for sa in instance.service_accounts
+                            ] if instance.service_accounts else [],
+                            "creationTimestamp": instance.creation_timestamp,
+                            "tags": {"items": list(instance.tags.items)} if instance.tags and instance.tags.items else {"items": []},
+                            "labels": dict(instance.labels) if instance.labels else {}
+                        }
+                        yield instance_dict
+        except Exception as e:
+            logger.error(f"Error listing GCP instances: {e}")
+            # Fallback to empty results rather than crashing
+            return
     
     async def list_buckets(self):
-        buckets = [{
-            "id": "demo-storage-bucket-123",
-            "name": "demo-storage-bucket",
-            "location": "US",
-            "storageClass": "STANDARD",
-            "iam": {
-                "bindings": [{
-                    "role": "roles/storage.objectViewer",
-                    "members": ["allUsers"]
-                }]
-            },
-            "publicAccessPrevention": "inherited",
-            "uniformBucketLevelAccess": {"enabled": False},
-            "timeCreated": "2024-01-01T12:00:00.000Z"
-        }]
-        for bucket in buckets:
-            yield bucket
+        """List all storage buckets."""
+        try:
+            storage_client = await self.get_storage_client()
+            
+            for bucket in storage_client.list_buckets():
+                # Get IAM policy
+                iam_policy = bucket.get_iam_policy()
+                bindings = []
+                for binding in iam_policy.bindings:
+                    bindings.append({
+                        "role": binding["role"],
+                        "members": list(binding["members"])
+                    })
+                
+                bucket_dict = {
+                    "id": bucket.id,
+                    "name": bucket.name,
+                    "location": bucket.location,
+                    "storageClass": bucket.storage_class,
+                    "timeCreated": bucket.time_created.isoformat() if bucket.time_created else None,
+                    "iam": {"bindings": bindings},
+                    "publicAccessPrevention": getattr(bucket, 'public_access_prevention', 'inherited'),
+                    "uniformBucketLevelAccess": {
+                        "enabled": bucket.iam_configuration.uniform_bucket_level_access_enabled
+                    } if bucket.iam_configuration else {"enabled": False},
+                    "versioning": {"enabled": bucket.versioning_enabled}
+                }
+                yield bucket_dict
+        except Exception as e:
+            logger.error(f"Error listing GCP buckets: {e}")
+            return
     
     async def list_iam_policy_bindings(self):
-        bindings = [{
-            "member": "user:admin@demo-project.com",
-            "role": "roles/owner",
-            "resource": "projects/demo-project",
-            "condition": None
-        }, {
-            "member": "serviceAccount:compute@demo-project.iam.gserviceaccount.com", 
-            "role": "roles/compute.instanceAdmin",
-            "resource": "projects/demo-project",
-            "condition": None
-        }]
-        for binding in bindings:
-            yield binding
+        """List IAM policy bindings."""
+        try:
+            iam_client = await self.get_iam_client()
+            
+            # Get project-level IAM policy
+            from google.cloud import resourcemanager_v3
+            request = resourcemanager_v3.GetIamPolicyRequest(
+                resource=f"projects/{self.project_id}"
+            )
+            
+            policy = iam_client.get_iam_policy(request=request)
+            
+            for binding in policy.bindings:
+                for member in binding.members:
+                    binding_dict = {
+                        "member": member,
+                        "role": binding.role,
+                        "resource": f"projects/{self.project_id}",
+                        "condition": binding.condition.expression if binding.condition else None
+                    }
+                    yield binding_dict
+        except Exception as e:
+            logger.error(f"Error listing GCP IAM bindings: {e}")
+            return
 
 
 class GCPComputeInstanceTable(ProviderSecurityTable):
@@ -108,12 +220,13 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch GCE instances from GCP API."""
-        client = GCPClient()
+        client = GCPClient(project_id=ctx.config.get("gcp_project_id"))
         
         try:
-            gcp_service = await client.get_client("compute")
+            # Authenticate if needed
+            await client.authenticate()
             
-            async for instance in gcp_service.list_instances():
+            async for instance in client.list_instances():
                 # Add provider metadata
                 instance["provider"] = "gcp"
                 instance["account_id"] = await client.get_project_id()
@@ -127,7 +240,8 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching GCP instances: {e}")
-            raise
+            # Return empty results instead of raising to prevent query engine failures
+            return
     
     def extract_external_ip(self, instance_data: Dict[str, Any]) -> Optional[str]:
         """Extract external IP from network interfaces."""
@@ -194,12 +308,13 @@ class GCPStorageBucketTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch storage buckets from GCP API."""
-        client = GCPClient()
+        client = GCPClient(project_id=ctx.config.get("gcp_project_id"))
         
         try:
-            gcp_service = await client.get_client("storage")
+            # Authenticate if needed
+            await client.authenticate()
             
-            async for bucket in gcp_service.list_buckets():
+            async for bucket in client.list_buckets():
                 # Add provider metadata
                 bucket["provider"] = "gcp"
                 bucket["account_id"] = await client.get_project_id()
@@ -213,7 +328,7 @@ class GCPStorageBucketTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching GCP storage buckets: {e}")
-            raise
+            return
     
     def check_uniform_access(self, bucket_data: Dict[str, Any]) -> bool:
         """Check if uniform bucket-level access is enabled."""
@@ -270,12 +385,13 @@ class GCPIAMPolicyTable(ProviderSecurityTable):
     
     async def fetch_from_api(self, ctx: QueryContext) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch IAM policy bindings from GCP API."""
-        client = GCPClient()
+        client = GCPClient(project_id=ctx.config.get("gcp_project_id"))
         
         try:
-            gcp_service = await client.get_client("iam")
+            # Authenticate if needed
+            await client.authenticate()
             
-            async for binding in gcp_service.list_iam_policy_bindings():
+            async for binding in client.list_iam_policy_bindings():
                 # Add provider metadata
                 binding["provider"] = "gcp"
                 binding["account_id"] = await client.get_project_id()
@@ -289,7 +405,7 @@ class GCPIAMPolicyTable(ProviderSecurityTable):
                 
         except Exception as e:
             logger.error(f"Error fetching GCP IAM policies: {e}")
-            raise
+            return
     
     def extract_member_type(self, binding_data: Dict[str, Any]) -> str:
         """Extract member type from member string."""
