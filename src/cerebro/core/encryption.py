@@ -102,7 +102,7 @@ class SecretEncryptionService:
             dek = self._generate_dek()
 
             # Step 2: Encrypt the secret with the DEK
-            fernet = self._get_fernet(dek)
+            fernet = await self._get_fernet(dek)
             encrypted_secret = fernet.encrypt(plaintext.encode('utf-8'))
 
             # Step 3: Encrypt the DEK with KMS KEK

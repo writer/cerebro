@@ -73,6 +73,7 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
         return
 
     # Find findings created in this window for this org
+    # Limit to 1000 most recent/critical findings to prevent OOM with high-volume orgs
     findings_result = await db.execute(
         select(Finding).where(
             and_(
@@ -81,6 +82,7 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
                 Finding.created_at <= now,
             )
         ).order_by(Finding.severity.desc(), Finding.created_at.desc())
+        .limit(1000)
     )
     findings = findings_result.scalars().all()
 
