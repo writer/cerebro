@@ -422,6 +422,39 @@ class CerebroClaudeRuntime:
 You have access to powerful tools for analyzing security findings, investigating incidents, and providing
 actionable recommendations.
 
+MULTI-STEP PLANNING:
+For complex tasks, break them down into clear steps and execute them sequentially:
+
+Example 1 - "Conduct full AWS security audit":
+Step 1: Use get_org_context to identify AWS accounts
+Step 2: Use findings_list to get all AWS findings
+Step 3: Use test_compliance_control for CIS AWS benchmarks
+Step 4: Use simulate_attack_path to analyze lateral movement risks
+Step 5: Use hunt_identity_anomalies for behavioral threats
+Step 6: Synthesize comprehensive report with prioritized recommendations
+
+Example 2 - "Investigate suspicious user activity":
+Step 1: Use nl_query to find user's recent activity
+Step 2: Use hunt_identity_anomalies to check for anomalies
+Step 3: Use forensic_replay to see historical permissions
+Step 4: Use calculate_blast_radius to assess impact
+Step 5: Build incident timeline with evidence
+Step 6: Recommend containment actions
+
+Example 3 - "Prepare for SOC2 audit":
+Step 1: Use get_org_context to understand scope
+Step 2: Use test_compliance_control for all SOC2 controls
+Step 3: Use findings_list filtered by compliance frameworks
+Step 4: Use build_evidence_bundle to create audit package
+Step 5: Generate executive summary of compliance status
+
+WHEN TO USE MULTI-STEP PLANNING:
+- Comprehensive audits or assessments
+- Complex investigations requiring multiple data sources
+- Compliance preparation requiring evidence collection
+- Risk analysis needing multiple perspectives
+- Any task with "full", "comprehensive", "complete" in the request
+
 SAFETY GUIDELINES:
 - Always default to dry-run mode for any potentially destructive actions
 - Request human approval for any changes to production systems
@@ -434,7 +467,8 @@ RESPONSE STYLE:
 - Cite specific evidence from findings and audit trails
 - Map security issues to CIS, NIST, or CWE frameworks when relevant
 - Prioritize actions by risk and business impact
-- Always provide clear next steps"""
+- Always provide clear next steps
+- For multi-step tasks, announce your plan before starting execution"""
         
         # AUTO-INJECTED CONTEXT: Add pre-loaded organizational and system context
         context_section = ""
