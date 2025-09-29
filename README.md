@@ -4,19 +4,31 @@
 
 When audit committees ask "prove what happened," commercial security platforms often lack the necessary audit trail. Cerebro provides complete visibility into cloud and SaaS security configurations with an immutable audit trail designed for forensic investigation. Supports enterprises that require both security monitoring and regulatory compliance.
 
-## 🎯 Four Core Differentiators
+## 🎯 Eight Core Differentiators
 
-### **1. Append-Only Forensic Ledger**
-Every configuration change, permission grant, and security finding is preserved with cryptographic integrity. When regulators ask "who had access to customer data on March 15th at 2:30 PM?", you have the provable answer.
+### **1. Evidence Data Fabric**
+Normalized, queryable evidence model that serves as the data substrate for rules, analytics, and AI. Evidence as structured tables (not blobs) with lineage tracking, cross-evidence analysis, and requirement-level granularity.
 
-### **2. Open CEL Rule Engine**  
-Write security policies once, run anywhere. Common Expression Language (CEL) rules work across AWS, GitHub, GCP, Google Workspace, Okta, and Microsoft 365 without vendor lock-in. No proprietary rule formats or migration headaches.
+### **2. Cryptographic Auditability**
+Merkle tree transparency log, RFC-3161 timestamping, WORM evidence bundles, and change attestation provide mathematical proof of compliance. When auditors ask "prove it," you have cryptographic certainty.
 
-### **3. Cross-Provider Identity Stitching**
-Automatically correlate john.doe@company.com across GitHub, AWS IAM, Google Workspace, Okta, and Microsoft 365. Surface privilege escalation paths and access inconsistencies that single-provider tools miss completely.
+### **3. Zero-ETL Security Analytics**
+Query security data in real-time using SQL without ETL pipelines. Steampipe-inspired approach with 15+ security tables across AWS, GCP, Azure, Okta, GitHub. `SELECT * FROM okta_user WHERE mfa_enabled = false` works instantly.
 
-### **4. Zero-ETL SQL Query Engine**
-Query security data in real-time using SQL without complex ETL pipelines. Inspired by Steampipe's approach, but purpose-built for security operations. `SELECT * FROM okta_user WHERE mfa_enabled = false` works instantly against live data.
+### **4. Attack Path Graph Analysis**
+NetworkX-based graph model shows exact attack paths from any principal to any resource. Service identity edges (GitHub OIDC → AWS STS) with blast radius analysis that competitors hand-wave.
+
+### **5. Identity Governance Automation**
+JML (Joiner/Mover/Leaver) campaigns detect stale access after role changes. Peer-group baselines highlight outlier entitlements. Quarterly access reviews with cryptographic attestation.
+
+### **6. OAuth & Third-Party Risk Management**  
+Registry across Google Workspace, M365, Slack, GitHub with toxic combination detection. Auto-quarantine high-risk apps with approval workflows. Addresses SaaS breach reality.
+
+### **7. Vendor Risk Intelligence**
+Comprehensive vendor tracking with automatic discovery, risk assessment, and security review management. Evidence-backed vendor compliance tracking.
+
+### **8. No-Code Policy Engine**
+Parse policy statements into executable rules. Visual rule builder with cross-evidence analysis. Policy versioning with approval workflows and employee attestation tracking.
 
 ## 🏢 Trust + Control vs. SaaS Speed
 
@@ -212,8 +224,12 @@ curl "http://localhost:8000/api/v1/query/examples" \
 ### **Available Security Tables**
 
 **AWS**: `aws_ec2_instance`, `aws_iam_user`, `aws_security_group`  
+**GCP**: `gcp_compute_instance`, `gcp_storage_bucket`, `gcp_iam_policy`  
+**Azure/M365**: `m365_user`, `m365_application`, `m365_conditional_access_policy`  
 **Okta**: `okta_user`, `okta_application`, `okta_group`  
 **GitHub**: `github_repository`, `github_vulnerability_alert`, `github_secret_scanning_alert`
+
+**Total**: 15 security tables across 5 major cloud providers
 
 ### **Data Collection**
 
@@ -273,26 +289,36 @@ curl "http://localhost:8000/api/v1/analysis/identity/anomalies?org_id={org_id}" 
 ### **Advanced Security Analysis**
 
 ```bash
-# Blast radius analysis (compromise impact)
-curl "http://localhost:8000/api/v1/analysis/blast-radius" \
+# Attack path analysis (competitive differentiator)
+curl "http://localhost:8000/api/v1/attack-path/analyze" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"principal_id": "user123", "org_id": "org456"}'
+  -d '{"source_principal": "jane@acme.com", "target_resource": "aws:s3://prod-secrets", "max_path_length": 5}'
 
-# Forensic replay (historical state reconstruction)
-curl "http://localhost:8000/api/v1/analysis/forensic-replay" \
+# Blast radius analysis with graph model
+curl "http://localhost:8000/api/v1/blast-radius" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"timestamp": "2024-03-15T14:30:00Z", "org_id": "org456"}'
+  -d '{"principal_id": "user123", "max_steps": 3}'
 
-# Change impact analysis
-curl "http://localhost:8000/api/v1/analysis/change-replay" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"config_snapshot_id": "snapshot123"}'
+# Identity governance dashboard
+curl "http://localhost:8000/api/v1/identity-governance/dashboard" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Compliance evidence generation
-curl "http://localhost:8000/api/v1/analysis/compliance/soc2/evidence" \
+# OAuth risk assessment
+curl "http://localhost:8000/api/v1/oauth-risk/toxic-combinations" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Vendor risk management
+curl "http://localhost:8000/api/v1/vendors/risk-report" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Evidence data fabric queries
+curl "http://localhost:8000/api/v1/evidence/query?entity_type=identity&since_days=30" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Cryptographic evidence bundles
+curl "http://localhost:8000/api/v1/compliance/soc2/evidence" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"org_id": "org456", "period_start": "2024-01-01", "period_end": "2024-12-31"}'
 ```
