@@ -125,12 +125,11 @@ Cerebro now includes **15+ specialized security tools** that enable autonomous i
 **📊 Intelligence & Analysis**
 - `summarize_finding` - Explain findings in plain English tailored to executives, developers, or analysts
 - `security_analysis` - Attack surface analysis, risk scoring, compliance gaps, posture assessment
-- `hunt_identity_anomalies` - ML-powered anomaly detection across OAuth, permissions, lateral movement
+- `hunt_identity_anomalies` - ML-powered anomaly detection across OAuth, permissions, lateral movement (NEW)
 
 **✅ Compliance & Evidence**
 - `test_compliance_control` - Autonomously test SOC2, ISO27001, CIS, NIST CSF controls
-- `build_evidence_bundle` - Create cryptographically-signed WORM evidence bundles for auditors
-- `collect_evidence` - Automated evidence collection with RFC-3161 timestamps
+- `build_evidence_bundle` - Create cryptographically-signed WORM evidence bundles with automated evidence collection and RFC-3161 timestamps
 
 **🛠️ Core Operations**
 - `findings_list` - Query findings with filtering
