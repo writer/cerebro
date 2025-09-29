@@ -5,7 +5,7 @@ Provides REST API for JML campaigns, access reviews, peer group analysis,
 and exception management.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -382,7 +382,7 @@ async def request_access_exception(
 async def approve_access_exception(
     org_id: UUID,
     exception_id: str,
-    approval_justification: str = Field(..., description="Justification for approval"),
+    approval_justification: str = Query(..., description="Justification for approval"),
     db: AsyncSession = Depends(get_db),
     current_user = Depends(require_read_findings)
 ):

@@ -5,7 +5,7 @@ Provides REST API for attack path queries, blast radius analysis,
 and service identity mapping.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query

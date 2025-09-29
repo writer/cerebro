@@ -361,8 +361,8 @@ async def get_vendor_risk_report(
 async def review_discovered_vendor(
     org_id: UUID,
     discovered_vendor_id: str,
-    promote_to_vendor: bool = Field(..., description="Whether to promote to full vendor"),
-    suppression_reason: Optional[str] = Field(None, description="Reason for suppression if not promoting"),
+    promote_to_vendor: bool = Query(..., description="Whether to promote to full vendor"),
+    suppression_reason: Optional[str] = Query(None, description="Reason for suppression if not promoting"),
     db: AsyncSession = Depends(get_db),
     current_user = Depends(require_read_findings)
 ):

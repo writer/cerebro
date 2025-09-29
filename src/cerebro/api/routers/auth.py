@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBasicCredentials, HTTPBasic
+from fastapi.security import HTTPBasicCredentials, HTTPBasic, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,9 +43,32 @@ async def authenticate_user(username: str, password: str, db: AsyncSession) -> d
     }
 
 
+@router.post("/login", response_model=Token)
+async def login_oauth2(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db)
+):
+    """OAuth2 login endpoint for frontend (expects FormData)."""
+    user = await authenticate_user(form_data.username, form_data.password, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": user["username"], "scopes": user["scopes"]},
+        expires_delta=access_token_expires
+    )
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
 @router.post("/token", response_model=Token)
-async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """Get access token via username/password."""
+async def login_json(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
+    """Get access token via JSON username/password (legacy)."""
     user = await authenticate_user(login_data.username, login_data.password, db)
     if not user:
         raise HTTPException(
