@@ -22,6 +22,7 @@ from .identity_anomaly_hunter import IdentityAnomalyHunterTool
 from .org_context import GetOrgContextTool
 from .system_context import GetSystemContextTool
 from .session_memory import RememberContextTool, GetSessionHistoryTool
+from .code_reading import ReadCodeTool, SearchCodeTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -46,6 +47,8 @@ tool_registry.register(GetOrgContextTool())
 tool_registry.register(GetSystemContextTool())
 tool_registry.register(RememberContextTool())
 tool_registry.register(GetSessionHistoryTool())
+tool_registry.register(ReadCodeTool())
+tool_registry.register(SearchCodeTool())
 
 __all__ = [
     "Tool",
@@ -74,4 +77,6 @@ __all__ = [
     "GetSystemContextTool",
     "RememberContextTool",
     "GetSessionHistoryTool",
+    "ReadCodeTool",
+    "SearchCodeTool",
 ]
