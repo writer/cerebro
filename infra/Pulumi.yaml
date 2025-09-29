@@ -1,0 +1,112 @@
+name: cerebro
+runtime: python
+description: Production infrastructure for Cerebro Security Platform
+
+config:
+  cerebro:environment:
+    type: string
+    default: production
+    description: Environment name (dev, staging, production)
+
+  cerebro:domain:
+    type: string
+    description: Primary domain for Cerebro (e.g., cerebro.example.com)
+
+  cerebro:secretKey:
+    type: string
+    secret: true
+    description: Secret key for JWT tokens
+
+  cerebro:dbPassword:
+    type: string
+    secret: true
+    description: Database password
+
+  cerebro:redisPassword:
+    type: string
+    secret: true
+    description: Redis password
+
+  cerebro:apiMinInstances:
+    type: integer
+    default: 2
+    description: Minimum number of API server instances
+
+  cerebro:apiMaxInstances:
+    type: integer
+    default: 20
+    description: Maximum number of API server instances
+
+  cerebro:workerMinInstances:
+    type: integer
+    default: 2
+    description: Minimum number of Celery worker instances
+
+  cerebro:workerMaxInstances:
+    type: integer
+    default: 50
+    description: Maximum number of Celery worker instances
+
+  cerebro:dbInstanceClass:
+    type: string
+    default: db.r6g.xlarge
+    description: RDS instance class
+
+  cerebro:dbStorageSize:
+    type: integer
+    default: 500
+    description: RDS storage size in GB
+
+  cerebro:redisNodeType:
+    type: string
+    default: cache.r6g.large
+    description: ElastiCache node type
+
+  cerebro:enableMultiAz:
+    type: boolean
+    default: true
+    description: Enable Multi-AZ for database
+
+  cerebro:enableReadReplicas:
+    type: boolean
+    default: true
+    description: Enable read replicas
+
+  cerebro:readReplicaCount:
+    type: integer
+    default: 2
+    description: Number of read replicas
+
+  cerebro:backupRetentionDays:
+    type: integer
+    default: 30
+    description: Database backup retention in days
+
+  cerebro:logRetentionDays:
+    type: integer
+    default: 30
+    description: CloudWatch log retention in days
+
+  cerebro:enableCloudFront:
+    type: boolean
+    default: false
+    description: Enable CloudFront CDN
+
+  cerebro:enableFlower:
+    type: boolean
+    default: true
+    description: Enable Flower monitoring UI
+
+  aws:region:
+    type: string
+    default: us-east-1
+    description: AWS region
+
+  gcp:project:
+    type: string
+    description: GCP project ID (if using GCP)
+
+  gcp:region:
+    type: string
+    default: us-central1
+    description: GCP region (if using GCP)
