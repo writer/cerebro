@@ -298,6 +298,109 @@ Cerebro includes professional HTML email templates:
 
 ---
 
+## Digest Processing
+
+When `digest_mode: true` is enabled, emails are sent in batches at scheduled intervals instead of immediately. This reduces email volume and provides a better overview of security activity.
+
+### How It Works
+
+1. **Celery Beat Schedule**: Digest processing runs via Celery Beat (periodic task scheduler)
+2. **Time Windows**: Daily digests include last 24h findings, weekly include last 7 days
+3. **Severity Grouping**: Findings are grouped by severity (critical, high, medium, low)
+4. **Color-Coded HTML**: Professional email template with color-coded severity sections
+5. **Automatic Filtering**: Respects `severity_filter` from your email config
+
+### Celery Beat Configuration
+
+The digest task is automatically configured in `src/cerebro/tasks/celery_app.py`:
+
+```python
+celery_app.conf.beat_schedule = {
+    'process-email-digests-daily': {
+        'task': 'process_email_digests',
+        'schedule': crontab(hour=8, minute=0),  # Daily at 8 AM UTC
+    },
+}
+```
+
+### Running Celery Beat
+
+To enable digest processing, you must run Celery Beat alongside your Celery workers:
+
+```bash
+# Terminal 1: Start Celery worker
+celery -A cerebro.tasks.celery_app worker --loglevel=info
+
+# Terminal 2: Start Celery beat scheduler
+celery -A cerebro.tasks.celery_app beat --loglevel=info
+```
+
+### Docker Compose
+
+```yaml
+services:
+  celery-worker:
+    image: cerebro:latest
+    command: celery -A cerebro.tasks.celery_app worker --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+
+  celery-beat:
+    image: cerebro:latest
+    command: celery -A cerebro.tasks.celery_app beat --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+```
+
+### Customizing Schedule
+
+To change the digest schedule, edit `src/cerebro/tasks/celery_app.py`:
+
+```python
+# Daily at 9 AM local time
+'schedule': crontab(hour=9, minute=0)
+
+# Twice daily (8 AM and 6 PM)
+'schedule': crontab(hour='8,18', minute=0)
+
+# Every Monday at 9 AM for weekly digests
+'schedule': crontab(hour=9, minute=0, day_of_week=1)
+```
+
+### Monitoring Digest Processing
+
+Check Celery Beat logs to verify digest processing:
+
+```bash
+# View beat scheduler logs
+celery -A cerebro.tasks.celery_app beat --loglevel=debug
+
+# Check for digest task execution
+grep "process_email_digests" celery.log
+
+# Verify digest emails in database
+SELECT * FROM email_notifications
+WHERE event_type IN ('digest.sent', 'digest.failed')
+ORDER BY created_at DESC;
+```
+
+### Digest Email Preview
+
+Daily digest emails include:
+
+- **Summary**: Total findings and counts by severity
+- **Critical Section**: Up to 10 critical findings with full details
+- **High Section**: Up to 10 high severity findings
+- **Medium/Low Sections**: Additional findings by severity
+- **Overflow Indicator**: "... and N more findings" if count > 10
+
+---
+
 ## Troubleshooting
 
 ### Test Email Not Received

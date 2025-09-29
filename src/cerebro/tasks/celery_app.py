@@ -1,6 +1,7 @@
 """Celery application configuration."""
 
 from celery import Celery
+from celery.schedules import crontab
 from kombu import Queue
 import logging
 
@@ -15,8 +16,9 @@ celery_app = Celery(
     backend=getattr(settings, 'redis_url', 'redis://localhost:6379/0'),
     include=[
         'cerebro.tasks.collection_tasks',
-        'cerebro.tasks.finding_tasks', 
-        'cerebro.tasks.maintenance_tasks'
+        'cerebro.tasks.finding_tasks',
+        'cerebro.tasks.maintenance_tasks',
+        'cerebro.tasks.notification_digest'
     ]
 )
 
@@ -28,13 +30,15 @@ celery_app.conf.update(
         'cerebro.tasks.collection_tasks.collect_organization_task': {'queue': 'collection'},
         'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
         'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
+        'process_email_digests': {'queue': 'notifications'},
     },
-    
+
     # Queue definitions
     task_queues=(
         Queue('collection', routing_key='collection'),
         Queue('findings', routing_key='findings'),
         Queue('maintenance', routing_key='maintenance'),
+        Queue('notifications', routing_key='notifications'),
         Queue('default', routing_key='default'),
     ),
     
@@ -74,8 +78,12 @@ celery_app.conf.beat_schedule = {
         'kwargs': {'days_old': 90}
     },
     'vacuum-analyze-tables': {
-        'task': 'cerebro.tasks.maintenance_tasks.vacuum_analyze_task', 
+        'task': 'cerebro.tasks.maintenance_tasks.vacuum_analyze_task',
         'schedule': 3600.0,  # Hourly
+    },
+    'process-email-digests-daily': {
+        'task': 'process_email_digests',
+        'schedule': crontab(hour=8, minute=0),  # Daily at 8 AM UTC
     },
 }
 

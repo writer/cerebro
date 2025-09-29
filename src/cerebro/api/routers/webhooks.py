@@ -117,6 +117,7 @@ class WebhookNotificationResponse(BaseModel):
     payload: Dict[str, Any]
     response_status: Optional[int]
     response_body: Optional[str]
+    response_time_ms: Optional[int]
     status: str
     error_message: Optional[str]
     retry_count: int

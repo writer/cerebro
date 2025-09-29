@@ -289,8 +289,40 @@ async def health_celery():
     except Exception as e:
         from fastapi import HTTPException
         raise HTTPException(
-            status_code=503, 
+            status_code=503,
             detail=f"Celery health check failed: {str(e)}"
+        )
+
+
+@app.get("/health/encryption")
+async def health_encryption():
+    """Encryption service health check endpoint with cache stats."""
+    from cerebro.core.encryption import get_encryption_service
+
+    try:
+        service = get_encryption_service()
+
+        # Test encryption service
+        is_healthy = await service.test_encryption()
+
+        if not is_healthy:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="Encryption service test failed"
+            )
+
+        return {
+            "status": "healthy",
+            "kms_provider": service.kms.name,
+            "cache_stats": service.get_cache_stats(),
+        }
+
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail=f"Encryption health check failed: {str(e)}"
         )
 
 

@@ -1,7 +1,9 @@
 """Secret encryption service using envelope encryption with Fernet."""
+import asyncio
 import hashlib
 import os
 import logging
+from collections import OrderedDict
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -38,8 +40,10 @@ class SecretEncryptionService:
             kms: KMS provider for encrypting DEKs. If None, uses factory default.
         """
         self.kms = kms or get_kms()
-        self._dek_cache: dict[bytes, Fernet] = {}  # Cache decrypted DEKs for performance
-        self._cache_access_order: list[bytes] = []  # Track LRU for eviction
+        # Use OrderedDict for O(1) LRU operations (move_to_end is O(1))
+        self._dek_cache: OrderedDict[bytes, Fernet] = OrderedDict()
+        # Lock for thread-safe cache operations in async context
+        self._cache_lock = asyncio.Lock()
 
     def _generate_dek(self) -> bytes:
         """Generate a new random Data Encryption Key.
@@ -49,8 +53,10 @@ class SecretEncryptionService:
         """
         return Fernet.generate_key()
 
-    def _get_fernet(self, dek: bytes) -> Fernet:
-        """Get or create Fernet cipher for a DEK with LRU cache eviction.
+    async def _get_fernet(self, dek: bytes) -> Fernet:
+        """Get or create Fernet cipher for a DEK with thread-safe LRU cache eviction.
+
+        Uses asyncio.Lock for thread safety and OrderedDict for O(1) LRU operations.
 
         Args:
             dek: Data Encryption Key
@@ -58,26 +64,25 @@ class SecretEncryptionService:
         Returns:
             Fernet cipher instance
         """
-        if dek in self._dek_cache:
-            # Move to end (most recently used)
-            self._cache_access_order.remove(dek)
-            self._cache_access_order.append(dek)
-            return self._dek_cache[dek]
+        async with self._cache_lock:
+            if dek in self._dek_cache:
+                # Move to end (most recently used) - O(1) operation
+                self._dek_cache.move_to_end(dek)
+                return self._dek_cache[dek]
 
-        # Not in cache, create new entry
-        fernet = Fernet(dek)
+            # Not in cache, create new entry
+            fernet = Fernet(dek)
 
-        # Evict oldest entry if cache is full
-        if len(self._dek_cache) >= self.MAX_CACHE_SIZE:
-            oldest_dek = self._cache_access_order.pop(0)
-            del self._dek_cache[oldest_dek]
-            logger.debug(f"Evicted DEK from cache (size: {len(self._dek_cache)})")
+            # Evict oldest entry if cache is full
+            if len(self._dek_cache) >= self.MAX_CACHE_SIZE:
+                # popitem(last=False) removes oldest (first) item - O(1)
+                oldest_dek, _ = self._dek_cache.popitem(last=False)
+                logger.debug(f"Evicted DEK from cache (size: {len(self._dek_cache)})")
 
-        # Add to cache
-        self._dek_cache[dek] = fernet
-        self._cache_access_order.append(dek)
+            # Add to cache
+            self._dek_cache[dek] = fernet
 
-        return fernet
+            return fernet
 
     async def encrypt_secret(self, plaintext: str) -> Tuple[bytes, bytes]:
         """Encrypt a secret using envelope encryption.
@@ -137,8 +142,8 @@ class SecretEncryptionService:
             # Step 1: Decrypt the DEK using KMS KEK
             dek = await self.kms.decrypt(encrypted_dek)
 
-            # Step 2: Decrypt the secret using the DEK
-            fernet = self._get_fernet(dek)
+            # Step 2: Decrypt the secret using the DEK (now async for thread-safe cache)
+            fernet = await self._get_fernet(dek)
             plaintext_bytes = fernet.decrypt(encrypted_secret)
 
             # Audit log: Successful decryption
@@ -225,12 +230,12 @@ class SecretEncryptionService:
             logger.error(f"Encryption service test failed: {e}", exc_info=True)
             return False
 
-    def clear_cache(self):
+    async def clear_cache(self):
         """Clear the DEK cache. Use after key rotation or for security."""
-        cache_size = len(self._dek_cache)
-        self._dek_cache.clear()
-        self._cache_access_order.clear()
-        logger.info(f"Cleared DEK cache ({cache_size} entries)")
+        async with self._cache_lock:
+            cache_size = len(self._dek_cache)
+            self._dek_cache.clear()
+            logger.info(f"Cleared DEK cache ({cache_size} entries)")
 
     def get_cache_stats(self) -> dict:
         """Get cache statistics for monitoring.

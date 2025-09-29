@@ -76,6 +76,15 @@ class EmailConfigUpdate(BaseModel):
     digest_frequency: Optional[str] = None
     email_metadata: Optional[dict] = None
 
+    @validator("digest_frequency")
+    def validate_digest_frequency(cls, v, values):
+        """Validate digest_frequency is set when digest_mode is true."""
+        if values.get("digest_mode") and not v:
+            raise ValueError("digest_frequency is required when digest_mode is true")
+        if v and v not in ["daily", "weekly"]:
+            raise ValueError("digest_frequency must be 'daily' or 'weekly'")
+        return v
+
 
 class EmailConfigResponse(BaseModel):
     """Response model for email configuration."""
@@ -291,6 +300,16 @@ async def update_email_config(
 
     # Update fields
     update_dict = update_data.dict(exclude_unset=True)
+
+    # Validate digest configuration before applying updates
+    final_digest_mode = update_dict.get("digest_mode", config.digest_mode)
+    final_digest_frequency = update_dict.get("digest_frequency", config.digest_frequency)
+
+    if final_digest_mode and not final_digest_frequency:
+        raise HTTPException(
+            status_code=400,
+            detail="digest_frequency is required when digest_mode is true"
+        )
 
     # Handle password encryption separately
     smtp_password = update_dict.pop("smtp_password", None)
