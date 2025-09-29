@@ -185,7 +185,8 @@ class FindingsTool(Tool):
         # Use context org if not specified
         org_id = inputs.org_id or context.org_id
         
-        async with get_db() as session:
+        from cerebro.core.database import async_session_factory
+        async with async_session_factory() as session:
             finding_repo = FindingRepository(session)
             
             # Build comprehensive query using SQLAlchemy
@@ -313,7 +314,8 @@ class FindingsTool(Tool):
         """Get a specific finding with optional history."""
         inputs = GetFindingInput(**raw_data)
         
-        async with get_db() as session:
+        from cerebro.core.database import async_session_factory
+        async with async_session_factory() as session:
             from sqlalchemy import select
             from sqlalchemy.orm import selectinload
             
@@ -489,7 +491,8 @@ class FindingsTool(Tool):
         """Update finding status with audit trail."""
         inputs = UpdateFindingStatusInput(**raw_data)
         
-        async with get_db() as session:
+        from cerebro.core.database import async_session_factory
+        async with async_session_factory() as session:
             from sqlalchemy import select
             from datetime import datetime, timezone
             
@@ -587,7 +590,8 @@ class FindingsTool(Tool):
         """Cluster similar findings to reduce alert fatigue."""
         inputs = ClusterFindingsInput(**raw_data)
         
-        async with get_db() as session:
+        from cerebro.core.database import async_session_factory
+        async with async_session_factory() as session:
             from sqlalchemy import select
             from sqlalchemy.orm import selectinload
             from collections import defaultdict

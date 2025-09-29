@@ -422,7 +422,8 @@ class ToolExecutor:
         context: AgentContext,
     ) -> ToolInvocation:
         """Create and persist tool invocation record."""
-        async with get_db() as session:
+        from cerebro.core.database import async_session_factory
+        async with async_session_factory() as session:
             invocation = ToolInvocation(
                 session_id=context.session_id,
                 tool_name=tool.name,
@@ -437,7 +438,8 @@ class ToolExecutor:
     
     async def _update_invocation(self, invocation: ToolInvocation) -> None:
         """Update tool invocation in database."""
-        async with get_db() as session:
+        from cerebro.core.database import async_session_factory
+        async with async_session_factory() as session:
             await session.merge(invocation)
             await session.commit()
     
@@ -483,7 +485,8 @@ class ToolExecutor:
         reason: str,
     ) -> ToolResult:
         """Create approval request for tool invocation."""
-        async with get_db() as session:
+        from cerebro.core.database import async_session_factory
+        async with async_session_factory() as session:
             approval = ToolApproval(
                 org_id=invocation.session.org_id,  # type: ignore
                 tool_invocation_id=invocation.id,

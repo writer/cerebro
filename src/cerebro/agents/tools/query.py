@@ -71,7 +71,8 @@ class QueryTool(Tool):
             
             start_time = time.time()
             
-            async with get_db() as session:
+            from cerebro.core.database import async_session_factory
+            async with async_session_factory() as session:
                 results = []
                 
                 # Execute predefined queries based on query name
