@@ -18,6 +18,8 @@ from cerebro.core.models import Finding, Organization
 from cerebro.agents.models import AgentSession, AgentType
 from cerebro.agents.runtime import CerebroClaudeRuntime
 from cerebro.notifications.slack import get_slack_service
+from cerebro.notifications.email import get_email_service
+from cerebro.notifications.webhooks import get_webhook_service
 
 logger = structlog.get_logger(__name__)
 
@@ -311,10 +313,10 @@ class ProactiveMonitoringService:
 
         Notification channels:
         - Slack webhook ✅ Implemented
+        - Email ✅ Implemented
+        - Custom webhook ✅ Implemented
         - In-app notification (TODO)
-        - Email (TODO)
         - PagerDuty (TODO)
-        - Custom webhook (TODO)
 
         Args:
             org_id: Organization ID
@@ -348,9 +350,9 @@ class ProactiveMonitoringService:
         logger.info("Alert created", alert_data=alert_data)
 
         # Send notifications through configured channels
-        try:
+        async with async_session_factory() as db:
             # Send to Slack if webhooks configured
-            async with async_session_factory() as db:
+            try:
                 slack_service = get_slack_service()
 
                 # If this is a finding alert, use the finding notification method
@@ -370,8 +372,58 @@ class ProactiveMonitoringService:
                         db=db,
                     )
 
-        except Exception as e:
-            logger.error("Failed to send Slack notification", error=str(e))
+            except Exception as e:
+                logger.error("Failed to send Slack notification", error=str(e))
+
+            # Send email notifications if configured
+            try:
+                email_service = get_email_service()
+
+                if finding:
+                    await email_service.send_finding_notification(
+                        org_id=org_id,
+                        finding=finding,
+                        db=db,
+                    )
+                else:
+                    # Send as monitoring alert
+                    await email_service.send_monitoring_alert(
+                        org_id=org_id,
+                        alert_title=title,
+                        alert_description=message,
+                        severity=severity,
+                        finding_id=finding.finding_id if finding else None,
+                        metadata=metadata,
+                        db=db,
+                    )
+
+            except Exception as e:
+                logger.error("Failed to send email notification", error=str(e))
+
+            # Send webhook notifications if configured
+            try:
+                webhook_service = get_webhook_service()
+
+                if finding:
+                    await webhook_service.send_finding_notification(
+                        org_id=org_id,
+                        finding=finding,
+                        db=db,
+                    )
+                else:
+                    # Send as monitoring alert
+                    await webhook_service.send_monitoring_alert(
+                        org_id=org_id,
+                        alert_title=title,
+                        alert_description=message,
+                        severity=severity,
+                        finding_id=finding.finding_id if finding else None,
+                        metadata=metadata,
+                        db=db,
+                    )
+
+            except Exception as e:
+                logger.error("Failed to send webhook notification", error=str(e))
 
     async def _deliver_notification(self, org_id: UUID, alert_data: Dict[str, Any]):
         """
@@ -380,13 +432,15 @@ class ProactiveMonitoringService:
         Args:
             org_id: Organization ID
             alert_data: Alert data to send
-        """
 
-        # TODO: Implement notification channels
-        # - Email via SMTP
-        # - Slack via webhook
-        - # PagerDuty API
-        # - Custom webhooks from org config
+        Note: This method is currently unused. Notifications are sent via
+        _send_alert() which directly calls notification services.
+        """
+        # All notification delivery now handled via _send_alert()
+        # - Email via SMTP ✅
+        # - Slack via webhook ✅
+        # - Custom webhooks ✅
+        # - PagerDuty API (TODO)
 
         pass
 

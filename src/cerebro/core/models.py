@@ -344,5 +344,110 @@ class SlackNotification(Base):
     webhook: Mapped["SlackWebhook"] = relationship(back_populates="notifications")
 
 
+class EmailConfig(Base):
+    """Email notification configurations for organizations."""
+    __tablename__ = "email_configs"
+
+    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    smtp_host: Mapped[str] = mapped_column(String(255), nullable=False)
+    smtp_port: Mapped[int] = mapped_column(Integer, default=587, nullable=False)
+    smtp_username: Mapped[Optional[str]] = mapped_column(String(255))
+    smtp_password: Mapped[Optional[str]] = mapped_column(Text)  # Encrypted
+    from_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_name: Mapped[Optional[str]] = mapped_column(String(255))
+    to_emails: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
+    cc_emails: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
+    use_tls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    severity_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
+    event_types: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
+    digest_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    digest_frequency: Mapped[Optional[str]] = mapped_column(String(50))
+    email_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column("email_metadata", JSONType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    created_by: Mapped[Optional[str]] = mapped_column(String(255))
+
+    # Relationships
+    notifications: Mapped[List["EmailNotification"]] = relationship(back_populates="config", cascade="all, delete-orphan")
+
+
+class EmailNotification(Base):
+    """Audit log of email notifications sent."""
+    __tablename__ = "email_notifications"
+
+    notification_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("email_configs.config_id", ondelete="CASCADE"))
+    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    finding_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True))
+    severity: Mapped[Optional[str]] = mapped_column(String(50))
+    subject: Mapped[str] = mapped_column(String(500), nullable=False)
+    body_html: Mapped[str] = mapped_column(Text, nullable=False)
+    body_text: Mapped[Optional[str]] = mapped_column(Text)
+    to_emails: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+
+    # Relationships
+    config: Mapped["EmailConfig"] = relationship(back_populates="notifications")
+
+
+class WebhookConfig(Base):
+    """Generic webhook configurations for organizations."""
+    __tablename__ = "webhook_configs"
+
+    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    http_method: Mapped[str] = mapped_column(String(10), default="POST", nullable=False)
+    headers: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    payload_template: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    authentication: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    use_hmac_signature: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    hmac_secret: Mapped[Optional[str]] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    severity_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
+    event_types: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    webhook_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column("webhook_metadata", JSONType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    created_by: Mapped[Optional[str]] = mapped_column(String(255))
+
+    # Relationships
+    notifications: Mapped[List["WebhookNotification"]] = relationship(back_populates="config", cascade="all, delete-orphan")
+
+
+class WebhookNotification(Base):
+    """Audit log of webhook notifications sent."""
+    __tablename__ = "webhook_notifications"
+
+    notification_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("webhook_configs.config_id", ondelete="CASCADE"))
+    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    finding_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True))
+    severity: Mapped[Optional[str]] = mapped_column(String(50))
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    response_status: Mapped[Optional[int]] = mapped_column(Integer)
+    response_body: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+
+    # Relationships
+    config: Mapped["WebhookConfig"] = relationship(back_populates="notifications")
+
+
 # Import identity models to make them available
 from .identity_models import IdentityCluster, IdentityClusterMember, IdentityStitchingLog

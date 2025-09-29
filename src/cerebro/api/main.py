@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer
 import logging
 
 from cerebro.core.config import settings
-from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack
+from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks
 from .routers import jwks
 from .auth import User, get_current_user
 
@@ -174,6 +174,20 @@ app.include_router(
     slack.router,
     prefix=f"{settings.api_v1_prefix}/slack",
     tags=["slack", "notifications"]
+)
+
+# Email notification API
+app.include_router(
+    email.router,
+    prefix=f"{settings.api_v1_prefix}/notifications",
+    tags=["email", "notifications"]
+)
+
+# Generic webhook notification API
+app.include_router(
+    webhooks.router,
+    prefix=f"{settings.api_v1_prefix}/notifications",
+    tags=["webhooks", "notifications"]
 )
 
 
