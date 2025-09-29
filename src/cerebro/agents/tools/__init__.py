@@ -21,6 +21,7 @@ from .compliance_tester import ComplianceControlTesterTool, EvidenceBundleBuilde
 from .identity_anomaly_hunter import IdentityAnomalyHunterTool
 from .org_context import GetOrgContextTool
 from .system_context import GetSystemContextTool
+from .session_memory import RememberContextTool, GetSessionHistoryTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -43,6 +44,8 @@ tool_registry.register(EvidenceBundleBuilderTool())
 tool_registry.register(IdentityAnomalyHunterTool())
 tool_registry.register(GetOrgContextTool())
 tool_registry.register(GetSystemContextTool())
+tool_registry.register(RememberContextTool())
+tool_registry.register(GetSessionHistoryTool())
 
 __all__ = [
     "Tool",
@@ -69,4 +72,6 @@ __all__ = [
     "IdentityAnomalyHunterTool",
     "GetOrgContextTool",
     "GetSystemContextTool",
+    "RememberContextTool",
+    "GetSessionHistoryTool",
 ]
