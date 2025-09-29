@@ -1,5 +1,6 @@
 """Configuration collector implementation."""
 
+import asyncio
 import hashlib
 import json
 from typing import Any, Dict, List, Optional
@@ -16,7 +17,8 @@ from cerebro.core.models import (
 )
 from cerebro.providers.base import BaseProvider
 from cerebro.core.config import settings
-from cerebro.core.bulk_operations import BulkOperations
+from cerebro.core.bulk_operations import BulkOperations, compute_config_hash
+from cerebro.metrics.collection_metrics import collection_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -169,20 +171,94 @@ class ConfigCollector:
         account: Account,
         result: CollectionResult
     ) -> None:
-        """Collect resource configurations."""
-        try:
-            # Get all resources for this account
-            stmt = select(Resource).where(
-                and_(
-                    Resource.account_id == account.account_id,
-                    Resource.provider == provider.name
+        """Collect resource configurations with concurrent processing."""
+        with collection_metrics.time_collection(
+            provider.name, str(account.account_id), "configurations"
+        ):
+            try:
+                # Get all resources for this account
+                stmt = select(Resource).where(
+                    and_(
+                        Resource.account_id == account.account_id,
+                        Resource.provider == provider.name
+                    )
                 )
-            )
-            resources = await self.db.scalars(stmt)
-            
-            for resource in resources:
-                try:
-                    # Get configuration from provider
+                resources = list(await self.db.scalars(stmt))
+                
+                if not resources:
+                    logger.info("No resources found for configuration collection")
+                    return
+                
+                logger.info(f"Starting concurrent config collection for {len(resources)} resources")
+                
+                # Create semaphore to limit concurrency
+                semaphore = asyncio.Semaphore(settings.collection_concurrency_limit)
+                
+                # Collect configurations concurrently
+                config_tasks = []
+                for resource in resources:
+                    task = self._fetch_single_config(semaphore, provider, resource)
+                    config_tasks.append(task)
+                
+                # Wait for all config fetches to complete
+                config_results = await asyncio.gather(*config_tasks, return_exceptions=True)
+                
+                # Process results and prepare for bulk insert
+                snapshots_to_insert = []
+                for i, config_result in enumerate(config_results):
+                    resource = resources[i]
+                    
+                    if isinstance(config_result, Exception):
+                        error_msg = f"Failed to collect config for resource {resource.external_id}: {config_result}"
+                        logger.warning(error_msg)
+                        result.errors.append(error_msg)
+                        continue
+                    
+                    if config_result is None:
+                        continue  # No config returned
+                    
+                    # Prepare snapshot for bulk insert
+                    config_sha = compute_config_hash(config_result['normalized_config'])
+                    snapshots_to_insert.append({
+                        'resource_id': resource.resource_id,
+                        'captured_at': config_result['captured_at'],
+                        'config_sha': config_sha,
+                        'normalized_config': config_result['normalized_config'],
+                        'collector_version': "1.0.0"
+                    })
+                
+                # Bulk insert new configurations
+                if snapshots_to_insert:
+                    with collection_metrics.time_bulk_operation("config_snapshots", len(snapshots_to_insert)):
+                        inserted_count = await self.bulk_ops.bulk_insert_config_snapshots(
+                            account.account_id, snapshots_to_insert
+                        )
+                        result.config_snapshots = inserted_count
+                        collection_metrics.record_configs_collected(
+                            provider.name, 
+                            str(account.account_id),
+                            "all",  # resource_type aggregated
+                            inserted_count
+                        )
+                
+                logger.info(f"Config collection completed: {result.config_snapshots} new snapshots")
+                
+            except Exception as e:
+                error_msg = f"Failed to collect configurations: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+
+    async def _fetch_single_config(
+        self,
+        semaphore: asyncio.Semaphore,
+        provider: BaseProvider,
+        resource: Resource
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch configuration for a single resource with concurrency control."""
+        async with semaphore:
+            try:
+                with collection_metrics.time_provider_api(provider.name, "get_config"):
+                    # Create resource info object
                     resource_info = type('ResourceInfo', (), {
                         'external_id': resource.external_id,
                         'resource_type': resource.resource_type,
@@ -191,41 +267,15 @@ class ConfigCollector:
                     
                     config_snapshot = await provider.get_resource_configuration(resource_info)
                     
-                    # Calculate config hash
-                    config_json = json.dumps(config_snapshot.normalized_config, sort_keys=True)
-                    config_sha = hashlib.sha256(config_json.encode()).digest()
+                    return {
+                        'captured_at': config_snapshot.captured_at,
+                        'normalized_config': config_snapshot.normalized_config
+                    }
                     
-                    # Check if this exact configuration already exists
-                    stmt = select(ConfigSnapshot).where(
-                        and_(
-                            ConfigSnapshot.resource_id == resource.resource_id,
-                            ConfigSnapshot.config_sha == config_sha
-                        )
-                    )
-                    existing_snapshot = await self.db.scalar(stmt)
-                    
-                    if not existing_snapshot:
-                        # Create new config snapshot
-                        snapshot = ConfigSnapshot(
-                            resource_id=resource.resource_id,
-                            captured_at=config_snapshot.captured_at,
-                            config_sha=config_sha,
-                            normalized_config=config_snapshot.normalized_config,
-                            collector_version="1.0.0"
-                        )
-                        self.db.add(snapshot)
-                        result.config_snapshots += 1
-                        logger.debug(f"New config snapshot for resource: {resource.external_id}")
-                
-                except Exception as e:
-                    error_msg = f"Failed to collect config for {resource.external_id}: {e}"
-                    logger.warning(error_msg)
-                    result.errors.append(error_msg)
-            
-        except Exception as e:
-            error_msg = f"Failed to collect configurations: {e}"
-            logger.error(error_msg)
-            result.errors.append(error_msg)
+            except Exception as e:
+                logger.debug(f"Config fetch failed for {resource.external_id}: {e}")
+                # Let the caller handle the exception
+                raise
     
     async def _collect_iam_edges(
         self,
@@ -233,51 +283,81 @@ class ConfigCollector:
         account: Account,
         result: CollectionResult
     ) -> None:
-        """Collect IAM permissions."""
-        try:
-            async for iam_permission in provider.discover_iam_edges():
-                # Get principal
-                stmt = select(Principal).where(
-                    and_(
-                        Principal.account_id == account.account_id,
-                        Principal.provider == provider.name,
-                        Principal.external_id == iam_permission.principal_external_id
-                    )
+        """Collect IAM permissions with batch processing and preloaded maps."""
+        with collection_metrics.time_collection(
+            provider.name, str(account.account_id), "iam_edges"
+        ):
+            try:
+                # Preload principal and resource lookup maps to avoid N+1 queries
+                logger.info("Preloading principal and resource lookup maps")
+                principal_map = await self.bulk_ops.preload_principal_map(
+                    account.account_id, provider.name
                 )
-                principal = await self.db.scalar(stmt)
-                
-                if not principal:
-                    logger.warning(f"Principal not found: {iam_permission.principal_external_id}")
-                    continue
-                
-                # Get resource (if specified)
-                resource = None
-                if iam_permission.resource_external_id:
-                    stmt = select(Resource).where(
-                        and_(
-                            Resource.account_id == account.account_id,
-                            Resource.provider == provider.name,
-                            Resource.external_id == iam_permission.resource_external_id
-                        )
-                    )
-                    resource = await self.db.scalar(stmt)
-                
-                # Create IAM edge (always append-only)
-                iam_edge = IamEdge(
-                    account_id=account.account_id,
-                    provider=provider.name,
-                    principal_id=principal.principal_id,
-                    resource_id=resource.resource_id if resource else None,
-                    permission=iam_permission.permission,
-                    via=iam_permission.via,
-                    effective_at=iam_permission.effective_at or datetime.utcnow(),
-                    expires_at=iam_permission.expires_at,
-                    is_admin=iam_permission.is_admin
+                resource_map = await self.bulk_ops.preload_resource_map(
+                    account.account_id, provider.name
                 )
-                self.db.add(iam_edge)
-                result.iam_edges += 1
                 
-        except Exception as e:
-            error_msg = f"Failed to collect IAM edges: {e}"
-            logger.error(error_msg)
-            result.errors.append(error_msg)
+                logger.info(f"Loaded {len(principal_map)} principals and {len(resource_map)} resources")
+                
+                # Collect IAM edges in batches
+                edges_to_insert = []
+                edge_count = 0
+                
+                async for iam_permission in provider.discover_iam_edges():
+                    edge_count += 1
+                    
+                    # Look up principal ID
+                    principal_id = principal_map.get(iam_permission.principal_external_id)
+                    if not principal_id:
+                        logger.debug(f"Principal not found in map: {iam_permission.principal_external_id}")
+                        result.errors.append(f"Principal not found: {iam_permission.principal_external_id}")
+                        continue
+                    
+                    # Look up resource ID (if specified)
+                    resource_id = None
+                    if iam_permission.resource_external_id:
+                        resource_id = resource_map.get(iam_permission.resource_external_id)
+                        if not resource_id:
+                            logger.debug(f"Resource not found in map: {iam_permission.resource_external_id}")
+                    
+                    # Prepare edge for bulk insert
+                    edge_data = {
+                        'account_id': account.account_id,
+                        'provider': provider.name,
+                        'principal_id': principal_id,
+                        'resource_id': resource_id,
+                        'permission': iam_permission.permission,
+                        'via': iam_permission.via,
+                        'effective_at': iam_permission.effective_at or datetime.utcnow(),
+                        'expires_at': iam_permission.expires_at,
+                        'is_admin': iam_permission.is_admin or False
+                    }
+                    edges_to_insert.append(edge_data)
+                    
+                    # Flush batch when it reaches the configured size
+                    if len(edges_to_insert) >= settings.iam_edge_batch_size:
+                        with collection_metrics.time_bulk_operation("iam_edges", len(edges_to_insert)):
+                            inserted = await self.bulk_ops.bulk_insert_iam_edges(edges_to_insert)
+                            result.iam_edges += inserted
+                        
+                        edges_to_insert = []  # Reset for next batch
+                
+                # Insert remaining edges
+                if edges_to_insert:
+                    with collection_metrics.time_bulk_operation("iam_edges", len(edges_to_insert)):
+                        inserted = await self.bulk_ops.bulk_insert_iam_edges(edges_to_insert)
+                        result.iam_edges += inserted
+                
+                # Record metrics
+                collection_metrics.record_iam_edges_collected(
+                    provider.name, 
+                    str(account.account_id),
+                    result.iam_edges
+                )
+                
+                logger.info(f"IAM edge collection completed: {result.iam_edges} new edges from {edge_count} discovered")
+                
+            except Exception as e:
+                error_msg = f"Failed to collect IAM edges: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)

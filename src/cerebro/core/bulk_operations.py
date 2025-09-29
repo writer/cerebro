@@ -224,6 +224,110 @@ class BulkOperations:
         return {external_id: resource_id for external_id, resource_id in result.fetchall()}
 
 
+    async def bulk_upsert_resources(
+        self,
+        account_id: UUID,
+        provider: str,
+        resources: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Bulk upsert resources with conflict resolution.
+        
+        Args:
+            account_id: Account ID these resources belong to
+            provider: Provider name
+            resources: List of resource dictionaries with keys:
+                - resource_type: str
+                - external_id: str  
+                - name: str (optional)
+                - parent_external_id: str (optional)
+        
+        Returns:
+            Number of resources inserted/updated
+        """
+        if not resources:
+            return 0
+        
+        # Add account_id and provider to each resource
+        for resource in resources:
+            resource['account_id'] = account_id
+            resource['provider'] = provider
+            if 'name' not in resource:
+                resource['name'] = None
+            if 'parent_external_id' not in resource:
+                resource['parent_external_id'] = None
+        
+        # Use PostgreSQL UPSERT
+        stmt = insert(Resource).values(resources)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['account_id', 'provider', 'resource_type', 'external_id'],
+            set_=dict(
+                name=stmt.excluded.name,
+                parent_external_id=stmt.excluded.parent_external_id
+            )
+        )
+        
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        
+        logger.info(f"Bulk upserted {result.rowcount} resources for account {account_id}")
+        return result.rowcount
+
+    async def bulk_upsert_principals(
+        self,
+        account_id: UUID,
+        provider: str,
+        principals: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Bulk upsert principals with conflict resolution.
+        
+        Args:
+            account_id: Account ID these principals belong to
+            provider: Provider name
+            principals: List of principal dictionaries with keys:
+                - principal_type: str
+                - external_id: str
+                - email: str (optional)
+                - display_name: str (optional)
+                - is_human: bool (optional)
+        
+        Returns:
+            Number of principals inserted/updated
+        """
+        if not principals:
+            return 0
+        
+        # Add account_id and provider to each principal
+        for principal in principals:
+            principal['account_id'] = account_id
+            principal['provider'] = provider
+            if 'email' not in principal:
+                principal['email'] = None
+            if 'display_name' not in principal:
+                principal['display_name'] = None
+            if 'is_human' not in principal:
+                principal['is_human'] = None
+        
+        # Use PostgreSQL UPSERT
+        stmt = insert(Principal).values(principals)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['account_id', 'provider', 'external_id'],
+            set_=dict(
+                principal_type=stmt.excluded.principal_type,
+                email=stmt.excluded.email,
+                display_name=stmt.excluded.display_name,
+                is_human=stmt.excluded.is_human
+            )
+        )
+        
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        
+        logger.info(f"Bulk upserted {result.rowcount} principals for account {account_id}")
+        return result.rowcount
+
+
 def compute_config_hash(normalized_config: Dict[str, Any]) -> bytes:
     """
     Compute SHA256 hash of normalized configuration.
