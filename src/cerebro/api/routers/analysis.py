@@ -14,7 +14,7 @@ from cerebro.api.auth import require_read_findings
 from cerebro.analysis.blast_radius import BlastRadiusAnalyzer
 from cerebro.analysis.forensic_replay import ForensicReplayEngine
 from cerebro.analysis.change_replay import ChangeReplayEngine
-from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult
+# from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult  # Requires sklearn
 from cerebro.compliance.generator import ComplianceEvidenceGenerator
 from cerebro.compliance.frameworks import list_frameworks, get_framework
 from cerebro.rules.engine import rule_engine

@@ -6,6 +6,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+# Base schemas
+class BaseResponse(BaseModel):
+    """Base response schema."""
+    success: bool = True
+    message: Optional[str] = None
+
+
 # Organization schemas
 class OrganizationCreate(BaseModel):
     name: str = Field(..., description="Organization name")
