@@ -1,6 +1,9 @@
 """
 Immutable evidence store for compliance audit trails.
 
+DEPRECATED: This module is being replaced by the unified evidence system.
+Use EvidenceService from evidence_service.py and storage.py for new implementations.
+
 Provides WORM (Write-Once-Read-Many) storage for compliance evidence with
 cryptographic hashing, digital signatures, and complete audit trails.
 """
@@ -18,31 +21,8 @@ import aiofiles
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 
-
-class EvidenceStatus(Enum):
-    """Status of evidence items in the store."""
-    PENDING = "pending"
-    STORED = "stored"
-    VERIFIED = "verified"
-    SEALED = "sealed"  # Cryptographically sealed for audit
-    EXPIRED = "expired"  # Past retention period
-
-
-class EvidenceCategory(Enum):
-    """Categories of evidence for organization and retention."""
-    CONFIGURATION = "configuration"
-    ACCESS_LOG = "access_log" 
-    AUDIT_LOG = "audit_log"
-    CONTROL_TEST = "control_test"
-    POLICY_DOCUMENT = "policy_document"
-    ATTESTATION = "attestation"
-    SCREENSHOT = "screenshot"
-    SYSTEM_REPORT = "system_report"
-    VULNERABILITY_SCAN = "vulnerability_scan"
-    INCIDENT_REPORT = "incident_report"
-    TRAINING_RECORD = "training_record"
-    BACKGROUND_CHECK = "background_check"
-    VENDOR_ASSESSMENT = "vendor_assessment"
+# Import unified enums instead of redefining them
+from .models import EvidenceStatus, EvidenceCategory
 
 
 @dataclass

@@ -1,9 +1,12 @@
 """
 Main compliance evidence generator.
+
+DEPRECATED: This module is deprecated in favor of the unified evidence system.
+Use EvidenceService from evidence_service.py for new implementations.
 """
 
 import asyncio
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from .frameworks import get_framework
@@ -12,10 +15,24 @@ from .reporting import ComplianceReporter
 
 
 class ComplianceEvidenceGenerator:
-    """Main class for generating compliance evidence."""
-    
-    def __init__(self):
-        self.evidence_collector = EvidenceCollector()
+    """Main class for generating compliance evidence.
+
+    DEPRECATED: Use EvidenceService from evidence_service.py instead.
+    This class now uses dependency injection to avoid architectural violations.
+    """
+
+    def __init__(self, query_engine=None, provider_registry=None):
+        """Initialize with dependency injection to avoid architectural violations.
+
+        Args:
+            query_engine: Optional query engine instance for evidence collection
+            provider_registry: Optional provider registry for table registration
+        """
+        # Use dependency injection for evidence collector
+        self.evidence_collector = EvidenceCollector(
+            query_engine=query_engine,
+            provider_registry=provider_registry
+        )
         self.reporter = ComplianceReporter()
     
     async def generate_compliance_report(

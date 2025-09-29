@@ -1,7 +1,10 @@
 """
 Evidence Data Fabric - The foundation of Cerebro's Compliance Data Plane.
 
-This module implements a normalized, queryable evidence model that serves as 
+DEPRECATED: This module is being consolidated into the unified evidence system.
+Use EvidenceService from evidence_service.py and the models from models.py for new implementations.
+
+This module implements a normalized, queryable evidence model that serves as
 the data substrate for rules, analytics, and AI - similar to Anecdotes.ai's approach.
 
 Key principles:
@@ -28,6 +31,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.dialects.postgresql import UUID
 from cerebro.core.database_types import JSONType
+
+# Import unified enums from the consolidated models
+from .models import EvidenceStatus, EvidenceCategory
 
 Base = declarative_base()
 

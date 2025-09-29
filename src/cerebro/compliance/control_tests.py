@@ -7,13 +7,16 @@ Bridges the gap between technical security rules and compliance framework contro
 import asyncio
 import hashlib
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4, UUID
 
-from ..rules.engine import RuleEngine
-from ..query.engine import QueryEngine
+# Use TYPE_CHECKING to avoid runtime dependencies
+if TYPE_CHECKING:
+    from ..rules.engine import RuleEngine
+    from ..query.engine import QueryEngine
+
 from .evidence import EvidenceItem, EvidenceCollector
 from .frameworks import ComplianceControl, EvidenceType
 
@@ -126,10 +129,11 @@ class ControlCoverage:
 class ControlTestRunner:
     """Executes control tests and produces compliance evidence."""
     
-    def __init__(self, rule_engine: RuleEngine, query_engine: QueryEngine):
+    def __init__(self, rule_engine: 'RuleEngine', query_engine: 'QueryEngine'):
         self.rule_engine = rule_engine
         self.query_engine = query_engine
-        self.evidence_collector = EvidenceCollector()
+        # Pass query_engine to evidence collector to avoid dependency violations
+        self.evidence_collector = EvidenceCollector(query_engine=query_engine)
     
     async def run_control_test(
         self, 
