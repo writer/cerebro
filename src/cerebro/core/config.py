@@ -87,6 +87,59 @@ class Settings(BaseSettings):
         default=30, description="CEL compilation timeout in seconds"
     )
     
+    # Collection Performance (Phase 1)
+    collection_concurrency_limit: int = Field(
+        default=16, description="Maximum concurrent config fetches per collection run"
+    )
+    collection_batch_size: int = Field(
+        default=500, description="Batch size for database operations during collection"
+    )
+    iam_edge_batch_size: int = Field(
+        default=1000, description="Batch size for IAM edge insertions"
+    )
+    
+    # JWT Security (Phase 2)
+    jwt_algorithm: str = Field(
+        default="RS256", description="JWT signing algorithm (RS256 recommended for production)"
+    )
+    jwt_rotation_period_hours: int = Field(
+        default=24, description="Hours between JWT key rotations"
+    )
+    jwt_key_overlap_hours: int = Field(
+        default=48, description="Hours to keep old keys for seamless rotation"
+    )
+    jwks_cache_ttl_seconds: int = Field(
+        default=300, description="JWKS endpoint cache TTL"
+    )
+    
+    # Rate Limiting & Lockout (Phase 3)
+    rate_limit_login_per_ip: int = Field(
+        default=10, description="Login attempts per IP per minute"
+    )
+    rate_limit_login_per_user: int = Field(
+        default=5, description="Login attempts per user per minute"
+    )
+    lockout_threshold: int = Field(
+        default=5, description="Failed attempts before account lockout"
+    )
+    lockout_window_minutes: int = Field(
+        default=15, description="Time window for counting failed attempts"
+    )
+    lockout_duration_minutes: int = Field(
+        default=30, description="Duration of account lockout"
+    )
+    lockout_max_duration_hours: int = Field(
+        default=24, description="Maximum lockout duration for repeated offenses"
+    )
+    
+    # Credential Management (Phase 4)
+    enable_provider_env_fallback: bool = Field(
+        default=False, description="Allow fallback to environment variables for provider credentials"
+    )
+    credential_refresh_threshold_hours: int = Field(
+        default=1, description="Hours before expiry to refresh credentials"
+    )
+    
     # Collectors
     collector_batch_size: int = Field(
         default=100, description="Collector batch size"
@@ -175,6 +228,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Local KMS provider is not allowed in production. "
                 "Use aws, gcp, azure, or vault KMS provider for production deployments."
+            )
+        return v
+
+    @validator('enable_provider_env_fallback')
+    def validate_env_fallback(cls, v):
+        """Validate provider env fallback is not enabled in production."""
+        environment = os.getenv('ENVIRONMENT', 'production').lower()
+        if v and environment not in ['dev', 'development', 'test', 'testing']:
+            raise ValueError(
+                "Provider environment variable fallback is not allowed in production. "
+                "Store credentials securely using the CredentialService with KMS encryption."
             )
         return v
 

@@ -1,230 +1,237 @@
-"""Bulk database operations for performance optimization."""
+"""Bulk database operations for high-performance data ingestion."""
 
-from typing import List, Dict, Any, Optional
-from uuid import UUID
-from datetime import datetime
+import hashlib
 import logging
+from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, insert, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import select, and_
+from sqlalchemy.exc import IntegrityError
 
-from .models import Resource, Principal, ConfigSnapshot, IamEdge, Finding
+from .models import ConfigSnapshot, IamEdge, Resource, Principal
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class BulkOperations:
-    """Bulk database operations manager."""
+    """High-performance bulk operations for data ingestion."""
     
     def __init__(self, db_session: AsyncSession):
-        """Initialize bulk operations manager."""
+        """Initialize bulk operations with database session."""
         self.db = db_session
-    
-    async def bulk_upsert_resources(
-        self,
-        account_id: UUID,
-        provider: str,
-        resources: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Bulk insert/update resources."""
-        if not resources:
-            return {"inserted": 0, "updated": 0}
-        
-        # Prepare data for bulk insert
-        resource_data = []
-        for resource in resources:
-            resource_data.append({
-                "account_id": account_id,
-                "provider": provider,
-                "resource_type": resource["resource_type"],
-                "external_id": resource["external_id"],
-                "name": resource.get("name"),
-                "parent_external_id": resource.get("parent_external_id"),
-                "created_at": datetime.utcnow(),
-            })
-        
-        # Use PostgreSQL UPSERT (ON CONFLICT DO UPDATE)
-        stmt = pg_insert(Resource).values(resource_data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["account_id", "provider", "resource_type", "external_id"],
-            set_={
-                "name": stmt.excluded.name,
-                "parent_external_id": stmt.excluded.parent_external_id,
-            }
-        )
-        
-        result = await self.db.execute(stmt)
-        await self.db.commit()
-        
-        logger.info(f"Bulk upserted {len(resources)} resources for provider {provider}")
-        return {"processed": len(resources), "provider": provider}
-    
-    async def bulk_upsert_principals(
-        self,
-        account_id: UUID,
-        provider: str,
-        principals: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Bulk insert/update principals."""
-        if not principals:
-            return {"processed": 0}
-        
-        # Prepare data for bulk insert
-        principal_data = []
-        for principal in principals:
-            principal_data.append({
-                "account_id": account_id,
-                "provider": provider,
-                "principal_type": principal["principal_type"],
-                "external_id": principal["external_id"],
-                "email": principal.get("email"),
-                "display_name": principal.get("display_name"),
-                "is_human": principal.get("is_human"),
-            })
-        
-        # Use PostgreSQL UPSERT
-        stmt = pg_insert(Principal).values(principal_data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["account_id", "provider", "external_id"],
-            set_={
-                "email": stmt.excluded.email,
-                "display_name": stmt.excluded.display_name,
-                "is_human": stmt.excluded.is_human,
-            }
-        )
-        
-        result = await self.db.execute(stmt)
-        await self.db.commit()
-        
-        logger.info(f"Bulk upserted {len(principals)} principals for provider {provider}")
-        return {"processed": len(principals), "provider": provider}
     
     async def bulk_insert_config_snapshots(
         self,
+        account_id: UUID,
         snapshots: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Bulk insert config snapshots (append-only)."""
-        if not snapshots:
-            return {"inserted": 0}
+    ) -> int:
+        """
+        Bulk insert configuration snapshots with conflict resolution.
         
-        try:
-            # Direct bulk insert - no conflicts expected due to UNIQUE constraint
-            result = await self.db.execute(
-                insert(ConfigSnapshot).values(snapshots)
-            )
-            await self.db.commit()
+        Args:
+            account_id: Account ID for logging/metrics
+            snapshots: List of snapshot dictionaries with keys:
+                - resource_id: UUID
+                - captured_at: datetime
+                - config_sha: bytes (SHA256 hash)
+                - normalized_config: dict
+                - collector_version: str
+        
+        Returns:
+            Number of new snapshots inserted (excluding duplicates)
+        """
+        if not snapshots:
+            return 0
+        
+        start_time = datetime.utcnow()
+        
+        # Process in batches to avoid overwhelming the database
+        batch_size = min(settings.collection_batch_size, len(snapshots))
+        total_inserted = 0
+        
+        for i in range(0, len(snapshots), batch_size):
+            batch = snapshots[i:i + batch_size]
             
-            logger.info(f"Bulk inserted {len(snapshots)} config snapshots")
-            return {"inserted": len(snapshots)}
+            # First, check which snapshots already exist to avoid conflicts
+            existing_keys = set()
+            if len(batch) > 0:
+                # Build list of (resource_id, config_sha) tuples to check
+                check_tuples = [(s['resource_id'], s['config_sha']) for s in batch]
+                
+                # Query existing snapshots in chunks to avoid parameter limits
+                chunk_size = 1000
+                for chunk_start in range(0, len(check_tuples), chunk_size):
+                    chunk = check_tuples[chunk_start:chunk_start + chunk_size]
+                    
+                    stmt = select(ConfigSnapshot.resource_id, ConfigSnapshot.config_sha).where(
+                        and_(
+                            ConfigSnapshot.resource_id.in_([t[0] for t in chunk]),
+                            ConfigSnapshot.config_sha.in_([t[1] for t in chunk])
+                        )
+                    )
+                    
+                    result = await self.db.execute(stmt)
+                    existing_keys.update((row.resource_id, row.config_sha) for row in result.fetchall())
             
-        except Exception as e:
-            await self.db.rollback()
-            logger.error(f"Bulk config snapshot insert failed: {e}")
-            return {"inserted": 0, "error": str(e)}
+            # Filter out existing snapshots
+            new_snapshots = []
+            for snapshot in batch:
+                key = (snapshot['resource_id'], snapshot['config_sha'])
+                if key not in existing_keys:
+                    new_snapshots.append(snapshot)
+            
+            if new_snapshots:
+                # Use PostgreSQL's INSERT ... ON CONFLICT DO NOTHING for safety
+                stmt = insert(ConfigSnapshot).values(new_snapshots)
+                stmt = stmt.on_conflict_do_nothing(
+                    index_elements=['resource_id', 'config_sha']
+                )
+                
+                result = await self.db.execute(stmt)
+                batch_inserted = result.rowcount
+                total_inserted += batch_inserted
+                
+                logger.debug(f"Batch inserted {batch_inserted}/{len(batch)} config snapshots")
+        
+        # Commit all batches
+        await self.db.commit()
+        
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        logger.info(
+            f"Bulk inserted {total_inserted}/{len(snapshots)} config snapshots "
+            f"for account {account_id} in {duration_ms:.1f}ms"
+        )
+        
+        return total_inserted
     
     async def bulk_insert_iam_edges(
         self,
-        iam_edges: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Bulk insert IAM edges (append-only)."""
-        if not iam_edges:
-            return {"inserted": 0}
+        edges: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Bulk insert IAM edges with conflict resolution.
         
-        try:
-            # Use ON CONFLICT DO NOTHING for IAM edges due to complex unique constraint
-            stmt = pg_insert(IamEdge).values(iam_edges)
-            stmt = stmt.on_conflict_do_nothing()
-            
-            result = await self.db.execute(stmt)
-            await self.db.commit()
-            
-            logger.info(f"Bulk processed {len(iam_edges)} IAM edges")
-            return {"processed": len(iam_edges)}
-            
-        except Exception as e:
-            await self.db.rollback()
-            logger.error(f"Bulk IAM edges insert failed: {e}")
-            return {"processed": 0, "error": str(e)}
-    
-    async def bulk_update_findings(
-        self,
-        findings: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Bulk update finding last_seen timestamps."""
-        if not findings:
-            return {"updated": 0}
+        Args:
+            edges: List of IAM edge dictionaries with keys:
+                - account_id: UUID
+                - provider: str
+                - principal_id: UUID
+                - resource_id: UUID (optional)
+                - permission: str
+                - via: str (optional)
+                - effective_at: datetime
+                - expires_at: datetime (optional)
+                - is_admin: bool
         
-        # Extract finding IDs and new timestamps
-        finding_updates = [(f["finding_id"], f["last_seen"]) for f in findings]
+        Returns:
+            Number of new edges inserted (excluding duplicates)
+        """
+        if not edges:
+            return 0
         
-        # Use raw SQL for efficient bulk update
-        sql = text("""
-            UPDATE findings 
-            SET last_seen = data.last_seen
-            FROM (VALUES (:finding_id, :last_seen)) AS data(finding_id, last_seen)
-            WHERE findings.finding_id = data.finding_id::uuid
-        """)
+        start_time = datetime.utcnow()
         
-        try:
-            result = await self.db.execute(sql, [
-                {"finding_id": str(f_id), "last_seen": timestamp}
-                for f_id, timestamp in finding_updates
-            ])
-            await self.db.commit()
+        # Process in batches
+        batch_size = min(settings.iam_edge_batch_size, len(edges))
+        total_inserted = 0
+        
+        for i in range(0, len(edges), batch_size):
+            batch = edges[i:i + batch_size]
             
-            logger.info(f"Bulk updated {len(findings)} findings")
-            return {"updated": len(findings)}
+            # Use PostgreSQL's upsert capability
+            stmt = insert(IamEdge).values(batch)
+            # Use the unique constraint from the model for conflict detection
+            stmt = stmt.on_conflict_do_nothing(
+                index_elements=[
+                    'account_id', 'provider', 'principal_id', 'resource_id', 
+                    'permission', 'effective_at', 'via'
+                ]
+            )
             
-        except Exception as e:
-            await self.db.rollback()
-            logger.error(f"Bulk findings update failed: {e}")
-            return {"updated": 0, "error": str(e)}
-    
-    async def get_existing_resources(
-        self, 
-        account_id: UUID, 
-        provider: str,
-        external_ids: List[str]
-    ) -> Dict[str, UUID]:
-        """Get existing resource IDs for external IDs."""
-        if not external_ids:
-            return {}
+            try:
+                result = await self.db.execute(stmt)
+                batch_inserted = result.rowcount
+                total_inserted += batch_inserted
+                
+                logger.debug(f"Batch inserted {batch_inserted}/{len(batch)} IAM edges")
+                
+            except IntegrityError as e:
+                # Log but continue - this shouldn't happen with ON CONFLICT but be defensive
+                logger.warning(f"Integrity error in IAM edge batch insert: {e}")
+                # Roll back this batch and continue
+                await self.db.rollback()
+                continue
         
-        stmt = select(Resource.external_id, Resource.resource_id).where(
-            Resource.account_id == account_id,
-            Resource.provider == provider,
-            Resource.external_id.in_(external_ids)
+        # Commit all successful batches
+        await self.db.commit()
+        
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        logger.info(
+            f"Bulk inserted {total_inserted}/{len(edges)} IAM edges "
+            f"in {duration_ms:.1f}ms"
         )
         
-        result = await self.db.execute(stmt)
-        return {external_id: resource_id for external_id, resource_id in result.fetchall()}
+        return total_inserted
     
-    async def get_existing_principals(
+    async def preload_principal_map(
         self,
         account_id: UUID,
-        provider: str,
-        external_ids: List[str]
+        provider: str
     ) -> Dict[str, UUID]:
-        """Get existing principal IDs for external IDs."""
-        if not external_ids:
-            return {}
+        """
+        Preload mapping of principal external_id -> principal_id for an account.
         
+        This avoids N+1 queries when processing IAM edges.
+        
+        Returns:
+            Dictionary mapping external_id to principal_id
+        """
         stmt = select(Principal.external_id, Principal.principal_id).where(
-            Principal.account_id == account_id,
-            Principal.provider == provider,
-            Principal.external_id.in_(external_ids)
+            and_(
+                Principal.account_id == account_id,
+                Principal.provider == provider
+            )
         )
         
         result = await self.db.execute(stmt)
         return {external_id: principal_id for external_id, principal_id in result.fetchall()}
     
-    async def vacuum_analyze_table(self, table_name: str) -> None:
-        """Run VACUUM ANALYZE on a table for performance."""
-        try:
-            # Note: VACUUM cannot run inside a transaction
-            await self.db.connection()
-            await self.db.execute(text(f"VACUUM ANALYZE {table_name}"))
-            logger.info(f"VACUUM ANALYZE completed for {table_name}")
-        except Exception as e:
-            logger.warning(f"VACUUM ANALYZE failed for {table_name}: {e}")
+    async def preload_resource_map(
+        self,
+        account_id: UUID,
+        provider: str
+    ) -> Dict[str, UUID]:
+        """
+        Preload mapping of resource external_id -> resource_id for an account.
+        
+        This avoids N+1 queries when processing IAM edges.
+        
+        Returns:
+            Dictionary mapping external_id to resource_id
+        """
+        stmt = select(Resource.external_id, Resource.resource_id).where(
+            and_(
+                Resource.account_id == account_id,
+                Resource.provider == provider
+            )
+        )
+        
+        result = await self.db.execute(stmt)
+        return {external_id: resource_id for external_id, resource_id in result.fetchall()}
+
+
+def compute_config_hash(normalized_config: Dict[str, Any]) -> bytes:
+    """
+    Compute SHA256 hash of normalized configuration.
+    
+    This ensures consistent hashing across the system.
+    """
+    import json
+    
+    # Ensure consistent serialization
+    config_json = json.dumps(normalized_config, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(config_json.encode('utf-8')).digest()
