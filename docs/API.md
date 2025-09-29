@@ -30,6 +30,137 @@ Content-Type: application/json
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
+## 🤖 AI Agents (Primary Interface)
+
+Cerebro AI Agents provide a **conversational interface** to the entire security platform. When agents execute tools, they use the **same engines** as CLI and API endpoints.
+
+> **Key Concept:** Agents aren't a separate feature - they're a natural language wrapper around Cerebro's core capabilities. Agent tool execution = API endpoint execution.
+
+### **Create Agent Session**
+```bash
+POST /api/v1/agents/sessions
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "agent_type": "security_analyst",
+  "title": "AWS Security Review",
+  "context": {
+    "provider_scope": ["aws"],
+    "finding_ids": []
+  }
+}
+
+# Response
+{
+  "session_id": "abc123...",
+  "agent_type": "security_analyst",
+  "created_at": "2024-01-15T10:00:00Z",
+  "status": "active"
+}
+```
+
+### **Send Message to Agent (with Streaming)**
+```bash
+# Streaming response (SSE)
+POST /api/v1/agents/sessions/{session_id}/messages
+Authorization: Bearer <token>
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "message": "What are the most critical security findings in AWS?",
+  "stream": true
+}
+
+# SSE Stream Events:
+event: content_delta
+data: {"type": "content_delta", "content": "I'll analyze your AWS findings..."}
+
+event: tool_use
+data: {"type": "tool_use", "metadata": {"tool_name": "findings_list"}}
+
+event: content_delta
+data: {"type": "content_delta", "content": "Found 12 critical findings..."}
+
+event: done
+data: {"type": "done"}
+```
+
+### **List Agent Sessions**
+```bash
+GET /api/v1/agents/sessions?agent_type=security_analyst&limit=50
+Authorization: Bearer <token>
+
+# Response
+{
+  "sessions": [
+    {
+      "session_id": "abc123...",
+      "agent_type": "security_analyst",
+      "title": "AWS Security Review",
+      "message_count": 8,
+      "created_at": "2024-01-15T10:00:00Z",
+      "status": "active"
+    }
+  ],
+  "total": 15
+}
+```
+
+### **Get Session Messages**
+```bash
+GET /api/v1/agents/sessions/{session_id}
+Authorization: Bearer <token>
+
+# Response
+{
+  "session": {...},
+  "messages": [
+    {
+      "role": "user",
+      "content": "What are the critical findings?",
+      "timestamp": "2024-01-15T10:00:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "I found 12 critical findings...",
+      "timestamp": "2024-01-15T10:00:05Z"
+    }
+  ],
+  "message_count": 8
+}
+```
+
+### **Agent Health Check**
+```bash
+GET /api/v1/agents/health
+Authorization: Bearer <token>
+
+# Response
+{
+  "status": "healthy",
+  "sdk_integration": "claude-agent-sdk-python v1.0.0",
+  "available_tools": [
+    "findings_list",
+    "finding_update_status",
+    "query",
+    "timeline",
+    "rules",
+    "security_analysis",
+    "remediation_suggestions"
+  ]
+}
+```
+
+**Agent Tool Mapping:**
+- `findings_list` tool → `GET /api/v1/findings` (same engine)
+- `query` tool → `POST /api/v1/query/execute` (same SQL engine)
+- `security_analysis` tool → Backend analysis engine
+- `remediation_suggestions` tool → Knowledge base + findings
+
+See [AI Agents Documentation](./agents/README.md) for complete guide.
+
 ## 🏢 Organizations
 
 ### **Create Organization**

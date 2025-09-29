@@ -1,6 +1,8 @@
-# Cerebro Agent Instructions
+# Cerebro Development Guide
 
-This document provides context for AI agents working on the Cerebro Security System of Record.
+This document provides development instructions and commonly used commands for working on Cerebro Security System of Record.
+
+> **Note:** This is a general development guide. For information about Cerebro's AI agent system (Claude-powered conversational interface), see [docs/agents/README.md](./agents/README.md).
 
 ## Frequently Used Commands
 

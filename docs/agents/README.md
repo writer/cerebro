@@ -1,10 +1,27 @@
 # Cerebro AI Agents
 
-Cerebro's AI agent system provides security-focused autonomous agents powered by Claude AI, with deep integration into Cerebro's security system of record.
+**AI Agents are a PRIMARY INTERFACE to Cerebro, not a bolt-on feature.**
+
+Cerebro provides three first-class interfaces to the same security engine:
+- **CLI** - Command-line operations (`cerebro findings list`)
+- **REST API** - Programmatic access (`GET /api/v1/findings`)
+- **AI Agents** - Conversational interface (`"Show me critical findings"`)
+
+All three interfaces access the **same 7 tools**, query the **same PostgreSQL database**, write to the **same audit trail**, and execute through the **same security engine**.
+
+## What Makes This Deep Integration?
+
+When an agent executes `findings_list` tool, it's not calling a separate agent-specific API. It's using the **exact same** findings engine that powers `cerebro findings list` and `GET /api/v1/findings`. The agent system is a **natural language wrapper** around Cerebro's core security capabilities.
+
+**Same Platform, Different Interface:**
+- Agent uses `query` tool → Same Zero-ETL SQL engine as CLI/API
+- Agent uses `security_analysis` tool → Same analysis engine across all interfaces
+- Agent updates finding status → Same audit log as API/CLI writes
+- Agent builds timeline → Same incident response data as other interfaces
 
 ## Overview
 
-The agent system enables natural language interaction with security findings, audit logs, compliance frameworks, and incident response workflows. All agent operations are audited, policy-controlled, and designed with security-first principles.
+The agent system enables natural language interaction with all of Cerebro's capabilities: security findings, audit logs, compliance frameworks, incident response workflows, SQL queries, CEL rules, and security analysis. All agent operations are audited, policy-controlled, and designed with security-first principles.
 
 ## Architecture
 
@@ -92,13 +109,20 @@ def create_cerebro_mcp_server(tools, context, executor) -> MCPServer
 
 ### 3. Tool System (`tools/`)
 
-Security-focused tools with guardrails:
+**7 Specialized Security Tools** shared across CLI, API, and Agents:
 
-- **FindingsListTool**: Query and filter security findings
-- **FindingStatusUpdateTool**: Update finding status with audit trail
-- **QueryTool**: Run complex queries (config changes, audit events, IAM)
-- **TimelineTool**: Build security event timelines
-- **RulesTool**: Query security rules and compliance frameworks
+1. **FindingsListTool** (`findings_list`) - Query and filter security findings with complex filters
+2. **FindingStatusUpdateTool** (`finding_update_status`) - Update finding status with audit trail
+3. **QueryTool** (`query`) - Execute SQL queries against 15+ security tables (Zero-ETL)
+4. **TimelineTool** (`timeline`) - Build incident timelines from audit events and findings
+5. **RulesTool** (`rules`) - Compile, test, and manage CEL security rules
+6. **SecurityAnalysisTool** (`security_analysis`) - 4 analysis types: attack surface, risk scoring, compliance gaps, posture assessment
+7. **RemediationTool** (`remediation_suggestions`) - Intelligent step-by-step remediation with effort estimates
+
+Every tool is accessible via:
+- **CLI**: `cerebro [tool-name] [args]`
+- **REST API**: `POST /api/v1/[tool-endpoint]`
+- **AI Agents**: Agent invokes tool by name
 
 All tools inherit from `Tool` base class with:
 - Input/output schema validation (Pydantic)

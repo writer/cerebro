@@ -57,6 +57,49 @@ uv run python -m cerebro.cli findings generate --org-name "My Company"
 ### 6. Access Dashboard
 Open http://localhost:3000 - dev auth enabled by default
 
+## 🎯 Three Ways to Use Cerebro
+
+Cerebro provides **three first-class interfaces** to the same security engine. Choose what fits your workflow:
+
+### 1️⃣ CLI - Command Line
+```bash
+# List critical findings
+cerebro findings list --severity critical --provider aws
+
+# Run SQL security queries
+cerebro query "SELECT * FROM aws_iam_user WHERE mfa_enabled = false"
+
+# Update finding status
+cerebro findings update {finding_id} --status resolved
+```
+
+### 2️⃣ REST API - Programmatic
+```bash
+# List findings
+curl "http://localhost:8000/api/v1/findings?severity=critical" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Execute SQL query
+curl -X POST "http://localhost:8000/api/v1/query/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"sql": "SELECT * FROM aws_iam_user WHERE mfa_enabled = false"}'
+```
+
+### 3️⃣ AI Agents - Conversational (NEW!)
+```bash
+# Create an agent session via CLI
+cerebro agents create --type security_analyst --title "AWS Security Review"
+
+# Or use the web UI at http://localhost:3000/agents
+# Then ask questions in natural language:
+"What are the most critical security issues in AWS?"
+"Show me all users without MFA across all providers"
+"Give me a timeline of IAM changes in the last 24 hours"
+"Suggest remediation steps for finding {id}"
+```
+
+**Key Insight:** All three interfaces use the **same 7 tools**, query the **same database**, and write to the **same audit trail**. When an agent lists findings, it's using the exact same engine as the CLI and API.
+
 ## 🎯 Key Capabilities
 
 ### Security Findings
@@ -132,7 +175,7 @@ WHERE granted_at BETWEEN '2024-10-01' AND '2024-10-31'
 ```
 
 ## 📚 Next Steps
-- [Complete API Reference](./API_REFERENCE.md)
-- [Architecture Guide](./ARCHITECTURE.md)
+- [Complete API Reference](./API.md)
+- [AI Agents Guide](./agents/README.md)
+- [Development Guide](./DEVELOPMENT.md)
 - [Deployment Guide](./DEPLOYMENT.md)
-- [Security Best Practices](./SECURITY.md)
