@@ -350,10 +350,49 @@ class ToolApprovalService:
             approval.decided_at = datetime.now(timezone.utc)
             approval.decision_reason = decision_reason or "Approved by authorized user"
             
-            # Update tool invocation status
+            # Update tool invocation status and re-execute if needed
             if approval.tool_invocation:
-                # Tool invocation can now be re-executed with approval
-                pass  # TODO: Implement tool re-execution with approval context
+                from cerebro.agents.tools import tool_registry
+                from cerebro.agents.tools.base import ToolExecutor, AgentContext, ToolPermissionLevel
+                
+                tool_invocation = approval.tool_invocation
+                
+                # Re-execute the tool with approval context
+                tool = tool_registry.get(tool_invocation.tool_name)
+                if tool:
+                    # Build context with elevated permissions
+                    execution_context = AgentContext(
+                        session_id=tool_invocation.session_id,
+                        org_id=org_id,
+                        user_id=approved_by,
+                        agent_type="approved_action",
+                        permission_level=ToolPermissionLevel.WRITE_DESTRUCTIVE,  # Elevated for approved actions
+                        cel_context={"approved": True, "approval_id": str(approval_id)}
+                    )
+                    
+                    # Execute the tool with original inputs but approval context
+                    tool_executor = ToolExecutor()
+                    try:
+                        re_execution_result = await tool_executor.execute_tool(
+                            tool=tool,
+                            raw_inputs=tool_invocation.input_data,
+                            context=execution_context,
+                            dry_run=False,  # Execute for real since approved
+                        )
+                        
+                        # Update tool invocation with new results
+                        tool_invocation.output_data = re_execution_result.model_dump()
+                        tool_invocation.status = (
+                            ToolInvocationStatus.SUCCESS if re_execution_result.success
+                            else ToolInvocationStatus.ERROR
+                        )
+                        tool_invocation.completed_at = datetime.now(timezone.utc)
+                        
+                    except Exception as e:
+                        logger.exception("Tool re-execution failed", tool_name=tool_invocation.tool_name, error=str(e))
+                        tool_invocation.status = ToolInvocationStatus.ERROR
+                        tool_invocation.error_message = f"Re-execution failed: {str(e)}"
+                        tool_invocation.completed_at = datetime.now(timezone.utc)
             
             await db_session.commit()
             

@@ -18,9 +18,13 @@ from cerebro.query.engine import QueryEngine
 from cerebro.providers.tables import register_all_provider_tables
 from cerebro.auditability.evidence_bundles import get_evidence_manager
 from cerebro.auditability.transparency_log import get_transparency_log
+from cerebro.cli.agents import app as agents_app
 
 app = typer.Typer(name="cerebro", help="Cerebro Security System of Record CLI")
 console = Console()
+
+# Add agents subcommand
+app.add_typer(agents_app, name="agents")
 
 
 @app.command()

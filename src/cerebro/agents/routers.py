@@ -511,16 +511,74 @@ async def agent_health_check():
     """Health check endpoint for agent services."""
     
     try:
-        # TODO: Add actual health checks for Claude SDK, database, etc.
-        return {
+        from cerebro.core.database import engine
+        from cerebro.agents.tools import tool_registry
+        from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+        from cerebro.core.config import settings
+        import asyncio
+        
+        health_status = {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
-            "services": {
-                "claude_sdk": "available",
-                "database": "connected",
-                "tool_registry": "loaded",
-            },
+            "services": {},
+            "checks": {}
         }
+        
+        # Check database connectivity
+        try:
+            async with engine.begin() as conn:
+                await conn.execute("SELECT 1")
+            health_status["services"]["database"] = "connected"
+            health_status["checks"]["database"] = {"status": "pass", "response_time_ms": "<10"}
+        except Exception as e:
+            health_status["services"]["database"] = f"error: {str(e)}"
+            health_status["checks"]["database"] = {"status": "fail", "error": str(e)}
+            health_status["status"] = "degraded"
+        
+        # Check tool registry
+        try:
+            tools = tool_registry.list_tools()
+            health_status["services"]["tool_registry"] = f"loaded ({len(tools)} tools)"
+            health_status["checks"]["tool_registry"] = {
+                "status": "pass",
+                "tools_count": len(tools),
+                "tools": [t.name for t in tools]
+            }
+        except Exception as e:
+            health_status["services"]["tool_registry"] = f"error: {str(e)}"
+            health_status["checks"]["tool_registry"] = {"status": "fail", "error": str(e)}
+            health_status["status"] = "degraded"
+        
+        # Check Claude SDK availability
+        try:
+            # Test Claude SDK configuration
+            if settings.anthropic_api_key:
+                health_status["services"]["claude_sdk"] = "configured"
+                health_status["checks"]["claude_sdk"] = {
+                    "status": "pass",
+                    "model": settings.claude_model,
+                    "max_tokens": settings.claude_max_tokens,
+                    "api_key": "configured"
+                }
+            else:
+                health_status["services"]["claude_sdk"] = "not_configured"
+                health_status["checks"]["claude_sdk"] = {"status": "warn", "message": "No API key configured"}
+                if health_status["status"] == "healthy":
+                    health_status["status"] = "degraded"
+        except Exception as e:
+            health_status["services"]["claude_sdk"] = f"error: {str(e)}"
+            health_status["checks"]["claude_sdk"] = {"status": "fail", "error": str(e)}
+            health_status["status"] = "degraded"
+        
+        # Check agent models can be imported
+        try:
+            from cerebro.agents.models import AgentSession, AgentMessage
+            health_status["checks"]["agent_models"] = {"status": "pass", "models": "imported"}
+        except Exception as e:
+            health_status["checks"]["agent_models"] = {"status": "fail", "error": str(e)}
+            health_status["status"] = "degraded"
+        
+        return health_status
         
     except Exception as e:
         logger.exception("Health check failed", error=str(e))

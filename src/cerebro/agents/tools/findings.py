@@ -217,9 +217,13 @@ class FindingsTool(Tool):
                 conditions.append(Finding.first_seen <= inputs.created_before)
             if inputs.rule_id:
                 conditions.append(Finding.rule_id == inputs.rule_id)
-            if inputs.resource_type and hasattr(Finding, 'resource'):
-                # Would need to join with resource table for type filtering
-                pass
+            if inputs.resource_type:
+                # Join with resource table for type filtering
+                from cerebro.core.models import Resource
+                from sqlalchemy.orm import join
+                
+                query = query.join(Resource, Finding.resource_id == Resource.resource_id)
+                conditions.append(Resource.resource_type == inputs.resource_type)
             
             if conditions:
                 query = query.where(and_(*conditions))
@@ -386,19 +390,46 @@ class FindingsTool(Tool):
                 compliance_mappings=compliance_mappings,
             )
             
-            # Get history if requested (would need audit trail table)
+            # Get history if requested - query actual audit events
             history = []
             if inputs.include_history:
-                # TODO: Implement finding history from audit events
-                # This would query audit_events table for changes to this finding
+                from cerebro.core.models import AuditEvent
+                from sqlalchemy import select
+                
+                # Query audit events for this finding
+                audit_query = select(AuditEvent).where(
+                    AuditEvent.org_id == context.org_id,
+                    AuditEvent.resource_id == str(finding.finding_id)
+                ).order_by(AuditEvent.timestamp.asc())
+                
+                audit_result = await session.execute(audit_query)
+                audit_events = audit_result.scalars().all()
+                
+                # Convert to history format
                 history = [
                     {
-                        "timestamp": finding.first_seen.isoformat(),
-                        "event": "finding_created",
-                        "actor": "system",
-                        "details": {"initial_status": finding.status}
+                        "timestamp": event.timestamp.isoformat(),
+                        "event": event.event_type,
+                        "actor": event.actor,
+                        "details": event.details or {}
                     }
+                    for event in audit_events
                 ]
+                
+                # If no audit events, add the creation event
+                if not history:
+                    history = [
+                        {
+                            "timestamp": finding.first_seen.isoformat(),
+                            "event": "finding_created",
+                            "actor": "rule_engine",
+                            "details": {
+                                "initial_status": finding.status,
+                                "severity": finding.severity,
+                                "rule_id": str(finding.rule_id)
+                            }
+                        }
+                    ]
             
             # Get related findings (same rule, different resources)
             related_findings = []
@@ -500,12 +531,29 @@ class FindingsTool(Tool):
                 await session.commit()
                 await session.refresh(finding)
                 
-                # TODO: Create audit event for status change
-                # This would insert into audit_events table:
-                # - event_type: 'finding_status_changed'
-                # - actor: context.user_id
-                # - resource_id: finding.finding_id
-                # - details: {old_status, new_status, comment}
+                # Create audit event for status change
+                from cerebro.core.models import AuditEvent
+                from uuid import uuid4
+                
+                audit_event = AuditEvent(
+                    event_id=uuid4(),
+                    org_id=context.org_id,
+                    event_type='finding_status_changed',
+                    actor=context.user_id,
+                    resource_id=str(finding.finding_id),
+                    timestamp=finding.last_seen,
+                    details={
+                        "old_status": old_status,
+                        "new_status": finding.status,
+                        "comment": inputs.comment,
+                        "assignee": inputs.assignee,
+                        "finding_id": str(finding.finding_id),
+                        "rule_id": str(finding.rule_id),
+                        "severity": finding.severity,
+                    }
+                )
+                session.add(audit_event)
+                await session.commit()
                 
                 output = UpdateFindingStatusOutput(
                     finding_id=finding.finding_id,
