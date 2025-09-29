@@ -64,31 +64,27 @@ async def get_jwks(db: AsyncSession = Depends(get_db)) -> JSONResponse:
 async def get_openid_configuration() -> Dict[str, Any]:
     """
     OpenID Connect Discovery endpoint.
-    
+
     Provides metadata about the JWT issuer for automatic client configuration.
     This is optional but helpful for OAuth/OIDC clients.
     """
     try:
-        from cerebro.core.config import settings
-        
-        base_url = "https://your-cerebro-domain.com"  # TODO: Make configurable
-        
         return {
             "issuer": "cerebro.sor",
-            "jwks_uri": f"{base_url}/.well-known/jwks.json",
-            "authorization_endpoint": f"{base_url}/api/v1/auth/login",
-            "token_endpoint": f"{base_url}/api/v1/auth/token",
+            "jwks_uri": f"{settings.api_base_url}/.well-known/jwks.json",
+            "authorization_endpoint": f"{settings.api_base_url}{settings.api_v1_prefix}/auth/login",
+            "token_endpoint": f"{settings.api_base_url}{settings.api_v1_prefix}/auth/token",
             "response_types_supported": ["code"],
             "subject_types_supported": ["public"],
             "id_token_signing_alg_values_supported": [settings.jwt_algorithm],
             "token_endpoint_auth_methods_supported": ["client_secret_post"],
             "scopes_supported": [
-                "openid", "read:organizations", "write:organizations", 
+                "openid", "read:organizations", "write:organizations",
                 "read:findings", "write:findings", "read:rules", "write:rules",
                 "collect:data", "query:execute"
             ]
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to serve OpenID configuration: {e}")
         raise HTTPException(
@@ -103,11 +99,18 @@ async def debug_jwks(
     current_user: User = Depends(require_admin)
 ) -> Dict[str, Any]:
     """
-    Debug endpoint for JWT key information (admin only in production).
-    
+    Debug endpoint for JWT key information (admin only, development environments only).
+
     Provides detailed information about current signing keys for troubleshooting.
-    Should be protected or removed in production.
+    This endpoint is disabled in production for security.
     """
+    # Security check: only enable in development environments
+    if not settings.enable_debug_endpoints:
+        logger.warning(f"Debug endpoint access attempted by user {current_user.email}")
+        raise HTTPException(
+            status_code=404,
+            detail="Endpoint not found"
+        )
     try:
         key_store = JWTKeyStore(db)
         

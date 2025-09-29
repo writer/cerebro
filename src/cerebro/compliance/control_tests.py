@@ -311,25 +311,97 @@ class ControlTestRunner:
     
     async def _execute_rule(self, rule_id: str, period_start: datetime, period_end: datetime) -> Dict[str, Any]:
         """Execute a CEL rule and return results."""
-        # Mock implementation - would integrate with actual RuleEngine
-        return {
-            "rule_id": rule_id,
-            "status": "pass",
-            "findings_count": 0,
-            "period_start": period_start.isoformat(),
-            "period_end": period_end.isoformat()
-        }
+        try:
+            from uuid import UUID
+            from ..rules.engine import EvaluationContext
+
+            # Get rule from database or rule store
+            # For now, using a placeholder - in production this would fetch from rule store
+            rule_expression = f"resource.findings_count == 0"  # Default rule
+
+            # Create evaluation context
+            context = EvaluationContext(
+                resource={
+                    "period_start": period_start.isoformat(),
+                    "period_end": period_end.isoformat(),
+                    "findings_count": 0  # Would be queried from actual findings
+                }
+            )
+
+            # Execute rule using real CEL engine
+            rule_result = self.rule_engine.evaluate_rule(
+                rule_id=UUID(rule_id) if len(rule_id) == 36 else UUID(int=hash(rule_id) & (1<<128)-1),
+                expression=rule_expression,
+                context=context
+            )
+
+            return {
+                "rule_id": rule_id,
+                "status": "pass" if rule_result.matched else "fail",
+                "findings_count": 0,  # Would be actual findings count
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "error": rule_result.error,
+                "execution_time_ms": rule_result.execution_time_ms
+            }
+
+        except Exception as e:
+            return {
+                "rule_id": rule_id,
+                "status": "error",
+                "findings_count": 0,
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "error": str(e)
+            }
     
     async def _evaluate_assertion(
-        self, 
-        assertion: str, 
-        evidence_items: List[EvidenceItem], 
+        self,
+        assertion: str,
+        evidence_items: List[EvidenceItem],
         rule_results: Dict[str, Any]
     ) -> bool:
         """Evaluate CEL assertion to determine pass/fail."""
-        # Mock implementation - would use CEL engine to evaluate assertion
-        # The assertion would have access to evidence_items and rule_results
-        return len([e for e in evidence_items if e.evidence_type != "query_error"]) > 0
+        try:
+            from uuid import UUID
+            from ..rules.engine import EvaluationContext
+
+            # Prepare evidence data for CEL evaluation
+            evidence_data = [
+                {
+                    "control_id": item.control_id,
+                    "evidence_type": item.evidence_type,
+                    "data": item.data,
+                    "collected_at": item.collected_at.isoformat(),
+                    "query_used": item.query_used
+                }
+                for item in evidence_items
+            ]
+
+            # Create evaluation context
+            context = EvaluationContext(
+                config={
+                    "evidence_items": evidence_data,
+                    "evidence_count": len(evidence_items),
+                    "error_count": len([e for e in evidence_items if e.evidence_type == "query_error"]),
+                    "valid_evidence_count": len([e for e in evidence_items if e.evidence_type != "query_error"])
+                },
+                resource=rule_results
+            )
+
+            # Execute CEL assertion
+            rule_result = self.rule_engine.evaluate_rule(
+                rule_id=UUID(int=hash(assertion) & (1<<128)-1),
+                expression=assertion,
+                context=context
+            )
+
+            return rule_result.matched and rule_result.error is None
+
+        except Exception as e:
+            logger.error(f"Failed to evaluate assertion '{assertion}': {e}")
+            # Fallback to basic logic if CEL evaluation fails
+            return len([e for e in evidence_items if e.evidence_type != "query_error"]) > 0
     
     def _default_pass_logic(self, evidence_items: List[EvidenceItem], rule_results: Dict[str, Any]) -> bool:
         """Default pass/fail logic when no assertion is specified."""

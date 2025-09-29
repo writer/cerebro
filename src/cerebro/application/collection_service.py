@@ -189,8 +189,8 @@ class CollectionService:
     async def _send_collection_notification(self, job: CollectionJobEntity) -> None:
         """Send collection completion notification."""
         try:
-            # TODO: Get notification recipients from configuration
-            recipients = ["security-team@company.com"]
+            from cerebro.core.config import settings
+            recipients = settings.notification_recipients
             await self.notification.send_collection_summary(job, recipients)
         except Exception as e:
             logger.warning(f"Failed to send collection notification: {e}")

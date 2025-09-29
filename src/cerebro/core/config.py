@@ -101,6 +101,24 @@ class Settings(BaseSettings):
         default=1000, description="Batch size for IAM edge insertions"
     )
     
+    # API Configuration
+    api_base_url: str = Field(
+        default="http://localhost:8000",
+        description="Base URL for API endpoints (used for JWKS and OpenID configuration)"
+    )
+    api_title: str = Field(
+        default="Cerebro Security API",
+        description="API title for OpenAPI documentation"
+    )
+    api_description: str = Field(
+        default="Security compliance and risk management platform",
+        description="API description for OpenAPI documentation"
+    )
+    api_v1_prefix: str = Field(
+        default="/api/v1",
+        description="API version prefix for all v1 endpoints"
+    )
+
     # JWT Security (Phase 2)
     jwt_algorithm: str = Field(
         default="RS256", description="JWT signing algorithm (RS256 recommended for production)"
@@ -113,6 +131,16 @@ class Settings(BaseSettings):
     )
     jwks_cache_ttl_seconds: int = Field(
         default=300, description="JWKS endpoint cache TTL"
+    )
+
+    # Environment and Debug Settings
+    environment: str = Field(
+        default="production",
+        description="Environment: dev, development, test, testing, production"
+    )
+    enable_debug_endpoints: bool = Field(
+        default=False,
+        description="Enable debug endpoints (should be False in production)"
     )
     
     # Rate Limiting & Lockout (Phase 3)
@@ -146,6 +174,16 @@ class Settings(BaseSettings):
     # Collectors
     collector_batch_size: int = Field(
         default=100, description="Collector batch size"
+    )
+
+    # Notifications
+    notification_recipients: List[str] = Field(
+        default=["admin@localhost"],
+        description="Email addresses for collection completion and error notifications"
+    )
+    notification_sender_email: str = Field(
+        default="noreply@cerebro.security",
+        description="Sender email address for notifications"
     )
     collector_rate_limit: int = Field(
         default=10, description="Collector rate limit per second"
@@ -245,6 +283,18 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Provider environment variable fallback is not allowed in production. "
                 "Store credentials securely using the CredentialService with KMS encryption."
+            )
+        return v
+
+    @field_validator('enable_debug_endpoints')
+    @classmethod
+    def validate_debug_endpoints(cls, v):
+        """Validate debug endpoints are not enabled in production."""
+        environment = os.getenv('ENVIRONMENT', 'production').lower()
+        if v and environment not in ['dev', 'development', 'test', 'testing']:
+            raise ValueError(
+                "Debug endpoints are not allowed in production for security reasons. "
+                "Set ENABLE_DEBUG_ENDPOINTS=false in production environments."
             )
         return v
 
