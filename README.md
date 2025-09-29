@@ -4,16 +4,19 @@
 
 When audit committees ask "prove what happened," commercial security platforms often lack the necessary audit trail. Cerebro provides complete visibility into cloud and SaaS security configurations with an immutable audit trail designed for forensic investigation. Supports enterprises that require both security monitoring and regulatory compliance.
 
-## 🎯 Eight Core Differentiators
+## 🎯 Nine Core Differentiators
 
-### **1. Evidence Data Fabric**
+### **1. AI Security Agent System (NEW)**
+Built-in Claude-powered security agents with deep integration into Cerebro's security platform. Agents can analyze findings, suggest remediations, perform security analysis, and execute actions through 7 specialized tools. Full streaming support via REST API and CLI.
+
+### **2. Evidence Data Fabric**
 Normalized, queryable evidence model that serves as the data substrate for rules, analytics, and AI. Evidence as structured tables (not blobs) with lineage tracking, cross-evidence analysis, and requirement-level granularity.
 
 ### **2. Cryptographic Auditability**
 Merkle tree transparency log, RFC-3161 timestamping, WORM evidence bundles, and change attestation provide mathematical proof of compliance. When auditors ask "prove it," you have cryptographic certainty.
 
 ### **3. Zero-ETL Security Analytics**
-Query security data in real-time using SQL without ETL pipelines. Steampipe-inspired approach with 15+ security tables across AWS, GCP, Azure, Okta, GitHub. `SELECT * FROM okta_user WHERE mfa_enabled = false` works instantly.
+Query security data in real-time using SQL without ETL pipelines. Steampipe-inspired approach with 15+ security tables across AWS, GCP, Azure, Okta, GitHub. `SELECT * FROM okta_user WHERE mfa_enabled = false` works instantly. Agents can execute queries directly.
 
 ### **4. Attack Path Graph Analysis**
 NetworkX-based graph model shows exact attack paths from any principal to any resource. Service identity edges (GitHub OIDC → AWS STS) with blast radius analysis that competitors hand-wave.
@@ -29,6 +32,9 @@ Comprehensive vendor tracking with automatic discovery, risk assessment, and sec
 
 ### **8. No-Code Policy Engine**
 Parse policy statements into executable rules. Visual rule builder with cross-evidence analysis. Policy versioning with approval workflows and employee attestation tracking.
+
+### **9. Agent-Assisted Security Operations**
+AI agents help security teams through conversational interfaces, automated analysis, and intelligent remediation suggestions. Agents maintain full audit trails and operate within security guardrails.
 
 ## 🏢 Trust + Control vs. SaaS Speed
 
@@ -167,6 +173,67 @@ CREDENTIAL_ENCRYPTION_KEY=your-fernet-key-here
 ```
 
 ## 🎯 Usage Examples
+
+### **AI Security Agents (Conversational Security)**
+
+Cerebro includes Claude-powered security agents that provide intelligent assistance through natural language:
+
+```bash
+# Create an agent session via CLI
+cerebro agents create "Acme Corp" \
+  --type security_analyst \
+  --title "Investigate AWS findings"
+
+# Interactive chat with the agent
+cerebro agents chat <session-id>
+> What are the most critical security issues?
+> Can you analyze my attack surface?
+> Suggest remediations for the S3 bucket findings
+
+# Or use the REST API for programmatic access
+curl -X POST "http://localhost:8000/api/v1/agents/sessions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_type": "security_analyst",
+    "title": "Security Review"
+  }'
+
+# Send messages with streaming responses
+curl -N -X POST "http://localhost:8000/api/v1/agents/sessions/{id}/messages" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Analyze critical findings and provide remediation plan",
+    "stream": true
+  }'
+```
+
+**Agent Capabilities:**
+- **7 Specialized Tools**: findings_list, finding_update_status, rules, query, timeline, security_analysis, remediation_suggestions
+- **4 Analysis Types**: Attack surface, risk scoring, compliance gaps, security posture
+- **Intelligent Remediation**: Step-by-step instructions with effort estimates
+- **Real-time Streaming**: SSE support for live responses
+- **Full Audit Trail**: Every agent action logged and auditable
+
+**CLI Agent Commands:**
+```bash
+cerebro agents create       # Create new session
+cerebro agents list        # List sessions
+cerebro agents chat        # Interactive chat
+cerebro agents status      # Session status
+cerebro agents approve     # Approve tool invocations
+cerebro agents analytics   # Usage analytics
+```
+
+**API Endpoints:**
+- `POST /api/v1/agents/sessions` - Create session
+- `GET /api/v1/agents/sessions` - List sessions
+- `POST /api/v1/agents/sessions/{id}/messages` - Send message (streaming/non-streaming)
+- `GET /api/v1/agents/sessions/{id}/messages` - Get message history
+- `GET /api/v1/agents/health` - Health check
+
+See [docs/agents/API_INTEGRATION.md](docs/agents/API_INTEGRATION.md) for complete documentation.
 
 ### **SQL Security Queries (Zero-ETL)**
 
@@ -346,6 +413,19 @@ make cli-rules action=create name="Custom Rule" \
 ```
 cerebro/
 ├── src/cerebro/
+│   ├── agents/                # AI agent system (Claude SDK integration)
+│   │   ├── models.py          # Agent session and message models
+│   │   ├── runtime.py         # Claude SDK runtime integration
+│   │   ├── service.py         # Agent session management service
+│   │   ├── mcp_bridge.py      # MCP tool conversion layer
+│   │   └── tools/            # 7 specialized agent tools
+│   │       ├── findings_list.py       # List and filter findings
+│   │       ├── finding_update.py      # Update finding status
+│   │       ├── rules.py              # CEL rule management
+│   │       ├── query.py              # SQL query execution
+│   │       ├── timeline.py           # Incident timeline builder
+│   │       ├── security_analysis.py  # Multi-type security analysis
+│   │       └── remediation.py        # Intelligent remediation suggestions
 │   ├── analysis/              # Advanced analysis capabilities (MOAT FEATURES)
 │   │   ├── blast_radius.py    # Compromise impact analysis
 │   │   ├── forensic_replay.py # Historical state reconstruction
@@ -353,6 +433,7 @@ cerebro/
 │   │   └── identity_anomaly.py # ML-based identity anomaly detection
 │   ├── api/                   # FastAPI application
 │   │   ├── routers/          # API endpoints by domain
+│   │   │   ├── agents.py     # AI agent endpoints (SSE streaming)
 │   │   │   ├── analysis.py   # Advanced analysis endpoints
 │   │   │   ├── auth.py       # Authentication endpoints
 │   │   │   ├── query.py      # SQL query engine endpoints
@@ -405,8 +486,23 @@ cerebro/
 │   │   └── table.py          # Abstract table interface
 │   ├── rules/                # CEL rule engine and library
 │   └── tasks/                # Background task processing
-├── migrations/               # Database schema migrations
+├── alembic/                  # Database schema migrations
 ├── tests/                    # Comprehensive test suite
+│   ├── agents/              # Agent integration tests
+│   │   ├── test_agent_integration.py  # Full integration tests
+│   │   └── test_agents_api.py         # API endpoint tests
+│   └── sdk/                 # SDK component tests
+│       └── test_sdk_integration.py    # SDK integration tests
+├── docs/                    # Documentation
+│   ├── agents/             # Agent system documentation
+│   │   ├── API_INTEGRATION.md        # Complete API guide
+│   │   ├── overview.md               # Agent architecture
+│   │   ├── claude-integration.md     # Claude SDK details
+│   │   └── tool-development.md       # Creating new tools
+│   └── architecture/       # Architecture documentation
+├── examples/               # Example scripts and demos
+│   ├── demos/             # Feature demonstrations
+│   └── README.md          # Examples guide
 ├── scripts/                  # Setup and maintenance scripts
 ├── k8s/                     # Kubernetes deployment manifests
 ├── docker-compose.yml       # Development environment
@@ -531,6 +627,9 @@ kubectl apply -f k8s/production/
 
 | Feature | **Cerebro** | Wiz/Prisma/Orca |
 |---------|-------------|------------------|
+| **AI Security Agents** | ✅ Built-in Claude agents with 7 tools | ❌ No AI agent system |
+| **Agent Streaming** | ✅ SSE streaming with real-time responses | ❌ Not available |
+| **Conversational Security** | ✅ Natural language + tool execution | ❌ Not available |
 | **Data Sovereignty** | ✅ Self-hosted, your infrastructure | ❌ SaaS-only, their infrastructure |
 | **Provider Coverage** | ✅ 6 providers: AWS, GitHub, GCP, Workspace, Okta, M365 | ✅ Multiple cloud providers |
 | **Identity Coverage** | ✅ Complete SaaS + Cloud identity mapping | ⚠️ Primarily cloud-focused |
@@ -539,7 +638,7 @@ kubectl apply -f k8s/production/
 | **Identity Stitching** | ✅ Cross-provider correlation | ⚠️ Single-provider views |
 | **Blast Radius Analysis** | ✅ Complete compromise impact mapping | ❌ Not available |
 | **Temporal Analysis** | ✅ Historical state reconstruction | ❌ Not available |
-| **API-First Design** | ✅ Complete REST API + CLI | ⚠️ GUI-focused with limited API |
+| **API-First Design** | ✅ Complete REST API + CLI + Agents | ⚠️ GUI-focused with limited API |
 | **Deployment Control** | ✅ On-prem, cloud, or hybrid | ❌ SaaS-only |
 | **Vendor Lock-In** | ✅ None - open source | ❌ Complete lock-in |
 | **Enterprise Scale** | ✅ 50K+ resources tested | ✅ Enterprise scale |
@@ -624,9 +723,16 @@ class CustomSecurityProducer(BaseCustomProducer):
 
 ## 📚 Documentation
 
+### **Agent System**
+- **[Agent API Integration](docs/agents/API_INTEGRATION.md)** - Complete REST API and SSE streaming guide
+- **[Agent Overview](docs/agents/overview.md)** - Architecture and capabilities
+- **[Claude SDK Integration](docs/agents/claude-integration.md)** - Deep SDK integration details
+- **[Tool Development Guide](docs/agents/tool-development.md)** - Creating custom agent tools
+- **[Testing Plan](docs/agents/testing-plan.md)** - Testing strategies and examples
+
+### **Core Platform**
 - **[API Reference](http://localhost:8000/docs)** - Interactive OpenAPI documentation
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions  
-- **[Developer Guide](AGENTS.md)** - Architecture and contribution guidelines
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
 - **[Provider Setup](docs/PROVIDERS.md)** - Cloud and SaaS provider configuration
 - **[CEL Rules Tutorial](docs/CEL_RULES.md)** - Writing custom security rules
 - **[Database Schema](docs/DATABASE_SCHEMA.md)** - Complete schema reference
