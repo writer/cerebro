@@ -1,11 +1,25 @@
 """
 Compliance reporting functionality.
+
+DEPRECATED: This module is being migrated to use the unified evidence system.
+Use the new evidence models and services for new implementations.
 """
 
 from typing import Dict, List, Any
 from datetime import datetime
+from dataclasses import dataclass
 from .frameworks import ComplianceFramework
-from .evidence import EvidenceItem
+from .models import ComplianceEvidenceMetadata
+
+# Define legacy EvidenceItem locally
+@dataclass
+class EvidenceItem:
+    """Legacy evidence item - use ComplianceEvidenceMetadata for new code."""
+    control_id: str
+    evidence_type: str
+    data: Dict[str, Any]
+    collected_at: datetime
+    query_used: str
 
 
 class ComplianceReporter:

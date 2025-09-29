@@ -17,8 +17,23 @@ if TYPE_CHECKING:
     from ..rules.engine import RuleEngine
     from ..query.engine import QueryEngine
 
-from .evidence import EvidenceItem, EvidenceCollector
+from .models import ComplianceEvidenceMetadata
+from .evidence_service import EvidenceService
 from .frameworks import ComplianceControl, EvidenceType
+
+# Define EvidenceItem locally for backward compatibility
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, Any
+
+@dataclass
+class EvidenceItem:
+    """Legacy evidence item - use ComplianceEvidenceMetadata for new code."""
+    control_id: str
+    evidence_type: str
+    data: Dict[str, Any]
+    collected_at: datetime
+    query_used: str
 
 
 class TestStatus(Enum):
@@ -129,11 +144,16 @@ class ControlCoverage:
 class ControlTestRunner:
     """Executes control tests and produces compliance evidence."""
     
-    def __init__(self, rule_engine: 'RuleEngine', query_engine: 'QueryEngine'):
+    def __init__(self, rule_engine: 'RuleEngine', query_engine: 'QueryEngine', db_session=None):
         self.rule_engine = rule_engine
         self.query_engine = query_engine
-        # Pass query_engine to evidence collector to avoid dependency violations
-        self.evidence_collector = EvidenceCollector(query_engine=query_engine)
+        # Use unified evidence service
+        if not db_session:
+            raise ValueError("Database session is required for ControlTestRunner - deprecated evidence collector has been removed")
+        self.evidence_service = EvidenceService(
+            db_session=db_session,
+            query_service=query_engine
+        )
     
     async def run_control_test(
         self, 

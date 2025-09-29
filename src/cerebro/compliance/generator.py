@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from .frameworks import get_framework
-from .evidence import EvidenceCollector
+from .evidence_service import EvidenceService
 from .reporting import ComplianceReporter
 
 
@@ -21,17 +21,19 @@ class ComplianceEvidenceGenerator:
     This class now uses dependency injection to avoid architectural violations.
     """
 
-    def __init__(self, query_engine=None, provider_registry=None):
-        """Initialize with dependency injection to avoid architectural violations.
+    def __init__(self, query_engine=None, db_session=None):
+        """Initialize with dependency injection using unified evidence service.
 
         Args:
-            query_engine: Optional query engine instance for evidence collection
-            provider_registry: Optional provider registry for table registration
+            query_engine: Query engine instance for evidence collection
+            db_session: Database session for unified evidence service (required)
         """
-        # Use dependency injection for evidence collector
-        self.evidence_collector = EvidenceCollector(
-            query_engine=query_engine,
-            provider_registry=provider_registry
+        if not db_session:
+            raise ValueError("Database session is required - deprecated evidence collector has been removed")
+
+        self.evidence_service = EvidenceService(
+            db_session=db_session,
+            query_service=query_engine
         )
         self.reporter = ComplianceReporter()
     

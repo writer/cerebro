@@ -32,9 +32,8 @@ from .storage import FileBasedEvidenceRepository, InMemoryEvidenceRepository
 # Import framework providers to trigger registration
 from . import frameworks
 
-# Legacy compatibility (deprecated)
+# Legacy components (deprecated - use unified system for new code)
 from .generator import ComplianceEvidenceGenerator
-from .evidence import EvidenceCollector
 from .reporting import ComplianceReporter
 
 __all__ = [
@@ -64,6 +63,5 @@ __all__ = [
 
     # Legacy compatibility (deprecated)
     "ComplianceEvidenceGenerator",
-    "EvidenceCollector",
     "ComplianceReporter"
 ]
