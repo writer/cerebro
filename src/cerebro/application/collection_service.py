@@ -149,12 +149,12 @@ class CollectionService:
         
         try:
             # Global permissions
-            async for permission in provider.discover_iam_permissions():
+            async for permission in provider.discover_iam_edges():
                 permissions.append(permission)
             
             # Resource-specific permissions
             for resource in resources:
-                async for permission in provider.discover_iam_permissions(resource):
+                async for permission in provider.discover_iam_edges(resource):
                     permissions.append(permission)
                     
         except Exception as e:

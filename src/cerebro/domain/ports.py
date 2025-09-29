@@ -41,7 +41,7 @@ class ProviderPort(Protocol):
         """Get current configuration for a resource."""
         ...
     
-    async def discover_iam_permissions(
+    async def discover_iam_edges(
         self,
         resource: Optional[ResourceEntity] = None
     ) -> AsyncGenerator[IamPermissionEntity, None]:
