@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Any, Optional
 from uuid import UUID
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -287,7 +288,7 @@ async def get_sla_breach_analysis(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
     
-    # Get SLA breaches by severity with details
+    # Get SLA breaches by severity with details and ownership
     sla_breach_query = text("""
         SELECT 
             f.finding_id,
@@ -296,6 +297,8 @@ async def get_sla_breach_analysis(
             f.status,
             f.first_seen,
             r.name as rule_name,
+            r.owner,
+            r.backup_owner,
             a.provider,
             EXTRACT(EPOCH FROM (NOW() - f.first_seen)) / 86400 as days_old,
             CASE f.severity
@@ -346,7 +349,9 @@ async def get_sla_breach_analysis(
             "days_old": int(breach.days_old),
             "sla_days": breach.sla_days,
             "days_overdue": int(breach.days_old) - breach.sla_days,
-            "first_seen": breach.first_seen.isoformat()
+            "first_seen": breach.first_seen.isoformat(),
+            "owner": breach.owner,
+            "backup_owner": breach.backup_owner
         }
         breaches_by_severity[breach.severity].append(breach_data)
     
@@ -367,6 +372,114 @@ async def get_sla_breach_analysis(
             f"{critical_breaches} critical findings > 7 days old" if critical_breaches > 0 else None,
             f"{high_breaches} high findings > 14 days old" if high_breaches > 0 else None
         ]
+    }
+
+
+@router.get("/organizations/{org_id}/analytics/severity-breakdown")
+async def get_severity_breakdown_chips(
+    org_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("read:findings"))
+) -> Dict[str, Any]:
+    """Get severity breakdown chips with SLA breach counts for dashboard badges."""
+    
+    from sqlalchemy import text
+    
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Get counts by severity and SLA breach status
+    severity_query = text("""
+        WITH finding_counts AS (
+            SELECT 
+                f.severity,
+                COUNT(*) as total_count,
+                COUNT(CASE WHEN 
+                    ((f.severity = 'critical' AND f.first_seen <= NOW() - INTERVAL '7 days') OR
+                     (f.severity = 'high' AND f.first_seen <= NOW() - INTERVAL '14 days') OR
+                     (f.severity = 'medium' AND f.first_seen <= NOW() - INTERVAL '30 days') OR
+                     (f.severity = 'low' AND f.first_seen <= NOW() - INTERVAL '90 days'))
+                     AND f.status = 'open'
+                THEN 1 END) as sla_breach_count
+            FROM findings f
+            JOIN accounts a ON f.account_id = a.account_id
+            WHERE a.org_id = :org_id AND f.status = 'open'
+            GROUP BY f.severity
+        )
+        SELECT 
+            'critical' as severity, 
+            COALESCE(fc.total_count, 0) as total_count,
+            COALESCE(fc.sla_breach_count, 0) as sla_breach_count
+        FROM (SELECT 'critical' as severity) s
+        LEFT JOIN finding_counts fc ON s.severity = fc.severity
+        UNION ALL
+        SELECT 
+            'high' as severity,
+            COALESCE(fc.total_count, 0) as total_count,
+            COALESCE(fc.sla_breach_count, 0) as sla_breach_count
+        FROM (SELECT 'high' as severity) s
+        LEFT JOIN finding_counts fc ON s.severity = fc.severity
+        UNION ALL
+        SELECT 
+            'medium' as severity,
+            COALESCE(fc.total_count, 0) as total_count,
+            COALESCE(fc.sla_breach_count, 0) as sla_breach_count
+        FROM (SELECT 'medium' as severity) s
+        LEFT JOIN finding_counts fc ON s.severity = fc.severity
+        UNION ALL
+        SELECT 
+            'low' as severity,
+            COALESCE(fc.total_count, 0) as total_count,
+            COALESCE(fc.sla_breach_count, 0) as sla_breach_count
+        FROM (SELECT 'low' as severity) s
+        LEFT JOIN finding_counts fc ON s.severity = fc.severity
+        ORDER BY 
+            CASE severity 
+                WHEN 'critical' THEN 1
+                WHEN 'high' THEN 2
+                WHEN 'medium' THEN 3
+                WHEN 'low' THEN 4
+            END
+    """)
+    
+    result = await db.execute(severity_query, {"org_id": org_id})
+    severity_data = result.fetchall()
+    
+    chips = []
+    total_sla_breaches = 0
+    
+    # Map severity to short codes and colors
+    severity_config = {
+        "critical": {"code": "C", "color": "#dc2626", "bg_color": "#fee2e2"},
+        "high": {"code": "H", "color": "#ea580c", "bg_color": "#fed7aa"},
+        "medium": {"code": "M", "color": "#ca8a04", "bg_color": "#fef3c7"},
+        "low": {"code": "L", "color": "#65a30d", "bg_color": "#ecfccb"}
+    }
+    
+    for row in severity_data:
+        config = severity_config[row.severity]
+        total_sla_breaches += row.sla_breach_count
+        
+        chips.append({
+            "severity": row.severity,
+            "code": config["code"],
+            "total_count": row.total_count,
+            "sla_breach_count": row.sla_breach_count,
+            "color": config["color"],
+            "background_color": config["bg_color"],
+            "filter_url": f"/findings?severity={row.severity}&status=open",
+            "sla_filter_url": f"/findings?severity={row.severity}&status=open&sla_breach=true"
+        })
+    
+    return {
+        "severity_chips": chips,
+        "total_sla_breaches": total_sla_breaches,
+        "sla_breach_summary": {
+            "count": total_sla_breaches,
+            "filter_url": "/findings?status=open&sla_breach=true",
+            "badge_text": f"SLA-breaching: {total_sla_breaches}"
+        }
     }
 
 
@@ -401,6 +514,47 @@ async def get_metrics_sparklines(
         sparklines[metric_type.value] = sparkline_data
     
     return sparklines
+
+
+@router.get("/organizations/{org_id}/analytics/trend/{card_type}")
+async def get_card_sparkline(
+    org_id: UUID,
+    card_type: str,
+    days_back: int = Query(default=7, description="Days of historical data"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("read:findings"))
+) -> Dict[str, Any]:
+    """Get sparkline data for specific dashboard cards."""
+    
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Map card types to metrics
+    card_to_metric = {
+        "findings": MetricType.FINDING_COUNT,
+        "criticals": MetricType.CRITICAL_FINDING_COUNT,
+        "sla_breaches": MetricType.SLA_BREACH_COUNT,
+        "mttr": MetricType.MEAN_TIME_TO_REMEDIATION
+    }
+    
+    if card_type not in card_to_metric:
+        raise HTTPException(status_code=400, detail=f"Invalid card type: {card_type}")
+    
+    metric_type = card_to_metric[card_type]
+    trend_analyzer = TrendAnalyzer(db)
+    
+    # Get trend analysis with sparkline
+    trend = await trend_analyzer.analyze_metric_trend(org_id, metric_type, days_back)
+    sparkline_data = await trend_analyzer.generate_sparkline_data(org_id, metric_type, days_back)
+    
+    return {
+        "card_type": card_type,
+        "current_value": trend.current_value,
+        "change_percentage": round(trend.change_percentage, 1) if trend.change_percentage else 0,
+        "trend_direction": trend.trend_direction,
+        "sparkline": sparkline_data
+    }
 
 
 @router.get("/organizations/{org_id}/top-risks")
@@ -569,4 +723,268 @@ async def get_compliance_evidence_status(
             "overall_compliance": round(sum(data["compliance_percentage"] for data in compliance_evidence.values()) / len(compliance_evidence), 1) if compliance_evidence else 0,
             "stale_evidence_count": sum(data["stale_evidence_controls"] for data in compliance_evidence.values())
         }
+    }
+
+
+@router.get("/organizations/{org_id}/analytics/evidence-freshness")
+async def get_evidence_freshness_donut(
+    org_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("read:findings"))
+) -> Dict[str, Any]:
+    """Get evidence freshness donut chart data with click-through URLs."""
+    
+    from sqlalchemy import text
+    
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Get evidence freshness categorization
+    freshness_query = text("""
+        WITH evidence_analysis AS (
+            SELECT 
+                r.rule_id,
+                r.name as control_name,
+                r.cis,
+                r.nist_800_53,
+                MAX(cs.captured_at) as last_evidence_collected,
+                EXTRACT(EPOCH FROM (NOW() - MAX(cs.captured_at))) / 86400 as evidence_age_days
+            FROM rules r
+            LEFT JOIN findings f ON r.rule_id = f.rule_id 
+                AND f.account_id IN (SELECT account_id FROM accounts WHERE org_id = :org_id)
+            LEFT JOIN config_snapshots cs ON f.resource_id = cs.resource_id
+            WHERE (r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL)
+            GROUP BY r.rule_id, r.name, r.cis, r.nist_800_53
+        )
+        SELECT 
+            CASE 
+                WHEN evidence_age_days IS NULL THEN 'missing'
+                WHEN evidence_age_days <= 7 THEN 'fresh'
+                WHEN evidence_age_days <= 30 THEN 'aging'
+                ELSE 'stale'
+            END as freshness_status,
+            COUNT(*) as control_count,
+            ARRAY_AGG(control_name ORDER BY evidence_age_days DESC) as sample_controls
+        FROM evidence_analysis
+        GROUP BY 
+            CASE 
+                WHEN evidence_age_days IS NULL THEN 'missing'
+                WHEN evidence_age_days <= 7 THEN 'fresh'
+                WHEN evidence_age_days <= 30 THEN 'aging'
+                ELSE 'stale'
+            END
+        ORDER BY 
+            CASE 
+                WHEN freshness_status = 'missing' THEN 1
+                WHEN freshness_status = 'stale' THEN 2
+                WHEN freshness_status = 'aging' THEN 3
+                WHEN freshness_status = 'fresh' THEN 4
+            END
+    """)
+    
+    result = await db.execute(freshness_query, {"org_id": org_id})
+    freshness_data = result.fetchall()
+    
+    # Donut chart configuration with colors and click-through
+    freshness_config = {
+        "fresh": {"color": "#22c55e", "label": "Fresh (≤7 days)", "priority": 4},
+        "aging": {"color": "#f59e0b", "label": "Aging (8-30 days)", "priority": 3},
+        "stale": {"color": "#ef4444", "label": "Stale (>30 days)", "priority": 2},
+        "missing": {"color": "#6b7280", "label": "Missing Evidence", "priority": 1}
+    }
+    
+    donut_segments = []
+    total_controls = sum(row.control_count for row in freshness_data)
+    
+    for row in freshness_data:
+        config = freshness_config[row.freshness_status]
+        percentage = round((row.control_count / total_controls * 100), 1) if total_controls > 0 else 0
+        
+        donut_segments.append({
+            "status": row.freshness_status,
+            "label": config["label"],
+            "count": row.control_count,
+            "percentage": percentage,
+            "color": config["color"],
+            "priority": config["priority"],
+            "click_through_url": f"/compliance/controls?evidence_freshness={row.freshness_status}",
+            "sample_controls": row.sample_controls[:5] if row.sample_controls else []
+        })
+    
+    # Sort by priority (most critical first)
+    donut_segments.sort(key=lambda x: x["priority"])
+    
+    return {
+        "org_id": str(org_id),
+        "donut_data": {
+            "segments": donut_segments,
+            "total_controls": total_controls,
+            "center_metric": {
+                "value": total_controls,
+                "label": "Total Controls",
+                "subtitle": f"{sum(s['count'] for s in donut_segments if s['status'] in ['fresh', 'aging'])} monitored"
+            }
+        },
+        "summary_stats": {
+            "fresh_percentage": next((s["percentage"] for s in donut_segments if s["status"] == "fresh"), 0),
+            "needs_attention": sum(s["count"] for s in donut_segments if s["status"] in ["stale", "missing"]),
+            "most_critical": donut_segments[0]["status"] if donut_segments else "fresh"
+        },
+        "quick_actions": [
+            f"Fix {sum(s['count'] for s in donut_segments if s['status'] == 'missing')} missing evidence collectors" if any(s['status'] == 'missing' for s in donut_segments) else None,
+            f"Refresh {sum(s['count'] for s in donut_segments if s['status'] == 'stale')} stale evidence sources" if any(s['status'] == 'stale' for s in donut_segments) else None
+        ]
+    }
+
+
+@router.get("/heartbeat")
+async def get_heartbeat_chips(
+    current_user: User = Depends(require_scopes("read:findings"))
+) -> Dict[str, Any]:
+    """Get Celery heartbeat status chips for dashboard monitoring."""
+    
+    from cerebro.tasks.celery_app import celery_app
+    from datetime import datetime, timezone, timedelta
+    import asyncio
+    
+    def get_worker_status():
+        try:
+            inspect = celery_app.control.inspect()
+            
+            # Get worker information
+            active_tasks = inspect.active() or {}
+            reserved_tasks = inspect.reserved() or {}
+            worker_stats = inspect.stats() or {}
+            registered_tasks = inspect.registered() or {}
+            
+            workers = []
+            total_active = 0
+            total_reserved = 0
+            
+            for worker_name in worker_stats:
+                stats = worker_stats[worker_name]
+                active_count = len(active_tasks.get(worker_name, []))
+                reserved_count = len(reserved_tasks.get(worker_name, []))
+                
+                total_active += active_count
+                total_reserved += reserved_count
+                
+                # Determine worker health
+                health_status = "healthy"
+                if 'rusage' not in stats:
+                    health_status = "degraded"
+                
+                workers.append({
+                    "name": worker_name.split('@')[0],  # Clean worker name
+                    "host": worker_name.split('@')[1] if '@' in worker_name else "localhost",
+                    "status": health_status,
+                    "active_tasks": active_count,
+                    "reserved_tasks": reserved_count,
+                    "total_completed": stats.get('total', 0),
+                    "registered_tasks": len(registered_tasks.get(worker_name, []))
+                })
+            
+            return {
+                "workers": workers,
+                "summary": {
+                    "total_workers": len(workers),
+                    "healthy_workers": sum(1 for w in workers if w["status"] == "healthy"),
+                    "total_active_tasks": total_active,
+                    "total_reserved_tasks": total_reserved,
+                    "total_queue_depth": total_active + total_reserved
+                }
+            }
+            
+        except Exception as e:
+            return {
+                "workers": [],
+                "summary": {
+                    "total_workers": 0,
+                    "healthy_workers": 0,
+                    "total_active_tasks": 0,
+                    "total_reserved_tasks": 0,
+                    "total_queue_depth": 0
+                },
+                "error": str(e)
+            }
+    
+    # Run in executor to avoid blocking
+    loop = asyncio.get_event_loop()
+    celery_status = await loop.run_in_executor(None, get_worker_status)
+    
+    # Generate heartbeat chips
+    now = datetime.now(timezone.utc)
+    summary = celery_status["summary"]
+    
+    # Overall system status
+    if summary["healthy_workers"] == 0:
+        system_status = "critical"
+        status_color = "#dc2626"
+        status_message = "No workers available"
+    elif summary["healthy_workers"] < summary["total_workers"]:
+        system_status = "warning" 
+        status_color = "#ea580c"
+        status_message = f"{summary['healthy_workers']}/{summary['total_workers']} workers healthy"
+    else:
+        system_status = "healthy"
+        status_color = "#22c55e"
+        status_message = f"All {summary['total_workers']} workers healthy"
+    
+    # Queue depth assessment
+    queue_depth = summary["total_queue_depth"]
+    if queue_depth > 100:
+        queue_status = "high"
+        queue_color = "#dc2626"
+    elif queue_depth > 20:
+        queue_status = "medium"
+        queue_color = "#ea580c"
+    else:
+        queue_status = "low"
+        queue_color = "#22c55e"
+    
+    heartbeat_chips = [
+        {
+            "type": "workers",
+            "label": "Workers",
+            "value": f"{summary['healthy_workers']}/{summary['total_workers']}",
+            "status": system_status,
+            "color": status_color,
+            "message": status_message,
+            "click_through_url": "/admin/workers",
+            "last_updated": now.isoformat()
+        },
+        {
+            "type": "queue_depth", 
+            "label": "Queue Depth",
+            "value": str(queue_depth),
+            "status": queue_status,
+            "color": queue_color,
+            "message": f"{queue_depth} tasks pending",
+            "click_through_url": "/admin/tasks",
+            "last_updated": now.isoformat()
+        },
+        {
+            "type": "active_tasks",
+            "label": "Active",
+            "value": str(summary["total_active_tasks"]),
+            "status": "info",
+            "color": "#3b82f6",
+            "message": f"{summary['total_active_tasks']} running tasks",
+            "click_through_url": "/admin/tasks?status=active",
+            "last_updated": now.isoformat()
+        }
+    ]
+    
+    return {
+        "heartbeat_chips": heartbeat_chips,
+        "system_health": {
+            "overall_status": system_status,
+            "last_check": now.isoformat(),
+            "workers_online": summary["healthy_workers"],
+            "total_workers": summary["total_workers"],
+            "queue_backlog": queue_depth > 20
+        },
+        "worker_details": celery_status["workers"],
+        "error": celery_status.get("error")
     }

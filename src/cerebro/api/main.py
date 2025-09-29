@@ -182,6 +182,78 @@ async def health_db():
         raise HTTPException(status_code=503, detail=f"Database unhealthy: {str(e)}")
 
 
+@app.get("/health/celery")
+async def health_celery():
+    """Celery health check endpoint with worker status and queue depths."""
+    from cerebro.tasks.celery_app import celery_app
+    from datetime import datetime, timezone
+    import asyncio
+    
+    try:
+        def get_celery_status():
+            # Get worker stats
+            inspect = celery_app.control.inspect()
+            
+            # Get active/reserved tasks and worker stats
+            active_tasks = inspect.active() or {}
+            reserved_tasks = inspect.reserved() or {}
+            worker_stats = inspect.stats() or {}
+            
+            # Get queue lengths (approximation via active + reserved)
+            total_active = sum(len(tasks) for tasks in active_tasks.values())
+            total_reserved = sum(len(tasks) for tasks in reserved_tasks.values())
+            
+            # Check worker heartbeats
+            worker_heartbeats = []
+            for worker, stats in worker_stats.items():
+                if 'rusage' in stats:
+                    # Worker is alive and reporting stats
+                    heartbeats = {
+                        "worker": worker,
+                        "status": "alive",
+                        "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+                        "active_tasks": len(active_tasks.get(worker, [])),
+                        "reserved_tasks": len(reserved_tasks.get(worker, [])),
+                        "total_tasks": stats.get('total', 0)
+                    }
+                    worker_heartbeats.append(heartbeats)
+            
+            return {
+                "status": "healthy" if worker_heartbeats else "degraded",
+                "workers": {
+                    "total_workers": len(worker_heartbeats),
+                    "active_workers": len(worker_heartbeats),
+                    "worker_details": worker_heartbeats
+                },
+                "queues": {
+                    "total_active_tasks": total_active,
+                    "total_reserved_tasks": total_reserved,
+                    "total_pending": total_active + total_reserved
+                },
+                "last_check": datetime.now(timezone.utc).isoformat()
+            }
+        
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, get_celery_status)
+        
+        if result["status"] == "degraded":
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503, 
+                detail="No Celery workers available"
+            )
+            
+        return result
+        
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Celery health check failed: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

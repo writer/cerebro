@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class MetricType(Enum):
     """Types of security metrics to track."""
     FINDING_COUNT = "finding_count"
+    CRITICAL_FINDING_COUNT = "critical_finding_count"
     FINDING_SEVERITY_DISTRIBUTION = "finding_severity_distribution"
     FINDING_STATUS_DISTRIBUTION = "finding_status_distribution"
     MEAN_TIME_TO_REMEDIATION = "mean_time_to_remediation"
