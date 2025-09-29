@@ -16,6 +16,7 @@ from .security_analysis import SecurityAnalysisTool
 from .remediation import RemediationTool
 from .forensic_replay import ForensicReplayTool, ChangeReplayTool
 from .attack_path import AttackPathSimulatorTool, BlastRadiusTool
+from .smart_summarizer import SmartFindingSummarizerTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -32,6 +33,7 @@ tool_registry.register(ForensicReplayTool())
 tool_registry.register(ChangeReplayTool())
 tool_registry.register(AttackPathSimulatorTool())
 tool_registry.register(BlastRadiusTool())
+tool_registry.register(SmartFindingSummarizerTool())
 
 __all__ = [
     "Tool",
@@ -52,4 +54,5 @@ __all__ = [
     "ChangeReplayTool",
     "AttackPathSimulatorTool",
     "BlastRadiusTool",
+    "SmartFindingSummarizerTool",
 ]
