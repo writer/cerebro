@@ -1,6 +1,14 @@
 # Cerebro Infrastructure as Code
 
-Production-ready infrastructure for deploying Cerebro using Pulumi.
+Production-ready infrastructure for deploying Cerebro on AWS or GCP using Pulumi.
+
+## Quick Start
+
+### AWS Deployment
+See [QUICKSTART.md](QUICKSTART.md) for AWS deployment (ECS Fargate, RDS, ElastiCache)
+
+### GCP Deployment
+See [QUICKSTART_GCP.md](QUICKSTART_GCP.md) for GCP deployment (Cloud Run, Cloud SQL, Memorystore)
 
 ## Architecture Overview
 
