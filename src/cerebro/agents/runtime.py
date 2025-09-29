@@ -60,8 +60,69 @@ class CerebroClaudeRuntime:
         context: Dict[str, Any],
         title: Optional[str] = None,
     ) -> AgentSession:
-        """Create a new agent session."""
+        """Create a new agent session with automatic context injection."""
         from cerebro.core.database import async_session_factory
+
+        # AUTO-LOAD CONTEXT: Load org and system context before creating session
+        try:
+            from cerebro.agents.tools.org_context import GetOrgContextTool
+            from cerebro.agents.tools.system_context import GetSystemContextTool
+
+            # Build temporary context for tool execution
+            temp_context = AgentContext(
+                session_id=UUID('00000000-0000-0000-0000-000000000000'),  # Temp ID
+                org_id=org_id,
+                user_id=created_by,
+                agent_type=agent_type.value,
+            )
+
+            # Load organizational context
+            org_context_tool = GetOrgContextTool()
+            org_context_result = await org_context_tool.execute(
+                context=temp_context,
+                include_repositories=True,
+                include_providers=True,
+                include_statistics=True,
+                include_tools=True,
+            )
+
+            # Load system context
+            system_context_tool = GetSystemContextTool()
+            system_context_result = await system_context_tool.execute(
+                context=temp_context,
+                include_database=True,
+                include_environment=True,
+                include_providers=True,
+                include_health=True,
+            )
+
+            # Inject loaded context into session context
+            if org_context_result.success and system_context_result.success:
+                context['_auto_loaded_org_context'] = org_context_result.data
+                context['_auto_loaded_system_context'] = system_context_result.data
+
+                logger.info(
+                    "Auto-loaded context for agent session",
+                    org_id=org_id,
+                    org_name=org_context_result.data.get('org_name'),
+                    providers_count=len(org_context_result.data.get('providers_connected', [])),
+                    tools_count=org_context_result.data.get('agent_tools_count'),
+                )
+            else:
+                logger.warning(
+                    "Failed to auto-load context for agent session",
+                    org_id=org_id,
+                    org_context_success=org_context_result.success,
+                    system_context_success=system_context_result.success,
+                )
+
+        except Exception as e:
+            logger.warning(
+                "Context auto-loading failed, continuing without",
+                org_id=org_id,
+                error=str(e),
+            )
+
         async with async_session_factory() as db_session:
             session = AgentSession(
                 org_id=org_id,
@@ -73,14 +134,16 @@ class CerebroClaudeRuntime:
             db_session.add(session)
             await db_session.commit()
             await db_session.refresh(session)
-            
+
             logger.info(
-                "Created agent session",
+                "Created agent session with auto-context",
                 session_id=session.id,
                 agent_type=agent_type.value,
                 org_id=org_id,
+                has_org_context=('_auto_loaded_org_context' in context),
+                has_system_context=('_auto_loaded_system_context' in context),
             )
-            
+
             return session
     
     async def get_session(self, session_id: UUID) -> Optional[AgentSession]:
@@ -129,12 +192,12 @@ class CerebroClaudeRuntime:
             # Build allowed tools list (mcp__servername__toolname format)
             allowed_tools = [f"mcp__cerebro__{tool.name}" for tool in available_tools]
 
-            # Configure Claude options with MCP server
+            # Configure Claude options with MCP server and session context
             options = ClaudeAgentOptions(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                system_prompt=self._get_system_prompt(session.agent_type),
+                system_prompt=self._get_system_prompt(session.agent_type, session=session),
                 mcp_servers={"cerebro": mcp_server},
                 allowed_tools=allowed_tools,
             )
@@ -352,11 +415,11 @@ class CerebroClaudeRuntime:
                 tool_calls=content.get("tool_calls", 0) if isinstance(content, dict) else 0,
             )
     
-    def _get_system_prompt(self, agent_type: AgentType) -> str:
-        """Get system prompt for specific agent type."""
-        
-        base_prompt = """You are a specialized security agent within the Cerebro security system of record. 
-You have access to powerful tools for analyzing security findings, investigating incidents, and providing 
+    def _get_system_prompt(self, agent_type: AgentType, session: Optional[AgentSession] = None) -> str:
+        """Get system prompt for specific agent type with auto-loaded context."""
+
+        base_prompt = """You are a specialized security agent within the Cerebro security system of record.
+You have access to powerful tools for analyzing security findings, investigating incidents, and providing
 actionable recommendations.
 
 SAFETY GUIDELINES:
@@ -373,6 +436,74 @@ RESPONSE STYLE:
 - Prioritize actions by risk and business impact
 - Always provide clear next steps"""
         
+        # AUTO-INJECTED CONTEXT: Add pre-loaded organizational and system context
+        context_section = ""
+        if session and session.context:
+            org_context = session.context.get('_auto_loaded_org_context')
+            system_context = session.context.get('_auto_loaded_system_context')
+
+            if org_context or system_context:
+                context_section = "\n\n=== YOUR ENVIRONMENT (YOU ALREADY KNOW THIS) ==="
+
+                if org_context:
+                    org_name = org_context.get('org_name', 'Unknown Organization')
+                    context_section += f"\n\nOrganization: {org_name}"
+
+                    # Repository info
+                    repos = org_context.get('repositories', [])
+                    if repos:
+                        context_section += f"\n\nRepositories ({len(repos)}):"
+                        for repo in repos[:5]:  # Show first 5
+                            context_section += f"\n  - {repo.get('name')}: {repo.get('framework', 'unknown')} ({repo.get('type', 'unknown')})"
+
+                    # Provider info
+                    providers = org_context.get('providers_connected', [])
+                    if providers:
+                        context_section += f"\n\nConnected Providers ({len(providers)}):"
+                        for prov in providers:
+                            context_section += f"\n  - {prov.get('provider', 'unknown').upper()}: {prov.get('resource_count', 0)} resources"
+
+                    # Statistics
+                    stats = org_context.get('statistics', {})
+                    if stats:
+                        context_section += "\n\nSecurity Statistics:"
+                        context_section += f"\n  - Total Resources: {stats.get('total_resources', 0)}"
+                        context_section += f"\n  - Total Principals: {stats.get('total_principals', 0)}"
+                        context_section += f"\n  - Open Findings: {stats.get('open_findings', 0)}"
+
+                    # Tools
+                    tools_count = org_context.get('agent_tools_count', 0)
+                    if tools_count > 0:
+                        context_section += f"\n\nAvailable Tools: {tools_count} specialized security tools"
+
+                if system_context:
+                    # Database info
+                    db_info = system_context.get('database', {})
+                    if db_info.get('connected'):
+                        context_section += "\n\nDatabase: PostgreSQL"
+                        if db_info.get('pg_version'):
+                            context_section += f" {db_info['pg_version']}"
+
+                    # Environment info
+                    env_info = system_context.get('environment', {})
+                    if env_info:
+                        deployment = env_info.get('deployment_type', 'unknown')
+                        environment = env_info.get('environment', 'unknown')
+                        context_section += f"\n\nDeployment: {deployment} ({environment})"
+
+                    # Provider health
+                    provider_health = system_context.get('provider_health', [])
+                    if provider_health:
+                        degraded = [p for p in provider_health if p.get('status') != 'healthy']
+                        if degraded:
+                            context_section += "\n\n⚠️ Provider Health Alerts:"
+                            for p in degraded:
+                                context_section += f"\n  - {p.get('provider', 'unknown').upper()}: {p.get('status', 'unknown')}"
+
+                context_section += "\n\nIMPORTANT: You ALREADY KNOW this information. Don't ask the user about it."
+                context_section += "\nUse this context to provide specific, informed responses without needing to ask for basic setup details."
+                context_section += "\n=== END ENVIRONMENT CONTEXT ===\n"
+
         agent_prompts = {
             AgentType.SECURITY_ANALYST: """
 ROLE: Security Analyst
@@ -380,7 +511,7 @@ FOCUS: Triage findings, assess risk, cluster similar issues, recommend remediati
 EXPERTISE: Vulnerability assessment, risk scoring, compliance mapping, threat analysis
 """,
             AgentType.INCIDENT_RESPONDER: """
-ROLE: Incident Response Specialist  
+ROLE: Incident Response Specialist
 FOCUS: Build timelines, coordinate containment, collect evidence, manage incidents
 EXPERTISE: Digital forensics, incident coordination, timeline analysis, containment strategies
 """,
@@ -400,10 +531,10 @@ FOCUS: Model attack paths, identify choke points, recommend defensive measures
 EXPERTISE: Attack path modeling, threat modeling, network analysis, defensive architecture
 """
         }
-        
+
         agent_specific = agent_prompts.get(agent_type, "")
-        
-        return f"{base_prompt}\n\n{agent_specific}"
+
+        return f"{base_prompt}{context_section}\n\n{agent_specific}"
     
     async def get_session_messages(
         self,
