@@ -320,12 +320,13 @@ class QueryEngine:
         self.registry = registry or get_registry()
         self.parser = SQLParser()
         
-    async def execute_query(self, sql: str) -> QueryResult:
+    async def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> QueryResult:
         """
         Execute a SQL query against registered security tables.
         
         Args:
-            sql: SQL query string
+            sql: SQL query string with optional parameter placeholders ($1, $2, etc.)
+            params: Optional list of parameter values for placeholders
             
         Returns:
             QueryResult with rows, metadata, and any errors
@@ -334,6 +335,10 @@ class QueryEngine:
         errors = []
         
         try:
+            # Substitute parameters safely
+            if params:
+                sql = self._substitute_parameters(sql, params)
+            
             # Parse SQL query
             plan = self.parser.parse_query(sql)
             
@@ -512,6 +517,54 @@ class QueryEngine:
             "providers": self.registry.list_providers(),
             "version": "1.0.0"
         }
+    
+    def _substitute_parameters(self, sql: str, params: List[Any]) -> str:
+        """
+        Safely substitute parameters in SQL query.
+        
+        Args:
+            sql: SQL with parameter placeholders ($1, $2, etc.)
+            params: List of parameter values
+            
+        Returns:
+            SQL with parameters safely substituted
+        """
+        import re
+        
+        def replace_param(match):
+            param_num = int(match.group(1)) - 1  # Convert to 0-based index
+            if param_num >= len(params):
+                raise ValueError(f"Parameter ${param_num + 1} not provided")
+            
+            value = params[param_num]
+            
+            # Handle None/NULL
+            if value is None:
+                return 'NULL'
+            
+            # Handle strings - escape single quotes and wrap in quotes
+            if isinstance(value, str):
+                escaped_value = value.replace("'", "''")  # SQL standard escaping
+                return f"'{escaped_value}'"
+            
+            # Handle numbers
+            if isinstance(value, (int, float)):
+                return str(value)
+            
+            # Handle booleans
+            if isinstance(value, bool):
+                return 'TRUE' if value else 'FALSE'
+            
+            # Handle dates/timestamps
+            if hasattr(value, 'isoformat'):
+                return f"'{value.isoformat()}'"
+            
+            # Fallback - treat as string
+            escaped_value = str(value).replace("'", "''")
+            return f"'{escaped_value}'"
+        
+        # Replace $1, $2, etc. with actual values
+        return re.sub(r'\$(\d+)', replace_param, sql)
 
 
 # Convenience functions for common query patterns

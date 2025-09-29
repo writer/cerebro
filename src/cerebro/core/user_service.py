@@ -293,17 +293,23 @@ class UserService:
     
     async def create_admin_user(
         self,
-        username: str,
-        email: str,
-        password: str,
+        username: str = "admin",
+        email: str = "admin@cerebro.local",
+        password: Optional[str] = None,
     ) -> User:
-        """Create admin user with provided credentials.
+        """Create admin user with provided or generated credentials.
         
-        This method requires explicit username, email, and password.
-        No defaults are provided for security.
+        In production, validates password strength and logs generated passwords.
         """
         import secrets
+        import string
         import os
+        
+        # Generate secure random password if not provided
+        if not password:
+            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+            password = ''.join(secrets.choice(alphabet) for _ in range(16))
+            logger.warning(f"Generated admin password for {username}: {password}")
         
         # Validate password strength in production
         environment = os.getenv('ENVIRONMENT', 'production').lower()
@@ -313,7 +319,6 @@ class UserService:
                     "Admin password must be at least 12 characters in production. "
                     f"Generate a secure password with: python -c 'import secrets; print(secrets.token_urlsafe(16))'"
                 )
-        
         # Create admin user
         admin_user = await self.create_user(
             username=username,

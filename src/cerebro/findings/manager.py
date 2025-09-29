@@ -238,6 +238,7 @@ class FindingManager:
         self,
         finding_id: UUID,
         reason: str,
+        user_id: Optional[UUID] = None,
         expires_at: Optional[datetime] = None
     ) -> bool:
         """Suppress a specific finding."""
@@ -248,7 +249,19 @@ class FindingManager:
         finding.status = "suppressed"
         finding.last_seen = datetime.utcnow()
         
-        # TODO: Create suppression record in suppressions table
+        # Create suppression record in suppressions table
+        from cerebro.core.models import Suppression
+        suppression = Suppression(
+            finding_id=finding.finding_id,
+            rule_id=finding.rule_id,
+            org_id=finding.org_id,
+            pattern_type='finding_id',
+            pattern_value=str(finding.finding_id),
+            reason=reason,
+            created_by=user_id,
+            expires_at=expires_at
+        )
+        self.db.add(suppression)
         
         await self.db.commit()
         logger.info(f"Suppressed finding {finding_id}: {reason}")

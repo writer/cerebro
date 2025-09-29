@@ -172,7 +172,11 @@ class CollectionService:
             clusters = await self.identity_stitcher.find_identity_clusters(org_id, principals)
             logger.info(f"Found {len(clusters)} identity clusters")
             
-            # TODO: Save identity clusters to repository
+            # Save identity clusters to repository
+            from cerebro.core.identity_cluster_repository import IdentityClusterRepository
+            cluster_repo = IdentityClusterRepository(self.db)
+            await cluster_repo.save_clusters(org_id, clusters)
+            logger.info(f"Saved {len(clusters)} identity clusters to repository")
             
         except Exception as e:
             logger.error(f"Identity stitching failed: {e}")

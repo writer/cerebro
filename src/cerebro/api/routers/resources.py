@@ -21,6 +21,7 @@ async def list_resources(
     resource_type: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """List resources."""
