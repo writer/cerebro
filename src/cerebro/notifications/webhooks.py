@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -468,6 +469,9 @@ class WebhookNotificationService:
                 # Determine HTTP method
                 method = config.http_method.upper() if config.http_method else "POST"
 
+                # Measure response time
+                start_time = time.time()
+
                 # Send request
                 if method == "POST":
                     response = await self.client.post(
@@ -493,6 +497,9 @@ class WebhookNotificationService:
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
 
+                # Calculate response time in milliseconds
+                response_time_ms = int((time.time() - start_time) * 1000)
+
                 response_status = response.status_code
                 response_body = response.text[:1000]  # Limit body size
 
@@ -509,6 +516,7 @@ class WebhookNotificationService:
                         payload=payload,
                         response_status=response_status,
                         response_body=response_body,
+                        response_time_ms=response_time_ms,
                         status="sent",
                         error_message=None,
                         retry_count=retry_count,

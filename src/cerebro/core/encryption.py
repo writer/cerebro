@@ -1,4 +1,5 @@
 """Secret encryption service using envelope encryption with Fernet."""
+import hashlib
 import os
 import logging
 from typing import Optional, Tuple
@@ -28,6 +29,8 @@ class SecretEncryptionService:
     - Works offline after DEK decryption
     """
 
+    MAX_CACHE_SIZE = 1000  # Prevent memory leaks from unbounded cache growth
+
     def __init__(self, kms: Optional[BaseKMS] = None):
         """Initialize encryption service.
 
@@ -36,6 +39,7 @@ class SecretEncryptionService:
         """
         self.kms = kms or get_kms()
         self._dek_cache: dict[bytes, Fernet] = {}  # Cache decrypted DEKs for performance
+        self._cache_access_order: list[bytes] = []  # Track LRU for eviction
 
     def _generate_dek(self) -> bytes:
         """Generate a new random Data Encryption Key.
@@ -46,7 +50,7 @@ class SecretEncryptionService:
         return Fernet.generate_key()
 
     def _get_fernet(self, dek: bytes) -> Fernet:
-        """Get or create Fernet cipher for a DEK.
+        """Get or create Fernet cipher for a DEK with LRU cache eviction.
 
         Args:
             dek: Data Encryption Key
@@ -54,9 +58,26 @@ class SecretEncryptionService:
         Returns:
             Fernet cipher instance
         """
-        if dek not in self._dek_cache:
-            self._dek_cache[dek] = Fernet(dek)
-        return self._dek_cache[dek]
+        if dek in self._dek_cache:
+            # Move to end (most recently used)
+            self._cache_access_order.remove(dek)
+            self._cache_access_order.append(dek)
+            return self._dek_cache[dek]
+
+        # Not in cache, create new entry
+        fernet = Fernet(dek)
+
+        # Evict oldest entry if cache is full
+        if len(self._dek_cache) >= self.MAX_CACHE_SIZE:
+            oldest_dek = self._cache_access_order.pop(0)
+            del self._dek_cache[oldest_dek]
+            logger.debug(f"Evicted DEK from cache (size: {len(self._dek_cache)})")
+
+        # Add to cache
+        self._dek_cache[dek] = fernet
+        self._cache_access_order.append(dek)
+
+        return fernet
 
     async def encrypt_secret(self, plaintext: str) -> Tuple[bytes, bytes]:
         """Encrypt a secret using envelope encryption.
@@ -90,7 +111,7 @@ class SecretEncryptionService:
             raise
 
     async def decrypt_secret(self, encrypted_secret: bytes, encrypted_dek: bytes) -> str:
-        """Decrypt a secret using envelope encryption.
+        """Decrypt a secret using envelope encryption with audit logging.
 
         Args:
             encrypted_secret: Encrypted secret data
@@ -103,6 +124,16 @@ class SecretEncryptionService:
             plaintext = await service.decrypt_secret(encrypted_data, encrypted_dek)
         """
         try:
+            # Audit log: Decryption attempt
+            logger.info(
+                "secret_decryption_attempt",
+                extra={
+                    "kms_provider": self.kms.name,
+                    "encrypted_dek_hash": hashlib.sha256(encrypted_dek).hexdigest()[:16],
+                    "encrypted_data_size": len(encrypted_secret),
+                }
+            )
+
             # Step 1: Decrypt the DEK using KMS KEK
             dek = await self.kms.decrypt(encrypted_dek)
 
@@ -110,11 +141,29 @@ class SecretEncryptionService:
             fernet = self._get_fernet(dek)
             plaintext_bytes = fernet.decrypt(encrypted_secret)
 
-            logger.debug(f"Decrypted secret (length={len(plaintext_bytes)})")
+            # Audit log: Successful decryption
+            logger.info(
+                "secret_decryption_success",
+                extra={
+                    "kms_provider": self.kms.name,
+                    "decrypted_length": len(plaintext_bytes),
+                    "cache_stats": self.get_cache_stats(),
+                }
+            )
+
             return plaintext_bytes.decode('utf-8')
 
         except Exception as e:
-            logger.error(f"Failed to decrypt secret: {e}", exc_info=True)
+            # Audit log: Decryption failure (security-relevant)
+            logger.error(
+                "secret_decryption_failed",
+                extra={
+                    "kms_provider": self.kms.name,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+                exc_info=True
+            )
             raise
 
     async def rotate_dek(
@@ -178,8 +227,22 @@ class SecretEncryptionService:
 
     def clear_cache(self):
         """Clear the DEK cache. Use after key rotation or for security."""
+        cache_size = len(self._dek_cache)
         self._dek_cache.clear()
-        logger.debug("Cleared DEK cache")
+        self._cache_access_order.clear()
+        logger.info(f"Cleared DEK cache ({cache_size} entries)")
+
+    def get_cache_stats(self) -> dict:
+        """Get cache statistics for monitoring.
+
+        Returns:
+            Dictionary with cache size, max size, and hit rate info
+        """
+        return {
+            "current_size": len(self._dek_cache),
+            "max_size": self.MAX_CACHE_SIZE,
+            "utilization_percent": (len(self._dek_cache) / self.MAX_CACHE_SIZE) * 100,
+        }
 
 
 class FallbackEncryptionService:

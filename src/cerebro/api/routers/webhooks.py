@@ -516,6 +516,7 @@ async def get_webhook_notification_stats(
         func.sum(func.cast(WebhookNotification.status == "sent", sa.Integer)).label("sent"),
         func.sum(func.cast(WebhookNotification.status == "failed", sa.Integer)).label("failed"),
         func.sum(func.cast(WebhookNotification.status == "retrying", sa.Integer)).label("retrying"),
+        func.avg(WebhookNotification.response_time_ms).label("avg_response_time"),
     ).where(WebhookNotification.org_id == current_user.org_id)
 
     if config_id:
@@ -528,6 +529,7 @@ async def get_webhook_notification_stats(
     total_failed = row.failed or 0
     total_retrying = row.retrying or 0
     total = row.total or 0
+    avg_response_time = row.avg_response_time
 
     success_rate = (total_sent / total * 100) if total > 0 else 0.0
 
@@ -536,5 +538,5 @@ async def get_webhook_notification_stats(
         total_failed=total_failed,
         total_retrying=total_retrying,
         success_rate=round(success_rate, 2),
-        avg_response_time_ms=None,  # TODO: Track response time
+        avg_response_time_ms=round(avg_response_time, 2) if avg_response_time else None,
     )

@@ -531,6 +531,7 @@ class WebhookNotification(Base):
     payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
     response_status: Mapped[Optional[int]] = mapped_column(Integer)
     response_body: Mapped[Optional[str]] = mapped_column(Text)
+    response_time_ms: Mapped[Optional[int]] = mapped_column(Integer)  # Response time in milliseconds
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

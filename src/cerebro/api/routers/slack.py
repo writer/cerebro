@@ -459,14 +459,37 @@ async def get_slack_notification_stats(
         )
         last_24h_failed = last_24h_failed_result.scalar() or 0
 
-        # By severity and event type (simplified - would need group by in production)
+        # Group by severity
+        severity_query = select(
+            SlackNotification.severity,
+            func.count(SlackNotification.notification_id).label("count")
+        ).where(
+            SlackNotification.org_id == current_user.org_id,
+            SlackNotification.status == "sent"
+        ).group_by(SlackNotification.severity)
+
+        severity_result = await db.execute(severity_query)
+        by_severity = {row.severity: row.count for row in severity_result if row.severity}
+
+        # Group by event type
+        event_type_query = select(
+            SlackNotification.event_type,
+            func.count(SlackNotification.notification_id).label("count")
+        ).where(
+            SlackNotification.org_id == current_user.org_id,
+            SlackNotification.status == "sent"
+        ).group_by(SlackNotification.event_type)
+
+        event_type_result = await db.execute(event_type_query)
+        by_event_type = {row.event_type: row.count for row in event_type_result}
+
         return SlackNotificationStats(
             total_sent=total_sent,
             total_failed=total_failed,
             last_24h_sent=last_24h_sent,
             last_24h_failed=last_24h_failed,
-            by_severity={},  # TODO: Implement group by
-            by_event_type={},  # TODO: Implement group by
+            by_severity=by_severity,
+            by_event_type=by_event_type,
         )
 
     except Exception as e:
