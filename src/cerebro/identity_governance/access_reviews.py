@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, IAMEdge
+from ..core.models import Principal, IamEdge
 from ..auditability.attestation import get_attestation_service, AttestationType
 
 logger = logging.getLogger(__name__)
@@ -177,10 +177,10 @@ class AccessReviewManager:
         
         async with async_session_factory() as db:
             # Get effective IAM edges for principal
-            stmt = select(IAMEdge).where(
+            stmt = select(IamEdge).where(
                 and_(
-                    IAMEdge.principal_id == principal.principal_id,
-                    IAMEdge.effective == True
+                    IamEdge.principal_id == principal.principal_id,
+                    IamEdge.effective == True
                 )
             )
             
@@ -233,7 +233,7 @@ class AccessReviewManager:
     
     async def _generate_justification_prompt(
         self, 
-        edge: IAMEdge, 
+        edge: IamEdge, 
         principal: Principal
     ) -> str:
         """Generate business justification prompt for reviewers."""

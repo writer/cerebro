@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, IAMEdge, AuditEvent, ConfigSnapshot
+from ..core.models import Principal, IamEdge, AuditEvent, ConfigSnapshot
 from ..query.engine import QueryEngine
 from ..providers.tables import register_all_provider_tables
 
@@ -239,13 +239,13 @@ class IdentityAnomalyDetector:
         end_date: datetime
     ) -> List[Dict[str, Any]]:
         """Get permission change patterns from IAM edges."""
-        stmt = select(IAMEdge).where(
+        stmt = select(IamEdge).where(
             and_(
-                IAMEdge.principal_id == principal.principal_id,
-                IAMEdge.captured_at >= start_date,
-                IAMEdge.captured_at <= end_date
+                IamEdge.principal_id == principal.principal_id,
+                IamEdge.captured_at >= start_date,
+                IamEdge.captured_at <= end_date
             )
-        ).order_by(IAMEdge.captured_at)
+        ).order_by(IamEdge.captured_at)
         
         edges = list(await db.scalars(stmt))
         

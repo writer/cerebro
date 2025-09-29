@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, Resource, IAMEdge
+from ..core.models import Principal, Resource, IamEdge
 
 logger = logging.getLogger(__name__)
 
@@ -174,10 +174,10 @@ class AttackGraph:
     
     async def _add_iam_edges(self, db: AsyncSession):
         """Add IAM permission edges to the graph."""
-        stmt = select(IAMEdge).where(
+        stmt = select(IamEdge).where(
             and_(
-                IAMEdge.org_id == self.org_id,
-                IAMEdge.effective == True
+                IamEdge.org_id == self.org_id,
+                IamEdge.effective == True
             )
         )
         edges = await db.scalars(stmt)
@@ -403,7 +403,7 @@ class AttackGraph:
         else:
             return 0  # Minimal/Unknown
     
-    def _extract_edge_conditions(self, iam_edge: IAMEdge) -> List[str]:
+    def _extract_edge_conditions(self, iam_edge: IamEdge) -> List[str]:
         """Extract conditions required to traverse an edge."""
         conditions = []
         

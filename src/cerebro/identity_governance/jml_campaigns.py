@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, IAMEdge
+from ..core.models import Principal, IamEdge
 from ..query.engine import QueryEngine
 from ..providers.tables import register_all_provider_tables
 from ..auditability.transparency_log import get_transparency_log, LogEntryType
@@ -321,10 +321,10 @@ class JMLCampaignManager:
         
         async with async_session_factory() as db:
             # Query current IAM edges for principal
-            stmt = select(IAMEdge).where(
+            stmt = select(IamEdge).where(
                 and_(
-                    IAMEdge.principal_id == principal_id,
-                    IAMEdge.effective == True
+                    IamEdge.principal_id == principal_id,
+                    IamEdge.effective == True
                 )
             )
             
@@ -401,10 +401,10 @@ class JMLCampaignManager:
         access_items = []
         
         async with async_session_factory() as db:
-            stmt = select(IAMEdge).where(
+            stmt = select(IamEdge).where(
                 and_(
-                    IAMEdge.principal_id == principal_id,
-                    IAMEdge.effective == True
+                    IamEdge.principal_id == principal_id,
+                    IamEdge.effective == True
                 )
             )
             
