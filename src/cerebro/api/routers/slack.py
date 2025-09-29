@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, HttpUrl, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +24,7 @@ from cerebro.core.models import SlackWebhook, SlackNotification, Organization
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/slack", tags=["slack"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ==================== Request/Response Models ====================
@@ -113,7 +116,9 @@ class SlackNotificationStats(BaseModel):
 # ==================== Endpoints ====================
 
 @router.post("/webhooks", response_model=SlackWebhookResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_slack_webhook(
+    request: Request,
     webhook_data: SlackWebhookCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

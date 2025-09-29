@@ -20,9 +20,19 @@ from cerebro.notifications.email import get_email_service
 logger = logging.getLogger(__name__)
 
 
-@shared_task(name="process_email_digests")
+@shared_task(
+    name="process_email_digests",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=3600,  # Max 1 hour between retries
+    retry_jitter=True,
+    max_retries=3,
+)
 def process_email_digests():
-    """Process all pending email digests (Celery task wrapper)."""
+    """Process all pending email digests (Celery task wrapper).
+
+    Automatically retries up to 3 times with exponential backoff if failures occur.
+    """
     asyncio.run(_process_email_digests_async())
 
 
@@ -31,13 +41,18 @@ async def _process_email_digests_async():
     try:
         async with async_session_factory() as db:
             # Find all configs with digest mode enabled
+            # Limit to 500 configs per run to prevent memory issues
             configs_result = await db.execute(
                 select(EmailConfig).where(
                     EmailConfig.enabled == True,
                     EmailConfig.digest_mode == True,
-                )
+                ).order_by(EmailConfig.created_at.asc())
+                .limit(500)
             )
             configs = configs_result.scalars().all()
+
+            if len(configs) == 500:
+                logger.warning("Reached digest config limit of 500. Some configs may not be processed this run.")
 
             logger.info(f"Processing email digests for {len(configs)} configs")
 

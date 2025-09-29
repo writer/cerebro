@@ -4,8 +4,10 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field, validator
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +19,7 @@ from cerebro.notifications.email import get_email_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/email", tags=["Email Notifications"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # Pydantic models for API
@@ -147,7 +150,9 @@ class EmailNotificationStatsResponse(BaseModel):
 
 
 @router.post("/configs", response_model=EmailConfigResponse, status_code=201)
+@limiter.limit("10/minute")
 async def create_email_config(
+    request: Request,
     config_data: EmailConfigCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

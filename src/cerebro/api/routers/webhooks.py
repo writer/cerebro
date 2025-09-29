@@ -4,8 +4,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, HttpUrl, validator
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 import sqlalchemy as sa
@@ -18,6 +20,7 @@ from cerebro.notifications.webhooks import WebhookPayloadTemplates, get_webhook_
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["Generic Webhooks"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # Pydantic models for API
@@ -167,7 +170,9 @@ def _mask_authentication(auth: Optional[Dict[str, Any]]) -> Optional[Dict[str, A
 
 
 @router.post("/configs", response_model=WebhookConfigResponse, status_code=201)
+@limiter.limit("10/minute")
 async def create_webhook_config(
+    request: Request,
     config_data: WebhookConfigCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

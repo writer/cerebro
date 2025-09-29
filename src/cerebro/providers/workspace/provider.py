@@ -303,8 +303,8 @@ class GoogleWorkspaceProvider(BaseProvider):
                         try:
                             last_sync_dt = datetime.fromisoformat(last_sync.replace('Z', '+00:00'))
                             is_stale = (datetime.now(last_sync_dt.tzinfo) - last_sync_dt).days > 30
-                        except:
-                            pass
+                        except (ValueError, TypeError, AttributeError) as e:
+                            logger.debug(f"Failed to parse lastSync date for device {device.get('deviceId')}: {last_sync}, error: {e}")
                     
                     yield ResourceInfo(
                         external_id=device['deviceId'],
