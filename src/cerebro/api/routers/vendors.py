@@ -420,41 +420,60 @@ async def get_vendor_evidence(
             tags={"vendor_id": vendor_id},
             limit=100
         )
-        
-        # In production, would query actual evidence fabric
-        mock_evidence = [
-            {
-                "evidence_id": f"ev_{vendor_id}_security_assessment",
-                "entity_type": "document",
-                "observed_at": (datetime.now() - timedelta(days=30)).isoformat(),
-                "evidence_type": "security_assessment",
-                "source_system": "manual_upload",
-                "content_summary": "Annual security assessment questionnaire",
-                "quality_score": 0.95,
-                "requirements": ["SOC2_CC6.1", "ISO27001_A.15.1.1"]
-            },
-            {
-                "evidence_id": f"ev_{vendor_id}_certification",
-                "entity_type": "document", 
-                "observed_at": (datetime.now() - timedelta(days=60)).isoformat(),
-                "evidence_type": "certification",
-                "source_system": "vendor_portal",
-                "content_summary": "SOC 2 Type II certification",
-                "quality_score": 1.0,
-                "requirements": ["SOC2_CC1.1", "SOC2_CC2.1"]
+
+        # Query actual evidence fabric for vendor-related evidence
+        evidence_fabric = EvidenceDataFabric(db)
+
+        try:
+            # Execute real evidence query
+            evidence_results = await evidence_fabric.query_evidence(evidence_query)
+
+            # Format vendor evidence results
+            vendor_evidence = []
+            for result in evidence_results.evidence_items:
+                evidence_data = {
+                    "evidence_id": result.evidence_id,
+                    "entity_type": result.entity_type.value if result.entity_type else "unknown",
+                    "observed_at": result.observed_at.isoformat(),
+                    "source_system": result.source_system,
+                    "quality_score": result.quality_score or 0.0,
+                    "requirements": result.requirements or [],
+                    "normalized_data": result.normalized_data or {}
+                }
+
+                # Extract evidence type from normalized data or tags
+                evidence_data["evidence_type"] = (
+                    result.normalized_data.get("evidence_type") if result.normalized_data
+                    else result.tags.get("evidence_type") if result.tags
+                    else "unknown"
+                )
+
+                # Add content summary if available
+                if result.normalized_data and "content_summary" in result.normalized_data:
+                    evidence_data["content_summary"] = result.normalized_data["content_summary"]
+
+                # Filter by evidence type if specified
+                if not evidence_type or evidence_data["evidence_type"] == evidence_type:
+                    vendor_evidence.append(evidence_data)
+
+            return {
+                "vendor_id": vendor_id,
+                "evidence_period_days": since_days,
+                "total_evidence_records": len(vendor_evidence),
+                "evidence": vendor_evidence,
+                "query_execution_time_ms": evidence_results.execution_time_ms
             }
-        ]
-        
-        # Filter by evidence type if specified
-        if evidence_type:
-            mock_evidence = [e for e in mock_evidence if e["evidence_type"] == evidence_type]
-        
-        return {
-            "vendor_id": vendor_id,
-            "evidence_period_days": since_days,
-            "total_evidence_records": len(mock_evidence),
-            "evidence": mock_evidence
-        }
+
+        except Exception as e:
+            logger.error(f"Vendor evidence query failed for {vendor_id}: {e}")
+            # Return error response instead of mock data
+            return {
+                "vendor_id": vendor_id,
+                "evidence_period_days": since_days,
+                "total_evidence_records": 0,
+                "evidence": [],
+                "error": f"Evidence query failed: {str(e)}"
+            }
         
     except Exception as e:
         logger.error(f"Vendor evidence retrieval failed: {e}")

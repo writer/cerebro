@@ -353,35 +353,62 @@ async def query_evidence_fabric(
         query_filters["limit"] = limit
         
         evidence_query = EvidenceQuery(**query_filters)
-        
-        # Mock evidence results (in production would query actual fabric)
-        mock_results = [
-            {
-                "evidence_id": f"ev_mock_{i}",
-                "entity_type": entity_type or "configuration",
-                "entity_id": entity_id or f"entity_{i}",
-                "source_system": source_system or "okta",
-                "observed_at": (datetime.now() - timedelta(days=i)).isoformat(),
-                "quality_score": 0.95,
-                "requirements": requirements or ["SOC2_CC6.1"],
-                "normalized_data": {"status": "active", "mfa_enabled": True}
+
+        # Query actual evidence fabric instead of returning mock data
+        evidence_fabric = EvidenceDataFabric(db)
+
+        try:
+            # Execute real evidence query
+            evidence_results = await evidence_fabric.query_evidence(evidence_query)
+
+            # Format results for API response
+            formatted_results = [
+                {
+                    "evidence_id": result.evidence_id,
+                    "entity_type": result.entity_type.value if result.entity_type else "unknown",
+                    "entity_id": result.entity_id,
+                    "source_system": result.source_system,
+                    "observed_at": result.observed_at.isoformat(),
+                    "quality_score": result.quality_score or 0.0,
+                    "requirements": result.requirements or [],
+                    "normalized_data": result.normalized_data or {}
+                }
+                for result in evidence_results.evidence_items
+            ]
+
+            return {
+                "organization_id": str(org_id),
+                "query_parameters": {
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "source_system": source_system,
+                    "requirements": requirements,
+                    "since_days": since_days,
+                    "limit": limit
+                },
+                "total_results": evidence_results.total_count,
+                "evidence_records": formatted_results,
+                "query_execution_time_ms": evidence_results.execution_time_ms,
+                "cache_hit": evidence_results.from_cache if hasattr(evidence_results, 'from_cache') else False
             }
-            for i in range(min(10, limit))
-        ]
-        
-        return {
-            "organization_id": str(org_id),
-            "query_parameters": {
-                "entity_type": entity_type,
-                "entity_id": entity_id,
-                "source_system": source_system,
-                "requirements": requirements,
-                "since_days": since_days,
-                "limit": limit
-            },
-            "total_results": len(mock_results),
-            "evidence_records": mock_results
-        }
+
+        except Exception as e:
+            logger.error(f"Evidence fabric query failed: {e}")
+            # Return error response instead of mock data
+            return {
+                "organization_id": str(org_id),
+                "query_parameters": {
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "source_system": source_system,
+                    "requirements": requirements,
+                    "since_days": since_days,
+                    "limit": limit
+                },
+                "total_results": 0,
+                "evidence_records": [],
+                "error": f"Evidence query failed: {str(e)}"
+            }
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
