@@ -19,7 +19,6 @@ from uuid import UUID
 
 from .database import Base
 from .config import settings
-from cerebro.kms.factory import get_kms
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +51,15 @@ class ProviderCredentialStore(Base):
 class CredentialService:
     """Service for managing provider credentials with envelope encryption."""
     
-    def __init__(self, db_session: AsyncSession):
-        """Initialize credential service."""
+    def __init__(self, db_session: AsyncSession, kms=None):
+        """Initialize credential service.
+
+        Args:
+            db_session: Database session
+            kms: KMS instance (will be injected by caller)
+        """
         self.db = db_session
-        self.kms = get_kms()
+        self.kms = kms
     
     @staticmethod
     def _generate_dek() -> bytes:
@@ -261,10 +265,17 @@ class CredentialService:
         else:
             return {}
     
-    async def test_credentials(self, account_id: UUID, provider: str) -> bool:
-        """Test if provider credentials are valid."""
-        from cerebro.infrastructure.provider_registry import get_provider_registry
-        
+    async def test_credentials(self, account_id: UUID, provider: str, provider_registry=None) -> bool:
+        """Test if provider credentials are valid.
+
+        Args:
+            account_id: Account UUID
+            provider: Provider name
+            provider_registry: Provider registry instance (injected by caller)
+        """
+        if not provider_registry:
+            raise ValueError("Provider registry must be injected by caller")
+
         try:
             # Get credentials
             credentials = await self.get_provider_credentials_for_collection(account_id, provider)
@@ -273,8 +284,7 @@ class CredentialService:
                 return False
             
             # Create provider instance
-            registry = get_provider_registry()
-            provider_instance = registry.create_provider(
+            provider_instance = provider_registry.create_provider(
                 provider,
                 account_id=str(account_id),
                 **credentials

@@ -16,8 +16,6 @@ from uuid import UUID
 
 from cerebro.core.database import Base
 from cerebro.core.config import settings
-from cerebro.kms.factory import get_kms
-from cerebro.metrics.jwt_metrics import jwt_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +65,17 @@ class JWTSigningKey(Base):
 class JWTKeyStore:
     """Manages JWT signing keys with rotation and KMS integration."""
     
-    def __init__(self, db_session: AsyncSession):
-        """Initialize key store."""
+    def __init__(self, db_session: AsyncSession, kms=None, metrics=None):
+        """Initialize key store.
+
+        Args:
+            db_session: Database session
+            kms: KMS instance (injected by caller)
+            metrics: Metrics instance (injected by caller)
+        """
         self.db = db_session
-        self.kms = get_kms()
+        self.kms = kms
+        self.metrics = metrics
         
     async def get_current_signing_key(self) -> Optional[JWTSigningKey]:
         """Get the current active signing key."""
@@ -160,16 +165,18 @@ class JWTKeyStore:
             self.db.add(signing_key)
             await self.db.commit()
             await self.db.refresh(signing_key)
-            
-            jwt_metrics.record_key_rotation(True)
-            jwt_metrics.set_active_keys(await self._count_active_keys())
-            
+
+            if self.metrics:
+                self.metrics.record_key_rotation(True)
+                self.metrics.set_active_keys(await self._count_active_keys())
+
             logger.info(f"Created new JWT signing key with kid: {kid}")
             return signing_key
             
         except Exception as e:
             logger.error(f"Failed to create new signing key: {e}")
-            jwt_metrics.record_key_rotation(False)
+            if self.metrics:
+                self.metrics.record_key_rotation(False)
             await self.db.rollback()
             raise
     
@@ -229,8 +236,9 @@ class JWTKeyStore:
         
         if expired_keys:
             logger.info(f"Cleaned up {len(expired_keys)} expired JWT keys")
-            jwt_metrics.set_active_keys(await self._count_active_keys())
-        
+            if self.metrics:
+                self.metrics.set_active_keys(await self._count_active_keys())
+
         return len(expired_keys)
     
     async def get_jwks_response(self) -> Dict[str, Any]:

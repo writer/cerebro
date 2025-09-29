@@ -6,13 +6,85 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 import logging
+import asyncio
+from functools import wraps
 
 logger = logging.getLogger(__name__)
+
+
+def authenticated_method(func):
+    """Decorator to ensure the provider is authenticated before calling a method."""
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        if not self._is_authenticated:
+            await self.authenticate()
+        return await func(self, *args, **kwargs)
+    return wrapper
 
 
 class ProviderError(Exception):
     """Base exception for provider errors."""
     pass
+
+
+class AuthenticationMixin:
+    """Mixin providing common authentication patterns for providers.
+
+    Example usage in a provider:
+
+    class MyProvider(BaseProvider):
+        async def authenticate(self) -> bool:
+            def _auth_impl():
+                # Your authentication logic here
+                self.client = SomeAPIClient(self.credentials)
+                # Test the connection
+                self.client.get_account_info()
+                return True
+
+            return await self.safe_authenticate(_auth_impl)
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._is_authenticated = False
+        self._auth_lock = asyncio.Lock()
+
+    async def safe_authenticate(self, auth_func, *args, **kwargs) -> bool:
+        """Common authentication pattern with error handling and logging."""
+        async with self._auth_lock:
+            if self._is_authenticated:
+                return True
+
+            try:
+                logger.info(f"Authenticating with {self.name} provider")
+                success = await self._run_auth_operation(auth_func, *args, **kwargs)
+
+                if success:
+                    self._is_authenticated = True
+                    logger.info(f"Successfully authenticated with {self.name}")
+                    return True
+                else:
+                    logger.error(f"Authentication failed with {self.name}")
+                    return False
+
+            except ProviderError:
+                # Re-raise provider errors as-is
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error during {self.name} authentication: {e}")
+                raise ProviderError(f"Authentication failed: {e}")
+
+    async def _run_auth_operation(self, auth_func, *args, **kwargs):
+        """Run authentication operation in executor if needed."""
+        if asyncio.iscoroutinefunction(auth_func):
+            return await auth_func(*args, **kwargs)
+        else:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, auth_func, *args, **kwargs)
+
+    def reset_authentication(self):
+        """Reset authentication state (useful for credential rotation)."""
+        self._is_authenticated = False
 
 
 @dataclass
@@ -57,11 +129,12 @@ class IamPermission:
     is_admin: bool = False
 
 
-class BaseProvider(ABC):
+class BaseProvider(AuthenticationMixin, ABC):
     """Base class for all providers."""
-    
+
     def __init__(self, account_id: UUID, **kwargs):
         """Initialize provider."""
+        super().__init__(**kwargs)
         self.account_id = account_id
         self.provider_name = self.name
         self._client = None
@@ -78,27 +151,31 @@ class BaseProvider(ABC):
         pass
     
     @abstractmethod
+    @authenticated_method
     async def discover_resources(
-        self, 
+        self,
         resource_types: Optional[List[str]] = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover resources from the provider."""
         pass
-    
+
     @abstractmethod
+    @authenticated_method
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover principals (users, groups, etc.) from the provider."""
         pass
-    
+
     @abstractmethod
+    @authenticated_method
     async def get_resource_configuration(
-        self, 
+        self,
         resource: ResourceInfo
     ) -> ConfigurationSnapshot:
         """Get the current configuration for a resource."""
         pass
-    
+
     @abstractmethod
+    @authenticated_method
     async def discover_iam_edges(
         self,
         resource: Optional[ResourceInfo] = None

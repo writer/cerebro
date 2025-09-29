@@ -10,7 +10,6 @@ from cryptography.hazmat.primitives import serialization
 import redis.asyncio as redis
 
 from cerebro.core.config import settings
-from cerebro.metrics.jwt_metrics import jwt_metrics
 from .key_store import JWTKeyStore, JWTSigningKey
 
 logger = logging.getLogger(__name__)
@@ -18,11 +17,17 @@ logger = logging.getLogger(__name__)
 
 class JWTService:
     """Production-ready JWT service with RS256, key rotation, and revocation."""
-    
-    def __init__(self, key_store: JWTKeyStore):
-        """Initialize JWT service."""
+
+    def __init__(self, key_store: JWTKeyStore, metrics=None):
+        """Initialize JWT service.
+
+        Args:
+            key_store: JWT key store instance
+            metrics: Optional metrics instance (injected by caller)
+        """
         self.key_store = key_store
         self._redis_client: Optional[redis.Redis] = None
+        self.metrics = metrics
         
     async def _get_redis(self) -> redis.Redis:
         """Get Redis client for token revocation."""
@@ -94,7 +99,8 @@ class JWTService:
             )
             
             # Record metrics
-            jwt_metrics.record_token_issued(settings.jwt_algorithm, signing_key.kid)
+            if self.metrics:
+                self.metrics.record_token_issued(settings.jwt_algorithm, signing_key.kid)
             
             logger.debug(f"Created JWT token for user {username} with kid {signing_key.kid}")
             return token
@@ -105,63 +111,72 @@ class JWTService:
     
     async def verify_token(self, token: str) -> Dict[str, Any]:
         """Verify JWT token with comprehensive security checks."""
-        with jwt_metrics.time_token_verification():
-            try:
-                # Decode header to get key ID without verification
-                unverified_header = jwt.get_unverified_header(token)
-                kid = unverified_header.get("kid")
-                algorithm = unverified_header.get("alg", "unknown")
-                
-                if not kid:
-                    raise JWTError("Token missing key ID (kid) in header")
-                
-                # Get signing key by ID
-                signing_key = await self.key_store.get_key_by_kid(kid)
-                if not signing_key:
-                    raise JWTError(f"Unknown signing key: {kid}")
-                
-                # Load public key for verification
-                public_key = serialization.load_pem_public_key(
-                    signing_key.public_key_pem.encode()
-                )
-                
-                # Verify and decode token
-                payload = jwt.decode(
-                    token=token,
-                    key=public_key,
-                    algorithms=[signing_key.algorithm],
-                    options={
-                        "verify_signature": True,
-                        "verify_exp": True,
-                        "verify_nbf": True,
-                        "verify_iat": True,
-                        "verify_aud": True,
-                        "verify_iss": True,
-                    },
-                    audience="cerebro.api",
-                    issuer="cerebro.sor"
-                )
-                
-                # Additional security checks
-                jti = payload.get("jti")
-                if not jti:
-                    raise JWTError("Token missing JWT ID (jti)")
-                
-                # Check if token is revoked
-                if await self._is_token_revoked(jti):
-                    raise JWTError("Token has been revoked")
-                
-                # Update verification metrics
-                jwt_metrics.record_token_verified("success", algorithm, kid)
-                
-                return payload
-                
-            except JWTError as e:
-                logger.debug(f"JWT verification failed: {e}")
-                raise
-            except Exception as e:
-                logger.error(f"Unexpected error verifying JWT: {e}")
-                raise JWTError(f"Token verification failed: {e}")
+        # Optional metrics timing
+        if self.metrics:
+            with self.metrics.time_token_verification():
+                return await self._verify_token_impl(token)
+        else:
+            return await self._verify_token_impl(token)
+
+    async def _verify_token_impl(self, token: str) -> Dict[str, Any]:
+        """Internal token verification implementation."""
+        try:
+            # Decode header to get key ID without verification
+            unverified_header = jwt.get_unverified_header(token)
+            kid = unverified_header.get("kid")
+            algorithm = unverified_header.get("alg", "unknown")
+
+            if not kid:
+                raise JWTError("Token missing key ID (kid) in header")
+
+            # Get signing key by ID
+            signing_key = await self.key_store.get_key_by_kid(kid)
+            if not signing_key:
+                raise JWTError(f"Unknown signing key: {kid}")
+
+            # Load public key for verification
+            public_key = serialization.load_pem_public_key(
+                signing_key.public_key_pem.encode()
+            )
+
+            # Verify and decode token
+            payload = jwt.decode(
+                token=token,
+                key=public_key,
+                algorithms=[signing_key.algorithm],
+                options={
+                    "verify_signature": True,
+                    "verify_exp": True,
+                    "verify_nbf": True,
+                    "verify_iat": True,
+                    "verify_aud": True,
+                    "verify_iss": True,
+                },
+                audience="cerebro.api",
+                issuer="cerebro.sor"
+            )
+
+            # Additional security checks
+            jti = payload.get("jti")
+            if not jti:
+                raise JWTError("Token missing JWT ID (jti)")
+
+            # Check if token is revoked
+            if await self._is_token_revoked(jti):
+                raise JWTError("Token has been revoked")
+
+            # Update verification metrics
+            if self.metrics:
+                self.metrics.record_token_verified("success", algorithm, kid)
+
+            return payload
+
+        except JWTError as e:
+            logger.debug(f"JWT verification failed: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error verifying JWT: {e}")
+            raise JWTError(f"Token verification failed: {e}")
     
     async def revoke_token(self, token: str, reason: str = "logout") -> bool:
         """Revoke a JWT token by adding its jti to revocation list."""
@@ -187,7 +202,8 @@ class JWTService:
                 reason
             )
             
-            jwt_metrics.record_token_revoked(reason)
+            if self.metrics:
+                self.metrics.record_token_revoked(reason)
             
             logger.info(f"Revoked JWT token {jti} (reason: {reason})")
             return True
@@ -212,7 +228,8 @@ class JWTService:
                 reason
             )
             
-            jwt_metrics.record_token_revoked(reason)
+            if self.metrics:
+                self.metrics.record_token_revoked(reason)
             
             logger.warning(f"Blocked all tokens for user {username} (reason: {reason})")
             return 1  # We don't track exact count for user-level blocks
@@ -279,7 +296,8 @@ class JWTService:
                     break
             
             if expired_count > 0:
-                jwt_metrics.record_revocation_cleanup(expired_count)
+                if self.metrics:
+                    self.metrics.record_revocation_cleanup(expired_count)
                 
             return expired_count
             

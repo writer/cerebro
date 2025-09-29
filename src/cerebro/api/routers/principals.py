@@ -2,43 +2,41 @@
 
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Principal
 from cerebro.api.schemas import PrincipalResponse
-from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.api.auth import get_current_user, User
+from cerebro.api.utils import (
+    StandardFilters, get_entity_by_id_or_404, paginated_list
+)
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/", response_model=List[PrincipalResponse])
 async def list_principals(
-    account_id: Optional[UUID] = None,
-    provider: Optional[str] = None,
-    principal_type: Optional[str] = None,
-    is_human: Optional[bool] = None,
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(get_db)
+    principal_type: Optional[str] = Query(None, description="Filter by principal type"),
+    is_human: Optional[bool] = Query(None, description="Filter by human/non-human"),
+    db: AsyncSession = Depends(get_db),
+    filters: StandardFilters = Depends()
 ):
     """List principals."""
-    stmt = select(Principal)
-    
-    if account_id:
-        stmt = stmt.where(Principal.account_id == account_id)
-    if provider:
-        stmt = stmt.where(Principal.provider == provider)
+    additional_filters = {}
     if principal_type:
-        stmt = stmt.where(Principal.principal_type == principal_type)
+        additional_filters['principal_type'] = principal_type
     if is_human is not None:
-        stmt = stmt.where(Principal.is_human == is_human)
-    
-    stmt = stmt.offset(skip).limit(limit)
-    principals = await db.scalars(stmt)
-    return list(principals)
+        additional_filters['is_human'] = is_human
+
+    return await paginated_list(
+        db=db,
+        model=Principal,
+        filters=filters,
+        additional_filters=additional_filters,
+        order_by_field="created_at"
+    )
 
 
 @router.get("/{principal_id}", response_model=PrincipalResponse)
@@ -47,10 +45,7 @@ async def get_principal(
     db: AsyncSession = Depends(get_db)
 ):
     """Get principal by ID."""
-    principal = await db.get(Principal, principal_id)
-    if not principal:
-        raise HTTPException(status_code=404, detail="Principal not found")
-    return principal
+    return await get_entity_by_id_or_404(db, Principal, principal_id, "Principal not found")
 
 
 @router.get("/{principal_id}/permissions")
