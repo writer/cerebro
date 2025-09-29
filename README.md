@@ -73,9 +73,44 @@ AI agents help security teams through conversational interfaces, automated analy
 
 ## 🏛️ Architecture
 
+### **Platform Overview: Three Interfaces, One Platform**
+
+Cerebro provides **three first-class interfaces** to the same security engine:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    INTERFACE LAYER                           │
+├─────────────┬──────────────────┬────────────────────────────┤
+│  CLI        │   REST API       │   AI AGENTS (Claude SDK)   │
+│  (Typer)    │   (FastAPI)      │   (Conversational)         │
+└─────────────┴──────────────────┴────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  SECURITY ENGINE                             │
+│  • 7 Specialized Tools (shared across all interfaces)       │
+│  • CEL Rule Engine                                           │
+│  • SQL Query Engine (Zero-ETL)                              │
+│  • Evidence Data Fabric                                      │
+│  • Graph Analysis (Attack Paths, Blast Radius)              │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    DATA LAYER                                │
+│  • Multi-tenant PostgreSQL                                   │
+│  • Append-only audit tables                                  │
+│  • Cryptographic integrity (Merkle trees)                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Insight:** When an agent uses `findings_list` tool, it's accessing the SAME findings engine as `GET /api/v1/findings` and `cerebro findings list`. One platform, three interfaces.
+
 ### **Domain Model**
 ```mermaid
 graph TB
+    CLI[CLI Interface] --> SE[Security Engine]
+    API[REST API] --> SE
+    AGENT[AI Agents] --> SE
+
     O[Organizations] --> A[Accounts]
     A --> R[Resources]
     A --> P[Principals]
@@ -87,7 +122,11 @@ graph TB
     P --> F
     IC[Identity Clusters] --> P
     U[Users] --> UL[Audit Logs]
-    
+
+    SE --> O
+    SE --> Rules
+    SE --> F
+
     subgraph "Append-Only Tables"
         CS
         IE
@@ -175,9 +214,17 @@ CREDENTIAL_ENCRYPTION_KEY=your-fernet-key-here
 
 ## 🎯 Usage Examples
 
-### **AI Security Agents (Conversational Security)**
+**Choose Your Interface:** Every operation below can be done via CLI, REST API, or conversational agents. Use what fits your workflow.
 
-Cerebro includes Claude-powered security agents that provide intelligent assistance through natural language:
+### **AI Security Agents - Conversational Interface to the Platform**
+
+Agents aren't a separate feature - they're a **natural language interface** to Cerebro's entire security engine. When you ask an agent "What are the critical findings?", it uses the same `findings_list` tool that powers the API and CLI.
+
+**The Deep Integration:**
+- Agents access ALL 7 platform tools (findings, rules, queries, timeline, analysis, remediation)
+- Every agent action is logged in the same audit trail
+- Agents see the SAME data as API/CLI users in real-time
+- Results are rendered conversationally with intelligent context
 
 ```bash
 # Create an agent session via CLI
@@ -210,13 +257,26 @@ curl -N -X POST "http://localhost:8000/api/v1/agents/sessions/{id}/messages" \
   }'
 ```
 
-**Agent Capabilities:**
-- **7 Specialized Tools**: findings_list, finding_update_status, rules, query, timeline, security_analysis, remediation_suggestions
-- **4 Analysis Types**: Attack surface, risk scoring, compliance gaps, security posture
-- **Intelligent Remediation**: Step-by-step instructions with effort estimates
-- **Real-time Streaming**: SSE support for live responses
-- **Full Audit Trail**: Every agent action logged and auditable
-- **Web UI**: Full-featured chat interface in cerebro-frontend with streaming
+**What Makes This Deep Integration:**
+
+| Agent Action | What It Actually Does | Shared With |
+|--------------|----------------------|-------------|
+| "List critical findings" | Executes `findings_list` tool → queries PostgreSQL findings table | `GET /api/v1/findings`, `cerebro findings list` |
+| "Update finding status" | Executes `finding_update_status` tool → writes to audit log | `PATCH /api/v1/findings/{id}` |
+| "Show me attack surface" | Executes `security_analysis` tool → analyzes resources + findings | Backend analysis engine |
+| "Run this SQL query" | Executes `query` tool → same Zero-ETL engine | `POST /api/v1/query/execute` |
+| "Suggest remediation" | Executes `remediation_suggestions` tool → reads findings + best practices | Platform knowledge base |
+
+**7 Shared Platform Tools:**
+- `findings_list` - Access to findings database with filtering
+- `finding_update_status` - Write findings with audit trail
+- `rules` - CEL rule compilation and testing
+- `query` - SQL query engine (15+ security tables)
+- `timeline` - Incident timeline builder from audit events
+- `security_analysis` - 4 analysis types across all resources
+- `remediation_suggestions` - Intelligent fix recommendations
+
+Every tool has **three interfaces**: Agent callable, API endpoint, CLI command.
 
 **CLI Agent Commands:**
 ```bash
@@ -244,13 +304,24 @@ cerebro agents analytics   # Usage analytics
 
 See [docs/agents/API_INTEGRATION.md](docs/agents/API_INTEGRATION.md) for complete documentation.
 
-### **SQL Security Queries (Zero-ETL)**
+### **SQL Security Queries - Zero-ETL Across All Interfaces**
 
-Cerebro includes a Steampipe-inspired SQL engine for real-time security data analysis:
+The same SQL engine accessible via CLI, API, and agents:
 
 ```bash
-# Execute SQL queries against security data
+# Option 1: CLI
 cerebro query "SELECT * FROM aws_ec2_instance WHERE state = 'running' LIMIT 10"
+
+# Option 2: REST API
+curl -X POST "http://localhost:8000/api/v1/query/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"sql": "SELECT * FROM okta_user WHERE mfa_enabled = false"}'
+
+# Option 3: Ask an Agent
+> "Query Okta for users without MFA"
+> "Run SQL: SELECT * FROM aws_ec2_instance WHERE public_ip IS NOT NULL"
+
+# Agent uses the `query` tool which executes via the SAME SQL engine
 
 # Find users without MFA across providers  
 cerebro query "SELECT username, email, mfa_enabled FROM okta_user WHERE mfa_enabled = false"
@@ -307,44 +378,49 @@ curl "http://localhost:8000/api/v1/query/examples" \
 
 **Total**: 15 security tables across 5 major cloud providers
 
-### **Data Collection**
+### **Data Collection - Same Data, Three Ways**
 
 ```bash
-# Create organization
+# Option 1: CLI
 make cli-org-create NAME="Acme Corp"
+make cli-collect ORG="Acme Corp" PROVIDER=github
 
-# Collect configurations (background tasks)
+# Option 2: REST API
 curl -X POST "http://localhost:8000/api/v1/collectors/organizations/{org_id}/collect/background" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"providers": ["github", "aws"]}'
 
-# Monitor collection progress
-curl "http://localhost:8000/api/v1/collectors/tasks/{task_id}" \
-  -H "Authorization: Bearer $TOKEN"
-
-# CLI collection
-make cli-collect ORG="Acme Corp" PROVIDER=github
+# Option 3: Ask an Agent
+"Collect GitHub data for Acme Corp"
+# Agent will execute appropriate collection tasks
 ```
 
-### **Security Analysis**
+**The Integration:** All three methods trigger the same background task system, write to the same PostgreSQL tables, and generate the same findings.
+
+### **Security Analysis - One Engine, Multiple Interfaces**
 
 ```bash
-# Generate findings (background)
-curl -X POST "http://localhost:8000/api/v1/findings/organizations/{org_id}/generate" \
-  -H "Authorization: Bearer $TOKEN"
+# Option 1: CLI
+make cli-findings ORG="Acme Corp"
 
-# List critical findings
+# Option 2: REST API
 curl "http://localhost:8000/api/v1/findings?severity=critical&status=open" \
   -H "Authorization: Bearer $TOKEN"
 
-# Get finding statistics
-curl "http://localhost:8000/api/v1/findings/organizations/{org_id}/stats" \
-  -H "Authorization: Bearer $TOKEN"
+# Option 3: Ask an Agent (conversational)
+> "What are the most critical security issues?"
+> "Show me findings from the last 24 hours"
+> "Which findings affect production AWS accounts?"
 
-# CLI analysis
-make cli-findings ORG="Acme Corp"
+# Agent Response includes:
+# - Findings list (via findings_list tool)
+# - Risk analysis (via security_analysis tool)
+# - Remediation steps (via remediation_suggestions tool)
+# - All using the SAME backend data
 ```
+
+**Behind the Scenes:** Whether you use CLI, API, or agents, you're querying the same PostgreSQL findings table with the same CEL rules applied. Agents just add conversational context and multi-tool orchestration.
 
 ### **Identity Management**
 
@@ -636,9 +712,10 @@ kubectl apply -f k8s/production/
 
 | Feature | **Cerebro** | Wiz/Prisma/Orca |
 |---------|-------------|------------------|
-| **AI Security Agents** | ✅ Built-in Claude agents with 7 tools | ❌ No AI agent system |
-| **Agent Streaming** | ✅ SSE streaming with real-time responses | ❌ Not available |
-| **Conversational Security** | ✅ Natural language + tool execution | ❌ Not available |
+| **AI Security Agents** | ✅ Deep integration - agents use same engine as API/CLI | ❌ No AI agent system |
+| **Agent Tool Access** | ✅ 7 tools accessing full platform (findings, rules, queries, etc.) | ❌ Not available |
+| **Interface Consistency** | ✅ CLI, API, Agents → Same data, same tools, same audit trail | ⚠️ GUI-focused, limited automation |
+| **Conversational Security** | ✅ Natural language interface to entire security platform | ❌ Not available |
 | **Data Sovereignty** | ✅ Self-hosted, your infrastructure | ❌ SaaS-only, their infrastructure |
 | **Provider Coverage** | ✅ 6 providers: AWS, GitHub, GCP, Workspace, Okta, M365 | ✅ Multiple cloud providers |
 | **Identity Coverage** | ✅ Complete SaaS + Cloud identity mapping | ⚠️ Primarily cloud-focused |
