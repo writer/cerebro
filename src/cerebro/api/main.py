@@ -150,6 +150,12 @@ app.include_router(
     tags=["authentication"]
 )
 
+app.include_router(
+    compliance.router,
+    prefix=f"{settings.api_v1_prefix}/compliance",
+    tags=["compliance"]
+)
+
 
 @app.get("/")
 async def root():

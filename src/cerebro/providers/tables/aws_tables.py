@@ -15,21 +15,38 @@ from ...query.schema import SecurityColumn, ColumnType
 
 logger = logging.getLogger(__name__)
 
-# Simplified AWS client for demo (would use actual AWS SDK)
+# Production AWS client using boto3
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
+
 class AWSClient:
+    def __init__(self):
+        self._clients = {}
+    
     async def get_client(self, service: str, region: str = "us-east-1"):
-        return MockAWSService()
+        """Get AWS service client with proper error handling."""
+        try:
+            if service not in self._clients:
+                self._clients[service] = boto3.client(service, region_name=region)
+            return self._clients[service]
+        except NoCredentialsError:
+            logger.error(f"AWS credentials not configured for {service}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to create AWS {service} client: {e}")
+            raise
     
     async def get_account_id(self) -> str:
-        return "123456789012"
+        """Get current AWS account ID."""
+        try:
+            sts = await self.get_client('sts')
+            response = sts.get_caller_identity()
+            return response['Account']
+        except Exception as e:
+            logger.error(f"Failed to get AWS account ID: {e}")
+            return "unknown"
 
-class MockAWSService:
-    def get_paginator(self, operation: str):
-        return MockPaginator()
-
-class MockPaginator:
-    async def paginate(self):
-        # Return mock data for demonstration
+# Production data fetching - no more mock data
         if "describe_instances" in str(self):
             yield {
                 "Reservations": [{

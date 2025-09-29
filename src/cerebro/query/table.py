@@ -137,14 +137,31 @@ class SecurityTable(ABC):
             
             # Use source_field mapping if specified
             source_field = column.source_field or column.name
-            if source_field in raw_resource:
+            
+            # Handle nested field access (e.g., "State.Name")
+            if '.' in source_field:
+                try:
+                    value = raw_resource
+                    for part in source_field.split('.'):
+                        if isinstance(value, dict) and part in value:
+                            value = value[part]
+                        else:
+                            value = None
+                            break
+                except (TypeError, KeyError):
+                    value = None
+            elif source_field in raw_resource:
                 value = raw_resource[source_field]
             
             # Apply transformation function if specified
             if value is not None and column.transform:
-                transform_func = getattr(self, column.transform, None)
-                if transform_func:
-                    value = transform_func(value)
+                try:
+                    transform_func = getattr(self, column.transform, None)
+                    if transform_func:
+                        value = transform_func(value)
+                except Exception as e:
+                    logger.warning(f"Transform function {column.transform} failed: {e}")
+                    value = None
             
             # Set default values for required fields
             if value is None and column.required:

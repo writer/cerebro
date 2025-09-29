@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
 from .models import Principal, Account
-from .identity_models import IdentityCluster, IdentityClusterMember, IdentityStitchingLog
+from .repositories import IdentityRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class IdentityStitcher:
     def __init__(self, db_session: AsyncSession):
         """Initialize identity stitcher."""
         self.db = db_session
+        self.identity_repo = IdentityRepository(db_session)
     
     async def find_identity_clusters(self, org_id: UUID) -> List[IdentityCluster]:
         """Find identity clusters for an organization."""
