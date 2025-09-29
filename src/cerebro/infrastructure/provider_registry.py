@@ -177,9 +177,40 @@ def create_aws_provider(account_id: str, aws_account_id: str, region: str = None
     )
 
 
+# Enhanced provider factories
+def create_enhanced_gcp_provider(account_id: str, project_id: str, **kwargs):
+    """Factory for enhanced GCP provider."""
+    from cerebro.providers.gcp.enhanced_provider import EnhancedGCPProvider
+    return EnhancedGCPProvider(
+        account_id=account_id,
+        project_id=project_id,
+        **kwargs
+    )
+
+
+def create_google_workspace_provider(
+    account_id: str, 
+    domain: str, 
+    service_account_file: str,
+    delegate_user: str,
+    **kwargs
+):
+    """Factory for Google Workspace provider."""
+    from cerebro.providers.workspace.provider import GoogleWorkspaceProvider
+    return GoogleWorkspaceProvider(
+        account_id=account_id,
+        domain=domain,
+        service_account_file=service_account_file,
+        delegate_user=delegate_user,
+        **kwargs
+    )
+
+
 # Register built-in providers with factories
 provider_registry.register("github", None, create_github_provider)
 provider_registry.register("aws", None, create_aws_provider)
+provider_registry.register("gcp_enhanced", None, create_enhanced_gcp_provider)
+provider_registry.register("google_workspace", None, create_google_workspace_provider)
 
 
 def init_providers():
