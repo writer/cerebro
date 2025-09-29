@@ -17,6 +17,7 @@ from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding, Organization
 from cerebro.agents.models import AgentSession, AgentType
 from cerebro.agents.runtime import CerebroClaudeRuntime
+from cerebro.notifications.slack import get_slack_service
 
 logger = structlog.get_logger(__name__)
 
@@ -306,14 +307,14 @@ class ProactiveMonitoringService:
         metadata: Optional[Dict[str, Any]] = None,
     ):
         """
-        Send proactive alert to user.
+        Send proactive alert to user via configured notification channels.
 
-        TODO: Implement notification channels:
-        - In-app notification
-        - Email
-        - Slack webhook
-        - PagerDuty
-        - Custom webhook
+        Notification channels:
+        - Slack webhook ✅ Implemented
+        - In-app notification (TODO)
+        - Email (TODO)
+        - PagerDuty (TODO)
+        - Custom webhook (TODO)
 
         Args:
             org_id: Organization ID
@@ -333,12 +334,6 @@ class ProactiveMonitoringService:
             severity=severity,
         )
 
-        # For now, log the alert
-        # In production, this would:
-        # 1. Create notification in database
-        # 2. Send to configured channels (email, Slack, etc.)
-        # 3. Create background agent session to provide context
-
         alert_data = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "org_id": str(org_id),
@@ -346,14 +341,37 @@ class ProactiveMonitoringService:
             "title": title,
             "message": message,
             "severity": severity,
-            "finding_id": str(finding.id) if finding else None,
+            "finding_id": str(finding.finding_id) if finding else None,
             "metadata": metadata,
         }
 
-        # TODO: Implement notification delivery
-        # await self._deliver_notification(org_id, alert_data)
-
         logger.info("Alert created", alert_data=alert_data)
+
+        # Send notifications through configured channels
+        try:
+            # Send to Slack if webhooks configured
+            async with async_session_factory() as db:
+                slack_service = get_slack_service()
+
+                # If this is a finding alert, use the finding notification method
+                if finding:
+                    await slack_service.send_finding_notification(
+                        org_id=org_id,
+                        finding=finding,
+                        db=db,
+                    )
+                else:
+                    # Send as monitoring alert
+                    await slack_service.send_monitoring_alert(
+                        org_id=org_id,
+                        alert_title=title,
+                        alert_description=message,
+                        severity=severity,
+                        db=db,
+                    )
+
+        except Exception as e:
+            logger.error("Failed to send Slack notification", error=str(e))
 
     async def _deliver_notification(self, org_id: UUID, alert_data: Dict[str, Any]):
         """

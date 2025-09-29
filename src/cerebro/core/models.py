@@ -19,16 +19,18 @@ from .database import Base
 class Organization(Base):
     """Organizations table - top-level tenants."""
     __tablename__ = "orgs"
-    
+
     org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    slack_config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
-    
+
     # Relationships
     accounts: Mapped[List["Account"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     policies: Mapped[List["Policy"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     findings: Mapped[List["Finding"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     suppressions: Mapped[List["Suppression"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    slack_webhooks: Mapped[List["SlackWebhook"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
 
 class Account(Base):
@@ -295,6 +297,51 @@ class Suppression(Base):
     
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="suppressions")
+
+
+class SlackWebhook(Base):
+    """Slack webhook configurations for organizations."""
+    __tablename__ = "slack_webhooks"
+
+    webhook_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    webhook_url: Mapped[str] = mapped_column(Text, nullable=False)
+    channel: Mapped[Optional[str]] = mapped_column(String(255))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    severity_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
+    finding_type_filter: Mapped[Optional[List[str]]] = mapped_column(ArrayType)
+    event_types: Mapped[List[str]] = mapped_column(ArrayType, nullable=False)
+    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    created_by: Mapped[Optional[str]] = mapped_column(String(255))
+
+    # Relationships
+    organization: Mapped["Organization"] = relationship(back_populates="slack_webhooks")
+    notifications: Mapped[List["SlackNotification"]] = relationship(back_populates="webhook", cascade="all, delete-orphan")
+
+
+class SlackNotification(Base):
+    """Audit log of Slack notifications sent."""
+    __tablename__ = "slack_notifications"
+
+    notification_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    webhook_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("slack_webhooks.webhook_id", ondelete="CASCADE"))
+    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    finding_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True))
+    severity: Mapped[Optional[str]] = mapped_column(String(50))
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+
+    # Relationships
+    webhook: Mapped["SlackWebhook"] = relationship(back_populates="notifications")
 
 
 # Import identity models to make them available
