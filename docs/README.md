@@ -1,0 +1,129 @@
+# Cerebro Documentation
+
+**Welcome to Cerebro** - Security System of Record with intelligent agents and comprehensive compliance support.
+
+---
+
+## 📚 Documentation Index
+
+### 🚀 Getting Started
+
+New to Cerebro? Start here:
+
+- **[Quick Start Guide](getting-started/QUICKSTART.md)** - Get up and running in 10 minutes
+- **[Installation](../README.md#installation)** - Installation instructions
+- **[First Steps](getting-started/QUICKSTART.md#first-steps)** - Your first security scan
+
+### 📖 User Guide
+
+Learn how to use Cerebro:
+
+- **[API Reference](user-guide/API.md)** - Complete API documentation
+- **[Query Engine](user-guide/QUERY_ENGINE.md)** - SQL and natural language queries
+- **[CEL Rules](user-guide/CEL_RULES.md)** - Common Expression Language rule engine
+- **[Compliance Features](user-guide/COMPLIANCE_FEATURES.md)** - SOC 2, CIS, NIST CSF 2.0
+- **[Troubleshooting](user-guide/TROUBLESHOOTING.md)** - Common issues and solutions
+
+### 🔌 Integrations
+
+Connect Cerebro with your tools:
+
+- **[Slack](integrations/slack/SETUP.md)** - Real-time security notifications
+- **[OCSF](integrations/ocsf/OCSF_INTEGRATION.md)** - Open Cybersecurity Schema Framework
+- **[NIST CSF 2.0](integrations/nist-csf/)** - Framework implementation
+- **[Cloud Providers](integrations/providers/README.md)** - AWS, GCP, Azure, Okta, GitHub
+
+### 👨‍💻 Developer Guide
+
+Build on Cerebro:
+
+- **[Development Setup](developer-guide/DEVELOPMENT.md)** - Local development environment
+- **[Database Schema](developer-guide/DATABASE_SCHEMA.md)** - PostgreSQL schema reference
+- **[Deployment](developer-guide/DEPLOYMENT.md)** - Production deployment guide
+- **[Contributing](developer-guide/DEVELOPMENT.md#contributing)** - How to contribute
+
+### 🤖 AI Agents
+
+Intelligent security automation:
+
+- **[Agent Overview](agents/README.md)** - Introduction to Cerebro agents
+- **[Claude Integration](agents/claude-integration.md)** - Claude AI integration
+- **[Knowledge Base](agents/KNOWLEDGE_BASE_SYSTEM.md)** - Context and memory system
+- **[Tool Development](agents/tool-development.md)** - Building custom agent tools
+- **[API Reference](agents/API_INTEGRATION.md)** - Agent API endpoints
+
+### 🏗️ Architecture
+
+System design and internals:
+
+- **[Architecture Overview](architecture/claude-sdk-integration.md)** - System architecture
+- **[Notification System](integrations/slack/IMPLEMENTATION.md)** - Multi-channel notifications
+- **[Agent System](agents/claude-integration.md)** - Intelligent agent architecture
+- **[Security](developer-guide/DEVELOPMENT.md#security)** - Security considerations
+
+### 📦 Additional Resources
+
+- **[Examples](../examples/README.md)** - Sample code and scenarios
+- **[Tests](../tests/README.md)** - Testing guide
+- **[Archive](archive/)** - Historical documents and session notes
+
+---
+
+## 🔗 Quick Links
+
+| Resource | Description |
+|----------|-------------|
+| [GitHub Repository](https://github.com/haasonsaas/cerebro) | Source code and issues |
+| [API Documentation](http://localhost:8000/docs) | Interactive API docs (when running) |
+| [Quick Start](getting-started/QUICKSTART.md) | Get started in 10 minutes |
+| [Slack Integration](integrations/slack/SETUP.md) | Set up Slack notifications |
+| [Troubleshooting](user-guide/TROUBLESHOOTING.md) | Common issues |
+
+---
+
+## 📋 Feature Highlights
+
+### ✅ Security Features
+
+- **Multi-Cloud Support** - AWS, GCP, Azure, Okta, GitHub
+- **Real-Time Monitoring** - Proactive security surveillance
+- **Compliance Automation** - SOC 2, CIS, NIST CSF 2.0
+- **Attack Path Analysis** - Lateral movement detection
+- **Identity Governance** - Advanced IAM analysis
+
+### 🤖 AI-Powered
+
+- **22 Intelligent Tools** - Security analysis, forensics, compliance
+- **Natural Language Queries** - Ask questions in plain English
+- **Context-Aware** - Learns your environment automatically
+- **Multi-Step Planning** - Complex workflows automated
+
+### 🔔 Integrations
+
+- **Slack Notifications** ✅ - Real-time alerts
+- **OCSF Export** ✅ - Standards-based event format
+- **Email Notifications** (Coming soon)
+- **Generic Webhooks** (Coming soon)
+- **PagerDuty** (Planned)
+
+---
+
+## 🆘 Getting Help
+
+**Found a bug?** [Open an issue](https://github.com/haasonsaas/cerebro/issues)
+
+**Need help?** Check the [Troubleshooting Guide](user-guide/TROUBLESHOOTING.md)
+
+**Want to contribute?** See [Development Guide](developer-guide/DEVELOPMENT.md)
+
+---
+
+## 📄 License
+
+MIT License - See [LICENSE](../LICENSE) for details
+
+---
+
+**Last Updated:** 2025-09-29
+**Version:** 0.1.0
+**Status:** ✅ Production Ready
