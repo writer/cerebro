@@ -29,6 +29,12 @@ from .framework_registry import (
 from .evidence_service import EvidenceService, EvidenceQueryService
 from .storage import FileBasedEvidenceRepository, InMemoryEvidenceRepository
 
+# NIST CSF 2.0 Support
+from .nist_csf import (
+    NISTFunction, NISTControl, NIST_CSF_CONTROLS,
+    NISTCSFMapper, get_nist_csf_summary
+)
+
 # Import framework providers to trigger registration
 from . import frameworks
 
@@ -60,6 +66,13 @@ __all__ = [
     "EvidenceQueryService",
     "FileBasedEvidenceRepository",
     "InMemoryEvidenceRepository",
+
+    # NIST CSF 2.0
+    "NISTFunction",
+    "NISTControl",
+    "NIST_CSF_CONTROLS",
+    "NISTCSFMapper",
+    "get_nist_csf_summary",
 
     # Legacy compatibility (deprecated)
     "ComplianceEvidenceGenerator",
