@@ -15,7 +15,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from cerebro.core.database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import Column, String, DateTime, Boolean, Text, Float
 from sqlalchemy.sql import func
@@ -96,13 +97,13 @@ class TestExecution(Base):
     # Output and evidence
     test_output: Mapped[Optional[str]] = mapped_column(Text)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
-    warnings: Mapped[Optional[List[str]]] = mapped_column(JSONB)
-    evidence_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
-    metrics: Mapped[Optional[Dict[str, float]]] = mapped_column(JSONB)
+    warnings: Mapped[Optional[List[str]]] = mapped_column(JSONType)
+    evidence_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    metrics: Mapped[Optional[Dict[str, float]]] = mapped_column(JSONType)
     
     # Context
     executed_by: Mapped[str] = mapped_column(String(100), nullable=False)
-    execution_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    execution_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
     
     # Tracking
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())

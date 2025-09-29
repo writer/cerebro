@@ -15,7 +15,7 @@ Key principles:
 import json
 import hashlib
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Union, Set
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
@@ -26,7 +26,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID
+from cerebro.core.database_types import JSONType
 
 Base = declarative_base()
 
@@ -102,14 +103,14 @@ class EvidenceRecord(Base):
     expires_at = Column(DateTime(timezone=True))         # When evidence becomes stale
     
     # Content and structure
-    raw_data = Column(JSONB)                            # Original data from source
-    normalized_data = Column(JSONB)                     # Standardized fields
-    tags = Column(JSONB, default=dict)                  # Flexible tagging
+    raw_data = Column(JSONType)                            # Original data from source
+    normalized_data = Column(JSONType)                     # Standardized fields
+    tags = Column(JSONType, default=dict)                  # Flexible tagging
     
     # Data governance
     data_classification = Column(String(50), default=DataClassification.INTERNAL.value)
     retention_class = Column(String(50), default="standard")
-    pii_fields = Column(JSONB, default=list)            # List of fields containing PII
+    pii_fields = Column(JSONType, default=list)            # List of fields containing PII
     
     # Quality and integrity
     quality_score = Column(Float, default=1.0)          # 0.0-1.0 confidence score
@@ -117,9 +118,9 @@ class EvidenceRecord(Base):
     validation_status = Column(String(50), default="pending")  # pending, validated, failed
     
     # Framework and compliance context
-    requirements = Column(JSONB, default=list)          # Requirement IDs this evidence supports
-    controls = Column(JSONB, default=list)              # Control IDs (legacy compat)
-    frameworks = Column(JSONB, default=list)            # Framework names
+    requirements = Column(JSONType, default=list)          # Requirement IDs this evidence supports
+    controls = Column(JSONType, default=list)              # Control IDs (legacy compat)
+    frameworks = Column(JSONType, default=list)            # Framework names
     
     # Relationships
     parent_records = relationship(
@@ -157,9 +158,9 @@ class EvidenceSchema(Base):
     version = Column(String(20), default="1.0")
     
     # Schema definition
-    fields = Column(JSONB)                              # Field definitions with types
-    required_fields = Column(JSONB, default=list)      # Required field names
-    normalization_rules = Column(JSONB, default=dict)   # How to transform raw to normalized
+    fields = Column(JSONType)                              # Field definitions with types
+    required_fields = Column(JSONType, default=list)      # Required field names
+    normalization_rules = Column(JSONType, default=dict)   # How to transform raw to normalized
     
     created_at = Column(DateTime(timezone=True), default=datetime.now)
     created_by = Column(String(255))
@@ -179,7 +180,7 @@ class EvidenceLineage(Base):
     # Derivation information
     derivation_type = Column(String(50))                # join, aggregate, transform, enrich
     derivation_logic = Column(Text)                     # How this was derived
-    source_evidence_ids = Column(JSONB, default=list)   # Parent evidence IDs
+    source_evidence_ids = Column(JSONType, default=list)   # Parent evidence IDs
     
     # Processing metadata  
     processor_id = Column(String(100))                  # What created this derivation
@@ -204,13 +205,13 @@ class RequirementMapping(Base):
     requirement_description = Column(Text)
     
     # Evidence patterns
-    evidence_patterns = Column(JSONB)                   # What evidence satisfies this req
-    sufficiency_rules = Column(JSONB)                   # Rules for adequate evidence
-    freshness_requirements = Column(JSONB)              # How fresh evidence must be
+    evidence_patterns = Column(JSONType)                   # What evidence satisfies this req
+    sufficiency_rules = Column(JSONType)                   # Rules for adequate evidence
+    freshness_requirements = Column(JSONType)              # How fresh evidence must be
     
     # Cross-mapping
-    equivalent_requirements = Column(JSONB, default=list)  # Other framework reqs that map
-    parent_requirements = Column(JSONB, default=list)   # Higher-level requirements
+    equivalent_requirements = Column(JSONType, default=list)  # Other framework reqs that map
+    parent_requirements = Column(JSONType, default=list)   # Higher-level requirements
     
     created_at = Column(DateTime(timezone=True), default=datetime.now)
     updated_at = Column(DateTime(timezone=True), default=datetime.now)
@@ -317,7 +318,7 @@ class EvidenceDataFabric:
                 q = q.filter(EvidenceRecord.source_system.in_(query.source_systems))
             
             if query.requirements:
-                # PostgreSQL JSONB containment
+                # JSON containment
                 for req in query.requirements:
                     q = q.filter(EvidenceRecord.requirements.contains([req]))
             

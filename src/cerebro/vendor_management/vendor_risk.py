@@ -14,7 +14,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from cerebro.core.database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import Column, String, DateTime, Boolean, Text, Float
 from sqlalchemy.sql import func
@@ -132,7 +133,7 @@ class VendorRiskAssessment(Base):
     # Results and recommendations
     key_findings: Mapped[Optional[str]] = mapped_column(Text)
     recommendations: Mapped[Optional[str]] = mapped_column(Text)
-    risk_scenarios: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    risk_scenarios: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
     mitigation_plan: Mapped[Optional[str]] = mapped_column(Text)
     
     # Timeline

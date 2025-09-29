@@ -3,7 +3,7 @@
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID, uuid4
-from sqlalchemy import String, Boolean, DateTime, ARRAY, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -25,7 +25,11 @@ class User(Base):
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
     # Relationships
-    user_scopes: Mapped[List["UserScope"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    user_scopes: Mapped[List["UserScope"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="UserScope.user_id"
+    )
     audit_logs: Mapped[List["UserAuditLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
@@ -53,7 +57,7 @@ class UserScope(Base):
     granted_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.user_id"))
     
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="user_scopes")
+    user: Mapped["User"] = relationship(back_populates="user_scopes", foreign_keys=[user_id])
     scope: Mapped["Scope"] = relationship(back_populates="user_scopes")
 
 

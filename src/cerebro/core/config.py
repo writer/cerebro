@@ -3,7 +3,7 @@
 import os
 from typing import Optional, List
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -248,10 +248,10 @@ class Settings(BaseSettings):
             )
         return v
 
-    class Config:
-        """Pydantic config."""
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False
+    )
 
 
 settings = Settings()

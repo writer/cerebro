@@ -21,7 +21,8 @@ from uuid import uuid4
 from sqlalchemy import Column, String, DateTime, JSON, Text, Boolean, ForeignKey, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID
+from cerebro.core.database_types import JSONType
 
 from .evidence_data_fabric import EvidenceDataFabric, EvidenceQuery, EvidenceEntityType
 

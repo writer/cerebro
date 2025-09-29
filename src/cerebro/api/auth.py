@@ -146,4 +146,4 @@ require_write_findings = require_scopes("write:findings")
 require_read_rules = require_scopes("read:rules")
 require_write_rules = require_scopes("write:rules")
 require_collect = require_scopes("collect:data")
-require_admin = Depends(get_current_admin_user)
+require_admin = get_current_admin_user

@@ -118,11 +118,12 @@ class TestQueryEngine:
     async def test_simple_query(self, query_engine):
         """Test basic query execution."""
         result = await query_engine.execute_query("SELECT * FROM test_table")
-        
+
         assert result.errors == []
         assert result.total_rows == 2
         assert len(result.rows) == 2
-        assert result.columns == ["*"]
+        # When SELECT *, should get actual column names
+        assert result.columns == ["id", "name", "count", "active", "created_at"]
     
     async def test_filtered_query(self, query_engine):
         """Test query with WHERE clause."""

@@ -1,7 +1,7 @@
 """Time series analytics for tracking security metrics over time."""
 
 import logging
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -9,10 +9,10 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func, text
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from cerebro.core.database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import Column, String, DateTime, Float, Integer
-from sqlalchemy.sql import func
 
 from cerebro.core.database import Base
 from cerebro.core.models import Finding, Organization
@@ -85,8 +85,8 @@ class SecurityMetricSnapshot(Base):
     previous_value: Mapped[Optional[float]] = mapped_column(Float)
     
     # Breakdown data
-    breakdown_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
-    metric_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    breakdown_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    metric_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
     
     # Tracking
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())

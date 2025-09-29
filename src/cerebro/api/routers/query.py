@@ -25,7 +25,7 @@ register_all_provider_tables()
 
 class QueryRequest(BaseModel):
     """SQL query request."""
-    sql: str = Field(..., description="SQL query to execute", example="SELECT * FROM aws_ec2_instance LIMIT 10")
+    sql: str = Field(..., description="SQL query to execute", json_schema_extra={"example": "SELECT * FROM aws_ec2_instance LIMIT 10"})
     timeout: Optional[int] = Field(30, description="Query timeout in seconds", ge=1, le=300)
 
 

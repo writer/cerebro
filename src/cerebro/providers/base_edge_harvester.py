@@ -5,7 +5,7 @@ from typing import AsyncGenerator, Optional
 from uuid import UUID
 import logging
 
-from ..core.models import IamPermission
+from .base import IamPermission
 
 logger = logging.getLogger(__name__)
 

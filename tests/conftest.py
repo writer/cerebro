@@ -2,6 +2,7 @@
 
 import pytest
 import asyncio
+import os
 from typing import AsyncGenerator, Generator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -10,6 +11,18 @@ from cerebro.core.database import Base
 from cerebro.core.models import Organization, Account
 from cerebro.core.user_models import User
 from cerebro.core.user_service import UserService
+from fastapi.testclient import TestClient
+from cerebro.api.main import app
+from cerebro.api.auth import create_access_token
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_environment():
+    """Setup test environment variables."""
+    os.environ['ENVIRONMENT'] = 'test'
+    yield
+    # Cleanup after tests
+    os.environ.pop('ENVIRONMENT', None)
 
 
 @pytest.fixture(scope="session")
@@ -41,6 +54,12 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
     
     await engine.dispose()
+
+
+@pytest.fixture
+def client():
+    """Create test client."""
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -106,7 +125,35 @@ async def test_admin_user(test_db: AsyncSession) -> User:
     
     admin = await user_service.create_admin_user(
         username="testadmin",
-        email="admin@example.com", 
-        password="admin123"
+        email="admin@example.com",
+        password="testadmin123456"  # Longer password for production requirements
     )
     return admin
+
+
+@pytest.fixture
+async def test_token(test_db, test_user):
+    """Create test JWT token."""
+    user_service = UserService(test_db)
+    scopes = await user_service.get_user_scopes(test_user.user_id)
+
+    token_data = {
+        "sub": test_user.username,
+        "scopes": scopes
+    }
+
+    return create_access_token(token_data)
+
+
+@pytest.fixture
+async def admin_token(test_db, test_admin_user):
+    """Create admin JWT token."""
+    user_service = UserService(test_db)
+    scopes = await user_service.get_user_scopes(test_admin_user.user_id)
+
+    token_data = {
+        "sub": test_admin_user.username,
+        "scopes": scopes
+    }
+
+    return create_access_token(token_data)

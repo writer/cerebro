@@ -13,20 +13,13 @@ Key features:
 - Automated risk workflows and notifications
 """
 
-import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
-from sqlalchemy import Column, String, DateTime, JSON, Text, Integer, Float, Boolean, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 
-from .evidence_data_fabric import EvidenceDataFabric, EvidenceQuery
-
-Base = declarative_base()
+from .evidence_data_fabric import EvidenceDataFabric
 
 
 class RiskCategory(Enum):

@@ -46,50 +46,6 @@ class AWSClient:
             logger.error(f"Failed to get AWS account ID: {e}")
             return "unknown"
 
-# Production data fetching - no more mock data
-        if "describe_instances" in str(self):
-            yield {
-                "Reservations": [{
-                    "Instances": [{
-                        "InstanceId": "i-1234567890abcdef0",
-                        "InstanceType": "t3.micro",
-                        "State": {"Name": "running"},
-                        "PublicIpAddress": "203.0.113.12",
-                        "PrivateIpAddress": "10.0.1.30",
-                        "VpcId": "vpc-12345678",
-                        "SubnetId": "subnet-12345678",
-                        "SecurityGroups": [{"GroupId": "sg-12345678", "GroupName": "default"}],
-                        "KeyName": "my-key",
-                        "LaunchTime": datetime.now(),
-                        "Tags": [{"Key": "Name", "Value": "WebServer"}]
-                    }]
-                }]
-            }
-        elif "list_users" in str(self):
-            yield {
-                "Users": [{
-                    "UserId": "AIDACKCEVSQ6C2EXAMPLE",
-                    "UserName": "testuser",
-                    "Arn": "arn:aws:iam::123456789012:user/testuser",
-                    "Path": "/",
-                    "CreateDate": datetime.now(),
-                    "PasswordLastUsed": datetime.now()
-                }]
-            }
-        elif "describe_security_groups" in str(self):
-            yield {
-                "SecurityGroups": [{
-                    "GroupId": "sg-12345678",
-                    "GroupName": "default",
-                    "Description": "default VPC security group",
-                    "VpcId": "vpc-12345678",
-                    "OwnerId": "123456789012",
-                    "IpPermissions": [],
-                    "IpPermissionsEgress": [],
-                    "Tags": []
-                }]
-            }
-
 
 class AWSEc2InstanceTable(ProviderSecurityTable):
     """AWS EC2 instances as a security table."""

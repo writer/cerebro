@@ -14,7 +14,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from cerebro.core.database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import Column, String, DateTime, Boolean, Text, Integer
 from sqlalchemy.sql import func
@@ -69,7 +70,7 @@ class TestEntity(Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     
     # Entity details
-    entity_config: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    entity_config: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default=TestEntityStatus.ACTIVE.value)
     
     # Test context
@@ -84,12 +85,12 @@ class TestEntity(Base):
     cleanup_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
     # Dependencies and relationships
-    depends_on: Mapped[Optional[List[str]]] = mapped_column(JSONB)  # List of entity IDs
-    supports: Mapped[Optional[List[str]]] = mapped_column(JSONB)    # List of entity IDs
+    depends_on: Mapped[Optional[List[str]]] = mapped_column(JSONType)  # List of entity IDs
+    supports: Mapped[Optional[List[str]]] = mapped_column(JSONType)    # List of entity IDs
     
     # Tags and metadata
-    tags: Mapped[Optional[List[str]]] = mapped_column(JSONB)
-    entity_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    tags: Mapped[Optional[List[str]]] = mapped_column(JSONType)
+    entity_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
     
     # Tracking
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())

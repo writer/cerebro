@@ -3,14 +3,7 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field
-
-
-# Base schemas
-class BaseResponse(BaseModel):
-    """Base response schema."""
-    success: bool = True
-    message: Optional[str] = None
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # Organization schemas
@@ -19,12 +12,11 @@ class OrganizationCreate(BaseModel):
 
 
 class OrganizationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     org_id: UUID
     name: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # Account schemas
@@ -36,18 +28,19 @@ class AccountCreate(BaseModel):
 
 
 class AccountResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     account_id: UUID
     org_id: UUID
     provider: str
     external_id: str
     display_name: Optional[str]
 
-    class Config:
-        from_attributes = True
-
 
 # Resource schemas
 class ResourceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     resource_id: UUID
     account_id: UUID
     provider: str
@@ -57,12 +50,11 @@ class ResourceResponse(BaseModel):
     parent_external_id: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 # Principal schemas
 class PrincipalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     principal_id: UUID
     account_id: UUID
     provider: str
@@ -71,9 +63,6 @@ class PrincipalResponse(BaseModel):
     email: Optional[str]
     display_name: Optional[str]
     is_human: Optional[bool]
-
-    class Config:
-        from_attributes = True
 
 
 # Rule schemas
@@ -109,9 +98,7 @@ class RuleResponse(BaseModel):
     version: int
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Finding schemas
@@ -132,9 +119,7 @@ class FindingResponse(BaseModel):
     title: str
     summary: Optional[str]
     evidence: Optional[Dict[str, Any]]
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FindingUpdate(BaseModel):
@@ -169,9 +154,7 @@ class ConfigSnapshotResponse(BaseModel):
     captured_at: datetime
     normalized_config: Dict[str, Any]
     collector_version: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Policy schemas
@@ -188,6 +171,4 @@ class PolicyResponse(BaseModel):
     description: Optional[str]
     framework: Optional[str]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

@@ -89,39 +89,54 @@ class RuleEngine:
             logger.error(f"Failed to compile CEL expression: {e}")
             raise CompilationError(f"Failed to compile expression: {e}")
     
+    def _convert_to_cel_types(self, obj: Any) -> Any:
+        """Convert Python objects to CEL types."""
+        if isinstance(obj, dict):
+            cel_dict = {}
+            for k, v in obj.items():
+                cel_dict[k] = self._convert_to_cel_types(v)
+            return celpy.celtypes.MapType(cel_dict)
+        elif isinstance(obj, list):
+            return [self._convert_to_cel_types(item) for item in obj]
+        else:
+            return obj
+
     def evaluate_rule(
-        self, 
+        self,
         rule_id: UUID,
-        expression: str, 
+        expression: str,
         context: EvaluationContext
     ) -> RuleResult:
         """Evaluate a CEL rule against the given context."""
         start_time = datetime.now()
-        
+
         try:
             # Compile the expression
             compiled_ast = self.compile_rule(expression)
-            
+
             # Create a program from the compiled AST
             program = self._env.program(compiled_ast)
-            
-            # Prepare evaluation context (activation)
+
+            # Prepare evaluation context (activation) - convert to CEL types
             eval_context = context.to_dict()
-            
+            cel_context = {}
+            for k, v in eval_context.items():
+                cel_context[k] = self._convert_to_cel_types(v)
+
             # Evaluate the expression
-            logger.debug(f"Evaluating rule {rule_id} with context keys: {list(eval_context.keys())}")
-            result = program.evaluate(eval_context)
-            
+            logger.debug(f"Evaluating rule {rule_id} with context keys: {list(cel_context.keys())}")
+            result = program.evaluate(cel_context)
+
             execution_time = (datetime.now() - start_time).total_seconds() * 1000
-            
+
             logger.debug(f"Rule {rule_id} evaluation result: {result}")
-            
+
             return RuleResult(
                 rule_id=rule_id,
                 matched=bool(result),
                 execution_time_ms=execution_time
             )
-            
+
         except CompilationError:
             # Re-raise compilation errors
             raise

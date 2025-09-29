@@ -5,10 +5,11 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    String, Text, Boolean, DateTime, LargeBinary, Integer, 
-    ForeignKey, UniqueConstraint, CheckConstraint, Index, ARRAY
+    String, Text, Boolean, DateTime, LargeBinary, Integer,
+    ForeignKey, UniqueConstraint, CheckConstraint, Index
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from .database_types import JSONType, ArrayType
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -110,7 +111,7 @@ class ConfigSnapshot(Base):
     resource_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("resources.resource_id", ondelete="CASCADE"))
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     config_sha: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    normalized_config: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    normalized_config: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
     collector_version: Mapped[str] = mapped_column(String, nullable=False)
     
     __table_args__ = (
@@ -176,15 +177,15 @@ class Rule(Base):
     policy_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("policies.policy_id", ondelete="SET NULL"))
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    provider: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False)
-    resource_types: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
+    provider: Mapped[List[str]] = mapped_column(ArrayType(String), nullable=False)
+    resource_types: Mapped[Optional[List[str]]] = mapped_column(ArrayType(String))
     expression_lang: Mapped[str] = mapped_column(String, nullable=False)
     expression: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String, nullable=False)
-    cwe: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
-    cis: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
-    nist_800_53: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
-    mitre_attack: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
+    cwe: Mapped[Optional[List[str]]] = mapped_column(ArrayType(String))
+    cis: Mapped[Optional[List[str]]] = mapped_column(ArrayType(String))
+    nist_800_53: Mapped[Optional[List[str]]] = mapped_column(ArrayType(String))
+    mitre_attack: Mapped[Optional[List[str]]] = mapped_column(ArrayType(String))
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
@@ -221,7 +222,7 @@ class Finding(Base):
     fingerprint: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(Text)
-    evidence: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    evidence: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
     
     __table_args__ = (
         UniqueConstraint("org_id", "fingerprint"),
@@ -250,7 +251,7 @@ class EvidenceArtifact(Base):
     kind: Mapped[str] = mapped_column(String, nullable=False)
     uri: Mapped[Optional[str]] = mapped_column(String)
     blob: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
-    artifact_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    artifact_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
     
     # Relationships
     finding: Mapped["Finding"] = relationship(back_populates="evidence_artifacts")
@@ -267,7 +268,7 @@ class AuditEvent(Base):
     actor_external_id: Mapped[Optional[str]] = mapped_column(String)
     action: Mapped[str] = mapped_column(String, nullable=False)
     resource_external_id: Mapped[Optional[str]] = mapped_column(String)
-    raw: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    raw: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
     
     __table_args__ = (
         Index("ix_audit_events_occurred_at", "occurred_at"),
@@ -294,3 +295,7 @@ class Suppression(Base):
     
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="suppressions")
+
+
+# Import identity models to make them available
+from .identity_models import IdentityCluster, IdentityClusterMember, IdentityStitchingLog

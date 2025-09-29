@@ -143,33 +143,53 @@ class SQLParser:
     def _extract_selected_columns(self, parsed) -> List[str]:
         """Extract selected columns from parsed SQL."""
         select_seen = False
-        from_seen = False
         columns = []
         current_column = []
-        
+
         for token in parsed.flatten():
-            if token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'SELECT':
+            # Check for SELECT keyword (can be Keyword.DML)
+            if token.value.upper() == 'SELECT' and (
+                token.ttype is sqlparse.tokens.Keyword.DML or
+                token.ttype is sqlparse.tokens.Keyword
+            ):
                 select_seen = True
-            elif token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'FROM':
-                from_seen = True
+            # Check for FROM keyword
+            elif token.value.upper() == 'FROM' and (
+                token.ttype is sqlparse.tokens.Keyword or
+                token.ttype is sqlparse.tokens.Keyword.DML
+            ):
+                # Add the last column if there is one
+                if current_column:
+                    col = ''.join(current_column).strip()
+                    if col:
+                        columns.append(col)
+                    current_column = []  # Clear it so we don't add it again
                 break
             elif select_seen and not token.is_whitespace:
                 if token.value == ',':
                     if current_column:
-                        columns.append(''.join(current_column).strip())
+                        col = ''.join(current_column).strip()
+                        if col:
+                            columns.append(col)
                         current_column = []
-                elif token.value != '*':
+                else:
                     current_column.append(token.value)
-        
-        # Add last column
+
+        # Add last column if not added yet
         if current_column:
-            columns.append(''.join(current_column).strip())
-        
-        # Handle SELECT *
-        if not columns:
-            columns = ['*']
-            
-        return columns
+            col = ''.join(current_column).strip()
+            if col:
+                columns.append(col)
+
+        # If we got columns, return them; otherwise return ['*']
+        if columns:
+            # Special case: if the only column is *, keep it as is
+            if len(columns) == 1 and columns[0] == '*':
+                return ['*']
+            return columns
+
+        # No columns found means SELECT * implicitly
+        return ['*']
     
     def _extract_filters(self, parsed) -> List[QueryFilter]:
         """Extract WHERE clause filters from parsed SQL."""
@@ -316,7 +336,7 @@ class SQLParser:
         for token in parsed.flatten():
             if token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'LIMIT':
                 limit_seen = True
-            elif limit_seen and token.ttype is None and token.value.isdigit():
+            elif limit_seen and not token.is_whitespace and token.value.isdigit():
                 return int(token.value)
         return None
     
@@ -326,7 +346,7 @@ class SQLParser:
         for token in parsed.flatten():
             if token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'OFFSET':
                 offset_seen = True
-            elif offset_seen and token.ttype is None and token.value.isdigit():
+            elif offset_seen and not token.is_whitespace and token.value.isdigit():
                 return int(token.value)
         return None
 

@@ -10,7 +10,7 @@ from cerebro.core.database import get_db
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.core.config import settings
 from cerebro.metrics.jwt_metrics import jwt_metrics
-from cerebro.api.auth import require_admin
+from cerebro.api.auth import require_admin, User
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ async def get_openid_configuration() -> Dict[str, Any]:
 @router.get("/auth/jwks-debug")
 async def debug_jwks(
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user: User = Depends(require_admin)
 ) -> Dict[str, Any]:
     """
     Debug endpoint for JWT key information (admin only in production).
