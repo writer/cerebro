@@ -69,7 +69,7 @@ class AuthMetrics:
     """Helper class for authentication metrics."""
     
     @staticmethod
-    def record_login_attempt(success: bool, ip_address: str, duration: float, locked: bool = False):
+    def record_login_attempt(success: bool, ip_address: str, duration: float, locked: bool = False) -> None:
         """Record a login attempt with timing and outcome."""
         # Anonymize IP to IP range for privacy
         ip_range = AuthMetrics._anonymize_ip(ip_address)
@@ -85,30 +85,30 @@ class AuthMetrics:
         login_duration.labels(status=status).observe(duration)
     
     @staticmethod
-    def record_rate_limit_hit(limit_type: str, ip_address: str):
+    def record_rate_limit_hit(limit_type: str, ip_address: str) -> None:
         """Record rate limit enforcement."""
         ip_range = AuthMetrics._anonymize_ip(ip_address)
         rate_limit_hits.labels(limit_type=limit_type, source_ip_range=ip_range).inc()
-    
+
     @staticmethod
-    def record_account_lockout(reason: str):
+    def record_account_lockout(reason: str) -> None:
         """Record account lockout."""
         account_lockouts.labels(reason=reason).inc()
         accounts_locked.inc()
-    
+
     @staticmethod
-    def record_account_unlock():
+    def record_account_unlock() -> None:
         """Record account unlock."""
         accounts_locked.dec()
-    
+
     @staticmethod
-    def record_password_strength_check(passed: bool):
+    def record_password_strength_check(passed: bool) -> None:
         """Record password strength validation."""
         result = "passed" if passed else "failed"
         password_strength_checks.labels(result=result).inc()
-    
+
     @staticmethod
-    def record_authorization_check(endpoint: str, required_scope: str, allowed: bool):
+    def record_authorization_check(endpoint: str, required_scope: str, allowed: bool) -> None:
         """Record API authorization check."""
         result = "allowed" if allowed else "denied"
         authorization_checks.labels(
@@ -116,9 +116,9 @@ class AuthMetrics:
             required_scope=required_scope,
             result=result
         ).inc()
-    
+
     @staticmethod
-    def record_unauthorized_access(endpoint: str, authenticated: bool):
+    def record_unauthorized_access(endpoint: str, authenticated: bool) -> None:
         """Record unauthorized access attempt."""
         user_type = "authenticated_insufficient_scope" if authenticated else "anonymous"
         unauthorized_access_attempts.labels(

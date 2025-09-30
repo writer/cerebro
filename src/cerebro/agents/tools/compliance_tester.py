@@ -2,7 +2,7 @@
 Compliance Control Auto-Tester Tool
 
 Enables agents to autonomously test compliance controls across frameworks
-(SOC2, ISO27001, CIS, NIST CSF) and collect cryptographically-verified evidence.
+(SOC2, ISO27001) and collect cryptographically-verified evidence.
 
 This tool automates manual compliance testing, reducing audit prep time
 from weeks to hours while ensuring continuous compliance monitoring.
@@ -29,7 +29,7 @@ class ComplianceTesterInput(BaseModel):
 
     framework_id: str = Field(
         ...,
-        description="Compliance framework: 'soc2', 'iso27001', 'nist_csf', 'cis_controls'"
+        description="Compliance framework: 'soc2', 'iso27001'"
     )
     control_id: Optional[str] = Field(
         None,
@@ -67,7 +67,7 @@ class ComplianceControlTesterTool(Tool):
     Autonomously test compliance controls and collect evidence.
 
     This tool allows agents to:
-    - Test all controls in a framework (SOC2, ISO27001, CIS, NIST CSF)
+    - Test all controls in a framework (SOC2, ISO27001)
     - Validate specific control requirements
     - Collect cryptographically-signed audit evidence
     - Identify compliance gaps before auditors do
@@ -76,7 +76,6 @@ class ComplianceControlTesterTool(Tool):
     Example uses:
     - "Test all SOC2 controls and show me what's failing"
     - "Validate ISO27001 control A.9.2.1 (user access provisioning)"
-    - "Run continuous compliance tests for CIS Controls"
     - "Generate evidence bundle for our annual audit"
     """
 
@@ -102,7 +101,7 @@ class ComplianceControlTesterTool(Tool):
 
         Args:
             context: Agent execution context
-            framework_id: Framework to test (soc2, iso27001, nist_csf, cis_controls)
+            framework_id: Framework to test (soc2, iso27001)
             control_id: Specific control ID (optional, tests all if not provided)
             collect_evidence: Whether to collect audit evidence
             audit_period_days: Audit period lookback
@@ -127,7 +126,7 @@ class ComplianceControlTesterTool(Tool):
                 if not framework:
                     return ToolResult(
                         success=False,
-                        error=f"Framework '{framework_id}' not found. Available: soc2, iso27001, nist_csf, cis_controls"
+                        error=f"Framework '{framework_id}' not found. Available: soc2, iso27001"
                     )
 
                 # Initialize test runner

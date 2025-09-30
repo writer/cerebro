@@ -50,7 +50,6 @@ class SecurityFramework(Enum):
     SOC2_TYPE_I = "soc2_type_i"
     SOC2_TYPE_II = "soc2_type_ii"
     ISO27001 = "iso27001"
-    NIST_CSF = "nist_csf"
     GDPR = "gdpr"
     HIPAA = "hipaa"
     PCI_DSS = "pci_dss"
