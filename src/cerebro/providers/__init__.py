@@ -4,7 +4,7 @@ from .base import BaseProvider, ProviderError
 from .github import GitHubProvider
 from .aws import AWSProvider  
 from .gcp import GCPProvider
-from .google_workspace import GoogleWorkspaceProvider
+from .workspace import GoogleWorkspaceProvider
 from .okta import OktaProvider
 from .m365 import M365Provider
 
