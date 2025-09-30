@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 import logging
 
 from cerebro.core.config import settings
-from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks
+from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks, telemetry
 from .routers import jwks
 from .auth import User, get_current_user
 
@@ -205,6 +205,13 @@ app.include_router(
     forklift_webhooks.router,
     prefix=f"{settings.api_v1_prefix}",
     tags=["forklift", "integrations"]
+)
+
+# Telemetry API (repository and runtime intelligence)
+app.include_router(
+    telemetry.router,
+    prefix=f"{settings.api_v1_prefix}",
+    tags=["telemetry", "intelligence"]
 )
 
 
