@@ -5,6 +5,8 @@ and creates/updates findings in Cerebro.
 """
 
 import logging
+import hmac
+import hashlib
 from datetime import datetime
 from typing import Any, Dict, Literal, Optional
 from uuid import UUID
@@ -16,12 +18,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.api.auth import verify_webhook_signature
 from cerebro.core.database import get_db
 from cerebro.core.models import Finding, Organization, Account, Resource, Rule
+from cerebro.core.config import settings
 from cerebro.findings.manager import FindingManager
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks/forklift", tags=["Forklift Integration"])
+
+
+def verify_forklift_signature(payload: bytes, signature: str, secret: str) -> bool:
+    """
+    Verify Forklift webhook signature using HMAC-SHA256.
+    
+    Args:
+        payload: Raw request body bytes
+        signature: Signature from X-Forklift-Signature header (format: sha256=<hex>)
+        secret: Shared secret for signature verification
+        
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    if not signature or not signature.startswith('sha256='):
+        logger.warning("Invalid signature format")
+        return False
+    
+    try:
+        expected_signature = signature[7:]  # Remove 'sha256=' prefix
+        computed_hmac = hmac.new(
+            secret.encode('utf-8'),
+            payload,
+            hashlib.sha256
+        ).hexdigest()
+        
+        return hmac.compare_digest(computed_hmac, expected_signature)
+    except Exception as e:
+        logger.error(f"Signature verification failed: {e}")
+        return False
 
 
 # Pydantic models for Forklift events
@@ -84,6 +117,7 @@ async def receive_forklift_event(
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(None),
     x_forklift_event: Optional[str] = Header(None),
+    x_forklift_signature: Optional[str] = Header(None, alias="X-Forklift-Signature"),
 ):
     """
     Receive events from Forklift.
@@ -92,13 +126,30 @@ async def receive_forklift_event(
     findings in Cerebro's security dashboard.
     """
     
-    # Verify webhook signature
-    # TODO: Implement proper signature verification
-    # if not verify_webhook_signature(authorization, await request.body()):
-    #     raise HTTPException(status_code=401, detail="Invalid signature")
+    # Verify webhook signature if secret is configured
+    forklift_webhook_secret = getattr(settings, 'FORKLIFT_WEBHOOK_SECRET', None)
     
-    # Parse event
-    event_data = await request.json()
+    if forklift_webhook_secret:
+        if not x_forklift_signature:
+            logger.warning("Missing X-Forklift-Signature header")
+            raise HTTPException(status_code=401, detail="Missing webhook signature")
+        
+        # Get raw request body for signature verification
+        body = await request.body()
+        
+        if not verify_forklift_signature(body, x_forklift_signature, forklift_webhook_secret):
+            logger.warning("Invalid webhook signature")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        
+        logger.debug("Webhook signature verified successfully")
+        
+        # Parse event from already-read body
+        import json
+        event_data = json.loads(body.decode('utf-8'))
+    else:
+        logger.warning("FORKLIFT_WEBHOOK_SECRET not configured - skipping signature verification")
+        # Parse event normally
+        event_data = await request.json()
     event_type = event_data.get("type")
     
     logger.info(f"Received Forklift event: {event_type}", extra={
