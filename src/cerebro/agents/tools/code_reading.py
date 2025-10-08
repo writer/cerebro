@@ -11,7 +11,12 @@ from typing import Any, Dict, List, Optional
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.agents.tools.base import Tool, ToolResult, AgentContext
+from cerebro.agents.tools.base import (
+    StructuredTool,
+    ToolResult,
+    AgentContext,
+    ToolPermissionLevel,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -210,7 +215,7 @@ def find_repo_root() -> Optional[Path]:
 
 # ==================== Tools ====================
 
-class ReadCodeTool(Tool):
+class ReadCodeTool(StructuredTool):
     """
     Read source code files and extract specific functions/classes.
 
@@ -220,16 +225,16 @@ class ReadCodeTool(Tool):
     - "Read the entire findings module" → read_code(file_path="findings/service.py")
     """
 
-    name = "read_code"
-    description = """Read source code files to understand implementation details.
+    tool_name = "read_code"
+    tool_description = """Read source code files to understand implementation details.
 Can extract specific functions/classes or read entire files. Supports Python, TypeScript, JavaScript, and more."""
 
-    version = "1.0.0"
-    input_schema = ReadCodeInput
-    output_schema = ReadCodeOutput
-    permission_level = "read_only"
+    tool_version = "1.0.0"
+    input_model = ReadCodeInput
+    output_model = ReadCodeOutput
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         file_path: str,
@@ -375,7 +380,7 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
             )
 
 
-class SearchCodeTool(Tool):
+class SearchCodeTool(StructuredTool):
     """
     Search for code symbols across the repository.
 
@@ -385,16 +390,16 @@ class SearchCodeTool(Tool):
     - "Where is JWT validation?" → search_code(search_term="validate_token", file_pattern="*.py")
     """
 
-    name = "search_code"
-    description = """Search for functions, classes, or code patterns across the repository.
+    tool_name = "search_code"
+    tool_description = """Search for functions, classes, or code patterns across the repository.
 Useful for finding where specific logic is implemented."""
 
-    version = "1.0.0"
-    input_schema = SearchCodeInput
-    output_schema = SearchCodeOutput
-    permission_level = "read_only"
+    tool_version = "1.0.0"
+    input_model = SearchCodeInput
+    output_model = SearchCodeOutput
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         search_term: str,

@@ -207,6 +207,76 @@ class Tool(ABC):
         }
 
 
+class StructuredTool(Tool):
+    """Helper base class for tools exposing structured input/output schemas.
+
+    Legacy tools that previously accepted keyword arguments can inherit from this
+    class and implement ``_run`` to avoid rewriting business logic. Subclasses
+    should define the following class attributes:
+
+    - ``tool_name``: unique tool identifier
+    - ``tool_description``: human readable description
+    - ``input_model`` / ``output_model``: pydantic schemas
+    - ``tool_version`` (optional): defaults to ``1.0.0``
+    - ``required_permission`` (optional): defaults to ``READ_ONLY``
+    - ``tool_cel_policy_key`` / ``tool_cel_expression`` (optional)
+    """
+
+    tool_name: str
+    tool_description: str
+    input_model: Type[BaseModel]
+    output_model: Type[BaseModel]
+    tool_version: str = "1.0.0"
+    required_permission: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY
+    tool_cel_policy_key: Optional[str] = None
+    tool_cel_expression: Optional[str] = None
+
+    @property
+    def name(self) -> str:
+        return self.tool_name
+
+    @property
+    def description(self) -> str:
+        return self.tool_description
+
+    @property
+    def input_schema(self) -> Type[BaseModel]:
+        return self.input_model
+
+    @property
+    def output_schema(self) -> Type[BaseModel]:
+        return self.output_model
+
+    @property
+    def version(self) -> str:
+        return self.tool_version
+
+    @property
+    def permission_level(self) -> ToolPermissionLevel:
+        return self.required_permission
+
+    @property
+    def cel_policy_key(self) -> Optional[str]:
+        return self.tool_cel_policy_key
+
+    @property
+    def cel_expression(self) -> Optional[str]:
+        return self.tool_cel_expression
+
+    async def execute(
+        self,
+        inputs: BaseModel,
+        context: AgentContext,
+    ) -> ToolResult:
+        """Adapt structured models into legacy keyword execution."""
+
+        kwargs = inputs.model_dump()
+        return await self._run(context=context, **kwargs)
+
+    async def _run(self, context: AgentContext, **kwargs: Any) -> ToolResult:
+        raise NotImplementedError
+
+
 class ToolRegistry:
     """Registry for managing available agent tools."""
     

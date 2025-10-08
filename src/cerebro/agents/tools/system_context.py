@@ -14,7 +14,7 @@ import sys
 from datetime import datetime
 import asyncio
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization, Account
 from sqlalchemy import select, text
@@ -90,7 +90,7 @@ class SystemContextOutput(BaseModel):
     health_metrics: Optional[SystemHealthMetrics] = None
 
 
-class GetSystemContextTool(Tool):
+class GetSystemContextTool(StructuredTool):
     """
     Provide agents with system/infrastructure context.
 
@@ -111,16 +111,16 @@ class GetSystemContextTool(Tool):
     - "System health check"
     """
 
-    name = "get_system_context"
-    description = "Get system/infrastructure context including database, environment, and health"
-    version = "1.0.0"
-    input_schema = SystemContextInput
-    output_schema = SystemContextOutput
+    tool_name = "get_system_context"
+    tool_description = "Get system/infrastructure context including database, environment, and health"
+    tool_version = "1.0.0"
+    input_model = SystemContextInput
+    output_model = SystemContextOutput
 
     # Read-only, safe for all agents
-    permission_level = "read_only"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         include_database: bool = True,

@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding
 from sqlalchemy import select
@@ -52,7 +52,7 @@ class SmartSummarizerOutput(BaseModel):
     audience_tailored_explanation: str
 
 
-class SmartFindingSummarizerTool(Tool):
+class SmartFindingSummarizerTool(StructuredTool):
     """
     Translate technical security findings into plain English.
 
@@ -69,16 +69,16 @@ class SmartFindingSummarizerTool(Tool):
     - "Summarize this IAM policy issue for my weekly security report"
     """
 
-    name = "summarize_finding"
-    description = "Explain security findings in plain English tailored to different audiences"
-    version = "1.0.0"
-    input_schema = SmartSummarizerInput
-    output_schema = SmartSummarizerOutput
+    tool_name = "summarize_finding"
+    tool_description = "Explain security findings in plain English tailored to different audiences"
+    tool_version = "1.0.0"
+    input_model = SmartSummarizerInput
+    output_model = SmartSummarizerOutput
 
     # Read-only tool, safe for all agents
-    permission_level = "read_only"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         finding_id: str,

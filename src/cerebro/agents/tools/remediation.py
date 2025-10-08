@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -52,7 +52,7 @@ class RemediationSuggestion(BaseModel):
     references: List[str] = Field(default_factory=list, description="Reference links")
 
 
-class RemediationTool(Tool):
+class RemediationTool(StructuredTool):
     """
     Suggest intelligent remediation actions for security findings.
 
@@ -60,13 +60,14 @@ class RemediationTool(Tool):
     automation options, and compliance mapping.
     """
 
-    name = "remediation_suggestions"
-    description = "Get intelligent remediation suggestions for security findings with step-by-step instructions"
-    version = "1.0.0"
-    input_schema = RemediationInput
-    output_schema = BaseModel  # List of suggestions returned in data field
+    tool_name = "remediation_suggestions"
+    tool_description = "Get intelligent remediation suggestions for security findings with step-by-step instructions"
+    tool_version = "1.0.0"
+    input_model = RemediationInput
+    output_model = BaseModel  # List of suggestions returned in data field
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         finding_id: Optional[UUID] = None,

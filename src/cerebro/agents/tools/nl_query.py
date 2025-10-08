@@ -10,7 +10,12 @@ import re
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.agents.tools.base import Tool, ToolResult, AgentContext
+from cerebro.agents.tools.base import (
+    StructuredTool,
+    ToolResult,
+    AgentContext,
+    ToolPermissionLevel,
+)
 from cerebro.query.engine import QueryEngine
 from anthropic import Anthropic
 
@@ -129,7 +134,7 @@ SQL: SELECT group_id, group_name, ingress_rules FROM aws_security_group WHERE in
 
 # ==================== Tool Implementation ====================
 
-class NaturalLanguageQueryTool(Tool):
+class NaturalLanguageQueryTool(StructuredTool):
     """
     Translate natural language questions to SQL and execute them.
 
@@ -142,15 +147,15 @@ class NaturalLanguageQueryTool(Tool):
     Includes safety validation to prevent destructive operations.
     """
 
-    name = "nl_query"
-    description = """Query security data using natural language instead of SQL.
+    tool_name = "nl_query"
+    tool_description = """Query security data using natural language instead of SQL.
 Ask questions in plain English about users, resources, findings, compliance, etc.
 The system will automatically translate to SQL and execute the query safely."""
 
-    version = "1.0.0"
-    input_schema = NLQueryInput
-    output_schema = NLQueryOutput
-    permission_level = "read_only"  # Only read queries allowed
+    tool_version = "1.0.0"
+    input_model = NLQueryInput
+    output_model = NLQueryOutput
+    required_permission = ToolPermissionLevel.READ_ONLY  # Only read queries allowed
 
     def __init__(self):
         super().__init__()
@@ -164,7 +169,7 @@ The system will automatically translate to SQL and execute the query safely."""
             self.anthropic = None
             logger.warning("ANTHROPIC_API_KEY not set, NL query translation disabled")
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         question: str,

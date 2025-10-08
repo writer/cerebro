@@ -13,7 +13,7 @@ from uuid import UUID
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.analysis.forensic_replay import ForensicReplayEngine
 from cerebro.core.database import async_session_factory
 import structlog
@@ -53,7 +53,7 @@ class ForensicReplayOutput(BaseModel):
     changes_since: Optional[Dict[str, Any]] = None
 
 
-class ForensicReplayTool(Tool):
+class ForensicReplayTool(StructuredTool):
     """
     Reconstruct security state at any point in time.
 
@@ -66,16 +66,16 @@ class ForensicReplayTool(Tool):
     Uses Cerebro's append-only audit log to reconstruct exact historical state.
     """
 
-    name = "forensic_replay"
-    description = "Reconstruct security state at any historical timestamp for incident investigation"
-    version = "1.0.0"
-    input_schema = ForensicReplayInput
-    output_schema = ForensicReplayOutput
+    tool_name = "forensic_replay"
+    tool_description = "Reconstruct security state at any historical timestamp for incident investigation"
+    tool_version = "1.0.0"
+    input_model = ForensicReplayInput
+    output_model = ForensicReplayOutput
 
     # Read-only tool, safe for all agents
-    permission_level = "read_only"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         timestamp: str,
@@ -207,7 +207,7 @@ class ForensicReplayTool(Tool):
             )
 
 
-class ChangeReplayTool(Tool):
+class ChangeReplayTool(StructuredTool):
     """
     Replay security changes over a time range.
 
@@ -218,10 +218,10 @@ class ChangeReplayTool(Tool):
     - Detect anomalous changes
     """
 
-    name = "change_replay"
-    description = "Show all security changes between two timestamps"
-    version = "1.0.0"
-    permission_level = "read_only"
+    tool_name = "change_replay"
+    tool_description = "Show all security changes between two timestamps"
+    tool_version = "1.0.0"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
     class Input(BaseModel):
         start_time: str = Field(..., description="Start timestamp (ISO 8601)")
@@ -243,10 +243,10 @@ class ChangeReplayTool(Tool):
         change_summary: Dict[str, Any]
         timeline: List[Dict[str, Any]]
 
-    input_schema = Input
-    output_schema = Output
+    input_model = Input
+    output_model = Output
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         start_time: str,

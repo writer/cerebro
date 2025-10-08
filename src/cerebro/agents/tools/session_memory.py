@@ -13,7 +13,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 
-from cerebro.agents.tools.base import Tool, ToolResult, AgentContext
+from cerebro.agents.tools.base import (
+    StructuredTool,
+    ToolResult,
+    AgentContext,
+    ToolPermissionLevel,
+)
 from cerebro.agents.models import AgentSessionContext, AgentSession, AgentMessage
 from cerebro.core.database import async_session_factory
 
@@ -102,7 +107,7 @@ class GetSessionHistoryOutput(BaseModel):
 
 # ==================== Tools ====================
 
-class RememberContextTool(Tool):
+class RememberContextTool(StructuredTool):
     """
     Store context that should persist across agent sessions.
 
@@ -113,17 +118,17 @@ class RememberContextTool(Tool):
     - Custom mappings: "Project Apollo uses eu-west-1" → remember project info
     """
 
-    name = "remember_context"
-    description = """Store information that should be remembered across agent sessions.
+    tool_name = "remember_context"
+    tool_description = """Store information that should be remembered across agent sessions.
 Use this to save user preferences, environment facts, corrections, or any context that
 will be useful in future conversations. This enables continuity and personalization."""
 
-    version = "1.0.0"
-    input_schema = RememberContextInput
-    output_schema = RememberContextOutput
-    permission_level = "read_write"  # Can write context but not destructive
+    tool_version = "1.0.0"
+    input_model = RememberContextInput
+    output_model = RememberContextOutput
+    required_permission = ToolPermissionLevel.WRITE_SAFE  # Can write context but not destructive
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         context_key: str,
@@ -228,7 +233,7 @@ will be useful in future conversations. This enables continuity and personalizat
             )
 
 
-class GetSessionHistoryTool(Tool):
+class GetSessionHistoryTool(StructuredTool):
     """
     Retrieve conversation history and learned context from recent sessions.
 
@@ -238,17 +243,17 @@ class GetSessionHistoryTool(Tool):
     - Environmental context from past sessions
     """
 
-    name = "get_session_history"
-    description = """Retrieve conversation history and learned context from recent sessions.
+    tool_name = "get_session_history"
+    tool_description = """Retrieve conversation history and learned context from recent sessions.
 Use this to understand what was discussed previously, what facts were learned,
 and what preferences the user expressed. Essential for continuity across sessions."""
 
-    version = "1.0.0"
-    input_schema = GetSessionHistoryInput
-    output_schema = GetSessionHistoryOutput
-    permission_level = "read_only"
+    tool_version = "1.0.0"
+    input_model = GetSessionHistoryInput
+    output_model = GetSessionHistoryOutput
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         lookback_sessions: int = 5,

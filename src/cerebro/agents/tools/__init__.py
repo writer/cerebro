@@ -6,7 +6,15 @@ Cerebro's security system capabilities. All tools implement strict guardrails,
 CEL policy checks, and append-only audit logging.
 """
 
-from .base import Tool, ToolRegistry, AgentContext, ToolExecutor, tool, ToolPermissionLevel
+from .base import (
+    Tool,
+    StructuredTool,
+    ToolRegistry,
+    AgentContext,
+    ToolExecutor,
+    tool,
+    ToolPermissionLevel,
+)
 from .findings_list import FindingsListTool
 from .findings_update import FindingStatusUpdateTool
 from .rules import RulesTool
@@ -54,6 +62,7 @@ tool_registry.register(NaturalLanguageQueryTool())
 
 __all__ = [
     "Tool",
+    "StructuredTool",
     "ToolRegistry",
     "AgentContext",
     "ToolExecutor",

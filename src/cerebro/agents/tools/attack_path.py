@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.attack_path.graph_model import get_attack_graph
 from cerebro.attack_path.path_analysis import PathAnalyzer, PathQuery, PathType
 from cerebro.core.database import async_session_factory
@@ -55,7 +55,7 @@ class AttackPathSimulatorOutput(BaseModel):
     query_info: Dict[str, Any]
 
 
-class AttackPathSimulatorTool(Tool):
+class AttackPathSimulatorTool(StructuredTool):
     """
     Simulate attack paths through the identity graph.
 
@@ -69,16 +69,14 @@ class AttackPathSimulatorTool(Tool):
     actual permissions, group memberships, and cross-service privileges.
     """
 
-    name = "simulate_attack_path"
-    description = "Find attack paths showing how compromised identities could move laterally or escalate privileges"
-    version = "1.0.0"
-    input_schema = AttackPathSimulatorInput
-    output_schema = AttackPathSimulatorOutput
+    tool_name = "simulate_attack_path"
+    tool_description = "Find attack paths showing how compromised identities could move laterally or escalate privileges"
+    tool_version = "1.0.0"
+    input_model = AttackPathSimulatorInput
+    output_model = AttackPathSimulatorOutput
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    # Read-only tool, safe for all agents
-    permission_level = "read_only"
-
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         start_principal: Optional[str] = None,
@@ -320,7 +318,7 @@ class AttackPathSimulatorTool(Tool):
         return recommendations
 
 
-class BlastRadiusTool(Tool):
+class BlastRadiusTool(StructuredTool):
     """
     Calculate blast radius of a compromised identity.
 
@@ -328,10 +326,10 @@ class BlastRadiusTool(Tool):
     identity is compromised. Critical for incident response and risk assessment.
     """
 
-    name = "calculate_blast_radius"
-    description = "Calculate the full impact scope if a given identity is compromised"
-    version = "1.0.0"
-    permission_level = "read_only"
+    tool_name = "calculate_blast_radius"
+    tool_description = "Calculate the full impact scope if a given identity is compromised"
+    tool_version = "1.0.0"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
     class Input(BaseModel):
         principal_id: str = Field(..., description="Principal/identity to analyze")
@@ -347,10 +345,10 @@ class BlastRadiusTool(Tool):
         high_value_targets: List[Dict[str, Any]]
         recommended_containment: List[str]
 
-    input_schema = Input
-    output_schema = Output
+    input_model = Input
+    output_model = Output
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         principal_id: str,

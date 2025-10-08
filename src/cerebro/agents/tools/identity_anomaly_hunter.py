@@ -13,7 +13,7 @@ from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.analysis.identity_anomaly import (
     IdentityAnomalyDetector,
     AnomalyType,
@@ -77,7 +77,7 @@ class IdentityAnomalyHunterOutput(BaseModel):
     immediate_actions: List[str]
 
 
-class IdentityAnomalyHunterTool(Tool):
+class IdentityAnomalyHunterTool(StructuredTool):
     """
     Hunt for identity anomalies using ML-powered behavioral analysis.
 
@@ -97,16 +97,16 @@ class IdentityAnomalyHunterTool(Tool):
     - "Find permission escalation attempts in the last week"
     """
 
-    name = "hunt_identity_anomalies"
-    description = "ML-powered anomaly detection for suspicious identity behavior patterns"
-    version = "1.0.0"
-    input_schema = IdentityAnomalyHunterInput
-    output_schema = IdentityAnomalyHunterOutput
+    tool_name = "hunt_identity_anomalies"
+    tool_description = "ML-powered anomaly detection for suspicious identity behavior patterns"
+    tool_version = "1.0.0"
+    input_model = IdentityAnomalyHunterInput
+    output_model = IdentityAnomalyHunterOutput
 
     # Read-only analysis, safe for all agents
-    permission_level = "read_only"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         principal_id: Optional[str] = None,

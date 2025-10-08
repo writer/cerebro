@@ -15,7 +15,7 @@ import os
 import json
 from pathlib import Path
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization, Account, Principal, Resource
 from sqlalchemy import select, func, distinct
@@ -89,7 +89,7 @@ class OrgContextOutput(BaseModel):
     system_info: Optional[Dict[str, Any]] = None
 
 
-class GetOrgContextTool(Tool):
+class GetOrgContextTool(StructuredTool):
     """
     Provide agents with organizational context and system understanding.
 
@@ -110,16 +110,16 @@ class GetOrgContextTool(Tool):
     - "Give me an overview of the environment"
     """
 
-    name = "get_org_context"
-    description = "Get organizational context including repos, providers, tools, and system info"
-    version = "1.0.0"
-    input_schema = OrgContextInput
-    output_schema = OrgContextOutput
+    tool_name = "get_org_context"
+    tool_description = "Get organizational context including repos, providers, tools, and system info"
+    tool_version = "1.0.0"
+    input_model = OrgContextInput
+    output_model = OrgContextOutput
 
     # Read-only, safe for all agents
-    permission_level = "read_only"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         include_repositories: bool = True,

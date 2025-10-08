@@ -13,7 +13,7 @@ from uuid import UUID
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.compliance.control_tests import ControlTestRunner, ControlTest, TestStatus
 from cerebro.compliance.framework_registry import get_framework_registry
 from cerebro.rules.engine import RuleEngine
@@ -62,7 +62,7 @@ class ComplianceTesterOutput(BaseModel):
     recommendations: List[str]
 
 
-class ComplianceControlTesterTool(Tool):
+class ComplianceControlTesterTool(StructuredTool):
     """
     Autonomously test compliance controls and collect evidence.
 
@@ -79,16 +79,14 @@ class ComplianceControlTesterTool(Tool):
     - "Generate evidence bundle for our annual audit"
     """
 
-    name = "test_compliance_control"
-    description = "Autonomously test compliance controls and collect cryptographic evidence for audits"
-    version = "1.0.0"
-    input_schema = ComplianceTesterInput
-    output_schema = ComplianceTesterOutput
+    tool_name = "test_compliance_control"
+    tool_description = "Autonomously test compliance controls and collect cryptographic evidence for audits"
+    tool_version = "1.0.0"
+    input_model = ComplianceTesterInput
+    output_model = ComplianceTesterOutput
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    # Read-only testing, safe for all agents
-    permission_level = "read_only"
-
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         framework_id: str,
@@ -357,7 +355,7 @@ class ComplianceControlTesterTool(Tool):
         return recommendations
 
 
-class EvidenceBundleBuilderTool(Tool):
+class EvidenceBundleBuilderTool(StructuredTool):
     """
     Build cryptographically-signed evidence bundles for auditors.
 
@@ -365,10 +363,10 @@ class EvidenceBundleBuilderTool(Tool):
     that auditors can verify independently.
     """
 
-    name = "build_evidence_bundle"
-    description = "Create cryptographically-signed audit evidence bundles (WORM storage)"
-    version = "1.0.0"
-    permission_level = "read_only"
+    tool_name = "build_evidence_bundle"
+    tool_description = "Create cryptographically-signed audit evidence bundles (WORM storage)"
+    tool_version = "1.0.0"
+    required_permission = ToolPermissionLevel.READ_ONLY
 
     class Input(BaseModel):
         framework_id: str = Field(..., description="Framework to collect evidence for")
@@ -385,10 +383,10 @@ class EvidenceBundleBuilderTool(Tool):
         created_at: str
         worm_storage_enabled: bool
 
-    input_schema = Input
-    output_schema = Output
+    input_model = Input
+    output_model = Output
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         framework_id: str,

@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-from .base import Tool, AgentContext, ToolResult
+from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -47,7 +47,7 @@ class SecurityAnalysisOutput(BaseModel):
     details: Dict[str, Any]
 
 
-class SecurityAnalysisTool(Tool):
+class SecurityAnalysisTool(StructuredTool):
     """
     Perform comprehensive security analysis across resources.
 
@@ -55,13 +55,14 @@ class SecurityAnalysisTool(Tool):
     and provides actionable recommendations.
     """
 
-    name = "security_analysis"
-    description = "Perform comprehensive security analysis: attack surface, risk scoring, compliance gaps, or posture assessment"
-    version = "1.0.0"
-    input_schema = SecurityAnalysisInput
-    output_schema = SecurityAnalysisOutput
+    tool_name = "security_analysis"
+    tool_description = "Perform comprehensive security analysis: attack surface, risk scoring, compliance gaps, or posture assessment"
+    tool_version = "1.0.0"
+    input_model = SecurityAnalysisInput
+    output_model = SecurityAnalysisOutput
+    required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def execute(
+    async def _run(
         self,
         context: AgentContext,
         analysis_type: str,
