@@ -61,3 +61,7 @@ class LocalPlaintextKMS(BaseKMS):
         except Exception as e:
             logger.error(f"Local KMS connection test failed: {e}")
             return False
+
+
+class LocalKMS(LocalPlaintextKMS):
+    """Backward-compatible alias for the legacy LocalKMS name."""

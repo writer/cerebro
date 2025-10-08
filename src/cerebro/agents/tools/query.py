@@ -6,7 +6,7 @@ configuration changes and audit trails over time.
 """
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 import structlog
@@ -66,8 +66,8 @@ class QueryTool(Tool):
         
         try:
             import time
-            from sqlalchemy import select, text
-            from cerebro.core.models import Finding, ConfigSnapshot, AuditEvent, IAMEdge
+            from sqlalchemy import select
+            from cerebro.core.models import Finding, ConfigSnapshot, AuditEvent
             
             start_time = time.time()
             
@@ -195,20 +195,22 @@ class QueryTool(Tool):
                     days_back = query_inputs.parameters.get("days_back", 30)
 
                     from datetime import timedelta
-                    from sqlalchemy import func, cast, Date
+                    from sqlalchemy import func
                     time_threshold = datetime.now(timezone.utc) - timedelta(days=days_back)
+
+                    date_expr = func.date(Finding.first_seen)
 
                     query = (
                         select(
-                            cast(Finding.first_seen, Date).label('date'),
+                            date_expr.label('date'),
                             Finding.severity,
                             Finding.provider,
                             func.count(Finding.finding_id).label('count')
                         )
                         .where(Finding.org_id == context.org_id)
                         .where(Finding.first_seen >= time_threshold)
-                        .group_by(cast(Finding.first_seen, Date), Finding.severity, Finding.provider)
-                        .order_by(cast(Finding.first_seen, Date).desc())
+                        .group_by(date_expr, Finding.severity, Finding.provider)
+                        .order_by(date_expr.desc())
                         .limit(query_inputs.limit)
                     )
 
@@ -216,7 +218,15 @@ class QueryTool(Tool):
 
                     results = [
                         {
-                            "date": row.date.isoformat(),
+                            "date": (
+                                row.date
+                                if isinstance(row.date, str)
+                                else (
+                                    row.date.isoformat()
+                                    if hasattr(row.date, "isoformat")
+                                    else str(row.date)
+                                )
+                            ),
                             "severity": row.severity,
                             "count": row.count,
                             "provider": row.provider,

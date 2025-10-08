@@ -20,12 +20,15 @@ from claude_agent_sdk.types import (
     SystemMessage,
 )
 
+from sqlalchemy import func, select
+
 from cerebro.core.database import get_db
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
     MessageRole,
     AgentType,
+    ToolInvocation,
 )
 from cerebro.agents.tools import tool_registry, ToolExecutor, AgentContext
 from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
@@ -579,17 +582,24 @@ EXPERTISE: Attack path modeling, threat modeling, network analysis, defensive ar
         """Get messages from a session."""
         from cerebro.core.database import async_session_factory
         async with async_session_factory() as db_session:
-            messages = await db_session.execute(
-                """
-                SELECT id, role, content, created_at, input_tokens, output_tokens
-                FROM agent_messages 
-                WHERE session_id = :session_id
-                ORDER BY created_at DESC
-                LIMIT :limit OFFSET :offset
-                """,
-                {"session_id": session_id, "limit": limit, "offset": offset}
+            stmt = (
+                select(
+                    AgentMessage.id,
+                    AgentMessage.role,
+                    AgentMessage.content,
+                    AgentMessage.created_at,
+                    AgentMessage.input_tokens,
+                    AgentMessage.output_tokens,
+                )
+                .where(AgentMessage.session_id == session_id)
+                .order_by(AgentMessage.created_at.desc())
+                .limit(limit)
+                .offset(offset)
             )
-            
+
+            result = await db_session.execute(stmt)
+            rows = result.all()
+
             return [
                 {
                     "id": str(row.id),
@@ -599,7 +609,7 @@ EXPERTISE: Attack path modeling, threat modeling, network analysis, defensive ar
                     "input_tokens": row.input_tokens,
                     "output_tokens": row.output_tokens,
                 }
-                for row in messages
+                for row in rows
             ]
     
     async def get_session_metrics(self, session_id: UUID) -> Dict[str, Any]:
@@ -607,33 +617,33 @@ EXPERTISE: Attack path modeling, threat modeling, network analysis, defensive ar
         from cerebro.core.database import async_session_factory
         async with async_session_factory() as db_session:
             # Message counts and token usage
-            message_stats = await db_session.execute(
-                """
-                SELECT 
-                    role,
-                    COUNT(*) as count,
-                    SUM(COALESCE(input_tokens, 0)) as total_input_tokens,
-                    SUM(COALESCE(output_tokens, 0)) as total_output_tokens
-                FROM agent_messages 
-                WHERE session_id = :session_id
-                GROUP BY role
-                """,
-                {"session_id": session_id}
+            message_stats_stmt = (
+                select(
+                    AgentMessage.role.label("role"),
+                    func.count().label("count"),
+                    func.sum(func.coalesce(AgentMessage.input_tokens, 0)).label("total_input_tokens"),
+                    func.sum(func.coalesce(AgentMessage.output_tokens, 0)).label("total_output_tokens"),
+                )
+                .where(AgentMessage.session_id == session_id)
+                .group_by(AgentMessage.role)
             )
+            message_stats = (
+                await db_session.execute(message_stats_stmt)
+            ).mappings().all()
             
             # Tool invocation stats
-            tool_stats = await db_session.execute(
-                """
-                SELECT 
-                    tool_name,
-                    status,
-                    COUNT(*) as count
-                FROM tool_invocations 
-                WHERE session_id = :session_id
-                GROUP BY tool_name, status
-                """,
-                {"session_id": session_id}
+            tool_stats_stmt = (
+                select(
+                    ToolInvocation.tool_name.label("tool_name"),
+                    ToolInvocation.status.label("status"),
+                    func.count().label("count"),
+                )
+                .where(ToolInvocation.session_id == session_id)
+                .group_by(ToolInvocation.tool_name, ToolInvocation.status)
             )
+            tool_stats = (
+                await db_session.execute(tool_stats_stmt)
+            ).mappings().all()
             
             return {
                 "session_id": str(session_id),

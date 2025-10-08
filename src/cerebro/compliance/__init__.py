@@ -28,6 +28,8 @@ from .framework_registry import (
 # Evidence services
 from .evidence_service import EvidenceService, EvidenceQueryService
 from .storage import FileBasedEvidenceRepository, InMemoryEvidenceRepository
+from .evidence import EvidenceCollector, EvidenceItem
+from .generator import ComplianceEvidenceGenerator
 
 # Import framework providers to trigger registration
 from . import frameworks
@@ -56,4 +58,7 @@ __all__ = [
     "EvidenceQueryService",
     "FileBasedEvidenceRepository",
     "InMemoryEvidenceRepository",
+    "EvidenceCollector",
+    "EvidenceItem",
+    "ComplianceEvidenceGenerator",
 ]

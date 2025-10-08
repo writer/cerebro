@@ -5,11 +5,13 @@ Provides secure, audited access to updating finding status with proper RBAC,
 dry-run support, and audit trail creation.
 """
 
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
 
 import structlog
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding, AuditEvent
@@ -124,9 +126,6 @@ class FindingStatusUpdateTool(Tool):
             
             # Single transaction for all operations
             async with async_session_factory() as session:
-                from sqlalchemy import select
-                from datetime import datetime, timezone
-                
                 # Get the current finding
                 query = select(Finding).where(
                     Finding.finding_id == finding_uuid,

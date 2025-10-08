@@ -147,3 +147,20 @@ require_read_rules = require_scopes("read:rules")
 require_write_rules = require_scopes("write:rules")
 require_collect = require_scopes("collect:data")
 require_admin = get_current_admin_user
+
+
+def verify_webhook_signature(secret: str, payload: bytes, signature: str, prefix: str = "sha256=") -> bool:
+    """Validate webhook signatures using HMAC-SHA256."""
+
+    import hmac
+    import hashlib
+
+    if not secret or not signature or not payload:
+        return False
+
+    if not signature.startswith(prefix):
+        return False
+
+    provided = signature[len(prefix):]
+    digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(digest, provided)

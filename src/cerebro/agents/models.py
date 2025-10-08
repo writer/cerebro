@@ -18,9 +18,12 @@ from sqlalchemy import (
     Text,
     Enum as SqlEnum,
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+
+from cerebro.core.database_types import JSONType
+from cerebro.core.models import Organization
 
 
 class Base(DeclarativeBase):
@@ -80,7 +83,7 @@ class AgentSession(Base):
     )
     org_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id"),
+        ForeignKey(Organization.__table__.c.org_id),
         nullable=False,
         index=True,
     )
@@ -93,7 +96,7 @@ class AgentSession(Base):
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    context: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    context: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     
     # Context may include:
     # - finding_ids: List[UUID] - findings being analyzed
@@ -136,7 +139,7 @@ class AgentMessage(Base):
         index=True,
     )
     role: Mapped[MessageRole] = mapped_column(SqlEnum(MessageRole), nullable=False)
-    content: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    content: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -182,8 +185,8 @@ class ToolInvocation(Base):
     tool_version: Mapped[str] = mapped_column(String(20), nullable=False, default="1.0")
     
     # Tool execution details
-    input_data: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    output_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    input_data: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    output_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
     status: Mapped[ToolInvocationStatus] = mapped_column(
         SqlEnum(ToolInvocationStatus),
         nullable=False,
@@ -206,7 +209,7 @@ class ToolInvocation(Base):
     cel_policy_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     cel_expression: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cel_result: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    cel_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    cel_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
     
     # Error handling
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -241,7 +244,7 @@ class ToolApproval(Base):
     )
     org_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id"),
+        ForeignKey(Organization.__table__.c.org_id),
         nullable=False,
         index=True,
     )
@@ -261,7 +264,7 @@ class ToolApproval(Base):
         server_default=func.now(),
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    risk_assessment: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    risk_assessment: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
     
     # Approval decision
     status: Mapped[ApprovalStatus] = mapped_column(
@@ -314,7 +317,7 @@ class AgentSessionContext(Base):
     )
     org_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -327,9 +330,9 @@ class AgentSessionContext(Base):
         comment="Key identifying the context (e.g. prod_account_id, ceo_name)",
     )
     context_value: Mapped[Dict[str, Any]] = mapped_column(
-        JSONB,
+        JSONType,
         nullable=False,
-        comment="Value stored as JSONB for flexibility",
+        comment="Value stored as JSON for flexibility",
     )
     context_type: Mapped[str] = mapped_column(
         String(50),
@@ -363,7 +366,7 @@ class AgentSessionContext(Base):
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     context_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         "metadata",
-        JSONB,
+        JSONType,
         nullable=True,
         comment="Additional metadata about the context",
     )
@@ -392,7 +395,7 @@ class AgentRecommendation(Base):
     )
     org_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id"),
+        ForeignKey(Organization.__table__.c.org_id),
         nullable=False,
         index=True,
     )
@@ -404,14 +407,14 @@ class AgentRecommendation(Base):
     priority: Mapped[str] = mapped_column(String(20), nullable=False)  # critical, high, medium, low
     
     # Implementation guidance
-    action_items: Mapped[list[Dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    action_items: Mapped[list[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
     estimated_effort: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     implementation_timeline: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     
     # Framework mappings
-    cis_controls: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    nist_controls: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    cwe_ids: Mapped[list[int]] = mapped_column(JSONB, nullable=False, default=list)
+    cis_controls: Mapped[list[str]] = mapped_column(JSONType, nullable=False, default=list)
+    nist_controls: Mapped[list[str]] = mapped_column(JSONType, nullable=False, default=list)
+    cwe_ids: Mapped[list[int]] = mapped_column(JSONType, nullable=False, default=list)
     
     # Tracking
     created_at: Mapped[datetime] = mapped_column(

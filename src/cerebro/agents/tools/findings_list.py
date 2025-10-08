@@ -36,7 +36,7 @@ class ListFindingsInput(BaseModel):
 
 class FindingSummary(BaseModel):
     """Summary representation of a finding."""
-    id: UUID
+    id: str
     title: str
     description: str
     severity: str
@@ -225,7 +225,7 @@ class FindingsListTool(Tool):
                             compliance_mappings['cwe'] = f.rule.cwe_ids
                     
                     finding_summaries.append(FindingSummary(
-                        id=f.finding_id,
+                        id=str(f.finding_id),
                         title=f.title,
                         description=f.summary or f.title,
                         severity=f.severity,

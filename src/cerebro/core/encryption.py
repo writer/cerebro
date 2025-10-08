@@ -1,5 +1,6 @@
 """Secret encryption service using envelope encryption with Fernet."""
 import asyncio
+import base64
 import hashlib
 import os
 import logging
@@ -7,7 +8,7 @@ from collections import OrderedDict
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 
 from cerebro.kms import get_kms, BaseKMS
@@ -270,14 +271,15 @@ class FallbackEncryptionService:
             raise ValueError("SECRET_KEY environment variable required for fallback encryption")
 
         # Derive Fernet key from SECRET_KEY using PBKDF2
-        kdf = PBKDF2(
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=b'cerebro-fallback-salt',  # Static salt for deterministic key
             iterations=100000,
             backend=default_backend()
         )
-        fernet_key = kdf.derive(secret_key.encode('utf-8'))
+        derived_key = kdf.derive(secret_key.encode('utf-8'))
+        fernet_key = base64.urlsafe_b64encode(derived_key)
         self.fernet = Fernet(fernet_key)
 
     def encrypt_secret(self, plaintext: str) -> bytes:

@@ -26,6 +26,9 @@ ComplianceFramework = _frameworks_module.ComplianceFramework
 ComplianceControl = _frameworks_module.ComplianceControl
 EvidenceType = _frameworks_module.EvidenceType
 ControlType = _frameworks_module.ControlType
+SOC2Framework = _frameworks_module.SOC2Framework
+ISO27001Framework = _frameworks_module.ISO27001Framework
+PCIDSSFramework = _frameworks_module.PCIDSSFramework
 
 # Import providers after the base classes are available
 from .soc2_provider import SOC2FrameworkProvider
@@ -47,4 +50,7 @@ __all__ = [
     "ComplianceControl",
     "EvidenceType",
     "ControlType",
+    "SOC2Framework",
+    "ISO27001Framework",
+    "PCIDSSFramework",
 ]

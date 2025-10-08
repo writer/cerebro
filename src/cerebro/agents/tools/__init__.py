@@ -60,6 +60,12 @@ tool_registry.register(ReadCodeTool())
 tool_registry.register(SearchCodeTool())
 tool_registry.register(NaturalLanguageQueryTool())
 
+
+def get_tool_registry() -> ToolRegistry:
+    """Return the shared tool registry instance."""
+
+    return tool_registry
+
 __all__ = [
     "Tool",
     "StructuredTool",
@@ -91,4 +97,5 @@ __all__ = [
     "ReadCodeTool",
     "SearchCodeTool",
     "NaturalLanguageQueryTool",
+    "get_tool_registry",
 ]

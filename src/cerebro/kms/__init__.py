@@ -6,7 +6,7 @@ from .aws_kms import AWSKMS
 from .gcp_kms import GCPKMS
 from .azure_kms import AzureKeyVaultKMS
 from .vault_kms import VaultTransitKMS
-from .local_kms import LocalPlaintextKMS
+from .local_kms import LocalPlaintextKMS, LocalKMS
 
 __all__ = [
     "BaseKMS",
@@ -16,4 +16,5 @@ __all__ = [
     "AzureKeyVaultKMS",
     "VaultTransitKMS",
     "LocalPlaintextKMS",
+    "LocalKMS",
 ]
