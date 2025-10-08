@@ -5,6 +5,8 @@ from typing import Optional, List
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_DEV_SECRET = "CerebroDevSecret!0123456789$Dev"
+
 
 class Settings(BaseSettings):
     """Application settings."""
@@ -17,6 +19,7 @@ class Settings(BaseSettings):
     
     # Security
     secret_key: str = Field(
+        default=DEFAULT_DEV_SECRET,
         description="Secret key for JWT tokens - MUST be set in production"
     )
     algorithm: str = Field(default="HS256", description="JWT algorithm")
@@ -150,6 +153,9 @@ class Settings(BaseSettings):
     jwt_key_overlap_hours: int = Field(
         default=48, description="Hours to keep old keys for seamless rotation"
     )
+    jwt_clock_skew_seconds: int = Field(
+        default=1, description="Allowed clock skew (seconds) for JWT validation"
+    )
     jwks_cache_ttl_seconds: int = Field(
         default=300, description="JWKS endpoint cache TTL"
     )
@@ -274,13 +280,26 @@ class Settings(BaseSettings):
     @classmethod
     def validate_secret_key(cls, v):
         """Validate that secret key is not default value."""
-        if v == "your-secret-key-here" or len(v) < 32:
-            environment = os.getenv('ENVIRONMENT', 'production').lower()
-            if environment not in ['dev', 'development', 'test', 'testing']:
-                raise ValueError(
-                    "SECRET_KEY must be set to a secure value (minimum 32 characters) in production. "
-                    "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-                )
+        environment = os.getenv('ENVIRONMENT', 'development').lower()
+
+        if environment in ['dev', 'development', 'test', 'testing']:
+            return v
+
+        if not v or v == "your-secret-key-here" or len(v) < 32 or v == DEFAULT_DEV_SECRET:
+            raise ValueError(
+                "SECRET_KEY must be set to a secure value (minimum 32 characters) in production. "
+                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
+        has_lower = any(ch.islower() for ch in v)
+        has_digit = any(ch.isdigit() for ch in v)
+        has_special = any(not ch.isalnum() for ch in v)
+
+        if not (has_lower and has_digit and has_special):
+            raise ValueError(
+                "SECRET_KEY must contain at least one lowercase letter, one digit, "
+                "and one special character when running in production."
+            )
         return v
 
     @field_validator('kms_provider')

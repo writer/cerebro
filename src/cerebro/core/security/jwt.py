@@ -3,7 +3,7 @@
 import logging
 import time
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from jose import jwt, JWTError
 from cryptography.hazmat.primitives import serialization
@@ -58,20 +58,23 @@ class JWTService:
             
             # Calculate expiration
             if expires_delta:
-                expire = datetime.utcnow() + expires_delta
+                expire = datetime.now(timezone.utc) + expires_delta
             else:
-                expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
+                expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
             
             # Build JWT claims with security best practices
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
+            skew = max(settings.jwt_clock_skew_seconds, 5)
+            exp_claim = int((expire - timedelta(seconds=settings.jwt_clock_skew_seconds)).timestamp())
+
             claims = {
                 # Standard claims
                 "sub": username,                    # Subject (user identifier)
                 "iss": "cerebro.sor",              # Issuer
                 "aud": "cerebro.api",              # Audience  
                 "iat": int(now.timestamp()),       # Issued at
-                "nbf": int(now.timestamp()),       # Not before
-                "exp": int(expire.timestamp()),    # Expires
+                "exp": max(exp_claim, int(now.timestamp()) + 1),    # Expires
+                "nbf": int((now - timedelta(seconds=skew)).timestamp()),
                 "jti": jti,                        # JWT ID (for revocation)
                 
                 # Custom claims
@@ -151,10 +154,17 @@ class JWTService:
                     "verify_iat": True,
                     "verify_aud": True,
                     "verify_iss": True,
+                    "leeway": settings.jwt_clock_skew_seconds,
                 },
                 audience="cerebro.api",
-                issuer="cerebro.sor"
+                issuer="cerebro.sor",
             )
+
+            exp_claim = payload.get("exp")
+            if exp_claim is not None:
+                current_ts = datetime.now(timezone.utc).timestamp()
+                if current_ts > exp_claim + settings.jwt_clock_skew_seconds:
+                    raise JWTError("Token expired")
 
             # Additional security checks
             jti = payload.get("jti")

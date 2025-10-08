@@ -1,6 +1,7 @@
 """Test Phase 2 JWT security improvements - key management, rotation, and verification."""
 
 import json
+import os
 import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cerebro.core.security.key_store import JWTKeyStore, JWTSigningKey
 from cerebro.core.security.jwt import JWTService
 from cerebro.core.config import settings
+from cerebro.users.service import UserService
 
 
 class TestJWTKeyStore:
