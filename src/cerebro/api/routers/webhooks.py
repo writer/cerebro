@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, HttpUrl, validator
+from pydantic import BaseModel, Field, HttpUrl, ValidationInfo, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
@@ -49,17 +49,20 @@ class WebhookConfigCreate(BaseModel):
     timeout_seconds: int = Field(default=10, ge=1, le=60, description="Request timeout in seconds")
     webhook_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
-    @validator("http_method")
-    def validate_http_method(cls, v):
+    @field_validator("http_method")
+    @classmethod
+    def validate_http_method(cls, v: str) -> str:
         """Validate HTTP method."""
-        if v.upper() not in ["POST", "PUT", "PATCH"]:
+        method = v.upper()
+        if method not in ["POST", "PUT", "PATCH"]:
             raise ValueError("http_method must be POST, PUT, or PATCH")
-        return v.upper()
+        return method
 
-    @validator("hmac_secret")
-    def validate_hmac_secret(cls, v, values):
+    @field_validator("hmac_secret", mode="after")
+    @classmethod
+    def validate_hmac_secret(cls, v, info: ValidationInfo):
         """Validate HMAC secret is provided when use_hmac_signature is true."""
-        if values.get("use_hmac_signature") and not v:
+        if info.data.get("use_hmac_signature") and not v:
             raise ValueError("hmac_secret is required when use_hmac_signature is true")
         return v
 

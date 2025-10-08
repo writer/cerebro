@@ -5,7 +5,7 @@ from typing import List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
@@ -49,10 +49,12 @@ class EmailConfigCreate(BaseModel):
     )
     email_metadata: Optional[dict] = Field(None, description="Additional configuration metadata")
 
-    @validator("digest_frequency")
-    def validate_digest_frequency(cls, v, values):
+    @field_validator("digest_frequency", mode="after")
+    @classmethod
+    def validate_digest_frequency(cls, v, info: ValidationInfo):
         """Validate digest_frequency is set when digest_mode is true."""
-        if values.get("digest_mode") and not v:
+        digest_mode = info.data.get("digest_mode")
+        if digest_mode and not v:
             raise ValueError("digest_frequency is required when digest_mode is true")
         if v and v not in ["daily", "weekly"]:
             raise ValueError("digest_frequency must be 'daily' or 'weekly'")
@@ -79,10 +81,12 @@ class EmailConfigUpdate(BaseModel):
     digest_frequency: Optional[str] = None
     email_metadata: Optional[dict] = None
 
-    @validator("digest_frequency")
-    def validate_digest_frequency(cls, v, values):
+    @field_validator("digest_frequency", mode="after")
+    @classmethod
+    def validate_digest_frequency(cls, v, info: ValidationInfo):
         """Validate digest_frequency is set when digest_mode is true."""
-        if values.get("digest_mode") and not v:
+        digest_mode = info.data.get("digest_mode")
+        if digest_mode and not v:
             raise ValueError("digest_frequency is required when digest_mode is true")
         if v and v not in ["daily", "weekly"]:
             raise ValueError("digest_frequency must be 'daily' or 'weekly'")
