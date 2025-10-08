@@ -92,7 +92,7 @@ Cerebro tracks security configurations across cloud providers and SaaS platforms
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and setup
-git clone https://github.com/haasonsaas/cerebro.git
+git clone https://github.com/WriterInternal/cerebro.git
 cd cerebro
 
 # One-command setup
@@ -230,5 +230,5 @@ Apache 2.0 - See [LICENSE](LICENSE)
 
 ## Links
 
-- GitHub: https://github.com/haasonsaas/cerebro
-- Issues: https://github.com/haasonsaas/cerebro/issues
+- GitHub: https://github.com/WriterInternal/cerebro
+- Issues: https://github.com/WriterInternal/cerebro/issues
