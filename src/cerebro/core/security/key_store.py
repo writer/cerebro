@@ -1,7 +1,7 @@
 """JWT key store for managing signing keys and rotation."""
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from uuid import uuid4
 from cryptography.hazmat.primitives import serialization, hashes
@@ -16,6 +16,7 @@ from uuid import UUID
 
 from cerebro.core.database import Base
 from cerebro.core.config import settings
+from cerebro.kms import BaseKMS as _BaseKMS, get_kms as _get_kms_factory
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +63,16 @@ class JWTSigningKey(Base):
         }
 
 
+def get_kms() -> _BaseKMS:
+    """Return the default KMS instance used for key encryption."""
+
+    return _get_kms_factory()
+
+
 class JWTKeyStore:
     """Manages JWT signing keys with rotation and KMS integration."""
     
-    def __init__(self, db_session: AsyncSession, kms=None, metrics=None):
+    def __init__(self, db_session: AsyncSession, kms: Optional[_BaseKMS] = None, metrics=None):
         """Initialize key store.
 
         Args:
@@ -74,8 +81,30 @@ class JWTKeyStore:
             metrics: Metrics instance (injected by caller)
         """
         self.db = db_session
-        self.kms = kms
+        self.kms = kms or get_kms()
         self.metrics = metrics
+
+    async def _encrypt_with_kms(self, plaintext: bytes) -> Tuple[bytes, bytes]:
+        """Encrypt data using the configured KMS, supporting multiple interfaces."""
+
+        encryptor = getattr(self.kms, "encrypt_data", None)
+        if encryptor is not None:
+            result = await encryptor(plaintext)
+            if isinstance(result, tuple) and len(result) == 2:
+                return result
+            return result, b""
+
+        ciphertext = await self.kms.encrypt(plaintext)
+        return ciphertext, b""
+
+    async def _decrypt_with_kms(self, ciphertext: bytes, dek: Optional[bytes] = None) -> bytes:
+        """Decrypt data using the configured KMS, accepting optional DEK."""
+
+        decryptor = getattr(self.kms, "decrypt_data", None)
+        if decryptor is not None:
+            return await decryptor(ciphertext, dek)
+
+        return await self.kms.decrypt(ciphertext)
         
     async def get_current_signing_key(self) -> Optional[JWTSigningKey]:
         """Get the current active signing key."""
@@ -147,7 +176,7 @@ class JWTKeyStore:
             )
             
             # Encrypt private key using KMS envelope encryption
-            encrypted_private_key, encrypted_dek = await self.kms.encrypt_data(private_pem)
+            encrypted_private_key, encrypted_dek = await self._encrypt_with_kms(private_pem)
             
             # Generate unique key ID
             kid = f"cerebro-{uuid4().hex[:8]}"
@@ -184,9 +213,9 @@ class JWTKeyStore:
         """Decrypt and return the private key for signing."""
         try:
             # Decrypt private key using KMS
-            private_key_bytes = await self.kms.decrypt_data(
+            private_key_bytes = await self._decrypt_with_kms(
                 signing_key.encrypted_private_key,
-                signing_key.encrypted_dek
+                signing_key.encrypted_dek,
             )
             return private_key_bytes
             
