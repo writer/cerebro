@@ -7,6 +7,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import httpx
@@ -107,6 +108,18 @@ class WebhookNotificationService:
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
         self.client = httpx.AsyncClient(timeout=30.0)
+
+    @staticmethod
+    def _is_valid_url(url: Optional[str]) -> bool:
+        """Return True when the URL appears valid for HTTP(S) calls."""
+        if not url:
+            return False
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        if not parsed.netloc:
+            return False
+        return True
 
     async def send_finding_notification(
         self, org_id: UUID, finding: Finding, db: AsyncSession
@@ -427,6 +440,24 @@ class WebhookNotificationService:
         response_status = None
         response_body = None
 
+        # Resolve target URL (support encrypted storage helpers)
+        target_url = getattr(config, "url", None)
+        if hasattr(config, "get_webhook_url"):
+            try:
+                decrypted_url = await config.get_webhook_url()
+                if decrypted_url:
+                    target_url = decrypted_url
+            except Exception as exc:
+                logger.error(
+                    "webhook_url_decrypt_failed",
+                    config_id=str(getattr(config, "config_id", "unknown")),
+                    error=str(exc),
+                )
+                raise
+
+        if not self._is_valid_url(target_url):
+            raise ValueError(f"Invalid webhook URL: {target_url!r}")
+
         # Convert payload to JSON string
         payload_str = json.dumps(payload)
 
@@ -475,21 +506,21 @@ class WebhookNotificationService:
                 # Send request
                 if method == "POST":
                     response = await self.client.post(
-                        config.url,
+                        target_url,
                         content=payload_str,
                         headers=headers,
                         timeout=config.timeout_seconds,
                     )
                 elif method == "PUT":
                     response = await self.client.put(
-                        config.url,
+                        target_url,
                         content=payload_str,
                         headers=headers,
                         timeout=config.timeout_seconds,
                     )
                 elif method == "PATCH":
                     response = await self.client.patch(
-                        config.url,
+                        target_url,
                         content=payload_str,
                         headers=headers,
                         timeout=config.timeout_seconds,
@@ -529,12 +560,12 @@ class WebhookNotificationService:
                 else:
                     last_error = f"HTTP {response.status_code}: {response.text[:200]}"
                     logger.warning(
-                        f"Webhook request failed with status {response.status_code}: {config.url}"
+                        f"Webhook request failed with status {response.status_code}: {target_url}"
                     )
 
             except httpx.TimeoutException as e:
                 last_error = f"Timeout after {config.timeout_seconds}s: {str(e)}"
-                logger.warning(f"Webhook request timeout: {config.url}")
+                logger.warning(f"Webhook request timeout: {target_url}")
             except Exception as e:
                 last_error = str(e)
                 logger.warning(f"Webhook request failed: {e}")

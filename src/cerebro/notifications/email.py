@@ -193,6 +193,38 @@ class EmailNotificationService:
         self.retry_delay_seconds = retry_delay_seconds
         self.cerebro_url = cerebro_url
 
+    async def _validate_config(self, config: EmailConfig) -> None:
+        """Validate email configuration before attempting delivery."""
+        if not config:
+            raise ValueError("Email configuration is required")
+
+        smtp_host = getattr(config, "smtp_host", None)
+        if not smtp_host or not str(smtp_host).strip():
+            raise ValueError("smtp_host is required for email notifications")
+
+        port_raw = getattr(config, "smtp_port", None)
+        try:
+            port = int(port_raw)
+        except (TypeError, ValueError):
+            raise ValueError("SMTP port must be a number between 1 and 65535")
+
+        if not 1 <= port <= 65535:
+            raise ValueError("SMTP port must be between 1 and 65535")
+        config.smtp_port = port
+
+        recipients = list(getattr(config, "to_emails", []) or [])
+        recipients = [email for email in recipients if email]
+        if not recipients:
+            raise ValueError("At least one recipient email must be configured")
+
+        if not getattr(config, "from_email", None):
+            raise ValueError("from_email is required for email notifications")
+
+        if getattr(config, "digest_mode", False) and not getattr(config, "digest_frequency", None):
+            raise ValueError("digest_frequency is required when digest_mode is enabled")
+
+        config.to_emails = recipients
+
     async def send_finding_notification(
         self, org_id: UUID, finding: Finding, db: AsyncSession
     ) -> None:
@@ -438,6 +470,7 @@ class EmailNotificationService:
         db: AsyncSession,
     ) -> None:
         """Send email with exponential backoff retry."""
+        await self._validate_config(config)
         notification_id = uuid4()
         retry_count = 0
         last_error = None
