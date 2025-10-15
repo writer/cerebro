@@ -7,7 +7,7 @@ all agent sessions, messages, tool invocations, and approval workflows.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -66,6 +66,15 @@ class ApprovalStatus(str, Enum):
     EXPIRED = "expired"
 
 
+class MemoryScope(str, Enum):
+    """Scope levels for long-term agent memory."""
+
+    ORGANIZATION = "organization"
+    INCIDENT = "incident"
+    FINDING = "finding"
+    SESSION = "session"
+
+
 class AgentSession(Base):
     """
     Represents an agent conversation session.
@@ -114,6 +123,12 @@ class AgentSession(Base):
     tool_invocations: Mapped[list["ToolInvocation"]] = relationship(
         "ToolInvocation",
         back_populates="session",
+    )
+    memory_entries: Mapped[list["AgentMemoryEntry"]] = relationship(
+        "AgentMemoryEntry",
+        back_populates="session",
+        order_by="AgentMemoryEntry.created_at",
+        cascade="all, delete-orphan",
     )
     conversation_items: Mapped[list["AgentConversationItem"]] = relationship(
         "AgentConversationItem",
@@ -164,8 +179,6 @@ class AgentMessage(Base):
     
     # Relationships
     session: Mapped["AgentSession"] = relationship("AgentSession", back_populates="messages")
-
-
 class AgentConversationItem(Base):
     """Raw conversation items stored for agent session memory systems."""
 
@@ -194,6 +207,61 @@ class AgentConversationItem(Base):
     session: Mapped["AgentSession"] = relationship(
         "AgentSession",
         back_populates="conversation_items",
+    )
+
+
+class AgentMemoryEntry(Base):
+    """Learned facts, summaries, and embeddings for long-term recall."""
+
+    __tablename__ = "agent_memory_entries"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    agent_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    role: Mapped[Optional[MessageRole]] = mapped_column(SqlEnum(MessageRole), nullable=True)
+    scopes: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
+    scope_priority: Mapped[int] = mapped_column(
+        nullable=False,
+        default=0,
+        comment="Lower values indicate broader relevance (organization=0, session=2, etc.)",
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    embedding: Mapped[Optional[List[float]]] = mapped_column(JSONType, nullable=True)
+    embedding_norm: Mapped[Optional[float]] = mapped_column(nullable=True)
+    extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    session: Mapped[Optional["AgentSession"]] = relationship(
+        "AgentSession",
+        back_populates="memory_entries",
     )
 
 

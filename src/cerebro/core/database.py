@@ -16,6 +16,11 @@ class Base(DeclarativeBase):
 
 def _build_engine() -> Tuple["AsyncEngine", URL]:
     database_url = settings.database_url
+    environment = settings.environment.lower()
+
+    if environment in {"test", "testing"} and database_url.startswith("postgresql://"):
+        database_url = "sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true"
+
     url = make_url(database_url)
 
     async_database_url = database_url.replace(

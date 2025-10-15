@@ -113,6 +113,22 @@ class Settings(BaseSettings):
     openai_model: str = Field(
         default="gpt-4.1", description="OpenAI model for Agents runtime"
     )
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="OpenAI embedding model for agent memory",
+    )
+    enable_agent_metrics: bool = Field(
+        default=True,
+        description="Emit Prometheus metrics for agent runtimes",
+    )
+    enable_agent_telemetry: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry spans for agent runtimes when tracing is configured",
+    )
+    enable_agent_memory_embeddings: bool = Field(
+        default=True,
+        description="Generate embeddings for agent memory store",
+    )
     agent_default_runtime: str = Field(
         default="claude",
         description="Default agent runtime backend (claude or openai)",

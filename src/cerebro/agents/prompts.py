@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from cerebro.agents.models import AgentSession, AgentType
 
@@ -11,6 +11,7 @@ def build_security_agent_prompt(
     agent_type: AgentType,
     *,
     session: Optional[AgentSession] = None,
+    memory_snippets: Optional[List[str]] = None,
 ) -> str:
     """Build the shared system prompt for agent runtimes."""
 
@@ -186,11 +187,22 @@ def build_security_agent_prompt(
         ),
     }
 
+    memory_section = ""
+    if memory_snippets:
+        memory_lines: list[str] = ["", "=== RETAINED MEMORY SNIPPETS ==="]
+        for snippet in memory_snippets[:10]:
+            memory_lines.append(f"- {snippet}")
+        memory_lines.append("Always verify these facts against current data before acting.")
+        memory_lines.append("=== END MEMORY SNIPPETS ===")
+        memory_section = "\n".join(memory_lines)
+
     agent_specific = agent_prompts.get(agent_type, "")
 
     prompt_parts = [base_prompt]
     if context_section:
         prompt_parts.append(context_section)
+    if memory_section:
+        prompt_parts.append(memory_section)
     if agent_specific:
         prompt_parts.append(agent_specific)
 

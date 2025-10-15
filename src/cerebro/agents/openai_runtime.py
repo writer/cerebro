@@ -54,6 +54,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         self.max_turns = max_turns
         self.tool_executor = ToolExecutor()
         self._function_tools: List[FunctionTool] | None = None
+        self.backend_name = "openai"
 
         if settings.openai_api_key:
             set_default_openai_key(settings.openai_api_key)
@@ -103,14 +104,31 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         user_id: str,
         stream: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
+        start_time, telemetry_span = self._begin_runtime_operation(
+            session=session,
+            operation="send_message",
+        )
+
+        memory_snippets = await self._retrieve_memory_snippets(
+            session=session,
+            query=message,
+        )
+
         assistant_blocks: List[Dict[str, Any]] = []
         tool_calls_count = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
 
-        # Record the user message for auditability
+        # Record the user message for auditability and memory
         await self._store_message(
             session,
             MessageRole.USER,
             {"text": message},
+        )
+        await self._capture_memory(
+            session=session,
+            role=MessageRole.USER,
+            content=message,
         )
 
         agent_context = await self._build_agent_context(session, user_id)
@@ -124,7 +142,11 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
 
         agent = Agent(
             name=f"{session.agent_type.value}_agent",
-            instructions=build_security_agent_prompt(session.agent_type, session=session),
+            instructions=build_security_agent_prompt(
+                session.agent_type,
+                session=session,
+                memory_snippets=memory_snippets,
+            ),
             tools=await self._build_function_tools(),
             model=self.model,
         )
@@ -233,6 +255,29 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 output_tokens=total_output_tokens,
             )
 
+            assistant_text = "\n".join(
+                block["text"]
+                for block in assistant_blocks
+                if isinstance(block, dict) and block.get("type") == "text"
+            ).strip()
+            if assistant_text:
+                await self._capture_memory(
+                    session=session,
+                    role=MessageRole.ASSISTANT,
+                    content=assistant_text,
+                    metadata={"tool_calls": tool_calls_count},
+                )
+
+            self._complete_runtime_operation(
+                session=session,
+                start_time=start_time,
+                telemetry_span=telemetry_span,
+                success=True,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                tool_calls=tool_calls_count,
+            )
+
             if stream:
                 yield {
                     "type": "complete",
@@ -257,6 +302,17 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                     "error": str(exc),
                     "type": "system_error",
                 },
+            )
+
+            self._complete_runtime_operation(
+                session=session,
+                start_time=start_time,
+                telemetry_span=telemetry_span,
+                success=False,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                tool_calls=tool_calls_count,
+                error=exc,
             )
 
             yield {

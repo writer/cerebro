@@ -4,6 +4,9 @@ import pytest
 import asyncio
 import os
 from typing import AsyncGenerator, Generator
+
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true")
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 

@@ -11,7 +11,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
 import structlog
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, CLINotFoundError
 from claude_agent_sdk.types import (
     AssistantMessage,
     TextBlock,
@@ -55,6 +55,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.tool_executor = ToolExecutor()
+        self.backend_name = "claude"
     
     async def create_session(
         self,
@@ -117,44 +118,60 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         - metadata: additional information
         """
 
-        # Store user message
+        start_time, telemetry_span = self._begin_runtime_operation(
+            session=session,
+            operation="send_message",
+        )
+
+        memory_snippets = await self._retrieve_memory_snippets(
+            session=session,
+            query=message,
+        )
+
+        # Store user message for audit trail and memory
         await self._store_message(session, MessageRole.USER, {"text": message})
+        await self._capture_memory(
+            session=session,
+            role=MessageRole.USER,
+            content=message,
+        )
 
         # Build agent context
         agent_context = await self._build_agent_context(session, user_id)
 
+        assistant_content = []
+        tool_calls_count = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        # Get available tools from registry based on permission level
+        available_tools = tool_registry.list_tools(agent_context.permission_level)
+
+        # Create MCP server from Cerebro tools
+        mcp_server = create_cerebro_mcp_server(
+            tools=available_tools,
+            context=agent_context,
+            executor=self.tool_executor,
+            server_name="cerebro",
+            server_version="1.0.0",
+        )
+
+        # Build allowed tools list (mcp__servername__toolname format)
+        allowed_tools = [f"mcp__cerebro__{tool.name}" for tool in available_tools]
+
+        # Configure Claude options with MCP server and session context
+        options = ClaudeAgentOptions(
+            model=self.model,
+            system_prompt=build_security_agent_prompt(
+                session.agent_type,
+                session=session,
+                memory_snippets=memory_snippets,
+            ),
+            mcp_servers={"cerebro": mcp_server},
+            allowed_tools=allowed_tools,
+        )
+
         try:
-            # Get available tools from registry based on permission level
-            available_tools = tool_registry.list_tools(agent_context.permission_level)
-
-            # Create MCP server from Cerebro tools
-            mcp_server = create_cerebro_mcp_server(
-                tools=available_tools,
-                context=agent_context,
-                executor=self.tool_executor,
-                server_name="cerebro",
-                server_version="1.0.0",
-            )
-
-            # Build allowed tools list (mcp__servername__toolname format)
-            allowed_tools = [f"mcp__cerebro__{tool.name}" for tool in available_tools]
-
-            # Configure Claude options with MCP server and session context
-            options = ClaudeAgentOptions(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                system_prompt=build_security_agent_prompt(session.agent_type, session=session),
-                mcp_servers={"cerebro": mcp_server},
-                allowed_tools=allowed_tools,
-            )
-
-            # Track response data
-            assistant_content = []
-            tool_calls_count = 0
-            total_input_tokens = 0
-            total_output_tokens = 0
-
             # Create Claude client and send query
             async with ClaudeSDKClient(options=options) as client:
                 await client.connect()
@@ -261,6 +278,29 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                     output_tokens=total_output_tokens,
                 )
 
+                assistant_text = "\n".join(
+                    block["text"]
+                    for block in assistant_content
+                    if isinstance(block, dict) and block.get("type") == "text"
+                ).strip()
+                if assistant_text:
+                    await self._capture_memory(
+                        session=session,
+                        role=MessageRole.ASSISTANT,
+                        content=assistant_text,
+                        metadata={"tool_calls": tool_calls_count},
+                    )
+
+                self._complete_runtime_operation(
+                    session=session,
+                    start_time=start_time,
+                    telemetry_span=telemetry_span,
+                    success=True,
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                    tool_calls=tool_calls_count,
+                )
+
                 # Final completion message
                 if stream:
                     yield {
@@ -271,6 +311,79 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                         },
                         "metadata": {"session_id": str(session.id)}
                     }
+
+        except CLINotFoundError as cli_error:
+            logger.warning(
+                "Claude CLI not available, using fallback response",
+                session_id=session.id,
+                error=str(cli_error),
+            )
+
+            fallback_text = await self._generate_cli_fallback_response(
+                session=session,
+                agent_context=agent_context,
+                available_tools=available_tools,
+                user_message=message,
+            )
+
+            if stream:
+                yield {
+                    "type": "text",
+                    "content": fallback_text,
+                    "metadata": {"fallback": "claude_cli_missing"},
+                }
+
+            assistant_content = [{"type": "text", "text": fallback_text}]
+            tool_calls_count = 0
+            total_input_tokens = 0
+            total_output_tokens = 0
+
+            await self._store_message(
+                session,
+                MessageRole.ASSISTANT,
+                {
+                    "content": assistant_content,
+                    "tool_calls": tool_calls_count,
+                    "token_usage": {
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "total_tokens": total_input_tokens + total_output_tokens,
+                    },
+                    "fallback": "claude_cli_missing",
+                },
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+            )
+
+            await self._capture_memory(
+                session=session,
+                role=MessageRole.ASSISTANT,
+                content=fallback_text,
+                metadata={"fallback": True},
+            )
+
+            self._complete_runtime_operation(
+                session=session,
+                start_time=start_time,
+                telemetry_span=telemetry_span,
+                success=True,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                tool_calls=tool_calls_count,
+            )
+
+            if stream:
+                yield {
+                    "type": "complete",
+                    "content": {
+                        "message_stored": True,
+                        "tool_calls_executed": tool_calls_count,
+                        "fallback": "claude_cli_missing",
+                    },
+                    "metadata": {"session_id": str(session.id)},
+                }
+
+            return
 
         except Exception as e:
             logger.exception("Agent message processing failed", session_id=session.id, error=str(e))
@@ -283,6 +396,17 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                     "error": str(e),
                     "type": "system_error",
                 }
+            )
+
+            self._complete_runtime_operation(
+                session=session,
+                start_time=start_time,
+                telemetry_span=telemetry_span,
+                success=False,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                tool_calls=tool_calls_count,
+                error=e,
             )
 
             yield {
@@ -338,3 +462,83 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         metrics = await self._get_session_metrics(session_id)
         metrics["generated_at"] = datetime.now(timezone.utc).isoformat()
         return metrics
+
+    async def _generate_cli_fallback_response(
+        self,
+        *,
+        session: AgentSession,
+        agent_context: "AgentContext",
+        available_tools: List[Any],
+        user_message: str,
+    ) -> str:
+        """Generate a deterministic assistant response when Claude CLI is unavailable."""
+
+        fallback_lines = [
+            "Claude CLI is unavailable in this environment, so I'm providing a local dry-run response.",
+            f"User request: {user_message}",
+        ]
+
+        findings_tool = next(
+            (tool for tool in available_tools if getattr(tool, "name", None) == "findings_list"),
+            None,
+        )
+
+        if findings_tool is not None:
+            try:
+                provider_scope = agent_context.provider_scope or []
+                inputs_model = findings_tool.input_schema(
+                    org_id=session.org_id,
+                    severity=["high"],
+                    provider=provider_scope if provider_scope else None,
+                    limit=5,
+                )
+
+                result = await findings_tool.execute(inputs_model, agent_context)
+
+                if result.success and result.data:
+                    findings = (result.data or {}).get("findings", [])
+                    if findings:
+                        fallback_lines.append("")
+                        fallback_lines.append("Recent high-severity findings:")
+                        for finding in findings[:3]:
+                            fallback_lines.append(
+                                "- [{severity}] {title} (status: {status})".format(
+                                    severity=str(finding.get("severity", "unknown")).upper(),
+                                    title=finding.get("title", "Untitled Finding"),
+                                    status=finding.get("status", "unknown"),
+                                )
+                            )
+                        if len(findings) > 3:
+                            fallback_lines.append(
+                                f"…and {len(findings) - 3} additional findings."
+                            )
+                        fallback_lines.append("")
+                        fallback_lines.append(
+                            "Use findings_list with severity=['high'] for the complete dataset."
+                        )
+                    else:
+                        fallback_lines.append(
+                            "No high-severity findings were returned by the dataset in this environment."
+                        )
+                else:
+                    error_message = result.error or "Findings tool returned no data."
+                    fallback_lines.append(
+                        f"Findings retrieval (dry-run) error: {error_message}"
+                    )
+            except Exception as tool_error:  # pragma: no cover - defensive logging
+                logger.debug(
+                    "Fallback findings retrieval failed",
+                    session_id=session.id,
+                    error=str(tool_error),
+                )
+        else:
+            fallback_lines.append(
+                "Findings data unavailable because the findings_list tool is not registered."
+            )
+
+        fallback_lines.append("")
+        fallback_lines.append(
+            "This response was generated from local data sources without invoking Claude."
+        )
+
+        return "\n".join(line for line in fallback_lines if line is not None)

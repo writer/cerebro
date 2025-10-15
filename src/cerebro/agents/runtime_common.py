@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, Optional
 from uuid import UUID
 
@@ -15,6 +16,9 @@ from cerebro.agents.models import (
     MessageRole,
     ToolInvocation,
 )
+from cerebro.agents.memory_store import AgentMemoryStore
+from cerebro.agents.metrics import record_runtime_metrics
+from cerebro.agents.telemetry import RuntimeSpan, start_runtime_span
 from cerebro.agents.tools import AgentContext
 from cerebro.core.database import async_session_factory
 
@@ -23,6 +27,8 @@ logger = structlog.get_logger(__name__)
 
 class AgentRuntimePersistenceMixin:
     """Mixin providing persistence and context utilities for agent runtimes."""
+
+    backend_name: str = "unknown"
 
     async def _prepare_session_context(
         self,
@@ -220,3 +226,92 @@ class AgentRuntimePersistenceMixin:
                 "message_stats": [dict(row) for row in message_stats],
                 "tool_stats": [dict(row) for row in tool_stats],
             }
+
+    async def _capture_memory(
+        self,
+        *,
+        session: AgentSession,
+        role: MessageRole,
+        content: str,
+        metadata: Optional[Dict[str, object]] = None,
+    ) -> None:
+        try:
+            store = await AgentMemoryStore.shared()
+            await store.add_message(
+                session=session,
+                role=role,
+                content=content,
+                metadata=metadata,
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug(
+                "Failed to capture agent memory entry",
+                session_id=session.id,
+                role=role.value,
+                error=str(exc),
+            )
+
+    async def _retrieve_memory_snippets(
+        self,
+        *,
+        session: AgentSession,
+        query: str,
+        limit: int = 5,
+    ) -> list[str]:
+        try:
+            store = await AgentMemoryStore.shared()
+            return await store.retrieve_relevant(session=session, query=query, limit=limit)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug(
+                "Failed to retrieve agent memory",
+                session_id=session.id,
+                error=str(exc),
+            )
+            return []
+
+    def _begin_runtime_operation(
+        self,
+        *,
+        session: AgentSession,
+        operation: str,
+    ) -> tuple[float, RuntimeSpan]:
+        start_time = time.perf_counter()
+        telemetry_span = start_runtime_span(
+            backend=self.backend_name,
+            agent_type=session.agent_type.value,
+            operation=operation,
+            session_id=str(session.id),
+        )
+        return start_time, telemetry_span
+
+    def _complete_runtime_operation(
+        self,
+        *,
+        session: AgentSession,
+        start_time: float,
+        telemetry_span: RuntimeSpan,
+        success: bool,
+        input_tokens: int,
+        output_tokens: int,
+        tool_calls: int,
+        error: Optional[BaseException] = None,
+    ) -> None:
+        duration = time.perf_counter() - start_time
+        record_runtime_metrics(
+            backend=self.backend_name,
+            agent_type=session.agent_type.value,
+            duration_seconds=duration,
+            success=success,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            tool_calls=tool_calls,
+            error_type=type(error).__name__ if error else None,
+        )
+        telemetry_span.finish(
+            success=success,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            tool_calls=tool_calls,
+            error=error,
+        )
+
