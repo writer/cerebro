@@ -1,0 +1,197 @@
+"""Prompt construction utilities for Cerebro agents."""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from cerebro.agents.models import AgentSession, AgentType
+
+
+def build_security_agent_prompt(
+    agent_type: AgentType,
+    *,
+    session: Optional[AgentSession] = None,
+) -> str:
+    """Build the shared system prompt for agent runtimes."""
+
+    base_prompt = (
+        "You are a specialized security agent within the Cerebro security system of record.\n"
+        "You have access to powerful tools for analyzing security findings, investigating incidents,"
+        " and providing actionable recommendations.\n\n"
+        "MULTI-STEP PLANNING:\n"
+        "For complex tasks, break them down into clear steps and execute them sequentially:\n\n"
+        "Example 1 - \"Conduct full AWS security audit\":\n"
+        "Step 1: Use get_org_context to identify AWS accounts\n"
+        "Step 2: Use findings_list to get all AWS findings\n"
+        "Step 3: Use test_compliance_control for CIS AWS benchmarks\n"
+        "Step 4: Use simulate_attack_path to analyze lateral movement risks\n"
+        "Step 5: Use hunt_identity_anomalies for behavioral threats\n"
+        "Step 6: Synthesize comprehensive report with prioritized recommendations\n\n"
+        "Example 2 - \"Investigate suspicious user activity\":\n"
+        "Step 1: Use nl_query to find user's recent activity\n"
+        "Step 2: Use hunt_identity_anomalies to check for anomalies\n"
+        "Step 3: Use forensic_replay to see historical permissions\n"
+        "Step 4: Use calculate_blast_radius to assess impact\n"
+        "Step 5: Build incident timeline with evidence\n"
+        "Step 6: Recommend containment actions\n\n"
+        "Example 3 - \"Prepare for SOC2 audit\":\n"
+        "Step 1: Use get_org_context to understand scope\n"
+        "Step 2: Use test_compliance_control for all SOC2 controls\n"
+        "Step 3: Use findings_list filtered by compliance frameworks\n"
+        "Step 4: Use build_evidence_bundle to create audit package\n"
+        "Step 5: Generate executive summary of compliance status\n\n"
+        "WHEN TO USE MULTI-STEP PLANNING:\n"
+        "- Comprehensive audits or assessments\n"
+        "- Complex investigations requiring multiple data sources\n"
+        "- Compliance preparation requiring evidence collection\n"
+        "- Risk analysis needing multiple perspectives\n"
+        "- Any task with \"full\", \"comprehensive\", \"complete\" in the request\n\n"
+        "SAFETY GUIDELINES:\n"
+        "- Always default to dry-run mode for any potentially destructive actions\n"
+        "- Request human approval for any changes to production systems\n"
+        "- Never expose sensitive credentials or secrets in responses\n"
+        "- All your actions are audited in append-only logs\n"
+        "- Provide clear, actionable recommendations with compliance mappings\n\n"
+        "RESPONSE STYLE:\n"
+        "- Be concise and technical - assume security expertise\n"
+        "- Cite specific evidence from findings and audit trails\n"
+        "- Map security issues to CIS, NIST, or CWE frameworks when relevant\n"
+        "- Prioritize actions by risk and business impact\n"
+        "- Always provide clear next steps\n"
+        "- For multi-step tasks, announce your plan before starting execution"
+    )
+
+    context_section = ""
+    if session and session.context:
+        org_context = session.context.get("_auto_loaded_org_context")
+        system_context = session.context.get("_auto_loaded_system_context")
+
+        if org_context or system_context:
+            context_lines: list[str] = ["", "=== YOUR ENVIRONMENT (YOU ALREADY KNOW THIS) ==="]
+
+            if org_context:
+                org_name = org_context.get("org_name", "Unknown Organization")
+                context_lines.append("")
+                context_lines.append(f"Organization: {org_name}")
+
+                repos = org_context.get("repositories", [])
+                if repos:
+                    context_lines.append("")
+                    context_lines.append(f"Repositories ({len(repos)}):")
+                    for repo in repos[:5]:
+                        context_lines.append(
+                            f"  - {repo.get('name')}: {repo.get('framework', 'unknown')}"
+                            f" ({repo.get('type', 'unknown')})"
+                        )
+
+                providers = org_context.get("providers_connected", [])
+                if providers:
+                    context_lines.append("")
+                    context_lines.append(f"Connected Providers ({len(providers)}):")
+                    for provider in providers:
+                        context_lines.append(
+                            f"  - {provider.get('provider', 'unknown').upper()}:"
+                            f" {provider.get('resource_count', 0)} resources"
+                        )
+
+                stats = org_context.get("statistics", {})
+                if stats:
+                    context_lines.append("")
+                    context_lines.append("Security Statistics:")
+                    context_lines.append(
+                        f"  - Total Resources: {stats.get('total_resources', 0)}"
+                    )
+                    context_lines.append(
+                        f"  - Total Principals: {stats.get('total_principals', 0)}"
+                    )
+                    context_lines.append(
+                        f"  - Open Findings: {stats.get('open_findings', 0)}"
+                    )
+
+                tools_count = org_context.get("agent_tools_count", 0)
+                if tools_count > 0:
+                    context_lines.append("")
+                    context_lines.append(
+                        f"Available Tools: {tools_count} specialized security tools"
+                    )
+
+            if system_context:
+                db_info = system_context.get("database", {})
+                if db_info.get("connected"):
+                    db_line = "Database: PostgreSQL"
+                    if db_info.get("pg_version"):
+                        db_line += f" {db_info['pg_version']}"
+                    context_lines.append("")
+                    context_lines.append(db_line)
+
+                env_info = system_context.get("environment", {})
+                if env_info:
+                    deployment = env_info.get("deployment_type", "unknown")
+                    environment = env_info.get("environment", "unknown")
+                    context_lines.append("")
+                    context_lines.append(f"Deployment: {deployment} ({environment})")
+
+                provider_health = system_context.get("provider_health", [])
+                if provider_health:
+                    degraded = [
+                        entry for entry in provider_health if entry.get("status") != "healthy"
+                    ]
+                    if degraded:
+                        context_lines.append("")
+                        context_lines.append("⚠️ Provider Health Alerts:")
+                        for entry in degraded:
+                            context_lines.append(
+                                f"  - {entry.get('provider', 'unknown').upper()}:"
+                                f" {entry.get('status', 'unknown')}"
+                            )
+
+            context_lines.extend(
+                [
+                    "",
+                    "IMPORTANT: You ALREADY KNOW this information. Don't ask the user about it.",
+                    "Use this context to provide specific, informed responses without needing to ask",
+                    "for basic setup details.",
+                    "=== END ENVIRONMENT CONTEXT ===",
+                    "",
+                ]
+            )
+
+            context_section = "\n".join(context_lines)
+
+    agent_prompts = {
+        AgentType.SECURITY_ANALYST: (
+            "ROLE: Security Analyst\n"
+            "FOCUS: Triage findings, assess risk, cluster similar issues, recommend remediation\n"
+            "EXPERTISE: Vulnerability assessment, risk scoring, compliance mapping, threat analysis"
+        ),
+        AgentType.INCIDENT_RESPONDER: (
+            "ROLE: Incident Response Specialist\n"
+            "FOCUS: Build timelines, coordinate containment, collect evidence, manage incidents\n"
+            "EXPERTISE: Digital forensics, incident coordination, timeline analysis, containment strategies"
+        ),
+        AgentType.IDENTITY_ADVISOR: (
+            "ROLE: Identity & Access Management Advisor\n"
+            "FOCUS: Analyze IAM configurations, privilege escalation, access reviews, identity stitching\n"
+            "EXPERTISE: Identity governance, privilege management, access controls, identity correlation"
+        ),
+        AgentType.COMPLIANCE_ADVISOR: (
+            "ROLE: Compliance & Risk Advisor\n"
+            "FOCUS: Map findings to frameworks, generate compliance reports, track remediation\n"
+            "EXPERTISE: CIS Controls, NIST Cybersecurity Framework, SOC 2, compliance management"
+        ),
+        AgentType.ATTACK_PATH_ANALYST: (
+            "ROLE: Attack Path & Threat Analyst\n"
+            "FOCUS: Model attack paths, identify choke points, recommend defensive measures\n"
+            "EXPERTISE: Attack path modeling, threat modeling, network analysis, defensive architecture"
+        ),
+    }
+
+    agent_specific = agent_prompts.get(agent_type, "")
+
+    prompt_parts = [base_prompt]
+    if context_section:
+        prompt_parts.append(context_section)
+    if agent_specific:
+        prompt_parts.append(agent_specific)
+
+    return "\n\n".join(prompt_parts).strip()

@@ -22,7 +22,7 @@ from cerebro.agents.models import (
     ToolApproval,
     ApprovalStatus,
 )
-from cerebro.agents.runtime import CerebroClaudeRuntime
+from cerebro.agents.runtime_facade import AgentRuntimeFacade
 
 logger = structlog.get_logger(__name__)
 
@@ -31,7 +31,7 @@ class AgentSessionService:
     """Service for managing agent sessions and conversations."""
     
     def __init__(self):
-        self.runtime = CerebroClaudeRuntime()
+        self.runtime = AgentRuntimeFacade()
     
     async def create_session(
         self,
@@ -171,7 +171,7 @@ class AgentSessionService:
         if not session:
             return []
         
-        return await self.runtime.get_session_messages(session_id, limit, offset)
+        return await self.runtime.get_session_messages(session, limit, offset)
     
     async def get_session_with_messages(
         self,
@@ -239,7 +239,7 @@ class AgentSessionService:
                     }
                     for inv in session.tool_invocations
                 ],
-                "metrics": await self.runtime.get_session_metrics(session_id),
+                "metrics": await self.runtime.get_session_metrics(session),
             }
     
     async def delete_session(

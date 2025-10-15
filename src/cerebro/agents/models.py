@@ -115,6 +115,12 @@ class AgentSession(Base):
         "ToolInvocation",
         back_populates="session",
     )
+    conversation_items: Mapped[list["AgentConversationItem"]] = relationship(
+        "AgentConversationItem",
+        back_populates="session",
+        order_by="AgentConversationItem.created_at",
+        cascade="all, delete-orphan",
+    )
 
 
 class AgentMessage(Base):
@@ -158,6 +164,37 @@ class AgentMessage(Base):
     
     # Relationships
     session: Mapped["AgentSession"] = relationship("AgentSession", back_populates="messages")
+
+
+class AgentConversationItem(Base):
+    """Raw conversation items stored for agent session memory systems."""
+
+    __tablename__ = "agent_conversation_items"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    item: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+
+    session: Mapped["AgentSession"] = relationship(
+        "AgentSession",
+        back_populates="conversation_items",
+    )
 
 
 class ToolInvocation(Base):

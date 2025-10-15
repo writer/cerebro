@@ -107,6 +107,16 @@ class Settings(BaseSettings):
     claude_temperature: float = Field(
         default=0.1, description="Claude temperature (0.0-1.0)"
     )
+    openai_api_key: Optional[str] = Field(
+        default=None, description="OpenAI API key for Agents runtime"
+    )
+    openai_model: str = Field(
+        default="gpt-4.1", description="OpenAI model for Agents runtime"
+    )
+    agent_default_runtime: str = Field(
+        default="claude",
+        description="Default agent runtime backend (claude or openai)",
+    )
     agent_session_timeout_hours: int = Field(
         default=24, description="Agent session timeout in hours"
     )
@@ -331,6 +341,14 @@ class Settings(BaseSettings):
             )
 
         return v
+
+    @field_validator('agent_default_runtime')
+    @classmethod
+    def validate_agent_default_runtime(cls, v: str) -> str:
+        runtime = v.lower()
+        if runtime not in {'claude', 'openai'}:
+            raise ValueError("agent_default_runtime must be either 'claude' or 'openai'")
+        return runtime
 
     @field_validator('enable_provider_env_fallback')
     @classmethod
