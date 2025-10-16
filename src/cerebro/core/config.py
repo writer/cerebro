@@ -121,6 +121,10 @@ class Settings(BaseSettings):
         default=True,
         description="Emit Prometheus metrics for agent runtimes",
     )
+    agent_metrics_path: str = Field(
+        default="/metrics",
+        description="Path exposing Prometheus metrics when enabled",
+    )
     enable_agent_telemetry: bool = Field(
         default=False,
         description="Enable OpenTelemetry spans for agent runtimes when tracing is configured",
@@ -128,6 +132,38 @@ class Settings(BaseSettings):
     enable_agent_memory_embeddings: bool = Field(
         default=True,
         description="Generate embeddings for agent memory store",
+    )
+    agent_memory_half_life_hours: int = Field(
+        default=72,
+        description="Half-life window in hours for decaying memory relevance scores",
+    )
+    agent_memory_decay_boost: float = Field(
+        default=0.15,
+        description="Increment applied to decay score when a memory snippet is retrieved",
+    )
+    agent_memory_decay_cap: float = Field(
+        default=2.0,
+        description="Maximum multiplier applied to memory relevance after repeated access",
+    )
+    agent_memory_summary_max_chars: int = Field(
+        default=240,
+        description="Maximum characters to retain in stored memory summaries",
+    )
+    agent_memory_max_snippets: int = Field(
+        default=8,
+        description="Maximum number of memory snippets injected into prompts and responses",
+    )
+    agent_otel_endpoint: Optional[str] = Field(
+        default=None,
+        description="OTLP HTTP endpoint for exporting agent telemetry spans (e.g., http://collector:4318/v1/traces)",
+    )
+    agent_otel_headers: Optional[str] = Field(
+        default=None,
+        description="Comma-separated key=value pairs forwarded as OTLP exporter headers",
+    )
+    agent_otel_timeout_seconds: int = Field(
+        default=5,
+        description="Timeout in seconds for OTLP span exporter requests",
     )
     agent_default_runtime: str = Field(
         default="claude",

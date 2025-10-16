@@ -21,6 +21,7 @@ from cerebro.agents.metrics import record_runtime_metrics
 from cerebro.agents.telemetry import RuntimeSpan, start_runtime_span
 from cerebro.agents.tools import AgentContext
 from cerebro.core.database import async_session_factory
+from cerebro.core.config import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -260,6 +261,7 @@ class AgentRuntimePersistenceMixin:
     ) -> list[str]:
         try:
             store = await AgentMemoryStore.shared()
+            limit = min(limit, settings.agent_memory_max_snippets)
             return await store.retrieve_relevant(session=session, query=query, limit=limit)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug(

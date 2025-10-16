@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from collections import deque
+import re
+from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from cerebro.agents.models import AgentMemoryEntry, AgentSession, MemoryScope, MessageRole
 from cerebro.core.config import settings
@@ -55,6 +56,12 @@ class AgentMemoryStore:
         else:  # pragma: no cover - fallback when sklearn missing
             self._hashing_vectorizer = None
 
+        self._half_life_hours = max(1, settings.agent_memory_half_life_hours)
+        self._decay_boost = max(0.0, settings.agent_memory_decay_boost)
+        self._decay_cap = max(1.0, settings.agent_memory_decay_cap)
+        self._summary_max_chars = max(40, settings.agent_memory_summary_max_chars)
+        self._max_snippets = max(1, settings.agent_memory_max_snippets)
+
     @classmethod
     async def shared(cls) -> "AgentMemoryStore":
         if cls._instance is None:
@@ -74,17 +81,19 @@ class AgentMemoryStore:
         if not content or not content.strip():
             return
 
-        embedding = await self._generate_embedding(content)
+        message_text = content.strip()
+        if not message_text:
+            return
+
+        embedding = await self._generate_embedding(message_text)
         embedding_norm = None
         if embedding is not None:
             embedding_norm = math.sqrt(sum(value * value for value in embedding)) or None
 
         scopes = self._build_scopes(session)
         scope_priority = min(scope["priority"] for scope in scopes) if scopes else 0
-
-        summary = content.strip()
-        if len(summary) > 400:
-            summary = summary[:397] + "..."
+        summary = self._summarize_text(message_text)
+        now = datetime.now(timezone.utc)
 
         async with async_session_factory() as db_session:
             async with db_session.begin():
@@ -95,7 +104,7 @@ class AgentMemoryStore:
                     .limit(1)
                 )
                 last_entry = existing.scalar_one_or_none()
-                if last_entry and last_entry.content == content:
+                if last_entry and last_entry.content == message_text:
                     return
 
                 entry = AgentMemoryEntry(
@@ -105,11 +114,13 @@ class AgentMemoryStore:
                     role=role,
                     scopes=[scope["data"] for scope in scopes],
                     scope_priority=scope_priority,
-                    content=content,
+                    content=message_text,
                     summary=summary,
                     embedding=embedding,
                     embedding_norm=embedding_norm,
                     extra_metadata=metadata or {},
+                    decay_score=1.0,
+                    last_accessed_at=now,
                 )
                 db_session.add(entry)
 
@@ -129,7 +140,12 @@ class AgentMemoryStore:
 
         query_norm = math.sqrt(sum(value * value for value in query_embedding)) or 1.0
 
-        session_scopes = {scope["type"]: scope for scope in self._build_scopes(session)}
+        session_scopes = {
+            scope["data"]["type"]: scope
+            for scope in self._build_scopes(session)
+            if isinstance(scope, dict) and scope.get("data") and scope["data"].get("type")
+        }
+        limit = min(limit, self._max_snippets)
 
         async with async_session_factory() as db_session:
             stmt = (
@@ -141,7 +157,11 @@ class AgentMemoryStore:
             result = await db_session.execute(stmt)
             candidates = result.scalars().all()
 
-        scored: deque[tuple[float, AgentMemoryEntry]] = deque()
+        if not candidates:
+            return []
+
+        now = datetime.now(timezone.utc)
+        scored: List[tuple[float, AgentMemoryEntry]] = []
         for entry in candidates:
             if not entry.embedding:
                 continue
@@ -156,12 +176,22 @@ class AgentMemoryStore:
             if similarity <= 0:
                 continue
 
+            scope_adjusted = similarity
             if not self._scopes_intersect(session_scopes, entry.scopes):
-                similarity *= 0.75
+                scope_adjusted *= 0.75
 
-            scored.append((similarity, entry))
+            recency = self._compute_decay_multiplier(entry, now)
+            final_score = scope_adjusted * recency
+            if final_score <= 0:
+                continue
+
+            scored.append((final_score, entry))
+
+        if not scored:
+            return []
 
         top = sorted(scored, key=lambda item: item[0], reverse=True)[:limit]
+        await self._update_access_metadata([entry for _, entry in top])
         snippets = [self._format_snippet(score, entry) for score, entry in top]
         return snippets
 
@@ -217,8 +247,71 @@ class AgentMemoryStore:
         dot = sum(query[i] * stored[i] for i in range(length))
         return dot / (query_norm * stored_norm)
 
+    def _compute_decay_multiplier(self, entry: AgentMemoryEntry, now: datetime) -> float:
+        base_decay = entry.decay_score or 1.0
+        last_seen = self._normalize_timestamp(entry.last_accessed_at or entry.created_at, now)
+        current_time = self._normalize_timestamp(now, now)
+        age_seconds = max((current_time - last_seen).total_seconds(), 0.0)
+        age_hours = age_seconds / 3600.0
+        exponential = math.exp(-age_hours / self._half_life_hours)
+        return max(0.01, exponential * base_decay)
+
+    async def _update_access_metadata(self, entries: Iterable[AgentMemoryEntry]) -> None:
+        entries = list(entries)
+        if not entries:
+            return
+
+        now = datetime.now(timezone.utc)
+        async with async_session_factory() as db_session:
+            async with db_session.begin():
+                for entry in entries:
+                    new_score = min((entry.decay_score or 1.0) + self._decay_boost, self._decay_cap)
+                    await db_session.execute(
+                        update(AgentMemoryEntry)
+                        .where(AgentMemoryEntry.id == entry.id)
+                        .values(
+                            last_accessed_at=now,
+                            decay_score=new_score,
+                            updated_at=now,
+                        )
+                    )
+
     @staticmethod
-    def _format_snippet(score: float, entry: AgentMemoryEntry) -> str:
+    def _normalize_timestamp(value: Optional[datetime], fallback: datetime) -> datetime:
+        if value is None:
+            return fallback
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _summarize_text(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text).strip()
+        if not cleaned:
+            return ""
+
+        if len(cleaned) <= self._summary_max_chars:
+            return cleaned
+
+        sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+        summary_parts: List[str] = []
+        for sentence in sentences:
+            if not sentence:
+                continue
+            candidate = f"{' '.join(summary_parts)} {sentence}".strip() if summary_parts else sentence
+            if len(candidate) > self._summary_max_chars:
+                break
+            summary_parts.append(sentence)
+
+        summary = " ".join(summary_parts).strip()
+        if not summary:
+            summary = cleaned[: self._summary_max_chars].rstrip()
+
+        if len(summary) > self._summary_max_chars:
+            summary = summary[: self._summary_max_chars - 3].rstrip() + "..."
+
+        return summary
+
+    def _format_snippet(self, score: float, entry: AgentMemoryEntry) -> str:
         scope_labels = []
         for scope in entry.scopes or []:
             scope_type = scope.get("type")
@@ -232,7 +325,16 @@ class AgentMemoryStore:
 
         label = " | ".join(scope_labels)
         summary = entry.summary or entry.content
-        return f"[{label}] {summary} (relevance={score:.2f})" if label else f"{summary} (relevance={score:.2f})"
+        if len(summary) > self._summary_max_chars:
+            summary = summary[: self._summary_max_chars - 3].rstrip() + "..."
+
+        metadata = f"score={score:.2f}"
+        if entry.last_accessed_at:
+            last_seen = self._normalize_timestamp(entry.last_accessed_at, datetime.now(timezone.utc))
+            metadata += f", last={last_seen.strftime('%Y-%m-%d')}"
+
+        body = f"{summary} ({metadata})"
+        return f"[{label}] {body}" if label else body
 
     @staticmethod
     def _build_scopes(session: AgentSession) -> List[Dict[str, object]]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from cerebro.agents.models import AgentSession, AgentType
+from cerebro.core.config import settings
 
 
 def build_security_agent_prompt(
@@ -190,7 +191,7 @@ def build_security_agent_prompt(
     memory_section = ""
     if memory_snippets:
         memory_lines: list[str] = ["", "=== RETAINED MEMORY SNIPPETS ==="]
-        for snippet in memory_snippets[:10]:
+        for snippet in memory_snippets[: settings.agent_memory_max_snippets]:
             memory_lines.append(f"- {snippet}")
         memory_lines.append("Always verify these facts against current data before acting.")
         memory_lines.append("=== END MEMORY SNIPPETS ===")

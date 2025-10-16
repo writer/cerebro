@@ -179,6 +179,8 @@ class AgentMessage(Base):
     
     # Relationships
     session: Mapped["AgentSession"] = relationship("AgentSession", back_populates="messages")
+
+
 class AgentConversationItem(Base):
     """Raw conversation items stored for agent session memory systems."""
 
@@ -246,6 +248,12 @@ class AgentMemoryEntry(Base):
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSONType, nullable=True)
     embedding_norm: Mapped[Optional[float]] = mapped_column(nullable=True)
     extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    decay_score: Mapped[float] = mapped_column(nullable=False, default=1.0)
+    last_accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

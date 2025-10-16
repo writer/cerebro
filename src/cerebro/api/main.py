@@ -1,14 +1,17 @@
 """Main FastAPI application."""
 
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
+from fastapi.responses import Response
 
 from cerebro.core.config import settings
+from cerebro.core.observability import configure_agent_observability
+from cerebro.agents.metrics import get_registry
 from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks, telemetry
 from .routers import jwks
 from .auth import User, get_current_user
@@ -29,6 +32,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+configure_agent_observability()
 
 # Configure rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
@@ -199,6 +204,23 @@ app.include_router(
     prefix=f"{settings.api_v1_prefix}/notifications",
     tags=["webhooks", "notifications"]
 )
+
+if settings.enable_agent_metrics:
+    try:  # pragma: no cover - optional dependency guard
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+    except ImportError:  # pragma: no cover
+        logger.warning(
+            "Prometheus client not installed; metrics endpoint disabled",
+        )
+    else:
+
+        @app.get(settings.agent_metrics_path, include_in_schema=False, tags=["observability"])
+        async def agent_metrics() -> Response:
+            registry = get_registry()
+            if registry is None:
+                raise HTTPException(status_code=503, detail="Metrics registry unavailable")
+            payload = generate_latest(registry)
+            return Response(payload, media_type=CONTENT_TYPE_LATEST)
 
 # Forklift webhook receiver (intelligence integration)
 app.include_router(
