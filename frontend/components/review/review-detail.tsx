@@ -17,6 +17,10 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
     queryFn: () => apiGet<SessionSummary>(`/agents/sessions/${task.session_id}`),
   });
 
+  const sessionInfo = sessionData?.session;
+  const toolInvocations = sessionData?.tool_invocations ?? [];
+  const metrics = sessionData?.metrics ?? {};
+
   const { data: memoryEntries, isLoading: memoryLoading } = useQuery({
     queryKey: ["sessionMemory", task.session_id],
     queryFn: () =>
@@ -55,6 +59,13 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
             <DetailRow label="Ticket ref" value={task.ticket_reference ?? "—"} />
             <DetailRow label="Notification" value={task.notification_channel ?? "—"} />
             <DetailRow label="Session" value={task.session_id} mono />
+            {sessionInfo ? (
+              <>
+                <DetailRow label="Agent" value={sessionInfo.agent_type} />
+                <DetailRow label="Session status" value={sessionInfo.status} />
+                <DetailRow label="Started" value={formatRelative(sessionInfo.created_at)} />
+              </>
+            ) : null}
           </dl>
         </DetailCard>
 
@@ -125,6 +136,55 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
             </ul>
           ) : (
             <p className="text-xs text-slate-500">No memory items were attached to this session.</p>
+          )}
+        </DetailCard>
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <DetailCard
+          title="Tool invocation history"
+          description="Recent tool calls issued during this session."
+        >
+          {toolInvocations.length === 0 ? (
+            <p className="text-xs text-slate-500">No tool executions recorded for this session.</p>
+          ) : (
+            <ul className="space-y-3">
+              {toolInvocations.map((invocation) => (
+                <li key={invocation.id} className="rounded-md bg-slate-900/70 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] uppercase text-slate-500">
+                    <span>{invocation.tool_name}</span>
+                    <span>{invocation.status}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Started {formatRelative(invocation.started_at)}
+                    {invocation.completed_at ? ` · Completed ${formatRelative(invocation.completed_at)}` : ""}
+                  </p>
+                  {invocation.error_message ? (
+                    <p className="mt-2 text-[11px] text-rose-400">{invocation.error_message}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </DetailCard>
+
+        <DetailCard
+          title="Session metrics"
+          description="Telemetry derived from runtime analytics and memory retrieval."
+        >
+          {Object.keys(metrics).length === 0 ? (
+            <p className="text-xs text-slate-500">No metrics captured for this session.</p>
+          ) : (
+            <dl className="space-y-2 text-xs">
+              {Object.entries(metrics).map(([key, value]) => (
+                <div key={key} className="flex justify-between gap-2">
+                  <span className="capitalize text-slate-500">{key.replace(/_/g, " ")}</span>
+                  <span className="text-slate-200">
+                    {typeof value === "number" ? value.toString() : JSON.stringify(value)}
+                  </span>
+                </div>
+              ))}
+            </dl>
           )}
         </DetailCard>
       </div>

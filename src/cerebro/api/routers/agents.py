@@ -95,6 +95,20 @@ class SessionWithMessagesResponse(BaseModel):
     session: SessionResponse
     messages: List[MessageResponse]
     message_count: int
+    tool_invocations: List["ToolInvocationResponse"] = Field(default_factory=list)
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolInvocationResponse(BaseModel):
+    id: UUID
+    tool_name: str
+    status: str
+    started_at: datetime
+    completed_at: Optional[datetime]
+    error_message: Optional[str]
+
+
+SessionWithMessagesResponse.model_rebuild()
 
 
 class MemoryEntryResponse(BaseModel):
@@ -420,6 +434,9 @@ async def get_agent_session(
         session_dict = session_data["session"]
         messages = session_data["messages"]
 
+        tool_invocations = session_data.get("tool_invocations", [])
+        metrics = session_data.get("metrics", {})
+
         return SessionWithMessagesResponse(
             session=SessionResponse(
                 session_id=UUID(session_dict["id"]),
@@ -428,7 +445,7 @@ async def get_agent_session(
                 title=session_dict.get("title"),
                 created_at=datetime.fromisoformat(session_dict["created_at"]),
                 created_by=session_dict["created_by"],
-                status="active",  # Service doesn't return status yet
+                status=session_dict.get("status", "active"),
                 context=session_dict.get("context", {}),
             ),
             messages=[
@@ -442,6 +459,20 @@ async def get_agent_session(
                 for m in messages
             ],
             message_count=len(messages),
+            tool_invocations=[
+                ToolInvocationResponse(
+                    id=UUID(inv["id"]),
+                    tool_name=inv["tool_name"],
+                    status=inv["status"],
+                    started_at=datetime.fromisoformat(inv["started_at"]),
+                    completed_at=datetime.fromisoformat(inv["completed_at"])
+                    if inv.get("completed_at")
+                    else None,
+                    error_message=inv.get("error_message"),
+                )
+                for inv in tool_invocations
+            ],
+            metrics=metrics or {},
         )
 
     except HTTPException:

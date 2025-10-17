@@ -99,6 +99,15 @@ export type SessionSummary = {
   };
   messages: AgentMessage[];
   message_count: number;
+  tool_invocations: Array<{
+    id: string;
+    tool_name: string;
+    status: string;
+    started_at: string;
+    completed_at?: string | null;
+    error_message?: string | null;
+  }>;
+  metrics: Record<string, unknown>;
 };
 
 export type MemoryEntry = {

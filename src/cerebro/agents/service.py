@@ -630,6 +630,7 @@ class AgentSessionService:
                     "context": session.context,
                     "created_at": session.created_at.isoformat(),
                     "created_by": session.created_by,
+                    "status": session.status.value if hasattr(session, "status") else "active",
                 },
                 "messages": [
                     {
