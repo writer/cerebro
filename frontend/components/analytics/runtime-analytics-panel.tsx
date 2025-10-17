@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
-import { RuntimeEvent } from "@/lib/types";
+import {
+  AgentSessionListItem,
+  RuntimeEvent,
+  RuntimeEventSummary,
+  SessionListResponse,
+} from "@/lib/types";
 import { formatRelative } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
 
@@ -32,6 +37,17 @@ export function RuntimeAnalyticsPanel() {
 
   const queryClient = useQueryClient();
   const queryEnabled = sessionId.trim().length > 0;
+
+  const { data: recentSessionsResponse } = useQuery({
+    queryKey: ["recentAgentSessions"],
+    queryFn: () => apiGet<SessionListResponse>("/agents/sessions", { limit: 12 }),
+    staleTime: 60_000,
+  });
+
+  const recentSessions: AgentSessionListItem[] = useMemo(
+    () => recentSessionsResponse?.sessions ?? [],
+    [recentSessionsResponse],
+  );
 
   const {
     data,
@@ -86,7 +102,7 @@ export function RuntimeAnalyticsPanel() {
 
   useEffect(() => {
     setDiscoveredTypes([...DEFAULT_EVENT_TYPES]);
-    setHasSubmitted(false);
+    setEventType("");
   }, [sessionId]);
 
   useEffect(() => {
@@ -117,6 +133,15 @@ export function RuntimeAnalyticsPanel() {
 
   const events = useMemo(() => (data?.pages ? data.pages.flat() : []), [data]);
 
+  const { data: summaryData } = useQuery({
+    queryKey: ["runtimeAnalyticsSummary", sessionId],
+    queryFn: () =>
+      queryEnabled
+        ? apiGet<RuntimeEventSummary[]>(`/agents/sessions/${sessionId}/analytics/summary`)
+        : Promise.resolve([]),
+    enabled: queryEnabled,
+  });
+
   const hasFilter = eventType.trim().length > 0;
   const isInitialLoading = isFetching && !data?.pages?.length;
   const isEmpty = !isInitialLoading && events.length === 0 && queryEnabled && hasSubmitted;
@@ -138,6 +163,11 @@ export function RuntimeAnalyticsPanel() {
     setEventType("");
   };
 
+  const handleSelectSession = (selectedId: string) => {
+    setSessionId(selectedId);
+    setHasSubmitted(true);
+  };
+
   return (
     <Panel
       title="Runtime analytics"
@@ -154,8 +184,14 @@ export function RuntimeAnalyticsPanel() {
               value={sessionId}
               onChange={(event) => setSessionId(event.target.value)}
               placeholder="Session UUID"
+              list="session-id-suggestions"
               className="w-56 rounded-md border border-zinc-800 bg-black px-3 py-1 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
             />
+            <datalist id="session-id-suggestions">
+              {recentSessions.map((session) => (
+                <option key={session.session_id} value={session.session_id} />
+              ))}
+            </datalist>
             <button
               type="submit"
               className="rounded-md border border-zinc-700 bg-black px-3 py-1 text-xs font-semibold text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
@@ -189,6 +225,29 @@ export function RuntimeAnalyticsPanel() {
         </form>
       }
     >
+      {recentSessions.length > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+          <span className="uppercase tracking-wide text-zinc-500">Recent sessions:</span>
+          {recentSessions.map((session) => (
+            <button
+              key={session.session_id}
+              type="button"
+              onClick={() => handleSelectSession(session.session_id)}
+              className={`rounded-full border px-3 py-1 transition ${
+                sessionId === session.session_id
+                  ? "border-zinc-200 bg-zinc-100/10 text-zinc-50"
+                  : "border-zinc-800 text-zinc-300 hover:border-zinc-600"
+              }`}
+            >
+              <span className="font-medium">
+                {session.title?.trim() ? session.title : session.session_id.slice(0, 8)}
+              </span>
+              <span className="ml-2 text-zinc-500">{formatRelative(session.created_at)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
         <span className="uppercase tracking-wide text-zinc-500">Quick filters:</span>
         {discoveredTypes.map((type) => (
@@ -222,6 +281,29 @@ export function RuntimeAnalyticsPanel() {
         </p>
       ) : (
         <>
+          {summaryData && summaryData.length > 0 ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {summaryData.map((summary) => (
+                <div
+                  key={summary.event_type}
+                  className="rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-200"
+                >
+                  <div className="flex items-center justify-between gap-3 text-[11px] uppercase text-zinc-500">
+                    <span>{summary.event_type.replace(/_/g, " ")}</span>
+                    <span>{summary.event_count}</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    <div>
+                      First {summary.first_seen ? formatRelative(summary.first_seen) : "—"}
+                    </div>
+                    <div>
+                      Last {summary.last_seen ? formatRelative(summary.last_seen) : "—"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <ul className="space-y-3">
             {events.map((event) => (
               <li

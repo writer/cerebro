@@ -469,6 +469,21 @@ class AgentSessionService:
             before_id=before_id,
         )
 
+    async def get_session_analytics_summary(
+        self,
+        *,
+        session_id: UUID,
+        org_id: Optional[UUID] = None,
+        event_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        session = await self.get_session(session_id, org_id)
+        if not session:
+            return []
+        return await RuntimeAnalyticsService.summarize_events(
+            session_id=session_id,
+            event_type=event_type,
+        )
+
     async def list_policy_suggestions(
         self,
         *,

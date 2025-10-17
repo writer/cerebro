@@ -44,6 +44,13 @@ export type RuntimeEvent = {
   created_at: string;
 };
 
+export type RuntimeEventSummary = {
+  event_type: string;
+  event_count: number;
+  first_seen: string | null;
+  last_seen: string | null;
+};
+
 export type PolicySuggestion = {
   id: string;
   tool_name: string;
@@ -108,6 +115,24 @@ export type SessionSummary = {
     error_message?: string | null;
   }>;
   metrics: Record<string, unknown>;
+};
+
+export type AgentSessionListItem = {
+  session_id: string;
+  org_id: string;
+  agent_type: string;
+  title?: string | null;
+  created_at: string;
+  created_by: string;
+  status: string;
+  context: Record<string, unknown>;
+};
+
+export type SessionListResponse = {
+  sessions: AgentSessionListItem[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 export type MemoryEntry = {

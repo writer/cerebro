@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, tuple_
+from sqlalchemy import func, select, tuple_
 
 from cerebro.agents.models import AgentRuntimeEvent
 from cerebro.core.config import settings
@@ -103,6 +103,40 @@ class AgentAnalyticsService:
             before=before,
             before_id=before_id,
         )
+
+    @staticmethod
+    async def summarize_events(
+        *,
+        session_id: UUID,
+        event_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        async with async_session_factory() as db_session:
+            stmt = (
+                select(
+                    AgentRuntimeEvent.event_type,
+                    func.count().label("event_count"),
+                    func.min(AgentRuntimeEvent.created_at).label("first_seen"),
+                    func.max(AgentRuntimeEvent.created_at).label("last_seen"),
+                )
+                .where(AgentRuntimeEvent.session_id == session_id)
+                .group_by(AgentRuntimeEvent.event_type)
+            )
+            if event_type:
+                stmt = stmt.where(AgentRuntimeEvent.event_type == event_type)
+
+            result = await db_session.execute(stmt)
+
+        summaries: List[Dict[str, Any]] = []
+        for row in result:
+            summaries.append(
+                {
+                    "event_type": row.event_type,
+                    "event_count": row.event_count,
+                    "first_seen": row.first_seen.isoformat() if row.first_seen else None,
+                    "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+                }
+            )
+        return summaries
 
 
 async def list_session_events(

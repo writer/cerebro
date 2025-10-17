@@ -1,10 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
-import { MemoryEntry, MemoryStats, ReviewTask, RuntimeEvent, SessionSummary } from "@/lib/types";
+import {
+  MemoryEntry,
+  MemoryStats,
+  ReviewTask,
+  RuntimeEvent,
+  RuntimeEventSummary,
+  SessionSummary,
+} from "@/lib/types";
 import { cn, formatRelative } from "@/lib/utils";
 
 type ReviewDetailProps = {
@@ -14,6 +21,11 @@ type ReviewDetailProps = {
 
 export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
   const [eventType, setEventType] = useState("");
+  const ANALYTICS_PAGE_SIZE = 20;
+  type AnalyticsCursor = {
+    createdAt: string;
+    eventId?: string;
+  };
   const { data: sessionData, isLoading: sessionLoading } = useQuery({
     queryKey: ["sessionDetail", task.session_id],
     queryFn: () => apiGet<SessionSummary>(`/agents/sessions/${task.session_id}`),
@@ -37,20 +49,65 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
     queryFn: () => apiGet<MemoryStats>(`/agents/sessions/${task.session_id}/memory/stats`),
   });
 
-  const { data: runtimeEvents, isLoading: analyticsLoading } = useQuery({
+  const {
+    data: runtimeEventPages,
+    isFetching: analyticsFetching,
+    fetchNextPage: fetchMoreRuntimeEvents,
+    hasNextPage: hasMoreRuntimeEvents,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["sessionAnalytics", task.session_id, eventType],
-    queryFn: () =>
-      apiGet<RuntimeEvent[]>(`/agents/sessions/${task.session_id}/analytics`, {
-        limit: 10,
-        ...(eventType ? { event_type: eventType } : {}),
-      }),
+    enabled: Boolean(task.session_id),
+    initialPageParam: undefined as AnalyticsCursor | undefined,
+    queryFn: async ({ pageParam }) => {
+      const params: Record<string, unknown> = { limit: ANALYTICS_PAGE_SIZE };
+      if (eventType) {
+        params.event_type = eventType;
+      }
+      const cursor = pageParam as AnalyticsCursor | undefined;
+      if (cursor?.createdAt) {
+        params.cursor = cursor.createdAt;
+      }
+      if (cursor?.eventId) {
+        params.cursor_id = cursor.eventId;
+      }
+      return apiGet<RuntimeEvent[]>(`/agents/sessions/${task.session_id}/analytics`, params);
+    },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage || lastPage.length < ANALYTICS_PAGE_SIZE) {
+        return undefined;
+      }
+      const tail = lastPage[lastPage.length - 1];
+      if (!tail) {
+        return undefined;
+      }
+      return {
+        createdAt: tail.created_at,
+        eventId: tail.id,
+      } satisfies AnalyticsCursor;
+    },
+  });
+
+  const runtimeEvents = useMemo(
+    () => (runtimeEventPages?.pages ? runtimeEventPages.pages.flat() : []),
+    [runtimeEventPages],
+  );
+  const analyticsLoading = analyticsFetching && !runtimeEventPages?.pages?.length;
+
+  const { data: analyticsSummary } = useQuery({
+    queryKey: ["sessionAnalyticsSummary", task.session_id],
+    queryFn: () => apiGet<RuntimeEventSummary[]>(`/agents/sessions/${task.session_id}/analytics/summary`),
+    enabled: Boolean(task.session_id),
   });
 
   const availableEventTypes = useMemo(() => {
+    if (analyticsSummary && analyticsSummary.length > 0) {
+      return analyticsSummary.map((item) => item.event_type);
+    }
     const types = new Set<string>();
-    (runtimeEvents ?? []).forEach((event) => types.add(event.event_type));
+    runtimeEvents.forEach((event) => types.add(event.event_type));
     return Array.from(types);
-  }, [runtimeEvents]);
+  }, [analyticsSummary, runtimeEvents]);
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 px-5 py-4 shadow-xl">
@@ -260,10 +317,8 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
           <p className="text-xs text-slate-400">Fetching analytics…</p>
         ) : runtimeEvents && runtimeEvents.length > 0 ? (
           <>
-            <div className="mb-3 flex items-center gap-2">
-              <label className="text-[11px] uppercase text-slate-500" htmlFor="event-filter">
-                Filter
-              </label>
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              <span className="uppercase">Filter:</span>
               <select
                 id="event-filter"
                 value={eventType}
@@ -273,10 +328,30 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
                 <option value="">All events</option>
                 {availableEventTypes.map((type) => (
                   <option key={type} value={type}>
-                    {type}
+                    {type.replace(/_/g, " ")}
                   </option>
                 ))}
               </select>
+              {analyticsSummary && analyticsSummary.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {analyticsSummary.map((summary) => (
+                    <button
+                      key={summary.event_type}
+                      type="button"
+                      onClick={() => setEventType(summary.event_type)}
+                      className={`rounded-full border px-3 py-1 transition ${
+                        eventType === summary.event_type
+                          ? "border-slate-300 bg-slate-200/10 text-slate-50"
+                          : "border-slate-800 text-slate-300 hover:border-slate-600"
+                      }`}
+                      title={`First ${summary.first_seen ? formatRelative(summary.first_seen) : "—"} · Last ${summary.last_seen ? formatRelative(summary.last_seen) : "—"}`}
+                    >
+                      <span className="font-semibold">{summary.event_type.replace(/_/g, " ")}</span>
+                      <span className="ml-2 text-slate-500">{summary.event_count}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <ul className="space-y-3">
@@ -292,6 +367,19 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
                 </li>
               ))}
             </ul>
+
+            {hasMoreRuntimeEvents ? (
+              <div className="mt-3 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => fetchMoreRuntimeEvents()}
+                  className="rounded-md border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600"
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <p className="text-xs text-slate-500">No runtime events recorded for this session yet.</p>

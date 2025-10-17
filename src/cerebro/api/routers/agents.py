@@ -224,6 +224,13 @@ class RuntimeEventResponse(BaseModel):
     created_at: datetime
 
 
+class RuntimeEventSummaryResponse(BaseModel):
+    event_type: str
+    event_count: int
+    first_seen: Optional[datetime]
+    last_seen: Optional[datetime]
+
+
 class PolicySuggestionResponse(BaseModel):
     id: UUID
     tool_name: str
@@ -958,6 +965,29 @@ async def get_session_analytics(
         before_id=before_id,
     )
     return [_runtime_event_to_response(event) for event in events]
+
+
+@router.get("/sessions/{session_id}/analytics/summary", response_model=List[RuntimeEventSummaryResponse])
+async def get_session_analytics_summary(
+    session_id: UUID,
+    event_type: Optional[str] = Query(None, description="Filter summaries to a specific event type"),
+    current_user: User = Depends(get_current_user),
+):
+    service = AgentSessionService()
+    summaries = await service.get_session_analytics_summary(
+        session_id=session_id,
+        org_id=current_user.org_id,
+        event_type=event_type,
+    )
+    return [
+        RuntimeEventSummaryResponse(
+            event_type=item["event_type"],
+            event_count=item["event_count"],
+            first_seen=item["first_seen"],
+            last_seen=item["last_seen"],
+        )
+        for item in summaries
+    ]
 
 
 @router.get("/workflows/templates", response_model=List[Dict[str, Any]])

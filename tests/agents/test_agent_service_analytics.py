@@ -125,3 +125,13 @@ async def test_get_session_analytics_paginates_with_cursor():
         else:
             assert event_ts < cursor
         assert event["id"] not in first_page_ids
+
+    summary = await service.get_session_analytics_summary(
+        session_id=session.id,
+        org_id=org.org_id,
+    )
+
+    summary_by_type = {item["event_type"]: item for item in summary}
+    assert summary_by_type["memory_recall"]["event_count"] == 1
+    assert summary_by_type["tool_execution"]["event_count"] == 1
+    assert datetime.fromisoformat(summary_by_type["memory_recall"]["first_seen"]) <= cursor
