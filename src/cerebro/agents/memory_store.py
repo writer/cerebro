@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import math
+import random
 import re
-from datetime import datetime, timezone
-from typing import Dict, Iterable, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Iterable, List, Optional, Tuple
+from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, or_, select, update
 
+from cerebro.agents.metrics import record_memory_event
 from cerebro.agents.models import AgentMemoryEntry, AgentSession, MemoryScope, MessageRole
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
@@ -61,6 +65,22 @@ class AgentMemoryStore:
         self._decay_cap = max(1.0, settings.agent_memory_decay_cap)
         self._summary_max_chars = max(40, settings.agent_memory_summary_max_chars)
         self._max_snippets = max(1, settings.agent_memory_max_snippets)
+        self._max_entries_per_org = max(1, settings.agent_memory_max_entries_per_org)
+        self._max_entries_per_session = max(1, settings.agent_memory_max_entries_per_session)
+        self._prune_batch_size = max(1, settings.agent_memory_prune_batch_size)
+        self._prune_min_decay = max(0.0, settings.agent_memory_prune_min_decay)
+        self._prune_probability = min(max(settings.agent_memory_prune_probability, 0.0), 1.0)
+        self._prune_max_age = timedelta(hours=max(1, settings.agent_memory_prune_max_age_hours))
+        self._duplicate_window = timedelta(hours=max(1, settings.agent_memory_duplicate_window_hours))
+        self._mmr_lambda = min(max(settings.agent_memory_mmr_lambda, 0.0), 1.0)
+        self._session_boost = max(1.0, settings.agent_memory_session_scope_boost)
+        self._incident_boost = max(1.0, settings.agent_memory_incident_scope_boost)
+        self._finding_boost = max(1.0, settings.agent_memory_finding_scope_boost)
+        self._role_weights = {
+            role.lower(): float(weight)
+            for role, weight in (settings.agent_memory_role_weights or {}).items()
+        }
+        self._scope_miss_penalty = 0.6
 
     @classmethod
     async def shared(cls) -> "AgentMemoryStore":
@@ -94,9 +114,58 @@ class AgentMemoryStore:
         scope_priority = min(scope["priority"] for scope in scopes) if scopes else 0
         summary = self._summarize_text(message_text)
         now = datetime.now(timezone.utc)
+        content_hash = self._hash_text(message_text)
+        token_count = self._estimate_token_count(message_text)
+        metadata_payload: Dict[str, object] = dict(metadata or {})
 
         async with async_session_factory() as db_session:
             async with db_session.begin():
+                duplicate_stmt = (
+                    select(AgentMemoryEntry)
+                    .where(
+                        AgentMemoryEntry.org_id == session.org_id,
+                        AgentMemoryEntry.content_hash == content_hash,
+                    )
+                    .order_by(AgentMemoryEntry.created_at.desc())
+                    .limit(1)
+                )
+                duplicate_entry = (await db_session.execute(duplicate_stmt)).scalar_one_or_none()
+                if duplicate_entry and self._is_duplicate_recent(duplicate_entry, now):
+                    metadata_update = dict(duplicate_entry.extra_metadata or {})
+                    existing_count = metadata_update.get("occurrence_count", 1)
+                    try:
+                        occurrence_count = int(existing_count) + 1
+                    except (TypeError, ValueError):
+                        occurrence_count = 2
+                    metadata_update["occurrence_count"] = occurrence_count
+                    metadata_update["last_duplicate_at"] = now.isoformat()
+                    if metadata_payload:
+                        metadata_update.setdefault("latest_metadata", metadata_payload)
+
+                    update_values: Dict[str, object] = {
+                        "updated_at": now,
+                        "last_accessed_at": now,
+                        "decay_score": min((duplicate_entry.decay_score or 1.0) + self._decay_boost, self._decay_cap),
+                        "extra_metadata": metadata_update,
+                        "token_count": token_count,
+                    }
+
+                    if duplicate_entry.summary is None and summary:
+                        update_values["summary"] = summary
+                    if duplicate_entry.embedding is None and embedding is not None:
+                        update_values["embedding"] = embedding
+                        update_values["embedding_norm"] = embedding_norm
+                    if not duplicate_entry.content_hash:
+                        update_values["content_hash"] = content_hash
+
+                    await db_session.execute(
+                        update(AgentMemoryEntry)
+                        .where(AgentMemoryEntry.id == duplicate_entry.id)
+                        .values(**update_values)
+                    )
+                    record_memory_event("duplicate_merge")
+                    return
+
                 existing = await db_session.execute(
                     select(AgentMemoryEntry)
                     .where(AgentMemoryEntry.session_id == session.id)
@@ -107,6 +176,14 @@ class AgentMemoryStore:
                 if last_entry and last_entry.content == message_text:
                     return
 
+                existing_count = metadata_payload.get("occurrence_count", 0)
+                try:
+                    occurrence_value = int(existing_count)
+                except (TypeError, ValueError):
+                    occurrence_value = 0
+                metadata_payload["occurrence_count"] = occurrence_value + 1
+                metadata_payload.setdefault("first_ingested_at", now.isoformat())
+
                 entry = AgentMemoryEntry(
                     org_id=session.org_id,
                     session_id=session.id,
@@ -116,13 +193,18 @@ class AgentMemoryStore:
                     scope_priority=scope_priority,
                     content=message_text,
                     summary=summary,
+                    content_hash=content_hash,
+                    token_count=token_count,
                     embedding=embedding,
                     embedding_norm=embedding_norm,
-                    extra_metadata=metadata or {},
+                    extra_metadata=metadata_payload,
                     decay_score=1.0,
                     last_accessed_at=now,
                 )
                 db_session.add(entry)
+
+        record_memory_event("ingest")
+        await self._maybe_prune(session, now)
 
     async def retrieve_relevant(
         self,
@@ -140,11 +222,7 @@ class AgentMemoryStore:
 
         query_norm = math.sqrt(sum(value * value for value in query_embedding)) or 1.0
 
-        session_scopes = {
-            scope["data"]["type"]: scope
-            for scope in self._build_scopes(session)
-            if isinstance(scope, dict) and scope.get("data") and scope["data"].get("type")
-        }
+        session_scope_map = self._session_scope_map(session)
         limit = min(limit, self._max_snippets)
 
         async with async_session_factory() as db_session:
@@ -161,38 +239,43 @@ class AgentMemoryStore:
             return []
 
         now = datetime.now(timezone.utc)
-        scored: List[tuple[float, AgentMemoryEntry]] = []
+        scored: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]] = []
         for entry in candidates:
-            if not entry.embedding:
-                continue
+            embedding = entry.embedding
+            embedding_norm = entry.embedding_norm or 1.0
+            if not embedding:
+                refreshed = await self._refresh_embedding(entry)
+                if not refreshed:
+                    continue
+                embedding, embedding_norm = refreshed
 
             similarity = self._cosine_similarity(
                 query_embedding,
                 query_norm,
-                entry.embedding,
-                entry.embedding_norm or 1.0,
+                embedding,
+                embedding_norm,
             )
 
             if similarity <= 0:
                 continue
 
-            scope_adjusted = similarity
-            if not self._scopes_intersect(session_scopes, entry.scopes):
-                scope_adjusted *= 0.75
-
+            scope_multiplier = self._scope_multiplier(session_scope_map, entry.scopes)
+            role_multiplier = self._role_weight(entry.role)
+            adjusted = similarity * scope_multiplier * role_multiplier
             recency = self._compute_decay_multiplier(entry, now)
-            final_score = scope_adjusted * recency
+            final_score = adjusted * recency
             if final_score <= 0:
                 continue
 
-            scored.append((final_score, entry))
+            scored.append((final_score, entry, embedding, embedding_norm))
 
         if not scored:
             return []
 
-        top = sorted(scored, key=lambda item: item[0], reverse=True)[:limit]
-        await self._update_access_metadata([entry for _, entry in top])
-        snippets = [self._format_snippet(score, entry) for score, entry in top]
+        top = self._select_diverse_candidates(scored, limit)
+        await self._update_access_metadata([entry for _, entry, _, _ in top])
+        record_memory_event("recall", len(top))
+        snippets = [self._format_snippet(score, entry) for score, entry, _, _ in top]
         return snippets
 
     async def _generate_embedding(self, text: str) -> Optional[List[float]]:
@@ -222,17 +305,103 @@ class AgentMemoryStore:
         vector = self._hashing_vectorizer.transform([text]).toarray()[0]
         return vector.astype(float).tolist()
 
-    @staticmethod
-    def _scopes_intersect(
-        session_scopes: Dict[str, Dict[str, object]], scopes: Iterable[Dict[str, object]]
-    ) -> bool:
-        for scope in scopes:
-            scope_type = scope.get("type")
-            scope_value = scope.get("value")
-            session_scope = session_scopes.get(scope_type)
-            if session_scope and session_scope["data"].get("value") == scope_value:
-                return True
-        return False
+    def _session_scope_map(self, session: AgentSession) -> Dict[str, set[str]]:
+        scope_map: Dict[str, set[str]] = {}
+        for scope in self._build_scopes(session):
+            data = scope.get("data") if isinstance(scope, dict) else None
+            if not data:
+                continue
+            scope_type = data.get("type")
+            if not scope_type:
+                continue
+            value = data.get("value")
+            scope_map.setdefault(scope_type, set()).add(str(value) if value is not None else "__null__")
+        return scope_map
+
+    def _scope_multiplier(
+        self,
+        session_scope_map: Dict[str, set[str]],
+        entry_scopes: Iterable[Dict[str, object]] | None,
+    ) -> float:
+        if not entry_scopes:
+            return self._scope_miss_penalty
+
+        multiplier = 1.0
+        matched = False
+        for scope in entry_scopes:
+            scope_type = scope.get("type") if isinstance(scope, dict) else None
+            if not scope_type:
+                continue
+            value = scope.get("value")
+            value_key = str(value) if value is not None else "__null__"
+            value_matches = value_key in session_scope_map.get(scope_type, set())
+
+            if scope_type == MemoryScope.SESSION.value and value_matches:
+                multiplier *= self._session_boost
+                matched = True
+            elif scope_type == MemoryScope.INCIDENT.value and value_matches:
+                multiplier *= self._incident_boost
+                matched = True
+            elif scope_type == MemoryScope.FINDING.value and value_matches:
+                multiplier *= self._finding_boost
+                matched = True
+            elif value_matches:
+                multiplier *= 1.05
+                matched = True
+
+        if not matched:
+            multiplier *= self._scope_miss_penalty
+
+        return multiplier
+
+    def _role_weight(self, role: Optional[MessageRole]) -> float:
+        if role is None:
+            return 1.0
+        return self._role_weights.get(role.value.lower(), 1.0)
+
+    def _select_diverse_candidates(
+        self,
+        candidates: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]],
+        limit: int,
+    ) -> List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]]:
+        if not candidates:
+            return []
+
+        ordered = sorted(candidates, key=lambda item: item[0], reverse=True)
+        selected: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]] = []
+
+        while ordered and len(selected) < limit:
+            best_index = 0
+            best_score = float("-inf")
+            for index, candidate in enumerate(ordered):
+                base_score, _, embedding, norm = candidate
+                if not selected or embedding is None:
+                    mmr_score = base_score
+                else:
+                    max_similarity = 0.0
+                    for chosen in selected:
+                        chosen_embedding = chosen[2]
+                        if not chosen_embedding or embedding is None:
+                            continue
+                        similarity = self._cosine_similarity(
+                            embedding,
+                            norm or 1.0,
+                            chosen_embedding,
+                            chosen[3] or 1.0,
+                        )
+                        max_similarity = max(max_similarity, similarity)
+                    mmr_score = (
+                        self._mmr_lambda * base_score
+                        - (1 - self._mmr_lambda) * max_similarity
+                    )
+
+                if mmr_score > best_score:
+                    best_index = index
+                    best_score = mmr_score
+
+            selected.append(ordered.pop(best_index))
+
+        return selected
 
     @staticmethod
     def _cosine_similarity(
@@ -266,6 +435,14 @@ class AgentMemoryStore:
             async with db_session.begin():
                 for entry in entries:
                     new_score = min((entry.decay_score or 1.0) + self._decay_boost, self._decay_cap)
+                    metadata_update = dict(entry.extra_metadata or {})
+                    previous_presented = metadata_update.get("presented_count", 0)
+                    try:
+                        presented_count = int(previous_presented) + 1
+                    except (TypeError, ValueError):
+                        presented_count = 1
+                    metadata_update["presented_count"] = presented_count
+                    metadata_update["last_presented_at"] = now.isoformat()
                     await db_session.execute(
                         update(AgentMemoryEntry)
                         .where(AgentMemoryEntry.id == entry.id)
@@ -273,8 +450,161 @@ class AgentMemoryStore:
                             last_accessed_at=now,
                             decay_score=new_score,
                             updated_at=now,
+                            extra_metadata=metadata_update,
                         )
                     )
+
+        record_memory_event("presented", len(entries))
+
+    async def _refresh_embedding(
+        self, entry: AgentMemoryEntry
+    ) -> Optional[Tuple[List[float], float]]:
+        refreshed = await self._generate_embedding(entry.content)
+        if not refreshed:
+            return None
+
+        norm = math.sqrt(sum(value * value for value in refreshed)) or 1.0
+        timestamp = datetime.now(timezone.utc)
+
+        async with async_session_factory() as db_session:
+            async with db_session.begin():
+                await db_session.execute(
+                    update(AgentMemoryEntry)
+                    .where(AgentMemoryEntry.id == entry.id)
+                    .values(
+                        embedding=refreshed,
+                        embedding_norm=norm,
+                        updated_at=timestamp,
+                    )
+                )
+
+        entry.embedding = refreshed
+        entry.embedding_norm = norm
+        return refreshed, norm
+
+    def _is_duplicate_recent(self, entry: AgentMemoryEntry, now: datetime) -> bool:
+        created_at = self._normalize_timestamp(entry.created_at, now)
+        return created_at >= now - self._duplicate_window
+
+    @staticmethod
+    def _hash_text(text: str) -> str:
+        return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _estimate_token_count(text: str) -> int:
+        approx_words = re.findall(r"\w+", text)
+        return max(1, len(approx_words))
+
+    async def _maybe_prune(self, session: AgentSession, now: datetime) -> None:
+        if not self._should_prune():
+            return
+
+        await self._prune_org_memory(session.org_id, now)
+        if session.id:
+            await self._prune_session_memory(session.id, now)
+
+    async def _prune_org_memory(self, org_id: UUID, now: datetime) -> None:
+        async with async_session_factory() as db_session:
+            total_entries = await db_session.scalar(
+                select(func.count(AgentMemoryEntry.id)).where(AgentMemoryEntry.org_id == org_id)
+            )
+            if not total_entries or total_entries <= self._max_entries_per_org:
+                return
+
+            to_remove = total_entries - self._max_entries_per_org
+            cutoff_time = now - self._prune_max_age
+            base_condition = or_(
+                AgentMemoryEntry.decay_score <= self._prune_min_decay,
+                AgentMemoryEntry.last_accessed_at <= cutoff_time,
+            )
+
+            prune_ids = await self._collect_prunable_ids(
+                db_session,
+                [AgentMemoryEntry.org_id == org_id, base_condition],
+                to_remove,
+            )
+
+            if not prune_ids:
+                prune_ids = await self._collect_prunable_ids(
+                    db_session,
+                    [AgentMemoryEntry.org_id == org_id],
+                    to_remove,
+                )
+
+            if prune_ids:
+                await db_session.execute(
+                    delete(AgentMemoryEntry).where(AgentMemoryEntry.id.in_(prune_ids))
+                )
+                await db_session.commit()
+                record_memory_event("pruned", len(prune_ids))
+
+    async def _prune_session_memory(self, session_id: UUID, now: datetime) -> None:
+        async with async_session_factory() as db_session:
+            total_entries = await db_session.scalar(
+                select(func.count(AgentMemoryEntry.id)).where(AgentMemoryEntry.session_id == session_id)
+            )
+            if not total_entries or total_entries <= self._max_entries_per_session:
+                return
+
+            to_remove = total_entries - self._max_entries_per_session
+            cutoff_time = now - self._prune_max_age
+            base_condition = or_(
+                AgentMemoryEntry.decay_score <= self._prune_min_decay,
+                AgentMemoryEntry.last_accessed_at <= cutoff_time,
+            )
+
+            prune_ids = await self._collect_prunable_ids(
+                db_session,
+                [AgentMemoryEntry.session_id == session_id, base_condition],
+                to_remove,
+            )
+
+            if not prune_ids:
+                prune_ids = await self._collect_prunable_ids(
+                    db_session,
+                    [AgentMemoryEntry.session_id == session_id],
+                    to_remove,
+                )
+
+            if prune_ids:
+                await db_session.execute(
+                    delete(AgentMemoryEntry).where(AgentMemoryEntry.id.in_(prune_ids))
+                )
+                await db_session.commit()
+                record_memory_event("pruned", len(prune_ids))
+
+    async def _collect_prunable_ids(self, db_session, filters, limit: int) -> List[UUID]:
+        limit = min(self._prune_batch_size, max(0, limit))
+        if limit <= 0:
+            return []
+
+        if isinstance(filters, (list, tuple, set)):
+            where_clauses = list(filters)
+        else:
+            where_clauses = [filters]
+
+        if not where_clauses:
+            return []
+
+        stmt = (
+            select(AgentMemoryEntry.id)
+            .where(*where_clauses)
+            .order_by(
+                AgentMemoryEntry.decay_score.asc(),
+                AgentMemoryEntry.last_accessed_at.asc(),
+                AgentMemoryEntry.created_at.asc(),
+            )
+            .limit(limit)
+        )
+        result = await db_session.execute(stmt)
+        return [row[0] for row in result.all()]
+
+    def _should_prune(self) -> bool:
+        if self._prune_probability <= 0:
+            return False
+        if self._prune_probability >= 1:
+            return True
+        return random.random() <= self._prune_probability
 
     @staticmethod
     def _normalize_timestamp(value: Optional[datetime], fallback: datetime) -> datetime:

@@ -1,7 +1,7 @@
 """Configuration management for Cerebro."""
 
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -152,6 +152,59 @@ class Settings(BaseSettings):
     agent_memory_max_snippets: int = Field(
         default=8,
         description="Maximum number of memory snippets injected into prompts and responses",
+    )
+    agent_memory_max_entries_per_org: int = Field(
+        default=2000,
+        description="Maximum number of memory entries retained per organization before pruning",
+    )
+    agent_memory_max_entries_per_session: int = Field(
+        default=500,
+        description="Maximum number of memory entries retained per session scope",
+    )
+    agent_memory_prune_batch_size: int = Field(
+        default=200,
+        description="How many low-value memory entries to remove per pruning run",
+    )
+    agent_memory_prune_min_decay: float = Field(
+        default=0.05,
+        description="Minimum decay score before a memory entry qualifies for pruning",
+    )
+    agent_memory_prune_max_age_hours: int = Field(
+        default=720,
+        description="Maximum age in hours before a memory entry is eligible for pruning",
+    )
+    agent_memory_prune_probability: float = Field(
+        default=0.1,
+        description="Probability between 0-1 that a pruning run is triggered on write",
+    )
+    agent_memory_duplicate_window_hours: int = Field(
+        default=168,
+        description="Window in hours to treat identical content hashes as duplicates",
+    )
+    agent_memory_mmr_lambda: float = Field(
+        default=0.7,
+        description="Lambda parameter for Max Marginal Relevance diversification (0-1)",
+    )
+    agent_memory_session_scope_boost: float = Field(
+        default=1.2,
+        description="Multiplier applied when a memory entry shares the active session scope",
+    )
+    agent_memory_incident_scope_boost: float = Field(
+        default=1.15,
+        description="Multiplier applied when a memory entry matches the active incident scope",
+    )
+    agent_memory_finding_scope_boost: float = Field(
+        default=1.1,
+        description="Multiplier applied when a memory entry matches any active finding scope",
+    )
+    agent_memory_role_weights: Dict[str, float] = Field(
+        default_factory=lambda: {
+            "assistant": 1.1,
+            "user": 1.0,
+            "tool": 0.95,
+            "system": 0.9,
+        },
+        description="Relative weighting applied by role when ranking memory snippets",
     )
     agent_otel_endpoint: Optional[str] = Field(
         default=None,

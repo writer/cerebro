@@ -14,6 +14,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     Enum as SqlEnum,
@@ -245,9 +246,11 @@ class AgentMemoryEntry(Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSONType, nullable=True)
     embedding_norm: Mapped[Optional[float]] = mapped_column(nullable=True)
-    extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
     decay_score: Mapped[float] = mapped_column(nullable=False, default=1.0)
     last_accessed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

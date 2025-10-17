@@ -59,11 +59,18 @@ if _registry is not None:  # pragma: no branch
         ["backend", "agent_type", "error_type"],
         registry=_registry,
     )
+    memory_events = Counter(
+        "cerebro_agent_memory_events_total",
+        "Memory store events (ingest, recall, prune, duplicate)",
+        ["event"],
+        registry=_registry,
+    )
 else:  # pragma: no cover - fallback no-op placeholders
     runtime_duration = None  # type: ignore
     runtime_tokens = None  # type: ignore
     runtime_tool_calls = None  # type: ignore
     runtime_errors = None  # type: ignore
+    memory_events = None  # type: ignore
 
 
 def record_runtime_metrics(
@@ -107,6 +114,18 @@ def record_runtime_metrics(
             agent_type=agent_type,
             error_type=error_type or "unknown",
         ).inc()
+
+
+def record_memory_event(event: str, count: int = 1) -> None:
+    """Record a memory store event for observability."""
+
+    if not settings.enable_agent_metrics:
+        return
+
+    if memory_events is None or count <= 0:
+        return
+
+    memory_events.labels(event=event).inc(count)
 
 
 def get_registry() -> Optional[CollectorRegistry]:

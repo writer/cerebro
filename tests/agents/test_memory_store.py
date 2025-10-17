@@ -2,10 +2,12 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import select, update
+import pytest
+from sqlalchemy import func, select, update
 
 from cerebro.agents.memory_store import AgentMemoryStore
 from cerebro.agents.models import AgentMemoryEntry, AgentSession, AgentType, MessageRole
+from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization
 
@@ -13,8 +15,13 @@ from cerebro.core.models import Organization
 @pytest.fixture(autouse=True)
 def reset_memory_store():
     AgentMemoryStore._instance = None
-    yield
-    AgentMemoryStore._instance = None
+    previous_probability = settings.agent_memory_prune_probability
+    settings.agent_memory_prune_probability = 0.0
+    try:
+        yield
+    finally:
+        AgentMemoryStore._instance = None
+        settings.agent_memory_prune_probability = previous_probability
 
 
 @pytest.fixture
@@ -107,3 +114,139 @@ async def test_memory_store_prioritizes_recent_entries(memory_session):
         assert updated_entry.decay_score > previous_decay
         assert updated_entry.last_accessed_at is not None
         assert updated_entry.last_accessed_at > baseline_last_accessed
+
+
+@pytest.mark.asyncio
+async def test_memory_store_deduplicates_recent_content(memory_session):
+    store = await AgentMemoryStore.shared()
+
+    message = "Repeated identity alert requires escalation"
+    await store.add_message(
+        session=memory_session,
+        role=MessageRole.USER,
+        content=message,
+    )
+    await store.add_message(
+        session=memory_session,
+        role=MessageRole.ASSISTANT,
+        content=message,
+    )
+
+    async with async_session_factory() as db_session:
+        total = await db_session.scalar(
+            select(func.count(AgentMemoryEntry.id)).where(
+                AgentMemoryEntry.org_id == memory_session.org_id
+            )
+        )
+        assert total == 1
+
+        entry = (
+            await db_session.execute(
+                select(AgentMemoryEntry).where(
+                    AgentMemoryEntry.org_id == memory_session.org_id
+                )
+            )
+        ).scalar_one()
+
+        metadata = entry.extra_metadata or {}
+        assert metadata.get("occurrence_count") == 2
+        assert entry.content_hash is not None
+        assert entry.token_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_memory_store_prefers_session_scoped_results(memory_session):
+    previous_boost = settings.agent_memory_session_scope_boost
+    AgentMemoryStore._instance = None
+    settings.agent_memory_session_scope_boost = 2.5
+    store = await AgentMemoryStore.shared()
+
+    secondary_session = None
+    try:
+        await store.add_message(
+            session=memory_session,
+            role=MessageRole.ASSISTANT,
+            content="Primary session recommendation: enable Okta MFA for admins.",
+        )
+
+        async with async_session_factory() as db_session:
+            secondary_session = AgentSession(
+                org_id=memory_session.org_id,
+                agent_type=AgentType.SECURITY_ANALYST,
+                created_by="secondary@example.com",
+                title="Secondary Session",
+                context={"provider_scope": ["azure"], "finding_ids": []},
+            )
+            db_session.add(secondary_session)
+            await db_session.commit()
+            await db_session.refresh(secondary_session)
+
+        await store.add_message(
+            session=secondary_session,
+            role=MessageRole.ASSISTANT,
+            content="Secondary insight: Azure AD administrators missing MFA.",
+        )
+
+        snippets = await store.retrieve_relevant(
+            session=memory_session,
+            query="MFA administrators",
+            limit=2,
+        )
+
+        assert snippets
+        assert "Primary session recommendation" in snippets[0]
+    finally:
+        if secondary_session is not None:
+            async with async_session_factory() as db_session:
+                await db_session.delete(secondary_session)
+                await db_session.commit()
+        settings.agent_memory_session_scope_boost = previous_boost
+        AgentMemoryStore._instance = None
+
+
+@pytest.mark.asyncio
+async def test_memory_store_prunes_when_limits_exceeded(memory_session):
+    previous_session_limit = settings.agent_memory_max_entries_per_session
+    previous_org_limit = settings.agent_memory_max_entries_per_org
+    previous_batch_size = settings.agent_memory_prune_batch_size
+    previous_min_decay = settings.agent_memory_prune_min_decay
+    previous_probability = settings.agent_memory_prune_probability
+
+    settings.agent_memory_max_entries_per_session = 2
+    settings.agent_memory_max_entries_per_org = 3
+    settings.agent_memory_prune_batch_size = 10
+    settings.agent_memory_prune_min_decay = 1.0
+    settings.agent_memory_prune_probability = 1.0
+    AgentMemoryStore._instance = None
+
+    try:
+        store = await AgentMemoryStore.shared()
+
+        for idx in range(3):
+            await store.add_message(
+                session=memory_session,
+                role=MessageRole.ASSISTANT,
+                content=f"Session memo {idx}: review administrator MFA posture.",
+            )
+
+        async with async_session_factory() as db_session:
+            session_count = await db_session.scalar(
+                select(func.count(AgentMemoryEntry.id)).where(
+                    AgentMemoryEntry.session_id == memory_session.id
+                )
+            )
+            org_count = await db_session.scalar(
+                select(func.count(AgentMemoryEntry.id)).where(
+                    AgentMemoryEntry.org_id == memory_session.org_id
+                )
+            )
+
+        assert session_count == 2
+        assert org_count <= 3
+    finally:
+        settings.agent_memory_max_entries_per_session = previous_session_limit
+        settings.agent_memory_max_entries_per_org = previous_org_limit
+        settings.agent_memory_prune_batch_size = previous_batch_size
+        settings.agent_memory_prune_min_decay = previous_min_decay
+        settings.agent_memory_prune_probability = previous_probability
+        AgentMemoryStore._instance = None
