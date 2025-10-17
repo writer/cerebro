@@ -55,6 +55,29 @@ export type PolicySuggestion = {
   last_seen: string;
 };
 
+export type PolicySimulationExample = {
+  invocation_id: string;
+  session_id: string;
+  tool_name: string;
+  matched: boolean;
+  status: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  input_data: Record<string, unknown>;
+  output_data?: Record<string, unknown> | null;
+  cel_context: Record<string, unknown>;
+  error?: string | null;
+  latency_ms?: number | null;
+};
+
+export type PolicySimulationResult = {
+  evaluated_count: number;
+  matched_count: number;
+  mismatched_count: number;
+  error_count: number;
+  examples: PolicySimulationExample[];
+};
+
 export type AgentMessage = {
   message_id: string;
   role: string;

@@ -7,7 +7,7 @@ and providing clean interfaces for API endpoints and CLI commands.
 
 from datetime import datetime, timezone, timedelta
 from typing import Any, AsyncIterator, Dict, List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from sqlalchemy import select, text
@@ -29,6 +29,7 @@ from cerebro.agents.runtime_facade import AgentRuntimeFacade
 from cerebro.agents.review_service import AgentReviewService
 from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.notification_service import NotificationService
+from cerebro.rules.engine import RuleEngine, EvaluationContext, CompilationError
 
 logger = structlog.get_logger(__name__)
 
@@ -38,6 +39,7 @@ class AgentSessionService:
     
     def __init__(self):
         self.runtime = AgentRuntimeFacade()
+        self._rule_engine = RuleEngine()
     
     async def create_session(
         self,
@@ -492,6 +494,98 @@ class AgentSessionService:
                 }
             )
         return ranked
+
+    async def simulate_policy_expression(
+        self,
+        *,
+        org_id: UUID,
+        expression: str,
+        tool_name: Optional[str] = None,
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        if not expression or not expression.strip():
+            raise ValueError("CEL expression is required")
+
+        try:
+            # Ensure expression compiles before running bulk evaluation.
+            self._rule_engine.compile_rule(expression)
+        except CompilationError as exc:
+            raise ValueError(f"CEL expression failed to compile: {exc}") from exc
+
+        normalized_limit = max(1, min(limit, 200))
+
+        async with async_session_factory() as db_session:
+            stmt = (
+                select(ToolInvocation, AgentSession)
+                .join(AgentSession, ToolInvocation.session_id == AgentSession.id)
+                .where(AgentSession.org_id == org_id)
+                .order_by(ToolInvocation.started_at.desc())
+                .limit(normalized_limit)
+            )
+            if tool_name:
+                stmt = stmt.where(ToolInvocation.tool_name == tool_name)
+
+            result = await db_session.execute(stmt)
+            rows = result.all()
+
+        evaluated = 0
+        matched = 0
+        mismatched = 0
+        errors = 0
+        examples: List[Dict[str, Any]] = []
+
+        for invocation, session in rows:
+            evaluated += 1
+            cel_context = invocation.cel_context or {}
+            eval_context = EvaluationContext(
+                resource=cel_context,
+                config=cel_context,
+                principal={
+                    "user_id": cel_context.get("user_id") or session.created_by,
+                    "org_id": str(session.org_id),
+                },
+            )
+
+            rule_result = self._rule_engine.evaluate_rule(
+                rule_id=uuid4(),
+                expression=expression,
+                context=eval_context,
+            )
+
+            matched_flag = bool(rule_result.matched)
+            if matched_flag:
+                matched += 1
+            else:
+                mismatched += 1
+
+            if rule_result.error:
+                errors += 1
+
+            if len(examples) < 10:
+                examples.append(
+                    {
+                        "invocation_id": str(invocation.id),
+                        "session_id": str(invocation.session_id),
+                        "tool_name": invocation.tool_name,
+                        "matched": matched_flag,
+                        "status": invocation.status.value,
+                        "started_at": invocation.started_at.isoformat() if invocation.started_at else None,
+                        "completed_at": invocation.completed_at.isoformat() if invocation.completed_at else None,
+                        "input_data": invocation.input_data,
+                        "output_data": invocation.output_data,
+                        "cel_context": cel_context,
+                        "error": rule_result.error,
+                        "latency_ms": rule_result.execution_time_ms,
+                    }
+                )
+
+        return {
+            "evaluated_count": evaluated,
+            "matched_count": matched,
+            "mismatched_count": mismatched,
+            "error_count": errors,
+            "examples": examples,
+        }
 
     async def get_session_with_messages(
         self,

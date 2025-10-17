@@ -207,6 +207,35 @@ class PolicySuggestionResponse(BaseModel):
     last_seen: datetime
 
 
+class PolicySimulationExample(BaseModel):
+    invocation_id: UUID
+    session_id: UUID
+    tool_name: str
+    matched: bool
+    status: str
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    input_data: Dict[str, Any]
+    output_data: Optional[Dict[str, Any]]
+    cel_context: Dict[str, Any]
+    error: Optional[str]
+    latency_ms: Optional[float]
+
+
+class PolicySimulationResponse(BaseModel):
+    evaluated_count: int
+    matched_count: int
+    mismatched_count: int
+    error_count: int
+    examples: List[PolicySimulationExample]
+
+
+class PolicySimulationRequest(BaseModel):
+    expression: str = Field(..., min_length=3, description="CEL expression to evaluate")
+    tool_name: Optional[str] = Field(None, description="Filter to a specific tool name")
+    limit: int = Field(50, ge=1, le=200, description="Number of recent invocations to evaluate")
+
+
 def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -737,6 +766,24 @@ async def list_policy_suggestions(
         limit=limit,
     )
     return [_policy_suggestion_to_response(item) for item in suggestions]
+
+
+@router.post("/policy-suggestions/simulate", response_model=PolicySimulationResponse)
+async def simulate_policy_expression(
+    request: PolicySimulationRequest,
+    current_user: User = Depends(get_current_user),
+):
+    service = AgentSessionService()
+    try:
+        result = await service.simulate_policy_expression(
+            org_id=current_user.org_id,
+            expression=request.expression,
+            tool_name=request.tool_name,
+            limit=request.limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PolicySimulationResponse(**result)
 
 
 # Health check for agent system
