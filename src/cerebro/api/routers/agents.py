@@ -926,6 +926,50 @@ async def get_session_analytics(
     return [_runtime_event_to_response(event) for event in events]
 
 
+@router.get("/workflows/templates", response_model=List[Dict[str, Any]])
+async def list_workflow_templates(
+    trigger: Optional[str] = Query(None, description="Filter by trigger type"),
+    current_user: User = Depends(get_current_user),
+):
+    """List all available workflow templates."""
+    from cerebro.agents.workflow_templates import WorkflowTemplateLibrary, WorkflowEngine
+    
+    if trigger:
+        templates = WorkflowTemplateLibrary.get_templates_by_trigger(trigger)
+    else:
+        templates = WorkflowTemplateLibrary.get_all_templates()
+    
+    return [WorkflowEngine.to_dict(template) for template in templates]
+
+
+@router.get("/workflows/templates/{template_id}", response_model=Dict[str, Any])
+async def get_workflow_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Get a specific workflow template by ID."""
+    from cerebro.agents.workflow_templates import WorkflowTemplateLibrary, WorkflowEngine
+    
+    template = WorkflowTemplateLibrary.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return WorkflowEngine.to_dict(template)
+
+
+@router.post("/workflows/evaluate", response_model=List[Dict[str, Any]])
+async def evaluate_workflows(
+    trigger: str = Field(..., description="Trigger type to evaluate"),
+    context: Dict[str, Any] = Field(..., description="Context data for evaluation"),
+    current_user: User = Depends(get_current_user),
+):
+    """Evaluate which workflows match given trigger and context."""
+    from cerebro.agents.workflow_templates import WorkflowEngine
+    
+    matching = await WorkflowEngine.find_matching_templates(trigger, context)
+    return [WorkflowEngine.to_dict(template) for template in matching]
+
+
 @router.get("/policy-suggestions", response_model=List[PolicySuggestionResponse])
 async def list_policy_suggestions(
     limit: int = Query(50, ge=1, le=200, description="Maximum policy suggestions to return"),
