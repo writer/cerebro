@@ -1,3 +1,9 @@
+# Node / frontend artifacts
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+frontend/out/
 # Python
 __pycache__/
 *.py[cod]
@@ -11,6 +17,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/lib/
 lib64/
 parts/
 sdist/
@@ -146,4 +153,7 @@ logs/
 
 # Service account keys
 *.json
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
 !**/fixtures/**/*.json
