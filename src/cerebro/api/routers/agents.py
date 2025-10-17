@@ -863,6 +863,39 @@ async def get_task_history(
     ]
 
 
+@router.get("/review-tasks/sla/summary", response_model=Dict[str, Any])
+async def get_sla_summary(
+    current_user: User = Depends(get_current_user),
+):
+    """Get SLA compliance summary for all pending tasks."""
+    from cerebro.agents.sla_service import SLAService
+    
+    summary = await SLAService.get_sla_summary(org_id=current_user.org_id)
+    return summary
+
+
+@router.get("/review-tasks/sla/breached", response_model=List[Dict[str, Any]])
+async def get_breached_tasks(
+    current_user: User = Depends(get_current_user),
+):
+    """Get all tasks that have breached their SLA."""
+    from cerebro.agents.sla_service import SLAService
+    
+    breached = await SLAService.get_breached_tasks(org_id=current_user.org_id)
+    return [status.to_dict() for status in breached]
+
+
+@router.get("/review-tasks/sla/at-risk", response_model=List[Dict[str, Any]])
+async def get_at_risk_tasks(
+    current_user: User = Depends(get_current_user),
+):
+    """Get all tasks at risk of breaching SLA."""
+    from cerebro.agents.sla_service import SLAService
+    
+    at_risk = await SLAService.get_at_risk_tasks(org_id=current_user.org_id)
+    return [status.to_dict() for status in at_risk]
+
+
 @router.get("/review-tasks/notifications", response_model=List[ReviewNotificationResponse])
 async def list_review_notifications(
     status: Optional[str] = Query(None, description="Filter notifications by status"),
