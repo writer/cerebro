@@ -124,6 +124,11 @@ class ReviewTaskResponse(BaseModel):
     summary: Optional[str]
     payload: Dict[str, Any]
     promotion_target: Optional[str]
+    priority: Optional[str]
+    due_at: Optional[datetime]
+    escalated_to: Optional[str]
+    notification_channel: Optional[str]
+    ticket_reference: Optional[str]
     created_by: str
     created_at: datetime
     resolved_by: Optional[str]
@@ -134,6 +139,115 @@ class ReviewTaskResponse(BaseModel):
 class ResolveReviewTaskRequest(BaseModel):
     status: str = Field(..., description="New status for the review task")
     notes: Optional[str] = Field(None, description="Optional resolution notes")
+
+
+class BulkReviewUpdateRequest(BaseModel):
+    task_ids: List[UUID]
+    status: Optional[str] = Field(None, description="Status to apply to selected tasks")
+    notes: Optional[str] = None
+    escalated_to: Optional[str] = Field(None, description="Escalation target identifier")
+    due_at: Optional[datetime] = Field(None, description="Optional due date for review completion")
+    priority: Optional[str] = Field(None, description="Priority label")
+    notification_channel: Optional[str] = Field(None, description="Channel for notifications (e.g. slack:#alerts)")
+    ticket_system: Optional[str] = Field(None, description="External ticket system identifier")
+    ticket_summary: Optional[str] = Field(None, description="Summary used when creating an external ticket")
+    ticket_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional ticket metadata")
+
+
+class ReviewNotificationResponse(BaseModel):
+    id: UUID
+    task_id: UUID
+    org_id: UUID
+    channel: str
+    status: str
+    payload: Dict[str, Any]
+    created_at: datetime
+    delivered_at: Optional[datetime]
+
+
+class RuntimeEventResponse(BaseModel):
+    id: UUID
+    event_type: str
+    payload: Dict[str, Any]
+    created_at: datetime
+
+
+class PolicySuggestionResponse(BaseModel):
+    id: UUID
+    tool_name: str
+    cel_expression: str
+    support_count: int
+    reject_count: int
+    confidence: float
+    metadata: Dict[str, Any]
+    last_seen: datetime
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _review_task_to_response(data: Dict[str, Any]) -> ReviewTaskResponse:
+    return ReviewTaskResponse(
+        id=UUID(data["id"]),
+        session_id=UUID(data["session_id"]),
+        org_id=UUID(data["org_id"]),
+        status=data["status"],
+        title=data["title"],
+        summary=data.get("summary"),
+        payload=data.get("payload", {}),
+        promotion_target=data.get("promotion_target"),
+        priority=data.get("priority"),
+        due_at=_parse_datetime(data.get("due_at")),
+        escalated_to=data.get("escalated_to"),
+        notification_channel=data.get("notification_channel"),
+        ticket_reference=data.get("ticket_reference"),
+        created_by=data.get("created_by", ""),
+        created_at=_parse_datetime(data.get("created_at")) or datetime.now(),
+        resolved_by=data.get("resolved_by"),
+        resolved_at=_parse_datetime(data.get("resolved_at")),
+        resolution_notes=data.get("resolution_notes"),
+    )
+
+
+def _notification_to_response(data: Dict[str, Any]) -> ReviewNotificationResponse:
+    return ReviewNotificationResponse(
+        id=UUID(data["id"]),
+        task_id=UUID(data["task_id"]),
+        org_id=UUID(data["org_id"]),
+        channel=data["channel"],
+        status=data["status"],
+        payload=data.get("payload", {}),
+        created_at=_parse_datetime(data.get("created_at")) or datetime.now(),
+        delivered_at=_parse_datetime(data.get("delivered_at")),
+    )
+
+
+def _runtime_event_to_response(data: Dict[str, Any]) -> RuntimeEventResponse:
+    return RuntimeEventResponse(
+        id=UUID(data["id"]),
+        event_type=data["event_type"],
+        payload=data.get("payload", {}),
+        created_at=_parse_datetime(data.get("created_at")) or datetime.now(),
+    )
+
+
+def _policy_suggestion_to_response(data: Dict[str, Any]) -> PolicySuggestionResponse:
+    return PolicySuggestionResponse(
+        id=UUID(data["id"]),
+        tool_name=data["tool_name"],
+        cel_expression=data["cel_expression"],
+        support_count=data.get("support_count", 0),
+        reject_count=data.get("reject_count", 0),
+        confidence=float(data.get("confidence", 0.0)),
+        metadata=data.get("metadata", {}),
+        last_seen=_parse_datetime(data.get("last_seen")) or datetime.now(),
+    )
 
 
 # API Endpoints
@@ -490,24 +604,7 @@ async def list_review_tasks(
         status=status,
         limit=limit,
     )
-    return [
-        ReviewTaskResponse(
-            id=UUID(task["id"]),
-            session_id=UUID(task["session_id"]),
-            org_id=UUID(task["org_id"]),
-            status=task["status"],
-            title=task["title"],
-            summary=task["summary"],
-            payload=task["payload"],
-            promotion_target=task["promotion_target"],
-            created_by=task["created_by"],
-            created_at=datetime.fromisoformat(task["created_at"]),
-            resolved_by=task["resolved_by"],
-            resolved_at=datetime.fromisoformat(task["resolved_at"]) if task["resolved_at"] else None,
-            resolution_notes=task["resolution_notes"],
-        )
-        for task in tasks
-    ]
+    return [_review_task_to_response(task) for task in tasks]
 
 
 @router.post("/review-tasks/{task_id}/resolve", response_model=ReviewTaskResponse)
@@ -528,21 +625,75 @@ async def resolve_review_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Review task not found")
 
-    return ReviewTaskResponse(
-        id=UUID(task["id"]),
-        session_id=UUID(task["session_id"]),
-        org_id=UUID(task["org_id"]),
-        status=task["status"],
-        title=task["title"] or "",
-        summary=task["summary"],
-        payload=task["payload"],
-        promotion_target=task["promotion_target"],
-        created_by=task["created_by"],
-        created_at=datetime.fromisoformat(task["created_at"]),
-        resolved_by=task["resolved_by"],
-        resolved_at=datetime.fromisoformat(task["resolved_at"]) if task["resolved_at"] else None,
-        resolution_notes=task["resolution_notes"],
+    return _review_task_to_response(task)
+
+
+@router.post("/review-tasks/bulk-update", response_model=List[ReviewTaskResponse])
+async def bulk_update_review_tasks(
+    request: BulkReviewUpdateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Apply bulk status updates, escalations, or ticket actions to review tasks."""
+
+    service = AgentSessionService()
+    tasks = await service.bulk_update_review_tasks(
+        org_id=current_user.org_id,
+        task_ids=request.task_ids,
+        status=request.status,
+        resolved_by=current_user.user_id,
+        notes=request.notes,
+        escalated_to=request.escalated_to,
+        due_at=request.due_at,
+        priority=request.priority,
+        notification_channel=request.notification_channel,
+        ticket_system=request.ticket_system,
+        ticket_summary=request.ticket_summary,
+        ticket_metadata=request.ticket_metadata,
     )
+    return [_review_task_to_response(task) for task in tasks]
+
+
+@router.get("/review-tasks/notifications", response_model=List[ReviewNotificationResponse])
+async def list_review_notifications(
+    status: Optional[str] = Query(None, description="Filter notifications by status"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum notification records to return"),
+    current_user: User = Depends(get_current_user),
+):
+    service = AgentSessionService()
+    notifications = await service.list_review_notifications(
+        org_id=current_user.org_id,
+        status=status,
+        limit=limit,
+    )
+    return [_notification_to_response(notification) for notification in notifications]
+
+
+@router.get("/sessions/{session_id}/analytics", response_model=List[RuntimeEventResponse])
+async def get_session_analytics(
+    session_id: UUID,
+    limit: int = Query(100, ge=1, le=500, description="Maximum analytics events to return"),
+    current_user: User = Depends(get_current_user),
+):
+    service = AgentSessionService()
+    events = await service.get_session_analytics(
+        session_id=session_id,
+        org_id=current_user.org_id,
+        limit=limit,
+    )
+    return [_runtime_event_to_response(event) for event in events]
+
+
+@router.get("/policy-suggestions", response_model=List[PolicySuggestionResponse])
+async def list_policy_suggestions(
+    limit: int = Query(50, ge=1, le=200, description="Maximum policy suggestions to return"),
+    current_user: User = Depends(get_current_user),
+):
+    service = AgentSessionService()
+    suggestions = await service.list_policy_suggestions(
+        org_id=current_user.org_id,
+        limit=limit,
+    )
+    return [_policy_suggestion_to_response(item) for item in suggestions]
 
 
 # Health check for agent system

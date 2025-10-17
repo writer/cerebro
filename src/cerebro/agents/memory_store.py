@@ -15,7 +15,13 @@ from uuid import UUID
 from sqlalchemy import delete, func, or_, select, update
 
 from cerebro.agents.metrics import record_memory_event
-from cerebro.agents.models import AgentMemoryEntry, AgentSession, MemoryScope, MessageRole
+from cerebro.agents.models import (
+    AgentMemoryDecayOverride,
+    AgentMemoryEntry,
+    AgentSession,
+    MemoryScope,
+    MessageRole,
+)
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
 
@@ -30,6 +36,11 @@ try:  # pragma: no cover - sklearn may not be present in minimal envs
     from sklearn.feature_extraction.text import HashingVectorizer
 except ImportError:  # pragma: no cover
     HashingVectorizer = None  # type: ignore
+
+try:  # pragma: no cover - optional ANN engine
+    from annoy import AnnoyIndex
+except ImportError:  # pragma: no cover
+    AnnoyIndex = None  # type: ignore
 
 
 class AgentMemoryStore:
@@ -73,6 +84,7 @@ class AgentMemoryStore:
         self._prune_max_age = timedelta(hours=max(1, settings.agent_memory_prune_max_age_hours))
         self._duplicate_window = timedelta(hours=max(1, settings.agent_memory_duplicate_window_hours))
         self._mmr_lambda = min(max(settings.agent_memory_mmr_lambda, 0.0), 1.0)
+        self._hybrid_alpha = min(max(settings.agent_memory_hybrid_alpha, 0.0), 1.0)
         self._session_boost = max(1.0, settings.agent_memory_session_scope_boost)
         self._incident_boost = max(1.0, settings.agent_memory_incident_scope_boost)
         self._finding_boost = max(1.0, settings.agent_memory_finding_scope_boost)
@@ -81,6 +93,14 @@ class AgentMemoryStore:
             for role, weight in (settings.agent_memory_role_weights or {}).items()
         }
         self._scope_miss_penalty = 0.6
+        self._decay_profiles = {
+            key: max(1, int(value)) for key, value in (settings.agent_memory_decay_profiles or {}).items()
+        }
+        self._decay_override_cache: Dict[UUID, Tuple[datetime, Dict[Tuple[str, Optional[str]], int]]] = {}
+        self._override_cache_ttl = timedelta(minutes=15)
+        self._annoy_enabled = bool(
+            AnnoyIndex is not None and settings.agent_memory_enable_annoy
+        )
 
     @classmethod
     async def shared(cls) -> "AgentMemoryStore":
@@ -217,13 +237,26 @@ class AgentMemoryStore:
             return []
 
         query_embedding = await self._generate_embedding(query)
-        if not query_embedding:
-            return []
+        query_norm: Optional[float] = None
+        if query_embedding:
+            query_norm = math.sqrt(sum(value * value for value in query_embedding)) or 1.0
 
-        query_norm = math.sqrt(sum(value * value for value in query_embedding)) or 1.0
+        lexical_query_vector: Optional[List[float]] = None
+        lexical_query_norm: Optional[float] = None
+        vectorizer = self._hashing_vectorizer
+        if vectorizer is not None:
+            lexical_array = vectorizer.transform([query]).toarray()[0]
+            lexical_query_vector = [float(value) for value in lexical_array]
+            lexical_query_norm = math.sqrt(
+                sum(value * value for value in lexical_query_vector)
+            ) or 1.0
+
+        if query_embedding is None and lexical_query_vector is None:
+            return []
 
         session_scope_map = self._session_scope_map(session)
         limit = min(limit, self._max_snippets)
+        overrides = await self._load_decay_overrides(session.org_id)
 
         async with async_session_factory() as db_session:
             stmt = (
@@ -239,30 +272,81 @@ class AgentMemoryStore:
             return []
 
         now = datetime.now(timezone.utc)
+        embedding_candidates: List[Tuple[int, AgentMemoryEntry, List[float], float]] = []
+        for idx, entry in enumerate(candidates):
+            if entry.embedding:
+                embedding_candidates.append(
+                    (idx, entry, entry.embedding, entry.embedding_norm or 1.0)
+                )
+
+        preferred_indices: Optional[set[int]] = None
+        if self._annoy_enabled and query_embedding and embedding_candidates:
+            dimension = len(query_embedding)
+            try:
+                annoy_index = AnnoyIndex(dimension, "angular")  # type: ignore[arg-type]
+                index_map: Dict[int, int] = {}
+                for ann_idx, (candidate_idx, _, embedding, _) in enumerate(embedding_candidates):
+                    annoy_index.add_item(ann_idx, embedding)
+                    index_map[ann_idx] = candidate_idx
+                tree_count = min(10, max(1, len(embedding_candidates) // 3))
+                annoy_index.build(tree_count)
+                approx = annoy_index.get_nns_by_vector(
+                    query_embedding,
+                    min(len(embedding_candidates), max(limit * 5, 10)),
+                )
+                preferred_indices = {index_map[item] for item in approx}
+            except Exception:
+                preferred_indices = None
+
         scored: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]] = []
-        for entry in candidates:
+        for idx, entry in enumerate(candidates):
             embedding = entry.embedding
             embedding_norm = entry.embedding_norm or 1.0
-            if not embedding:
-                refreshed = await self._refresh_embedding(entry)
-                if not refreshed:
-                    continue
-                embedding, embedding_norm = refreshed
+            if preferred_indices is not None and embedding and idx not in preferred_indices:
+                continue
 
-            similarity = self._cosine_similarity(
-                query_embedding,
-                query_norm,
-                embedding,
-                embedding_norm,
-            )
+            similarity = 0.0
+            if query_embedding is not None:
+                if not embedding:
+                    refreshed = await self._refresh_embedding(entry)
+                    if refreshed:
+                        embedding, embedding_norm = refreshed
+                if embedding:
+                    similarity = self._cosine_similarity(
+                        query_embedding,
+                        query_norm or 1.0,
+                        embedding,
+                        embedding_norm,
+                    )
 
-            if similarity <= 0:
+            lexical_score = 0.0
+            if lexical_query_vector is not None and vectorizer is not None:
+                entry_array = vectorizer.transform([entry.content]).toarray()[0]
+                entry_vector = [float(value) for value in entry_array]
+                entry_norm = math.sqrt(sum(value * value for value in entry_vector)) or 1.0
+                if entry_norm > 0 and lexical_query_norm:
+                    lexical_score = self._cosine_similarity(
+                        lexical_query_vector,
+                        lexical_query_norm,
+                        entry_vector,
+                        entry_norm,
+                    )
+
+            combined_similarity = 0.0
+            if similarity > 0:
+                combined_similarity += self._hybrid_alpha * similarity
+            if lexical_score > 0:
+                weight = 1.0 if query_embedding is None else (1 - self._hybrid_alpha)
+                combined_similarity += weight * lexical_score
+
+            if combined_similarity <= 0:
                 continue
 
             scope_multiplier = self._scope_multiplier(session_scope_map, entry.scopes)
             role_multiplier = self._role_weight(entry.role)
-            adjusted = similarity * scope_multiplier * role_multiplier
-            recency = self._compute_decay_multiplier(entry, now)
+            adjusted = combined_similarity * scope_multiplier * role_multiplier
+            half_life_hours = self._determine_half_life(overrides, entry)
+            recency = self._compute_decay_multiplier(entry, now, half_life_hours)
             final_score = adjusted * recency
             if final_score <= 0:
                 continue
@@ -438,13 +522,62 @@ class AgentMemoryStore:
         dot = sum(query[i] * stored[i] for i in range(length))
         return dot / (query_norm * stored_norm)
 
-    def _compute_decay_multiplier(self, entry: AgentMemoryEntry, now: datetime) -> float:
+    async def _load_decay_overrides(
+        self,
+        org_id: UUID,
+    ) -> Dict[Tuple[str, Optional[str]], int]:
+        cached = self._decay_override_cache.get(org_id)
+        now = datetime.now(timezone.utc)
+        if cached and (now - cached[0]) < self._override_cache_ttl:
+            return cached[1]
+
+        overrides: Dict[Tuple[str, Optional[str]], int] = {}
+        async with async_session_factory() as db_session:
+            stmt = select(AgentMemoryDecayOverride).where(
+                AgentMemoryDecayOverride.org_id == org_id
+            )
+            result = await db_session.execute(stmt)
+            for record in result.scalars().all():
+                key = (record.scope_type, record.scope_value)
+                overrides[key] = max(1, int(record.half_life_hours or self._half_life_hours))
+
+        self._decay_override_cache[org_id] = (now, overrides)
+        return overrides
+
+    def _determine_half_life(
+        self,
+        overrides: Dict[Tuple[str, Optional[str]], int],
+        entry: AgentMemoryEntry,
+    ) -> float:
+        half_life = self._half_life_hours
+        scopes = entry.scopes or []
+        for scope in scopes:
+            scope_type = scope.get("type") if isinstance(scope, dict) else None
+            if not scope_type:
+                continue
+            value = scope.get("value") if isinstance(scope, dict) else None
+            specific_key = (scope_type, str(value) if value is not None else None)
+            generic_key = (scope_type, None)
+            if specific_key in overrides:
+                return max(1, overrides[specific_key])
+            if generic_key in overrides:
+                half_life = max(1, overrides[generic_key])
+            elif scope_type in self._decay_profiles:
+                half_life = min(half_life, max(1, self._decay_profiles[scope_type]))
+        return half_life
+
+    def _compute_decay_multiplier(
+        self,
+        entry: AgentMemoryEntry,
+        now: datetime,
+        half_life_hours: float,
+    ) -> float:
         base_decay = entry.decay_score or 1.0
         last_seen = self._normalize_timestamp(entry.last_accessed_at or entry.created_at, now)
         current_time = self._normalize_timestamp(now, now)
         age_seconds = max((current_time - last_seen).total_seconds(), 0.0)
         age_hours = age_seconds / 3600.0
-        exponential = math.exp(-age_hours / self._half_life_hours)
+        exponential = math.exp(-age_hours / max(1.0, half_life_hours))
         return max(0.01, exponential * base_decay)
 
     async def _update_access_metadata(self, entries: Iterable[AgentMemoryEntry]) -> None:

@@ -8,6 +8,7 @@ from uuid import UUID
 
 import structlog
 
+from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.models import AgentSession, AgentType
 from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
 from cerebro.agents.runtime import CerebroClaudeRuntime
@@ -50,6 +51,16 @@ class AgentRuntimeFacade:
             created_by=created_by,
             context=prepared_context,
             title=title,
+        )
+        await AgentAnalyticsService.record_event(
+            org_id=session.org_id,
+            session_id=session.id,
+            event_type="runtime_selected",
+            payload={
+                "runtime": runtime_key,
+                "skill_tags": skill_tags,
+                "requested_context_keys": sorted(list(context.keys())),
+            },
         )
         return session
 
@@ -149,6 +160,16 @@ class AgentRuntimeFacade:
                     },
                 },
             )
+            await AgentAnalyticsService.record_event(
+                org_id=session.org_id,
+                session_id=session.id,
+                event_type="runtime_switched",
+                payload={
+                    "from_runtime": current_runtime,
+                    "to_runtime": desired_runtime,
+                    "skill_tags": skill_tags,
+                },
+            )
             session.context["_runtime_engine"] = desired_runtime
             session.context["_skill_tags"] = skill_tags
             return self._get_runtime(desired_runtime)
@@ -156,6 +177,12 @@ class AgentRuntimeFacade:
         if session.context.get("_skill_tags") != skill_tags:
             await self._update_session_context(session.id, {"_skill_tags": skill_tags})
             session.context["_skill_tags"] = skill_tags
+            await AgentAnalyticsService.record_event(
+                org_id=session.org_id,
+                session_id=session.id,
+                event_type="skill_tags_updated",
+                payload={"skill_tags": skill_tags},
+            )
 
         return self._get_runtime(current_runtime)
 

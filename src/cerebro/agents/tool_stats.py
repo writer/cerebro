@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Iterable, List
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
     from cerebro.agents.tools.base import Tool
@@ -59,15 +59,34 @@ class ToolPerformanceTracker:
         tools: Iterable["Tool"],
         agent_type: str,
     ) -> List["Tool"]:
-        def score(tool: Tool) -> float:
+        rankings = self.get_rankings(tools, agent_type)
+        ordering = {item["tool_name"]: index for index, item in enumerate(rankings)}
+        return sorted(tools, key=lambda tool: ordering.get(tool.name, 0))
+
+    def get_rankings(
+        self,
+        tools: Iterable["Tool"],
+        agent_type: str,
+    ) -> List[Dict[str, Any]]:
+        rankings: List[Dict[str, Any]] = []
+        for tool in tools:
             stats = self._stats.get(tool.name)
             base = 0.5 if stats is None else stats.success_rate
-            # Prefer tools with more observations
             weight = 1.0 if stats is None else min(1.5, 0.5 + stats.total / 10)
             penalty = 0.0 if stats is None else min(0.2, stats.avg_duration / 30)
-            return (base * weight) - penalty
-
-        return sorted(tools, key=score, reverse=True)
+            score = (base * weight) - penalty
+            rankings.append(
+                {
+                    "tool_name": tool.name,
+                    "score": round(score, 4),
+                    "success_rate": base,
+                    "observations": stats.total if stats else 0,
+                    "avg_duration": stats.avg_duration if stats else 0.0,
+                    "agent_type": agent_type,
+                }
+            )
+        rankings.sort(key=lambda item: item["score"], reverse=True)
+        return rankings
 
 
 performance_tracker = ToolPerformanceTracker()

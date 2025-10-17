@@ -13,11 +13,12 @@ import structlog
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
-from cerebro.core.database import get_db
+from cerebro.core.database import async_session_factory, get_db
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
     AgentMemoryEntry,
+    AgentPolicySuggestion,
     AgentType,
     ReviewTaskStatus,
     ToolInvocation,
@@ -26,6 +27,8 @@ from cerebro.agents.models import (
 )
 from cerebro.agents.runtime_facade import AgentRuntimeFacade
 from cerebro.agents.review_service import AgentReviewService
+from cerebro.agents.analytics_service import AgentAnalyticsService
+from cerebro.agents.notification_service import NotificationService
 
 logger = structlog.get_logger(__name__)
 
@@ -251,26 +254,7 @@ class AgentSessionService:
             status=status_enum,
             limit=limit,
         )
-        results: List[Dict[str, Any]] = []
-        for task in tasks:
-            results.append(
-                {
-                    "id": str(task.id),
-                    "session_id": str(task.session_id),
-                    "org_id": str(task.org_id),
-                    "status": task.status.value,
-                    "title": task.title,
-                    "summary": task.summary,
-                    "payload": task.payload,
-                    "promotion_target": task.promotion_target,
-                    "created_by": task.created_by,
-                    "created_at": task.created_at.isoformat(),
-                    "resolved_by": task.resolved_by,
-                    "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
-                    "resolution_notes": task.resolution_notes,
-                }
-            )
-        return results
+        return [self._serialize_review_task(task) for task in tasks]
 
     async def resolve_review_task(
         self,
@@ -293,21 +277,119 @@ class AgentSessionService:
         )
         if task is None:
             return None
-        return {
-            "id": str(task.id),
-            "session_id": str(task.session_id),
-            "org_id": str(task.org_id),
-            "status": task.status.value,
-            "title": task.title,
-            "summary": task.summary,
-            "payload": task.payload,
-            "promotion_target": task.promotion_target,
-            "created_by": task.created_by,
-            "created_at": task.created_at.isoformat(),
-            "resolved_by": task.resolved_by,
-            "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
-            "resolution_notes": task.resolution_notes,
-        }
+        return self._serialize_review_task(task)
+
+    async def bulk_update_review_tasks(
+        self,
+        *,
+        org_id: UUID,
+        task_ids: List[UUID],
+        status: Optional[str] = None,
+        resolved_by: Optional[str] = None,
+        notes: Optional[str] = None,
+        escalated_to: Optional[str] = None,
+        due_at: Optional[datetime] = None,
+        priority: Optional[str] = None,
+        notification_channel: Optional[str] = None,
+        ticket_system: Optional[str] = None,
+        ticket_summary: Optional[str] = None,
+        ticket_metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        status_enum: Optional[ReviewTaskStatus] = None
+        if status:
+            try:
+                status_enum = ReviewTaskStatus(status)
+            except ValueError as exc:
+                raise ValueError("Invalid review task status") from exc
+
+        tasks = await AgentReviewService.bulk_update_tasks(
+            org_id=org_id,
+            task_ids=task_ids,
+            status=status_enum,
+            resolved_by=resolved_by,
+            notes=notes,
+            escalated_to=escalated_to,
+            due_at=due_at,
+            priority=priority,
+            notification_channel=notification_channel,
+            ticket_system=ticket_system,
+            ticket_summary=ticket_summary,
+            ticket_metadata=ticket_metadata,
+        )
+        return [self._serialize_review_task(task) for task in tasks]
+
+    async def list_review_notifications(
+        self,
+        *,
+        org_id: UUID,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        notifications = await NotificationService.list_notifications(
+            org_id=org_id,
+            status=status,
+            limit=limit,
+        )
+        return [
+            {
+                "id": str(notification.id),
+                "task_id": str(notification.task_id),
+                "org_id": str(notification.org_id),
+                "channel": notification.channel,
+                "status": notification.status,
+                "payload": notification.payload,
+                "created_at": notification.created_at.isoformat(),
+                "delivered_at": notification.delivered_at.isoformat() if notification.delivered_at else None,
+            }
+            for notification in notifications
+        ]
+
+    async def get_session_analytics(
+        self,
+        *,
+        session_id: UUID,
+        org_id: Optional[UUID] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        session = await self.get_session(session_id, org_id)
+        if not session:
+            return []
+        return await AgentAnalyticsService.list_events(session_id=session_id, limit=limit)
+
+    async def list_policy_suggestions(
+        self,
+        *,
+        org_id: UUID,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        async with async_session_factory() as db_session:
+            stmt = (
+                select(AgentPolicySuggestion)
+                .where(AgentPolicySuggestion.org_id == org_id)
+                .order_by(AgentPolicySuggestion.support_count.desc())
+                .limit(limit)
+            )
+            result = await db_session.execute(stmt)
+            suggestions = result.scalars().all()
+
+        ranked: List[Dict[str, Any]] = []
+        for suggestion in suggestions:
+            support = suggestion.support_count or 0
+            reject = suggestion.reject_count or 0
+            confidence = support / max(1, support + reject)
+            ranked.append(
+                {
+                    "id": str(suggestion.id),
+                    "tool_name": suggestion.tool_name,
+                    "cel_expression": suggestion.cel_expression,
+                    "support_count": support,
+                    "reject_count": reject,
+                    "confidence": round(confidence, 3),
+                    "metadata": suggestion.details,
+                    "last_seen": suggestion.last_seen.isoformat(),
+                }
+            )
+        return ranked
 
     async def get_session_with_messages(
         self,
@@ -377,6 +459,29 @@ class AgentSessionService:
                 ],
                 "metrics": await self.runtime.get_session_metrics(session),
             }
+
+    @staticmethod
+    def _serialize_review_task(task) -> Dict[str, Any]:
+        return {
+            "id": str(task.id),
+            "session_id": str(task.session_id),
+            "org_id": str(task.org_id),
+            "status": task.status.value,
+            "title": task.title,
+            "summary": task.summary,
+            "payload": task.payload,
+            "promotion_target": task.promotion_target,
+            "priority": task.priority,
+            "due_at": task.due_at.isoformat() if task.due_at else None,
+            "escalated_to": task.escalated_to,
+            "notification_channel": task.notification_channel,
+            "ticket_reference": task.ticket_reference,
+            "created_by": task.created_by,
+            "created_at": task.created_at.isoformat(),
+            "resolved_by": task.resolved_by,
+            "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
+            "resolution_notes": task.resolution_notes,
+        }
     
     async def delete_session(
         self,

@@ -31,6 +31,7 @@ from cerebro.agents.models import (
     ApprovalStatus,
 )
 from cerebro.agents.review_service import AgentReviewService
+from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.metrics import record_tool_metrics
 from cerebro.agents.tool_stats import performance_tracker
 
@@ -386,6 +387,14 @@ class ToolExecutor:
                     success=False,
                     duration_seconds=duration,
                 )
+                await self._record_tool_event(
+                    context=context,
+                    invocation=invocation,
+                    tool=tool,
+                    outcome="permission_denied",
+                    duration=duration,
+                    metadata={"error_code": "PERMISSION_DENIED"},
+                )
                 return failure
             
             # Enforce CEL policies
@@ -413,6 +422,17 @@ class ToolExecutor:
                         success=False,
                         duration_seconds=duration,
                     )
+                    await self._record_tool_event(
+                        context=context,
+                        invocation=invocation,
+                        tool=tool,
+                        outcome="approval_required",
+                        duration=duration,
+                        metadata={
+                            "error_code": "APPROVAL_REQUIRED",
+                            "reason": cel_result.reason,
+                        },
+                    )
                     return result
                 else:
                     failure = await self._fail_invocation(
@@ -432,6 +452,17 @@ class ToolExecutor:
                         tool_name=tool.name,
                         success=False,
                         duration_seconds=duration,
+                    )
+                    await self._record_tool_event(
+                        context=context,
+                        invocation=invocation,
+                        tool=tool,
+                        outcome="policy_violation",
+                        duration=duration,
+                        metadata={
+                            "error_code": "POLICY_VIOLATION",
+                            "reason": cel_result.reason,
+                        },
                     )
                     return failure
             
@@ -499,6 +530,18 @@ class ToolExecutor:
                 success=completed.success,
                 duration_seconds=duration,
             )
+            await self._record_tool_event(
+                context=context,
+                invocation=invocation,
+                tool=tool,
+                outcome="success" if completed.success else "failure",
+                duration=duration,
+                metadata={
+                    "dry_run": completed.dry_run,
+                    "requires_approval": completed.requires_approval,
+                    "result_metadata": completed.metadata or {},
+                },
+            )
             return completed
             
         except Exception as e:
@@ -525,6 +568,17 @@ class ToolExecutor:
                 tool_name=tool.name,
                 success=False,
                 duration_seconds=duration,
+            )
+            await self._record_tool_event(
+                context=context,
+                invocation=invocation,
+                tool=tool,
+                outcome="execution_error",
+                duration=duration,
+                metadata={
+                    "error_code": "EXECUTION_ERROR",
+                    "error": str(e),
+                },
             )
             return failure_result
     
@@ -728,6 +782,32 @@ class ToolExecutor:
                     "reason": reason,
                 },
             )
+
+    async def _record_tool_event(
+        self,
+        *,
+        context: AgentContext,
+        invocation: ToolInvocation,
+        tool: Tool,
+        outcome: str,
+        duration: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        metadata = metadata or {}
+        payload = {
+            "tool_name": tool.name,
+            "outcome": outcome,
+            "duration_seconds": round(duration, 4),
+            "invocation_id": str(invocation.id),
+            "dry_run": metadata.get("dry_run"),
+            "metadata": metadata,
+        }
+        await AgentAnalyticsService.record_event(
+            org_id=context.org_id,
+            session_id=context.session_id,
+            event_type="tool_execution",
+            payload=payload,
+        )
 
     async def _maybe_enqueue_review_task(
         self,

@@ -32,6 +32,7 @@ from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
 from cerebro.agents.tools import AgentContext, ToolExecutor, tool_registry, Tool
 from cerebro.agents.tool_stats import performance_tracker
 from cerebro.core.config import settings
+from cerebro.agents.analytics_service import AgentAnalyticsService
 
 logger = structlog.get_logger(__name__)
 
@@ -163,6 +164,16 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         prioritized_tools = performance_tracker.sort_tools(
             base_tools,
             agent_context.agent_type,
+        )
+        tool_rankings = performance_tracker.get_rankings(
+            prioritized_tools,
+            agent_context.agent_type.value,
+        )
+        await AgentAnalyticsService.record_event(
+            org_id=session.org_id,
+            session_id=session.id,
+            event_type="tool_rankings",
+            payload={"rankings": tool_rankings[:10]},
         )
         tools = await self._build_function_tools(prioritized_tools)
 

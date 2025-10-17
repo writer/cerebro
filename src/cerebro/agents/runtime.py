@@ -29,6 +29,7 @@ from cerebro.agents.models import (
     AgentType,
     ToolInvocation,
 )
+from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.prompts import build_security_agent_prompt
 from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
 from cerebro.agents.tools import tool_registry, ToolExecutor
@@ -191,6 +192,18 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         available_tools = performance_tracker.sort_tools(
             tool_registry.list_tools(agent_context.permission_level),
             agent_context.agent_type,
+        )
+        tool_rankings = performance_tracker.get_rankings(
+            available_tools,
+            agent_context.agent_type.value,
+        )
+        await AgentAnalyticsService.record_event(
+            org_id=session.org_id,
+            session_id=session.id,
+            event_type="tool_rankings",
+            payload={
+                "rankings": tool_rankings[:10],
+            },
         )
 
         # Create MCP server from Cerebro tools

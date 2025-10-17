@@ -17,6 +17,7 @@ from cerebro.agents.models import (
     MessageRole,
     ToolInvocation,
 )
+from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.memory_store import AgentMemoryStore
 from cerebro.agents.metrics import record_runtime_metrics
 from cerebro.agents.telemetry import RuntimeSpan, start_runtime_span
@@ -280,6 +281,17 @@ class AgentRuntimePersistenceMixin:
                 limit=limit,
             )
             prompt_snippets = [entry["snippet"] for entry in entries]
+            if entries:
+                await AgentAnalyticsService.record_event(
+                    org_id=session.org_id,
+                    session_id=session.id,
+                    event_type="memory_retrieved",
+                    payload={
+                        "count": len(entries),
+                        "entry_ids": [entry.get("id") for entry in entries],
+                        "scores": [entry.get("score") for entry in entries],
+                    },
+                )
             return RetrievedMemory(prompt_snippets=prompt_snippets, entries=entries)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug(

@@ -185,6 +185,14 @@ class Settings(BaseSettings):
         default=0.7,
         description="Lambda parameter for Max Marginal Relevance diversification (0-1)",
     )
+    agent_memory_hybrid_alpha: float = Field(
+        default=0.65,
+        description="Weight (0-1) applied to embedding similarity vs lexical similarity when ranking memory",
+    )
+    agent_memory_enable_annoy: bool = Field(
+        default=False,
+        description="Enable Annoy approximate nearest neighbor preprocessing for memory retrieval (experimental)",
+    )
     agent_memory_session_scope_boost: float = Field(
         default=1.2,
         description="Multiplier applied when a memory entry shares the active session scope",
@@ -205,6 +213,14 @@ class Settings(BaseSettings):
             "system": 0.9,
         },
         description="Relative weighting applied by role when ranking memory snippets",
+    )
+    agent_memory_decay_profiles: Dict[str, int] = Field(
+        default_factory=lambda: {
+            "session": 48,
+            "incident": 96,
+            "finding": 120,
+        },
+        description="Fallback half-life overrides per scope type (hours)",
     )
     agent_otel_endpoint: Optional[str] = Field(
         default=None,
@@ -233,6 +249,10 @@ class Settings(BaseSettings):
             "reporting": "openai",
         },
         description="Preference map guiding runtime selection by agent type or skill tag",
+    )
+    agent_runtime_event_retention_days: int = Field(
+        default=30,
+        description="Number of days to retain agent runtime analytics events",
     )
     agent_session_timeout_hours: int = Field(
         default=24, description="Agent session timeout in hours"

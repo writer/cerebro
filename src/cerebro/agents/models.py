@@ -73,6 +73,7 @@ class ReviewTaskStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    ESCALATED = "escalated"
     PROMOTED = "promoted"
 
 
@@ -458,6 +459,11 @@ class AgentReviewTask(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    priority: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalated_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    notification_channel: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    ticket_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     status: Mapped[ReviewTaskStatus] = mapped_column(
         SqlEnum(ReviewTaskStatus),
@@ -483,6 +489,94 @@ class AgentReviewTask(Base):
     session: Mapped["AgentSession"] = relationship("AgentSession")
     message: Mapped[Optional["AgentMessage"]] = relationship("AgentMessage")
     tool_invocation: Mapped[Optional["ToolInvocation"]] = relationship("ToolInvocation")
+    notifications: Mapped[list["AgentReviewNotification"]] = relationship(
+        "AgentReviewNotification",
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+    tickets: Mapped[list["AgentReviewTicket"]] = relationship(
+        "AgentReviewTicket",
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+
+
+class AgentReviewNotification(Base):
+    """Notification dispatch records tied to review tasks."""
+
+    __tablename__ = "agent_review_notifications"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_review_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    channel: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    task: Mapped[AgentReviewTask] = relationship("AgentReviewTask", back_populates="notifications")
+
+
+class AgentReviewTicket(Base):
+    """Ticket records created from review escalations."""
+
+    __tablename__ = "agent_review_tickets"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_review_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    system: Mapped[str] = mapped_column(String(100), nullable=False)
+    external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
+    details: Mapped[Dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONType,
+        nullable=False,
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    task: Mapped[AgentReviewTask] = relationship("AgentReviewTask", back_populates="tickets")
 
 
 class AgentSessionContext(Base):
@@ -560,6 +654,106 @@ class AgentSessionContext(Base):
         JSONType,
         nullable=True,
         comment="Additional metadata about the context",
+    )
+
+
+class AgentRuntimeEvent(Base):
+    """Analytics events for runtime routing, tool ordering, and memory selection."""
+
+    __tablename__ = "agent_runtime_events"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+
+
+class AgentMemoryDecayOverride(Base):
+    """Org-specific overrides for memory decay half-life."""
+
+    __tablename__ = "agent_memory_decay_overrides"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    scope_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    scope_value: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    half_life_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentPolicySuggestion(Base):
+    """Suggested CEL rules inferred from review task outcomes."""
+
+    __tablename__ = "agent_policy_suggestions"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tool_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    cel_expression: Mapped[str] = mapped_column(Text, nullable=False)
+    support_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reject_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    details: Mapped[Dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONType,
+        nullable=False,
+        default=dict,
+    )
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 
