@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, tuple_
 
 from cerebro.agents.models import AgentRuntimeEvent
 from cerebro.core.config import settings
@@ -19,16 +19,27 @@ async def _fetch_events(
     session_id: UUID,
     limit: int,
     event_type: Optional[str],
+    before: Optional[datetime] = None,
+    before_id: Optional[UUID] = None,
 ) -> List[Dict[str, Any]]:
     async with async_session_factory() as db_session:
         stmt = (
             select(AgentRuntimeEvent)
             .where(AgentRuntimeEvent.session_id == session_id)
-            .order_by(AgentRuntimeEvent.created_at.desc())
+            .order_by(AgentRuntimeEvent.created_at.desc(), AgentRuntimeEvent.id.desc())
             .limit(limit)
         )
         if event_type:
             stmt = stmt.where(AgentRuntimeEvent.event_type == event_type)
+        if before:
+            if before_id:
+                stmt = stmt.where(AgentRuntimeEvent.id != before_id)
+                stmt = stmt.where(
+                    tuple_(AgentRuntimeEvent.created_at, AgentRuntimeEvent.id)
+                    < tuple_(before, before_id)
+                )
+            else:
+                stmt = stmt.where(AgentRuntimeEvent.created_at < before)
         result = await db_session.execute(stmt)
         events = result.scalars().all()
 
@@ -82,8 +93,16 @@ class AgentAnalyticsService:
         session_id: UUID,
         limit: int = 100,
         event_type: Optional[str] = None,
+        before: Optional[datetime] = None,
+        before_id: Optional[UUID] = None,
     ) -> List[Dict[str, Any]]:
-        return await _fetch_events(session_id=session_id, limit=limit, event_type=event_type)
+        return await _fetch_events(
+            session_id=session_id,
+            limit=limit,
+            event_type=event_type,
+            before=before,
+            before_id=before_id,
+        )
 
 
 async def list_session_events(
@@ -91,10 +110,18 @@ async def list_session_events(
     session_id: UUID,
     limit: int = 100,
     event_type: Optional[str] = None,
+    before: Optional[datetime] = None,
+    before_id: Optional[UUID] = None,
 ) -> List[Dict[str, Any]]:
     """Module-level helper for retrieving runtime events."""
 
-    return await _fetch_events(session_id=session_id, limit=limit, event_type=event_type)
+    return await _fetch_events(
+        session_id=session_id,
+        limit=limit,
+        event_type=event_type,
+        before=before,
+        before_id=before_id,
+    )
 
 
 # Maintain backwards compatibility for imports that capture the class before

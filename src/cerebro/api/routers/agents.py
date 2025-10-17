@@ -6,7 +6,7 @@ Enables users to create agent sessions, send messages, and receive real-time
 responses with tool execution capabilities.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -929,14 +929,33 @@ async def get_session_analytics(
     session_id: UUID,
     limit: int = Query(100, ge=1, le=500, description="Maximum analytics events to return"),
     event_type: Optional[str] = Query(None, description="Filter events by type"),
+    cursor: Optional[str] = Query(None, description="Fetch events created before this ISO-8601 timestamp"),
+    cursor_id: Optional[str] = Query(None, description="Unique identifier of the last event seen (paired with cursor)"),
     current_user: User = Depends(get_current_user),
 ):
     service = AgentSessionService()
+    before_dt: Optional[datetime] = None
+    if cursor:
+        try:
+            parsed = datetime.fromisoformat(cursor)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid cursor timestamp") from exc
+        before_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    before_id: Optional[UUID] = None
+    if cursor_id:
+        try:
+            before_id = UUID(cursor_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid cursor event id") from exc
+
     events = await service.get_session_analytics(
         session_id=session_id,
         org_id=current_user.org_id,
         limit=limit,
         event_type=event_type,
+        before=before_dt,
+        before_id=before_id,
     )
     return [_runtime_event_to_response(event) for event in events]
 

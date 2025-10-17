@@ -455,6 +455,8 @@ class AgentSessionService:
         org_id: Optional[UUID] = None,
         limit: int = 100,
         event_type: Optional[str] = None,
+        before: Optional[datetime] = None,
+        before_id: Optional[UUID] = None,
     ) -> List[Dict[str, Any]]:
         session = await self.get_session(session_id, org_id)
         if not session:
@@ -463,6 +465,8 @@ class AgentSessionService:
             session_id=session_id,
             limit=limit,
             event_type=event_type,
+            before=before,
+            before_id=before_id,
         )
 
     async def list_policy_suggestions(
