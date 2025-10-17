@@ -19,11 +19,13 @@ from cerebro.agents.models import (
     AgentMessage,
     AgentMemoryEntry,
     AgentType,
+    ReviewTaskStatus,
     ToolInvocation,
     ToolApproval,
     ApprovalStatus,
 )
 from cerebro.agents.runtime_facade import AgentRuntimeFacade
+from cerebro.agents.review_service import AgentReviewService
 
 logger = structlog.get_logger(__name__)
 
@@ -231,6 +233,82 @@ class AgentSessionService:
 
         return serialized
     
+    async def list_review_tasks(
+        self,
+        org_id: UUID,
+        status: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        status_enum: Optional[ReviewTaskStatus] = None
+        if status:
+            try:
+                status_enum = ReviewTaskStatus(status)
+            except ValueError:
+                status_enum = None
+
+        tasks = await AgentReviewService.list_tasks(
+            org_id=org_id,
+            status=status_enum,
+            limit=limit,
+        )
+        results: List[Dict[str, Any]] = []
+        for task in tasks:
+            results.append(
+                {
+                    "id": str(task.id),
+                    "session_id": str(task.session_id),
+                    "org_id": str(task.org_id),
+                    "status": task.status.value,
+                    "title": task.title,
+                    "summary": task.summary,
+                    "payload": task.payload,
+                    "promotion_target": task.promotion_target,
+                    "created_by": task.created_by,
+                    "created_at": task.created_at.isoformat(),
+                    "resolved_by": task.resolved_by,
+                    "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
+                    "resolution_notes": task.resolution_notes,
+                }
+            )
+        return results
+
+    async def resolve_review_task(
+        self,
+        *,
+        task_id: UUID,
+        resolved_by: str,
+        status: str,
+        notes: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            status_enum = ReviewTaskStatus(status)
+        except ValueError as exc:
+            raise ValueError("Invalid review task status") from exc
+
+        task = await AgentReviewService.resolve_task(
+            task_id=task_id,
+            resolved_by=resolved_by,
+            status=status_enum,
+            notes=notes,
+        )
+        if task is None:
+            return None
+        return {
+            "id": str(task.id),
+            "session_id": str(task.session_id),
+            "org_id": str(task.org_id),
+            "status": task.status.value,
+            "title": task.title,
+            "summary": task.summary,
+            "payload": task.payload,
+            "promotion_target": task.promotion_target,
+            "created_by": task.created_by,
+            "created_at": task.created_at.isoformat(),
+            "resolved_by": task.resolved_by,
+            "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
+            "resolution_notes": task.resolution_notes,
+        }
+
     async def get_session_with_messages(
         self,
         session_id: UUID,

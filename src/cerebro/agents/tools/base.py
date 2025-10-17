@@ -12,6 +12,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import time
 from enum import Enum
 from functools import wraps
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union
@@ -23,11 +24,15 @@ from pydantic import BaseModel, Field
 from cerebro.rules.engine import RuleEngine
 from cerebro.core.database import get_db
 from cerebro.agents.models import (
+    AgentSession,
     ToolInvocation,
     ToolInvocationStatus,
     ToolApproval,
     ApprovalStatus,
 )
+from cerebro.agents.review_service import AgentReviewService
+from cerebro.agents.metrics import record_tool_metrics
+from cerebro.agents.tool_stats import performance_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -356,17 +361,32 @@ class ToolExecutor:
             tool, raw_inputs, context
         )
         
+        started_at = time.perf_counter()
         try:
             # Validate inputs
             inputs = await tool.validate_inputs(raw_inputs)
             
             # Check permissions
             if not self._check_permission_level(tool, context):
-                return await self._fail_invocation(
+                failure = await self._fail_invocation(
                     invocation,
                     "Insufficient permission level",
                     "PERMISSION_DENIED",
                 )
+                duration = time.perf_counter() - started_at
+                record_tool_metrics(
+                    tool_name=tool.name,
+                    agent_type=context.agent_type,
+                    success=False,
+                    duration_seconds=duration,
+                    error_code="PERMISSION_DENIED",
+                )
+                await performance_tracker.record(
+                    tool_name=tool.name,
+                    success=False,
+                    duration_seconds=duration,
+                )
+                return failure
             
             # Enforce CEL policies
             cel_result = await self._enforce_cel_policy(
@@ -375,15 +395,45 @@ class ToolExecutor:
             
             if not cel_result.allowed:
                 if cel_result.requires_approval:
-                    return await self._request_approval(
-                        invocation, cel_result.reason
+                    result = await self._request_approval(
+                        invocation,
+                        cel_result.reason,
+                        requested_by=context.user_id,
                     )
+                    duration = time.perf_counter() - started_at
+                    record_tool_metrics(
+                        tool_name=tool.name,
+                        agent_type=context.agent_type,
+                        success=False,
+                        duration_seconds=duration,
+                        error_code="APPROVAL_REQUIRED",
+                    )
+                    await performance_tracker.record(
+                        tool_name=tool.name,
+                        success=False,
+                        duration_seconds=duration,
+                    )
+                    return result
                 else:
-                    return await self._fail_invocation(
+                    failure = await self._fail_invocation(
                         invocation,
                         cel_result.reason,
                         "POLICY_VIOLATION",
                     )
+                    duration = time.perf_counter() - started_at
+                    record_tool_metrics(
+                        tool_name=tool.name,
+                        agent_type=context.agent_type,
+                        success=False,
+                        duration_seconds=duration,
+                        error_code="POLICY_VIOLATION",
+                    )
+                    await performance_tracker.record(
+                        tool_name=tool.name,
+                        success=False,
+                        duration_seconds=duration,
+                    )
+                    return failure
             
             # Enforce dry-run for destructive tools unless explicitly approved
             if tool.permission_level == ToolPermissionLevel.WRITE_DESTRUCTIVE:
@@ -402,6 +452,7 @@ class ToolExecutor:
                 cel_context=context.cel_context,
                 dry_run=dry_run,  # Pass dry_run to tool BEFORE execution
                 roles=context.roles,
+                memory_entries=context.memory_entries,
             )
 
             # Execute the tool with dry-run context
@@ -429,7 +480,26 @@ class ToolExecutor:
                         }
             
             # Update invocation with results
-            return await self._complete_invocation(invocation, result)
+            completed = await self._complete_invocation(invocation, result)
+            await self._maybe_enqueue_review_task(
+                tool=tool,
+                invocation=invocation,
+                context=context,
+                result=completed,
+            )
+            duration = time.perf_counter() - started_at
+            record_tool_metrics(
+                tool_name=tool.name,
+                agent_type=context.agent_type,
+                success=completed.success,
+                duration_seconds=duration,
+            )
+            await performance_tracker.record(
+                tool_name=tool.name,
+                success=completed.success,
+                duration_seconds=duration,
+            )
+            return completed
             
         except Exception as e:
             logger.exception(
@@ -438,11 +508,25 @@ class ToolExecutor:
                 session_id=context.session_id,
                 error=str(e),
             )
-            return await self._fail_invocation(
+            duration = time.perf_counter() - started_at
+            failure_result = await self._fail_invocation(
                 invocation,
                 f"Tool execution error: {str(e)}",
                 "EXECUTION_ERROR",
             )
+            record_tool_metrics(
+                tool_name=tool.name,
+                agent_type=context.agent_type,
+                success=False,
+                duration_seconds=duration,
+                error_code="EXECUTION_ERROR",
+            )
+            await performance_tracker.record(
+                tool_name=tool.name,
+                success=False,
+                duration_seconds=duration,
+            )
+            return failure_result
     
     def _check_permission_level(self, tool: Tool, context: AgentContext) -> bool:
         """Check if context has sufficient permission level for tool."""
@@ -594,6 +678,7 @@ class ToolExecutor:
         self,
         invocation: ToolInvocation,
         reason: str,
+        requested_by: str,
     ) -> ToolResult:
         """Create approval request for tool invocation."""
         from cerebro.core.database import async_session_factory
@@ -601,7 +686,7 @@ class ToolExecutor:
             approval = ToolApproval(
                 org_id=invocation.session.org_id,  # type: ignore
                 tool_invocation_id=invocation.id,
-                requested_by=invocation.session.created_by,  # type: ignore
+                requested_by=requested_by,
                 reason=reason,
                 risk_assessment={
                     "tool_name": invocation.tool_name,
@@ -616,6 +701,23 @@ class ToolExecutor:
             
             invocation.status = ToolInvocationStatus.APPROVAL_REQUIRED
             await self._update_invocation(invocation)
+
+            session_obj = invocation.session
+            if session_obj is None:
+                session_obj = await self._get_agent_session(invocation.session_id)
+            if session_obj is not None:
+                await AgentReviewService.create_task(
+                    session=session_obj,
+                    created_by=requested_by,
+                    title=f"Approval required for {invocation.tool_name}",
+                    summary=reason,
+                    payload={
+                        "tool_name": invocation.tool_name,
+                        "inputs": invocation.input_data,
+                        "reason": reason,
+                    },
+                    tool_invocation_id=invocation.id,
+                )
             
             return ToolResult(
                 success=False,
@@ -626,6 +728,49 @@ class ToolExecutor:
                     "reason": reason,
                 },
             )
+
+    async def _maybe_enqueue_review_task(
+        self,
+        *,
+        tool: Tool,
+        invocation: ToolInvocation,
+        context: AgentContext,
+        result: ToolResult,
+    ) -> None:
+        if tool.permission_level not in {
+            ToolPermissionLevel.WRITE_DESTRUCTIVE,
+            ToolPermissionLevel.ADMIN,
+        }:
+            return
+        if not result.success or result.requires_approval:
+            return
+
+        session = await self._get_agent_session(context.session_id)
+        if not session:
+            return
+
+        metadata = result.metadata or {}
+        summary = metadata.get("summary")
+        await AgentReviewService.create_task(
+            session=session,
+            created_by=context.user_id,
+            title=f"Review {tool.name} execution",
+            summary=summary,
+            payload={
+                "tool_name": tool.name,
+                "inputs": invocation.input_data,
+                "output": invocation.output_data,
+                "dry_run": result.dry_run,
+            },
+            tool_invocation_id=invocation.id,
+            promotion_target=metadata.get("promotion_target"),
+        )
+
+    async def _get_agent_session(self, session_id: UUID) -> Optional[AgentSession]:
+        from cerebro.core.database import async_session_factory
+
+        async with async_session_factory() as db_session:
+            return await db_session.get(AgentSession, session_id)
 
 
 @dataclass

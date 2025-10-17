@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
 import structlog
@@ -11,6 +12,7 @@ from cerebro.agents.models import AgentSession, AgentType
 from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
 from cerebro.agents.runtime import CerebroClaudeRuntime
 from cerebro.core.config import settings
+from cerebro.core.database import async_session_factory
 
 logger = structlog.get_logger(__name__)
 
@@ -34,17 +36,12 @@ class AgentRuntimeFacade:
         context: Dict[str, Any],
         title: Optional[str] = None,
     ) -> AgentSession:
-        runtime_key = (
-            context.get("_runtime_engine")
-            or context.get("runtime_engine")
-            or context.get("runtime")
-        )
-        if runtime_key is None:
-            runtime_key = self.default_runtime
+        skill_tags = self._extract_skill_tags(agent_type, context=context)
+        runtime_key = self._select_runtime(agent_type, context, skill_tags)
 
-        runtime_key = self._normalize_key(runtime_key)
         prepared_context = dict(context)
         prepared_context["_runtime_engine"] = runtime_key
+        prepared_context["_skill_tags"] = skill_tags
 
         runtime = self._get_runtime(runtime_key)
         session = await runtime.create_session(
@@ -67,7 +64,7 @@ class AgentRuntimeFacade:
         user_id: str,
         stream: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
-        runtime = self._runtime_for_session(session)
+        runtime = await self._maybe_switch_runtime(session, message)
         async for chunk in runtime.send_message(
             session=session,
             message=message,
@@ -82,14 +79,14 @@ class AgentRuntimeFacade:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Dict[str, Any]]:
-        runtime = self._runtime_for_session(session)
+        runtime = await self._runtime_for_session(session)
         return await runtime.get_session_messages(session.id, limit, offset)
 
     async def get_session_metrics(self, session: AgentSession) -> Dict[str, Any]:
-        runtime = self._runtime_for_session(session)
+        runtime = await self._runtime_for_session(session)
         return await runtime.get_session_metrics(session.id)
 
-    def _runtime_for_session(self, session: AgentSession):
+    async def _runtime_for_session(self, session: AgentSession):
         runtime_key = session.context.get("_runtime_engine") or self.default_runtime
         runtime_key = self._normalize_key(runtime_key)
         return self._get_runtime(runtime_key)
@@ -114,3 +111,131 @@ class AgentRuntimeFacade:
         if normalized not in {"claude", "openai"}:
             normalized = "claude"
         return normalized
+
+    async def _maybe_switch_runtime(
+        self,
+        session: AgentSession,
+        message: str,
+    ):
+        context_snapshot = dict(session.context or {})
+        skill_tags = self._extract_skill_tags(
+            session.agent_type,
+            context=context_snapshot,
+            message=message,
+        )
+
+        desired_runtime = self._select_runtime(session.agent_type, context_snapshot, skill_tags)
+        current_runtime = self._normalize_key(
+            session.context.get("_runtime_engine") or self.default_runtime
+        )
+
+        if desired_runtime != current_runtime:
+            logger.info(
+                "Routing agent session to new runtime",
+                session_id=session.id,
+                from_runtime=current_runtime,
+                to_runtime=desired_runtime,
+                skill_tags=skill_tags,
+            )
+            await self._update_session_context(
+                session.id,
+                {
+                    "_runtime_engine": desired_runtime,
+                    "_skill_tags": skill_tags,
+                    "_last_routing_reason": {
+                        "excerpt": message[-200:],
+                        "skill_tags": skill_tags,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                },
+            )
+            session.context["_runtime_engine"] = desired_runtime
+            session.context["_skill_tags"] = skill_tags
+            return self._get_runtime(desired_runtime)
+
+        if session.context.get("_skill_tags") != skill_tags:
+            await self._update_session_context(session.id, {"_skill_tags": skill_tags})
+            session.context["_skill_tags"] = skill_tags
+
+        return self._get_runtime(current_runtime)
+
+    def _select_runtime(
+        self,
+        agent_type: AgentType,
+        context: Dict[str, Any],
+        skill_tags: List[str],
+    ) -> RuntimeKey:
+        preference_map = settings.agent_runtime_preferences or {}
+
+        for tag in skill_tags:
+            preferred = preference_map.get(tag)
+            if preferred:
+                return self._normalize_key(preferred)
+
+        preferred = preference_map.get(agent_type.value)
+        if preferred:
+            return self._normalize_key(preferred)
+
+        fallback = context.get("runtime_engine") or context.get("runtime")
+        if fallback:
+            return self._normalize_key(fallback)
+
+        return self.default_runtime
+
+    def _extract_skill_tags(
+        self,
+        agent_type: AgentType,
+        context: Dict[str, Any],
+        message: Optional[str] = None,
+    ) -> List[str]:
+        tags: List[str] = []
+
+        finding_ids = context.get("finding_ids") or []
+        incident_id = context.get("incident_id")
+        remediation_goal = context.get("remediation_goal")
+        requested_tools = (context.get("requested_tools") or [])
+
+        if finding_ids:
+            tags.append("analysis")
+        if incident_id:
+            tags.append("incident_response")
+        if remediation_goal:
+            tags.append("remediation")
+        if context.get("query") or context.get("soql"):
+            tags.append("querying")
+        if requested_tools:
+            tags.extend([f"tool:{name}" for name in requested_tools])
+
+        if message:
+            lowered = message.lower()
+            if any(word in lowered for word in ("incident", "breach", "contain")):
+                tags.append("incident_response")
+            if any(word in lowered for word in ("sql", "query", "report")):
+                tags.append("reporting")
+            if "remediat" in lowered or "patch" in lowered:
+                tags.append("remediation")
+
+        tags.append(agent_type.value)
+
+        # ensure uniqueness while preserving order
+        seen = set()
+        unique_tags: List[str] = []
+        for tag in tags:
+            if tag and tag not in seen:
+                seen.add(tag)
+                unique_tags.append(tag)
+        return unique_tags
+
+    async def _update_session_context(
+        self,
+        session_id: UUID,
+        updates: Dict[str, Any],
+    ) -> None:
+        async with async_session_factory() as db_session:
+            db_session_obj = await db_session.get(AgentSession, session_id)
+            if not db_session_obj:
+                return
+            merged = dict(db_session_obj.context or {})
+            merged.update(updates)
+            db_session_obj.context = merged
+            await db_session.commit()

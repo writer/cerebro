@@ -32,6 +32,7 @@ from cerebro.agents.models import (
 from cerebro.agents.prompts import build_security_agent_prompt
 from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
 from cerebro.agents.tools import tool_registry, ToolExecutor
+from cerebro.agents.tool_stats import performance_tracker
 from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
 
 logger = structlog.get_logger(__name__)
@@ -128,6 +129,16 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
             query=message,
         )
 
+        memory_ids = [entry.get("id") for entry in memory_context.entries if entry.get("id")]
+        previous_ids = set(session.context.get("_recent_memory_ids", []))
+        new_entries = [
+            entry for entry in memory_context.entries if entry.get("id") not in previous_ids
+        ]
+        if new_entries:
+            self._log_memory_activity(session, new_entries)
+        await self._update_session_context(session, {"_recent_memory_ids": memory_ids})
+        memory_brief = self._compose_memory_brief(memory_context)
+
         # Store user message for audit trail and memory
         await self._store_message(
             session,
@@ -135,6 +146,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
             {
                 "text": message,
                 "memory_context": memory_context.entries,
+                "memory_new_entries": new_entries,
             },
         )
         await self._capture_memory(
@@ -151,12 +163,35 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         )
 
         assistant_content = []
+        if memory_brief:
+            assistant_content.append(
+                {
+                    "type": "memory_brief",
+                    "text": memory_brief,
+                    "entry_ids": memory_ids,
+                }
+            )
+            if stream:
+                yield {
+                    "type": "memory_brief",
+                    "content": {
+                        "summary": memory_brief,
+                        "entries": new_entries or memory_context.entries,
+                    },
+                    "metadata": {
+                        "total_entries": len(memory_context.entries),
+                        "new_entries": len(new_entries),
+                    },
+                }
         tool_calls_count = 0
         total_input_tokens = 0
         total_output_tokens = 0
 
         # Get available tools from registry based on permission level
-        available_tools = tool_registry.list_tools(agent_context.permission_level)
+        available_tools = performance_tracker.sort_tools(
+            tool_registry.list_tools(agent_context.permission_level),
+            agent_context.agent_type,
+        )
 
         # Create MCP server from Cerebro tools
         mcp_server = create_cerebro_mcp_server(

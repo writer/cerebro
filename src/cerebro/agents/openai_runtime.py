@@ -29,7 +29,8 @@ from cerebro.agents.memory_session import OpenAIAgentConversationSession
 from cerebro.agents.models import AgentMessage, AgentSession, AgentType, MessageRole
 from cerebro.agents.prompts import build_security_agent_prompt
 from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
-from cerebro.agents.tools import AgentContext, ToolExecutor, tool_registry
+from cerebro.agents.tools import AgentContext, ToolExecutor, tool_registry, Tool
+from cerebro.agents.tool_stats import performance_tracker
 from cerebro.core.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -53,7 +54,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         self.model = model or settings.openai_model
         self.max_turns = max_turns
         self.tool_executor = ToolExecutor()
-        self._function_tools: List[FunctionTool] | None = None
+        self._function_tool_cache: Dict[str, FunctionTool] = {}
         self.backend_name = "openai"
 
         if settings.openai_api_key:
@@ -114,6 +115,16 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
             query=message,
         )
 
+        memory_ids = [entry.get("id") for entry in memory_context.entries if entry.get("id")]
+        previous_ids = set(session.context.get("_recent_memory_ids", []))
+        new_entries = [
+            entry for entry in memory_context.entries if entry.get("id") not in previous_ids
+        ]
+        if new_entries:
+            self._log_memory_activity(session, new_entries)
+        await self._update_session_context(session, {"_recent_memory_ids": memory_ids})
+        memory_brief = self._compose_memory_brief(memory_context)
+
         assistant_blocks: List[Dict[str, Any]] = []
         tool_calls_count = 0
         total_input_tokens = 0
@@ -126,6 +137,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
             {
                 "text": message,
                 "memory_context": memory_context.entries,
+                "memory_new_entries": new_entries,
             },
         )
         await self._capture_memory(
@@ -147,6 +159,34 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
 
         conversation_session = OpenAIAgentConversationSession(session)
 
+        base_tools = tool_registry.list_tools(agent_context.permission_level)
+        prioritized_tools = performance_tracker.sort_tools(
+            base_tools,
+            agent_context.agent_type,
+        )
+        tools = await self._build_function_tools(prioritized_tools)
+
+        if memory_brief:
+            assistant_blocks.append(
+                {
+                    "type": "memory_brief",
+                    "text": memory_brief,
+                    "entry_ids": memory_ids,
+                }
+            )
+            if stream:
+                yield {
+                    "type": "memory_brief",
+                    "content": {
+                        "summary": memory_brief,
+                        "entries": new_entries or memory_context.entries,
+                    },
+                    "metadata": {
+                        "total_entries": len(memory_context.entries),
+                        "new_entries": len(new_entries),
+                    },
+                }
+
         agent = Agent(
             name=f"{session.agent_type.value}_agent",
             instructions=build_security_agent_prompt(
@@ -154,7 +194,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 session=session,
                 memory_snippets=memory_context.prompt_snippets,
             ),
-            tools=await self._build_function_tools(),
+            tools=tools,
             model=self.model,
         )
 
@@ -332,44 +372,49 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 "metadata": {"session_id": str(session.id)},
             }
 
-    async def _build_function_tools(self) -> List[FunctionTool]:
-        if self._function_tools is not None:
-            return self._function_tools
+    async def _build_function_tools(
+        self,
+        prioritized: Optional[List[Tool]] = None,
+    ) -> List[FunctionTool]:
+        if prioritized is None:
+            prioritized = tool_registry.list_tools()
 
-        function_tools: List[FunctionTool] = []
-        for tool in tool_registry.list_tools():
+        # Populate cache lazily
+        if not self._function_tool_cache:
+            for tool in tool_registry.list_tools():
 
-            async def _invoke_tool(
-                ctx: RunContextWrapper[OpenAIRuntimeContext],
-                raw_arguments: str,
-                *,
-                _tool=tool,
-            ) -> str:
-                try:
-                    parsed_arguments = json.loads(raw_arguments) if raw_arguments else {}
-                except json.JSONDecodeError:
-                    parsed_arguments = {}
+                async def _invoke_tool(
+                    ctx: RunContextWrapper[OpenAIRuntimeContext],
+                    raw_arguments: str,
+                    *,
+                    _tool=tool,
+                ) -> str:
+                    try:
+                        parsed_arguments = json.loads(raw_arguments) if raw_arguments else {}
+                    except json.JSONDecodeError:
+                        parsed_arguments = {}
 
-                agent_context = ctx.context.agent_context
-                result = await self.tool_executor.execute_tool(
-                    tool=_tool,
-                    raw_inputs=parsed_arguments,
-                    context=agent_context,
-                    dry_run=agent_context.dry_run,
-                )
-                return json.dumps(result.model_dump())
+                    agent_context = ctx.context.agent_context
+                    result = await self.tool_executor.execute_tool(
+                        tool=_tool,
+                        raw_inputs=parsed_arguments,
+                        context=agent_context,
+                        dry_run=agent_context.dry_run,
+                    )
+                    return json.dumps(result.model_dump())
 
-            function_tools.append(
-                FunctionTool(
+                self._function_tool_cache[tool.name] = FunctionTool(
                     name=tool.name,
                     description=tool.description,
                     params_json_schema=tool.input_schema.model_json_schema(),
                     on_invoke_tool=_invoke_tool,
                 )
-            )
 
-        self._function_tools = function_tools
-        return function_tools
+        return [
+            self._function_tool_cache[tool.name]
+            for tool in prioritized
+            if tool.name in self._function_tool_cache
+        ]
 
     @staticmethod
     def _summarize_usage(raw_responses: List[Any]) -> tuple[int, int]:

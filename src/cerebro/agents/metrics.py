@@ -65,12 +65,34 @@ if _registry is not None:  # pragma: no branch
         ["event"],
         registry=_registry,
     )
+    tool_success = Counter(
+        "cerebro_agent_tool_success_total",
+        "Successful tool executions",
+        ["tool_name", "agent_type"],
+        registry=_registry,
+    )
+    tool_failure = Counter(
+        "cerebro_agent_tool_failure_total",
+        "Failed tool executions",
+        ["tool_name", "agent_type", "error_code"],
+        registry=_registry,
+    )
+    tool_duration = Histogram(
+        "cerebro_agent_tool_duration_seconds",
+        "Duration of tool executions",
+        ["tool_name", "agent_type", "outcome"],
+        registry=_registry,
+        buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0),
+    )
 else:  # pragma: no cover - fallback no-op placeholders
     runtime_duration = None  # type: ignore
     runtime_tokens = None  # type: ignore
     runtime_tool_calls = None  # type: ignore
     runtime_errors = None  # type: ignore
     memory_events = None  # type: ignore
+    tool_success = None  # type: ignore
+    tool_failure = None  # type: ignore
+    tool_duration = None  # type: ignore
 
 
 def record_runtime_metrics(
@@ -126,6 +148,36 @@ def record_memory_event(event: str, count: int = 1) -> None:
         return
 
     memory_events.labels(event=event).inc(count)
+
+
+def record_tool_metrics(
+    *,
+    tool_name: str,
+    agent_type: str,
+    success: bool,
+    duration_seconds: float,
+    error_code: Optional[str] = None,
+) -> None:
+    if not settings.enable_agent_metrics:
+        return
+
+    if tool_duration is not None:
+        tool_duration.labels(
+            tool_name=tool_name,
+            agent_type=agent_type,
+            outcome="success" if success else "error",
+        ).observe(duration_seconds)
+
+    if success:
+        if tool_success is not None:
+            tool_success.labels(tool_name=tool_name, agent_type=agent_type).inc()
+    else:
+        if tool_failure is not None:
+            tool_failure.labels(
+                tool_name=tool_name,
+                agent_type=agent_type,
+                error_code=error_code or "unknown",
+            ).inc()
 
 
 def get_registry() -> Optional[CollectorRegistry]:

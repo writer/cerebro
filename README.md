@@ -6,8 +6,9 @@ Cerebro is a self-hosted security data plane that continuously captures cloud an
 
 - **Unified access** – CLI, REST API, and agent interfaces share the same append-only store
 - **Graph + SQL analytics** – run fleet-wide queries and attack-path analysis without ETL pipelines
-- **Pluggable agents** – Claude and OpenAI runtimes behind a common facade with audited tool execution
+- **Pluggable agents** – Claude and OpenAI runtimes with skill-based routing, telemetry, and audited execution
 - **Adaptive memory** – scoped, decay-aware recall with dedupe, pruning, and observability controls
+- **Human-in-loop guardrails** – review queue, approval workflows, and runtime-level controls for risky changes
 - **Compliance automation** – continuously test controls against SOC2, ISO27001, CIS, and NIST frameworks
 
 ## Architecture Overview
@@ -93,15 +94,17 @@ cerebro agents create "Acme Corp" --type security_analyst
 cerebro agents chat <session-id>
 ```
 
-- Tool execution is guarded by CEL policies, audit logging, and optional approval workflows
+- Tool execution is guarded by CEL policies, adaptive ordering, telemetry, and optional approval workflows
 - Memory snippets are injected into prompts, tool contexts, and persisted alongside conversation history
-- Claude and OpenAI runtimes plug into a shared facade for easy experimentation
+- Skill-based routing picks the right runtime (`AGENT_RUNTIME_PREFERENCES`) while tracking decisions in session context
+- Destructive actions automatically surface to the review queue for human promotion via REST (`/api/v1/agents/review-tasks`)
 
 ### Memory Controls
 
 - Embeddings (OpenAI or hashing fallback) with decay, dedupe, and Max Marginal Relevance diversification
 - Configurable pruning thresholds (`AGENT_MEMORY_MAX_ENTRIES_PER_ORG`, `AGENT_MEMORY_PRUNE_PROBABILITY`, etc.)
 - Observability via Prometheus counter `cerebro_agent_memory_events_total` and OTLP spans when telemetry is enabled
+- Tool observability via `cerebro_agent_tool_*` metrics (success, failure, duration) and adaptive ordering from live stats
 - Inspect session memory:
 
 ```bash
@@ -133,6 +136,8 @@ make docker-down
 cerebro/
 ├── src/cerebro/
 │   ├── agents/         # Agent runtimes, tools, memory, observability
+│   │   ├── review_service.py   # Human-in-loop review queue helpers
+│   │   └── tool_stats.py       # Adaptive tool ordering based on success/duration
 │   ├── api/            # FastAPI routers and dependencies
 │   ├── cli/            # Typer-based command line interface
 │   ├── collectors/     # Cloud & SaaS configuration ingestion

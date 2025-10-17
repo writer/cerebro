@@ -222,6 +222,18 @@ class Settings(BaseSettings):
         default="claude",
         description="Default agent runtime backend (claude or openai)",
     )
+    agent_runtime_preferences: Dict[str, str] = Field(
+        default_factory=lambda: {
+            "security_analyst": "claude",
+            "incident_responder": "claude",
+            "identity_advisor": "openai",
+            "analysis": "openai",
+            "incident_response": "claude",
+            "remediation": "claude",
+            "reporting": "openai",
+        },
+        description="Preference map guiding runtime selection by agent type or skill tag",
+    )
     agent_session_timeout_hours: int = Field(
         default=24, description="Agent session timeout in hours"
     )

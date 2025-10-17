@@ -113,6 +113,29 @@ class MemoryEntryResponse(BaseModel):
     content: Optional[str] = None
 
 
+class ReviewTaskResponse(BaseModel):
+    """Response model for review queue items."""
+
+    id: UUID
+    session_id: UUID
+    org_id: UUID
+    status: str
+    title: str
+    summary: Optional[str]
+    payload: Dict[str, Any]
+    promotion_target: Optional[str]
+    created_by: str
+    created_at: datetime
+    resolved_by: Optional[str]
+    resolved_at: Optional[datetime]
+    resolution_notes: Optional[str]
+
+
+class ResolveReviewTaskRequest(BaseModel):
+    status: str = Field(..., description="New status for the review task")
+    notes: Optional[str] = Field(None, description="Optional resolution notes")
+
+
 # API Endpoints
 
 @router.post("/sessions", response_model=SessionResponse, status_code=201)
@@ -451,6 +474,75 @@ async def get_session_memory_entries(
     except Exception as e:
         logger.exception("Failed to get session memory", session_id=session_id, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to get session memory entries")
+
+
+@router.get("/review-tasks", response_model=List[ReviewTaskResponse])
+async def list_review_tasks(
+    status: Optional[str] = Query(None, description="Filter by review status"),
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of tasks to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Return review tasks awaiting human decisions."""
+
+    service = AgentSessionService()
+    tasks = await service.list_review_tasks(
+        org_id=current_user.org_id,
+        status=status,
+        limit=limit,
+    )
+    return [
+        ReviewTaskResponse(
+            id=UUID(task["id"]),
+            session_id=UUID(task["session_id"]),
+            org_id=UUID(task["org_id"]),
+            status=task["status"],
+            title=task["title"],
+            summary=task["summary"],
+            payload=task["payload"],
+            promotion_target=task["promotion_target"],
+            created_by=task["created_by"],
+            created_at=datetime.fromisoformat(task["created_at"]),
+            resolved_by=task["resolved_by"],
+            resolved_at=datetime.fromisoformat(task["resolved_at"]) if task["resolved_at"] else None,
+            resolution_notes=task["resolution_notes"],
+        )
+        for task in tasks
+    ]
+
+
+@router.post("/review-tasks/{task_id}/resolve", response_model=ReviewTaskResponse)
+async def resolve_review_task(
+    task_id: UUID,
+    request: ResolveReviewTaskRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Resolve a review task by approving, rejecting, or promoting it."""
+
+    service = AgentSessionService()
+    task = await service.resolve_review_task(
+        task_id=task_id,
+        resolved_by=current_user.user_id,
+        status=request.status,
+        notes=request.notes,
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="Review task not found")
+
+    return ReviewTaskResponse(
+        id=UUID(task["id"]),
+        session_id=UUID(task["session_id"]),
+        org_id=UUID(task["org_id"]),
+        status=task["status"],
+        title=task["title"] or "",
+        summary=task["summary"],
+        payload=task["payload"],
+        promotion_target=task["promotion_target"],
+        created_by=task["created_by"],
+        created_at=datetime.fromisoformat(task["created_at"]),
+        resolved_by=task["resolved_by"],
+        resolved_at=datetime.fromisoformat(task["resolved_at"]) if task["resolved_at"] else None,
+        resolution_notes=task["resolution_notes"],
+    )
 
 
 # Health check for agent system

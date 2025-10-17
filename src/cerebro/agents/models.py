@@ -67,6 +67,15 @@ class ApprovalStatus(str, Enum):
     EXPIRED = "expired"
 
 
+class ReviewTaskStatus(str, Enum):
+    """Workflow states for human-in-the-loop review tasks."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    PROMOTED = "promoted"
+
+
 class MemoryScope(str, Enum):
     """Scope levels for long-term agent memory."""
 
@@ -408,6 +417,72 @@ class ToolApproval(Base):
         "ToolInvocation",
         back_populates="approval",
     )
+
+
+class AgentReviewTask(Base):
+    """Pending review items raised by agents for human decision."""
+
+    __tablename__ = "agent_review_tasks"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id),
+        nullable=False,
+        index=True,
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    message_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    tool_invocation_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tool_invocations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+
+    status: Mapped[ReviewTaskStatus] = mapped_column(
+        SqlEnum(ReviewTaskStatus),
+        nullable=False,
+        default=ReviewTaskStatus.PENDING,
+        index=True,
+    )
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+    promotion_target: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    session: Mapped["AgentSession"] = relationship("AgentSession")
+    message: Mapped[Optional["AgentMessage"]] = relationship("AgentMessage")
+    tool_invocation: Mapped[Optional["ToolInvocation"]] = relationship("ToolInvocation")
 
 
 class AgentSessionContext(Base):

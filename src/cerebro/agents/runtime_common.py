@@ -289,6 +289,53 @@ class AgentRuntimePersistenceMixin:
             )
             return RetrievedMemory(prompt_snippets=[], entries=[])
 
+    async def _update_session_context(
+        self,
+        session: AgentSession,
+        updates: Dict[str, Any],
+    ) -> None:
+        async with async_session_factory() as db_session:
+            db_session_session = await db_session.get(AgentSession, session.id)
+            if not db_session_session:
+                return
+            merged = dict(db_session_session.context or {})
+            merged.update(updates)
+            db_session_session.context = merged
+            await db_session.commit()
+            session.context = merged
+
+    def _compose_memory_brief(
+        self,
+        memory: RetrievedMemory,
+        *,
+        max_entries: int = 3,
+    ) -> Optional[str]:
+        if not memory.entries:
+            return None
+        summaries = []
+        for entry in memory.entries[:max_entries]:
+            summary = entry.get("summary") or entry.get("snippet")
+            if summary:
+                summaries.append(summary)
+        if not summaries:
+            return None
+        return "\n".join(f"• {text}" for text in summaries)
+
+    def _log_memory_activity(
+        self,
+        session: AgentSession,
+        new_entries: List[Dict[str, Any]],
+    ) -> None:
+        if not new_entries:
+            return
+        logger.info(
+            "Memory recall surfaced new entries",
+            session_id=session.id,
+            org_id=session.org_id,
+            backend=self.backend_name,
+            new_entry_ids=[entry.get("id") for entry in new_entries],
+        )
+
     def _begin_runtime_operation(
         self,
         *,
