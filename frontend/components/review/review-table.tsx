@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet, apiPost } from "@/lib/api";
@@ -8,6 +8,7 @@ import { ReviewTask, ReviewTaskStatus } from "@/lib/types";
 import { cn, formatRelative } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ReviewDetail } from "@/components/review/review-detail";
 
 const STATUS_FILTERS: Array<{ label: string; value?: ReviewTaskStatus }> = [
   { label: "All" },
@@ -25,6 +26,7 @@ export function ReviewTable() {
   const [status, setStatus] = useState<ReviewTaskStatus | undefined>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState("");
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["reviewTasks", status],
@@ -32,6 +34,16 @@ export function ReviewTable() {
   });
 
   const tasks = useMemo(() => data ?? [], [data]);
+  const focusedTask = useMemo(
+    () => tasks.find((task) => task.id === focusedTaskId) ?? null,
+    [focusedTaskId, tasks]
+  );
+
+  useEffect(() => {
+    if (focusedTaskId && !focusedTask) {
+      setFocusedTaskId(null);
+    }
+  }, [focusedTaskId, focusedTask]);
 
   const toggleSelection = (taskId: string) => {
     setSelectedIds((prev) => {
@@ -147,13 +159,24 @@ export function ReviewTable() {
                 tasks.map((task) => {
                   const checked = selectedIds.has(task.id);
                   return (
-                    <tr key={task.id} className={cn(checked && "bg-slate-900/60")}
+                    <tr
+                      key={task.id}
+                      onClick={() => setFocusedTaskId(task.id)}
+                      className={cn(
+                        "group cursor-pointer transition",
+                        checked && "bg-slate-900/60",
+                        focusedTaskId === task.id && "ring-1 ring-sky-500/60"
+                      )}
                     >
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
                           checked={checked}
-                          onChange={() => toggleSelection(task.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            toggleSelection(task.id);
+                          }}
                           className="h-4 w-4 rounded border border-slate-600 bg-slate-900"
                         />
                       </td>
@@ -216,6 +239,12 @@ export function ReviewTable() {
           ) : null}
         </div>
       </div>
+
+      {focusedTask ? (
+        <div className="mt-6">
+          <ReviewDetail task={focusedTask} onClose={() => setFocusedTaskId(null)} />
+        </div>
+      ) : null}
     </Panel>
   );
 }

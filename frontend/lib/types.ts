@@ -54,3 +54,40 @@ export type PolicySuggestion = {
   metadata: Record<string, unknown>;
   last_seen: string;
 };
+
+export type AgentMessage = {
+  message_id: string;
+  role: string;
+  content: string;
+  timestamp: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type SessionSummary = {
+  session: {
+    session_id: string;
+    org_id: string;
+    agent_type: string;
+    title?: string | null;
+    created_at: string;
+    created_by: string;
+    status: string;
+    context: Record<string, unknown>;
+  };
+  messages: AgentMessage[];
+  message_count: number;
+};
+
+export type MemoryEntry = {
+  id: string;
+  role?: string | null;
+  summary?: string | null;
+  decay_score: number;
+  last_accessed_at: string;
+  created_at: string;
+  scopes: Array<Record<string, unknown>>;
+  scope_labels: string[];
+  metadata: Record<string, unknown>;
+  token_count: number;
+  content?: string | null;
+};
