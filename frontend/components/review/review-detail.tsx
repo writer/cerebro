@@ -256,9 +256,29 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
           title="Recent runtime events"
           description="Latest routing, tool, and memory signals emitted by the runtime."
         >
-          {analyticsLoading ? (
-            <p className="text-xs text-slate-400">Fetching analytics…</p>
-          ) : runtimeEvents && runtimeEvents.length > 0 ? (
+        {analyticsLoading ? (
+          <p className="text-xs text-slate-400">Fetching analytics…</p>
+        ) : runtimeEvents && runtimeEvents.length > 0 ? (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <label className="text-[11px] uppercase text-slate-500" htmlFor="event-filter">
+                Filter
+              </label>
+              <select
+                id="event-filter"
+                value={eventType}
+                onChange={(event) => setEventType(event.target.value)}
+                className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200"
+              >
+                <option value="">All events</option>
+                {availableEventTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <ul className="space-y-3">
               {runtimeEvents.map((event) => (
                 <li key={event.id} className="rounded-md bg-slate-900/70 p-3">
@@ -272,9 +292,10 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="text-xs text-slate-500">No runtime events recorded for this session yet.</p>
-          )}
+          </>
+        ) : (
+          <p className="text-xs text-slate-500">No runtime events recorded for this session yet.</p>
+        )}
         </DetailCard>
       </div>
 

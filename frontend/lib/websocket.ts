@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type WebSocketMessage = {
   type: string;
@@ -36,7 +36,7 @@ export function useWebSocket({
     shouldReconnectRef.current = reconnect;
   }, [reconnect]);
 
-  const connect = () => {
+  const connect = useCallback(() => {
     try {
       const ws = new WebSocket(url);
       
@@ -75,7 +75,7 @@ export function useWebSocket({
     } catch (error) {
       console.error("Failed to create WebSocket connection:", error);
     }
-  };
+  }, [url, onClose, onError, onMessage, onOpen, reconnectInterval]);
 
   useEffect(() => {
     connect();
@@ -87,7 +87,7 @@ export function useWebSocket({
       }
       wsRef.current?.close();
     };
-  }, [url]);
+  }, [connect]);
 
   const sendMessage = (message: WebSocketMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
