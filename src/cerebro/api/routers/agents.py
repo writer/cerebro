@@ -756,6 +756,113 @@ async def bulk_update_review_tasks(
     return [_review_task_to_response(task) for task in tasks]
 
 
+@router.post("/review-tasks/{task_id}/assign", response_model=ReviewTaskResponse)
+async def assign_review_task(
+    task_id: UUID,
+    assigned_to: str = Field(..., description="Username or email to assign to"),
+    current_user: User = Depends(get_current_user),
+):
+    """Assign a review task to a user."""
+    from cerebro.agents.review_service import AgentReviewService
+    
+    task = await AgentReviewService.assign_task(
+        task_id=task_id,
+        assigned_to=assigned_to,
+        assigned_by=current_user.username,
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return _review_task_to_response(task)
+
+
+@router.post("/review-tasks/{task_id}/comments", response_model=Dict[str, Any])
+async def add_task_comment(
+    task_id: UUID,
+    content: str = Field(..., min_length=1, max_length=5000, description="Comment content"),
+    metadata: Optional[Dict[str, Any]] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Add a comment to a review task."""
+    from cerebro.agents.review_service import AgentReviewService
+    
+    comment = await AgentReviewService.add_comment(
+        task_id=task_id,
+        author=current_user.username,
+        content=content,
+        metadata=metadata,
+    )
+    if not comment:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return {
+        "id": str(comment.id),
+        "task_id": str(comment.task_id),
+        "author": comment.author,
+        "content": comment.content,
+        "created_at": comment.created_at.isoformat(),
+        "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
+        "metadata": comment.metadata,
+    }
+
+
+@router.get("/review-tasks/{task_id}/comments", response_model=List[Dict[str, Any]])
+async def get_task_comments(
+    task_id: UUID,
+    limit: int = Query(100, ge=1, le=500, description="Maximum comments to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all comments for a review task."""
+    from cerebro.agents.review_service import AgentReviewService
+    
+    comments = await AgentReviewService.get_comments(
+        task_id=task_id,
+        limit=limit,
+    )
+    
+    return [
+        {
+            "id": str(comment.id),
+            "task_id": str(comment.task_id),
+            "author": comment.author,
+            "content": comment.content,
+            "created_at": comment.created_at.isoformat(),
+            "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
+            "metadata": comment.metadata,
+        }
+        for comment in comments
+    ]
+
+
+@router.get("/review-tasks/{task_id}/history", response_model=List[Dict[str, Any]])
+async def get_task_history(
+    task_id: UUID,
+    limit: int = Query(100, ge=1, le=500, description="Maximum history records to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Get change history for a review task."""
+    from cerebro.agents.review_service import AgentReviewService
+    
+    history = await AgentReviewService.get_history(
+        task_id=task_id,
+        limit=limit,
+    )
+    
+    return [
+        {
+            "id": str(record.id),
+            "task_id": str(record.task_id),
+            "changed_by": record.changed_by,
+            "change_type": record.change_type,
+            "field_name": record.field_name,
+            "old_value": record.old_value,
+            "new_value": record.new_value,
+            "created_at": record.created_at.isoformat(),
+            "metadata": record.metadata,
+        }
+        for record in history
+    ]
+
+
 @router.get("/review-tasks/notifications", response_model=List[ReviewNotificationResponse])
 async def list_review_notifications(
     status: Optional[str] = Query(None, description="Filter notifications by status"),
