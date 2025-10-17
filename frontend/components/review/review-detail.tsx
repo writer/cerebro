@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
-import { MemoryEntry, ReviewTask, SessionSummary } from "@/lib/types";
+import { MemoryEntry, MemoryStats, ReviewTask, RuntimeEvent, SessionSummary } from "@/lib/types";
 import { cn, formatRelative } from "@/lib/utils";
 
 type ReviewDetailProps = {
@@ -27,6 +27,19 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
       apiGet<MemoryEntry[]>(`/agents/sessions/${task.session_id}/memory`, {
         limit: 5,
         include_content: true,
+      }),
+  });
+
+  const { data: memoryStats, isLoading: statsLoading } = useQuery({
+    queryKey: ["sessionMemoryStats", task.session_id],
+    queryFn: () => apiGet<MemoryStats>(`/agents/sessions/${task.session_id}/memory/stats`),
+  });
+
+  const { data: runtimeEvents, isLoading: analyticsLoading } = useQuery({
+    queryKey: ["sessionAnalytics", task.session_id],
+    queryFn: () =>
+      apiGet<RuntimeEvent[]>(`/agents/sessions/${task.session_id}/analytics`, {
+        limit: 10,
       }),
   });
 
@@ -142,6 +155,78 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <DetailCard
+          title="Memory statistics"
+          description="Recency, scope coverage, and high-signal memories captured for this session."
+        >
+          {statsLoading ? (
+            <p className="text-xs text-slate-400">Calculating memory statistics…</p>
+          ) : memoryStats ? (
+            <div className="space-y-3 text-xs text-slate-200">
+              <div className="grid grid-cols-2 gap-3">
+                <MetricPill label="Total" value={memoryStats.total_entries} />
+                <MetricPill label="Recent" value={memoryStats.recent_entries} />
+                <MetricPill label="Presented" value={memoryStats.presented_entries} />
+                <MetricPill label="Tokens" value={memoryStats.token_total} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <MetricPill label="Avg decay" value={memoryStats.average_decay.toFixed(2)} />
+                <MetricPill label="Scopes" value={Object.keys(memoryStats.scope_distribution).length} />
+              </div>
+              {memoryStats.top_memories.length > 0 ? (
+                <div>
+                  <p className="text-[11px] uppercase text-slate-500">Top memories</p>
+                  <ul className="mt-2 space-y-2">
+                    {memoryStats.top_memories.map((memory) => (
+                      <li key={memory.id} className="rounded-md bg-slate-900/70 p-2">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span>{memory.role ?? "memory"}</span>
+                          <span>Decay {memory.decay_score.toFixed(2)}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-200">
+                          {memory.summary ?? "No summary available."}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Last accessed {formatRelative(memory.last_accessed_at)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">No memory statistics available.</p>
+          )}
+        </DetailCard>
+
+        <DetailCard
+          title="Recent runtime events"
+          description="Latest routing, tool, and memory signals emitted by the runtime."
+        >
+          {analyticsLoading ? (
+            <p className="text-xs text-slate-400">Fetching analytics…</p>
+          ) : runtimeEvents && runtimeEvents.length > 0 ? (
+            <ul className="space-y-3">
+              {runtimeEvents.map((event) => (
+                <li key={event.id} className="rounded-md bg-slate-900/70 p-3">
+                  <div className="flex items-center justify-between text-[11px] uppercase text-slate-500">
+                    <span>{event.event_type}</span>
+                    <span>{formatRelative(event.created_at)}</span>
+                  </div>
+                  <pre className="mt-2 max-h-40 overflow-auto rounded bg-slate-950/80 p-2 text-[11px] text-slate-300">
+                    {JSON.stringify(event.payload, null, 2)}
+                  </pre>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-500">No runtime events recorded for this session yet.</p>
+          )}
+        </DetailCard>
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <DetailCard
           title="Tool invocation history"
           description="Recent tool calls issued during this session."
         >
@@ -231,6 +316,15 @@ function DetailRow({ label, value, mono }: DetailRowProps) {
     <div className="flex justify-between gap-3">
       <span className="text-slate-500">{label}</span>
       <span className={cn("text-slate-200", mono && "font-mono text-[11px]")}>{value}</span>
+    </div>
+  );
+}
+
+function MetricPill({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2 text-[11px] uppercase text-slate-400">
+      <div>{label}</div>
+      <div className="mt-1 text-sm font-semibold text-slate-100">{value}</div>
     </div>
   );
 }
