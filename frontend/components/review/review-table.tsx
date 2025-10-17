@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Wifi, WifiOff } from "lucide-react";
 
 import { apiGet, apiPost } from "@/lib/api";
 import { ReviewTask, ReviewTaskStatus } from "@/lib/types";
 import { cn, formatRelative } from "@/lib/utils";
+import { useWebSocket } from "@/lib/websocket";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ReviewDetail } from "@/components/review/review-detail";
+import { showToast } from "@/components/review/review-notifications";
 
 const STATUS_FILTERS: Array<{ label: string; value?: ReviewTaskStatus }> = [
   { label: "All" },

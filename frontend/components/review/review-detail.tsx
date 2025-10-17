@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
@@ -12,6 +13,7 @@ type ReviewDetailProps = {
 };
 
 export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
+  const [eventType, setEventType] = useState("");
   const { data: sessionData, isLoading: sessionLoading } = useQuery({
     queryKey: ["sessionDetail", task.session_id],
     queryFn: () => apiGet<SessionSummary>(`/agents/sessions/${task.session_id}`),
@@ -36,12 +38,19 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
   });
 
   const { data: runtimeEvents, isLoading: analyticsLoading } = useQuery({
-    queryKey: ["sessionAnalytics", task.session_id],
+    queryKey: ["sessionAnalytics", task.session_id, eventType],
     queryFn: () =>
       apiGet<RuntimeEvent[]>(`/agents/sessions/${task.session_id}/analytics`, {
         limit: 10,
+        ...(eventType ? { event_type: eventType } : {}),
       }),
   });
+
+  const availableEventTypes = useMemo(() => {
+    const types = new Set<string>();
+    (runtimeEvents ?? []).forEach((event) => types.add(event.event_type));
+    return Array.from(types);
+  }, [runtimeEvents]);
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 px-5 py-4 shadow-xl">
@@ -86,6 +95,50 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
           <JSONPreview data={task.payload} />
         </DetailCard>
       </div>
+
+    <div className="mt-5 grid gap-5 lg:grid-cols-2">
+      <DetailCard
+        title="Session context"
+        description="Scope and configuration passed to the runtime."
+      >
+        {sessionInfo?.context && Object.keys(sessionInfo.context).length > 0 ? (
+          <dl className="space-y-2 text-xs">
+            {Object.entries(sessionInfo.context).map(([key, value]) => (
+              <div key={key} className="flex flex-col gap-1 rounded-md bg-slate-900/70 p-2">
+                <span className="text-[11px] uppercase text-slate-500">{key}</span>
+                <span className="text-slate-200">
+                  {Array.isArray(value) || typeof value === "object"
+                    ? JSON.stringify(value, null, 2)
+                    : String(value)}
+                </span>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="text-xs text-slate-500">No additional context captured for this session.</p>
+        )}
+      </DetailCard>
+
+      <DetailCard
+        title="Memory role distribution"
+        description="Breakdown of roles represented in long-term memory."
+      >
+        {statsLoading ? (
+          <p className="text-xs text-slate-400">Fetching distribution…</p>
+        ) : memoryStats && Object.keys(memoryStats.role_distribution).length > 0 ? (
+          <ul className="space-y-2 text-xs text-slate-200">
+            {Object.entries(memoryStats.role_distribution).map(([role, count]) => (
+              <li key={role} className="flex items-center justify-between">
+                <span className="uppercase text-slate-500">{role}</span>
+                <span className="rounded bg-slate-900/70 px-2 py-0.5 text-[11px]">{count}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-slate-500">Role distribution not available.</p>
+        )}
+      </DetailCard>
+    </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <DetailCard
