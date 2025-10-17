@@ -11,6 +11,7 @@ Cerebro tracks security configurations across cloud providers and SaaS platforms
 - **Three interfaces**: CLI, REST API, AI agents - all access the same data
 - **SQL queries**: Direct SQL access to security data without ETL pipelines
 - **Agent system**: 21 specialized tools for security investigation and compliance
+- **Adaptive agent memory**: Scoped, decay-aware recall that keeps investigations contextual
 - **Audit trail**: Append-only logs with cryptographic integrity
 - **Attack path analysis**: Graph-based analysis showing lateral movement
 - **Compliance automation**: Automated testing for SOC2, ISO27001, CIS, NIST
@@ -151,33 +152,33 @@ cerebro agents chat <session-id>
 
 ### Agent Memory
 
-Cerebro agents maintain a long-term memory store with scoped retrieval so investigations build on prior context.
+Agents persist scoped snippets so follow-up questions inherit prior context without repeating work.
 
-- **Embedding search** with OpenAI or local hashing fallback; each snippet tracks decay and access metadata.
-- **Deduplicated ingestion** detects repeated content and increments occurrence counters instead of bloating storage.
-- **Scope-aware recall** boosts findings/incident/session-aligned memories and diversifies results with MMR.
-- **Automatic pruning** trims low-value or stale entries using configurable org/session quotas and time-based decay.
-- **Observability** emits Prometheus counters (`cerebro_agent_memory_events_total`) and OTLP spans when enabled.
+- **Embedding search** – OpenAI embeddings or deterministic hashing (fallback) with decay + access metadata.
+- **Smart ingestion** – Duplicate messages increment counters and refresh metadata instead of bloating storage.
+- **Scope-aware recall** – Session/incident/finding scopes and Max Marginal Relevance (MMR) keep results relevant and diverse.
+- **Lifecycle management** – Probabilistic pruning enforces org/session quotas using decay score, age, and recency.
+- **Observability** – Prometheus counter `cerebro_agent_memory_events_total` and OTLP spans (when telemetry enabled).
 
-Memory configuration knobs (set via environment variables or config):
+Key configuration knobs:
 
-```
-AGENT_MEMORY_MAX_ENTRIES_PER_ORG=2000
-AGENT_MEMORY_MAX_ENTRIES_PER_SESSION=500
-AGENT_MEMORY_PRUNE_PROBABILITY=0.1
-AGENT_MEMORY_HALF_LIFE_HOURS=72
-AGENT_MEMORY_MMR_LAMBDA=0.7
-AGENT_MEMORY_SESSION_SCOPE_BOOST=1.2
-```
+| Setting | Purpose | Default |
+| --- | --- | --- |
+| `AGENT_MEMORY_MAX_ENTRIES_PER_ORG` | Upper bound of retained entries per org before pruning | `2000` |
+| `AGENT_MEMORY_MAX_ENTRIES_PER_SESSION` | Session-scoped retention ceiling | `500` |
+| `AGENT_MEMORY_PRUNE_PROBABILITY` | Chance (0-1) to launch a prune cycle on ingest | `0.1` |
+| `AGENT_MEMORY_HALF_LIFE_HOURS` | Exponential decay half-life (hours) | `72` |
+| `AGENT_MEMORY_MMR_LAMBDA` | Diversity vs. relevance trade-off for recall | `0.7` |
+| `AGENT_MEMORY_SESSION_SCOPE_BOOST` | Recall multiplier when scopes match the active session | `1.2` |
 
-Retrieve the current memory footprint for a session through the API:
+Inspect session memory via the API:
 
 ```bash
 curl "http://localhost:8000/api/v1/agents/sessions/<session-id>/memory?limit=20" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Each entry includes scopes, decay score, access metadata, and optional full content (`include_content=true`).
+Set `include_content=true` for full text; otherwise summaries, decay, scope labels, and metadata are returned.
 
 ## Examples
 
