@@ -149,6 +149,36 @@ cerebro agents chat <session-id>
 > "Test SOC2 controls"
 ```
 
+### Agent Memory
+
+Cerebro agents maintain a long-term memory store with scoped retrieval so investigations build on prior context.
+
+- **Embedding search** with OpenAI or local hashing fallback; each snippet tracks decay and access metadata.
+- **Deduplicated ingestion** detects repeated content and increments occurrence counters instead of bloating storage.
+- **Scope-aware recall** boosts findings/incident/session-aligned memories and diversifies results with MMR.
+- **Automatic pruning** trims low-value or stale entries using configurable org/session quotas and time-based decay.
+- **Observability** emits Prometheus counters (`cerebro_agent_memory_events_total`) and OTLP spans when enabled.
+
+Memory configuration knobs (set via environment variables or config):
+
+```
+AGENT_MEMORY_MAX_ENTRIES_PER_ORG=2000
+AGENT_MEMORY_MAX_ENTRIES_PER_SESSION=500
+AGENT_MEMORY_PRUNE_PROBABILITY=0.1
+AGENT_MEMORY_HALF_LIFE_HOURS=72
+AGENT_MEMORY_MMR_LAMBDA=0.7
+AGENT_MEMORY_SESSION_SCOPE_BOOST=1.2
+```
+
+Retrieve the current memory footprint for a session through the API:
+
+```bash
+curl "http://localhost:8000/api/v1/agents/sessions/<session-id>/memory?limit=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Each entry includes scopes, decay score, access metadata, and optional full content (`include_content=true`).
+
 ## Examples
 
 **Investigation**

@@ -123,13 +123,20 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
             operation="send_message",
         )
 
-        memory_snippets = await self._retrieve_memory_snippets(
+        memory_context = await self._retrieve_memory_snippets(
             session=session,
             query=message,
         )
 
         # Store user message for audit trail and memory
-        await self._store_message(session, MessageRole.USER, {"text": message})
+        await self._store_message(
+            session,
+            MessageRole.USER,
+            {
+                "text": message,
+                "memory_context": memory_context.entries,
+            },
+        )
         await self._capture_memory(
             session=session,
             role=MessageRole.USER,
@@ -137,7 +144,11 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         )
 
         # Build agent context
-        agent_context = await self._build_agent_context(session, user_id)
+        agent_context = await self._build_agent_context(
+            session,
+            user_id,
+            memory_entries=memory_context.entries,
+        )
 
         assistant_content = []
         tool_calls_count = 0
@@ -165,7 +176,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
             system_prompt=build_security_agent_prompt(
                 session.agent_type,
                 session=session,
-                memory_snippets=memory_snippets,
+                memory_snippets=memory_context.prompt_snippets,
             ),
             mcp_servers={"cerebro": mcp_server},
             allowed_tools=allowed_tools,
@@ -272,7 +283,8 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                             "input_tokens": total_input_tokens,
                             "output_tokens": total_output_tokens,
                             "total_tokens": total_input_tokens + total_output_tokens,
-                        }
+                        },
+                        "memory_context": memory_context.entries,
                     },
                     input_tokens=total_input_tokens,
                     output_tokens=total_output_tokens,
@@ -350,6 +362,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                         "total_tokens": total_input_tokens + total_output_tokens,
                     },
                     "fallback": "claude_cli_missing",
+                    "memory_context": memory_context.entries,
                 },
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,

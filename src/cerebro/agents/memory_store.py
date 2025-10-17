@@ -9,7 +9,7 @@ import math
 import random
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import delete, func, or_, select, update
@@ -275,8 +275,30 @@ class AgentMemoryStore:
         top = self._select_diverse_candidates(scored, limit)
         await self._update_access_metadata([entry for _, entry, _, _ in top])
         record_memory_event("recall", len(top))
-        snippets = [self._format_snippet(score, entry) for score, entry, _, _ in top]
-        return snippets
+
+        results: List[Dict[str, Any]] = []
+        for score, entry, _, _ in top:
+            snippet_text, summary_text, scope_labels = self._format_snippet(score, entry)
+            results.append(
+                {
+                    "id": str(entry.id),
+                    "role": entry.role.value if entry.role else None,
+                    "snippet": snippet_text,
+                    "summary": summary_text,
+                    "score": score,
+                    "decay_score": entry.decay_score,
+                    "scopes": entry.scopes,
+                    "scope_labels": scope_labels,
+                    "last_accessed_at": self._normalize_timestamp(
+                        entry.last_accessed_at, now
+                    ).isoformat(),
+                    "created_at": self._normalize_timestamp(entry.created_at, now).isoformat(),
+                    "metadata": entry.extra_metadata or {},
+                    "token_count": entry.token_count,
+                }
+            )
+
+        return results
 
     async def _generate_embedding(self, text: str) -> Optional[List[float]]:
         if not settings.enable_agent_memory_embeddings:
@@ -641,7 +663,7 @@ class AgentMemoryStore:
 
         return summary
 
-    def _format_snippet(self, score: float, entry: AgentMemoryEntry) -> str:
+    def _format_snippet(self, score: float, entry: AgentMemoryEntry) -> tuple[str, str, List[str]]:
         scope_labels = []
         for scope in entry.scopes or []:
             scope_type = scope.get("type")
@@ -664,7 +686,8 @@ class AgentMemoryStore:
             metadata += f", last={last_seen.strftime('%Y-%m-%d')}"
 
         body = f"{summary} ({metadata})"
-        return f"[{label}] {body}" if label else body
+        snippet = f"[{label}] {body}" if label else body
+        return snippet, summary, scope_labels
 
     @staticmethod
     def _build_scopes(session: AgentSession) -> List[Dict[str, object]]:

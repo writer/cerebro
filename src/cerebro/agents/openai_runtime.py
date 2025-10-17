@@ -109,7 +109,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
             operation="send_message",
         )
 
-        memory_snippets = await self._retrieve_memory_snippets(
+        memory_context = await self._retrieve_memory_snippets(
             session=session,
             query=message,
         )
@@ -123,7 +123,10 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         await self._store_message(
             session,
             MessageRole.USER,
-            {"text": message},
+            {
+                "text": message,
+                "memory_context": memory_context.entries,
+            },
         )
         await self._capture_memory(
             session=session,
@@ -131,7 +134,11 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
             content=message,
         )
 
-        agent_context = await self._build_agent_context(session, user_id)
+        agent_context = await self._build_agent_context(
+            session,
+            user_id,
+            memory_entries=memory_context.entries,
+        )
         agent_context.dry_run = session.context.get(
             "dry_run", settings.agent_default_dry_run
         )
@@ -145,7 +152,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
             instructions=build_security_agent_prompt(
                 session.agent_type,
                 session=session,
-                memory_snippets=memory_snippets,
+                memory_snippets=memory_context.prompt_snippets,
             ),
             tools=await self._build_function_tools(),
             model=self.model,
@@ -250,6 +257,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                         "output_tokens": total_output_tokens,
                         "total_tokens": total_input_tokens + total_output_tokens,
                     },
+                    "memory_context": memory_context.entries,
                 },
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,

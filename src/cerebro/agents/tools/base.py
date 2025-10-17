@@ -77,6 +77,7 @@ class AgentContext:
     provider_scope: List[str] = None  # aws, github, gcp, azure
     finding_ids: List[UUID] = None
     incident_id: Optional[UUID] = None
+    memory_entries: List[Dict[str, Any]] = None
     
     # Permissions and policies
     permission_level: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY
@@ -95,6 +96,8 @@ class AgentContext:
             self.cel_context = {}
         if self.roles is None:
             self.roles = []
+        if self.memory_entries is None:
+            self.memory_entries = []
     
     def build_cel_context(self, inputs: Dict[str, Any] = None) -> Dict[str, Any]:
         """Build CEL evaluation context with session and input data."""

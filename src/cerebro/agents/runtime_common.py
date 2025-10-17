@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import structlog
@@ -24,6 +25,12 @@ from cerebro.core.database import async_session_factory
 from cerebro.core.config import settings
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass
+class RetrievedMemory:
+    prompt_snippets: List[str]
+    entries: List[Dict[str, Any]]
 
 
 class AgentRuntimePersistenceMixin:
@@ -138,6 +145,8 @@ class AgentRuntimePersistenceMixin:
         self,
         session: AgentSession,
         user_id: str,
+        *,
+        memory_entries: Optional[List[Dict[str, Any]]] = None,
     ) -> AgentContext:
         finding_ids = [UUID(fid) for fid in session.context.get("finding_ids", [])]
         incident_id = None
@@ -146,7 +155,7 @@ class AgentRuntimePersistenceMixin:
 
         provider_scope = session.context.get("provider_scope", [])
 
-        return AgentContext(
+        agent_context = AgentContext(
             session_id=session.id,
             org_id=session.org_id,
             user_id=user_id,
@@ -159,6 +168,9 @@ class AgentRuntimePersistenceMixin:
                 "context": session.context,
             },
         )
+        if memory_entries:
+            agent_context.memory_entries = memory_entries
+        return agent_context
 
     async def _store_message(
         self,
@@ -258,18 +270,24 @@ class AgentRuntimePersistenceMixin:
         session: AgentSession,
         query: str,
         limit: int = 5,
-    ) -> list[str]:
+    ) -> RetrievedMemory:
         try:
             store = await AgentMemoryStore.shared()
             limit = min(limit, settings.agent_memory_max_snippets)
-            return await store.retrieve_relevant(session=session, query=query, limit=limit)
+            entries = await store.retrieve_relevant(
+                session=session,
+                query=query,
+                limit=limit,
+            )
+            prompt_snippets = [entry["snippet"] for entry in entries]
+            return RetrievedMemory(prompt_snippets=prompt_snippets, entries=entries)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug(
                 "Failed to retrieve agent memory",
                 session_id=session.id,
                 error=str(exc),
             )
-            return []
+            return RetrievedMemory(prompt_snippets=[], entries=[])
 
     def _begin_runtime_operation(
         self,

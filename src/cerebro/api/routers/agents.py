@@ -97,6 +97,22 @@ class SessionWithMessagesResponse(BaseModel):
     message_count: int
 
 
+class MemoryEntryResponse(BaseModel):
+    """Response containing a single memory entry."""
+
+    id: UUID
+    role: Optional[str]
+    summary: Optional[str]
+    decay_score: float
+    last_accessed_at: datetime
+    created_at: datetime
+    scopes: List[Dict[str, Any]]
+    scope_labels: List[str]
+    metadata: Dict[str, Any]
+    token_count: int
+    content: Optional[str] = None
+
+
 # API Endpoints
 
 @router.post("/sessions", response_model=SessionResponse, status_code=201)
@@ -389,6 +405,52 @@ async def get_session_messages(
     except Exception as e:
         logger.exception("Failed to get session messages", session_id=session_id, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to get session messages")
+
+
+@router.get("/sessions/{session_id}/memory", response_model=List[MemoryEntryResponse])
+async def get_session_memory_entries(
+    session_id: UUID,
+    limit: int = Query(50, ge=1, le=200, description="Maximum memory entries to return"),
+    include_content: bool = Query(False, description="Include full memory content in response"),
+    current_user: User = Depends(get_current_user),
+):
+    """List memory entries associated with an agent session."""
+
+    service = AgentSessionService()
+
+    try:
+        entries = await service.get_session_memory(
+            session_id=session_id,
+            org_id=current_user.org_id,
+            limit=limit,
+            include_content=include_content,
+        )
+
+        if entries is None:
+            raise HTTPException(status_code=404, detail="Session not found or access denied")
+
+        return [
+            MemoryEntryResponse(
+                id=UUID(entry["id"]),
+                role=entry["role"],
+                summary=entry.get("summary"),
+                decay_score=entry["decay_score"],
+                last_accessed_at=datetime.fromisoformat(entry["last_accessed_at"]),
+                created_at=datetime.fromisoformat(entry["created_at"]),
+                scopes=entry.get("scopes", []),
+                scope_labels=entry.get("scope_labels", []),
+                metadata=entry.get("metadata", {}),
+                token_count=entry.get("token_count", 0),
+                content=entry.get("content"),
+            )
+            for entry in entries
+        ]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to get session memory", session_id=session_id, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to get session memory entries")
 
 
 # Health check for agent system

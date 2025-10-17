@@ -17,6 +17,7 @@ from cerebro.core.database import get_db
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
+    AgentMemoryEntry,
     AgentType,
     ToolInvocation,
     ToolApproval,
@@ -172,6 +173,63 @@ class AgentSessionService:
             return []
         
         return await self.runtime.get_session_messages(session, limit, offset)
+
+    async def get_session_memory(
+        self,
+        session_id: UUID,
+        org_id: Optional[UUID] = None,
+        limit: int = 50,
+        include_content: bool = False,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Retrieve recent memory entries associated with a session."""
+
+        session = await self.get_session(session_id, org_id)
+        if not session:
+            return None
+
+        from cerebro.core.database import async_session_factory
+
+        async with async_session_factory() as db_session:
+            stmt = (
+                select(AgentMemoryEntry)
+                .where(AgentMemoryEntry.session_id == session_id)
+                .order_by(AgentMemoryEntry.created_at.desc())
+                .limit(limit)
+            )
+            result = await db_session.execute(stmt)
+            entries = result.scalars().all()
+
+        serialized: List[Dict[str, Any]] = []
+        for entry in entries:
+            scope_labels: List[str] = []
+            for scope in entry.scopes or []:
+                scope_type = scope.get("type")
+                value = scope.get("value")
+                if scope_type and scope_type != "session":
+                    if value:
+                        scope_labels.append(f"{scope_type}:{value}")
+                    else:
+                        scope_labels.append(scope_type)
+
+            payload: Dict[str, Any] = {
+                "id": str(entry.id),
+                "role": entry.role.value if entry.role else None,
+                "summary": entry.summary,
+                "decay_score": entry.decay_score,
+                "last_accessed_at": entry.last_accessed_at.isoformat(),
+                "created_at": entry.created_at.isoformat(),
+                "scopes": entry.scopes,
+                "scope_labels": scope_labels,
+                "metadata": entry.extra_metadata or {},
+                "token_count": entry.token_count,
+            }
+
+            if include_content:
+                payload["content"] = entry.content
+
+            serialized.append(payload)
+
+        return serialized
     
     async def get_session_with_messages(
         self,

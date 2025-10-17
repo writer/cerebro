@@ -106,7 +106,9 @@ async def test_memory_store_prioritizes_recent_entries(memory_session):
     )
 
     assert snippets, "Expected memory retrieval to return entries"
-    assert "administrators" in snippets[0].lower()
+    assert "administrators" in snippets[0]["snippet"].lower()
+    assert snippets[0]["id"]
+    assert snippets[0]["metadata"] is not None
 
     async with async_session_factory() as db_session:
         updated_entry = await db_session.get(AgentMemoryEntry, newer_entry.id)
@@ -194,7 +196,7 @@ async def test_memory_store_prefers_session_scoped_results(memory_session):
         )
 
         assert snippets
-        assert "Primary session recommendation" in snippets[0]
+        assert "Primary session recommendation" in snippets[0]["snippet"]
     finally:
         if secondary_session is not None:
             async with async_session_factory() as db_session:
