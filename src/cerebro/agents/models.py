@@ -486,6 +486,11 @@ class AgentReviewTask(Base):
         nullable=True,
     )
 
+    # Assignment fields
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    assigned_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     session: Mapped["AgentSession"] = relationship("AgentSession")
     message: Mapped[Optional["AgentMessage"]] = relationship("AgentMessage")
     tool_invocation: Mapped[Optional["ToolInvocation"]] = relationship("ToolInvocation")
@@ -498,6 +503,18 @@ class AgentReviewTask(Base):
         "AgentReviewTicket",
         back_populates="task",
         cascade="all, delete-orphan",
+    )
+    comments: Mapped[list["AgentReviewComment"]] = relationship(
+        "AgentReviewComment",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="AgentReviewComment.created_at",
+    )
+    history: Mapped[list["AgentReviewHistory"]] = relationship(
+        "AgentReviewHistory",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="AgentReviewHistory.created_at",
     )
 
 
@@ -716,6 +733,79 @@ class AgentMemoryDecayOverride(Base):
         server_default=func.now(),
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentReviewComment(Base):
+    """Comments and discussion threads on review tasks."""
+
+    __tablename__ = "agent_review_comments"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_review_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    author: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    metadata: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+
+    task: Mapped["AgentReviewTask"] = relationship(
+        "AgentReviewTask",
+        back_populates="comments",
+    )
+
+
+class AgentReviewHistory(Base):
+    """Audit trail of all changes to review tasks."""
+
+    __tablename__ = "agent_review_history"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_review_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    changed_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    change_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    field_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    old_value: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    new_value: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+    metadata: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+
+    task: Mapped["AgentReviewTask"] = relationship(
+        "AgentReviewTask",
+        back_populates="history",
+    )
 
 
 class AgentPolicySuggestion(Base):

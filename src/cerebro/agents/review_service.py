@@ -10,6 +10,8 @@ from sqlalchemy import select
 
 from cerebro.agents.models import (
     AgentPolicySuggestion,
+    AgentReviewComment,
+    AgentReviewHistory,
     AgentReviewTask,
     AgentSession,
     ReviewTaskStatus,
@@ -137,6 +139,7 @@ class AgentReviewService:
                     task.notification_channel = notification_channel
 
                 if status:
+                    old_status = task.status
                     AgentReviewService._apply_resolution_updates(
                         task,
                         status=status,
@@ -145,6 +148,18 @@ class AgentReviewService:
                         escalated_to=escalated_to,
                     )
                     await AgentReviewService._record_policy_signal(db_session, task, status)
+                    
+                    # Record status change
+                    await AgentReviewService._record_history(
+                        db_session,
+                        task_id=task.id,
+                        changed_by=resolved_by or "system",
+                        change_type="status_change",
+                        field_name="status",
+                        old_value={"status": old_status.value},
+                        new_value={"status": status.value},
+                        metadata={"notes": notes} if notes else {},
+                    )
 
                     if notification_channel:
                         post_notifications.append(
@@ -264,4 +279,130 @@ class AgentReviewService:
 
         suggestion.last_seen = datetime.now(timezone.utc)
         suggestion.details.setdefault("last_resolution_notes", task.resolution_notes)
+
+    @staticmethod
+    async def assign_task(
+        *,
+        task_id: UUID,
+        assigned_to: str,
+        assigned_by: str,
+    ) -> Optional[AgentReviewTask]:
+        """Assign a task to a user."""
+        async with async_session_factory() as db_session:
+            task = await db_session.get(AgentReviewTask, task_id)
+            if not task:
+                return None
+            
+            old_assignee = task.assigned_to
+            task.assigned_to = assigned_to
+            task.assigned_at = datetime.now(timezone.utc)
+            task.assigned_by = assigned_by
+
+            # Record history
+            await AgentReviewService._record_history(
+                db_session,
+                task_id=task_id,
+                changed_by=assigned_by,
+                change_type="assignment",
+                field_name="assigned_to",
+                old_value={"assigned_to": old_assignee} if old_assignee else None,
+                new_value={"assigned_to": assigned_to},
+            )
+
+            await db_session.commit()
+            await db_session.refresh(task)
+            return task
+
+    @staticmethod
+    async def add_comment(
+        *,
+        task_id: UUID,
+        author: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[AgentReviewComment]:
+        """Add a comment to a review task."""
+        async with async_session_factory() as db_session:
+            task = await db_session.get(AgentReviewTask, task_id)
+            if not task:
+                return None
+
+            comment = AgentReviewComment(
+                task_id=task_id,
+                author=author,
+                content=content,
+                metadata=metadata or {},
+            )
+            db_session.add(comment)
+
+            # Record history
+            await AgentReviewService._record_history(
+                db_session,
+                task_id=task_id,
+                changed_by=author,
+                change_type="comment_added",
+                new_value={"content": content[:100]},
+            )
+
+            await db_session.commit()
+            await db_session.refresh(comment)
+            return comment
+
+    @staticmethod
+    async def get_comments(
+        *,
+        task_id: UUID,
+        limit: int = 100,
+    ) -> List[AgentReviewComment]:
+        """Get all comments for a task."""
+        async with async_session_factory() as db_session:
+            stmt = (
+                select(AgentReviewComment)
+                .where(AgentReviewComment.task_id == task_id)
+                .order_by(AgentReviewComment.created_at.desc())
+                .limit(limit)
+            )
+            result = await db_session.execute(stmt)
+            return list(result.scalars())
+
+    @staticmethod
+    async def get_history(
+        *,
+        task_id: UUID,
+        limit: int = 100,
+    ) -> List[AgentReviewHistory]:
+        """Get change history for a task."""
+        async with async_session_factory() as db_session:
+            stmt = (
+                select(AgentReviewHistory)
+                .where(AgentReviewHistory.task_id == task_id)
+                .order_by(AgentReviewHistory.created_at.desc())
+                .limit(limit)
+            )
+            result = await db_session.execute(stmt)
+            return list(result.scalars())
+
+    @staticmethod
+    async def _record_history(
+        db_session,
+        *,
+        task_id: UUID,
+        changed_by: str,
+        change_type: str,
+        field_name: Optional[str] = None,
+        old_value: Optional[Dict[str, Any]] = None,
+        new_value: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record a change in the audit trail."""
+        history = AgentReviewHistory(
+            task_id=task_id,
+            changed_by=changed_by,
+            change_type=change_type,
+            field_name=field_name,
+            old_value=old_value,
+            new_value=new_value,
+            metadata=metadata or {},
+        )
+        db_session.add(history)
 
