@@ -195,7 +195,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         )
         tool_rankings = performance_tracker.get_rankings(
             available_tools,
-            agent_context.agent_type.value,
+            agent_context.agent_type,
         )
         await AgentAnalyticsService.record_event(
             org_id=session.org_id,

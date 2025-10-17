@@ -231,14 +231,14 @@ class GetOrgContextTool(StructuredTool):
                 "framework": "FastAPI",
                 "description": "Enterprise security system of record with AI agent integration",
                 "key_modules": [
-                    "agents/ - AI security agents with 15+ tools",
+                    "agents/ - AI security agents with curated core toolset",
                     "api/ - REST API endpoints",
                     "collectors/ - Multi-provider data collection",
                     "rules/ - CEL policy engine",
-                    "query/ - Zero-ETL SQL query engine",
-                    "compliance/ - SOC2/ISO27001 testing",
-                    "attack_path/ - Attack simulation",
-                    "analysis/ - Forensic replay & anomaly detection"
+                    "query/ - Zero-ETL security analytics",
+                    "analytics/ - Runtime telemetry & observability",
+                    "memory/ - Long-term contextual memory",
+                    "analysis/ - Timeline reconstruction & risk insights"
                 ]
             })
 

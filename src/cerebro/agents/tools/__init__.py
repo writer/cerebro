@@ -22,15 +22,10 @@ from .query import QueryTool
 from .timeline import TimelineTool
 from .security_analysis import SecurityAnalysisTool
 from .remediation import RemediationTool
-from .forensic_replay import ForensicReplayTool, ChangeReplayTool
-from .attack_path import AttackPathSimulatorTool, BlastRadiusTool
 from .smart_summarizer import SmartFindingSummarizerTool
-from .compliance_tester import ComplianceControlTesterTool, EvidenceBundleBuilderTool
-from .identity_anomaly_hunter import IdentityAnomalyHunterTool
 from .org_context import GetOrgContextTool
 from .system_context import GetSystemContextTool
 from .session_memory import RememberContextTool, GetSessionHistoryTool
-from .code_reading import ReadCodeTool, SearchCodeTool
 from .nl_query import NaturalLanguageQueryTool
 
 # Initialize the global tool registry
@@ -39,26 +34,17 @@ tool_registry = ToolRegistry()
 # Register all available tools - split findings into separate tools
 tool_registry.register(FindingsListTool())
 tool_registry.register(FindingStatusUpdateTool())
-tool_registry.register(RulesTool())
 tool_registry.register(QueryTool())
+tool_registry.register(RulesTool())
 tool_registry.register(TimelineTool())
 tool_registry.register(SecurityAnalysisTool())
 tool_registry.register(RemediationTool())
-tool_registry.register(ForensicReplayTool())
-tool_registry.register(ChangeReplayTool())
-tool_registry.register(AttackPathSimulatorTool())
-tool_registry.register(BlastRadiusTool())
 tool_registry.register(SmartFindingSummarizerTool())
-tool_registry.register(ComplianceControlTesterTool())
-tool_registry.register(EvidenceBundleBuilderTool())
-tool_registry.register(IdentityAnomalyHunterTool())
+tool_registry.register(NaturalLanguageQueryTool())
 tool_registry.register(GetOrgContextTool())
 tool_registry.register(GetSystemContextTool())
 tool_registry.register(RememberContextTool())
 tool_registry.register(GetSessionHistoryTool())
-tool_registry.register(ReadCodeTool())
-tool_registry.register(SearchCodeTool())
-tool_registry.register(NaturalLanguageQueryTool())
 
 
 def get_tool_registry() -> ToolRegistry:
@@ -82,20 +68,11 @@ __all__ = [
     "TimelineTool",
     "SecurityAnalysisTool",
     "RemediationTool",
-    "ForensicReplayTool",
-    "ChangeReplayTool",
-    "AttackPathSimulatorTool",
-    "BlastRadiusTool",
     "SmartFindingSummarizerTool",
-    "ComplianceControlTesterTool",
-    "EvidenceBundleBuilderTool",
-    "IdentityAnomalyHunterTool",
+    "NaturalLanguageQueryTool",
     "GetOrgContextTool",
     "GetSystemContextTool",
     "RememberContextTool",
     "GetSessionHistoryTool",
-    "ReadCodeTool",
-    "SearchCodeTool",
-    "NaturalLanguageQueryTool",
     "get_tool_registry",
 ]
