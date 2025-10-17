@@ -27,7 +27,7 @@ from cerebro.agents.models import (
 )
 from cerebro.agents.runtime_facade import AgentRuntimeFacade
 from cerebro.agents.review_service import AgentReviewService
-from cerebro.agents.analytics_service import AgentAnalyticsService
+from cerebro.agents.analytics_service import AgentAnalyticsService as RuntimeAnalyticsService
 from cerebro.agents.notification_service import NotificationService
 from cerebro.rules.engine import RuleEngine, EvaluationContext, CompilationError
 
@@ -454,11 +454,16 @@ class AgentSessionService:
         session_id: UUID,
         org_id: Optional[UUID] = None,
         limit: int = 100,
+        event_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         session = await self.get_session(session_id, org_id)
         if not session:
             return []
-        return await AgentAnalyticsService.list_events(session_id=session_id, limit=limit)
+        return await RuntimeAnalyticsService.list_events(
+            session_id=session_id,
+            limit=limit,
+            event_type=event_type,
+        )
 
     async def list_policy_suggestions(
         self,

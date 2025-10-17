@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -12,6 +12,35 @@ from sqlalchemy import select
 from cerebro.agents.models import AgentRuntimeEvent
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
+
+
+async def _fetch_events(
+    *,
+    session_id: UUID,
+    limit: int,
+    event_type: Optional[str],
+) -> List[Dict[str, Any]]:
+    async with async_session_factory() as db_session:
+        stmt = (
+            select(AgentRuntimeEvent)
+            .where(AgentRuntimeEvent.session_id == session_id)
+            .order_by(AgentRuntimeEvent.created_at.desc())
+            .limit(limit)
+        )
+        if event_type:
+            stmt = stmt.where(AgentRuntimeEvent.event_type == event_type)
+        result = await db_session.execute(stmt)
+        events = result.scalars().all()
+
+    return [
+        {
+            "id": str(event.id),
+            "event_type": event.event_type,
+            "payload": event.payload,
+            "created_at": event.created_at.isoformat(),
+        }
+        for event in events
+    ]
 
 
 class AgentAnalyticsService:
@@ -52,25 +81,22 @@ class AgentAnalyticsService:
         *,
         session_id: UUID,
         limit: int = 100,
+        event_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        async with async_session_factory() as db_session:
-            stmt = (
-                select(AgentRuntimeEvent)
-                .where(AgentRuntimeEvent.session_id == session_id)
-                .order_by(AgentRuntimeEvent.created_at.desc())
-                .limit(limit)
-            )
-            result = await db_session.execute(stmt)
-            events = result.scalars().all()
+        return await _fetch_events(session_id=session_id, limit=limit, event_type=event_type)
 
-        serialized: List[Dict[str, Any]] = []
-        for event in events:
-            serialized.append(
-                {
-                    "id": str(event.id),
-                    "event_type": event.event_type,
-                    "payload": event.payload,
-                    "created_at": event.created_at.isoformat(),
-                }
-            )
-        return serialized
+
+async def list_session_events(
+    *,
+    session_id: UUID,
+    limit: int = 100,
+    event_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Module-level helper for retrieving runtime events."""
+
+    return await _fetch_events(session_id=session_id, limit=limit, event_type=event_type)
+
+
+# Maintain backwards compatibility for imports that capture the class before
+# definition completes (e.g. during circular imports in tests).
+AgentAnalyticsService.list_events = staticmethod(list_session_events)

@@ -96,49 +96,49 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
         </DetailCard>
       </div>
 
-    <div className="mt-5 grid gap-5 lg:grid-cols-2">
-      <DetailCard
-        title="Session context"
-        description="Scope and configuration passed to the runtime."
-      >
-        {sessionInfo?.context && Object.keys(sessionInfo.context).length > 0 ? (
-          <dl className="space-y-2 text-xs">
-            {Object.entries(sessionInfo.context).map(([key, value]) => (
-              <div key={key} className="flex flex-col gap-1 rounded-md bg-slate-900/70 p-2">
-                <span className="text-[11px] uppercase text-slate-500">{key}</span>
-                <span className="text-slate-200">
-                  {Array.isArray(value) || typeof value === "object"
-                    ? JSON.stringify(value, null, 2)
-                    : String(value)}
-                </span>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="text-xs text-slate-500">No additional context captured for this session.</p>
-        )}
-      </DetailCard>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <DetailCard
+          title="Session context"
+          description="Scope and configuration passed to the runtime."
+        >
+          {sessionInfo?.context && Object.keys(sessionInfo.context).length > 0 ? (
+            <dl className="space-y-2 text-xs">
+              {Object.entries(sessionInfo.context).map(([key, value]) => (
+                <div key={key} className="flex flex-col gap-1 rounded-md bg-slate-900/70 p-2">
+                  <span className="text-[11px] uppercase text-slate-500">{key}</span>
+                  <span className="text-slate-200">
+                    {Array.isArray(value) || typeof value === "object"
+                      ? JSON.stringify(value, null, 2)
+                      : String(value)}
+                  </span>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="text-xs text-slate-500">No additional context captured for this session.</p>
+          )}
+        </DetailCard>
 
-      <DetailCard
-        title="Memory role distribution"
-        description="Breakdown of roles represented in long-term memory."
-      >
-        {statsLoading ? (
-          <p className="text-xs text-slate-400">Fetching distribution…</p>
-        ) : memoryStats && Object.keys(memoryStats.role_distribution).length > 0 ? (
-          <ul className="space-y-2 text-xs text-slate-200">
-            {Object.entries(memoryStats.role_distribution).map(([role, count]) => (
-              <li key={role} className="flex items-center justify-between">
-                <span className="uppercase text-slate-500">{role}</span>
-                <span className="rounded bg-slate-900/70 px-2 py-0.5 text-[11px]">{count}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-slate-500">Role distribution not available.</p>
-        )}
-      </DetailCard>
-    </div>
+        <DetailCard
+          title="Memory role distribution"
+          description="Breakdown of roles represented in long-term memory."
+        >
+          {statsLoading ? (
+            <p className="text-xs text-slate-400">Fetching distribution…</p>
+          ) : memoryStats && Object.keys(memoryStats.role_distribution).length > 0 ? (
+            <ul className="space-y-2 text-xs text-slate-200">
+              {Object.entries(memoryStats.role_distribution).map(([role, count]) => (
+                <li key={role} className="flex items-center justify-between">
+                  <span className="uppercase text-slate-500">{role}</span>
+                  <span className="rounded bg-slate-900/70 px-2 py-0.5 text-[11px]">{count}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-500">Role distribution not available.</p>
+          )}
+        </DetailCard>
+      </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <DetailCard
@@ -336,12 +336,7 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
           ) : (
             <dl className="space-y-2 text-xs">
               {Object.entries(metrics).map(([key, value]) => (
-                <div key={key} className="flex justify-between gap-2">
-                  <span className="capitalize text-slate-500">{key.replace(/_/g, " ")}</span>
-                  <span className="text-slate-200">
-                    {typeof value === "number" ? value.toString() : JSON.stringify(value)}
-                  </span>
-                </div>
+                <MetricRow key={key} label={key} value={value} />
               ))}
             </dl>
           )}
@@ -399,6 +394,37 @@ function MetricPill({ label, value }: { label: string; value: string | number })
     <div className="rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2 text-[11px] uppercase text-slate-400">
       <div>{label}</div>
       <div className="mt-1 text-sm font-semibold text-slate-100">{value}</div>
+    </div>
+  );
+}
+
+function MetricRow({ label, value }: { label: string; value: unknown }) {
+  const formattedLabel = label.replace(/_/g, " ");
+  const formattedValue = (() => {
+    if (typeof value === "number") {
+      return value.toString();
+    }
+    if (typeof value === "boolean") {
+      return value ? "true" : "false";
+    }
+    if (Array.isArray(value) || typeof value === "object") {
+      return JSON.stringify(value, null, 2);
+    }
+    return String(value ?? "—");
+  })();
+
+  const isMultiline = formattedValue.includes("\n");
+
+  return (
+    <div className="flex flex-col gap-1 rounded-md bg-slate-900/60 p-2">
+      <span className="text-[11px] uppercase text-slate-500">{formattedLabel}</span>
+      {isMultiline ? (
+        <pre className="max-h-36 overflow-auto whitespace-pre-wrap text-[11px] text-slate-200">
+          {formattedValue}
+        </pre>
+      ) : (
+        <span className="text-slate-200">{formattedValue}</span>
+      )}
     </div>
   );
 }

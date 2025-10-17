@@ -764,7 +764,12 @@ class AgentReviewComment(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-    metadata: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    extra_metadata: Mapped[Dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONType,
+        nullable=False,
+        default=dict,
+    )
 
     task: Mapped["AgentReviewTask"] = relationship(
         "AgentReviewTask",
@@ -800,7 +805,12 @@ class AgentReviewHistory(Base):
         server_default=func.now(),
         index=True,
     )
-    metadata: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    extra_metadata: Mapped[Dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONType,
+        nullable=False,
+        default=dict,
+    )
 
     task: Mapped["AgentReviewTask"] = relationship(
         "AgentReviewTask",

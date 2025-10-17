@@ -179,6 +179,20 @@ class ResolveReviewTaskRequest(BaseModel):
     notes: Optional[str] = Field(None, description="Optional resolution notes")
 
 
+class AssignReviewTaskRequest(BaseModel):
+    assigned_to: str = Field(..., description="Username or email to assign to")
+
+
+class AddReviewCommentRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000, description="Comment content")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata payload")
+
+
+class WorkflowEvaluationRequest(BaseModel):
+    trigger: str = Field(..., description="Trigger type to evaluate")
+    context: Dict[str, Any] = Field(..., description="Context data for evaluation")
+
+
 class BulkReviewUpdateRequest(BaseModel):
     task_ids: List[UUID]
     status: Optional[str] = Field(None, description="Status to apply to selected tasks")
@@ -759,7 +773,7 @@ async def bulk_update_review_tasks(
 @router.post("/review-tasks/{task_id}/assign", response_model=ReviewTaskResponse)
 async def assign_review_task(
     task_id: UUID,
-    assigned_to: str = Field(..., description="Username or email to assign to"),
+    request: AssignReviewTaskRequest,
     current_user: User = Depends(get_current_user),
 ):
     """Assign a review task to a user."""
@@ -767,7 +781,7 @@ async def assign_review_task(
     
     task = await AgentReviewService.assign_task(
         task_id=task_id,
-        assigned_to=assigned_to,
+        assigned_to=request.assigned_to,
         assigned_by=current_user.username,
     )
     if not task:
@@ -778,8 +792,7 @@ async def assign_review_task(
 @router.post("/review-tasks/{task_id}/comments", response_model=Dict[str, Any])
 async def add_task_comment(
     task_id: UUID,
-    content: str = Field(..., min_length=1, max_length=5000, description="Comment content"),
-    metadata: Optional[Dict[str, Any]] = None,
+    request: AddReviewCommentRequest,
     current_user: User = Depends(get_current_user),
 ):
     """Add a comment to a review task."""
@@ -788,8 +801,8 @@ async def add_task_comment(
     comment = await AgentReviewService.add_comment(
         task_id=task_id,
         author=current_user.username,
-        content=content,
-        metadata=metadata,
+        content=request.content,
+        metadata=request.metadata,
     )
     if not comment:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -801,7 +814,7 @@ async def add_task_comment(
         "content": comment.content,
         "created_at": comment.created_at.isoformat(),
         "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
-        "metadata": comment.metadata,
+        "metadata": comment.extra_metadata,
     }
 
 
@@ -827,7 +840,7 @@ async def get_task_comments(
             "content": comment.content,
             "created_at": comment.created_at.isoformat(),
             "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
-            "metadata": comment.metadata,
+            "metadata": comment.extra_metadata,
         }
         for comment in comments
     ]
@@ -857,7 +870,7 @@ async def get_task_history(
             "old_value": record.old_value,
             "new_value": record.new_value,
             "created_at": record.created_at.isoformat(),
-            "metadata": record.metadata,
+            "metadata": record.extra_metadata,
         }
         for record in history
     ]
@@ -915,6 +928,7 @@ async def list_review_notifications(
 async def get_session_analytics(
     session_id: UUID,
     limit: int = Query(100, ge=1, le=500, description="Maximum analytics events to return"),
+    event_type: Optional[str] = Query(None, description="Filter events by type"),
     current_user: User = Depends(get_current_user),
 ):
     service = AgentSessionService()
@@ -922,6 +936,7 @@ async def get_session_analytics(
         session_id=session_id,
         org_id=current_user.org_id,
         limit=limit,
+        event_type=event_type,
     )
     return [_runtime_event_to_response(event) for event in events]
 
@@ -959,14 +974,13 @@ async def get_workflow_template(
 
 @router.post("/workflows/evaluate", response_model=List[Dict[str, Any]])
 async def evaluate_workflows(
-    trigger: str = Field(..., description="Trigger type to evaluate"),
-    context: Dict[str, Any] = Field(..., description="Context data for evaluation"),
+    request: WorkflowEvaluationRequest,
     current_user: User = Depends(get_current_user),
 ):
     """Evaluate which workflows match given trigger and context."""
     from cerebro.agents.workflow_templates import WorkflowEngine
     
-    matching = await WorkflowEngine.find_matching_templates(trigger, context)
+    matching = await WorkflowEngine.find_matching_templates(request.trigger, request.context)
     return [WorkflowEngine.to_dict(template) for template in matching]
 
 

@@ -331,7 +331,7 @@ class AgentReviewService:
                 task_id=task_id,
                 author=author,
                 content=content,
-                metadata=metadata or {},
+                extra_metadata=metadata or {},
             )
             db_session.add(comment)
 
@@ -402,7 +402,7 @@ class AgentReviewService:
             field_name=field_name,
             old_value=old_value,
             new_value=new_value,
-            metadata=metadata or {},
+            extra_metadata=metadata or {},
         )
         db_session.add(history)
 
