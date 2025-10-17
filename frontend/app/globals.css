@@ -7,9 +7,9 @@
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  @apply bg-black text-zinc-200 antialiased;
 }
 
 a {
-  @apply text-blue-400 hover:text-blue-300;
+  @apply text-zinc-400 hover:text-zinc-100;
 }

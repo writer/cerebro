@@ -108,7 +108,7 @@ export function ReviewTable() {
               setStatus((event.target.value as ReviewTaskStatus) || undefined);
               setSelectedIds(new Set());
             }}
-            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200"
+            className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
           >
             {STATUS_FILTERS.map((filter) => (
               <option key={filter.label} value={filter.value ?? ""}>
@@ -116,23 +116,23 @@ export function ReviewTable() {
               </option>
             ))}
           </select>
-          <span className="text-[10px] uppercase tracking-wide text-slate-500">
+          <span className="text-[10px] uppercase tracking-wide text-zinc-500">
             {isFetching ? "Refreshing…" : `${tasks.length} tasks`}
           </span>
         </div>
       }
     >
       <div className="space-y-4">
-        <div className="overflow-hidden rounded-lg border border-slate-800">
-          <table className="min-w-full divide-y divide-slate-800 text-sm">
-            <thead className="bg-slate-900/80 text-xs uppercase text-slate-400">
+        <div className="overflow-hidden rounded-lg border border-zinc-900 bg-black/70">
+          <table className="min-w-full divide-y divide-zinc-900 text-sm text-zinc-200">
+            <thead className="bg-zinc-950 text-xs uppercase text-zinc-500">
               <tr>
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
                     checked={hasSelection && selectedIds.size === tasks.length}
                     onChange={(event) => selectAll(event.target.checked)}
-                    className="h-4 w-4 rounded border border-slate-600 bg-slate-900"
+                    className="h-4 w-4 rounded border border-zinc-700 bg-black text-zinc-100 focus:border-zinc-500"
                   />
                 </th>
                 <th className="px-4 py-3 text-left">Task</th>
@@ -142,16 +142,16 @@ export function ReviewTable() {
                 <th className="px-4 py-3 text-left">Updated</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800 bg-slate-950/40">
+            <tbody className="divide-y divide-zinc-900 bg-black">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                  <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
                     Loading review tasks…
                   </td>
                 </tr>
               ) : tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
                     No tasks match this filter.
                   </td>
                 </tr>
@@ -164,8 +164,8 @@ export function ReviewTable() {
                       onClick={() => setFocusedTaskId(task.id)}
                       className={cn(
                         "group cursor-pointer transition",
-                        checked && "bg-slate-900/60",
-                        focusedTaskId === task.id && "ring-1 ring-sky-500/60"
+                        checked && "bg-zinc-900/50",
+                        focusedTaskId === task.id && "ring-1 ring-zinc-500"
                       )}
                     >
                       <td className="px-4 py-3">
@@ -177,19 +177,19 @@ export function ReviewTable() {
                             event.stopPropagation();
                             toggleSelection(task.id);
                           }}
-                          className="h-4 w-4 rounded border border-slate-600 bg-slate-900"
+                          className="h-4 w-4 rounded border border-zinc-700 bg-black text-zinc-100 focus:border-zinc-500"
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-slate-100">{task.title}</div>
-                        <div className="truncate text-xs text-slate-400">{task.summary || "—"}</div>
+                        <div className="font-medium text-zinc-100">{task.title}</div>
+                        <div className="truncate text-xs text-zinc-400">{task.summary || "—"}</div>
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={task.status} />
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-300">{task.priority ?? "—"}</td>
-                      <td className="px-4 py-3 text-xs text-slate-400">{formatRelative(task.created_at)}</td>
-                      <td className="px-4 py-3 text-xs text-slate-400">{formatRelative(task.resolved_at)}</td>
+                      <td className="px-4 py-3 text-xs text-zinc-300">{task.priority ?? "—"}</td>
+                      <td className="px-4 py-3 text-xs text-zinc-500">{formatRelative(task.created_at)}</td>
+                      <td className="px-4 py-3 text-xs text-zinc-500">{formatRelative(task.resolved_at)}</td>
                     </tr>
                   );
                 })
@@ -198,17 +198,17 @@ export function ReviewTable() {
           </table>
         </div>
 
-        <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-4">
+        <div className="rounded-lg border border-dashed border-zinc-900 bg-black/80 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-100">
+              <p className="text-sm font-medium text-zinc-100">
                 {hasSelection ? `${selectedIds.size} selected` : "Select tasks to take action"}
               </p>
               <textarea
                 placeholder="Add reviewer notes (optional)"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                className="mt-2 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200"
+                className="mt-2 w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
                 rows={2}
               />
             </div>
@@ -222,8 +222,8 @@ export function ReviewTable() {
                   className={cn(
                     "rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-wide transition",
                     hasSelection
-                      ? "border-slate-600 bg-slate-900 text-slate-200 hover:border-slate-500 hover:bg-slate-800"
-                      : "cursor-not-allowed border-slate-800 bg-slate-950 text-slate-600"
+                      ? "border-zinc-700 bg-black text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
+                      : "cursor-not-allowed border-zinc-900 bg-black/60 text-zinc-600"
                   )}
                 >
                   {action}
@@ -232,8 +232,8 @@ export function ReviewTable() {
             </div>
           </div>
           {selectedTasks.length > 0 ? (
-            <div className="mt-3 rounded-md bg-slate-900/60 p-3 text-xs text-slate-300">
-              <span className="font-semibold text-slate-200">Preview:</span>{" "}
+            <div className="mt-3 rounded-md bg-black/70 p-3 text-xs text-zinc-300">
+              <span className="font-semibold text-zinc-100">Preview:</span>{" "}
               {selectedTasks.map((task) => task.title).join(" · ")}
             </div>
           ) : null}

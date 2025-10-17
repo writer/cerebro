@@ -8,7 +8,7 @@ type DashboardShellProps = {
 
 export function DashboardShell({ children }: DashboardShellProps) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-black text-zinc-100">
       <div className="lg:flex">
         <Sidebar />
         <div className="flex-1">

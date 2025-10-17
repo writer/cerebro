@@ -2,11 +2,11 @@ import { cn } from "@/lib/utils";
 import { ReviewTaskStatus } from "@/lib/types";
 
 const STATUS_STYLES: Record<ReviewTaskStatus, string> = {
-  pending: "bg-amber-500/10 text-amber-300 border-amber-500/40",
+  pending: "bg-zinc-800 text-zinc-200 border-zinc-700",
   approved: "bg-emerald-500/10 text-emerald-300 border-emerald-500/40",
   rejected: "bg-rose-500/10 text-rose-300 border-rose-500/40",
-  promoted: "bg-sky-500/10 text-sky-300 border-sky-500/40",
-  escalated: "bg-purple-500/10 text-purple-300 border-purple-500/40"
+  promoted: "bg-zinc-800 text-zinc-200 border-zinc-700",
+  escalated: "bg-zinc-800 text-zinc-200 border-zinc-700"
 };
 
 type StatusBadgeProps = {

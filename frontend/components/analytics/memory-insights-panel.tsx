@@ -49,12 +49,12 @@ export function MemoryInsightsPanel() {
             placeholder="Session UUID"
             value={sessionId}
             onChange={(event) => setSessionId(event.target.value)}
-            className="w-56 rounded-md border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-100"
+            className="w-56 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-100 focus:border-zinc-600 focus:outline-none"
             required
           />
           <button
             type="submit"
-            className="rounded-md border border-slate-600 bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-100 hover:border-slate-500 hover:bg-slate-800"
+            className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-semibold text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800"
           >
             {isFetching ? "Loading…" : "Load"}
           </button>
@@ -62,7 +62,7 @@ export function MemoryInsightsPanel() {
       }
     >
       {!stats ? (
-        <p className="text-sm text-slate-500">Provide a session ID to view memory analytics.</p>
+        <p className="text-sm text-zinc-500">Provide a session ID to view memory analytics.</p>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="space-y-4">
@@ -81,12 +81,12 @@ export function MemoryInsightsPanel() {
 
             <InsightCard title="Roles">
               {Object.keys(stats.role_distribution).length === 0 ? (
-                <p className="text-xs text-slate-500">No role metadata captured yet.</p>
+                <p className="text-xs text-zinc-500">No role metadata captured yet.</p>
               ) : (
-                <ul className="space-y-1 text-xs text-slate-300">
+                <ul className="space-y-1 text-xs text-zinc-200">
                   {Object.entries(stats.role_distribution).map(([role, count]) => (
-                    <li key={role} className="flex justify-between">
-                      <span className="uppercase text-slate-500">{role}</span>
+                    <li key={role} className="flex justify-between text-zinc-300">
+                      <span className="uppercase text-zinc-500">{role}</span>
                       <span>{count}</span>
                     </li>
                   ))}
@@ -96,12 +96,12 @@ export function MemoryInsightsPanel() {
 
             <InsightCard title="Scopes">
               {Object.keys(stats.scope_distribution).length === 0 ? (
-                <p className="text-xs text-slate-500">No scoped memories for this session.</p>
+                <p className="text-xs text-zinc-500">No scoped memories for this session.</p>
               ) : (
-                <ul className="space-y-1 text-xs text-slate-300">
+                <ul className="space-y-1 text-xs text-zinc-200">
                   {Object.entries(stats.scope_distribution).map(([scope, count]) => (
-                    <li key={scope} className="flex justify-between">
-                      <span className="uppercase text-slate-500">{scope}</span>
+                    <li key={scope} className="flex justify-between text-zinc-300">
+                      <span className="uppercase text-zinc-500">{scope}</span>
                       <span>{count}</span>
                     </li>
                   ))}
@@ -112,28 +112,28 @@ export function MemoryInsightsPanel() {
 
           <InsightCard title="Top retained memories" description="Highest decay scores surface the facts the agent revisits most frequently.">
             {stats.top_memories.length === 0 ? (
-              <p className="text-xs text-slate-500">No highlights yet—add more memory or run the session.</p>
+              <p className="text-xs text-zinc-500">No highlights yet—add more memory or run the session.</p>
             ) : (
               <ul className="space-y-3">
                 {stats.top_memories.map((memory) => (
-                  <li key={memory.id} className="rounded-md bg-slate-900/80 p-3 text-xs text-slate-200">
-                    <div className="flex items-center justify-between text-[11px] uppercase text-slate-500">
+                  <li key={memory.id} className="rounded-md border border-zinc-900 bg-black/70 p-3 text-xs text-zinc-200">
+                    <div className="flex items-center justify-between text-[11px] uppercase text-zinc-500">
                       <span>{memory.role ?? "memory"}</span>
                       <span>Decay {memory.decay_score.toFixed(2)}</span>
                     </div>
-                    <p className="mt-2 text-sm text-slate-200">
+                    <p className="mt-2 text-sm text-zinc-100">
                       {memory.summary ?? "No summary provided."}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-slate-500">
+                    <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-zinc-400">
                       {memory.scope_labels.length > 0
                         ? memory.scope_labels.map((label) => (
-                            <span key={label} className="rounded bg-slate-900/80 px-2 py-0.5">
+                            <span key={label} className="rounded bg-zinc-900/70 px-2 py-0.5 text-zinc-100">
                               {label}
                             </span>
                           ))
                         : "Unscoped"}
                     </div>
-                    <p className="mt-2 text-[11px] text-slate-500">
+                    <p className="mt-2 text-[11px] text-zinc-500">
                       Last accessed {formatRelative(memory.last_accessed_at)}
                     </p>
                   </li>
@@ -155,19 +155,19 @@ type InsightCardProps = {
 
 function InsightCard({ title, children, description }: InsightCardProps) {
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 shadow-inner">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</h3>
-      {description ? <p className="mt-1 text-[11px] text-slate-500">{description}</p> : null}
-      <div className="mt-3 text-sm text-slate-200">{children}</div>
+    <section className="rounded-xl border border-zinc-900 bg-black/75 p-4 shadow-inner">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{title}</h3>
+      {description ? <p className="mt-1 text-[11px] text-zinc-500">{description}</p> : null}
+      <div className="mt-3 text-sm text-zinc-200">{children}</div>
     </section>
   );
 }
 
 function InsightRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-slate-200">{value}</span>
+    <div className="flex justify-between text-zinc-300">
+      <span className="text-zinc-500">{label}</span>
+      <span className="font-medium text-zinc-100">{value}</span>
     </div>
   );
 }
