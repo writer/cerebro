@@ -107,6 +107,19 @@ export function ReviewDetail({ task, onClose }: ReviewDetailProps) {
                   <div className="mt-2 text-[11px] text-slate-500">
                     {entry.scope_labels.length > 0 ? entry.scope_labels.join(" · ") : "Unscoped"}
                   </div>
+                  {(entry.embedding_similarity ?? entry.lexical_similarity ?? entry.combined_similarity) ? (
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-400">
+                      <span>
+                        Emb {entry.embedding_similarity?.toFixed(2) ?? "—"}
+                      </span>
+                      <span>
+                        Lex {entry.lexical_similarity?.toFixed(2) ?? "—"}
+                      </span>
+                      <span>
+                        Ann {entry.ann_selected ? "yes" : "no"}
+                      </span>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

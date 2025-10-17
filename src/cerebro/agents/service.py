@@ -5,7 +5,7 @@ High-level service layer for managing agent sessions, orchestrating conversation
 and providing clean interfaces for API endpoints and CLI commands.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
@@ -227,6 +227,10 @@ class AgentSessionService:
                 "scope_labels": scope_labels,
                 "metadata": entry.extra_metadata or {},
                 "token_count": entry.token_count,
+                "embedding_similarity": None,
+                "lexical_similarity": None,
+                "combined_similarity": None,
+                "ann_selected": None,
             }
 
             if include_content:
@@ -235,6 +239,104 @@ class AgentSessionService:
             serialized.append(payload)
 
         return serialized
+
+    async def get_session_memory_stats(
+        self,
+        session_id: UUID,
+        org_id: Optional[UUID] = None,
+    ) -> Optional[Dict[str, Any]]:
+        session = await self.get_session(session_id, org_id)
+        if not session:
+            return None
+
+        from cerebro.core.database import async_session_factory
+
+        async with async_session_factory() as db_session:
+            stmt = select(AgentMemoryEntry).where(AgentMemoryEntry.session_id == session_id)
+            result = await db_session.execute(stmt)
+            entries = list(result.scalars())
+
+        total_entries = len(entries)
+        if total_entries == 0:
+            return {
+                "total_entries": 0,
+                "recent_entries": 0,
+                "presented_entries": 0,
+                "average_decay": 0.0,
+                "token_total": 0,
+                "role_distribution": {},
+                "scope_distribution": {},
+                "top_memories": [],
+            }
+
+        role_distribution: Dict[str, int] = {}
+        scope_distribution: Dict[str, int] = {}
+        token_total = 0
+        decay_sum = 0.0
+        recent_entries = 0
+        presented_entries = 0
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+        highlights: List[Dict[str, Any]] = []
+
+        for entry in entries:
+            created_at = entry.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+
+            last_accessed = entry.last_accessed_at
+            if last_accessed.tzinfo is None:
+                last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+
+            role_key = (entry.role.value if entry.role else "unknown").lower()
+            role_distribution[role_key] = role_distribution.get(role_key, 0) + 1
+
+            for scope in entry.scopes or []:
+                scope_type = (scope.get("type") or "unknown").lower()
+                scope_distribution[scope_type] = scope_distribution.get(scope_type, 0) + 1
+
+            metadata = entry.extra_metadata or {}
+            if int(metadata.get("presented_count", 0) or 0) > 0:
+                presented_entries += 1
+
+            if created_at >= recent_cutoff:
+                recent_entries += 1
+
+            token_total += entry.token_count or 0
+            decay_sum += entry.decay_score
+
+            scope_labels: List[str] = []
+            for scope in entry.scopes or []:
+                scope_type = scope.get("type")
+                value = scope.get("value")
+                if scope_type and scope_type != "session":
+                    scope_labels.append(f"{scope_type}:{value}" if value else scope_type)
+
+            highlights.append(
+                {
+                    "id": str(entry.id),
+                    "summary": entry.summary,
+                    "decay_score": entry.decay_score,
+                    "last_accessed_at": last_accessed.isoformat(),
+                    "role": entry.role.value if entry.role else None,
+                    "scope_labels": scope_labels,
+                }
+            )
+
+        highlights.sort(key=lambda item: item["decay_score"], reverse=True)
+
+        average_decay = decay_sum / total_entries if total_entries else 0.0
+
+        return {
+            "total_entries": total_entries,
+            "recent_entries": recent_entries,
+            "presented_entries": presented_entries,
+            "average_decay": round(average_decay, 3),
+            "token_total": token_total,
+            "role_distribution": role_distribution,
+            "scope_distribution": scope_distribution,
+            "top_memories": highlights[:5],
+        }
     
     async def list_review_tasks(
         self,

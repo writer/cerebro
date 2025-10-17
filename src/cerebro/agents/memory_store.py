@@ -298,7 +298,7 @@ class AgentMemoryStore:
             except Exception:
                 preferred_indices = None
 
-        scored: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]] = []
+        scored: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float, float, float, bool]] = []
         for idx, entry in enumerate(candidates):
             embedding = entry.embedding
             embedding_norm = entry.embedding_norm or 1.0
@@ -344,24 +344,46 @@ class AgentMemoryStore:
 
             scope_multiplier = self._scope_multiplier(session_scope_map, entry.scopes)
             role_multiplier = self._role_weight(entry.role)
-            adjusted = combined_similarity * scope_multiplier * role_multiplier
+            combined_similarity_raw = combined_similarity
+            adjusted = combined_similarity_raw * scope_multiplier * role_multiplier
             half_life_hours = self._determine_half_life(overrides, entry)
             recency = self._compute_decay_multiplier(entry, now, half_life_hours)
             final_score = adjusted * recency
             if final_score <= 0:
                 continue
 
-            scored.append((final_score, entry, embedding, embedding_norm))
+            ann_selected = preferred_indices is not None and idx in preferred_indices
+            scored.append(
+                (
+                    final_score,
+                    entry,
+                    embedding,
+                    embedding_norm,
+                    similarity,
+                    lexical_score,
+                    ann_selected,
+                    combined_similarity_raw,
+                )
+            )
 
         if not scored:
             return []
 
         top = self._select_diverse_candidates(scored, limit)
-        await self._update_access_metadata([entry for _, entry, _, _ in top])
+        await self._update_access_metadata([entry for _, entry, *_ in top])
         record_memory_event("recall", len(top))
 
         results: List[Dict[str, Any]] = []
-        for score, entry, _, _ in top:
+        for (
+            score,
+            entry,
+            _,
+            _,
+            embedding_similarity,
+            lexical_similarity,
+            ann_selected,
+            combined_similarity_raw,
+        ) in top:
             snippet_text, summary_text, scope_labels = self._format_snippet(score, entry)
             results.append(
                 {
@@ -379,6 +401,10 @@ class AgentMemoryStore:
                     "created_at": self._normalize_timestamp(entry.created_at, now).isoformat(),
                     "metadata": entry.extra_metadata or {},
                     "token_count": entry.token_count,
+                    "embedding_similarity": embedding_similarity if embedding_similarity > 0 else None,
+                    "lexical_similarity": lexical_similarity if lexical_similarity > 0 else None,
+                    "combined_similarity": combined_similarity_raw if combined_similarity_raw > 0 else None,
+                    "ann_selected": ann_selected,
                 }
             )
 
@@ -467,20 +493,20 @@ class AgentMemoryStore:
 
     def _select_diverse_candidates(
         self,
-        candidates: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]],
+        candidates: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float, float, float, bool, float]],
         limit: int,
-    ) -> List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]]:
+    ) -> List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float, float, float, bool, float]]:
         if not candidates:
             return []
 
         ordered = sorted(candidates, key=lambda item: item[0], reverse=True)
-        selected: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float]] = []
+        selected: List[Tuple[float, AgentMemoryEntry, Optional[List[float]], float, float, float, bool, float]] = []
 
         while ordered and len(selected) < limit:
             best_index = 0
             best_score = float("-inf")
             for index, candidate in enumerate(ordered):
-                base_score, _, embedding, norm = candidate
+                base_score, _, embedding, norm, *_ = candidate
                 if not selected or embedding is None:
                     mmr_score = base_score
                 else:

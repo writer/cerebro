@@ -90,4 +90,26 @@ export type MemoryEntry = {
   metadata: Record<string, unknown>;
   token_count: number;
   content?: string | null;
+  embedding_similarity?: number | null;
+  lexical_similarity?: number | null;
+  combined_similarity?: number | null;
+  ann_selected?: boolean | null;
+};
+
+export type MemoryStats = {
+  total_entries: number;
+  recent_entries: number;
+  presented_entries: number;
+  average_decay: number;
+  token_total: number;
+  role_distribution: Record<string, number>;
+  scope_distribution: Record<string, number>;
+  top_memories: Array<{
+    id: string;
+    summary?: string | null;
+    decay_score: number;
+    last_accessed_at: string;
+    role?: string | null;
+    scope_labels: string[];
+  }>;
 };

@@ -50,3 +50,46 @@ async def test_get_session_memory_returns_entries():
     assert entry["scope_labels"]
 
     AgentMemoryStore._instance = None
+
+
+@pytest.mark.asyncio
+async def test_get_session_memory_stats():
+    AgentMemoryStore._instance = None
+
+    async with async_session_factory() as db_session:
+        org = Organization(
+            name="Memory Stats Org",
+            created_at=datetime.now(timezone.utc),
+        )
+        db_session.add(org)
+        await db_session.commit()
+        await db_session.refresh(org)
+
+        session = AgentSession(
+            org_id=org.org_id,
+            agent_type=AgentType.SECURITY_ANALYST,
+            created_by="stats@example.com",
+            title="Stats Session",
+            context={},
+        )
+        db_session.add(session)
+        await db_session.commit()
+        await db_session.refresh(session)
+
+    store = await AgentMemoryStore.shared()
+    await store.add_message(
+        session=session,
+        role=MessageRole.USER,
+        content="User noted that MFA rollout completed across privileged accounts.",
+    )
+
+    service = AgentSessionService()
+    stats = await service.get_session_memory_stats(session.id, org.org_id)
+
+    assert stats is not None
+    assert stats["total_entries"] == 1
+    assert stats["recent_entries"] == 1
+    assert stats["token_total"] >= 0
+    assert isinstance(stats["role_distribution"], dict)
+
+    AgentMemoryStore._instance = None

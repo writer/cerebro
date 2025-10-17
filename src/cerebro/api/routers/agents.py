@@ -111,6 +111,30 @@ class MemoryEntryResponse(BaseModel):
     metadata: Dict[str, Any]
     token_count: int
     content: Optional[str] = None
+    embedding_similarity: Optional[float] = None
+    lexical_similarity: Optional[float] = None
+    combined_similarity: Optional[float] = None
+    ann_selected: Optional[bool] = None
+
+
+class MemoryHighlightResponse(BaseModel):
+    id: UUID
+    summary: Optional[str]
+    role: Optional[str]
+    decay_score: float
+    last_accessed_at: datetime
+    scope_labels: List[str]
+
+
+class MemoryStatsResponse(BaseModel):
+    total_entries: int
+    recent_entries: int
+    presented_entries: int
+    average_decay: float
+    token_total: int
+    role_distribution: Dict[str, int]
+    scope_distribution: Dict[str, int]
+    top_memories: List[MemoryHighlightResponse]
 
 
 class ReviewTaskResponse(BaseModel):
@@ -579,6 +603,10 @@ async def get_session_memory_entries(
                 metadata=entry.get("metadata", {}),
                 token_count=entry.get("token_count", 0),
                 content=entry.get("content"),
+                embedding_similarity=entry.get("embedding_similarity"),
+                lexical_similarity=entry.get("lexical_similarity"),
+                combined_similarity=entry.get("combined_similarity"),
+                ann_selected=entry.get("ann_selected"),
             )
             for entry in entries
         ]
@@ -588,6 +616,21 @@ async def get_session_memory_entries(
     except Exception as e:
         logger.exception("Failed to get session memory", session_id=session_id, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to get session memory entries")
+
+
+@router.get("/sessions/{session_id}/memory/stats", response_model=MemoryStatsResponse)
+async def get_session_memory_stats(
+    session_id: UUID,
+    current_user: User = Depends(get_current_user),
+):
+    service = AgentSessionService()
+    stats = await service.get_session_memory_stats(
+        session_id=session_id,
+        org_id=current_user.org_id,
+    )
+    if stats is None:
+        raise HTTPException(status_code=404, detail="Session not found or access denied")
+    return MemoryStatsResponse(**stats)
 
 
 @router.get("/review-tasks", response_model=List[ReviewTaskResponse])
