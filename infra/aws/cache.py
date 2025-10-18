@@ -7,6 +7,8 @@ Creates:
 - Parameter groups for Redis tuning
 - Automatic failover and Multi-AZ
 """
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 
