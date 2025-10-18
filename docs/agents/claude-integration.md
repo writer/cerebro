@@ -231,7 +231,7 @@ JOIN tool_invocations ti ON ta.tool_invocation_id = ti.id;
 ```bash
 # Claude API Configuration
 ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
+CLAUDE_MODEL=claude-3-5-sonnet-latest
 CLAUDE_MAX_TOKENS=8192
 
 # Optional: Third-party API providers  

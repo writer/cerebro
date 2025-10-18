@@ -9,7 +9,7 @@
 
 ### 1. Clone and Setup
 ```bash
-git clone https://github.com/haasonsaas/cerebro.git
+git clone https://github.com/WriterInternal/cerebro.git
 cd cerebro
 uv sync
 ```
@@ -55,7 +55,7 @@ uv run python -m cerebro.cli findings generate --org-name "My Company"
 ```
 
 ### 6. Access Dashboard
-Open http://localhost:3000 - dev auth enabled by default
+Open http://localhost:3000 - development auth enabled by default (see `.env` overrides)
 
 ## 🎯 Three Ways to Use Cerebro
 
@@ -98,7 +98,7 @@ cerebro agents create --type security_analyst --title "AWS Security Review"
 "Suggest remediation steps for finding {id}"
 ```
 
-**Key Insight:** All three interfaces use the **same 7 tools**, query the **same database**, and write to the **same audit trail**. When an agent lists findings, it's using the exact same engine as the CLI and API.
+**Key Insight:** All three interfaces use the **same audited toolchain**, query the **same database**, and write to the **same audit trail**. When an agent lists findings, it's using the exact same engine as the CLI and API.
 
 ## 🎯 Key Capabilities
 

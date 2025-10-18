@@ -7,7 +7,7 @@ Cerebro provides three first-class interfaces to the same security engine:
 - **REST API** - Programmatic access (`GET /api/v1/findings`)
 - **AI Agents** - Conversational interface (`"Show me critical findings"`)
 
-All three interfaces access the **same 7 tools**, query the **same PostgreSQL database**, write to the **same audit trail**, and execute through the **same security engine**.
+All three interfaces access the **same audited toolchain**, query the **same PostgreSQL database**, write to the **same audit trail**, and execute through the **same security engine**.
 
 ## What Makes This Deep Integration?
 
@@ -109,15 +109,16 @@ def create_cerebro_mcp_server(tools, context, executor) -> MCPServer
 
 ### 3. Tool System (`tools/`)
 
-**7 Specialized Security Tools** shared across CLI, API, and Agents:
+**Shared Security Tooling** across CLI, API, and Agents:
 
-1. **FindingsListTool** (`findings_list`) - Query and filter security findings with complex filters
-2. **FindingStatusUpdateTool** (`finding_update_status`) - Update finding status with audit trail
-3. **QueryTool** (`query`) - Execute SQL queries against 15+ security tables (Zero-ETL)
-4. **TimelineTool** (`timeline`) - Build incident timelines from audit events and findings
-5. **RulesTool** (`rules`) - Compile, test, and manage CEL security rules
-6. **SecurityAnalysisTool** (`security_analysis`) - 4 analysis types: attack surface, risk scoring, compliance gaps, posture assessment
-7. **RemediationTool** (`remediation_suggestions`) - Intelligent step-by-step remediation with effort estimates
+| Category | Representative tools |
+| --- | --- |
+| **Findings & Status** | `findings_list`, `finding_update_status`, `smart_finding_summarizer` |
+| **Analysis & Rules** | `security_analysis`, `rules`, `compliance_tester`, `evidence_bundle_builder` |
+| **Investigations** | `timeline`, `forensic_replay`, `change_replay`, `attack_path_simulator`, `blast_radius` |
+| **Queries & Context** | `query`, `natural_language_query`, `get_system_context`, `get_org_context` |
+| **Memory & Knowledge** | `remember_context`, `get_session_history`, `smart_summarizer` |
+| **Remediation & Actions** | `remediation_suggestions`, `identity_anomaly_hunter` |
 
 Every tool is accessible via:
 - **CLI**: `cerebro [tool-name] [args]`
@@ -200,7 +201,7 @@ from cerebro.agents.models import AgentType
 
 # Create runtime
 runtime = CerebroClaudeRuntime(
-    model="claude-3-5-sonnet-20241022",
+    model=os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-latest"),
     temperature=0.1,
 )
 
@@ -233,16 +234,12 @@ async for response in runtime.send_message(
 
 ### Environment Variables
 
-```bash
-# Required: Claude API key
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: Database connection
-export DATABASE_URL=postgresql://...
-
-# Optional: Override default model
-export CLAUDE_MODEL=claude-3-5-sonnet-20241022
-```
+| Variable | Required | Description |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | Yes | Claude runtime API key |
+| `OPENAI_API_KEY` | Optional | Enables OpenAI runtime fallback |
+| `DATABASE_URL` | Optional | Override default Postgres connection |
+| `CLAUDE_MODEL` | Optional | Claude model override (default `claude-3-5-sonnet-latest`) |
 
 ### Agent Context
 

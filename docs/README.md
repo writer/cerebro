@@ -1,6 +1,6 @@
 # Cerebro Documentation
 
-**Welcome to Cerebro** - Security System of Record with intelligent agents and comprehensive compliance support.
+**Welcome to Cerebro** – Security System of Record with intelligent agents and enterprise compliance support.
 
 ---
 
@@ -10,19 +10,19 @@
 
 New to Cerebro? Start here:
 
-- **[Quick Start Guide](getting-started/QUICKSTART.md)** - Get up and running in 10 minutes
-- **[Installation](../README.md#installation)** - Installation instructions
-- **[First Steps](getting-started/QUICKSTART.md#first-steps)** - Your first security scan
+- **[Quick Start Guide](getting-started/QUICKSTART.md)** - Get up and running quickly
+- **[Installation](../README.md#installation)** - Backend + frontend installation steps
+- **[First Tasks](getting-started/QUICKSTART.md#first-collection)** - Your first security collection
 
 ### 📖 User Guide
 
 Learn how to use Cerebro:
 
-- **[API Reference](user-guide/API.md)** - Complete API documentation
+- **[API Reference](user-guide/API.md)** - REST + SSE endpoints
 - **[Query Engine](user-guide/QUERY_ENGINE.md)** - SQL and natural language queries
 - **[CEL Rules](user-guide/CEL_RULES.md)** - Common Expression Language rule engine
 - **[Compliance Features](user-guide/COMPLIANCE_FEATURES.md)** - SOC 2, CIS, NIST CSF 2.0
-- **[Troubleshooting](user-guide/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Troubleshooting](user-guide/TROUBLESHOOTING.md)** - Common issues and resolutions
 
 ### 🔌 Integrations
 
@@ -58,8 +58,8 @@ Intelligent security automation:
 
 System design and internals:
 
-- **[Architecture Overview](architecture/claude-sdk-integration.md)** - System architecture
-- **[Notification System](integrations/slack/IMPLEMENTATION.md)** - Multi-channel notifications
+- **[Architecture Overview](architecture/claude-sdk-integration.md)** - High-level system design
+- **[Notification System](SLACK_INTEGRATION_IMPLEMENTATION.md)** - Multi-channel notifications
 - **[Agent System](agents/claude-integration.md)** - Intelligent agent architecture
 - **[Security](developer-guide/DEVELOPMENT.md#security)** - Security considerations
 
@@ -75,7 +75,7 @@ System design and internals:
 
 | Resource | Description |
 |----------|-------------|
-| [GitHub Repository](https://github.com/haasonsaas/cerebro) | Source code and issues |
+| [GitHub Repository](https://github.com/WriterInternal/cerebro) | Source code and issues |
 | [API Documentation](http://localhost:8000/docs) | Interactive API docs (when running) |
 | [Quick Start](getting-started/QUICKSTART.md) | Get started in 10 minutes |
 | [Slack Integration](integrations/slack/SETUP.md) | Set up Slack notifications |
@@ -95,10 +95,10 @@ System design and internals:
 
 ### 🤖 AI-Powered
 
-- **22 Intelligent Tools** - Security analysis, forensics, compliance
+- **Shared Toolchain** - Agents, CLI, and API call the same audited tools
 - **Natural Language Queries** - Ask questions in plain English
 - **Context-Aware** - Learns your environment automatically
-- **Multi-Step Planning** - Complex workflows automated
+- **Multi-Step Planning** - Complex workflows automated with approval gates
 
 ### 🔔 Integrations
 
@@ -106,13 +106,13 @@ System design and internals:
 - **Email Notifications** ✅ - SMTP with HTML templates
 - **Generic Webhooks** ✅ - Custom HTTP endpoints with Jinja2 templates
 - **OCSF Export** ✅ - Standards-based event format
-- **PagerDuty** (Planned)
+- **PagerDuty** (roadmap)
 
 ---
 
 ## 🆘 Getting Help
 
-**Found a bug?** [Open an issue](https://github.com/haasonsaas/cerebro/issues)
+**Found a bug?** [Open an issue](https://github.com/WriterInternal/cerebro/issues)
 
 **Need help?** Check the [Troubleshooting Guide](user-guide/TROUBLESHOOTING.md)
 
@@ -126,6 +126,6 @@ MIT License - See [LICENSE](../LICENSE) for details
 
 ---
 
-**Last Updated:** 2025-09-29
+**Last Updated:** 2025-10-18
 **Version:** 0.1.0
 **Status:** ✅ Production Ready

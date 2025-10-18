@@ -130,7 +130,7 @@ def cerebro_tool_to_mcp(cerebro_tool, context, executor):
 **SDK Pattern**:
 ```python
 options = ClaudeAgentOptions(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-3-5-sonnet-latest",
     max_tokens=8192,
     temperature=0.1,
     system_prompt="You are a helpful assistant",
