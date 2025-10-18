@@ -65,7 +65,7 @@ def create_vpc(
     if len(base_cidr_parts) != 4:
         raise ValueError(f"Invalid CIDR block: {cidr_block}")
     class_a, class_b, class_c, _ = base_cidr_parts
-    base_prefix = f"{class_a}.{class_b}.{class_c}"
+    base_prefix_two = f"{class_a}.{class_b}"
 
     # Create public subnets
     public_subnets = []
@@ -73,7 +73,7 @@ def create_vpc(
         subnet = aws.ec2.Subnet(
             f"{name}-public-subnet-{i+1}",
             vpc_id=vpc.id,
-            cidr_block=f"{base_prefix}.{i}.0/24",
+            cidr_block=f"{base_prefix_two}.{i}.0/24",
             availability_zone=az,
             map_public_ip_on_launch=True,
             tags={
@@ -89,7 +89,7 @@ def create_vpc(
         subnet = aws.ec2.Subnet(
             f"{name}-private-subnet-{i+1}",
             vpc_id=vpc.id,
-            cidr_block=f"{base_prefix}.{10 + i}.0/24",
+            cidr_block=f"{base_prefix_two}.{10 + i}.0/24",
             availability_zone=az,
             tags={
                 "Name": f"{name}-private-subnet-{i+1}",
@@ -104,7 +104,7 @@ def create_vpc(
         subnet = aws.ec2.Subnet(
             f"{name}-database-subnet-{i+1}",
             vpc_id=vpc.id,
-            cidr_block=f"{base_prefix}.{20 + i}.0/24",
+            cidr_block=f"{base_prefix_two}.{20 + i}.0/24",
             availability_zone=az,
             tags={
                 "Name": f"{name}-database-subnet-{i+1}",
