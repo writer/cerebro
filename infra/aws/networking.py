@@ -10,7 +10,7 @@ Creates:
 """
 import pulumi
 import pulumi_aws as aws
-from typing import List
+from typing import List, Optional
 
 
 def create_vpc(
@@ -19,7 +19,7 @@ def create_vpc(
     availability_zones: int = 2,
     enable_nat_gateway: bool = True,
     enable_vpn_gateway: bool = False,
-    alb_ingress_cidrs: List[str] | None = None,
+    alb_ingress_cidrs: Optional[List[str]] = None,
 ) -> dict:
     """
     Create VPC with public and private subnets.

@@ -102,39 +102,3 @@ config:
     type: boolean
     description: Deploy the Application Load Balancer as internal-only (no public ingress)
 
-  aws:region:
-    type: string
-    default: us-east-1
-    description: AWS region
-
-  gcp:project:
-    type: string
-    description: GCP project ID (required for GCP deployment)
-
-  gcp:region:
-    type: string
-    default: us-central1
-    description: GCP region (for GCP deployment)
-
-  cerebro:containerImage:
-    type: string
-    description: Container image URI (GCR/Artifact Registry for GCP)
-
-  cerebro:dbTier:
-    type: string
-    default: db-custom-4-16384
-    description: Cloud SQL tier (GCP) - format db-custom-CPU-MEM
-
-  cerebro:redisMemoryGb:
-    type: integer
-    default: 5
-    description: Memorystore Redis memory in GB (GCP)
-
-  cerebro:enableCdn:
-    type: boolean
-    default: false
-    description: Enable Cloud CDN (GCP)
-
-  cerebro:alertEmail:
-    type: string
-    description: Email address for monitoring alerts
