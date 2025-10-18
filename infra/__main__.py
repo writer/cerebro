@@ -87,6 +87,9 @@ database_stack = database.create_rds_postgres(
     multi_az=config.get_bool("enableMultiAz") or True,
     backup_retention_period=config.get_int("backupRetentionDays") or 30,
     kms_key_id=kms_key.arn,
+    existing_db_instance_id=config.get("dbInstanceId"),
+    existing_parameter_group_id=config.get("dbParameterGroupId"),
+    existing_subnet_group_id=config.get("dbSubnetGroupId"),
 )
 
 # Create read replicas if enabled
@@ -94,11 +97,13 @@ read_replicas = []
 if config.get_bool("enableReadReplicas"):
     replica_count = config.get_int("readReplicaCount") or 2
     for i in range(replica_count):
+        existing_replica_id = config.get(f"dbReplica{i+1}Id")
         replica = database.create_read_replica(
             name=f"cerebro-{environment}-replica-{i+1}",
             source_db_instance=database_stack["db_instance"].identifier,
             instance_class="db.r6g.large",
             kms_key_id=kms_key.arn,
+            existing_replica_id=existing_replica_id,
         )
         read_replicas.append(replica)
 

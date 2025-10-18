@@ -220,6 +220,7 @@ def create_read_replica(
     instance_class: str = "db.r6g.large",
     kms_key_id: pulumi.Output[str] = None,
     performance_insights_enabled: bool = True,
+    existing_replica_id: Optional[str] = None,
 ) -> dict:
     """
     Create a read replica for scaling read traffic.
@@ -234,6 +235,14 @@ def create_read_replica(
     Returns:
         Dictionary with replica resources
     """
+    if existing_replica_id:
+        replica = aws.rds.Instance.get(f"{name}-replica", existing_replica_id)
+        return {
+            "db_instance": replica,
+            "endpoint": replica.endpoint,
+            "address": replica.address,
+        }
+
     replica_kwargs = {
         "identifier": name,
         "replicate_source_db": source_db_instance,
