@@ -121,7 +121,7 @@ def create_vpc(
             # Allocate Elastic IP
             eip = aws.ec2.Eip(
                 f"{name}-nat-eip-{i+1}",
-                vpc=True,
+                domain="vpc",
                 tags={"Name": f"{name}-nat-eip-{i+1}"},
             )
 
