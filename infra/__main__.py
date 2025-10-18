@@ -219,3 +219,31 @@ pulumi.export("redis_url", pulumi.Output.concat(
     redis_stack["primary_endpoint"],
     ":6379/0"
 ))
+
+pulumi.export(
+    "readme",
+    pulumi.Output.all(
+        api_url=pulumi.Output.concat(
+            "https://",
+            domain
+        ) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
+        alb_dns=alb_stack["alb"].dns_name,
+        cluster=ecs_stack["cluster"].name,
+        db_endpoint=database_stack["endpoint"],
+        redis_endpoint=redis_stack["primary_endpoint"],
+    ).apply(
+        lambda args: (
+            "# Cerebro Production Stack\n\n"
+            "This stack deploys the Cerebro application onto AWS using Pulumi-managed "
+            "infrastructure. Key endpoints and references:\n\n"
+            f"- **API URL:** {args['api_url']}\n"
+            f"- **ALB DNS:** {args['alb_dns']}\n"
+            f"- **ECS Cluster:** {args['cluster']}\n"
+            f"- **PostgreSQL Endpoint:** {args['db_endpoint']}\n"
+            f"- **Redis Endpoint:** {args['redis_endpoint']}\n\n"
+            "Deployment artifacts (container images, task definitions, and secrets) "
+            "are managed automatically. Update `cerebro:containerImage` and rerun "
+            "`pulumi up` to roll out new releases."
+        )
+    ),
+)
