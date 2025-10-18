@@ -64,7 +64,9 @@ def create_vpc(
     base_cidr_parts = cidr_block.split("/")[0].split(".")
     if len(base_cidr_parts) != 4:
         raise ValueError(f"Invalid CIDR block: {cidr_block}")
-    base_prefix = ".".join(base_cidr_parts[:3])
+    network_base = [int(part) for part in base_cidr_parts]
+    if network_base[2] != 0 or network_base[3] != 0:
+        raise ValueError("VPC CIDR must align on /16 boundary (third and fourth octets zero)")
 
     # Create public subnets
     public_subnets = []
@@ -72,7 +74,7 @@ def create_vpc(
         subnet = aws.ec2.Subnet(
             f"{name}-public-subnet-{i+1}",
             vpc_id=vpc.id,
-            cidr_block=f"{base_prefix}.{i}.0/24",
+            cidr_block=f"{network_base[0]}.{network_base[1]}.{i}.0/24",
             availability_zone=az,
             map_public_ip_on_launch=True,
             tags={
@@ -88,7 +90,7 @@ def create_vpc(
         subnet = aws.ec2.Subnet(
             f"{name}-private-subnet-{i+1}",
             vpc_id=vpc.id,
-            cidr_block=f"{base_prefix}.{10 + i}.0/24",
+            cidr_block=f"{network_base[0]}.{network_base[1]}.{10 + i}.0/24",
             availability_zone=az,
             tags={
                 "Name": f"{name}-private-subnet-{i+1}",
@@ -103,7 +105,7 @@ def create_vpc(
         subnet = aws.ec2.Subnet(
             f"{name}-database-subnet-{i+1}",
             vpc_id=vpc.id,
-            cidr_block=f"{base_prefix}.{20 + i}.0/24",
+            cidr_block=f"{network_base[0]}.{network_base[1]}.{20 + i}.0/24",
             availability_zone=az,
             tags={
                 "Name": f"{name}-database-subnet-{i+1}",
