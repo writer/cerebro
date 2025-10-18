@@ -16,8 +16,7 @@ This directory contains developer-facing documentation for Cerebro. Files are or
 | `agents/` | Agent runtime internals, tool catalog, integration notes |
 | `integrations/` | Provider and notification integration docs |
 | `architecture/` | Deeper design documentation |
-| `analysis/` | Historical review documents (keep or delete as needed) |
-| `archive/` | Older session notes retained for reference |
+| `archive/` | Historical documents and session notes (review before deletion) |
 
 ## Maintenance Notes
 

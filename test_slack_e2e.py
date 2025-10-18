@@ -202,7 +202,7 @@ def main():
         print("   1. Set up a Slack incoming webhook")
         print("   2. Configure webhook in Cerebro via API")
         print("   3. Create a finding to trigger real notification")
-        print("\n📚 Documentation: docs/SLACK_INTEGRATION.md")
+        print("\n📚 Documentation: docs/integrations/slack/SETUP.md")
         print("")
 
         return 0

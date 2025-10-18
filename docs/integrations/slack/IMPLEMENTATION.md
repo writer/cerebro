@@ -158,19 +158,16 @@ Filter webhooks → Format message → Send → Log
 
 ### 6. Documentation ✅
 
-**File:** `docs/SLACK_INTEGRATION.md` (~800 lines)
+Primary docs:
+- Operator guide: `docs/integrations/slack/SETUP.md`
+- Implementation summary: *(this document)*
 
-**Sections:**
-1. **Overview** - Features and benefits
-2. **Setup** - Step-by-step Slack webhook creation
-3. **Configuration** - Webhook options and examples
-4. **API Reference** - Complete endpoint documentation
-5. **Message Formats** - Example Slack messages
-6. **Monitoring** - Audit trail and health checks
-7. **Troubleshooting** - Common issues and solutions
-8. **Advanced** - Multiple webhooks, rate limiting
-9. **Security** - URL protection, access control
-10. **Database Schema** - Table definitions
+**Operator guide sections:**
+1. Overview and event coverage
+2. Slack + Cerebro configuration steps
+3. Filtering and delivery behaviour
+4. Monitoring and troubleshooting
+5. REST API references and examples
 
 **Configuration Examples:**
 - Critical alerts only
@@ -363,14 +360,13 @@ CREATE INDEX ix_slack_notifications_created_at ON slack_notifications(created_at
 
 ## 📝 Files Changed
 
-### New Files (6)
+### New Files (5)
 
 1. **`migrations/versions/013_add_slack_integration.py`** - Database migration
 2. **`src/cerebro/notifications/__init__.py`** - Notifications module
 3. **`src/cerebro/notifications/slack.py`** - Service & formatter (~650 lines)
 4. **`src/cerebro/api/routers/slack.py`** - API endpoints (~550 lines)
 5. **`tests/test_slack_integration.py`** - Test suite (~450 lines)
-6. **`docs/SLACK_INTEGRATION.md`** - User documentation (~800 lines)
 
 ### Modified Files (3)
 
@@ -546,7 +542,7 @@ pytest -m integration tests/test_slack_integration.py::TestSlackIntegration::tes
 
 ## 📚 Related Documentation
 
-- **Setup Guide:** `docs/SLACK_INTEGRATION.md`
+- **Setup Guide:** `docs/integrations/slack/SETUP.md`
 - **API Docs:** `http://localhost:8000/docs#/slack`
 - **Monitoring Docs:** `docs/SESSION_COMPLETE_2025-09-29.md`
 - **Database Schema:** `migrations/versions/013_add_slack_integration.py`

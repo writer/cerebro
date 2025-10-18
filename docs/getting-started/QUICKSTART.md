@@ -2,6 +2,8 @@
 
 ## 🚀 Get Running in 5 Minutes
 
+Companion guide: [UV setup](UV_SETUP.md) covers dependency management and virtual env tooling.
+
 ### Prerequisites
 - Python 3.11+
 - PostgreSQL 14+
