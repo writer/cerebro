@@ -10,7 +10,11 @@ import structlog
 
 from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.models import AgentSession, AgentType
-from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
+try:  # pragma: no cover - optional SDK
+    from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
+except ImportError:  # pragma: no cover
+    CerebroOpenAIRuntime = None  # type: ignore[assignment]
+
 from cerebro.agents.runtime import CerebroClaudeRuntime
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
@@ -106,7 +110,17 @@ class AgentRuntimeFacade:
         normalized = self._normalize_key(runtime_key)
         if normalized not in self._runtimes:
             if normalized == "openai":
-                self._runtimes[normalized] = CerebroOpenAIRuntime()
+                if CerebroOpenAIRuntime is None:
+                    logger.warning(
+                        "OpenAI runtime unavailable; falling back to Claude",
+                    )
+                    self._runtimes[normalized] = CerebroClaudeRuntime(
+                        model=settings.claude_model,
+                        max_tokens=settings.claude_max_tokens,
+                        temperature=settings.claude_temperature,
+                    )
+                else:
+                    self._runtimes[normalized] = CerebroOpenAIRuntime()
             else:
                 self._runtimes[normalized] = CerebroClaudeRuntime(
                     model=settings.claude_model,

@@ -366,15 +366,6 @@ class Settings(BaseSettings):
         default=300, description="Collector timeout in seconds"
     )
     
-    # API Configuration
-    api_v1_prefix: str = Field(default="/api/v1", description="API v1 prefix")
-    api_title: str = Field(
-        default="Cerebro Security API", description="API title"
-    )
-    api_description: str = Field(
-        default="Security System of Record API", description="API description"
-    )
-    
     # Redis/Celery Configuration
     redis_url: str = Field(
         default="redis://localhost:6379/0", description="Redis URL for Celery"
@@ -385,10 +376,22 @@ class Settings(BaseSettings):
     celery_result_backend: Optional[str] = Field(
         default=None, description="Celery result backend (defaults to redis_url)"
     )
+
+    @property
+    def effective_celery_broker_url(self) -> str:
+        """Return broker URL falling back to Redis when unset."""
+
+        return self.celery_broker_url or self.redis_url
+
+    @property
+    def effective_celery_result_backend(self) -> str:
+        """Return result backend URL falling back to Redis when unset."""
+
+        return self.celery_result_backend or self.redis_url
     
     # Key Management Service Configuration
     kms_provider: str = Field(
-        default="aws", description="KMS provider (aws, gcp, azure, vault, local) - local only for development"
+        default="local", description="KMS provider (aws, gcp, azure, vault, local) - local only for development"
     )
     
     # AWS KMS

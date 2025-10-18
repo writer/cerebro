@@ -1,18 +1,37 @@
 """Key Management Service integrations."""
 
+from __future__ import annotations
+
 from .base import BaseKMS
 from .factory import get_kms
-from .aws_kms import AWSKMS
-from .gcp_kms import GCPKMS
-from .azure_kms import AzureKeyVaultKMS
-from .vault_kms import VaultTransitKMS
+
+try:  # pragma: no cover - optional providers
+    from .aws_kms import AWSKMS
+except Exception:  # pragma: no cover
+    AWSKMS = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - optional providers
+    from .gcp_kms import GCPKMS
+except Exception:  # pragma: no cover
+    GCPKMS = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - optional providers
+    from .azure_kms import AzureKeyVaultKMS
+except Exception:  # pragma: no cover
+    AzureKeyVaultKMS = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - optional providers
+    from .vault_kms import VaultTransitKMS
+except Exception:  # pragma: no cover
+    VaultTransitKMS = None  # type: ignore[assignment]
+
 from .local_kms import LocalPlaintextKMS, LocalKMS
 
 __all__ = [
     "BaseKMS",
     "get_kms",
     "AWSKMS",
-    "GCPKMS", 
+    "GCPKMS",
     "AzureKeyVaultKMS",
     "VaultTransitKMS",
     "LocalPlaintextKMS",

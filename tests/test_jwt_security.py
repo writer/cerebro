@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cerebro.core.security.key_store import JWTKeyStore, JWTSigningKey
 from cerebro.core.security.jwt import JWTService
 from cerebro.core.config import settings
-from cerebro.users.service import UserService
+from cerebro.core.user_service import UserService
 
 
 class TestJWTKeyStore:

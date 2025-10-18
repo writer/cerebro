@@ -13,6 +13,7 @@ from sqlalchemy import select, and_, desc, func, text
 from .time_series import TimeSeriesCollector, TrendAnalyzer, MetricType
 from .risk_scoring import RiskScoringEngine
 from .identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector
+from .dashboard_repository import DashboardRepository
 
 logger = logging.getLogger(__name__)
 
@@ -78,15 +79,16 @@ class DashboardAnalytics:
         self.trend_analyzer = TrendAnalyzer(db_session)
         self.risk_engine = RiskScoringEngine(db_session)
         self.identity_analyzer = IdentityAnalyzer(db_session)
+        self.repository = DashboardRepository(db_session)
     
     async def generate_security_metrics(self, org_id: UUID) -> SecurityMetrics:
         """Generate core security metrics for dashboard KPIs."""
         
         # Current finding counts
-        total_findings = await self._get_finding_count(org_id)
-        critical_findings = await self._get_finding_count_by_severity(org_id, "critical")
-        high_findings = await self._get_finding_count_by_severity(org_id, "high")
-        open_findings = await self._get_finding_count_by_status(org_id, "open")
+        total_findings = await self.repository.get_finding_count(org_id)
+        critical_findings = await self.repository.get_finding_count_by_severity(org_id, "critical")
+        high_findings = await self.repository.get_finding_count_by_severity(org_id, "high")
+        open_findings = await self.repository.get_finding_count_by_status(org_id, "open")
         
         # Generate sparkline data (last 7 days)
         findings_trend = await self.trend_analyzer.generate_sparkline_data(
@@ -112,14 +114,14 @@ class DashboardAnalytics:
         critical_trend = [row.value for row in result.fetchall()]
         
         # Calculate SLA breaches
-        sla_breaches = await self._count_sla_breaches(org_id)
-        
+        sla_breaches = await self.repository.count_sla_breaches(org_id)
+
         # Calculate MTTR
-        mttr = await self._calculate_mttr(org_id)
-        
+        mttr = await self.repository.calculate_mttr(org_id)
+
         # Recent activity (24 hours)
-        new_findings_24h = await self._get_new_findings_24h(org_id)
-        resolved_findings_24h = await self._get_resolved_findings_24h(org_id)
+        new_findings_24h = await self.repository.count_new_findings(org_id)
+        resolved_findings_24h = await self.repository.count_resolved_findings(org_id)
         
         return SecurityMetrics(
             total_findings=total_findings,
@@ -143,12 +145,12 @@ class DashboardAnalytics:
         risk_score = await self.risk_engine.calculate_organization_risk_score(org_id)
         
         # Get asset and identity counts
-        total_assets = await self._count_total_assets(org_id)
-        total_identities = await self._count_total_identities(org_id)
-        active_findings = await self._get_finding_count_by_status(org_id, "open")
-        
+        total_assets = await self.repository.count_total_assets(org_id)
+        total_identities = await self.repository.count_total_identities(org_id)
+        active_findings = await self.repository.get_finding_count_by_status(org_id, "open")
+
         # Calculate compliance score (simplified)
-        compliance_score = await self._calculate_compliance_score(org_id)
+        compliance_score = await self.repository.calculate_compliance_score(org_id)
         
         # Generate top 5 risks (board-friendly format)
         top_5_risks = await self._generate_top_5_risks(org_id)
@@ -178,127 +180,6 @@ class DashboardAnalytics:
             recommended_investments=investment_recommendations
         )
     
-    async def _get_finding_count(self, org_id: UUID) -> int:
-        """Get total finding count."""
-        query = text("SELECT COUNT(*) FROM findings f JOIN accounts a ON f.account_id = a.account_id WHERE a.org_id = :org_id")
-        result = await self.db.execute(query, {"org_id": org_id})
-        return result.scalar() or 0
-    
-    async def _get_finding_count_by_severity(self, org_id: UUID, severity: str) -> int:
-        """Get finding count by severity."""
-        query = text("""
-            SELECT COUNT(*) 
-            FROM findings f 
-            JOIN accounts a ON f.account_id = a.account_id 
-            WHERE a.org_id = :org_id AND f.severity = :severity AND f.status = 'open'
-        """)
-        result = await self.db.execute(query, {"org_id": org_id, "severity": severity})
-        return result.scalar() or 0
-    
-    async def _get_finding_count_by_status(self, org_id: UUID, status: str) -> int:
-        """Get finding count by status."""
-        query = text("""
-            SELECT COUNT(*) 
-            FROM findings f 
-            JOIN accounts a ON f.account_id = a.account_id 
-            WHERE a.org_id = :org_id AND f.status = :status
-        """)
-        result = await self.db.execute(query, {"org_id": org_id, "status": status})
-        return result.scalar() or 0
-    
-    async def _count_sla_breaches(self, org_id: UUID) -> int:
-        """Count SLA breaches by severity."""
-        sla_query = text("""
-            SELECT COUNT(*)
-            FROM findings f
-            JOIN accounts a ON f.account_id = a.account_id
-            WHERE a.org_id = :org_id 
-                AND f.status = 'open'
-                AND (
-                    (f.severity = 'critical' AND f.first_seen <= NOW() - INTERVAL '7 days') OR
-                    (f.severity = 'high' AND f.first_seen <= NOW() - INTERVAL '14 days') OR
-                    (f.severity = 'medium' AND f.first_seen <= NOW() - INTERVAL '30 days')
-                )
-        """)
-        
-        result = await self.db.execute(sla_query, {"org_id": org_id})
-        return result.scalar() or 0
-    
-    async def _calculate_mttr(self, org_id: UUID) -> float:
-        """Calculate mean time to remediation in hours."""
-        mttr_query = text("""
-            SELECT AVG(EXTRACT(EPOCH FROM (last_seen - first_seen)) / 3600) as mttr_hours
-            FROM findings f
-            JOIN accounts a ON f.account_id = a.account_id
-            WHERE a.org_id = :org_id 
-                AND f.status IN ('fixed', 'accepted_risk')
-                AND f.first_seen >= NOW() - INTERVAL '90 days'
-        """)
-        
-        result = await self.db.execute(mttr_query, {"org_id": org_id})
-        return result.scalar() or 0.0
-    
-    async def _get_new_findings_24h(self, org_id: UUID) -> int:
-        """Get new findings in last 24 hours."""
-        query = text("""
-            SELECT COUNT(*)
-            FROM findings f
-            JOIN accounts a ON f.account_id = a.account_id
-            WHERE a.org_id = :org_id 
-                AND f.first_seen >= NOW() - INTERVAL '24 hours'
-        """)
-        
-        result = await self.db.execute(query, {"org_id": org_id})
-        return result.scalar() or 0
-    
-    async def _get_resolved_findings_24h(self, org_id: UUID) -> int:
-        """Get resolved findings in last 24 hours."""
-        query = text("""
-            SELECT COUNT(*)
-            FROM findings f
-            JOIN accounts a ON f.account_id = a.account_id
-            WHERE a.org_id = :org_id 
-                AND f.status IN ('fixed', 'accepted_risk')
-                AND f.last_seen >= NOW() - INTERVAL '24 hours'
-        """)
-        
-        result = await self.db.execute(query, {"org_id": org_id})
-        return result.scalar() or 0
-    
-    async def _count_total_assets(self, org_id: UUID) -> int:
-        """Count total assets (resources) in organization."""
-        query = text("""
-            SELECT COUNT(DISTINCT r.resource_id)
-            FROM resources r
-            JOIN accounts a ON r.account_id = a.account_id
-            WHERE a.org_id = :org_id
-        """)
-        
-        result = await self.db.execute(query, {"org_id": org_id})
-        return result.scalar() or 0
-    
-    async def _count_total_identities(self, org_id: UUID) -> int:
-        """Count total human identities."""
-        query = text("""
-            SELECT COUNT(DISTINCT p.principal_id)
-            FROM principals p
-            JOIN accounts a ON p.account_id = a.account_id
-            WHERE a.org_id = :org_id AND p.is_human = true
-        """)
-        
-        result = await self.db.execute(query, {"org_id": org_id})
-        return result.scalar() or 0
-    
-    async def _calculate_compliance_score(self, org_id: UUID) -> float:
-        """Calculate overall compliance score."""
-        
-        # Get total compliance-related rules
-        total_compliance_query = text("""
-            SELECT COUNT(DISTINCT r.rule_id)
-            FROM rules r
-            WHERE r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL
-        """)
-        
         result = await self.db.execute(total_compliance_query)
         total_compliance_rules = result.scalar() or 1
         

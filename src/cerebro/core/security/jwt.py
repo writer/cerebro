@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 from jose import jwt, JWTError
 from cryptography.hazmat.primitives import serialization
 import redis.asyncio as redis
@@ -40,10 +40,14 @@ class JWTService:
         return self._redis_client
     
     async def create_token(
-        self, 
-        username: str, 
+        self,
+        username: str,
         scopes: List[str],
-        expires_delta: Optional[timedelta] = None
+        expires_delta: Optional[timedelta] = None,
+        *,
+        token_type: str = "access",
+        org_id: Optional[UUID] = None,
+        extra_claims: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a JWT token with full security claims."""
         try:
@@ -67,7 +71,7 @@ class JWTService:
             skew = max(settings.jwt_clock_skew_seconds, 5)
             exp_claim = int((expire - timedelta(seconds=settings.jwt_clock_skew_seconds)).timestamp())
 
-            claims = {
+            claims: Dict[str, Any] = {
                 # Standard claims
                 "sub": username,                    # Subject (user identifier)
                 "iss": "cerebro.sor",              # Issuer
@@ -79,20 +83,21 @@ class JWTService:
                 
                 # Custom claims
                 "scopes": scopes,                  # User permissions
-                "token_type": "access",            # Token type
+                "token_type": token_type,          # Token type
             }
+
+            if org_id is not None:
+                claims["org_id"] = str(org_id)
+
+            if extra_claims:
+                claims.update(extra_claims)
             
             # Get private key for signing
             private_key_bytes = await self.key_store.get_private_key(signing_key)
-            private_key = serialization.load_pem_private_key(
-                private_key_bytes, 
-                password=None
-            )
-            
             # Create JWT with proper headers
             token = jwt.encode(
                 claims=claims,
-                key=private_key,
+                key=private_key_bytes,
                 algorithm=settings.jwt_algorithm,
                 headers={
                     "kid": signing_key.kid,    # Key ID for verification
@@ -107,21 +112,21 @@ class JWTService:
             
             logger.debug(f"Created JWT token for user {username} with kid {signing_key.kid}")
             return token
-            
+
         except Exception as e:
             logger.error(f"Failed to create JWT token for user {username}: {e}")
             raise
-    
-    async def verify_token(self, token: str) -> Dict[str, Any]:
+
+    async def verify_token(self, token: str, expected_type: Optional[str] = None) -> Dict[str, Any]:
         """Verify JWT token with comprehensive security checks."""
         # Optional metrics timing
         if self.metrics:
             with self.metrics.time_token_verification():
-                return await self._verify_token_impl(token)
+                return await self._verify_token_impl(token, expected_type)
         else:
-            return await self._verify_token_impl(token)
+            return await self._verify_token_impl(token, expected_type)
 
-    async def _verify_token_impl(self, token: str) -> Dict[str, Any]:
+    async def _verify_token_impl(self, token: str, expected_type: Optional[str] = None) -> Dict[str, Any]:
         """Internal token verification implementation."""
         try:
             # Decode header to get key ID without verification
@@ -137,15 +142,17 @@ class JWTService:
             if not signing_key:
                 raise JWTError(f"Unknown signing key: {kid}")
 
-            # Load public key for verification
-            public_key = serialization.load_pem_public_key(
-                signing_key.public_key_pem.encode()
-            )
+            private_key_bytes = await self.key_store.get_private_key(signing_key)
+            private_key = serialization.load_pem_private_key(private_key_bytes, password=None)
+            public_key_pem = private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            ).decode()
 
             # Verify and decode token
             payload = jwt.decode(
                 token=token,
-                key=public_key,
+                key=public_key_pem,
                 algorithms=[signing_key.algorithm],
                 options={
                     "verify_signature": True,
@@ -170,6 +177,10 @@ class JWTService:
             jti = payload.get("jti")
             if not jti:
                 raise JWTError("Token missing JWT ID (jti)")
+
+            token_type = payload.get("token_type")
+            if expected_type and token_type != expected_type:
+                raise JWTError("Token type mismatch")
 
             # Check if token is revoked
             if await self._is_token_revoked(jti):

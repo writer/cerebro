@@ -5,11 +5,6 @@ from typing import Optional
 
 from cerebro.core.config import settings
 from .base import BaseKMS
-from .aws_kms import AWSKMS
-from .gcp_kms import GCPKMS
-from .azure_kms import AzureKeyVaultKMS
-from .vault_kms import VaultTransitKMS
-from .local_kms import LocalPlaintextKMS
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +14,7 @@ def get_kms() -> BaseKMS:
     kms_provider = getattr(settings, 'kms_provider', 'local')
     
     if kms_provider == "aws":
+        from .aws_kms import AWSKMS
         key_id = getattr(settings, 'aws_kms_key_id', None)
         if not key_id:
             raise ValueError("AWS KMS key ID not configured (AWS_KMS_KEY_ID)")
@@ -31,6 +27,7 @@ def get_kms() -> BaseKMS:
         )
     
     elif kms_provider == "gcp":
+        from .gcp_kms import GCPKMS
         key_name = getattr(settings, 'gcp_kms_key_name', None)
         if not key_name:
             raise ValueError("GCP KMS key name not configured (GCP_KMS_KEY_NAME)")
@@ -41,6 +38,7 @@ def get_kms() -> BaseKMS:
         )
     
     elif kms_provider == "azure":
+        from .azure_kms import AzureKeyVaultKMS
         vault_url = getattr(settings, 'azure_vault_url', None)
         key_name = getattr(settings, 'azure_key_name', None)
         
@@ -53,6 +51,7 @@ def get_kms() -> BaseKMS:
         )
     
     elif kms_provider == "vault":
+        from .vault_kms import VaultTransitKMS
         vault_url = getattr(settings, 'vault_url', None)
         mount_path = getattr(settings, 'vault_mount_path', 'transit')
         key_name = getattr(settings, 'vault_key_name', None)
@@ -68,6 +67,7 @@ def get_kms() -> BaseKMS:
     
     elif kms_provider == "local":
         logger.warning("Using LocalPlaintextKMS - only suitable for development")
+        from .local_kms import LocalPlaintextKMS
         return LocalPlaintextKMS()
     
     else:

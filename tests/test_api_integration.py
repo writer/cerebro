@@ -7,7 +7,6 @@ import json
 
 from cerebro.api.main import app
 from cerebro.core.user_service import UserService
-from cerebro.api.auth import create_access_token
 from cerebro.core.database import get_db
 from contextlib import contextmanager
 

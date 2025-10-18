@@ -8,9 +8,10 @@ Creates:
 - IAM roles and policies
 - CloudWatch log groups
 """
+import json
+
 import pulumi
 import pulumi_aws as aws
-import json
 
 
 def create_ecs_cluster(
@@ -21,6 +22,8 @@ def create_ecs_cluster(
     secrets_arn: pulumi.Output[str],
     database_endpoint: pulumi.Output[str],
     redis_endpoint: pulumi.Output[str],
+    db_password: pulumi.Input[str],
+    redis_password: pulumi.Input[str],
     kms_key_id: pulumi.Output[str],
     target_group_arn: pulumi.Output[str],
     container_image: str = "cerebro:latest",
@@ -90,13 +93,14 @@ def create_ecs_cluster(
 
     # Base environment variables
     base_env = {
-        "DATABASE_URL": database_endpoint.apply(
-            lambda endpoint: f"postgresql://cerebro:PASSWORD@{endpoint}/cerebro"
-        ),
-        "REDIS_URL": redis_endpoint.apply(
-            lambda endpoint: f"rediss://:PASSWORD@{endpoint}:6379/0"
-        ),
+        "DATABASE_URL": pulumi.Output.all(
+            database_endpoint, db_password
+        ).apply(lambda args: _build_database_url(*args)),
+        "REDIS_URL": pulumi.Output.all(
+            redis_endpoint, redis_password
+        ).apply(lambda args: _build_redis_url(*args)),
         "KMS_KEY_ID": kms_key_id,
+        "KMS_PROVIDER": "aws",
     }
 
     # Create API task definition
@@ -464,21 +468,10 @@ def _create_task_definition(
                 "awslogs-stream-prefix": "ecs",
             },
         },
-        "environment": [{"name": k, "value": v} for k, v in environment.items()],
-        "secrets": [
-            {
-                "name": "DATABASE_PASSWORD",
-                "valueFrom": pulumi.Output.concat(secrets_arn, ":DB_PASSWORD::"),
-            },
-            {
-                "name": "REDIS_PASSWORD",
-                "valueFrom": pulumi.Output.concat(secrets_arn, ":REDIS_PASSWORD::"),
-            },
-            {
-                "name": "SECRET_KEY",
-                "valueFrom": pulumi.Output.concat(secrets_arn, ":SECRET_KEY::"),
-            },
+        "environment": [
+            {"name": key, "value": value} for key, value in environment.items()
         ],
+        "secrets": _build_secret_references(secrets_arn),
     }
 
     if port_mappings:
@@ -498,3 +491,31 @@ def _create_task_definition(
             "Name": name,
         },
     )
+
+
+def _build_database_url(endpoint: str, password: str) -> str:
+    """Compose the SQLAlchemy database URL."""
+    return f"postgresql://cerebro:{password}@{endpoint}/cerebro"
+
+
+def _build_redis_url(endpoint: str, password: str) -> str:
+    """Compose the Redis connection URL used by Celery."""
+    return f"rediss://:{password}@{endpoint}:6379/0"
+
+
+def _build_secret_references(secrets_arn: pulumi.Output[str]) -> list[dict]:
+    """Return the set of secret environment variable mappings."""
+    return [
+        {
+            "name": "DATABASE_PASSWORD",
+            "valueFrom": pulumi.Output.concat(secrets_arn, ":DB_PASSWORD::"),
+        },
+        {
+            "name": "REDIS_PASSWORD",
+            "valueFrom": pulumi.Output.concat(secrets_arn, ":REDIS_PASSWORD::"),
+        },
+        {
+            "name": "SECRET_KEY",
+            "valueFrom": pulumi.Output.concat(secrets_arn, ":SECRET_KEY::"),
+        },
+    ]

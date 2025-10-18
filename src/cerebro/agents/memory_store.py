@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import math
 import random
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
@@ -21,6 +19,12 @@ from cerebro.agents.models import (
     AgentSession,
     MemoryScope,
     MessageRole,
+)
+from cerebro.agents.memory_utils import (
+    cosine_similarity,
+    estimate_token_count,
+    hash_text,
+    summarize_text,
 )
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
@@ -132,10 +136,10 @@ class AgentMemoryStore:
 
         scopes = self._build_scopes(session)
         scope_priority = min(scope["priority"] for scope in scopes) if scopes else 0
-        summary = self._summarize_text(message_text)
+        summary = summarize_text(message_text, self._summary_max_chars)
         now = datetime.now(timezone.utc)
-        content_hash = self._hash_text(message_text)
-        token_count = self._estimate_token_count(message_text)
+        content_hash = hash_text(message_text)
+        token_count = estimate_token_count(message_text)
         metadata_payload: Dict[str, object] = dict(metadata or {})
 
         async with async_session_factory() as db_session:
@@ -312,7 +316,7 @@ class AgentMemoryStore:
                     if refreshed:
                         embedding, embedding_norm = refreshed
                 if embedding:
-                    similarity = self._cosine_similarity(
+                    similarity = cosine_similarity(
                         query_embedding,
                         query_norm or 1.0,
                         embedding,
@@ -325,7 +329,7 @@ class AgentMemoryStore:
                 entry_vector = [float(value) for value in entry_array]
                 entry_norm = math.sqrt(sum(value * value for value in entry_vector)) or 1.0
                 if entry_norm > 0 and lexical_query_norm:
-                    lexical_score = self._cosine_similarity(
+                    lexical_score = cosine_similarity(
                         lexical_query_vector,
                         lexical_query_norm,
                         entry_vector,
@@ -515,7 +519,7 @@ class AgentMemoryStore:
                         chosen_embedding = chosen[2]
                         if not chosen_embedding or embedding is None:
                             continue
-                        similarity = self._cosine_similarity(
+                        similarity = cosine_similarity(
                             embedding,
                             norm or 1.0,
                             chosen_embedding,
@@ -534,19 +538,6 @@ class AgentMemoryStore:
             selected.append(ordered.pop(best_index))
 
         return selected
-
-    @staticmethod
-    def _cosine_similarity(
-        query: List[float],
-        query_norm: float,
-        stored: List[float],
-        stored_norm: float,
-    ) -> float:
-        if query_norm == 0 or stored_norm == 0:
-            return 0.0
-        length = min(len(query), len(stored))
-        dot = sum(query[i] * stored[i] for i in range(length))
-        return dot / (query_norm * stored_norm)
 
     async def _load_decay_overrides(
         self,
@@ -667,15 +658,6 @@ class AgentMemoryStore:
         created_at = self._normalize_timestamp(entry.created_at, now)
         return created_at >= now - self._duplicate_window
 
-    @staticmethod
-    def _hash_text(text: str) -> str:
-        return hashlib.sha1(text.encode("utf-8")).hexdigest()
-
-    @staticmethod
-    def _estimate_token_count(text: str) -> int:
-        approx_words = re.findall(r"\w+", text)
-        return max(1, len(approx_words))
-
     async def _maybe_prune(self, session: AgentSession, now: datetime) -> None:
         if not self._should_prune():
             return
@@ -794,33 +776,6 @@ class AgentMemoryStore:
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
-
-    def _summarize_text(self, text: str) -> str:
-        cleaned = re.sub(r"\s+", " ", text).strip()
-        if not cleaned:
-            return ""
-
-        if len(cleaned) <= self._summary_max_chars:
-            return cleaned
-
-        sentences = re.split(r"(?<=[.!?])\s+", cleaned)
-        summary_parts: List[str] = []
-        for sentence in sentences:
-            if not sentence:
-                continue
-            candidate = f"{' '.join(summary_parts)} {sentence}".strip() if summary_parts else sentence
-            if len(candidate) > self._summary_max_chars:
-                break
-            summary_parts.append(sentence)
-
-        summary = " ".join(summary_parts).strip()
-        if not summary:
-            summary = cleaned[: self._summary_max_chars].rstrip()
-
-        if len(summary) > self._summary_max_chars:
-            summary = summary[: self._summary_max_chars - 3].rstrip() + "..."
-
-        return summary
 
     def _format_snippet(self, score: float, entry: AgentMemoryEntry) -> tuple[str, str, List[str]]:
         scope_labels = []

@@ -21,6 +21,10 @@ class _StubMCPServer(dict):
     """Lightweight stand-in for SDK MCP servers."""
 
 
+class CLINotFoundError(RuntimeError):
+    """Stubbed exception raised when the Claude CLI is missing."""
+
+
 class ClaudeSDKClient:
     """Minimal stub implementation used for tests."""
 
@@ -77,6 +81,7 @@ def create_sdk_mcp_server(name: str, version: str, tools: List[Any]) -> _StubMCP
 __all__ = [
     "ClaudeAgentOptions",
     "ClaudeSDKClient",
+    "CLINotFoundError",
     "tool",
     "create_sdk_mcp_server",
 ]

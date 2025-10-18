@@ -1,0 +1,20 @@
+config:
+  aws:region: us-east-1
+  cerebro:environment: production
+  cerebro:domain: ""
+  cerebro:albInternal: "true"
+  cerebro:secretKey:
+    secure: AAABAAgQwhh0V0cTTCBScqkRBGUSwx+IMOJCK7mwnhj2hFK+GZL/KwqCepf7cJspFyVG/m1eeKu2PUH/cnQPNnxIAT6+zUIgmVVIOg==
+  cerebro:dbPassword:
+    secure: AAABAGBgwXcy+tlMpytUK6EHnPObzpVQ7MvLZEZZc+qocLhDlDcPoTQLJiVIISWM9mmLhqpdCzGbcrAa3qZ38M2M66Weyc/rQB8a9A==
+  cerebro:redisPassword:
+    secure: AAABAMjXxx/8e/6yaaFYmYmZ/3Jjfsl+2uQ/iw29oWMPtJN19AlFhFTiAs/TdV2la0cHEWgiG+nbFmNgk7XISA==
+  cerebro:redisReplicationGroupId: cerebro-production
+  cerebro:redisParameterGroupId: cerebro-production-redis-params-d97e8a6
+  cerebro:redisSubnetGroupId: cerebro-production-redis-subnet-group-fa7c4bf
+  cerebro:dbInstanceId: cerebro-production
+  cerebro:dbParameterGroupId: cerebro-production-db-params-78cc2d7
+  cerebro:dbSubnetGroupId: cerebro-production-db-subnet-group-5b4f149
+  cerebro:dbReplica1Id: cerebro-production-replica-1
+  cerebro:dbReplica2Id: cerebro-production-replica-2
+  cerebro:containerImage: 073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:prod-20251019

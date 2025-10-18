@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Wifi, WifiOff } from "lucide-react";
 
@@ -30,6 +30,102 @@ export function ReviewTable() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState("");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const [connectionState, setConnectionState] = useState<"connecting" | "connected" | "disconnected">("connecting");
+
+  const websocketUrl = useMemo(() => {
+    const wsBase = process.env.NEXT_PUBLIC_WS_BASE_URL;
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+    const normalizedBase = wsBase ?? apiBase.replace(/\/api\/v1\/?$/, "");
+
+    try {
+      const target = new URL(normalizedBase || apiBase);
+      target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
+      if (!wsBase) {
+        target.pathname = "/ws/events";
+      } else if (!target.pathname || target.pathname === "/") {
+        target.pathname = "/ws/events";
+      }
+
+      if (typeof window !== "undefined") {
+        const token =
+          localStorage.getItem("cerebro_access_token") ??
+          process.env.NEXT_PUBLIC_API_TOKEN ??
+          "";
+        if (token) {
+          target.searchParams.set("token", token);
+        }
+      }
+
+      return target.toString();
+    } catch {
+      const protocolAdjusted = normalizedBase.startsWith("https")
+        ? normalizedBase.replace(/^https/, "wss")
+        : normalizedBase.replace(/^http/, "ws");
+      const trimmed = protocolAdjusted.replace(/\/$/, "");
+      const basePath = `${trimmed}/ws/events`;
+
+      if (typeof window !== "undefined") {
+        const token =
+          localStorage.getItem("cerebro_access_token") ??
+          process.env.NEXT_PUBLIC_API_TOKEN ??
+          "";
+        if (token) {
+          return `${basePath}?token=${encodeURIComponent(token)}`;
+        }
+      }
+
+      return basePath;
+    }
+  }, []);
+
+  const handleWebSocketMessage = useCallback(
+    (message: { type: string; payload: unknown }) => {
+      const { type, payload } = message ?? {};
+      if (!type) {
+        return;
+      }
+
+      if (type === "connection_established") {
+        return;
+      }
+
+      if (type.startsWith("review_task_")) {
+        queryClient.invalidateQueries({ queryKey: ["reviewTasks"] });
+
+        if (payload && typeof payload === "object") {
+          const details = payload as Partial<ReviewTask> & { status?: string };
+          const toastTitle = type === "review_task_created" ? "New review task" : "Review task updated";
+          const statusLabel = typeof details.status === "string" ? details.status : undefined;
+          const titleLabel = typeof details.title === "string" ? details.title : undefined;
+          const toastMessage = titleLabel
+            ? statusLabel
+              ? `${titleLabel} • ${statusLabel}`
+              : titleLabel
+            : statusLabel;
+          showToast(type === "review_task_created" ? "warning" : "info", toastTitle, toastMessage ?? undefined, 4000);
+        }
+      }
+    },
+    [queryClient]
+  );
+
+  useWebSocket({
+    url: websocketUrl,
+    onMessage: handleWebSocketMessage,
+    onOpen: () => setConnectionState("connected"),
+    onClose: () => setConnectionState("disconnected"),
+    onError: () => setConnectionState("disconnected"),
+  });
+
+  const connectionLabel =
+    connectionState === "connected" ? "Live updates" : connectionState === "connecting" ? "Connecting…" : "Reconnecting…";
+  const ConnectionIcon = connectionState === "connected" ? Wifi : WifiOff;
+  const connectionTextClass =
+    connectionState === "connected"
+      ? "text-emerald-400"
+      : connectionState === "connecting"
+      ? "text-zinc-500"
+      : "text-amber-400";
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["reviewTasks", status],
@@ -105,6 +201,15 @@ export function ReviewTable() {
       description="Audit, approve, or escalate agent actions before they are finalized."
       action={
         <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "flex items-center gap-1 text-[10px] uppercase tracking-wide",
+              connectionTextClass
+            )}
+          >
+            <ConnectionIcon className="h-3 w-3" aria-hidden />
+            {connectionLabel}
+          </span>
           <select
             value={status ?? ""}
             onChange={(event) => {

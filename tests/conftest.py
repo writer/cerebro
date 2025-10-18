@@ -7,6 +7,7 @@ from typing import AsyncGenerator, Generator
 
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true")
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -16,7 +17,9 @@ from cerebro.core.user_models import User
 from cerebro.core.user_service import UserService
 from fastapi.testclient import TestClient
 from cerebro.api.main import app
-from cerebro.api.auth import create_access_token
+from cerebro.core.security.key_store import JWTKeyStore
+from cerebro.core.security.jwt import JWTService
+from cerebro.metrics.jwt_metrics import jwt_metrics
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -121,6 +124,15 @@ async def test_user(test_db: AsyncSession) -> User:
 
 
 @pytest.fixture
+async def jwt_service(test_db: AsyncSession) -> JWTService:
+    """Provide a JWT service instance for tests."""
+
+    key_store = JWTKeyStore(test_db, metrics=jwt_metrics)
+    await key_store.rotate_keys_if_needed()
+    return JWTService(key_store, metrics=jwt_metrics)
+
+
+@pytest.fixture
 async def test_admin_user(test_db: AsyncSession) -> User:
     """Create test admin user."""
     user_service = UserService(test_db)
@@ -135,28 +147,30 @@ async def test_admin_user(test_db: AsyncSession) -> User:
 
 
 @pytest.fixture
-async def test_token(test_db, test_user):
+async def test_token(test_db: AsyncSession, test_user: User, jwt_service: JWTService):
     """Create test JWT token."""
+
     user_service = UserService(test_db)
     scopes = await user_service.get_user_scopes(test_user.user_id)
+    org_id = test_user.org_id or await test_db.scalar(select(Organization.org_id).limit(1))
 
-    token_data = {
-        "sub": test_user.username,
-        "scopes": scopes
-    }
-
-    return create_access_token(token_data)
+    return await jwt_service.create_token(
+        username=test_user.username,
+        scopes=scopes,
+        org_id=org_id,
+    )
 
 
 @pytest.fixture
-async def admin_token(test_db, test_admin_user):
+async def admin_token(test_db: AsyncSession, test_admin_user: User, jwt_service: JWTService):
     """Create admin JWT token."""
+
     user_service = UserService(test_db)
     scopes = await user_service.get_user_scopes(test_admin_user.user_id)
+    org_id = test_admin_user.org_id or await test_db.scalar(select(Organization.org_id).limit(1))
 
-    token_data = {
-        "sub": test_admin_user.username,
-        "scopes": scopes
-    }
-
-    return create_access_token(token_data)
+    return await jwt_service.create_token(
+        username=test_admin_user.username,
+        scopes=scopes,
+        org_id=org_id,
+    )

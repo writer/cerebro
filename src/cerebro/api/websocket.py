@@ -4,14 +4,16 @@ import json
 import logging
 from typing import Dict, Set, Optional, Any
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import WebSocket, WebSocketDisconnect, Query, HTTPException
-from fastapi.routing import APIWebSocketRoute
-import asyncio
+from fastapi import WebSocket, WebSocketDisconnect, Query
 
-from cerebro.api.auth import verify_token, TokenData
+from cerebro.api.auth import TokenData
+from cerebro.core.database import async_session_factory
+from cerebro.core.security.key_store import JWTKeyStore
+from cerebro.core.security.jwt import JWTService
 from cerebro.metrics.auth_metrics import auth_metrics
+from cerebro.metrics.jwt_metrics import jwt_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -127,15 +129,40 @@ class ConnectionManager:
 connection_manager = ConnectionManager()
 
 
+def _token_payload_to_data(payload: Dict[str, Any]) -> TokenData:
+    username = payload.get("sub")
+    scopes = payload.get("scopes", [])
+    raw_org = payload.get("org_id")
+    token_type = payload.get("token_type")
+
+    org_id: Optional[UUID] = None
+    if isinstance(raw_org, str):
+        try:
+            org_id = UUID(raw_org)
+        except ValueError:
+            org_id = None
+
+    return TokenData(
+        username=str(username) if isinstance(username, str) else None,
+        scopes=list(scopes) if isinstance(scopes, list) else [],
+        org_id=org_id,
+        token_type=str(token_type) if isinstance(token_type, str) else None,
+    )
+
+
 async def authenticate_websocket_token(token: Optional[str]) -> Optional[TokenData]:
     """Authenticate WebSocket connection using JWT token."""
     if not token:
         return None
-    
+
     try:
-        token_data = verify_token(token)
-        return token_data
-    except Exception as e:
+        async with async_session_factory() as db:
+            key_store = JWTKeyStore(db, metrics=jwt_metrics)
+            await key_store.rotate_keys_if_needed()
+            jwt_service = JWTService(key_store, metrics=jwt_metrics)
+            payload = await jwt_service.verify_token(token, expected_type="access")
+        return _token_payload_to_data(payload)
+    except Exception as e:  # pragma: no cover - defensive path
         logger.warning(f"WebSocket authentication failed: {e}")
         return None
 
@@ -154,8 +181,8 @@ async def websocket_endpoint(
             await websocket.close(code=1008, reason="Authentication failed")
             auth_metrics.record_unauthorized_access("/ws/events", False)
             return
-        
-        username = token_data.username
+
+        username = token_data.username or "unknown"
         logger.info(f"Authenticated WebSocket connection for user {username}")
     else:
         # Allow unauthenticated connections for now (could be restricted in production)
@@ -256,6 +283,16 @@ class WebSocketNotifier:
         message = {
             "type": "finding_updated", 
             "payload": finding_data
+        }
+        await connection_manager.send_to_org(org_id, message)
+
+    @staticmethod
+    async def notify_review_task_event(org_id: str, event_type: str, task_data: Dict[str, Any]):
+        """Notify clients of review task lifecycle changes."""
+
+        message = {
+            "type": event_type,
+            "payload": task_data,
         }
         await connection_manager.send_to_org(org_id, message)
     

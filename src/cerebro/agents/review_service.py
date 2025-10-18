@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
@@ -19,6 +20,9 @@ from cerebro.agents.models import (
 from cerebro.agents.notification_service import NotificationService
 from cerebro.agents.ticketing_service import TicketingService
 from cerebro.core.database import async_session_factory
+
+
+logger = logging.getLogger(__name__)
 
 
 class AgentReviewService:
@@ -57,6 +61,7 @@ class AgentReviewService:
             db_session.add(task)
             await db_session.commit()
             await db_session.refresh(task)
+            await AgentReviewService._emit_websocket_event(task, "review_task_created")
             return task
 
     @staticmethod
@@ -95,6 +100,7 @@ class AgentReviewService:
             await AgentReviewService._record_policy_signal(db_session, task, status)
             await db_session.commit()
             await db_session.refresh(task)
+            await AgentReviewService._emit_websocket_event(task, "review_task_updated")
             return task
 
     @staticmethod
@@ -213,6 +219,9 @@ class AgentReviewService:
             await AgentReviewService._update_ticket_reference(task.id, str(ticket.id))
             task.ticket_reference = str(ticket.id)
 
+        for task in tasks:
+            await AgentReviewService._emit_websocket_event(task, "review_task_updated")
+
         return tasks
 
     @staticmethod
@@ -281,6 +290,38 @@ class AgentReviewService:
         suggestion.details.setdefault("last_resolution_notes", task.resolution_notes)
 
     @staticmethod
+    def _serialize_for_websocket(task: AgentReviewTask) -> Dict[str, Any]:
+        return {
+            "id": str(task.id),
+            "org_id": str(task.org_id),
+            "session_id": str(task.session_id),
+            "title": task.title,
+            "summary": task.summary,
+            "status": task.status.value,
+            "priority": task.priority,
+            "assigned_to": task.assigned_to,
+            "escalated_to": task.escalated_to,
+            "ticket_reference": task.ticket_reference,
+            "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
+            "updated_at": (task.updated_at or task.resolved_at or task.created_at).isoformat(),
+        }
+
+    @staticmethod
+    async def _emit_websocket_event(task: AgentReviewTask, event_type: str) -> None:
+        try:
+            from cerebro.api.websocket import websocket_notifier
+        except Exception as exc:  # pragma: no cover - websocket optional
+            logger.debug("WebSocket notifier unavailable: %s", exc)
+            return
+
+        payload = AgentReviewService._serialize_for_websocket(task)
+
+        try:
+            await websocket_notifier.notify_review_task_event(str(task.org_id), event_type, payload)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Failed to emit review task websocket event: %s", exc)
+
+    @staticmethod
     async def assign_task(
         *,
         task_id: UUID,
@@ -311,6 +352,7 @@ class AgentReviewService:
 
             await db_session.commit()
             await db_session.refresh(task)
+            await AgentReviewService._emit_websocket_event(task, "review_task_updated")
             return task
 
     @staticmethod

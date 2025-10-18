@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # Create Celery app
 celery_app = Celery(
     "cerebro",
-    broker=getattr(settings, 'redis_url', 'redis://localhost:6379/0'),
-    backend=getattr(settings, 'redis_url', 'redis://localhost:6379/0'),
+    broker=settings.effective_celery_broker_url,
+    backend=settings.effective_celery_result_backend,
     include=[
         'cerebro.tasks.collection_tasks',
         'cerebro.tasks.finding_tasks',

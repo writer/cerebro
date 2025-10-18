@@ -162,6 +162,24 @@ ignore = [
 "tests/**/*.py" = ["S101", "S105", "S106"]  # Allow asserts and hardcoded passwords in tests
 "scripts/**/*.py" = ["T201"]  # Allow print statements in scripts
 
+[tool.hatch.build]
+sources = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/cerebro",
+    "src/claude_agent_sdk",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/cerebro",
+    "src/claude_agent_sdk",
+    "README.md",
+    "pyproject.toml",
+    "uv.lock",
+]
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q --strict-markers --strict-config"

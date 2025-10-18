@@ -1,6 +1,8 @@
 """Background tasks for JWT key rotation and maintenance."""
 
+import asyncio
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
@@ -13,8 +15,34 @@ from cerebro.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _run_coro_sync(coro):
+    """Execute an async coroutine from sync context, even inside active loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    result: Dict[str, Any] = {}
+    error: Dict[str, BaseException] = {}
+
+    def _runner():
+        try:
+            result["value"] = asyncio.run(coro)
+        except BaseException as exc:  # pragma: no cover - propagate to caller
+            error["exception"] = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+
+    if "exception" in error:
+        raise error["exception"]
+
+    return result.get("value")
+
+
 @celery_app.task(bind=True, name="jwt_key_rotation")
-def rotate_jwt_keys_task(self) -> Dict[str, Any]:
+def rotate_jwt_keys_task(self=None, *args, **_) -> Dict[str, Any]:
     """
     Celery task to rotate JWT signing keys.
     
@@ -23,6 +51,8 @@ def rotate_jwt_keys_task(self) -> Dict[str, Any]:
     """
     import asyncio
     
+    task_ctx = args[0] if args else self
+
     async def _rotate_keys():
         result = {
             "rotation_performed": False,
@@ -56,23 +86,24 @@ def rotate_jwt_keys_task(self) -> Dict[str, Any]:
             error_msg = f"JWT key rotation task failed: {e}"
             logger.error(error_msg)
             result["error"] = str(e)
-            raise self.retry(exc=e, countdown=300, max_retries=3)  # Retry after 5 minutes
+            if task_ctx is not None and hasattr(task_ctx, "retry"):
+                raise task_ctx.retry(exc=e, countdown=300, max_retries=3)
+            raise
         
         return result
     
-    # Run the async function
-    return asyncio.run(_rotate_keys())
+    return _run_coro_sync(_rotate_keys())
 
 
 @celery_app.task(bind=True, name="jwt_revocation_cleanup")
-def cleanup_jwt_revocations_task(self) -> Dict[str, Any]:
+def cleanup_jwt_revocations_task(self=None, *args, **_) -> Dict[str, Any]:
     """
     Celery task to clean up expired JWT revocations from Redis.
     
     This helps maintain Redis memory usage by removing expired revocation entries.
     """
-    import asyncio
-    
+    task_ctx = args[0] if args else self
+
     async def _cleanup_revocations():
         result = {
             "expired_revocations": 0,
@@ -98,22 +129,22 @@ def cleanup_jwt_revocations_task(self) -> Dict[str, Any]:
             error_msg = f"JWT revocation cleanup task failed: {e}"
             logger.error(error_msg)
             result["error"] = str(e)
-            raise self.retry(exc=e, countdown=300, max_retries=3)
+            if task_ctx is not None and hasattr(task_ctx, "retry"):
+                raise task_ctx.retry(exc=e, countdown=300, max_retries=3)
+            raise
         
         return result
-    
-    return asyncio.run(_cleanup_revocations())
+
+    return _run_coro_sync(_cleanup_revocations())
 
 
 @celery_app.task(bind=True, name="jwt_health_check")
-def jwt_health_check_task(self) -> Dict[str, Any]:
+def jwt_health_check_task(self=None, *_, **__) -> Dict[str, Any]:
     """
     Health check task for JWT infrastructure.
     
     Verifies that key rotation and token services are working properly.
     """
-    import asyncio
-    
     async def _health_check():
         result = {
             "current_key_exists": False,
@@ -156,7 +187,7 @@ def jwt_health_check_task(self) -> Dict[str, Any]:
         
         return result
     
-    return asyncio.run(_health_check())
+    return _run_coro_sync(_health_check())
 
 
 # Schedule periodic tasks
