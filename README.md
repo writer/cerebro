@@ -154,10 +154,10 @@ cerebro/
 ## Documentation
 
 - [Quickstart](docs/QUICKSTART.md)
-- [API Reference](docs/API.md)
+- [API Reference](docs/user-guide/API.md)
 - [Agents Guide](docs/agents/README.md)
 - [Query Engine](docs/QUERY_ENGINE.md)
-- [Database Schema](docs/DATABASE_SCHEMA.md)
+- [Database Schema](docs/developer-guide/DATABASE_SCHEMA.md)
 - [Development Guide](docs/DEVELOPMENT.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 
