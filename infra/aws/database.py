@@ -81,7 +81,7 @@ def create_rds_postgres(
     # Create parameter group for performance tuning
     parameter_group = aws.rds.ParameterGroup(
         f"{name}-db-params",
-        family="postgres15",
+        family="postgres17",
         description=f"Parameter group for {name}",
         parameters=[
             # Connection settings
