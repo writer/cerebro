@@ -9,22 +9,33 @@ import pulumi_random as random
 
 # Get configuration
 config = pulumi.Config()
-environment = config.get("environment") or "production"
-domain = config.get("domain") or ""
-secret_key = config.require_secret("secretKey")
-api_min_instances = config.get_int("apiMinInstances") or 2
-api_max_instances = config.get_int("apiMaxInstances") or 20
-worker_min_instances = config.get_int("workerMinInstances") or 2
-worker_max_instances = config.get_int("workerMaxInstances") or 50
-container_image = config.get("containerImage") or "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
-alb_internal = config.get_bool("albInternal")
-if alb_internal is None:
-    alb_internal = True
 
 
 def _config_bool(key: str, default: bool) -> bool:
     value = config.get_bool(key)
     return default if value is None else value
+
+
+def _config_int(key: str, default: int) -> int:
+    value = config.get_int(key)
+    return default if value is None else value
+
+
+environment = config.get("environment") or "production"
+domain = config.get("domain") or ""
+secret_key = config.require_secret("secretKey")
+api_min_instances = _config_int("apiMinInstances", 2)
+api_max_instances = _config_int("apiMaxInstances", 20)
+worker_min_instances = _config_int("workerMinInstances", 2)
+worker_max_instances = _config_int("workerMaxInstances", 50)
+api_cpu = _config_int("apiCpu", 1024)
+api_memory = _config_int("apiMemory", 2048)
+worker_cpu = _config_int("workerCpu", 2048)
+worker_memory = _config_int("workerMemory", 4096)
+container_image = config.get("containerImage") or "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+alb_internal = config.get_bool("albInternal")
+if alb_internal is None:
+    alb_internal = True
 
 # Import AWS modules
 from aws import (
@@ -162,8 +173,12 @@ ecs_stack = compute.create_ecs_cluster(
     container_image=container_image,
     api_min_instances=api_min_instances,
     api_max_instances=api_max_instances,
+    api_cpu=api_cpu,
+    api_memory=api_memory,
     worker_min_instances=worker_min_instances,
     worker_max_instances=worker_max_instances,
+    worker_cpu=worker_cpu,
+    worker_memory=worker_memory,
     log_retention_days=config.get_int("logRetentionDays") or 30,
     enable_flower=_config_bool("enableFlower", True),
 )

@@ -38,6 +38,16 @@ config:
     default: 20
     description: Maximum number of API server instances
 
+  cerebro:apiCpu:
+    type: integer
+    default: 1024
+    description: API task CPU units (1024 = 1 vCPU)
+
+  cerebro:apiMemory:
+    type: integer
+    default: 2048
+    description: API task memory in MB
+
   cerebro:workerMinInstances:
     type: integer
     default: 2
@@ -47,6 +57,16 @@ config:
     type: integer
     default: 50
     description: Maximum number of Celery worker instances
+
+  cerebro:workerCpu:
+    type: integer
+    default: 2048
+    description: Worker task CPU units
+
+  cerebro:workerMemory:
+    type: integer
+    default: 4096
+    description: Worker task memory in MB
 
   cerebro:dbInstanceClass:
     type: string
@@ -65,10 +85,12 @@ config:
 
   cerebro:enableMultiAz:
     type: boolean
+    default: true
     description: Enable Multi-AZ for database
 
   cerebro:enableReadReplicas:
     type: boolean
+    default: true
     description: Enable read replicas
 
   cerebro:readReplicaCount:

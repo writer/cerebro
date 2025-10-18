@@ -27,7 +27,7 @@ The agent system enables natural language interaction with all of Cerebro's capa
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Claude AI (Sonnet 4.5)                  │
+│                     Claude AI (Sonnet latest)               │
 │                    via Claude Code SDK                       │
 └─────────────────┬───────────────────────────────────────────┘
                   │
@@ -131,6 +131,7 @@ All tools inherit from `Tool` base class with:
 - CEL policy enforcement
 - Dry-run mode support
 - Comprehensive audit logging
+- Shared audited toolchain used by CLI/API/agents
 
 ### 4. Audit System (`audit.py`)
 
@@ -152,6 +153,8 @@ Cerebro supports specialized agent types with tailored system prompts:
 | **IDENTITY_ADVISOR** | IAM analysis, privilege escalation | Identity governance, access controls |
 | **COMPLIANCE_ADVISOR** | Framework mapping, compliance reports | CIS Controls, NIST, SOC 2 |
 | **ATTACK_PATH_ANALYST** | Attack modeling, choke points | Threat modeling, defensive architecture |
+
+Agents run on the same Pulumi-managed ECS services as the API/worker fleet; task definitions inherit shared secrets and `KMS_PROVIDER=aws`, keeping CLI, API, and agent behavior aligned after each deployment.
 
 ## Security Features
 
