@@ -148,10 +148,10 @@ export GOOGLE_PROJECT=your-project-id
 # Create new stack
 pulumi stack init prod
 
-# Configure stack
+# Configure stack (leave cerebro:domain blank for internal-only ALB)
 pulumi config set aws:region us-east-1
 pulumi config set cerebro:environment production
-pulumi config set cerebro:domain cerebro.example.com
+pulumi config set cerebro:domain ""
 pulumi config set --secret cerebro:secretKey $(openssl rand -base64 32)
 ```
 
@@ -213,6 +213,8 @@ All secrets are stored in AWS Secrets Manager / GCP Secret Manager:
 - `ANTHROPIC_API_KEY` - Claude API key
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` - For AWS provider access
 - `GOOGLE_APPLICATION_CREDENTIALS` - For GCP provider access
+
+> **Internal-only deployments**: The Pulumi configuration now treats `cerebro:domain` as optional; leaving it blank deploys an internal ALB (no public DNS or TLS termination). Use `cerebro:albInternal=true` (default) to keep traffic inside the VPC and reach the service via the ALB DNS name or private networking.
 
 ### Scaling Configuration
 

@@ -19,6 +19,7 @@ def create_vpc(
     availability_zones: int = 2,
     enable_nat_gateway: bool = True,
     enable_vpn_gateway: bool = False,
+    alb_ingress_cidrs: List[str] | None = None,
 ) -> dict:
     """
     Create VPC with public and private subnets.
@@ -194,27 +195,12 @@ def create_vpc(
 
     # Create security groups
 
-    # ALB Security Group (public-facing)
+    # ALB Security Group
     alb_sg = aws.ec2.SecurityGroup(
         f"{name}-alb-sg",
         vpc_id=vpc.id,
         description="Security group for Application Load Balancer",
-        ingress=[
-            aws.ec2.SecurityGroupIngressArgs(
-                protocol="tcp",
-                from_port=80,
-                to_port=80,
-                cidr_blocks=["0.0.0.0/0"],
-                description="HTTP from internet",
-            ),
-            aws.ec2.SecurityGroupIngressArgs(
-                protocol="tcp",
-                from_port=443,
-                to_port=443,
-                cidr_blocks=["0.0.0.0/0"],
-                description="HTTPS from internet",
-            ),
-        ],
+        ingress=[],
         egress=[
             aws.ec2.SecurityGroupEgressArgs(
                 protocol="-1",
@@ -226,6 +212,29 @@ def create_vpc(
         ],
         tags={"Name": f"{name}-alb-sg"},
     )
+
+    ingress_cidrs = alb_ingress_cidrs or ["0.0.0.0/0"]
+    for idx, cidr in enumerate(ingress_cidrs):
+        aws.ec2.SecurityGroupRule(
+            f"{name}-alb-http-{idx}",
+            type="ingress",
+            security_group_id=alb_sg.id,
+            protocol="tcp",
+            from_port=80,
+            to_port=80,
+            cidr_blocks=[cidr],
+            description="HTTP access",
+        )
+        aws.ec2.SecurityGroupRule(
+            f"{name}-alb-https-{idx}",
+            type="ingress",
+            security_group_id=alb_sg.id,
+            protocol="tcp",
+            from_port=443,
+            to_port=443,
+            cidr_blocks=[cidr],
+            description="HTTPS access",
+        )
 
     # Application Security Group (ECS tasks)
     app_sg = aws.ec2.SecurityGroup(

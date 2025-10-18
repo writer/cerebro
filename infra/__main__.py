@@ -10,12 +10,15 @@ import pulumi_random as random
 # Get configuration
 config = pulumi.Config()
 environment = config.get("environment") or "production"
-domain = config.require("domain")
+domain = config.get("domain") or ""
 secret_key = config.require_secret("secretKey")
 api_min_instances = config.get_int("apiMinInstances") or 2
 api_max_instances = config.get_int("apiMaxInstances") or 20
 worker_min_instances = config.get_int("workerMinInstances") or 2
 worker_max_instances = config.get_int("workerMaxInstances") or 50
+alb_internal = config.get_bool("albInternal")
+if alb_internal is None:
+    alb_internal = True
 
 # Import AWS modules
 from aws import (
@@ -30,12 +33,14 @@ from aws import (
 )
 
 # Create VPC and networking
+vpc_cidr = "10.0.0.0/16"
 vpc_stack = networking.create_vpc(
     name=f"cerebro-{environment}",
-    cidr_block="10.0.0.0/16",
+    cidr_block=vpc_cidr,
     availability_zones=2,
     enable_nat_gateway=True,
     enable_vpn_gateway=False,
+    alb_ingress_cidrs=[vpc_cidr] if alb_internal else None,
 )
 
 # Create KMS key for encryption
@@ -115,9 +120,10 @@ redis_stack = cache.create_elasticache_redis(
 alb_stack = load_balancer.create_application_load_balancer(
     name=f"cerebro-{environment}",
     vpc_id=vpc_stack["vpc_id"],
-    subnet_ids=vpc_stack["public_subnet_ids"],
+    subnet_ids=vpc_stack["private_subnet_ids"] if alb_internal else vpc_stack["public_subnet_ids"],
     security_group_id=vpc_stack["alb_security_group_id"],
-    certificate_domain=domain,
+    certificate_domain=domain or None,
+    internal=alb_internal,
 )
 
 # Create ECS cluster and services
@@ -156,7 +162,12 @@ monitoring_stack = monitoring.create_monitoring(
 
 # Export outputs
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
-pulumi.export("api_url", pulumi.Output.concat("https://", domain))
+pulumi.export(
+    "api_url",
+    pulumi.Output.concat("https://", domain)
+    if domain
+    else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
+)
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
 pulumi.export("db_endpoint", database_stack["endpoint"])
 pulumi.export("redis_endpoint", redis_stack["primary_endpoint"])

@@ -10,7 +10,8 @@ config:
 
   cerebro:domain:
     type: string
-    description: Primary domain for Cerebro (e.g., cerebro.example.com)
+    default: ""
+    description: Primary domain for Cerebro (optional; leave blank for internal-only access)
 
   cerebro:secretKey:
     type: string
@@ -96,6 +97,10 @@ config:
     type: boolean
     default: true
     description: Enable Flower monitoring UI
+
+  cerebro:albInternal:
+    type: boolean
+    description: Deploy the Application Load Balancer as internal-only (no public ingress)
 
   aws:region:
     type: string

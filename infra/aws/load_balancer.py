@@ -17,6 +17,7 @@ def create_application_load_balancer(
     subnet_ids: list[pulumi.Output[str]],
     security_group_id: pulumi.Output[str],
     certificate_domain: str = None,
+    internal: bool = True,
     enable_deletion_protection: bool = True,
     enable_http2: bool = True,
     idle_timeout: int = 60,
@@ -27,9 +28,10 @@ def create_application_load_balancer(
     Args:
         name: ALB name prefix
         vpc_id: VPC ID
-        subnet_ids: Public subnet IDs for ALB
+        subnet_ids: Subnets for ALB placement
         security_group_id: Security group ID for ALB
         certificate_domain: Domain for ACM certificate (optional)
+        internal: Create an internal (private) ALB when True
         enable_deletion_protection: Prevent accidental deletion
         enable_http2: Enable HTTP/2
         idle_timeout: Idle timeout in seconds
@@ -44,6 +46,7 @@ def create_application_load_balancer(
         load_balancer_type="application",
         subnets=subnet_ids,
         security_groups=[security_group_id],
+        internal=internal,
         enable_deletion_protection=enable_deletion_protection,
         enable_http2=enable_http2,
         idle_timeout=idle_timeout,
