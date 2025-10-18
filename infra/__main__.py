@@ -102,6 +102,10 @@ if config.get_bool("enableReadReplicas"):
         )
         read_replicas.append(replica)
 
+existing_redis_replication_group_id = config.get("redisReplicationGroupId")
+existing_redis_parameter_group_id = config.get("redisParameterGroupId")
+existing_redis_subnet_group_id = config.get("redisSubnetGroupId")
+
 # Create Redis cluster
 redis_stack = cache.create_elasticache_redis(
     name=f"cerebro-{environment}",
@@ -114,9 +118,11 @@ redis_stack = cache.create_elasticache_redis(
     at_rest_encryption_enabled=True,
     transit_encryption_enabled=True,
     kms_key_id=kms_key.arn,
-    parameter_group_name=config.get("redisParameterGroupName"),
-    subnet_group_name=config.get("redisSubnetGroupName"),
-    existing_replication_group_id=config.get("redisReplicationGroupId"),
+    parameter_group_name=None if existing_redis_parameter_group_id else config.get("redisParameterGroupName"),
+    existing_parameter_group_id=existing_redis_parameter_group_id,
+    subnet_group_name=None if existing_redis_subnet_group_id else config.get("redisSubnetGroupName"),
+    existing_subnet_group_id=existing_redis_subnet_group_id,
+    existing_replication_group_id=existing_redis_replication_group_id,
 )
 
 # Create Application Load Balancer

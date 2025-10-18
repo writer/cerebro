@@ -32,7 +32,9 @@ def create_elasticache_redis(
     snapshot_window: str = "03:00-05:00",
     maintenance_window: str = "sun:05:00-sun:07:00",
     parameter_group_name: Optional[str] = None,
+    existing_parameter_group_id: Optional[str] = None,
     subnet_group_name: Optional[str] = None,
+    existing_subnet_group_id: Optional[str] = None,
     existing_replication_group_id: Optional[str] = None,
 ) -> dict:
     """
@@ -70,31 +72,50 @@ def create_elasticache_redis(
             special=False,  # Redis AUTH token doesn't support special chars
         ).result
 
-    # Create cache subnet group
-    subnet_group_opts = None
-    subnet_group_name_output: pulumi.Output[str]
-    if subnet_group_name:
-        subnet_group_opts = pulumi.ResourceOptions(import_=subnet_group_name, protect=True)
-        subnet_group_name_output = pulumi.Output.from_input(subnet_group_name)
-    else:
-        subnet_group_name_output = pulumi.Output.from_input(f"{name}-redis-subnet-group")
+    # If we're managing existing infrastructure, surface those resources without recreating them.
+    if existing_replication_group_id:
+        parameter_group = None
+        subnet_group = None
 
+        if existing_parameter_group_id:
+            parameter_group = aws.elasticache.ParameterGroup.get(
+                f"{name}-redis-params",
+                existing_parameter_group_id,
+            )
+
+        if existing_subnet_group_id:
+            subnet_group = aws.elasticache.SubnetGroup.get(
+                f"{name}-redis-subnet-group",
+                existing_subnet_group_id,
+            )
+
+        replication_group = aws.elasticache.ReplicationGroup.get(
+            f"{name}-redis",
+            existing_replication_group_id,
+        )
+
+        return {
+            "replication_group": replication_group,
+            "redis_cluster": replication_group,
+            "subnet_group": subnet_group,
+            "parameter_group": parameter_group,
+            "primary_endpoint": replication_group.primary_endpoint_address,
+            "reader_endpoint": replication_group.reader_endpoint_address,
+            "configuration_endpoint": replication_group.configuration_endpoint_address,
+        }
+
+    # Create cache subnet group
     subnet_group = aws.elasticache.SubnetGroup(
         f"{name}-redis-subnet-group",
+        name=subnet_group_name or f"{name}-redis-subnet-group",
         subnet_ids=subnet_ids,
-        name=subnet_group_name_output,
         description=f"Subnet group for {name} Redis cluster",
         tags={
             "Name": f"{name}-redis-subnet-group",
         },
-        opts=subnet_group_opts,
     )
 
     # Create parameter group for Redis 7.x
-    parameter_group_opts = None
-    if parameter_group_name:
-        parameter_group_opts = pulumi.ResourceOptions(import_=parameter_group_name, protect=True)
-
     parameter_group = aws.elasticache.ParameterGroup(
         f"{name}-redis-params",
         name=parameter_group_name or f"{name}-redis-params",
@@ -133,7 +154,6 @@ def create_elasticache_redis(
         tags={
             "Name": f"{name}-redis-params",
         },
-        opts=parameter_group_opts,
     )
 
     # Create replication group (cluster)
