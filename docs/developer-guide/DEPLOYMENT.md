@@ -15,6 +15,12 @@ This guide covers deploying Cerebro in production environments with enterprise-g
 - **Storage**: Persistent volumes for database and Redis data
 - **Network**: Outbound HTTPS access to provider APIs
 
+### Pulumi + AWS Fargate (Production)
+- **AWS Access**: AWS SSO account configured with the `writer-oidc` profile and AdministratorAccess
+- **Pulumi**: CLI ≥ 3.100 with access to the `writer-ai/aws-oidc/cerebro-prod` ESC environment
+- **Docker**: Buildx plugin available for multi-architecture image builds
+- **ECR**: Repository `073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro`
+
 ### External API Access
 - **GitHub**: Personal Access Token or GitHub App
 - **AWS**: IAM credentials with read permissions across services
@@ -61,6 +67,55 @@ export AWS_DEFAULT_REGION="us-east-1"
 export LOG_LEVEL="INFO"
 export LOG_FORMAT="json"
 ```
+
+### 3. Pulumi Production Deployment on AWS Fargate
+
+1. **Authenticate**
+   ```bash
+   aws sso login --profile writer-oidc
+   pulumi login
+   pulumi stack select prod --cwd infra
+   ```
+
+2. **Configure secrets** (stored in Pulumi ESC)
+   ```bash
+   pulumi env set --env writer-ai/aws-oidc/cerebro-prod secretKey <256-bit-secret>
+   pulumi env set --env writer-ai/aws-oidc/cerebro-prod dbPassword <generated>
+   pulumi env set --env writer-ai/aws-oidc/cerebro-prod redisPassword <generated>
+   ```
+
+3. **Build and push an `amd64` container image**
+   ```bash
+   docker buildx create --name cerebro-builder --use --bootstrap
+   docker buildx build \
+     --platform linux/amd64 \
+     -t 073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:prod-$(date +%Y%m%d) \
+     -t 073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest \
+     --push .
+   ```
+   Ensure `.dockerignore` excludes `.venv/` so host-specific paths do not leak into the image.
+
+4. **Update Pulumi config** (for example in `infra/Pulumi.prod.yaml`)
+   ```yaml
+   config:
+     cerebro:containerImage: 073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:prod-20251019
+   ```
+
+5. **Deploy infrastructure and services**
+   ```bash
+   pulumi preview --diff --cwd infra
+   pulumi up --cwd infra
+   ```
+   The stack provisions VPC networking, adopts existing RDS/ElastiCache resources, injects secrets, and sets `KMS_PROVIDER=aws` for runtime validation.
+
+6. **Force-refresh ECS services** when rolling out new task definitions
+   ```bash
+   aws ecs update-service \
+     --profile writer-oidc \
+     --cluster cerebro-production-cluster \
+     --service cerebro-production-api \
+     --force-new-deployment
+   ```
 
 ## 🐳 Docker Deployment
 
