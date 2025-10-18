@@ -10,11 +10,12 @@ Stores sensitive configuration including:
 import pulumi
 import pulumi_aws as aws
 import json
+from typing import Dict, List, Union
 
 
 def create_secrets(
     name: str,
-    secrets: dict[str, pulumi.Output | str],
+    secrets: Dict[str, Union[pulumi.Output, str]],
     kms_key_id: pulumi.Output[str] = None,
     recovery_window_in_days: int = 30,
 ) -> aws.secretsmanager.Secret:
