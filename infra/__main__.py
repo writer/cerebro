@@ -21,6 +21,11 @@ alb_internal = config.get_bool("albInternal")
 if alb_internal is None:
     alb_internal = True
 
+
+def _config_bool(key: str, default: bool) -> bool:
+    value = config.get_bool(key)
+    return default if value is None else value
+
 # Import AWS modules
 from aws import (
     networking,
@@ -85,7 +90,7 @@ database_stack = database.create_rds_postgres(
     instance_class=config.get("dbInstanceClass") or "db.r6g.xlarge",
     allocated_storage=config.get_int("dbStorageSize") or 500,
     master_password=db_password,
-    multi_az=config.get_bool("enableMultiAz") or True,
+    multi_az=_config_bool("enableMultiAz", True),
     backup_retention_period=config.get_int("backupRetentionDays") or 30,
     kms_key_id=kms_key.arn,
     existing_db_instance_id=config.get("dbInstanceId"),
@@ -95,7 +100,7 @@ database_stack = database.create_rds_postgres(
 
 # Create read replicas if enabled
 read_replicas = []
-if config.get_bool("enableReadReplicas"):
+if _config_bool("enableReadReplicas", True):
     replica_count = config.get_int("readReplicaCount") or 2
     for i in range(replica_count):
         existing_replica_id = config.get(f"dbReplica{i+1}Id")
@@ -159,7 +164,8 @@ ecs_stack = compute.create_ecs_cluster(
     api_max_instances=api_max_instances,
     worker_min_instances=worker_min_instances,
     worker_max_instances=worker_max_instances,
-    enable_flower=config.get_bool("enableFlower") or True,
+    log_retention_days=config.get_int("logRetentionDays") or 30,
+    enable_flower=_config_bool("enableFlower", True),
 )
 
 # Create monitoring and alarms
@@ -193,7 +199,7 @@ pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("kms_key_id", kms_key.id)
 pulumi.export("secrets_arn", cerebro_secrets.arn)
 
-if config.get_bool("enableFlower"):
+if _config_bool("enableFlower", True):
     pulumi.export("flower_url", pulumi.Output.concat(
         "http://", alb_stack["alb"].dns_name, ":5555"
     ))

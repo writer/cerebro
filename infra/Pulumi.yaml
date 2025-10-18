@@ -65,12 +65,10 @@ config:
 
   cerebro:enableMultiAz:
     type: boolean
-    default: true
     description: Enable Multi-AZ for database
 
   cerebro:enableReadReplicas:
     type: boolean
-    default: true
     description: Enable read replicas
 
   cerebro:readReplicaCount:

@@ -35,6 +35,7 @@ def create_ecs_cluster(
     worker_memory: int = 4096,
     worker_min_instances: int = 2,
     worker_max_instances: int = 50,
+    log_retention_days: int = 30,
     enable_flower: bool = True,
 ) -> dict:
     """
@@ -87,9 +88,9 @@ def create_ecs_cluster(
     task_role = _create_task_role(name, kms_key_id)
 
     # Create CloudWatch log groups
-    api_log_group = _create_log_group(f"/ecs/{name}-api")
-    worker_log_group = _create_log_group(f"/ecs/{name}-worker")
-    beat_log_group = _create_log_group(f"/ecs/{name}-beat")
+    api_log_group = _create_log_group(f"/ecs/{name}-api", retention_days=log_retention_days)
+    worker_log_group = _create_log_group(f"/ecs/{name}-worker", retention_days=log_retention_days)
+    beat_log_group = _create_log_group(f"/ecs/{name}-beat", retention_days=log_retention_days)
 
     # Base environment variables
     base_env = {
@@ -280,7 +281,7 @@ def create_ecs_cluster(
 
     # Optional Flower monitoring UI
     if enable_flower:
-        flower_log_group = _create_log_group(f"/ecs/{name}-flower")
+        flower_log_group = _create_log_group(f"/ecs/{name}-flower", retention_days=log_retention_days)
         flower_task_definition = _create_task_definition(
             name=f"{name}-flower",
             container_name="cerebro-flower",
