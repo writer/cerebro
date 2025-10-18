@@ -10,6 +10,7 @@ Creates:
 """
 import pulumi
 import pulumi_aws as aws
+from typing import Optional
 
 
 def create_rds_postgres(
@@ -31,9 +32,9 @@ def create_rds_postgres(
     kms_key_id: pulumi.Output[str] = None,
     performance_insights_enabled: bool = True,
     deletion_protection: bool = True,
-    existing_db_instance_id: str | None = None,
-    existing_parameter_group_id: str | None = None,
-    existing_subnet_group_id: str | None = None,
+    existing_db_instance_id: Optional[str] = None,
+    existing_parameter_group_id: Optional[str] = None,
+    existing_subnet_group_id: Optional[str] = None,
 ) -> dict:
     """
     Create RDS PostgreSQL database with production settings.
