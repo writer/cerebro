@@ -144,7 +144,15 @@ def create_elasticache_redis(
 
     # Add auth token if transit encryption is enabled
     if transit_encryption_enabled and auth_token:
-        replication_group_kwargs["auth_token"] = auth_token
+        def _sanitize(token: str) -> str:
+            # ElastiCache AUTH token allows alphanumeric and these symbols: !#$%&()*+,-.:;<=>?@[]^_{|}~
+            allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,-.:;<=>?@[]^_{|}~")
+            sanitized = ''.join(ch for ch in token if ch in allowed)
+            if len(sanitized) < 16:
+                raise ValueError("Redis auth token must be at least 16 characters of allowed charset")
+            return sanitized
+
+        replication_group_kwargs["auth_token"] = auth_token.apply(_sanitize) if isinstance(auth_token, pulumi.Output) else _sanitize(auth_token)
 
     # Add KMS encryption if provided
     if kms_key_id and at_rest_encryption_enabled:
