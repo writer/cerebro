@@ -88,38 +88,46 @@ def create_rds_postgres(
             aws.rds.ParameterGroupParameterArgs(
                 name="max_connections",
                 value="500",
+                apply_method="pending-reboot",
             ),
             # Memory settings
             aws.rds.ParameterGroupParameterArgs(
                 name="shared_buffers",
                 value="{DBInstanceClassMemory/4096}",  # 25% of RAM
+                apply_method="pending-reboot",
             ),
             aws.rds.ParameterGroupParameterArgs(
                 name="effective_cache_size",
                 value="{DBInstanceClassMemory/2048}",  # 50% of RAM
+                apply_method="pending-reboot",
             ),
             # Write-ahead log
             aws.rds.ParameterGroupParameterArgs(
                 name="wal_buffers",
                 value="16384",  # 16MB
+                apply_method="pending-reboot",
             ),
             # Query tuning
             aws.rds.ParameterGroupParameterArgs(
                 name="random_page_cost",
                 value="1.1",  # For SSD storage
+                apply_method="pending-reboot",
             ),
             # Logging
             aws.rds.ParameterGroupParameterArgs(
                 name="log_min_duration_statement",
                 value="1000",  # Log queries > 1s
+                apply_method="pending-reboot",
             ),
             aws.rds.ParameterGroupParameterArgs(
                 name="log_connections",
                 value="1",
+                apply_method="pending-reboot",
             ),
             aws.rds.ParameterGroupParameterArgs(
                 name="log_disconnections",
                 value="1",
+                apply_method="pending-reboot",
             ),
         ],
         tags={
