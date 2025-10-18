@@ -118,7 +118,6 @@ def _create_alb_alarms(
     # High 5xx error rate
     aws.cloudwatch.MetricAlarm(
         f"{name}-alb-5xx-high",
-        alarm_name=f"{name}-alb-5xx-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="HTTPCode_Target_5XX_Count",
@@ -136,7 +135,7 @@ def _create_alb_alarms(
     # Target unhealthy
     aws.cloudwatch.MetricAlarm(
         f"{name}-target-unhealthy",
-        alarm_name=f"{name}-target-unhealthy",
+        # alarm_name parameter deprecated in provider v7
         comparison_operator="LessThanThreshold",
         evaluation_periods=2,
         metric_name="HealthyHostCount",
@@ -155,7 +154,7 @@ def _create_alb_alarms(
     # High response time
     aws.cloudwatch.MetricAlarm(
         f"{name}-response-time-high",
-        alarm_name=f"{name}-response-time-high",
+        # alarm_name parameter deprecated in provider v7
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="TargetResponseTime",
