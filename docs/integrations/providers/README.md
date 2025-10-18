@@ -1,8 +1,6 @@
-# 🔗 Provider Setup Guide
+# Provider Setup Guide
 
-Complete setup guide for configuring cloud and SaaS providers with Cerebro.
-
-## 🔧 AWS Setup
+## AWS
 
 ### Prerequisites
 - AWS account with programmatic access
@@ -78,7 +76,7 @@ cerebro query "SELECT instance_id, state FROM aws_ec2_instance LIMIT 5"
 make cli-collect ORG="Test Org" PROVIDER=aws
 ```
 
-## 🐙 GitHub Setup
+## GitHub
 
 ### Prerequisites
 - GitHub organization or personal account
@@ -150,7 +148,7 @@ curl -X POST http://localhost:8000/api/v1/accounts \
   }'
 ```
 
-## ☁️ Google Cloud Platform Setup
+## Google Cloud Platform
 
 ### Prerequisites
 - GCP project with billing enabled

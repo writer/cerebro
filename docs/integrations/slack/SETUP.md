@@ -1,32 +1,4 @@
-# Slack Integration Guide
-
-Complete guide for setting up and using Slack notifications in Cerebro.
-
----
-
-## 📋 Table of Contents
-
-1. [Overview](#overview)
-2. [Features](#features)
-3. [Setup](#setup)
-4. [Configuration](#configuration)
-5. [API Reference](#api-reference)
-6. [Message Formats](#message-formats)
-7. [Monitoring](#monitoring)
-8. [Troubleshooting](#troubleshooting)
-
----
-
-## Overview
-
-Cerebro's Slack integration enables real-time security notifications directly to your Slack workspace. Security findings, compliance failures, and monitoring alerts are automatically formatted and delivered to configured channels.
-
-**Key Benefits:**
-- **Real-time alerts** - Instant notification of security events
-- **Rich formatting** - Color-coded Block Kit messages with context
-- **Flexible filtering** - Control which events trigger notifications
-- **Reliable delivery** - Automatic retry with exponential backoff
-- **Audit trail** - Complete log of all notifications sent
+This guide documents the supported Slack webhook workflow. It is intended for operators configuring notifications and for developers maintaining the integration.
 
 ---
 
@@ -39,28 +11,12 @@ Cerebro's Slack integration enables real-time security notifications directly to
 3. **Compliance Failed** - Failed compliance control tests
 4. **Monitoring Alert** - Proactive monitoring alerts
 
-### 🎨 Message Formatting
+### Formatting and Delivery Behavior
 
-Messages use Slack Block Kit for rich, interactive notifications:
-
-- **Color coding** by severity (critical=red, high=orange, medium=yellow, low=blue)
-- **Structured fields** (Organization, Severity, Status, Timestamps)
-- **Contextual information** (Resource IDs, Principal IDs, Descriptions)
-- **Readable timestamps** (Slack-native date formatting)
-
-### 🔍 Filtering Capabilities
-
-- **Severity filtering** - Only receive critical/high severity alerts
-- **Event type filtering** - Choose which event types to monitor
-- **Finding type filtering** - Filter by specific finding categories (future)
-- **Per-webhook configuration** - Different channels for different alert types
-
-### 🔄 Reliability Features
-
-- **Exponential backoff retry** - Automatic retry on failures (default: 3 attempts)
-- **Timeout handling** - Configurable HTTP timeouts (default: 10s)
-- **Error logging** - Detailed error messages for troubleshooting
-- **Status tracking** - Track delivery status (sent, failed, retrying)
+- Slack payloads are rendered with Block Kit using severity-specific colors.
+- Severity filters and event filters are enforced per webhook configuration.
+- Delivery uses exponential backoff (three attempts by default) with a 10s timeout.
+- Notification status, retries, and error details are written to `slack_notifications`.
 
 ---
 
