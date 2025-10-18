@@ -114,6 +114,9 @@ redis_stack = cache.create_elasticache_redis(
     at_rest_encryption_enabled=True,
     transit_encryption_enabled=True,
     kms_key_id=kms_key.arn,
+    parameter_group_name=config.get("redisParameterGroupName"),
+    subnet_group_name=config.get("redisSubnetGroupName"),
+    existing_replication_group_id=config.get("redisReplicationGroupId"),
 )
 
 # Create Application Load Balancer

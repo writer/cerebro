@@ -29,6 +29,10 @@ def create_elasticache_redis(
     snapshot_retention_limit: int = 5,
     snapshot_window: str = "03:00-05:00",
     maintenance_window: str = "sun:05:00-sun:07:00",
+    parameter_group_name: str | None = None,
+    subnet_group_name: str | None = None,
+    existing_replication_group_id: str | None = None,
+    protect_existing: bool = True,
 ) -> dict:
     """
     Create ElastiCache Redis cluster with replication.
@@ -66,18 +70,31 @@ def create_elasticache_redis(
         ).result
 
     # Create cache subnet group
+    subnet_group_opts = None
+    effective_subnet_group_name = subnet_group_name or f"{name}-redis-subnet-group"
+    if subnet_group_name:
+        subnet_group_opts = pulumi.ResourceOptions(import_=subnet_group_name, protect=protect_existing)
+
     subnet_group = aws.elasticache.SubnetGroup(
         f"{name}-redis-subnet-group",
+        name=effective_subnet_group_name,
         subnet_ids=subnet_ids,
         description=f"Subnet group for {name} Redis cluster",
         tags={
             "Name": f"{name}-redis-subnet-group",
         },
+        opts=subnet_group_opts,
     )
 
     # Create parameter group for Redis 7.x
+    parameter_group_opts = None
+    effective_parameter_group_name = parameter_group_name or f"{name}-redis-params"
+    if parameter_group_name:
+        parameter_group_opts = pulumi.ResourceOptions(import_=parameter_group_name, protect=protect_existing)
+
     parameter_group = aws.elasticache.ParameterGroup(
         f"{name}-redis-params",
+        name=effective_parameter_group_name,
         family="redis7",
         description=f"Parameter group for {name} Redis",
         parameters=[
@@ -117,7 +134,7 @@ def create_elasticache_redis(
 
     # Create replication group (cluster)
     replication_group_kwargs = {
-        "replication_group_id": name,
+        "replication_group_id": existing_replication_group_id or name,
         "description": f"Redis cluster for {name}",
         "engine": "redis",
         "engine_version": redis_version,
@@ -143,7 +160,7 @@ def create_elasticache_redis(
     }
 
     # Add auth token if transit encryption is enabled
-    if transit_encryption_enabled and auth_token:
+    if transit_encryption_enabled and auth_token and not existing_replication_group_id:
         def _sanitize(token: str) -> str:
             # ElastiCache AUTH token allows alphanumeric and these symbols: !#$%&()*+,-.:;<=>?@[]^_{|}~
             allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,-.:;<=>?@[]^_{|}~")
@@ -174,8 +191,13 @@ def create_elasticache_redis(
         ),
     ]
 
+    replication_group_opts = None
+    if existing_replication_group_id:
+        replication_group_opts = pulumi.ResourceOptions(import_=existing_replication_group_id, protect=protect_existing)
+
     replication_group = aws.elasticache.ReplicationGroup(
         f"{name}-redis",
+        opts=replication_group_opts,
         **replication_group_kwargs,
     )
 
