@@ -31,6 +31,9 @@ def create_rds_postgres(
     kms_key_id: pulumi.Output[str] = None,
     performance_insights_enabled: bool = True,
     deletion_protection: bool = True,
+    existing_db_instance_id: str | None = None,
+    existing_parameter_group_id: str | None = None,
+    existing_subnet_group_id: str | None = None,
 ) -> dict:
     """
     Create RDS PostgreSQL database with production settings.
@@ -68,6 +71,25 @@ def create_rds_postgres(
             special=True,
             override_special="!#$%&*()-_=+[]{}<>:?",
         ).result
+
+    if existing_db_instance_id:
+        db_instance = aws.rds.Instance.get(f"{name}-db", existing_db_instance_id)
+        parameter_group = aws.rds.ParameterGroup.get(
+            f"{name}-db-params",
+            existing_parameter_group_id,
+        ) if existing_parameter_group_id else None
+        subnet_group = aws.rds.SubnetGroup.get(
+            f"{name}-db-subnet-group",
+            existing_subnet_group_id,
+        ) if existing_subnet_group_id else None
+
+        return {
+            "db_instance": db_instance,
+            "parameter_group": parameter_group,
+            "subnet_group": subnet_group,
+            "endpoint": db_instance.endpoint,
+            "identifier": db_instance.identifier,
+        }
 
     # Create DB subnet group
     subnet_group = aws.rds.SubnetGroup(
