@@ -85,35 +85,29 @@ def create_elasticache_redis(
             aws.elasticache.ParameterGroupParameterArgs(
                 name="maxmemory-policy",
                 value="allkeys-lru",  # Evict least recently used keys
-                apply_method="pending-reboot",
             ),
             # Persistence (AOF for durability)
             aws.elasticache.ParameterGroupParameterArgs(
                 name="appendonly",
                 value="yes",
-                apply_method="pending-reboot",
             ),
             aws.elasticache.ParameterGroupParameterArgs(
                 name="appendfsync",
                 value="everysec",
-                apply_method="pending-reboot",
             ),
             # Connection timeout
             aws.elasticache.ParameterGroupParameterArgs(
                 name="timeout",
                 value="300",  # 5 minutes
-                apply_method="pending-reboot",
             ),
             # Slow log
             aws.elasticache.ParameterGroupParameterArgs(
                 name="slowlog-log-slower-than",
                 value="10000",  # 10ms
-                apply_method="pending-reboot",
             ),
             aws.elasticache.ParameterGroupParameterArgs(
                 name="slowlog-max-len",
                 value="128",
-                apply_method="pending-reboot",
             ),
         ],
         tags={
