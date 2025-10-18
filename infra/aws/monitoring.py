@@ -70,11 +70,12 @@ def create_monitoring(
     )
 
     # ECS Alarms
-    for service_name in ecs_service_names:
+    for idx, service_name in enumerate(ecs_service_names):
         _create_ecs_alarms(
             name=name,
             cluster_name=ecs_cluster_name,
             service_name=service_name,
+            index=idx,
             alarm_actions=[alarm_topic.arn] if alarm_email else [],
         )
 
@@ -174,14 +175,16 @@ def _create_ecs_alarms(
     name: str,
     cluster_name: pulumi.Output[str],
     service_name: pulumi.Output[str],
+    index: int,
     alarm_actions: list[str],
 ):
     """Create CloudWatch alarms for ECS service."""
+    resource_base = _build_ecs_alarm_resource_name(name, index)
+
     # High CPU utilization
     cpu_alarm_name = pulumi.Output.concat(name, "-", service_name, "-cpu-high")
-    cpu_resource_name = pulumi.Output.concat(name, "-ecs-cpu-", service_name)
     aws.cloudwatch.MetricAlarm(
-        cpu_resource_name.apply(lambda n: n.replace('/', '-')),
+        f"{resource_base}-cpu",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="CPUUtilization",
@@ -199,9 +202,8 @@ def _create_ecs_alarms(
 
     # High memory utilization
     memory_alarm_name = pulumi.Output.concat(name, "-", service_name, "-memory-high")
-    memory_resource_name = pulumi.Output.concat(name, "-ecs-memory-", service_name)
     aws.cloudwatch.MetricAlarm(
-        memory_resource_name.apply(lambda n: n.replace('/', '-')),
+        f"{resource_base}-memory",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="MemoryUtilization",
@@ -216,6 +218,13 @@ def _create_ecs_alarms(
             "ServiceName": service_name,
         },
     )
+
+
+def _build_ecs_alarm_resource_name(prefix: str, index: int) -> str:
+    if index < 0:
+        raise ValueError("index must be non-negative")
+    safe_prefix = prefix.replace("/", "-")
+    return f"{safe_prefix}-ecs-{index}"
 
 
 def _create_rds_alarms(
