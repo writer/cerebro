@@ -20,7 +20,7 @@ def create_rds_postgres(
     instance_class: str = "db.r6g.large",
     allocated_storage: int = 100,
     max_allocated_storage: int = 1000,
-    engine_version: str = "15.4",
+    engine_version: str = "17.6",
     database_name: str = "cerebro",
     master_username: str = "cerebro",
     master_password: pulumi.Output[str] = None,
