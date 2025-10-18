@@ -180,7 +180,6 @@ def _create_ecs_alarms(
     # High CPU utilization
     aws.cloudwatch.MetricAlarm(
         f"{name}-ecs-cpu-high",
-        alarm_name=pulumi.Output.concat(name, "-", service_name, "-cpu-high"),
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="CPUUtilization",
@@ -199,7 +198,6 @@ def _create_ecs_alarms(
     # High memory utilization
     aws.cloudwatch.MetricAlarm(
         f"{name}-ecs-memory-high",
-        alarm_name=pulumi.Output.concat(name, "-", service_name, "-memory-high"),
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="MemoryUtilization",
@@ -225,7 +223,6 @@ def _create_rds_alarms(
     # High CPU
     aws.cloudwatch.MetricAlarm(
         f"{name}-rds-cpu-high",
-        alarm_name=f"{name}-rds-cpu-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="CPUUtilization",
@@ -243,7 +240,6 @@ def _create_rds_alarms(
     # Low storage space
     aws.cloudwatch.MetricAlarm(
         f"{name}-rds-storage-low",
-        alarm_name=f"{name}-rds-storage-low",
         comparison_operator="LessThanThreshold",
         evaluation_periods=1,
         metric_name="FreeStorageSpace",
@@ -261,7 +257,6 @@ def _create_rds_alarms(
     # High connection count
     aws.cloudwatch.MetricAlarm(
         f"{name}-rds-connections-high",
-        alarm_name=f"{name}-rds-connections-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="DatabaseConnections",
@@ -286,7 +281,6 @@ def _create_redis_alarms(
     # High CPU
     aws.cloudwatch.MetricAlarm(
         f"{name}-redis-cpu-high",
-        alarm_name=f"{name}-redis-cpu-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="CPUUtilization",
@@ -304,7 +298,6 @@ def _create_redis_alarms(
     # High memory usage
     aws.cloudwatch.MetricAlarm(
         f"{name}-redis-memory-high",
-        alarm_name=f"{name}-redis-memory-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="DatabaseMemoryUsagePercentage",
@@ -322,7 +315,6 @@ def _create_redis_alarms(
     # High evictions
     aws.cloudwatch.MetricAlarm(
         f"{name}-redis-evictions-high",
-        alarm_name=f"{name}-redis-evictions-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="Evictions",
