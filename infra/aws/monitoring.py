@@ -178,8 +178,9 @@ def _create_ecs_alarms(
 ):
     """Create CloudWatch alarms for ECS service."""
     # High CPU utilization
+    cpu_alarm_name = pulumi.Output.concat(name, "-", service_name, "-cpu-high")
     aws.cloudwatch.MetricAlarm(
-        pulumi.Output.concat(name, "-", service_name, "-cpu-high"),
+        f"{name}-ecs-cpu-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="CPUUtilization",
@@ -196,8 +197,9 @@ def _create_ecs_alarms(
     )
 
     # High memory utilization
+    memory_alarm_name = pulumi.Output.concat(name, "-", service_name, "-memory-high")
     aws.cloudwatch.MetricAlarm(
-        pulumi.Output.concat(name, "-", service_name, "-memory-high"),
+        f"{name}-ecs-memory-high",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="MemoryUtilization",
