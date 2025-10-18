@@ -71,7 +71,10 @@ def create_elasticache_redis(
         ).result
 
     # Create cache subnet group
+    subnet_group_opts = None
+    subnet_group_name_output: pulumi.Output[str]
     if subnet_group_name:
+        subnet_group_opts = pulumi.ResourceOptions(import_=subnet_group_name, protect=True)
         subnet_group_name_output = pulumi.Output.from_input(subnet_group_name)
     else:
         subnet_group_name_output = pulumi.Output.from_input(f"{name}-redis-subnet-group")
@@ -84,9 +87,14 @@ def create_elasticache_redis(
         tags={
             "Name": f"{name}-redis-subnet-group",
         },
+        opts=subnet_group_opts,
     )
 
     # Create parameter group for Redis 7.x
+    parameter_group_opts = None
+    if parameter_group_name:
+        parameter_group_opts = pulumi.ResourceOptions(import_=parameter_group_name, protect=True)
+
     parameter_group = aws.elasticache.ParameterGroup(
         f"{name}-redis-params",
         name=parameter_group_name or f"{name}-redis-params",
@@ -125,6 +133,7 @@ def create_elasticache_redis(
         tags={
             "Name": f"{name}-redis-params",
         },
+        opts=parameter_group_opts,
     )
 
     # Create replication group (cluster)
@@ -186,8 +195,13 @@ def create_elasticache_redis(
         ),
     ]
 
+    replication_group_opts = None
+    if existing_replication_group_id:
+        replication_group_opts = pulumi.ResourceOptions(import_=existing_replication_group_id, protect=True)
+
     replication_group = aws.elasticache.ReplicationGroup(
         f"{name}-redis",
+        opts=replication_group_opts,
         **replication_group_kwargs,
     )
 
