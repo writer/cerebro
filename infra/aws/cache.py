@@ -29,9 +29,9 @@ def create_elasticache_redis(
     snapshot_retention_limit: int = 5,
     snapshot_window: str = "03:00-05:00",
     maintenance_window: str = "sun:05:00-sun:07:00",
-    parameter_group_name: str | None = None,
-    subnet_group_name: str | None = None,
-    existing_replication_group_id: str | None = None,
+    parameter_group_name: Optional[str] = None,
+    subnet_group_name: Optional[str] = None,
+    existing_replication_group_id: Optional[str] = None,
     protect_existing: bool = True,
 ) -> dict:
     """
