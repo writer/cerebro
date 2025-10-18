@@ -34,7 +34,6 @@ def create_elasticache_redis(
     parameter_group_name: Optional[str] = None,
     subnet_group_name: Optional[str] = None,
     existing_replication_group_id: Optional[str] = None,
-    protect_existing: bool = True,
 ) -> dict:
     """
     Create ElastiCache Redis cluster with replication.
@@ -72,31 +71,25 @@ def create_elasticache_redis(
         ).result
 
     # Create cache subnet group
-    subnet_group_opts = None
-    effective_subnet_group_name = subnet_group_name or f"{name}-redis-subnet-group"
     if subnet_group_name:
-        subnet_group_opts = pulumi.ResourceOptions(import_=subnet_group_name, protect=protect_existing)
+        subnet_group_name_output = pulumi.Output.from_input(subnet_group_name)
+    else:
+        subnet_group_name_output = pulumi.Output.from_input(f"{name}-redis-subnet-group")
 
     subnet_group = aws.elasticache.SubnetGroup(
         f"{name}-redis-subnet-group",
-        name=effective_subnet_group_name,
         subnet_ids=subnet_ids,
+        name=subnet_group_name_output,
         description=f"Subnet group for {name} Redis cluster",
         tags={
             "Name": f"{name}-redis-subnet-group",
         },
-        opts=subnet_group_opts,
     )
 
     # Create parameter group for Redis 7.x
-    parameter_group_opts = None
-    effective_parameter_group_name = parameter_group_name or f"{name}-redis-params"
-    if parameter_group_name:
-        parameter_group_opts = pulumi.ResourceOptions(import_=parameter_group_name, protect=protect_existing)
-
     parameter_group = aws.elasticache.ParameterGroup(
         f"{name}-redis-params",
-        name=effective_parameter_group_name,
+        name=parameter_group_name or f"{name}-redis-params",
         family="redis7",
         description=f"Parameter group for {name} Redis",
         parameters=[
@@ -193,13 +186,8 @@ def create_elasticache_redis(
         ),
     ]
 
-    replication_group_opts = None
-    if existing_replication_group_id:
-        replication_group_opts = pulumi.ResourceOptions(import_=existing_replication_group_id, protect=protect_existing)
-
     replication_group = aws.elasticache.ReplicationGroup(
         f"{name}-redis",
-        opts=replication_group_opts,
         **replication_group_kwargs,
     )
 
