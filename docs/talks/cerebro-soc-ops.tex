@@ -1,0 +1,167 @@
+\documentclass[aspectratio=169]{beamer}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\title{Cerebro Field Notes}
+\subtitle{How Security Operations Really Runs It}
+\author{Security Operations Engineering}
+\date{Internal Brownbag}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Why Cerebro Matters to SecOps}
+  \begin{itemize}
+    \item Single security system of record: agents, API, CLI share one audited brain.
+    \item Append-only telemetry with graph + SQL means instant forensic replay.
+    \item Pluggable agents on Claude/OpenAI give analysts real-time automation without breaking trust.
+  \end{itemize}
+\end{frame}
+
+\section{Daily Ops Flow}
+
+\begin{frame}{Morning Intake Ritual}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      \begin{itemize}
+    \item 08:30 UTC: \texttt{make dev} spins up review UI + API locally for triage.
+    \item Analysts create agent session via CLI or UI targeting orgs-on-call.
+    \item \texttt{findings\_list} tool runs with scoped CEL policies; results logged in audit trail.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.4\textwidth}
+      \begin{block}{Key Insight}
+        Agents pull from the same Postgres tables as our dashboards. No swivel chair.
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Triage Playbook in Practice}
+  \begin{lstlisting}[language=Python]
+session = runtime.create_session(
+    org_id=org_on_call,
+    agent_type="SECURITY_ANALYST",
+    context={"provider_scope": ["aws", "github"]},
+    title="Daily Findings Sweep"
+)
+
+for finding in high_severity:
+    runtime.send_message(session,
+        f"Summarize {finding.id} and map controls")
+  \end{lstlisting}
+  \begin{itemize}
+    \item Session context locks provider scope; CEL policies enforce least privilege.
+    \item Results land in \texttt{agent\_messages} + \texttt{agent\_audit\_events} for full traceability.
+  \end{itemize}
+\end{frame}
+
+\section{Telemetry + Collection}
+
+\begin{frame}{Collection Service Workflow}
+  \begin{itemize}
+    \item Collection orchestrator coordinates provider ports, identity stitching, notifications.
+    \item Config collector bulk-upserts resources/principals, hashes configs, logs metrics.
+    \item Identity stitcher clusters principals across SaaS; ties into IAM investigations.
+  \end{itemize}
+  \begin{block}{SOC Use}
+    Analysts trigger background jobs for new accounts; monitor via `/collectors/tasks/{id}`.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Query Engine as SecOps Workbench}
+  \begin{itemize}
+    \item Zero-ETL SQL engine registers provider tables; run ad-hoc hunts with `cerebro query`.
+    \item SOC dashboards call `/api/v1/query/execute` for real-time posture slices.
+    \item Evidence bundles pull SQL outputs into WORM storage for incident packages.
+  \end{itemize}
+\end{frame}
+
+\section{Incident Response}
+
+\begin{frame}{Agent-Assisted IR Loop}
+  \begin{itemize}
+    \item Incident responder agent seeds session with incident ID + finding IDs.
+    \item Tools used: \texttt{timeline}, \texttt{forensic\_replay}, \texttt{attack\_path\_simulator}.
+    \item Audit logs show tool invocations, approvals, and Celery job IDs.
+  \end{itemize}
+  \begin{block}{Operational Benefit}
+    Reconstruct timeline with consistent data model shared by CLI/API/agents.
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Evidence Capture Pipeline}
+  \begin{lstlisting}[language=Python]
+bundle = WORMEvidenceBundle(
+    bundle_id=incident_id,
+    created_by=oncall_engineer,
+    organization_id=org_id,
+)
+
+bundle.add_sql_query_evidence(
+    query="SELECT * FROM aws_iam_user WHERE mfa_enabled=false",
+    results=query_rows,
+    collector="agent:timeline")
+bundle.seal(private_kms_key)
+  \end{lstlisting}
+  \begin{itemize}
+    \item Evidence bundles signed + timestamped; entries logged to transparency ledger.
+    \item SOC stores bundle IDs in incident tickets for auditor-ready packages.
+  \end{itemize}
+\end{frame}
+
+\section{Compliance + Ops Convergence}
+
+\begin{frame}{Control Testing Cadence}
+  \begin{itemize}
+    \item Control tests run via CEL, SQL, manual evidence; results feed compliance dashboards.
+    \item SOC reviews failed controls weekly; integrates with remediation queue.
+    \item Policy attestations tracked alongside technical findings for unified reporting.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{SOC Automation Priorities}
+  \begin{itemize}
+    \item Auto-context loading for agents (org/system context) to reduce analyst prompting.
+    \item Session memory persistence to carry findings between daily sweeps.
+    \item Proactive agents watching for new critical findings and kicking off review tasks.
+  \end{itemize}
+\end{frame}
+
+\section{Operating the Platform}
+
+\begin{frame}{Runbooks + Guardrails}
+  \begin{itemize}
+    \item ToolExecutor enforces dry-run by default; destructive actions route to review queue.
+    \item CEL policies encode provider scopes, approval requirements, incident states.
+    \item Limiter (SlowAPI) caps API abuse; Prometheus metrics exported via `/metrics`.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Deployment Footprint}
+  \begin{itemize}
+    \item API + agents share ECS services; agent metrics optional via feature flag.
+    \item Celery worker health exposed at `/health/celery`; used by on-call dashboards.
+    \item Tectonic-built decks archived in `docs/talks` for knowledge sharing.
+  \end{itemize}
+\end{frame}
+
+\section{Closing}
+
+\begin{frame}{What SecOps Needs Next}
+  \begin{itemize}
+    \item Prioritize knowledge base system to avoid repetitive context loads.
+    \item Productize proactive monitoring agent to catch misconfigs before humans do.
+    \item Tighten feedback loop: capture analyst corrections, feed back into tools + policies.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Q\&A}
+  \centering
+  Contact: soc-engineering@writer.com
+\end{frame}
+
+\end{document}
