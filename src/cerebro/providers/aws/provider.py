@@ -1,4 +1,9 @@
-"""AWS provider implementation."""
+"""AWS provider implementation.
+
+The :class:`AWSProvider` wraps ``boto3`` clients to expose AWS resource and IAM
+state in the collector contract.  It currently focuses on S3, EC2, and IAM data
+required for risk analyses.
+"""
 
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from datetime import datetime
@@ -18,10 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 class AWSProvider(BaseProvider):
-    """AWS provider for collecting resources, users, and permissions."""
+    """Collect AWS resources, principals, and IAM edges via ``boto3``."""
     
     def __init__(self, account_id, aws_account_id: str, region: Optional[str] = None, **kwargs):
-        """Initialize AWS provider."""
+        """Create an AWS provider bound to a specific account and region."""
         super().__init__(account_id, **kwargs)
         self.aws_account_id = aws_account_id
         self.region = region or settings.aws_default_region
@@ -33,7 +38,7 @@ class AWSProvider(BaseProvider):
         return "aws"
     
     async def authenticate(self) -> bool:
-        """Authenticate with AWS."""
+        """Authenticate with AWS and verify the expected account id."""
         try:
             loop = asyncio.get_event_loop()
             

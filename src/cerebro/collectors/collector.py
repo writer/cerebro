@@ -1,4 +1,12 @@
-"""Configuration collector implementation."""
+"""Configuration collector implementation.
+
+This module contains the machinery that coordinates data ingestion from
+third‑party providers.  It defines :class:`CollectionResult`, a structured
+summary describing what was collected for an account, and
+:class:`ConfigCollector`, which orchestrates the step‑by‑step harvesting of
+resources, principals, configuration snapshots, and IAM edges using provider
+SDKs and the bulk database helpers.
+"""
 
 import asyncio
 import hashlib
@@ -25,7 +33,31 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CollectionResult:
-    """Result of a collection run."""
+    """Aggregate statistics produced during a collection run.
+
+    The collector updates this structure as each phase completes so callers can
+    surface helpful diagnostics (for example in API responses, telemetry
+    counters, or administrator dashboards).
+
+    Attributes
+    ----------
+    account_id:
+        Primary key of the account that was processed.
+    provider:
+        Canonical provider identifier (``"github"``, ``"aws"`` …).
+    resources_discovered:
+        Number of resources upserted during the run.
+    principals_discovered:
+        Number of principals (users, groups, roles) upserted during the run.
+    config_snapshots:
+        Count of unique configuration snapshots stored.
+    iam_edges:
+        Number of IAM edges persisted after deduplication.
+    errors:
+        List collecting human‑readable error messages encountered mid‑flight.
+    duration_seconds:
+        Total wall clock duration of the run.
+    """
     account_id: UUID
     provider: str
     resources_discovered: int = 0
@@ -41,10 +73,26 @@ class CollectionResult:
 
 
 class ConfigCollector:
-    """Collects configuration and IAM data from providers."""
+    """Collect resources, principals, configurations, and IAM edges for an account.
+
+    The collector delegates to a :class:`~cerebro.providers.base.BaseProvider`
+    implementation for provider‑specific API access, then normalises and stores
+    the results using :class:`~cerebro.core.bulk_operations.BulkOperations`.
+    Each public method returns a :class:`CollectionResult` detailing what was
+    discovered so callers can attach rich telemetry or API responses.
+    """
     
     def __init__(self, db_session: AsyncSession):
-        """Initialize collector."""
+        """Initialise the collector with a database session.
+
+        Parameters
+        ----------
+        db_session:
+            Async SQLAlchemy session used for both reads and writes during a
+            collection run.  The session is expected to be scoped per request so
+            that the collector may safely commit or roll back without impacting
+            other work.
+        """
         self.db = db_session
         self.bulk_ops = BulkOperations(db_session)
         
@@ -54,7 +102,27 @@ class ConfigCollector:
         account: Account,
         resource_types: Optional[List[str]] = None
     ) -> CollectionResult:
-        """Collect all data for an account."""
+        """Collect all supported artefacts for an account.
+
+        Parameters
+        ----------
+        provider:
+            Provider implementation used to fetch source data.  The caller is
+            responsible for instantiating it with whatever credentials are
+            required.
+        account:
+            Account model instance that identifies which records to update.
+        resource_types:
+            Optional allow‑list limiting the set of resource types to collect
+            (useful for incremental syncs).
+
+        Returns
+        -------
+        CollectionResult
+            Summarised statistics for the run including any errors that were
+            encountered.  Errors are logged and recorded but do not raise unless
+            the failure prevents continued processing.
+        """
         start_time = datetime.utcnow()
         result = CollectionResult(
             account_id=account.account_id,
@@ -104,7 +172,13 @@ class ConfigCollector:
         resource_types: Optional[List[str]],
         result: CollectionResult
     ) -> None:
-        """Collect resources from provider using bulk operations."""
+        """Collect and upsert resources exposed by the provider.
+
+        This stage first requests an iterator from the provider, then uses the
+        bulk upsert helper to persist batches, updating the ``result`` counters
+        along the way.  Any provider errors are trapped so the collector can
+        proceed with subsequent phases.
+        """
         try:
             # Collect all resources first
             resources = []
@@ -137,7 +211,12 @@ class ConfigCollector:
         account: Account,
         result: CollectionResult
     ) -> None:
-        """Collect principals from provider using bulk operations."""
+        """Collect and upsert principals associated with the account.
+
+        Principals include human users, service accounts, groups, and roles. The
+        provider is responsible for flagging the type; the collector simply
+        normalises and writes the records.
+        """
         try:
             # Collect all principals first
             principals = []
@@ -171,7 +250,7 @@ class ConfigCollector:
         account: Account,
         result: CollectionResult
     ) -> None:
-        """Collect resource configurations with concurrent processing."""
+        """Collect per‑resource configuration snapshots with bounded concurrency."""
         with collection_metrics.time_collection(
             provider.name, str(account.account_id), "configurations"
         ):
@@ -254,7 +333,7 @@ class ConfigCollector:
         provider: BaseProvider,
         resource: Resource
     ) -> Optional[Dict[str, Any]]:
-        """Fetch configuration for a single resource with concurrency control."""
+        """Fetch configuration for a single resource respecting the concurrency cap."""
         async with semaphore:
             try:
                 with collection_metrics.time_provider_api(provider.name, "get_config"):
@@ -283,7 +362,7 @@ class ConfigCollector:
         account: Account,
         result: CollectionResult
     ) -> None:
-        """Collect IAM permissions with batch processing and preloaded maps."""
+        """Collect IAM edges, ensuring principals/resources are preloaded for fast lookups."""
         with collection_metrics.time_collection(
             provider.name, str(account.account_id), "iam_edges"
         ):

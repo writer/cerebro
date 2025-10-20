@@ -1,3 +1,5 @@
+"""Unit tests covering the :mod:`cerebro.collectors.collector` module."""
+
 from __future__ import annotations
 
 from datetime import datetime

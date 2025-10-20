@@ -1,3 +1,5 @@
+"""Unit tests for the :mod:`cerebro.providers.aws.provider` adapter."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

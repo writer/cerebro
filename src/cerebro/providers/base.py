@@ -1,4 +1,11 @@
-"""Base provider class and common interfaces."""
+"""Base provider class and common interfaces.
+
+Provider adapters implement this contract to surface resources, principals, and
+permissions in a way that the collector understands.  The support structures
+defined here smooth out cross‑provider behaviour: dataclasses describe the
+entities we persist, while helpers such as :func:`authenticated_method` and
+``AuthenticationMixin`` ensure consistent authentication flow.
+"""
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, AsyncGenerator
@@ -13,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def authenticated_method(func):
-    """Decorator to ensure the provider is authenticated before calling a method."""
+    """Decorator ensuring the provider is authenticated before executing a method."""
     @wraps(func)
     async def wrapper(self, *args, **kwargs):
         if not self._is_authenticated:
@@ -130,7 +137,7 @@ class IamPermission:
 
 
 class BaseProvider(AuthenticationMixin, ABC):
-    """Base class for all providers."""
+    """Base class for concrete provider implementations."""
 
     def __init__(self, account_id: UUID, **kwargs):
         """Initialize provider."""

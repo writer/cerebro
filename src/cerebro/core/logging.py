@@ -11,7 +11,14 @@ _configured = False
 
 
 def configure_structlog(level: Optional[int] = None) -> None:
-    """Configure structlog for application-wide logging."""
+    """Configure structlog for application-wide logging.
+
+    Parameters
+    ----------
+    level:
+        Optional logging level override.  When omitted the value from
+        :mod:`cerebro.core.config.settings` is used.
+    """
 
     global _configured
     if _configured:

@@ -1,4 +1,11 @@
-"""GitHub provider implementation."""
+"""GitHub provider implementation.
+
+The :class:`GitHubProvider` adapts the `PyGithub`_ library to the
+``BaseProvider`` contract, allowing the collector to ingest repositories,
+members, teams, and associated configuration data from GitHub organisations.
+
+.. _PyGithub: https://pygithub.readthedocs.io/
+"""
 
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from datetime import datetime
@@ -21,10 +28,10 @@ logger = logging.getLogger(__name__)
 
 
 class GitHubProvider(BaseProvider):
-    """GitHub provider for collecting repositories, users, and permissions."""
+    """Collect repositories, principals, and IAM edges from GitHub."""
     
     def __init__(self, account_id, org_name: str, **kwargs):
-        """Initialize GitHub provider."""
+        """Instantiate a provider for a specific GitHub organisation."""
         super().__init__(account_id, **kwargs)
         self.org_name = org_name
         self._github: Optional[Github] = None
@@ -36,7 +43,7 @@ class GitHubProvider(BaseProvider):
         return "github"
     
     async def authenticate(self) -> bool:
-        """Authenticate with GitHub."""
+        """Authenticate with GitHub and prime org context."""
         try:
             if not settings.github_token:
                 raise ProviderError("GitHub token not configured")

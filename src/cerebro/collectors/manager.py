@@ -1,4 +1,10 @@
-"""Collector manager for orchestrating collection runs."""
+"""Collector manager for orchestrating collection runs.
+
+The manager coordinates high‑level collection workflows.  Whereas
+``ConfigCollector`` handles the per‑account ingestion flow, this module decides
+*which* accounts to process for an organisation, instantiates the appropriate
+provider implementations, and aggregates the results for API consumers.
+"""
 
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -16,10 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class CollectorManager:
-    """Manages collection runs across multiple accounts and providers."""
+    """Entry point for initiating collection runs across providers and accounts."""
     
     def __init__(self, db_session: AsyncSession):
-        """Initialize collector manager."""
+        """Create a manager bound to a database session."""
         self.db = db_session
         self.collector = ConfigCollector(db_session)
     
@@ -29,7 +35,24 @@ class CollectorManager:
         providers: Optional[List[str]] = None,
         resource_types: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Collect data for all accounts in an organization."""
+        """Collect data for every account belonging to an organisation.
+
+        Parameters
+        ----------
+        org_id:
+            Organisation identifier whose accounts should be processed.
+        providers:
+            Optional allow‑list of provider identifiers; if supplied only matching
+            accounts are collected.
+        resource_types:
+            Optional allow‑list of resource types to forward to the collector.
+
+        Returns
+        -------
+        dict
+            A JSON‑serialisable payload mirroring the :class:`CollectionResult`
+            structure for consumers of the REST API.
+        """
         start_time = datetime.utcnow()
         
         # Get organization
@@ -98,7 +121,7 @@ class CollectorManager:
         return await self.collector.collect_account(provider, account, resource_types)
     
     def _create_provider(self, account: Account):
-        """Create provider instance for account."""
+        """Instantiate the correct provider implementation for an account."""
         if account.provider == "github":
             return GitHubProvider(
                 account_id=account.account_id,
@@ -128,7 +151,7 @@ class CollectorManager:
         providers: Optional[List[str]] = None,
         interval_hours: int = 24
     ) -> str:
-        """Schedule periodic collection using Celery beat."""
+        """Register a scheduled Celery beat task for recurring collection."""
         from cerebro.tasks.collection_tasks import collect_organization_task
         from celery.schedules import crontab
         

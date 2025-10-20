@@ -32,18 +32,22 @@ class Settings(BaseSettings):
     
     # GitHub Integration
     github_token: Optional[str] = Field(
-        default=None, description="GitHub personal access token"
+        default=None,
+        description="GitHub personal access token used by the GitHub provider",
     )
     
     # AWS Integration
     aws_access_key_id: Optional[str] = Field(
-        default=None, description="AWS access key ID"
+        default=None,
+        description="AWS access key ID used for collection workloads",
     )
     aws_secret_access_key: Optional[str] = Field(
-        default=None, description="AWS secret access key"
+        default=None,
+        description="AWS secret access key paired with ``aws_access_key_id``",
     )
     aws_default_region: str = Field(
-        default="us-east-1", description="Default AWS region"
+        default="us-east-1",
+        description="Fallback AWS region when an account does not specify one",
     )
     
     # Google Cloud Integration

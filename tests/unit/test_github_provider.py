@@ -1,3 +1,5 @@
+"""Unit tests for the :mod:`cerebro.providers.github.provider` adapter."""
+
 from __future__ import annotations
 
 import asyncio
