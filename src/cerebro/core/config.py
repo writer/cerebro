@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     google_workspace_customer_id: Optional[str] = Field(
         default=None, description="Google Workspace customer ID"
     )
+
+    # Collection tuning
+    collection_concurrency_limit: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of concurrent resource configuration fetches per provider",
+    )
     
     # Okta Integration
     okta_api_token: Optional[str] = Field(
