@@ -128,3 +128,30 @@ async def test_config_collector_records_errors_on_insert_failure(
 
     assert result.config_snapshots == 0
     assert any("Failed to collect configurations" in err for err in result.errors)
+
+
+@pytest.mark.asyncio
+async def test_config_collector_records_fetch_errors(
+    test_db,
+    test_github_account,
+    test_resource,
+):
+    collector = ConfigCollector(test_db)
+
+    collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value={"processed": 0})
+    collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value={"processed": 0})
+    collector.bulk_ops.bulk_insert_config_snapshots = AsyncMock(return_value=0)
+    collector.bulk_ops.preload_principal_map = AsyncMock(return_value={})
+    collector.bulk_ops.preload_resource_map = AsyncMock(return_value={})
+    collector.bulk_ops.bulk_insert_iam_edges = AsyncMock(return_value=0)
+
+    provider = StubProvider(
+        test_github_account.account_id,
+        config_map={test_resource.external_id: {}},
+        raise_on_config=True,
+    )
+
+    result = await collector.collect_account(provider, test_github_account)
+
+    assert result.config_snapshots == 0
+    assert any("Failed to collect config" in err for err in result.errors)
