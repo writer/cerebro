@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.pool import StaticPool
 
 from cerebro.core.database import Base, get_db
-from cerebro.core.models import Organization, Account
+from cerebro.core.models import Organization, Account, Principal, Resource, Rule, Policy
 from cerebro.core.user_models import User
 from cerebro.core.user_service import UserService, pwd_context
 from fastapi.testclient import TestClient
@@ -121,6 +121,15 @@ async def test_aws_account(test_db: AsyncSession, test_org: Organization) -> Acc
 
 
 @pytest.fixture
+async def test_policy(test_db: AsyncSession, test_org: Organization) -> Policy:
+    policy = Policy(org_id=test_org.org_id, name="Default Policy")
+    test_db.add(policy)
+    await test_db.commit()
+    await test_db.refresh(policy)
+    return policy
+
+
+@pytest.fixture
 async def test_user(test_db: AsyncSession) -> User:
     """Create test user."""
     user_service = UserService(test_db)
@@ -160,6 +169,56 @@ async def test_admin_user(test_db: AsyncSession) -> User:
     admin.org_id = await test_db.scalar(select(Organization.org_id).limit(1))
     await test_db.commit()
     return admin
+
+
+@pytest.fixture
+async def test_principal(test_db: AsyncSession, test_github_account: Account) -> Principal:
+    principal = Principal(
+        account_id=test_github_account.account_id,
+        provider="github",
+        principal_type="user",
+        external_id="user-1",
+        email="user@example.com",
+        display_name="User 1",
+        is_human=True,
+    )
+    test_db.add(principal)
+    await test_db.commit()
+    await test_db.refresh(principal)
+    return principal
+
+
+@pytest.fixture
+async def test_resource(test_db: AsyncSession, test_github_account: Account) -> Resource:
+    resource = Resource(
+        account_id=test_github_account.account_id,
+        provider="github",
+        resource_type="repo",
+        external_id="repo-1",
+        name="Repo 1",
+    )
+    test_db.add(resource)
+    await test_db.commit()
+    await test_db.refresh(resource)
+    return resource
+
+
+@pytest.fixture
+async def test_rule(test_db: AsyncSession, test_policy: Policy) -> Rule:
+    rule = Rule(
+        policy_id=test_policy.policy_id,
+        name="Fixture Rule",
+        description="Ensures repo is private",
+        provider=["github"],
+        resource_types=["repo"],
+        expression_lang="cel",
+        expression="resource.visibility == 'private'",
+        severity="medium",
+    )
+    test_db.add(rule)
+    await test_db.commit()
+    await test_db.refresh(rule)
+    return rule
 
 
 @pytest.fixture

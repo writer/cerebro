@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Optional
 
 from cerebro.core.config import settings
+from cerebro.core.logging import configure_structlog
 
 _logger = logging.getLogger(__name__)
 _telemetry_configured = False
@@ -13,6 +14,8 @@ _telemetry_configured = False
 
 def configure_agent_observability() -> None:
     """Configure telemetry exporters if enabled in settings."""
+
+    configure_structlog()
 
     if not settings.enable_agent_telemetry:
         return

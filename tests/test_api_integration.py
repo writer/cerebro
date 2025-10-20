@@ -198,31 +198,18 @@ class TestEndToEndFlow:
 
 class TestDatabaseMigrations:
     """Test that all migrations work correctly."""
-    
+
     @pytest.mark.asyncio
-    async def test_migration_compatibility(self):
-        """Test that all migrations can be applied successfully."""
-        # This would test migration compatibility
-        # In a real environment, this would:
-        # 1. Start with clean database
-        # 2. Apply all migrations
-        # 3. Verify schema is correct
-        # 4. Test data operations
-        
-        # For now, just verify migration files exist
-        import os
-        migrations_dir = "/Users/jonathanhaas/Downloads/cerebro/migrations/versions"
-        
-        migration_files = [
-            "001_initial_schema.py",
-            "002_add_user_management.py", 
-            "003_add_identity_clusters.py",
-            "004_add_envelope_encryption.py",
-            "005_add_provider_credentials_table.py",
-            "006_add_user_lockout_fields.py",
-            "007_add_jwt_signing_keys.py"
-        ]
-        
-        for migration_file in migration_files:
-            file_path = os.path.join(migrations_dir, migration_file)
-            assert os.path.exists(file_path), f"Migration file missing: {migration_file}"
+    async def test_migration_compatibility(self, tmp_path):
+        """Ensure Alembic can apply migrations against a fresh database."""
+        from alembic import command
+        from alembic.config import Config
+
+        database_path = tmp_path / "cerebro_migrations.db"
+        database_url = f"sqlite+pysqlite:///{database_path}"
+
+        alembic_cfg = Config()
+        alembic_cfg.set_main_option("script_location", "migrations")
+        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+
+        command.upgrade(alembic_cfg, "head")
