@@ -19,7 +19,10 @@ export function Sidebar() {
       <div className="flex h-16 items-center border-b border-zinc-900 px-6">
         <span className="text-lg font-semibold text-zinc-100">Cerebro Ops Console</span>
       </div>
-      <nav className="flex-1 space-y-1 px-4 py-6">
+      <nav
+        className="flex-1 space-y-1 px-4 py-6"
+        aria-label="Agent console navigation"
+      >
         {NAV_ITEMS.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
@@ -27,11 +30,12 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "block rounded-md px-3 py-2 text-sm font-medium transition",
+                "block rounded-md px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-100/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950",
                 active
                   ? "bg-zinc-900 text-white"
                   : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
               )}
+              aria-current={active ? "page" : undefined}
             >
               {item.label}
             </Link>

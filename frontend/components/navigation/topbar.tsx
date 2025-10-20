@@ -19,8 +19,10 @@ export function TopBar() {
       </div>
       <button
         type="button"
-        className="inline-flex h-9 items-center rounded-md border border-zinc-800 px-3 text-xs font-medium text-zinc-300 transition hover:bg-zinc-900"
+        className="inline-flex h-9 items-center rounded-md border border-zinc-800 px-3 text-xs font-medium text-zinc-300 transition hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-100/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
         onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+        aria-live="polite"
+        aria-pressed={theme === "dark"}
       >
         {mounted ? (theme === "light" ? "Switch to dark" : "Switch to light") : "Toggle theme"}
       </button>
