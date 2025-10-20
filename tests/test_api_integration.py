@@ -7,21 +7,6 @@ import json
 
 from cerebro.api.main import app
 from cerebro.core.user_service import UserService
-from cerebro.core.database import get_db
-from contextlib import contextmanager
-
-
-@contextmanager
-def override_database_dependency(test_db):
-    """Context manager to override database dependency for tests."""
-    async def get_test_db():
-        yield test_db
-
-    app.dependency_overrides[get_db] = get_test_db
-    try:
-        yield
-    finally:
-        app.dependency_overrides.clear()
 
 
 class TestAPIAuthentication:
@@ -42,91 +27,86 @@ class TestAPIAuthentication:
             response = client.get(endpoint)
             assert response.status_code in [401, 403, 422], f"Endpoint {endpoint} should require auth"
     
-    def test_authenticated_requests_allowed(self, client, test_token, test_db):
+    def test_authenticated_requests_allowed(self, client, test_token):
         """Test that authenticated requests with proper scopes are allowed."""
         headers = {"Authorization": f"Bearer {test_token}"}
 
-        with override_database_dependency(test_db):
-            # Test endpoints that should work with read scopes
-            read_endpoints = [
-                "/api/v1/organizations/",
-                "/api/v1/resources/",
-                "/api/v1/principals/"
-            ]
+        # Test endpoints that should work with read scopes
+        read_endpoints = [
+            "/api/v1/organizations/",
+            "/api/v1/resources/",
+            "/api/v1/principals/"
+        ]
 
-            for endpoint in read_endpoints:
-                response = client.get(endpoint, headers=headers)
-                # Should not be 401/403 (may be other errors due to mocked DB)
-                assert response.status_code not in [401, 403]
+        for endpoint in read_endpoints:
+            response = client.get(endpoint, headers=headers)
+            # Should not be 401/403 (may be other errors due to mocked DB)
+            assert response.status_code not in [401, 403]
     
-    def test_scope_based_authorization(self, client, test_token, admin_token, test_db):
+    def test_scope_based_authorization(self, client, test_token, admin_token):
         """Test scope-based authorization."""
         user_headers = {"Authorization": f"Bearer {test_token}"}
         admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-        with override_database_dependency(test_db):
-            # Regular user should not be able to create organizations
-            response = client.post(
-                "/api/v1/organizations/",
-                json={"name": "Test Org"},
-                headers=user_headers
-            )
-            assert response.status_code == 403  # Insufficient permissions
+        # Regular user should not be able to create organizations
+        response = client.post(
+            "/api/v1/organizations/",
+            json={"name": "Test Org"},
+            headers=user_headers
+        )
+        assert response.status_code == 403  # Insufficient permissions
 
-            # Admin should be able to create organizations
-            response = client.post(
-                "/api/v1/organizations/",
-                json={"name": "Test Org"},
-                headers=admin_headers
-            )
-            assert response.status_code != 403  # Should not be forbidden
+        # Admin should be able to create organizations
+        response = client.post(
+            "/api/v1/organizations/",
+            json={"name": "Test Org"},
+            headers=admin_headers
+        )
+        assert response.status_code != 403  # Should not be forbidden
 
 
 class TestJWKSEndpointIntegration:
     """Test JWKS endpoint integration."""
 
-    def test_jwks_endpoint_accessible(self, client, test_db):
+    def test_jwks_endpoint_accessible(self, client):
         """Test JWKS endpoint is accessible without authentication."""
-        with override_database_dependency(test_db):
-            response = client.get("/.well-known/jwks.json")
+        response = client.get("/.well-known/jwks.json")
 
-            # JWKS endpoint should be publicly accessible
-            assert response.status_code == 200
+        # JWKS endpoint should be publicly accessible
+        assert response.status_code == 200
 
-            # Verify content type
-            assert "application/json" in response.headers.get("content-type", "")
+        # Verify content type
+        assert "application/json" in response.headers.get("content-type", "")
 
-    def test_openid_configuration_endpoint(self, client, test_db):
+    def test_openid_configuration_endpoint(self, client):
         """Test OpenID Connect discovery endpoint."""
-        with override_database_dependency(test_db):
-            response = client.get("/.well-known/openid_configuration")
+        response = client.get("/.well-known/openid_configuration")
 
-            assert response.status_code == 200
+        assert response.status_code == 200
 
-            config = response.json()
-            assert "issuer" in config
-            assert "jwks_uri" in config
-            assert config["issuer"] == "cerebro.sor"
+        config = response.json()
+        assert "issuer" in config
+        assert "jwks_uri" in config
+        assert config["issuer"] == "cerebro.sor"
 
 
 class TestQueryEndpointSecurity:
     """Test query endpoint security with new scope requirements."""
     
-    def test_query_execution_requires_scope(self, client, test_token, test_db):
+    def test_query_execution_requires_scope(self, client, test_token):
         """Test that query execution requires proper scope."""
         headers = {"Authorization": f"Bearer {test_token}"}
 
-        with override_database_dependency(test_db):
-            # Should require query:execute scope
-            response = client.post(
-                "/api/v1/query/execute",
-                json={"sql": "SELECT 1"},
-                headers=headers
-            )
+        # Should require query:execute scope
+        response = client.post(
+            "/api/v1/query/execute",
+            json={"sql": "SELECT 1"},
+            headers=headers
+        )
 
-            # Should fail if user doesn't have query:execute scope
-            # (test_user only has read:findings, read:rules)
-            assert response.status_code == 403
+        # Should fail if user doesn't have query:execute scope
+        # (test_user only has read:findings, read:rules)
+        assert response.status_code == 403
 
 
 class TestErrorHandling:
@@ -165,22 +145,20 @@ class TestErrorHandling:
 class TestCORSandSecurityHeaders:
     """Test CORS and security headers."""
 
-    def test_security_headers_present(self, client, test_db):
+    def test_security_headers_present(self, client):
         """Test that appropriate security headers are present."""
-        with override_database_dependency(test_db):
-            response = client.get("/.well-known/jwks.json")
+        response = client.get("/.well-known/jwks.json")
 
-            # Check for caching headers on JWKS
-            assert "Cache-Control" in response.headers
+        # Check for caching headers on JWKS
+        assert "Cache-Control" in response.headers
 
-    def test_cors_configuration(self, client, test_db):
+    def test_cors_configuration(self, client):
         """Test CORS configuration is appropriate."""
-        with override_database_dependency(test_db):
-            # Test CORS preflight request
-            response = client.options("/api/v1/organizations/")
+        # Test CORS preflight request
+        response = client.options("/api/v1/organizations/")
 
-            # Should handle OPTIONS requests appropriately
-            assert response.status_code in [200, 405]  # Either allowed or method not allowed
+        # Should handle OPTIONS requests appropriately
+        assert response.status_code in [200, 405]  # Either allowed or method not allowed
 
 
 class TestEndToEndFlow:

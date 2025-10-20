@@ -11,10 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from cerebro.core.database import Base
+from cerebro.core.database import Base, get_db
 from cerebro.core.models import Organization, Account
 from cerebro.core.user_models import User
-from cerebro.core.user_service import UserService
+from cerebro.core.user_service import UserService, pwd_context
 from fastapi.testclient import TestClient
 from cerebro.api.main import app
 from cerebro.core.security.key_store import JWTKeyStore
@@ -26,6 +26,9 @@ from cerebro.metrics.jwt_metrics import jwt_metrics
 def setup_test_environment():
     """Setup test environment variables."""
     os.environ['ENVIRONMENT'] = 'test'
+    pwd_context.update(schemes=["pbkdf2_sha256"], deprecated="auto")
+    os.environ.setdefault("ENABLE_AGENT_TELEMETRY", "true")
+    os.environ.setdefault("AGENT_OTEL_ENDPOINT", "http://localhost:4318/v1/traces")
     yield
     # Cleanup after tests
     os.environ.pop('ENVIRONMENT', None)
@@ -63,9 +66,18 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest.fixture
-def client():
-    """Create test client."""
-    return TestClient(app)
+def client(test_db: AsyncSession):
+    """Create test client with in-memory database override."""
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield test_db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
@@ -120,6 +132,8 @@ async def test_user(test_db: AsyncSession) -> User:
         password="testpass123",
         scopes=["read:findings", "read:rules"]
     )
+    user.org_id = await test_db.scalar(select(Organization.org_id).limit(1))
+    await test_db.commit()
     return user
 
 
@@ -141,8 +155,10 @@ async def test_admin_user(test_db: AsyncSession) -> User:
     admin = await user_service.create_admin_user(
         username="testadmin",
         email="admin@example.com",
-        password="testadmin123456"  # Longer password for production requirements
+        password="admin-test-pass"
     )
+    admin.org_id = await test_db.scalar(select(Organization.org_id).limit(1))
+    await test_db.commit()
     return admin
 
 

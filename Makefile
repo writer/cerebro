@@ -86,6 +86,15 @@ lint: ## Run linting checks
 .PHONY: check
 check: format lint test ## Run all quality checks
 
+.PHONY: telemetry-dev
+telemetry-dev: ## Run API with OTLP exporter configured for development
+	env \
+		ENABLE_AGENT_TELEMETRY=true \
+		AGENT_OTEL_ENDPOINT=$${AGENT_OTEL_ENDPOINT:-http://localhost:4318/v1/traces} \
+		AGENT_OTEL_HEADERS=$${AGENT_OTEL_HEADERS:-} \
+		AGENT_OTEL_TIMEOUT_SECONDS=$${AGENT_OTEL_TIMEOUT_SECONDS:-5} \
+	$(UV) run uvicorn cerebro.api.main:app --reload --host 0.0.0.0 --port 8000
+
 # CLI Commands
 .PHONY: cli-org-create
 cli-org-create: ## Create organization (make cli-org-create NAME="Company")
