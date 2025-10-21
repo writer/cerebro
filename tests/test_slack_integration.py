@@ -151,13 +151,24 @@ class TestSlackNotificationService:
         """Test successful notification delivery on first try."""
         service = SlackNotificationService()
 
+        async def fake_get_webhook_url():
+            return "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX"
+
         # Mock HTTP client
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = "ok"
 
-        with patch.object(service.client, "post", return_value=mock_response) as mock_post:
+        async def fake_post(url: str, **kwargs):
+            return mock_response
+
+        async def fake_commit():
+            return None
+
+        with patch.object(sample_webhook, "get_webhook_url", side_effect=fake_get_webhook_url), patch.object(service, "client") as mock_client:
+            mock_client.post = AsyncMock(side_effect=fake_post)
             mock_db = AsyncMock()
+            mock_db.commit = AsyncMock(side_effect=fake_commit)
 
             await service._send_with_retry(
                 webhook=sample_webhook,
@@ -169,7 +180,7 @@ class TestSlackNotificationService:
             )
 
             # Verify HTTP post was called once
-            assert mock_post.call_count == 1
+            assert mock_client.post.await_count == 1
 
             # Verify notification was logged as sent
             assert mock_db.add.called
@@ -188,8 +199,19 @@ class TestSlackNotificationService:
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
 
-        with patch.object(service.client, "post", return_value=mock_response) as mock_post:
+        async def fake_post(url: str, **kwargs):
+            return mock_response
+
+        async def fake_commit():
+            return None
+
+        async def fake_get_webhook_url():
+            return "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX"
+
+        with patch.object(sample_webhook, "get_webhook_url", side_effect=fake_get_webhook_url), patch.object(service, "client") as mock_client:
+            mock_client.post = AsyncMock(side_effect=fake_post)
             mock_db = AsyncMock()
+            mock_db.commit = AsyncMock(side_effect=fake_commit)
 
             await service._send_with_retry(
                 webhook=sample_webhook,
@@ -201,7 +223,7 @@ class TestSlackNotificationService:
             )
 
             # Verify retries (initial + 2 retries = 3 total)
-            assert mock_post.call_count == 3
+            assert mock_client.post.await_count == 3
 
             # Verify notification was logged as failed
             assert mock_db.add.called

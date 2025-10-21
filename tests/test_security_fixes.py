@@ -246,21 +246,21 @@ class TestAPIAuthentication:
     async def test_unauthenticated_access_denied(self):
         """Test that unauthenticated requests are denied."""
         from cerebro.api.main import app
-        
-        with TestClient(app) as client:
-            # Test various endpoints without authentication
+        import httpx
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             endpoints_to_test = [
                 "/api/v1/organizations/",
-                "/api/v1/accounts/", 
+                "/api/v1/accounts/",
                 "/api/v1/resources/",
                 "/api/v1/principals/",
                 "/api/v1/findings/",
-                "/api/v1/rules/"
+                "/api/v1/rules/",
             ]
-            
+
             for endpoint in endpoints_to_test:
-                response = client.get(endpoint)
-                # Should return 401 or 403 (depending on FastAPI config)
+                response = await client.get(endpoint)
                 assert response.status_code in [401, 403, 422], f"Endpoint {endpoint} should require auth"
 
 

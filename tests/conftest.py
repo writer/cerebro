@@ -15,7 +15,7 @@ from cerebro.core.database import Base, get_db
 from cerebro.core.models import Organization, Account, Principal, Resource, Rule, Policy
 from cerebro.core.user_models import User
 from cerebro.core.user_service import UserService, pwd_context
-from fastapi.testclient import TestClient
+import httpx
 from cerebro.api.main import app
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.core.security.jwt import JWTService
@@ -74,10 +74,37 @@ def client(test_db: AsyncSession):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
-        yield test_client
+    transport = httpx.ASGITransport(app=app)
 
-    app.dependency_overrides.pop(get_db, None)
+    async def _request(method: str, url: str, **kwargs):
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.request(method, url, **kwargs)
+            return response
+
+    class _ClientProxy:
+        def __init__(self):
+            self._transport = transport
+
+        def request(self, method: str, url: str, **kwargs):
+            return asyncio.get_event_loop().run_until_complete(_request(method, url, **kwargs))
+
+        def get(self, url: str, **kwargs):
+            return self.request("GET", url, **kwargs)
+
+        def post(self, url: str, **kwargs):
+            return self.request("POST", url, **kwargs)
+
+        def put(self, url: str, **kwargs):
+            return self.request("PUT", url, **kwargs)
+
+        def delete(self, url: str, **kwargs):
+            return self.request("DELETE", url, **kwargs)
+
+    try:
+        yield _ClientProxy()
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
 
 
 @pytest.fixture
