@@ -269,7 +269,7 @@ class Settings(BaseSettings):
         description="Number of days to retain agent runtime analytics events",
     )
     self_play_enabled: bool = Field(
-        default=True,
+        default=False,
         description="Enable agent self-play orchestration",
     )
     self_play_max_turns: int = Field(

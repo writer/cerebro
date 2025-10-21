@@ -27,27 +27,55 @@ celery_kwargs = {
 
 celery_app = Celery("cerebro", **{k: v for k, v in celery_kwargs.items() if v is not None})
 
+task_routes = {
+    'cerebro.tasks.collection_tasks.collect_account_task': {'queue': 'collection'},
+    'cerebro.tasks.collection_tasks.collect_organization_task': {'queue': 'collection'},
+    'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
+    'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
+    'process_email_digests': {'queue': 'notifications'},
+}
+
+task_queues = [
+    Queue('collection', routing_key='collection'),
+    Queue('findings', routing_key='findings'),
+    Queue('maintenance', routing_key='maintenance'),
+    Queue('notifications', routing_key='notifications'),
+    Queue('default', routing_key='default'),
+]
+
+beat_schedule = {
+    'cleanup-old-snapshots': {
+        'task': 'cerebro.tasks.maintenance_tasks.cleanup_old_snapshots_task',
+        'schedule': 86400.0,  # Daily
+        'kwargs': {'days_old': 90}
+    },
+    'vacuum-analyze-tables': {
+        'task': 'cerebro.tasks.maintenance_tasks.vacuum_analyze_task',
+        'schedule': 3600.0,  # Hourly
+    },
+    'process-email-digests-daily': {
+        'task': 'process_email_digests',
+        'schedule': crontab(hour=8, minute=0),  # Daily at 8 AM UTC
+    },
+}
+
+if settings and getattr(settings, "self_play_enabled", False):
+    task_routes['cerebro.tasks.self_play_tasks.run_self_play_batch'] = {'queue': 'self_play'}
+    task_queues.append(Queue('self_play', routing_key='self_play'))
+    beat_schedule['self-play-hourly'] = {
+        'task': 'cerebro.tasks.self_play_tasks.run_self_play_batch',
+        'schedule': 3600.0,
+    }
+else:
+    logger.info("Self-play orchestration disabled; queue and beat schedule not registered")
+
 # Celery configuration
 celery_app.conf.update(
     # Task routing
-    task_routes={
-        'cerebro.tasks.collection_tasks.collect_account_task': {'queue': 'collection'},
-        'cerebro.tasks.collection_tasks.collect_organization_task': {'queue': 'collection'},
-        'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
-        'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
-        'cerebro.tasks.self_play_tasks.run_self_play_batch': {'queue': 'self_play'},
-        'process_email_digests': {'queue': 'notifications'},
-    },
+    task_routes=task_routes,
 
     # Queue definitions
-    task_queues=(
-        Queue('collection', routing_key='collection'),
-        Queue('findings', routing_key='findings'),
-        Queue('maintenance', routing_key='maintenance'),
-        Queue('notifications', routing_key='notifications'),
-        Queue('self_play', routing_key='self_play'),
-        Queue('default', routing_key='default'),
-    ),
+    task_queues=tuple(task_queues),
     
     # Task execution settings
     task_serializer='json',
@@ -78,25 +106,7 @@ celery_app.conf.update(
 )
 
 # Beat schedule (periodic tasks)
-celery_app.conf.beat_schedule = {
-    'cleanup-old-snapshots': {
-        'task': 'cerebro.tasks.maintenance_tasks.cleanup_old_snapshots_task',
-        'schedule': 86400.0,  # Daily
-        'kwargs': {'days_old': 90}
-    },
-    'vacuum-analyze-tables': {
-        'task': 'cerebro.tasks.maintenance_tasks.vacuum_analyze_task',
-        'schedule': 3600.0,  # Hourly
-    },
-    'process-email-digests-daily': {
-        'task': 'process_email_digests',
-        'schedule': crontab(hour=8, minute=0),  # Daily at 8 AM UTC
-    },
-    'self-play-hourly': {
-        'task': 'cerebro.tasks.self_play_tasks.run_self_play_batch',
-        'schedule': 3600.0,
-    },
-}
+celery_app.conf.beat_schedule = beat_schedule
 
 if settings:
     logger.info("Celery app configured")
