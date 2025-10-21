@@ -3,7 +3,7 @@
 import logging
 import os
 import secrets
-from typing import Optional, List, Dict
+from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -307,6 +307,10 @@ class Settings(BaseSettings):
     self_play_stream_responses: bool = Field(
         default=True,
         description="Stream agent responses during self-play to capture transcript data",
+    )
+    self_play_static_scenarios: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Optional static scenario definitions for self-play runs",
     )
     agent_session_timeout_hours: int = Field(
         default=24, description="Agent session timeout in hours"

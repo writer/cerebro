@@ -206,3 +206,41 @@ async def test_run_match_respects_tool_call_limit() -> None:
     assert result.tool_calls == 1
     assert result.fail_reason == "max_tool_calls"
     assert result.turns == 1
+
+
+@pytest.mark.asyncio
+async def test_run_match_respects_disabled_flag() -> None:
+    _AnalyticsStub.reset()
+
+    class _DisabledConfig(_SettingsStub):
+        self_play_enabled = False
+
+    class _FailingRuntime:
+        async def create_session(self, *args, **kwargs):
+            raise AssertionError(
+                "create_session should not be called when disabled"
+            )
+
+    scenario = SelfPlayScenario(
+        id="disabled",
+        org_id=uuid4(),
+        challenger_prompt="Start",
+        responder_prompt="Respond",
+        max_turns=2,
+        max_tool_calls=2,
+        challenger_agent_type=AgentType.SECURITY_ANALYST,
+        responder_agent_type=AgentType.SECURITY_ANALYST,
+    )
+
+    orchestrator = SelfPlayOrchestrator(
+        runtime_facade=_FailingRuntime(),
+        analytics=_AnalyticsStub,
+        config=_DisabledConfig(),
+    )
+
+    result = await orchestrator.run_match(scenario)
+
+    assert result.success is False
+    assert result.fail_reason == "self_play_disabled"
+    assert result.turns == 0
+    assert not _AnalyticsStub.events

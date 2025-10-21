@@ -37,6 +37,7 @@ class TranscriptEntry:
     created_at: datetime
     token_usage: Dict[str, Any] = field(default_factory=dict)
     raw_response: Dict[str, Any] = field(default_factory=dict)
+    duration_ms: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload = asdict(self)
@@ -82,6 +83,7 @@ class TurnOutcome:
     raw_message: Optional[Dict[str, Any]] = None
     stop_signal: Optional[str] = None
     success_hint: Optional[bool] = None
+    duration_ms: Optional[float] = None
 
 
 @dataclass(slots=True)

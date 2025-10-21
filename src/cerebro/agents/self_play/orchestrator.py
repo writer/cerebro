@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import datetime, timezone
+from time import monotonic
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -178,6 +179,7 @@ class SelfPlayOrchestrator:
                     created_at=datetime.now(timezone.utc),
                     token_usage=dict(outcome.token_usage),
                     raw_response=outcome.raw_message or {},
+                    duration_ms=outcome.duration_ms,
                 )
             )
 
@@ -213,6 +215,7 @@ class SelfPlayOrchestrator:
 
         ended_at = datetime.now(timezone.utc)
         indicated_success = bool(success_hint)
+        total_duration_ms = (ended_at - started_at).total_seconds() * 1000.0
         result = await self._finalize_match(
             match_id=match_id,
             scenario=scenario,
@@ -224,6 +227,7 @@ class SelfPlayOrchestrator:
             stop_reason=stop_reason,
             transcript=transcript,
             indicated_success=indicated_success,
+            total_duration_ms=total_duration_ms,
         )
 
         self._logger.info(
@@ -293,6 +297,7 @@ class SelfPlayOrchestrator:
 
         streamed_text: List[str] = []
         streamed_tools: List[Dict[str, Any]] = []
+        turn_started = monotonic()
 
         async for chunk in self._runtime_facade.send_message(
             session=session,
@@ -316,6 +321,7 @@ class SelfPlayOrchestrator:
             streamed_tools=streamed_tools,
             response_message=latest_response,
         )
+        outcome.duration_ms = (monotonic() - turn_started) * 1000.0
 
         await self._record_event(
             session,
@@ -327,6 +333,7 @@ class SelfPlayOrchestrator:
                 "turn_index": turn_index + 1,
                 "tool_calls": outcome.tool_call_count,
                 "token_usage": outcome.token_usage,
+                "duration_ms": outcome.duration_ms,
             },
         )
 
@@ -513,6 +520,7 @@ class SelfPlayOrchestrator:
         stop_reason: Optional[str],
         transcript: List[TranscriptEntry],
         indicated_success: bool,
+        total_duration_ms: float,
     ) -> SelfPlayResult:
         result = SelfPlayResult(
             match_id=match_id,
@@ -529,6 +537,7 @@ class SelfPlayOrchestrator:
             metadata={
                 "stop_reason": stop_reason,
                 "scenario_metadata": scenario.metadata or {},
+                "total_duration_ms": total_duration_ms,
             },
         )
 

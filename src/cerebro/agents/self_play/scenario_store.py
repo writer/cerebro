@@ -1,8 +1,8 @@
-"""Temporary scenario store feeding self-play orchestrator batches."""
+"""Scenario store feeding self-play orchestrator batches."""
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, Dict, List
 from uuid import UUID
 
 import structlog
@@ -35,18 +35,61 @@ async def _resolve_default_org_id() -> UUID | None:
         return result.scalar_one_or_none()
 
 
-async def load_scenarios(batch_size: int) -> List[SelfPlayScenario]:
-    """Return a batch of scenarios ready for self-play execution."""
+def _parse_agent_type(value: Any, fallback: AgentType) -> AgentType:
+    if value is None:
+        return fallback
+    if isinstance(value, AgentType):  # pragma: no branch - fast path
+        return value
+    try:
+        return AgentType(str(value))
+    except ValueError as exc:  # pragma: no cover - defensive guard
+        raise ValueError(f"invalid agent type: {value}") from exc
 
-    org_id = await _resolve_default_org_id()
-    if org_id is None:
-        logger.warning(
-            "self_play.no_org",
-            message="No organization available for self-play",
+
+def _build_configured_scenario(
+    data: Dict[str, Any],
+    org_id: UUID,
+) -> SelfPlayScenario:
+    try:
+        scenario_id = data["id"]
+        challenger_prompt = data["challenger_prompt"]
+        responder_prompt = data["responder_prompt"]
+    except KeyError as exc:
+        raise ValueError(f"missing required field: {exc.args[0]}") from exc
+
+    max_turns = int(data.get("max_turns", settings.self_play_max_turns))
+    max_tool_calls = int(
+        data.get("max_tool_calls", settings.self_play_max_tool_calls)
+    )
+
+    challenger_type = _parse_agent_type(
+        data.get("challenger_agent_type"),
+        AgentType.SECURITY_ANALYST,
+    )
+    responder_type = None
+    if "responder_agent_type" in data:
+        responder_type = _parse_agent_type(
+            data.get("responder_agent_type"),
+            challenger_type,
         )
-        return []
 
-    scenario = SelfPlayScenario(
+    return SelfPlayScenario(
+        id=str(scenario_id),
+        org_id=org_id,
+        challenger_prompt=str(challenger_prompt),
+        responder_prompt=str(responder_prompt),
+        max_turns=max_turns,
+        max_tool_calls=max_tool_calls,
+        metadata=data.get("metadata"),
+        challenger_agent_type=challenger_type,
+        responder_agent_type=responder_type,
+        created_by=data.get("created_by", settings.self_play_created_by),
+        title=data.get("title"),
+    )
+
+
+def _default_scenario(org_id: UUID) -> SelfPlayScenario:
+    return SelfPlayScenario(
         id="baseline-discussion",
         org_id=org_id,
         challenger_prompt=(
@@ -73,4 +116,31 @@ async def load_scenarios(batch_size: int) -> List[SelfPlayScenario]:
         created_by=settings.self_play_created_by,
     )
 
-    return [scenario][: batch_size or 1]
+
+async def load_scenarios(batch_size: int) -> List[SelfPlayScenario]:
+    """Return a batch of scenarios ready for self-play execution."""
+
+    org_id = await _resolve_default_org_id()
+    if org_id is None:
+        logger.warning(
+            "self_play.no_org",
+            message="No organization available for self-play",
+        )
+        return []
+
+    configured: List[SelfPlayScenario] = []
+    for entry in getattr(settings, "self_play_static_scenarios", []) or []:
+        try:
+            configured.append(_build_configured_scenario(entry, org_id))
+        except ValueError as exc:
+            logger.warning(
+                "self_play.invalid_configured_scenario",
+                error=str(exc),
+                scenario=entry,
+            )
+
+    if not configured:
+        configured.append(_default_scenario(org_id))
+
+    limit = max(1, batch_size)
+    return configured[:limit]
