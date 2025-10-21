@@ -84,6 +84,19 @@ if _registry is not None:  # pragma: no branch
         registry=_registry,
         buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0),
     )
+    self_play_matches_total = Counter(
+        "cerebro_self_play_matches_total",
+        "Self-play matches executed",
+        ["result"],
+        registry=_registry,
+    )
+    self_play_turns = Histogram(
+        "cerebro_self_play_turns",
+        "Distribution of turns observed in self-play",
+        ["result"],
+        registry=_registry,
+        buckets=(1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20),
+    )
 else:  # pragma: no cover - fallback no-op placeholders
     runtime_duration = None  # type: ignore
     runtime_tokens = None  # type: ignore
@@ -93,6 +106,8 @@ else:  # pragma: no cover - fallback no-op placeholders
     tool_success = None  # type: ignore
     tool_failure = None  # type: ignore
     tool_duration = None  # type: ignore
+    self_play_matches_total = None  # type: ignore
+    self_play_turns = None  # type: ignore
 
 
 def record_runtime_metrics(
@@ -184,3 +199,17 @@ def get_registry() -> Optional[CollectorRegistry]:
     """Expose the agent metrics registry for exporters."""
 
     return _registry
+
+
+def record_self_play_match_metrics(success: bool, turns: int) -> None:
+    """Track aggregate self-play activity when metrics are enabled."""
+
+    if not settings.enable_agent_metrics:
+        return
+
+    if self_play_matches_total is None or self_play_turns is None:
+        return
+
+    result = "success" if success else "failure"
+    self_play_matches_total.labels(result=result).inc()
+    self_play_turns.labels(result=result).observe(turns)
