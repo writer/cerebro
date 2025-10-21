@@ -5,22 +5,26 @@ from celery.schedules import crontab
 from kombu import Queue
 import logging
 
-from cerebro.core.config import settings
+try:  # pragma: no cover - protect optional import during bootstrap
+    from cerebro.core.config import settings
+except Exception:  # pragma: no cover
+    settings = None
 
 logger = logging.getLogger(__name__)
 
 # Create Celery app
-celery_app = Celery(
-    "cerebro",
-    broker=settings.effective_celery_broker_url,
-    backend=settings.effective_celery_result_backend,
-    include=[
+celery_kwargs = {
+    "broker": settings.effective_celery_broker_url if settings else None,
+    "backend": settings.effective_celery_result_backend if settings else None,
+    "include": [
         'cerebro.tasks.collection_tasks',
         'cerebro.tasks.finding_tasks',
         'cerebro.tasks.maintenance_tasks',
         'cerebro.tasks.notification_digest'
-    ]
-)
+    ],
+}
+
+celery_app = Celery("cerebro", **{k: v for k, v in celery_kwargs.items() if v is not None})
 
 # Celery configuration
 celery_app.conf.update(
@@ -87,4 +91,7 @@ celery_app.conf.beat_schedule = {
     },
 }
 
-logger.info("Celery app configured")
+if settings:
+    logger.info("Celery app configured")
+else:  # pragma: no cover
+    logger.warning("Celery app configured with partial settings; verify configuration at runtime")

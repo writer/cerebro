@@ -9,12 +9,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Security
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from cerebro.core.database import get_db
+from cerebro.api.auth import require_scopes
 from cerebro.core.models import Finding, Organization, Account, Resource, Rule
 from cerebro.findings.manager import FindingManager
 
@@ -139,6 +140,7 @@ class DependencyGraph(BaseModel):
 async def receive_repository_telemetry(
     telemetry: RepositoryTelemetry,
     db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("ingest:telemetry")),
     authorization: Optional[str] = Header(None)
 ):
     """
@@ -217,6 +219,7 @@ async def receive_repository_telemetry(
 async def receive_runtime_telemetry(
     telemetry: RuntimeTelemetry,
     db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("ingest:telemetry")),
     authorization: Optional[str] = Header(None)
 ):
     """
@@ -292,6 +295,7 @@ async def receive_runtime_telemetry(
 async def receive_compliance_evidence(
     evidence: ComplianceEvidence,
     db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("ingest:telemetry")),
     authorization: Optional[str] = Header(None)
 ):
     """
@@ -341,6 +345,7 @@ async def receive_compliance_evidence(
 async def receive_dependency_graph(
     graph: DependencyGraph,
     db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("ingest:telemetry")),
     authorization: Optional[str] = Header(None)
 ):
     """

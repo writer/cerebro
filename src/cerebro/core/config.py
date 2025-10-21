@@ -1,16 +1,18 @@
 """Configuration management for Cerebro."""
 
+import logging
 import os
+import secrets
 from typing import Optional, List, Dict
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_DEV_SECRET = "CerebroDevSecret!0123456789$Dev"
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
     """Application settings."""
-    
+
     # Database
     database_url: str = Field(
         default="postgresql://user:password@localhost/cerebro",
@@ -19,8 +21,8 @@ class Settings(BaseSettings):
     
     # Security
     secret_key: str = Field(
-        default=DEFAULT_DEV_SECRET,
-        description="Secret key for JWT tokens - MUST be set in production"
+        default="",
+        description="Secret key for JWT tokens - MUST be set explicitly"
     )
     algorithm: str = Field(default="HS256", description="JWT algorithm")
     access_token_expire_minutes: int = Field(
@@ -68,7 +70,7 @@ class Settings(BaseSettings):
 
     # Collection tuning
     collection_concurrency_limit: int = Field(
-        default=10,
+        default=16,
         ge=1,
         le=50,
         description="Maximum number of concurrent resource configuration fetches per provider",
@@ -274,9 +276,6 @@ class Settings(BaseSettings):
     )
     
     # Collection Performance (Phase 1)
-    collection_concurrency_limit: int = Field(
-        default=16, description="Maximum concurrent config fetches per collection run"
-    )
     collection_batch_size: int = Field(
         default=500, description="Batch size for database operations during collection"
     )
@@ -440,29 +439,51 @@ class Settings(BaseSettings):
     
     @field_validator('secret_key')
     @classmethod
-    def validate_secret_key(cls, v):
-        """Validate that secret key is not default value."""
+    def validate_secret_key(cls, v: str | None) -> str:
+        """Validate that secret key is secure and generate one for dev/test if missing."""
         environment = os.getenv('ENVIRONMENT', 'development').lower()
+        is_dev_env = environment in {'dev', 'development', 'test', 'testing'}
 
-        if environment in ['dev', 'development', 'test', 'testing']:
-            return v
+        secret = (v or "").strip()
 
-        if not v or v == "your-secret-key-here" or len(v) < 32 or v == DEFAULT_DEV_SECRET:
+        if not secret:
+            if is_dev_env:
+                generated = secrets.token_urlsafe(48)
+                logger.warning(
+                    "Generated ephemeral SECRET_KEY for %s environment; set SECRET_KEY env var to keep sessions stable.",
+                    environment,
+                )
+                return generated
             raise ValueError(
                 "SECRET_KEY must be set to a secure value (minimum 32 characters) in production. "
                 "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
             )
 
-        has_lower = any(ch.islower() for ch in v)
-        has_digit = any(ch.isdigit() for ch in v)
-        has_special = any(not ch.isalnum() for ch in v)
+        if is_dev_env:
+            return secret
+
+        if secret == "your-secret-key-here":
+            raise ValueError(
+                "SECRET_KEY must be set to a secure value (minimum 32 characters). "
+                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
+        if len(secret) < 32:
+            raise ValueError(
+                "SECRET_KEY must be set to a secure value (minimum 32 characters). "
+                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
+        has_lower = any(ch.islower() for ch in secret)
+        has_digit = any(ch.isdigit() for ch in secret)
+        has_special = any(not ch.isalnum() for ch in secret)
 
         if not (has_lower and has_digit and has_special):
             raise ValueError(
                 "SECRET_KEY must contain at least one lowercase letter, one digit, "
-                "and one special character when running in production."
+                "and one special character."
             )
-        return v
+        return secret
 
     @field_validator('kms_provider')
     @classmethod

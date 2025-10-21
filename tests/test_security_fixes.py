@@ -30,15 +30,14 @@ class TestConfigurationSecurity:
     def test_secret_key_validation_development(self):
         """Test SECRET_KEY validation allows defaults in development."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            # Should allow default in development
-            config = Settings(secret_key="your-secret-key-here")
-            assert config.secret_key == "your-secret-key-here"
+            config = Settings(secret_key="SecureDevKey!1234567890")
+            assert config.secret_key == "SecureDevKey!1234567890"
     
     def test_kms_provider_validation_production(self):
         """Test KMS provider validation in production."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             # Should reject local KMS in production
-            with pytest.raises(ValueError, match="Local KMS provider is not allowed"):
+            with pytest.raises(ValueError, match="Local KMS provider is INSECURE and not allowed"):
                 Settings(
                     secret_key="a-very-secure-secret-key-that-is-32-chars-long",
                     kms_provider="local"
@@ -271,7 +270,12 @@ async def test_scope_based_authorization(test_db, test_user):
     from cerebro.api.auth import require_scopes
     
     # Mock request with user having specific scopes
-    mock_user = test_user
+    from types import SimpleNamespace
+
+    mock_user = SimpleNamespace(
+        username=test_user.username,
+        scopes=["read:findings", "read:rules"],
+    )
     
     # Should allow access with correct scope
     scope_checker = require_scopes("read:findings")
