@@ -20,7 +20,8 @@ celery_kwargs = {
         'cerebro.tasks.collection_tasks',
         'cerebro.tasks.finding_tasks',
         'cerebro.tasks.maintenance_tasks',
-        'cerebro.tasks.notification_digest'
+        'cerebro.tasks.notification_digest',
+        'cerebro.tasks.self_play_tasks'
     ],
 }
 
@@ -34,6 +35,7 @@ celery_app.conf.update(
         'cerebro.tasks.collection_tasks.collect_organization_task': {'queue': 'collection'},
         'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
         'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
+        'cerebro.tasks.self_play_tasks.run_self_play_batch': {'queue': 'self_play'},
         'process_email_digests': {'queue': 'notifications'},
     },
 
@@ -43,6 +45,7 @@ celery_app.conf.update(
         Queue('findings', routing_key='findings'),
         Queue('maintenance', routing_key='maintenance'),
         Queue('notifications', routing_key='notifications'),
+        Queue('self_play', routing_key='self_play'),
         Queue('default', routing_key='default'),
     ),
     
@@ -88,6 +91,10 @@ celery_app.conf.beat_schedule = {
     'process-email-digests-daily': {
         'task': 'process_email_digests',
         'schedule': crontab(hour=8, minute=0),  # Daily at 8 AM UTC
+    },
+    'self-play-hourly': {
+        'task': 'cerebro.tasks.self_play_tasks.run_self_play_batch',
+        'schedule': 3600.0,
     },
 }
 

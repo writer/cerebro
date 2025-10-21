@@ -17,6 +17,7 @@ Key Components:
 from .runtime import CerebroClaudeRuntime
 from .service import AgentSessionService
 from .models import AgentSession, AgentMessage, ToolInvocation
+from .self_play import SelfPlayOrchestrator, SelfPlayScenario
 
 __all__ = [
     "CerebroClaudeRuntime",
@@ -24,4 +25,6 @@ __all__ = [
     "AgentSession",
     "AgentMessage",
     "ToolInvocation",
+    "SelfPlayOrchestrator",
+    "SelfPlayScenario",
 ]

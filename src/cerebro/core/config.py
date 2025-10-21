@@ -268,6 +268,46 @@ class Settings(BaseSettings):
         default=30,
         description="Number of days to retain agent runtime analytics events",
     )
+    self_play_enabled: bool = Field(
+        default=True,
+        description="Enable agent self-play orchestration",
+    )
+    self_play_max_turns: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum turns per self-play match",
+    )
+    self_play_max_tool_calls: int = Field(
+        default=20,
+        ge=0,
+        description="Maximum tool invocations per self-play match",
+    )
+    self_play_scenario_batch_size: int = Field(
+        default=3,
+        ge=1,
+        description="Number of self-play scenarios processed per batch",
+    )
+    self_play_created_by: str = Field(
+        default="self_play_orchestrator",
+        description="Synthetic user identifier recorded on self-play sessions",
+    )
+    self_play_default_org_id: Optional[str] = Field(
+        default=None,
+        description="Override organization identifier used for self-play sessions",
+    )
+    self_play_persist_results: bool = Field(
+        default=False,
+        description="Persist self-play outcomes in the database",
+    )
+    self_play_max_backoff_seconds: int = Field(
+        default=60,
+        ge=1,
+        description="Maximum delay applied between failed self-play matches",
+    )
+    self_play_stream_responses: bool = Field(
+        default=True,
+        description="Stream agent responses during self-play to capture transcript data",
+    )
     agent_session_timeout_hours: int = Field(
         default=24, description="Agent session timeout in hours"
     )
