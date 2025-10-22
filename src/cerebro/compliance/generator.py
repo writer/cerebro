@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from .frameworks import ComplianceControl, ComplianceFramework, get_framework, list_frameworks
+from .frameworks import ComplianceFramework, get_framework, list_frameworks
 from .evidence import EvidenceCollector, EvidenceItem
 
 
 @dataclass
 class ControlEvaluation:
     """Summary of a single control's evaluation."""
-
-    control: ComplianceControl
+    control: Any
     evidence: List[EvidenceItem]
 
     @property
@@ -26,12 +25,25 @@ class ControlEvaluation:
         return sum(1 for item in self.evidence if item.evidence_type == "query_error")
 
     def to_dict(self) -> Dict[str, object]:
+        automation_level = getattr(self.control, "automation_level", "")
+        if hasattr(automation_level, "value"):
+            automation_level = automation_level.value
+
+        required_evidence = []
+        if hasattr(self.control, "required_evidence"):
+            required_evidence = [
+                etype.value if hasattr(etype, "value") else str(etype)
+                for etype in getattr(self.control, "required_evidence", [])
+            ]
+        elif hasattr(self.control, "evidence_collection_methods"):
+            required_evidence = list(getattr(self.control, "evidence_collection_methods", []))
+
         return {
             "control_id": self.control.control_id,
             "title": self.control.title,
             "category": self.control.category,
-            "automation_level": self.control.automation_level,
-            "required_evidence": [etype.value for etype in self.control.required_evidence],
+            "automation_level": automation_level,
+            "required_evidence": required_evidence,
             "successful_queries": self.successful_queries,
             "failed_queries": self.failed_queries,
         }
@@ -55,9 +67,13 @@ class ComplianceEvidenceGenerator:
 
         evaluations: List[ControlEvaluation] = []
         for control in framework.controls:
+            queries = getattr(control, "sql_queries", None)
+            if queries is None:
+                queries = getattr(control, "evidence_queries", [])
+
             evidence = await self.evidence_collector.collect_evidence(
                 control.control_id,
-                control.sql_queries,
+                queries,
                 org_id=org_query_scope or organization_id,
             )
             evaluations.append(ControlEvaluation(control=control, evidence=evidence))
@@ -101,7 +117,10 @@ class ComplianceEvidenceGenerator:
     ) -> Dict[str, object]:
         total_controls = len(framework.controls)
         successful_controls = sum(1 for evaluation in evaluations if evaluation.successful_queries > 0)
-        automated_controls = len(framework.get_automated_controls())
+
+        automated_controls = 0
+        if hasattr(framework, "get_automated_controls"):
+            automated_controls = len(framework.get_automated_controls())
 
         compliance_percentage = 0.0
         if total_controls:
