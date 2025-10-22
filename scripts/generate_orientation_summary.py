@@ -16,6 +16,8 @@ from cerebro.analytics.orientation import generate_orientation_summary
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the orientation summary generator."""
+
     parser = argparse.ArgumentParser(
         description="Generate orientation summaries from frontend telemetry"
     )
@@ -40,6 +42,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    """Execute the orientation analytics pipeline with CLI args."""
+
     summary = await generate_orientation_summary(args.window_hours, args.baseline_hours)
 
     print("Orientation Summary")
@@ -51,12 +55,12 @@ async def _run(args: argparse.Namespace) -> int:
     print("\nTop event types by growth:")
     for row in summary["top_event_types"]:
         print(
-            f" - {row['event_type']}: {row['current_count']} (baseline {row['baseline_count']}, Δ%={row['percent_change']})"
+            f" - {row['key']}: {row['current_count']} (baseline {row['baseline_count']}, Δ%={row['percent_change']})"
         )
     print("\nTop components by growth:")
     for row in summary["top_components"]:
         print(
-            f" - {row['component']}: {row['current_count']} (baseline {row['baseline_count']}, Δ%={row['percent_change']})"
+            f" - {row['key']}: {row['current_count']} (baseline {row['baseline_count']}, Δ%={row['percent_change']})"
         )
 
     if args.output:
@@ -68,6 +72,8 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    """Entrypoint used by ``python scripts/generate_orientation_summary.py``."""
+
     args = _parse_args()
     return asyncio.run(_run(args))
 

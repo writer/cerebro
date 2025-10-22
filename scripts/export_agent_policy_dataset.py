@@ -30,6 +30,8 @@ from cerebro.core.models import FrontendObservationEvent
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the exporter."""
+
     parser = argparse.ArgumentParser(
         description="Export agent session trajectories from telemetry events"
     )
@@ -61,6 +63,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _serialise_event(event: FrontendObservationEvent) -> Dict[str, Any]:
+    """Convert ORM event row to a serialisable dictionary."""
+
     return {
         "event_id": str(event.event_id),
         "occurred_at": event.occurred_at.isoformat() if event.occurred_at else None,
@@ -77,6 +81,8 @@ async def export_dataset(
     min_events: int,
     max_sessions: int,
 ) -> Dict[str, Any]:
+    """Stream telemetry events and persist them as JSONL trajectories."""
+
     now = datetime.now(timezone.utc)
     filters = []
     if window_days > 0:
@@ -159,6 +165,8 @@ async def export_dataset(
 
 
 async def _run(args: argparse.Namespace) -> int:
+    """CLI execution helper for the exporter."""
+
     summary = await export_dataset(
         args.output,
         args.window_days,
@@ -173,6 +181,8 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    """Entrypoint used by ``python scripts/export_agent_policy_dataset.py``."""
+
     args = _parse_args()
     return asyncio.run(_run(args))
 

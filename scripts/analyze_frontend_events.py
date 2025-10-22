@@ -59,6 +59,8 @@ class TelemetryHealthSummary:
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the telemetry analyzer."""
+
     parser = argparse.ArgumentParser(
         description="Aggregate frontend observation telemetry signal quality metrics"
     )
@@ -82,6 +84,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _fetch_summary(window_days: int) -> TelemetryHealthSummary:
+    """Query aggregated telemetry metrics for the requested window."""
+
     now = datetime.now(timezone.utc)
     window_start: Optional[datetime] = None
     filters: List[Any] = []
@@ -214,6 +218,8 @@ async def _fetch_summary(window_days: int) -> TelemetryHealthSummary:
 
 
 def _print_table(title: str, items: Iterable[tuple[str, int]], limit: int = 10) -> None:
+    """Render a simple bullet list of counts for console output."""
+
     rows = list(items)[:limit]
     if not rows:
         print(f"- {title}: (none)")
@@ -224,6 +230,8 @@ def _print_table(title: str, items: Iterable[tuple[str, int]], limit: int = 10) 
 
 
 async def _run(args: argparse.Namespace) -> int:
+    """Execute the telemetry analysis using parsed CLI arguments."""
+
     summary = await _fetch_summary(args.window_days)
 
     print("Telemetry Signal Health Summary")
@@ -265,6 +273,8 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    """Entrypoint used by ``python scripts/analyze_frontend_events.py``."""
+
     args = _parse_args()
     return asyncio.run(_run(args))
 
