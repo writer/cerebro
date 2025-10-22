@@ -14,6 +14,7 @@ from cerebro.analysis.identity_anomaly import (
     RiskLevel,
     BehavioralBaseline
 )
+from cerebro.query.table import QueryFilter
 
 
 @pytest.fixture
@@ -136,18 +137,18 @@ class TestIdentityAnomalyDetector:
     
     def test_filter_application(self, detector):
         """Test filter application logic."""
-        resource = {"id": "test1", "name": "Test Resource", "active": True, "count": 15}
-        
+        resource = {"status": "active", "login_count": 15}
+
         filters = [
-            QueryFilter("active", "=", True),
-            QueryFilter("count", ">", 10)
+            QueryFilter("status", "=", "active"),
+            QueryFilter("login_count", ">", 10)
         ]
-        
-        from cerebro.query.table import QueryFilter
-        assert detector.apply_filters(resource, filters) is True
-        
-        filters = [QueryFilter("count", "<", 10)]
-        assert detector.apply_filters(resource, filters) is False
+
+        table = detector.query_engine.registry.get_table("okta_user")
+        assert table.apply_filters(resource, filters) is True
+
+        filters = [QueryFilter("login_count", "<", 10)]
+        assert table.apply_filters(resource, filters) is False
     
     def test_data_extraction_methods(self, detector):
         """Test helper data extraction methods."""
