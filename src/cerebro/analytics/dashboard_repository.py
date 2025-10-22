@@ -6,6 +6,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
+from .orientation import generate_orientation_summary
+
 
 class DashboardRepository:
     """Encapsulates raw queries used by dashboard analytics."""
@@ -157,3 +159,8 @@ class DashboardRepository:
         compliant_rules = compliant_result.scalar() or 0
 
         return round((compliant_rules / total_rules) * 100.0, 2)
+
+    async def get_orientation_summary(self) -> dict:
+        """Return trending telemetry summary for dashboard widgets."""
+
+        return await generate_orientation_summary(window_hours=24, baseline_hours=168)
