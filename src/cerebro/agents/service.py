@@ -23,6 +23,7 @@ from cerebro.agents.models import (
     ReviewTaskStatus,
     ToolInvocation,
     ToolApproval,
+    ToolInvocationStatus,
     ApprovalStatus,
 )
 from cerebro.agents.runtime_facade import AgentRuntimeFacade
@@ -37,8 +38,8 @@ logger = structlog.get_logger(__name__)
 class AgentSessionService:
     """Service for managing agent sessions and conversations."""
     
-    def __init__(self):
-        self.runtime = AgentRuntimeFacade()
+    def __init__(self, runtime: Optional[AgentRuntimeFacade] = None):
+        self.runtime = runtime or AgentRuntimeFacade()
         self._rule_engine = RuleEngine()
     
     async def create_session(

@@ -15,6 +15,7 @@ from cerebro.core.database import Base, get_db
 from cerebro.agents.models import Base as AgentsBase
 from cerebro.core.models import Organization, Account, Principal, Resource, Rule, Policy
 from cerebro.core.user_models import User
+from cerebro.core import user_service as user_service_module
 from cerebro.core.user_service import UserService, pwd_context
 import httpx
 from cerebro.api.main import app
@@ -23,11 +24,24 @@ from cerebro.core.security.jwt import JWTService
 from cerebro.metrics.jwt_metrics import jwt_metrics
 
 
+class _TestPwdContext:
+    """Simplified password context for test environment."""
+
+    def hash(self, password: str) -> str:
+        return f"hashed::{password}"
+
+    def verify(self, password: str, hashed: str) -> bool:
+        return hashed == self.hash(password)
+
+
+user_service_module.pwd_context = _TestPwdContext()
+pwd_context = user_service_module.pwd_context
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Setup test environment variables."""
     os.environ['ENVIRONMENT'] = 'test'
-    pwd_context.update(schemes=["pbkdf2_sha256"], deprecated="auto")
     os.environ.setdefault("ENABLE_AGENT_TELEMETRY", "true")
     os.environ.setdefault("AGENT_OTEL_ENDPOINT", "http://localhost:4318/v1/traces")
     yield
