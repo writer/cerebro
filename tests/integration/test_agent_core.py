@@ -10,7 +10,7 @@ import pytest
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 from unittest.mock import AsyncMock, Mock, patch
 
 import structlog
@@ -190,11 +190,9 @@ class TestAgentModels:
         
         tool_invocation = ToolInvocation(
             session_id=session.session_id,
-            message_id=message.message_id,
             tool_name="query_findings",
-            tool_input={"filters": {"severity": "HIGH"}},
+            input_data={"filters": {"severity": "HIGH"}},
             status=ToolInvocationStatus.PENDING,
-            requires_approval=True
         )
         
         agent_db.add(tool_invocation)
@@ -203,9 +201,13 @@ class TestAgentModels:
         
         assert tool_invocation.invocation_id is not None
         assert tool_invocation.tool_name == "query_findings"
-        assert tool_invocation.tool_input["filters"]["severity"] == "HIGH"
+        assert tool_invocation.input_data["filters"]["severity"] == "HIGH"
         assert tool_invocation.status == ToolInvocationStatus.PENDING
-        assert tool_invocation.requires_approval
+
+        approval_check = await agent_db.execute(
+            select(ToolApproval).where(ToolApproval.tool_invocation_id == tool_invocation.id)
+        )
+        assert approval_check.scalars().first() is None
     
     async def test_tool_approval_workflow(self, agent_db: AsyncSession):
         """Test tool approval workflow."""
@@ -231,11 +233,9 @@ class TestAgentModels:
         
         tool_invocation = ToolInvocation(
             session_id=session.session_id,
-            message_id=message.message_id,
             tool_name="update_finding_status",
-            tool_input={"finding_id": str(uuid4()), "status": "RESOLVED"},
-            status=ToolInvocationStatus.PENDING,
-            requires_approval=True
+            input_data={"finding_id": str(uuid4()), "status": "RESOLVED"},
+            status=ToolInvocationStatus.APPROVAL_REQUIRED,
         )
         agent_db.add(tool_invocation)
         await agent_db.commit()
@@ -243,24 +243,28 @@ class TestAgentModels:
         
         # Create approval
         approval = ToolApproval(
-            invocation_id=tool_invocation.invocation_id,
-            approved_by="admin",
+            org_id=session.org_id,
+            tool_invocation_id=tool_invocation.id,
+            requested_by="testuser",
+            reason="Approve containment",
+            risk_assessment={"risk": "medium"},
             status=ApprovalStatus.APPROVED,
-            reason="Verified finding resolution"
+            decided_by="admin",
+            decision_reason="Verified finding resolution",
         )
         agent_db.add(approval)
         await agent_db.commit()
         await agent_db.refresh(approval)
         
         # Update tool invocation status
-        tool_invocation.status = ToolInvocationStatus.APPROVED
+        tool_invocation.status = ToolInvocationStatus.SUCCESS
         await agent_db.commit()
         
         # Verify approval workflow
-        assert approval.approved_by == "admin"
+        assert approval.decided_by == "admin"
         assert approval.status == ApprovalStatus.APPROVED
-        assert approval.reason == "Verified finding resolution"
-        assert tool_invocation.status == ToolInvocationStatus.APPROVED
+        assert approval.decision_reason == "Verified finding resolution"
+        assert tool_invocation.status == ToolInvocationStatus.SUCCESS
 
 
 class TestAgentTypes:
@@ -314,11 +318,17 @@ class TestToolInvocationStatus:
     
     def test_tool_status_values(self):
         """Test tool invocation status enum values."""
-        assert ToolInvocationStatus.PENDING.value == "pending"
-        assert ToolInvocationStatus.APPROVED.value == "approved"
-        assert ToolInvocationStatus.REJECTED.value == "rejected"
-        assert ToolInvocationStatus.EXECUTED.value == "executed"
-        assert ToolInvocationStatus.FAILED.value == "failed"
+        expected = {
+            ToolInvocationStatus.PENDING: "pending",
+            ToolInvocationStatus.RUNNING: "running",
+            ToolInvocationStatus.SUCCESS: "success",
+            ToolInvocationStatus.ERROR: "error",
+            ToolInvocationStatus.DRY_RUN: "dry_run",
+            ToolInvocationStatus.APPROVAL_REQUIRED: "approval_required",
+        }
+
+        for status, value in expected.items():
+            assert status.value == value
 
 
 class TestStreamingSimulation:
@@ -486,19 +496,15 @@ class TestDatabaseOperations:
         tool_invocations = [
             ToolInvocation(
                 session_id=session.session_id,
-                message_id=message.message_id,
                 tool_name="query_findings",
-                tool_input={"status": "OPEN"},
-                status=ToolInvocationStatus.EXECUTED,
-                requires_approval=False
+                input_data={"status": "OPEN"},
+                status=ToolInvocationStatus.SUCCESS,
             ),
             ToolInvocation(
                 session_id=session.session_id,
-                message_id=message.message_id,
                 tool_name="update_finding",
-                tool_input={"id": "123", "status": "RESOLVED"},
-                status=ToolInvocationStatus.PENDING,
-                requires_approval=True
+                input_data={"id": "123", "status": "RESOLVED"},
+                status=ToolInvocationStatus.APPROVAL_REQUIRED,
             )
         ]
         
@@ -508,8 +514,7 @@ class TestDatabaseOperations:
         # Query pending approvals
         result = await agent_db.execute(
             select(ToolInvocation).where(
-                ToolInvocation.status == ToolInvocationStatus.PENDING,
-                ToolInvocation.requires_approval == True
+                ToolInvocation.status == ToolInvocationStatus.APPROVAL_REQUIRED
             )
         )
         pending_approvals = result.scalars().all()
@@ -520,7 +525,7 @@ class TestDatabaseOperations:
         # Query executed tools
         result = await agent_db.execute(
             select(ToolInvocation).where(
-                ToolInvocation.status == ToolInvocationStatus.EXECUTED
+                ToolInvocation.status == ToolInvocationStatus.SUCCESS
             )
         )
         executed_tools = result.scalars().all()
@@ -535,26 +540,30 @@ class TestConcurrentOperations:
     async def test_concurrent_session_creation(self, agent_db: AsyncSession):
         """Test creating multiple sessions concurrently."""
         org_id = uuid4()
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        session_factory = async_sessionmaker(agent_db.bind, expire_on_commit=False)
         
-        async def create_session(index: int) -> AgentSession:
-            session = AgentSession(
-                org_id=org_id,
-                agent_type=AgentType.SECURITY_ANALYST,
-                created_by=f"user{index}",
-                title=f"Concurrent Session {index}",
-                context={"index": index}
-            )
-            agent_db.add(session)
-            await agent_db.commit()
-            await agent_db.refresh(session)
-            return session
+        async def create_session(index: int) -> UUID:
+            async with session_factory() as temp_db:
+                session = AgentSession(
+                    org_id=org_id,
+                    agent_type=AgentType.SECURITY_ANALYST,
+                    created_by=f"user{index}",
+                    title=f"Concurrent Session {index}",
+                    context={"index": index}
+                )
+                temp_db.add(session)
+                await temp_db.commit()
+                await temp_db.refresh(session)
+                return session.id
         
         # Create multiple sessions concurrently
         tasks = [create_session(i) for i in range(5)]
         sessions = await asyncio.gather(*tasks)
         
         assert len(sessions) == 5
-        assert len(set(s.session_id for s in sessions)) == 5  # All unique
+        assert len(set(sessions)) == 5  # All unique
         
         # Verify all sessions are in database
         result = await agent_db.execute(
@@ -630,18 +639,15 @@ async def test_complete_agent_workflow():
         tool_invocations = [
             ToolInvocation(
                 session_id=agent_session.session_id,
-                message_id=messages[1].message_id,
                 tool_name="query_findings",
-                tool_input={
+                input_data={
                     "filters": {
                         "resource_type": "database",
                         "severity": ["HIGH", "CRITICAL"],
                         "time_range": "24h"
                     }
                 },
-                status=ToolInvocationStatus.EXECUTED,
-                requires_approval=False,
-                execution_time_ms=1250,
+                status=ToolInvocationStatus.SUCCESS,
                 output_data={
                     "findings_count": 3,
                     "critical_findings": 1,
@@ -650,15 +656,13 @@ async def test_complete_agent_workflow():
             ),
             ToolInvocation(
                 session_id=agent_session.session_id,
-                message_id=messages[1].message_id,
                 tool_name="build_attack_timeline",
-                tool_input={
+                input_data={
                     "incident_id": str(uuid4()),
                     "start_time": "2024-01-15T00:00:00Z",
                     "end_time": "2024-01-15T23:59:59Z"
                 },
-                status=ToolInvocationStatus.PENDING,
-                requires_approval=True
+                status=ToolInvocationStatus.APPROVAL_REQUIRED
             )
         ]
         session.add_all(tool_invocations)
@@ -666,23 +670,27 @@ async def test_complete_agent_workflow():
         
         # 4. Add approval for timeline tool
         approval = ToolApproval(
-            invocation_id=tool_invocations[1].invocation_id,
-            approved_by="security_manager",
+            org_id=agent_session.org_id,
+            tool_invocation_id=tool_invocations[1].id,
+            requested_by="security_team",
+            reason="Incident response requires timeline",
+            risk_assessment={"impact": "high"},
             status=ApprovalStatus.APPROVED,
-            reason="Approved for incident response investigation"
+            decided_by="security_manager",
+            decision_reason="Approved for incident response investigation",
         )
         session.add(approval)
         await session.commit()
         
         # Update tool status
-        tool_invocations[1].status = ToolInvocationStatus.APPROVED
+        tool_invocations[1].status = ToolInvocationStatus.SUCCESS
         await session.commit()
         
         # 5. Verify complete workflow
         
         # Check session exists
         session_result = await session.execute(
-            select(AgentSession).where(AgentSession.session_id == agent_session.session_id)
+            select(AgentSession).where(AgentSession.id == agent_session.id)
         )
         retrieved_session = session_result.scalar_one()
         
@@ -709,29 +717,28 @@ async def test_complete_agent_workflow():
         tools_result = await session.execute(
             select(ToolInvocation)
             .where(ToolInvocation.session_id == agent_session.session_id)
-            .order_by(ToolInvocation.created_at)
+            .order_by(ToolInvocation.started_at)
         )
         retrieved_tools = tools_result.scalars().all()
         
         assert len(retrieved_tools) == 2
         assert retrieved_tools[0].tool_name == "query_findings"
-        assert retrieved_tools[0].status == ToolInvocationStatus.EXECUTED
+        assert retrieved_tools[0].status == ToolInvocationStatus.SUCCESS
         assert retrieved_tools[0].output_data["findings_count"] == 3
         
         assert retrieved_tools[1].tool_name == "build_attack_timeline"
-        assert retrieved_tools[1].status == ToolInvocationStatus.APPROVED
-        assert retrieved_tools[1].requires_approval
+        assert retrieved_tools[1].status == ToolInvocationStatus.SUCCESS
         
         # Check approval workflow
         approval_result = await session.execute(
             select(ToolApproval)
-            .where(ToolApproval.invocation_id == tool_invocations[1].invocation_id)
+            .where(ToolApproval.tool_invocation_id == tool_invocations[1].id)
         )
         retrieved_approval = approval_result.scalar_one()
         
-        assert retrieved_approval.approved_by == "security_manager"
+        assert retrieved_approval.decided_by == "security_manager"
         assert retrieved_approval.status == ApprovalStatus.APPROVED
-        assert "incident response" in retrieved_approval.reason
+        assert "incident response" in (retrieved_approval.decision_reason or "")
         
         logger.info(
             "Complete agent workflow test passed",

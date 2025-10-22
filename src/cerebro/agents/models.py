@@ -205,6 +205,14 @@ class AgentMessage(Base):
     # Relationships
     session: Mapped["AgentSession"] = relationship("AgentSession", back_populates="messages")
 
+    @property
+    def message_id(self) -> UUID:
+        return self.id
+
+    @message_id.setter
+    def message_id(self, value: UUID) -> None:  # pragma: no cover - compatibility shim
+        self.id = value
+
 
 class AgentConversationItem(Base):
     """Raw conversation items stored for agent session memory systems."""
@@ -365,6 +373,14 @@ class ToolInvocation(Base):
         back_populates="tool_invocation",
         uselist=False,
     )
+
+    @property
+    def invocation_id(self) -> UUID:
+        return self.id
+
+    @invocation_id.setter
+    def invocation_id(self, value: UUID) -> None:  # pragma: no cover - legacy alias
+        self.id = value
 
 
 class ToolApproval(Base):
