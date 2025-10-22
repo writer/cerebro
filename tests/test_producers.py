@@ -199,7 +199,7 @@ class TestProducerRegistry:
         # Test GitHub resource
         github_producers = producer_registry.get_producers_for_resource("github", "github.repo")
         assert len(github_producers) > 0
-        assert any("GitHub" in producer.__class__.__name__ for producer in github_producers)
+        assert any("github" in {s.lower() for s in producer.desired_sources} for producer in github_producers)
         
         # Test AWS S3 resource
         s3_producers = producer_registry.get_producers_for_resource("aws", "aws.s3.bucket")
