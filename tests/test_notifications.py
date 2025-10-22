@@ -114,13 +114,17 @@ class TestWebhookNotificationService:
         config.config_id = uuid4()
         config.org_id = uuid4()
         config.name = "Test Webhook"
+        config.url = "https://webhook.example.com/endpoint"
         config.http_method = "POST"
-        config.custom_headers = {"X-Custom": "value"}
-        config.payload_template = "simple"
+        config.headers = {"X-Custom": "value"}
+        config.payload_template = {}
         config.use_hmac_signature = True
         config.enabled = True
         config.severity_filter = ["critical"]
         config.event_types = ["finding.created"]
+        config.timeout_seconds = 5
+        config.hmac_secret = b"secret"
+        config.hmac_secret_dek = b"dek"
         config.get_webhook_url = AsyncMock(return_value="https://webhook.example.com/endpoint")
         config.get_hmac_secret = AsyncMock(return_value="test-hmac-secret")
         return config
@@ -184,10 +188,20 @@ class TestWebhookNotificationService:
         finding.finding_id = uuid4()
         finding.severity = "critical"
 
-        # Should handle gracefully
+        db = AsyncMock()
+        db.add = AsyncMock()
+        db.commit = AsyncMock()
+
+        # Should surface decryption failure
         with pytest.raises(Exception):
-            # This would fail during URL decryption
-            pass
+            await webhook_service._send_with_retry(
+                config=webhook_config,
+                payload={"test": "data"},
+                event_type="finding.created",
+                finding_id=finding.finding_id,
+                severity=finding.severity,
+                db=db,
+            )
 
 
 class TestNotificationDigest:
