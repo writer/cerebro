@@ -547,6 +547,14 @@ class AgentReviewTask(Base):
         order_by="AgentReviewHistory.created_at",
     )
 
+    @property
+    def updated_at(self) -> Optional[datetime]:  # pragma: no cover - compatibility shim
+        return self.resolved_at
+
+    @updated_at.setter
+    def updated_at(self, value: Optional[datetime]) -> None:  # pragma: no cover - compatibility shim
+        self.resolved_at = value
+
 
 class AgentReviewNotification(Base):
     """Notification dispatch records tied to review tasks."""
