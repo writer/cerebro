@@ -6,6 +6,7 @@ from .identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector, Risky
 from .compliance_analytics import ComplianceAnalyzer, EvidenceFreshnessTracker, ControlOwnership
 from .investigation_tools import InvestigationEngine, FindingTimeline, EventCorrelation
 from .dashboard_analytics import DashboardAnalytics, ExecutiveSummary, SecurityMetrics
+from .datasets import DatasetBuilder, DatasetRecord
 
 __all__ = [
     "TimeSeriesCollector",
@@ -25,5 +26,7 @@ __all__ = [
     "EventCorrelation",
     "DashboardAnalytics",
     "ExecutiveSummary",
-    "SecurityMetrics"
+    "SecurityMetrics",
+    "DatasetBuilder",
+    "DatasetRecord",
 ]

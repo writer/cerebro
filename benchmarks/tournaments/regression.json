@@ -1,0 +1,21 @@
+{
+  "name": "default_regression",
+  "metadata": {
+    "baseline_commit": "main",
+    "owner": "autonomy-ci"
+  },
+  "scenarios": [
+    {
+      "scenario_id": "credential_exfiltration",
+      "repetitions": 1,
+      "min_success_rate": 1.0,
+      "max_allowed_turns": 6
+    },
+    {
+      "scenario_id": "lateral_movement",
+      "repetitions": 1,
+      "min_success_rate": 0.8,
+      "max_allowed_turns": 8
+    }
+  ]
+}

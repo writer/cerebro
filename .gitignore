@@ -157,3 +157,4 @@ logs/
 !frontend/package-lock.json
 !frontend/tsconfig.json
 !**/fixtures/**/*.json
+!benchmarks/**/*.json

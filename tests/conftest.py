@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.pool import StaticPool
 
 from cerebro.core.database import Base, get_db
+from cerebro.agents.models import Base as AgentsBase
 from cerebro.core.models import Organization, Account, Principal, Resource, Rule, Policy
 from cerebro.core.user_models import User
 from cerebro.core.user_service import UserService, pwd_context
@@ -55,6 +56,7 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
     # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(AgentsBase.metadata.create_all)
     
     # Create session
     async_session = async_sessionmaker(engine, expire_on_commit=False)

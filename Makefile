@@ -86,6 +86,14 @@ lint: ## Run linting checks
 .PHONY: check
 check: format lint test ## Run all quality checks
 
+.PHONY: benchmarks
+benchmarks: ## Run deterministic benchmark suite and generate scorecard
+	$(UV) run python scripts/run_benchmarks.py --fail-on-error
+
+.PHONY: benchmarks-verify
+benchmarks-verify: ## Validate benchmark results against regression thresholds
+	$(UV) run python scripts/check_regression_tournament.py
+
 .PHONY: telemetry-dev
 telemetry-dev: ## Run API with OTLP exporter configured for development
 	env \
