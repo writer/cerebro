@@ -16,7 +16,7 @@ DEFAULT_SCORECARD_PATH = Path("benchmarks/results/scorecard.json")
 
 
 class BenchmarksStatusInput(BaseModel):
-    """Input for retrieving benchmark status."""
+    """Inputs accepted by :class:`BenchmarksStatusTool`."""
 
     include_details: bool = Field(
         default=False,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+"""Agent tool exposing orientation analytics."""
+
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
@@ -12,6 +14,8 @@ from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 
 
 class OrientationSummaryInput(BaseModel):
+    """Inputs accepted by :class:`OrientationSummaryTool`."""
+
     window_hours: int = Field(
         default=24,
         gt=0,
@@ -25,6 +29,8 @@ class OrientationSummaryInput(BaseModel):
 
 
 class OrientationEventRow(BaseModel):
+    """Single trending row returned to the agent."""
+
     key: str
     current_count: int
     baseline_count: int
@@ -32,13 +38,15 @@ class OrientationEventRow(BaseModel):
 
 
 class OrientationSummaryOutput(BaseModel):
+    """Structured orientation summary payload."""
+
     generated_at: str
     window: Dict[str, Any]
     baseline: Dict[str, Any]
     total_events_current: int
     total_events_baseline: int
-    top_event_types: List[Dict[str, Any]]
-    top_components: List[Dict[str, Any]]
+    top_event_types: List[OrientationEventRow]
+    top_components: List[OrientationEventRow]
 
 
 class OrientationSummaryTool(StructuredTool):
@@ -60,6 +68,12 @@ class OrientationSummaryTool(StructuredTool):
         baseline_hours: int,
     ) -> ToolResult:
         summary = await generate_orientation_summary(window_hours, baseline_hours)
-        # Validate against output model for consistency
-        validated = self.output_model(**summary)
+
+        # Convert raw dictionaries into the strongly typed output model
+        transformed = {
+            **summary,
+            "top_event_types": [OrientationEventRow(**row) for row in summary["top_event_types"]],
+            "top_components": [OrientationEventRow(**row) for row in summary["top_components"]],
+        }
+        validated = self.output_model(**transformed)
         return ToolResult(success=True, data=validated.model_dump())

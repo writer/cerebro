@@ -1,4 +1,9 @@
-"""Utilities for generating orientation analytics from telemetry."""
+"""Utilities for generating orientation analytics from telemetry.
+
+This module powers both dashboard widgets and agent-facing tooling.  Given an
+observation window and a baseline window it produces aggregates showing which
+frontend telemetry signals are trending up or down.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +35,8 @@ class TrendingRow:
 
 
 async def _count_by_field(field, start: datetime, end: datetime) -> Dict[str, int]:
+    """Return counts grouped by ``field`` between ``start`` and ``end``."""
+
     stmt = (
         select(field, func.count())
         .where(FrontendObservationEvent.occurred_at >= start)
@@ -42,6 +49,8 @@ async def _count_by_field(field, start: datetime, end: datetime) -> Dict[str, in
 
 
 def _diff(current: Dict[str, int], baseline: Dict[str, int]) -> List[TrendingRow]:
+    """Compute delta values between current and baseline counts."""
+
     rows: List[TrendingRow] = []
     for key, count in current.items():
         baseline_count = baseline.get(key, 0)
