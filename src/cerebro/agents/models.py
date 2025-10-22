@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, expression
 
 from cerebro.core.database_types import JSONType
 from cerebro.core.models import Organization
@@ -117,6 +117,12 @@ class AgentSession(Base):
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     context: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=expression.true(),
+    )
     
     # Context may include:
     # - finding_ids: List[UUID] - findings being analyzed
@@ -147,6 +153,14 @@ class AgentSession(Base):
         order_by="AgentConversationItem.created_at",
         cascade="all, delete-orphan",
     )
+
+    @property
+    def session_id(self) -> UUID:
+        return self.id
+
+    @session_id.setter
+    def session_id(self, value: UUID) -> None:
+        self.id = value
 
 
 class AgentMessage(Base):
