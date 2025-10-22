@@ -28,6 +28,7 @@ from .system_context import GetSystemContextTool
 from .session_memory import RememberContextTool, GetSessionHistoryTool
 from .nl_query import NaturalLanguageQueryTool
 from .benchmarks_status import BenchmarksStatusTool
+from .orientation_summary import OrientationSummaryTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -47,6 +48,7 @@ tool_registry.register(GetSystemContextTool())
 tool_registry.register(RememberContextTool())
 tool_registry.register(GetSessionHistoryTool())
 tool_registry.register(BenchmarksStatusTool())
+tool_registry.register(OrientationSummaryTool())
 
 
 def get_tool_registry() -> ToolRegistry:
@@ -77,5 +79,6 @@ __all__ = [
     "RememberContextTool",
     "GetSessionHistoryTool",
     "BenchmarksStatusTool",
+    "OrientationSummaryTool",
     "get_tool_registry",
 ]
