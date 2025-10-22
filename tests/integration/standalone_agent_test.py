@@ -132,12 +132,12 @@ async def test_agent_models():
         # Test tool invocation creation
         tool_invocation = ToolInvocation(
             session_id=uuid4(),
-            tool_name="query_findings",
+            tool_name="findings_list",
             input_data={"filters": {"severity": "HIGH"}},
             status=ToolInvocationStatus.PENDING
         )
         
-        assert tool_invocation.tool_name == "query_findings"
+        assert tool_invocation.tool_name == "findings_list"
         assert tool_invocation.status == ToolInvocationStatus.PENDING
         assert tool_invocation.input_data["filters"]["severity"] == "HIGH"
         results.add_pass("ToolInvocation model creation")
@@ -321,7 +321,7 @@ async def test_tool_registry_simulation():
             def __init__(self, name: str, version: str = "1.0.0"):
                 self.name = name
                 self.version = version
-                self.requires_approval = name.startswith("update_") or name.startswith("delete_")
+                self.requires_approval = name in {"finding_update_status", "remediation_suggestions"}
             
             async def execute(self, **kwargs):
                 return {"status": "success", "data": kwargs}
@@ -343,13 +343,13 @@ async def test_tool_registry_simulation():
         registry = MockToolRegistry()
         
         tools = [
-            MockTool("query_findings"),
-            MockTool("update_finding_status"),
-            MockTool("analyze_findings_cluster"),
-            MockTool("test_rule"),
-            MockTool("create_rule"),
-            MockTool("query_timeline"),
-            MockTool("build_attack_timeline")
+            MockTool("findings_list"),
+            MockTool("finding_update_status"),
+            MockTool("query"),
+            MockTool("rules"),
+            MockTool("timeline"),
+            MockTool("security_analysis"),
+            MockTool("remediation_suggestions")
         ]
         
         for tool in tools:
@@ -360,14 +360,14 @@ async def test_tool_registry_simulation():
         results.add_pass("Tool registry population")
         
         # Test tool retrieval
-        query_tool = registry.get("query_findings")
+        query_tool = registry.get("findings_list")
         assert query_tool is not None
-        assert query_tool.name == "query_findings"
+        assert query_tool.name == "findings_list"
         assert not query_tool.requires_approval
         results.add_pass("Tool retrieval")
         
         # Test approval requirement logic
-        update_tool = registry.get("update_finding_status")
+        update_tool = registry.get("finding_update_status")
         assert update_tool.requires_approval
         results.add_pass("Tool approval requirements")
         
@@ -444,7 +444,7 @@ async def test_complete_workflow():
         investigation_tools = [
             ToolInvocation(
                 session_id=session_id,
-                tool_name="query_findings",
+                tool_name="findings_list",
                 input_data={
                     "filters": {
                         "resource_type": ["IAM::User", "Auth::Service"],
@@ -457,7 +457,7 @@ async def test_complete_workflow():
             ),
             ToolInvocation(
                 session_id=session_id,
-                tool_name="build_attack_timeline",
+                tool_name="timeline",
                 input_data={
                     "incident_id": "INC-2024-001",
                     "start_time": (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(),
@@ -467,7 +467,7 @@ async def test_complete_workflow():
             ),
             ToolInvocation(
                 session_id=session_id,
-                tool_name="update_finding_status",
+                tool_name="finding_update_status",
                 input_data={
                     "finding_id": str(uuid4()),
                     "status": "UNDER_INVESTIGATION",
@@ -527,7 +527,7 @@ async def test_complete_workflow():
         executed_tools = [t for t in investigation_tools if t.status == ToolInvocationStatus.SUCCESS]
         
         assert len(executed_tools) == 3  # All tools executed
-        assert executed_tools[0].tool_name == "query_findings"
+        assert executed_tools[0].tool_name == "findings_list"
         assert executed_tools[0].output_data["findings_count"] == 5
         results.add_pass("Tool execution workflow")
         
@@ -540,7 +540,7 @@ async def test_complete_workflow():
         
         # Verify workflow timeline
         tool_names = [tool.tool_name for tool in investigation_tools]
-        expected_tools = ["query_findings", "build_attack_timeline", "update_finding_status"]
+        expected_tools = ["findings_list", "timeline", "finding_update_status"]
         for expected_tool in expected_tools:
             assert expected_tool in tool_names
         results.add_pass("Investigation tool sequence")
