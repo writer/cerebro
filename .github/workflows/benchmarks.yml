@@ -20,6 +20,8 @@ on:
 jobs:
   run-benchmarks:
     runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: testing
     steps:
       - uses: actions/checkout@v4
 
