@@ -155,7 +155,7 @@ class TestCORSandSecurityHeaders:
     def test_cors_configuration(self, client):
         """Test CORS configuration is appropriate."""
         # Test CORS preflight request
-        response = client.options("/api/v1/organizations/")
+        response = client.request("OPTIONS", "/api/v1/organizations/")
 
         # Should handle OPTIONS requests appropriately
         assert response.status_code in [200, 405]  # Either allowed or method not allowed
@@ -202,8 +202,9 @@ class TestDatabaseMigrations:
     @pytest.mark.asyncio
     async def test_migration_compatibility(self, tmp_path):
         """Ensure Alembic can apply migrations against a fresh database."""
-        from alembic import command
-        from alembic.config import Config
+        alembic = pytest.importorskip("alembic")
+        command = alembic.command
+        Config = alembic.config.Config
 
         database_path = tmp_path / "cerebro_migrations.db"
         database_url = f"sqlite+pysqlite:///{database_path}"
