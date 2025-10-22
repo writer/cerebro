@@ -16,7 +16,7 @@
 ### Stage 2 – Data Operations Loop
 - [ ] Expand capture of investigation transcripts, tool telemetry, and review decisions into a normalized event schema.
 - [ ] Stand up pipelines that label traces (outcomes, failure modes, remediation steps) and surface low-quality data for curation.
-- [ ] Instrument the Cerebro frontend to log rich analyst interaction events (queries run, hypotheses tested, tool invocations, approvals) and join them with backend traces.
+- [x] Instrument the Cerebro frontend to log rich analyst interaction events (queries run, hypotheses tested, tool invocations, approvals) and join them with backend traces.
 - [ ] Produce exportable fine-tuning corpora for Cerebro-specific model adaptation, including prompt/response/tool traces.
 - [ ] Establish data governance (privacy, retention, redaction) and monitor for sensitive leakage before training usage.
 
@@ -43,7 +43,7 @@
 
 ### OODA Loop Integration
 #### Observe
-- [ ] Extend FE instrumentation to capture real-time analyst context (active entity, filters, timeline selections) and stream to the autonomy data plane.
+- [x] Extend FE instrumentation to capture real-time analyst context (active entity, filters, timeline selections) and stream to the autonomy data plane.
 - [ ] Mirror observation telemetry with live attack-surface and sensor feeds so agents see the same picture analysts do.
 - [ ] Stand up observability pipelines that flag missing or low-signal observations for data-quality remediation.
 

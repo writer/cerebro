@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
+import { recordObservation } from "@/lib/telemetry";
 import {
   AgentSessionListItem,
   RuntimeEvent,
@@ -37,6 +38,14 @@ export function RuntimeAnalyticsPanel() {
 
   const queryClient = useQueryClient();
   const queryEnabled = sessionId.trim().length > 0;
+
+  const emitObservation = (name: string, context: Record<string, unknown> = {}) => {
+    void recordObservation({
+      eventType: name,
+      component: "RuntimeAnalyticsPanel",
+      context,
+    });
+  };
 
   const { data: recentSessionsResponse } = useQuery({
     queryKey: ["recentAgentSessions"],
@@ -152,6 +161,14 @@ export function RuntimeAnalyticsPanel() {
       return;
     }
     setHasSubmitted(true);
+    const context: Record<string, unknown> = {};
+    if (sessionId) {
+      context.sessionId = sessionId;
+    }
+    if (eventType) {
+      context.filterEventType = eventType;
+    }
+    emitObservation("runtime_analytics_submit", context);
     queryClient.removeQueries({
       queryKey: ["runtimeAnalytics", sessionId, eventType || null],
       exact: true
@@ -160,12 +177,18 @@ export function RuntimeAnalyticsPanel() {
   };
 
   const handleResetFilter = () => {
+    const context: Record<string, unknown> = {};
+    if (sessionId) {
+      context.sessionId = sessionId;
+    }
+    emitObservation("runtime_analytics_filter_reset", context);
     setEventType("");
   };
 
   const handleSelectSession = (selectedId: string) => {
     setSessionId(selectedId);
     setHasSubmitted(true);
+    emitObservation("runtime_analytics_session_select", { sessionId: selectedId });
   };
 
   return (
@@ -254,7 +277,14 @@ export function RuntimeAnalyticsPanel() {
           <button
             key={type}
             type="button"
-            onClick={() => setEventType(type)}
+            onClick={() => {
+              setEventType(type);
+              const context: Record<string, unknown> = { eventType: type };
+              if (sessionId) {
+                context.sessionId = sessionId;
+              }
+              emitObservation("runtime_analytics_filter_apply", context);
+            }}
             className={`rounded-full border px-3 py-1 transition ${
               eventType === type
                 ? "border-zinc-200 bg-zinc-100/10 text-zinc-50"

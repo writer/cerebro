@@ -5,20 +5,28 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.core.models import Account, Finding, Organization, Resource, Rule
+from cerebro.core.models import (
+    Account,
+    Finding,
+    FrontendObservationEvent,
+    Organization,
+    Resource,
+    Rule,
+)
 from cerebro.telemetry.models import RepositoryContext, RuntimeContext, TelemetryResult
 from cerebro.telemetry.schemas import (
     ComplianceEvidence,
     DependencyGraph,
     DependencyScan,
     DependencyVulnerability,
+    FrontendObservationTelemetry,
     RepositoryTelemetry,
     RuntimeTelemetry,
     SecretsScanResult,
@@ -131,6 +139,48 @@ class TelemetryIngestionService:
             await self.db.rollback()
             logger.exception("Runtime telemetry processing failed", exc_info=exc)
             raise TelemetryProcessingError(str(exc)) from exc
+
+    async def process_frontend_observation(
+        self,
+        org_id: UUID,
+        user_id: Optional[UUID],
+        payload: FrontendObservationTelemetry,
+    ) -> Dict[str, Any]:
+        """Persist a frontend observation emitted by an analyst workflow."""
+
+        if org_id is None:
+            raise TelemetryProcessingError("Frontend observation missing organization context")
+
+        occurred_at = payload.occurred_at
+        if occurred_at is None:
+            occurred_at = datetime.now(timezone.utc)
+        elif occurred_at.tzinfo is None:
+            occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+
+        event = FrontendObservationEvent(
+            org_id=org_id,
+            user_id=user_id,
+            agent_session_id=payload.agent_session_id,
+            event_type=payload.event_type,
+            component=payload.component,
+            context_data=payload.context or {},
+            event_metadata=payload.metadata or {},
+            occurred_at=occurred_at,
+        )
+
+        self.db.add(event)
+
+        try:
+            await self.db.commit()
+        except Exception as exc:  # pragma: no cover
+            await self.db.rollback()
+            logger.exception("Frontend observation ingestion failed", exc_info=exc)
+            raise TelemetryProcessingError(str(exc)) from exc
+
+        return {
+            "status": "recorded",
+            "event_id": str(event.event_id),
+        }
 
     async def process_compliance_evidence(self, payload: ComplianceEvidence) -> Dict[str, Any]:
         """Persist compliance evidence metadata."""

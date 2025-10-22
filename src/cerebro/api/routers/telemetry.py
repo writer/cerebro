@@ -5,11 +5,12 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.api.auth import require_scopes
+from cerebro.api.auth import User, get_current_user, require_scopes
 from cerebro.core.database import get_db
 from cerebro.telemetry.schemas import (
     ComplianceEvidence,
     DependencyGraph,
+    FrontendObservationTelemetry,
     RepositoryTelemetry,
     RuntimeTelemetry,
 )
@@ -80,6 +81,27 @@ async def receive_dependency_graph(
 
     try:
         return await TelemetryIngestionService(db).process_dependency_graph(graph)
+    except TelemetryProcessingError as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/frontend/observe", status_code=200)
+async def receive_frontend_observation(
+    observation: FrontendObservationTelemetry,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record a frontend analyst observation for reinforcement learning pipelines."""
+
+    if current_user.org_id is None:
+        raise HTTPException(status_code=400, detail="User is not associated with an organization")
+
+    try:
+        return await TelemetryIngestionService(db).process_frontend_observation(
+            current_user.org_id,
+            current_user.user_id,
+            observation,
+        )
     except TelemetryProcessingError as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

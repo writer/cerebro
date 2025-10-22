@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -117,4 +118,27 @@ class DependencyGraph(BaseModel):
     dependency_graph: Dict[str, Any]
     licenses: Dict[str, Any]
     vulnerabilities: List[DependencyVulnerability]
+
+
+class FrontendObservationTelemetry(BaseModel):
+    """Telemetry emitted from the Cerebro frontend during analyst workflows."""
+
+    event_type: str = Field(..., description="Classifier for the user interaction")
+    component: Optional[str] = Field(None, description="UI component emitting the telemetry")
+    agent_session_id: Optional[UUID] = Field(
+        None,
+        description="Optional agent session identifier tied to the observation",
+    )
+    context: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Lightweight context describing the analyst state (filters, scopes)",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Arbitrary metadata payload relevant to the event",
+    )
+    occurred_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp when the observation took place (defaults to request time)",
+    )
 

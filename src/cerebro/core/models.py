@@ -1,7 +1,7 @@
 """SQLAlchemy models for Cerebro database schema."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -14,6 +14,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .database import Base
+
+if TYPE_CHECKING:  # pragma: no cover
+    from cerebro.core.user_models import User
 
 
 class Organization(Base):
@@ -31,6 +34,11 @@ class Organization(Base):
     findings: Mapped[List["Finding"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     suppressions: Mapped[List["Suppression"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     slack_webhooks: Mapped[List["SlackWebhook"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    frontend_observations: Mapped[List["FrontendObservationEvent"]] = relationship(
+        "FrontendObservationEvent",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
 
 
 class Account(Base):
@@ -540,6 +548,64 @@ class WebhookNotification(Base):
 
     # Relationships
     config: Mapped["WebhookConfig"] = relationship(back_populates="notifications")
+
+
+class FrontendObservationEvent(Base):
+    """Captured frontend analyst interaction telemetry events."""
+
+    __tablename__ = "frontend_observation_events"
+
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("orgs.org_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    agent_session_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(150), nullable=False)
+    component: Mapped[Optional[str]] = mapped_column(String(200))
+    context_data: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    event_metadata: Mapped[Dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONType,
+        nullable=False,
+        default=dict,
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    organization: Mapped["Organization"] = relationship(
+        "Organization",
+        back_populates="frontend_observations",
+    )
+    user: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[user_id],
+    )
 
 
 # Import identity models to make them available
