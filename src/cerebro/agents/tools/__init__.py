@@ -27,6 +27,7 @@ from .org_context import GetOrgContextTool
 from .system_context import GetSystemContextTool
 from .session_memory import RememberContextTool, GetSessionHistoryTool
 from .nl_query import NaturalLanguageQueryTool
+from .benchmarks_status import BenchmarksStatusTool
 
 # Initialize the global tool registry
 tool_registry = ToolRegistry()
@@ -45,6 +46,7 @@ tool_registry.register(GetOrgContextTool())
 tool_registry.register(GetSystemContextTool())
 tool_registry.register(RememberContextTool())
 tool_registry.register(GetSessionHistoryTool())
+tool_registry.register(BenchmarksStatusTool())
 
 
 def get_tool_registry() -> ToolRegistry:
@@ -74,5 +76,6 @@ __all__ = [
     "GetSystemContextTool",
     "RememberContextTool",
     "GetSessionHistoryTool",
+    "BenchmarksStatusTool",
     "get_tool_registry",
 ]
