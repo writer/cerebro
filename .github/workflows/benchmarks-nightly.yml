@@ -1,24 +1,12 @@
-name: Benchmarks
+name: Benchmarks Nightly
 
 on:
-  push:
-    branches:
-      - main
-      - feature/**
-  pull_request:
-    paths:
-      - "benchmarks/**"
-      - "scripts/run_benchmarks.py"
-      - "scripts/check_regression_tournament.py"
-      - "src/cerebro/agents/benchmarks/**"
-      - "src/cerebro/analytics/datasets/**"
-      - "src/cerebro/agents/self_play/**"
-      - "tests/benchmarks/**"
-      - "tests/analytics/**"
-      - "tests/self_play/**"
+  schedule:
+    - cron: "30 03 * * *"  # 03:30 UTC nightly
+  workflow_dispatch:
 
 jobs:
-  run-benchmarks:
+  nightly-benchmarks:
     runs-on: ubuntu-latest
     env:
       ENVIRONMENT: testing
@@ -50,7 +38,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-scorecard
+          name: nightly-benchmark-scorecard-${{ github.run_id }}
           path: benchmarks/results/scorecard.json
           if-no-files-found: warn
 
@@ -68,7 +56,7 @@ jobs:
           if not summary_path:
               raise SystemExit("GITHUB_STEP_SUMMARY is not available")
 
-          lines = ["## Benchmark Scorecard"]
+          lines = ["## Nightly Benchmark Scorecard"]
           if scorecard_path.exists():
               data = json.loads(scorecard_path.read_text(encoding="utf-8"))
               if not data:
@@ -95,5 +83,5 @@ jobs:
       - name: Fail on benchmark regression
         if: steps.run_benchmarks.outcome == 'failure' || steps.regression_check.outcome == 'failure'
         run: |
-          echo "Benchmark regression detected. See summary above." >&2
+          echo "Benchmark regression detected during nightly run." >&2
           exit 1
