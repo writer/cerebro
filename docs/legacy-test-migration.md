@@ -1,5 +1,7 @@
 # Legacy Test Suite Migration Plan
 
+> **Status:** ✅ Completed on 2025-10-22 — all suites migrated, pytest + CI benchmarks passing.
+
 The refactor that enabled OODA telemetry, deterministic benchmarks, and self-play tournaments introduced breaking changes to the earlier Phase‑0 integration suites. This document captures the gaps and the changes required to migrate those tests (and any dependent code) onto the current architecture.
 
 ## Primary Breaking Changes
@@ -58,8 +60,4 @@ The refactor that enabled OODA telemetry, deterministic benchmarks, and self-pla
 
 ## Next Steps
 
-1. Implement compatibility properties & enum updates (high leverage: unlock many suites).  
-2. Refactor async session fixtures (resolves teardown errors).  
-3. Rework runtime mocks for integration suites.  
-4. Triage domain-specific expectations (bulk ops, producers, compliance).  
-5. Retire or modernise redundant tests once coverage overlaps with new benchmark framework.
+All migration tasks are complete. Continue monitoring CI for regressions and update this document if new breaking changes require fresh migrations.
