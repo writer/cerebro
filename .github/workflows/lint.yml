@@ -1,0 +1,37 @@
+name: lint
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docstrings:
+    name: Docstring quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: python -m pip install --upgrade ruff
+
+      - name: Check docstrings with Ruff
+        run: >-
+          python -m ruff check --select D
+          src/cerebro/analytics/orientation.py
+          src/cerebro/agents/tools/orientation_summary.py
+          src/cerebro/agents/tools/benchmarks_status.py
+          scripts/analyze_frontend_events.py
+          scripts/build_agent_training_corpus.py
+          scripts/export_agent_policy_dataset.py
+          scripts/generate_orientation_summary.py

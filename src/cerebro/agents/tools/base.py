@@ -793,6 +793,8 @@ class ToolExecutor:
         duration: float,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """Send tool execution telemetry to the analytics service."""
+
         metadata = metadata or {}
         payload = {
             "tool_name": tool.name,
@@ -817,6 +819,8 @@ class ToolExecutor:
         context: AgentContext,
         result: ToolResult,
     ) -> None:
+        """Queue human review tasks for destructive tools when appropriate."""
+
         if tool.permission_level not in {
             ToolPermissionLevel.WRITE_DESTRUCTIVE,
             ToolPermissionLevel.ADMIN,
@@ -847,6 +851,8 @@ class ToolExecutor:
         )
 
     async def _get_agent_session(self, session_id: UUID) -> Optional[AgentSession]:
+        """Fetch an :class:`AgentSession` without mutating the caller's context."""
+
         from cerebro.core.database import async_session_factory
 
         async with async_session_factory() as db_session:

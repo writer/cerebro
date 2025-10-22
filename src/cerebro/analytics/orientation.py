@@ -36,7 +36,6 @@ class TrendingRow:
 
 async def _count_by_field(field, start: datetime, end: datetime) -> Dict[str, int]:
     """Return counts grouped by ``field`` between ``start`` and ``end``."""
-
     stmt = (
         select(field, func.count())
         .where(FrontendObservationEvent.occurred_at >= start)
@@ -50,7 +49,6 @@ async def _count_by_field(field, start: datetime, end: datetime) -> Dict[str, in
 
 def _diff(current: Dict[str, int], baseline: Dict[str, int]) -> List[TrendingRow]:
     """Compute delta values between current and baseline counts."""
-
     rows: List[TrendingRow] = []
     for key, count in current.items():
         baseline_count = baseline.get(key, 0)
@@ -69,7 +67,6 @@ async def generate_orientation_summary(
     top_n: int = 10,
 ) -> Dict[str, Any]:
     """Compute orientation analytics for the given window and baseline."""
-
     if window_hours <= 0:
         raise ValueError("window_hours must be positive")
     if baseline_hours <= 0:

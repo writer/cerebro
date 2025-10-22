@@ -53,6 +53,8 @@ SAFE_CONTEXT_KEYS = {
 
 @dataclass
 class TrainingEvent:
+    """Normalized telemetry event emitted into the training corpus."""
+
     session_id: str
     event_id: str
     occurred_at: Optional[str]
@@ -65,12 +67,12 @@ class TrainingEvent:
     metadata: Dict[str, Any]
 
     def to_json(self) -> str:
+        """Serialise the event into a JSON line."""
         return json.dumps(self.__dict__, ensure_ascii=False)
 
 
 def _parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the training corpus exporter."""
-
     parser = argparse.ArgumentParser(
         description="Build a sanitized agent training corpus from telemetry"
     )
@@ -103,7 +105,6 @@ def _parse_args() -> argparse.Namespace:
 
 async def _fetch_events(window_days: int) -> Iterable[FrontendObservationEvent]:
     """Yield telemetry events ordered by timestamp within the window."""
-
     now = datetime.now(timezone.utc)
     filters = []
     if window_days > 0:
@@ -123,7 +124,6 @@ async def _fetch_events(window_days: int) -> Iterable[FrontendObservationEvent]:
 
 def _derive_label(event_type: Optional[str], component: Optional[str]) -> str:
     """Map raw telemetry event metadata to a coarse-grained label."""
-
     if event_type:
         if event_type in LABEL_MAP:
             return LABEL_MAP[event_type]
@@ -140,7 +140,6 @@ def _derive_label(event_type: Optional[str], component: Optional[str]) -> str:
 
 def _sanitize_payload(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Retain only whitelisted keys from telemetry context/metadata."""
-
     if not payload:
         return {}
     sanitized: Dict[str, Any] = {}
@@ -157,7 +156,6 @@ async def build_corpus(
     max_events: int,
 ) -> Dict[str, Any]:
     """Write a JSONL corpus suitable for RLHF / self-play training loops."""
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     label_counts: Dict[str, int] = {}
@@ -206,7 +204,6 @@ async def build_corpus(
 
 async def _run(args: argparse.Namespace) -> int:
     """CLI execution helper for the corpus builder."""
-
     summary = await build_corpus(
         args.output,
         args.window_days,
@@ -222,7 +219,6 @@ async def _run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Entrypoint used by ``python scripts/build_agent_training_corpus.py``."""
-
     args = _parse_args()
     return asyncio.run(_run(args))
 

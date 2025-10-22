@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +28,8 @@ class BenchmarksStatusInput(BaseModel):
 
 
 class BenchmarkScenario(BaseModel):
+    """Single benchmark scenario outcome from the scorecard."""
+
     scenario_id: str
     passed: bool
     turn_count: Optional[int] = None
