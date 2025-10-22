@@ -40,3 +40,24 @@
 - [ ] Run coordinated FE experiments (e.g., UI-driven A/B tests) that measure analyst productivity and reward quality as autonomy increases.
 - [ ] Feed post-deployment telemetry back into the data pipelines for continual fine-tuning and gym scenario updates.
 - [ ] Publish quarterly progress reports to maintain stakeholder alignment and adjust priorities as adversary capabilities evolve.
+
+### OODA Loop Integration
+#### Observe
+- [ ] Extend FE instrumentation to capture real-time analyst context (active entity, filters, timeline selections) and stream to the autonomy data plane.
+- [ ] Mirror observation telemetry with live attack-surface and sensor feeds so agents see the same picture analysts do.
+- [ ] Stand up observability pipelines that flag missing or low-signal observations for data-quality remediation.
+
+#### Orient
+- [ ] Layer graph/embedding analytics over observation streams to surface emerging threats, playbook gaps, and scenario priors inside Cerebro dashboards.
+- [ ] Auto-refresh benchmark inputs and training gym scenarios based on orientation analytics (e.g., new TTP clusters).
+- [ ] Provide analysts with orientation summaries (hypothesis suggestions, relevant historical incidents) linked to the live case.
+
+#### Decide
+- [ ] Embed decision-support panes in the FE/agent console showing benchmark deltas, autonomy risk scores, and recommended next actions.
+- [ ] Capture analyst approvals/overrides as structured decision events with rationale tagging for downstream RL signals.
+- [ ] Implement policy checks that gate high-risk decisions while logging outcomes for governance review.
+
+#### Act
+- [ ] Wrap containment/remediation tools with action adapters that report execution traces, success metrics, and collateral effects.
+- [ ] Feed action outcomes back into the RL gym and evaluation suites to close the reward loop automatically.
+- [ ] Automate post-action reviews (retros, diffing expected vs. observed impacts) and schedule them when anomalies are detected.
