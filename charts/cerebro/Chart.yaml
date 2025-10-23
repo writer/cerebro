@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cerebro
+description: Helm chart for Cerebro service components
+type: application
+version: 0.1.0
+appVersion: 0.1.0
