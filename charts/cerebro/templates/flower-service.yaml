@@ -1,0 +1,25 @@
+{{- $root := . -}}
+{{- $svc := .Values.cerebroService -}}
+{{- $component := $svc.components.flower -}}
+{{- if and $svc.enabled $component.enabled $component.service.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cerebro.componentName" (list $root "flower") }}
+  labels:
+    {{- include "cerebro.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: flower
+  {{- with $component.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $component.service.type }}
+  selector:
+    app.kubernetes.io/component: flower
+    {{- include "cerebro.selectorLabels" $root | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $component.service.port }}
+      targetPort: {{ $component.service.targetPort }}
+{{- end }}

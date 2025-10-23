@@ -1,0 +1,12 @@
+apiVersion: v2
+name: writerai
+description: Umbrella chart aggregating WriterAI services
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+
+dependencies:
+  - name: cerebro
+    version: "*"
+    repository: file://../cerebro
+    condition: cerebro.enabled

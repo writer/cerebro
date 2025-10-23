@@ -1,0 +1,90 @@
+{{- $root := . -}}
+{{- $svc := .Values.cerebroService -}}
+{{- $component := $svc.components.workerCollection -}}
+{{- if and $svc.enabled $component.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cerebro.componentName" (list $root "worker-collection") }}
+  labels:
+    {{- include "cerebro.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: worker-collection
+spec:
+  replicas: {{ $component.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker-collection
+      {{- include "cerebro.selectorLabels" $root | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cerebro.selectorLabels" $root | nindent 8 }}
+        app.kubernetes.io/component: worker-collection
+        cerebro-celery-queue: {{ $component.queue | quote }}
+      {{- with $svc.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "cerebro.serviceAccountName" $root }}
+      containers:
+        - name: cerebro-worker
+          image: "{{ $svc.image.repository }}:{{ default $root.Chart.AppVersion $svc.image.tag }}"
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - cerebro.tasks.celery_app
+            - worker
+            - -Q
+            - {{ $component.queue | quote }}
+            - -l
+            - info
+            - -c
+            - {{ $component.concurrency | quote }}
+          resources:
+            {{- toYaml $component.resources | nindent 12 }}
+          {{- $envFrom := list -}}
+          {{- if $svc.config.enabled }}
+          {{- $envFrom = append $envFrom (dict "configMapRef" (dict "name" (include "cerebro.configMapName" $root))) -}}
+          {{- end }}
+          {{- if $svc.secretName }}
+          {{- $envFrom = append $envFrom (dict "secretRef" (dict "name" $svc.secretName)) -}}
+          {{- end }}
+          {{- range $entry := ($component.extraEnvFrom | default list) }}
+          {{- $envFrom = append $envFrom $entry -}}
+          {{- end }}
+          {{- if $envFrom }}
+          envFrom:
+            {{- toYaml $envFrom | nindent 12 }}
+          {{- end }}
+          {{- $envList := list -}}
+          {{- range $entry := ($svc.sharedEnv | default list) }}
+          {{- $envList = append $envList $entry -}}
+          {{- end }}
+          {{- range $entry := ($component.env | default list) }}
+          {{- $envList = append $envList $entry -}}
+          {{- end }}
+          {{- if $envList }}
+          env:
+            {{- toYaml $envList | nindent 12 }}
+          {{- end }}
+      {{- with $svc.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
