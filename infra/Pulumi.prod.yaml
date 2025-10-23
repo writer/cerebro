@@ -18,3 +18,7 @@ config:
   cerebro:dbReplica1Id: cerebro-production-replica-1
   cerebro:dbReplica2Id: cerebro-production-replica-2
   cerebro:containerImage: 073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:prod-20251019
+  cerebro:automationOrgId: ORG-0001
+  cerebro:sessionBaseUrl: http://internal-cerebro-production-alb-1819453704.us-east-1.elb.amazonaws.com
+  cerebro:autonomySlackWebhook:
+    secure: AAABAMNAYhwH6Z3fv1Tu8y28u7XQfCLrPjJqQapKP/LxH9pYq/yIQ+viAtlV03Y6UUteHcW1RQelTH6LdGwCUY1jQlbBIJA7+Uoz55InRYALoAO7vJPcSsUkZItmjzFV

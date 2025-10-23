@@ -519,4 +519,16 @@ def _build_secret_references(secrets_arn: pulumi.Output[str]) -> list[dict]:
             "name": "SECRET_KEY",
             "valueFrom": pulumi.Output.concat(secrets_arn, ":SECRET_KEY::"),
         },
+        {
+            "name": "CEREBRO_AUTOMATION_ORG_ID",
+            "valueFrom": pulumi.Output.concat(secrets_arn, ":CEREBRO_AUTOMATION_ORG_ID::"),
+        },
+        {
+            "name": "CEREBRO_SESSION_BASE_URL",
+            "valueFrom": pulumi.Output.concat(secrets_arn, ":CEREBRO_SESSION_BASE_URL::"),
+        },
+        {
+            "name": "AUTONOMY_SLACK_WEBHOOK",
+            "valueFrom": pulumi.Output.concat(secrets_arn, ":AUTONOMY_SLACK_WEBHOOK::"),
+        },
     ]

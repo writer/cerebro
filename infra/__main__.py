@@ -81,6 +81,12 @@ redis_password = config.get_secret("redisPassword") or random.RandomPassword(
     special=False,
 ).result
 
+automation_org_id = config.get("automationOrgId") or ""
+session_base_url = config.get("sessionBaseUrl") or ""
+autonomy_slack_webhook = config.get_secret("autonomySlackWebhook")
+if autonomy_slack_webhook is None:
+    autonomy_slack_webhook = pulumi.Output.secret("")
+
 # Store secrets in AWS Secrets Manager
 cerebro_secrets = secrets.create_secrets(
     name=f"cerebro-{environment}",
@@ -89,6 +95,9 @@ cerebro_secrets = secrets.create_secrets(
         "DB_PASSWORD": db_password,
         "REDIS_PASSWORD": redis_password,
         "KMS_KEY_ID": kms_key.id,
+        "CEREBRO_AUTOMATION_ORG_ID": automation_org_id,
+        "CEREBRO_SESSION_BASE_URL": session_base_url,
+        "AUTONOMY_SLACK_WEBHOOK": autonomy_slack_webhook,
     },
 )
 

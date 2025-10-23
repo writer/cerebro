@@ -80,6 +80,21 @@ jobs:
               handle.write("\n".join(lines) + "\n")
           PY
 
+      - name: Post benchmark summary to Slack
+        if: always() && secrets.AUTONOMY_SLACK_WEBHOOK != ''
+        env:
+          SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
+        run: |
+          if [ ! -f benchmarks/results/scorecard.json ]; then
+            echo "Scorecard missing; skipping Slack notification." >&2
+            exit 0
+          fi
+
+          uv run python scripts/post_benchmark_summary.py \
+            --scorecard benchmarks/results/scorecard.json \
+            --slack-webhook "$SLACK_WEBHOOK" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - name: Fail on benchmark regression
         if: steps.run_benchmarks.outcome == 'failure' || steps.regression_check.outcome == 'failure'
         run: |

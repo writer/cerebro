@@ -1,0 +1,118 @@
+name: Daily Operations
+
+on:
+  schedule:
+    - cron: "30 12 * * 1-5" # 12:30 UTC on weekdays
+  workflow_dispatch:
+
+jobs:
+  daily-ops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Create daily agent summary
+        env:
+          DATABASE_URL: ${{ secrets.CEREBRO_DATABASE_URL }}
+          CEREBRO_ANALYTICS_DB_URL: ${{ secrets.CEREBRO_ANALYTICS_DB_URL }}
+          SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
+          SESSION_BASE_URL: ${{ secrets.CEREBRO_SESSION_BASE_URL }}
+          ORG_ID: ${{ secrets.CEREBRO_AUTOMATION_ORG_ID }}
+        run: |
+          if [ -z "$ORG_ID" ]; then
+            echo "CEREBRO_AUTOMATION_ORG_ID secret not set; skipping daily agent summary." >&2
+            exit 0
+          fi
+
+          args=("scripts/daily_agent_summary.py" "$ORG_ID" --created-by "automation@cerebro.local" --limit "${SUMMARY_LIMIT:-5}" --window-hours "${SUMMARY_WINDOW:-24}")
+
+          if [ -n "$SESSION_BASE_URL" ]; then
+            args+=(--session-base-url "$SESSION_BASE_URL")
+          fi
+
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            args+=(--slack-webhook "$SLACK_WEBHOOK")
+          else
+            echo "AUTONOMY_SLACK_WEBHOOK secret not set; running without Slack notification." >&2
+          fi
+
+          uv run python "${args[@]}"
+
+      - name: Check telemetry health
+        id: telemetry
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.CEREBRO_DATABASE_URL }}
+          CEREBRO_ANALYTICS_DB_URL: ${{ secrets.CEREBRO_ANALYTICS_DB_URL }}
+        run: |
+          uv run python scripts/check_telemetry_health.py \
+            --window-days 3 \
+            --max-missing-metadata 0.05 \
+            --max-missing-component 0.02 \
+            --min-total-events 50 \
+            --output telemetry_health.json \
+            --fail-on-issues
+
+      - name: Publish telemetry summary to Slack
+        if: env.SLACK_WEBHOOK != ''
+        env:
+          SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
+          STEP_RESULT: ${{ steps.telemetry.outcome }}
+        run: |
+          if [ ! -f telemetry_health.json ]; then
+            echo "telemetry_health.json not found; skipping Slack summary." >&2
+            exit 0
+          fi
+
+          payload=$(python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+summary = json.loads(Path("telemetry_health.json").read_text(encoding="utf-8"))
+status = os.environ.get("STEP_RESULT", "unknown")
+
+missing_meta = summary.get("missing_metadata", 0)
+total_events = summary.get("total_events", 0)
+ratio = (missing_meta / total_events) if total_events else 0
+
+text_lines = [
+    f"Telemetry health check status: {status.upper()}",
+    f"Total events: {total_events}",
+    f"Unique sessions: {summary.get('unique_sessions', 0)}",
+    f"Missing metadata: {missing_meta} ({ratio:.2%})",
+    f"Missing component labels: {summary.get('missing_component', 0)}",
+]
+
+payload = {
+    "text": "Telemetry health summary",
+    "blocks": [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "\n".join(text_lines)},
+        }
+    ],
+}
+
+print(json.dumps(payload))
+PY
+)
+
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK"
+
+      - name: Fail when telemetry issues detected
+        if: steps.telemetry.outcome == 'failure'
+        run: |
+          echo "Telemetry health check detected issues." >&2
+          exit 1

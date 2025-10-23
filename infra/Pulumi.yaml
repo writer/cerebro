@@ -28,6 +28,21 @@ config:
     secret: true
     description: Redis password
 
+  cerebro:automationOrgId:
+    type: string
+    default: ""
+    description: Organization ID used by automation workflows
+
+  cerebro:sessionBaseUrl:
+    type: string
+    default: ""
+    description: Base URL for linking to Cerebro agent sessions (optional)
+
+  cerebro:autonomySlackWebhook:
+    type: string
+    secret: true
+    description: Slack webhook for autonomy automation notifications
+
   cerebro:apiMinInstances:
     type: integer
     default: 2
