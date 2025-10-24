@@ -94,14 +94,26 @@ class TestEmailNotificationService:
         # Mock decryption to fail
         email_config.get_smtp_password = AsyncMock(side_effect=Exception("Decryption failed"))
 
-        finding = Mock()
-        finding.severity = "critical"
+        db = MagicMock()
+        db.add = MagicMock()
+        db.commit = AsyncMock()
 
-        # Should handle gracefully and log error
-        with pytest.raises(Exception) as exc_info:
-            async with asyncio.timeout(5):  # Ensure it doesn't hang
-                # This would normally send, but should fail gracefully
-                pass
+        await email_service._send_email_with_retry(
+            config=email_config,
+            subject="Test",
+            html_body="<p>test</p>",
+            event_type="finding_created",
+            finding_id=uuid4(),
+            severity="critical",
+            db=db,
+        )
+
+        db.add.assert_called_once()
+        notification = db.add.call_args.args[0]
+        assert isinstance(notification, EmailNotification)
+        assert notification.status == "failed"
+        assert "Decryption" in (notification.error_message or "")
+        assert db.commit.await_count == 1
 
 
 class TestWebhookNotificationService:
