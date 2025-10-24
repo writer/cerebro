@@ -6,6 +6,7 @@ from .results import AlertResult
 from .evaluator import AlertCooldownStore, evaluate_rules
 from .service import collect_telemetry_alerts
 from .store import InMemoryCooldownStore, RedisCooldownStore
+from .orchestrator import run_telemetry_alerts
 
 __all__ = [
     "AlertRule",
@@ -19,4 +20,5 @@ __all__ = [
     "collect_telemetry_alerts",
     "RedisCooldownStore",
     "InMemoryCooldownStore",
+    "run_telemetry_alerts",
 ]

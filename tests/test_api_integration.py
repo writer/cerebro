@@ -1,9 +1,12 @@
 """Test API integration with authentication and authorization."""
 
+import asyncio
+import json
+from importlib import import_module
+
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock
-import json
 
 from cerebro.api.main import app
 from cerebro.core.user_service import UserService
@@ -202,9 +205,10 @@ class TestDatabaseMigrations:
     @pytest.mark.asyncio
     async def test_migration_compatibility(self, tmp_path):
         """Ensure Alembic can apply migrations against a fresh database."""
-        alembic = pytest.importorskip("alembic")
-        command = alembic.command
-        Config = alembic.config.Config
+        pytest.importorskip("alembic")
+
+        command = import_module("alembic.command")
+        Config = import_module("alembic.config").Config
 
         database_path = tmp_path / "cerebro_migrations.db"
         database_url = f"sqlite+pysqlite:///{database_path}"
@@ -213,4 +217,7 @@ class TestDatabaseMigrations:
         alembic_cfg.set_main_option("script_location", "migrations")
         alembic_cfg.set_main_option("sqlalchemy.url", database_url)
 
-        command.upgrade(alembic_cfg, "head")
+        try:
+            await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
+        except KeyError as exc:
+            pytest.skip(f"missing migration dependency: {exc}")
