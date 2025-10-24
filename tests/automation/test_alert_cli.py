@@ -72,3 +72,27 @@ def test_cli_handles_no_alerts(monkeypatch, capsys) -> None:
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "No telemetry alerts triggered" in out
+
+
+def test_cli_exit_code_nonzero_on_fail_on_alerts(monkeypatch) -> None:
+    async def fake_run(*args, **kwargs):
+        return ((_alert(),), _snapshot())
+
+    monkeypatch.setattr(telemetry_alerts, "run_telemetry_alerts", fake_run)
+
+    exit_code = telemetry_alerts.main(["--dry-run", "--fail-on-alerts"])
+
+    assert exit_code == 1
+
+
+def test_cli_exit_code_threshold(monkeypatch) -> None:
+    async def fake_run(*args, **kwargs):
+        return ((_alert(),), _snapshot())
+
+    monkeypatch.setattr(telemetry_alerts, "run_telemetry_alerts", fake_run)
+
+    exit_code = telemetry_alerts.main(["--dry-run", "--fail-on-severity", "critical"])
+    assert exit_code == 0
+
+    exit_code = telemetry_alerts.main(["--dry-run", "--fail-on-severity", "warning"])
+    assert exit_code == 1
