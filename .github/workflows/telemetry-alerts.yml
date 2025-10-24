@@ -13,6 +13,14 @@ on:
         description: "Force dry-run (true/false)"
         required: false
         default: "false"
+      fail_on_severity:
+        description: "Fail workflow when alerts meet severity (info/warning/critical/none)"
+        required: false
+        default: "critical"
+      fail_on_alerts:
+        description: "Fail workflow when any alerts trigger (true/false)"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -24,6 +32,8 @@ jobs:
     env:
       WINDOW_DAYS: ${{ github.event.inputs.window_days || '1' }}
       FORCE_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+      FAIL_ON_SEVERITY_INPUT: ${{ github.event.inputs.fail_on_severity || '' }}
+      FAIL_ON_ALERTS_INPUT: ${{ github.event.inputs.fail_on_alerts || '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,12 +55,24 @@ jobs:
           REDIS_URL: ${{ secrets.CEREBRO_REDIS_URL }}
           SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
           EMAIL_RECIPIENTS: ${{ secrets.TELEMETRY_ALERT_EMAILS }}
+          FAIL_ON_SEVERITY_SECRET: ${{ secrets.TELEMETRY_ALERT_FAIL_SEVERITY }}
+          FAIL_ON_ALERTS_SECRET: ${{ secrets.TELEMETRY_ALERT_FAIL_ON_ALERTS }}
         run: |
           set -euo pipefail
 
           if [ -z "${DATABASE_URL:-}" ]; then
             echo "DATABASE_URL secret is required to run telemetry alerts." >&2
             exit 1
+          fi
+
+          fail_on_severity="${FAIL_ON_SEVERITY_INPUT:-}";
+          if [ -z "$fail_on_severity" ]; then
+            fail_on_severity="${FAIL_ON_SEVERITY_SECRET:-}"
+          fi
+
+          fail_on_alerts="${FAIL_ON_ALERTS_INPUT:-}";
+          if [ -z "$fail_on_alerts" ]; then
+            fail_on_alerts="${FAIL_ON_ALERTS_SECRET:-}"
           fi
 
           args=(scripts/telemetry_alerts.py --window-days "$WINDOW_DAYS" --print-snapshot)
@@ -76,6 +98,15 @@ jobs:
           elif [ -z "${SLACK_WEBHOOK:-}" ] && [ -z "${EMAIL_RECIPIENTS:-}" ]; then
             echo "No delivery targets configured; running in dry-run mode." >&2
             args+=(--dry-run)
+          fi
+
+          if [ -n "$fail_on_alerts" ] && [ "${fail_on_alerts,,}" = "true" ]; then
+            args+=(--fail-on-alerts)
+          fi
+
+          lower_severity="${fail_on_severity,,}"
+          if [ -n "$lower_severity" ] && [ "$lower_severity" != "none" ]; then
+            args+=(--fail-on-severity "$lower_severity")
           fi
 
           uv run python "${args[@]}"
