@@ -1,0 +1,81 @@
+name: telemetry-alerts
+
+on:
+  schedule:
+    - cron: "15 * * * *"
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: "Telemetry lookback window (days)"
+        required: false
+        default: "1"
+      dry_run:
+        description: "Force dry-run (true/false)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  run-telemetry-alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WINDOW_DAYS: ${{ github.event.inputs.window_days || '1' }}
+      FORCE_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install --upgrade uv
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Run telemetry alerts orchestrator
+        env:
+          DATABASE_URL: ${{ secrets.CEREBRO_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.CEREBRO_REDIS_URL }}
+          SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
+          EMAIL_RECIPIENTS: ${{ secrets.TELEMETRY_ALERT_EMAILS }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL secret is required to run telemetry alerts." >&2
+            exit 1
+          fi
+
+          args=(scripts/telemetry_alerts.py --window-days "$WINDOW_DAYS" --print-snapshot)
+
+          if [ -n "${SLACK_WEBHOOK:-}" ]; then
+            args+=(--slack-webhook "$SLACK_WEBHOOK")
+          fi
+
+          if [ -n "${EMAIL_RECIPIENTS:-}" ]; then
+            IFS=',' read -ra recipients <<< "$EMAIL_RECIPIENTS"
+            for recipient in "${recipients[@]}"; do
+              args+=(--email-recipient "$recipient")
+            done
+          fi
+
+          if [ -n "${REDIS_URL:-}" ]; then
+            args+=(--redis-url "$REDIS_URL")
+          fi
+
+          dry_run_flag="${FORCE_DRY_RUN,,}"
+          if [ "$dry_run_flag" = "true" ]; then
+            args+=(--dry-run)
+          elif [ -z "${SLACK_WEBHOOK:-}" ] && [ -z "${EMAIL_RECIPIENTS:-}" ]; then
+            echo "No delivery targets configured; running in dry-run mode." >&2
+            args+=(--dry-run)
+          fi
+
+          uv run python "${args[@]}"
