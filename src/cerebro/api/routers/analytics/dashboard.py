@@ -54,6 +54,7 @@ async def get_executive_summary(
         "overall_risk_score": executive_summary.overall_risk_score,
         "risk_level": executive_summary.risk_level,
         "risk_trend": executive_summary.risk_trend,
+        "dimension_scores": executive_summary.dimension_scores,
         "total_assets": executive_summary.total_assets,
         "total_identities": executive_summary.total_identities,
         "active_findings": executive_summary.active_findings,

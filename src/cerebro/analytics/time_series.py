@@ -126,6 +126,17 @@ class TimeSeriesCollector:
                 "high_count": severity_dist.get("high", 0)
             }
         ))
+
+        critical_count = severity_dist.get("critical", 0)
+        snapshots.append(MetricSnapshot(
+            timestamp=now,
+            metric_type=MetricType.CRITICAL_FINDING_COUNT.value,
+            value=float(critical_count),
+            metadata={
+                "category": "findings",
+                "severity": "critical"
+            }
+        ))
         
         # Status distribution 
         status_dist = await self._get_status_distribution(org_id)
@@ -502,7 +513,7 @@ class SecurityTrendCollector:
         
         snapshots.append(MetricSnapshot(
             timestamp=now,
-            metric_type="critical_findings_count",
+            metric_type=MetricType.CRITICAL_FINDING_COUNT.value,
             value=float(critical_count),
             metadata={"category": "findings", "severity": "critical"}
         ))

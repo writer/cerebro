@@ -50,6 +50,7 @@ class ExecutiveSummary:
     overall_risk_score: float
     risk_level: str
     risk_trend: str  # "improving", "declining", "stable"
+    dimension_scores: Dict[str, float]
     
     # Key metrics
     total_assets: int
@@ -100,7 +101,7 @@ class DashboardAnalytics:
             SELECT DATE(captured_at) as date, value
             FROM security_metric_snapshots
             WHERE org_id = :org_id 
-                AND metric_type = 'critical_findings_count'
+                AND metric_type = 'critical_finding_count'
                 AND captured_at >= :since_date
             ORDER BY captured_at
         """)
@@ -143,6 +144,13 @@ class DashboardAnalytics:
         
         # Calculate overall risk score
         risk_score = await self.risk_engine.calculate_organization_risk_score(org_id)
+        dimension_scores = {
+            "vulnerability_exposure": risk_score.vulnerability_score,
+            "identity_hygiene": risk_score.identity_score,
+            "access_control": risk_score.access_control_score,
+            "compliance_posture": risk_score.compliance_score,
+            "operational_security": risk_score.operational_score,
+        }
         
         # Get asset and identity counts
         total_assets = await self.repository.count_total_assets(org_id)
@@ -169,6 +177,7 @@ class DashboardAnalytics:
             overall_risk_score=risk_score.overall_score,
             risk_level=risk_score.risk_level.value,
             risk_trend=risk_score.score_trend,
+            dimension_scores=dimension_scores,
             total_assets=total_assets,
             total_identities=total_identities,
             active_findings=active_findings,
@@ -387,6 +396,7 @@ class DashboardAnalytics:
                 "overall_risk_score": executive_summary.overall_risk_score,
                 "risk_level": executive_summary.risk_level,
                 "risk_trend": executive_summary.risk_trend,
+                "dimension_scores": executive_summary.dimension_scores,
                 "total_assets": executive_summary.total_assets,
                 "total_identities": executive_summary.total_identities,
                 "active_findings": executive_summary.active_findings,

@@ -170,3 +170,70 @@ export type MemoryStats = {
     scope_labels: string[];
   }>;
 };
+
+export type OrganizationSummary = {
+  org_id: string;
+  name: string;
+  created_at: string;
+};
+
+export type ExecutiveSummaryProgress = {
+  findings_burned_down_30d: number;
+  new_controls_implemented: number;
+  risk_score_change_30d: number;
+};
+
+export type ExecutiveSummaryResponse = {
+  org_id: string;
+  report_date: string;
+  overall_risk_score: number;
+  risk_level: string;
+  risk_trend: string;
+  total_assets: number;
+  total_identities: number;
+  active_findings: number;
+  compliance_score: number;
+  dimension_scores: Record<string, number>;
+  top_5_risks: string[];
+  progress_indicators: ExecutiveSummaryProgress;
+};
+
+export type SecurityMetricsResponse = {
+  findings: {
+    total: number;
+    critical: number;
+    high: number;
+    open: number;
+    trend_7d: number[];
+    critical_trend_7d: number[];
+  };
+  sla_performance: {
+    breaches: number;
+    mttr_hours: number;
+    new_24h: number;
+    resolved_24h: number;
+  };
+};
+
+export type ComplianceStatusEntry = {
+  total_controls: number;
+  compliant_controls: number;
+  compliance_percentage: number;
+  status: string;
+};
+
+export type InvestmentRecommendation = {
+  priority: string;
+  category: string;
+  recommendation: string;
+  rationale: string;
+  estimated_impact: string;
+  investment_level: string;
+};
+
+export type ExecutiveDashboardResponse = {
+  executive_summary: ExecutiveSummaryResponse;
+  security_metrics: SecurityMetricsResponse;
+  compliance_status: Record<string, ComplianceStatusEntry>;
+  investment_recommendations: InvestmentRecommendation[];
+};

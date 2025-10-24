@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+  { href: "/analytics/executive", label: "Security Overview" },
   { href: "/agents/review", label: "Review Queue" },
   { href: "/agents/notifications", label: "Notifications" },
   { href: "/agents/policy", label: "Policy Suggestions" },

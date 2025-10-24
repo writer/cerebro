@@ -27,7 +27,7 @@ from sqlalchemy import (
     Column, String, DateTime, JSON, Text, Integer, Float, Boolean,
     ForeignKey, Table, Index, UniqueConstraint
 )
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.dialects.postgresql import UUID
 from cerebro.core.database_types import JSONType

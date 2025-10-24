@@ -1,0 +1,164 @@
+"""Analytics collection tasks."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Dict, List
+from uuid import UUID
+
+from celery import states
+
+from cerebro.tasks.celery_app import celery_app
+from cerebro.core.database import async_session_factory
+from cerebro.core.models import Organization
+from cerebro.analytics.time_series import (
+    AggregationPeriod,
+    MetricSnapshot,
+    MetricType,
+    TimeSeriesCollector,
+)
+from cerebro.analytics.risk_scoring import RiskScoringEngine, RiskFactor, OrganizationRiskScore
+
+logger = logging.getLogger(__name__)
+
+
+def _serialize_risk_factor(factor: RiskFactor) -> Dict[str, object]:
+    return {
+        "factor_name": factor.factor_name,
+        "category": factor.category,
+        "current_value": factor.current_value,
+        "baseline_value": factor.baseline_value,
+        "weight": factor.weight,
+        "risk_contribution": factor.risk_contribution,
+        "description": factor.description,
+        "remediation_suggestions": factor.remediation_suggestions,
+    }
+
+
+def _serialize_risk_score(score: OrganizationRiskScore) -> Dict[str, object]:
+    return {
+        "risk_level": score.risk_level.value,
+        "score_trend": score.score_trend,
+        "trend_confidence": score.trend_confidence,
+        "dimension_scores": {
+            "vulnerability_exposure": score.vulnerability_score,
+            "identity_hygiene": score.identity_score,
+            "access_control": score.access_control_score,
+            "compliance_posture": score.compliance_score,
+            "operational_security": score.operational_score,
+        },
+        "top_risks": score.top_risks,
+        "quick_wins": score.quick_wins,
+        "strategic_initiatives": score.strategic_initiatives,
+        "risk_factors": [_serialize_risk_factor(f) for f in score.risk_factors],
+    }
+
+
+async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
+    async with async_session_factory() as db:
+        org = await db.get(Organization, org_id)
+        if not org:
+            raise ValueError("Organization not found")
+
+        collector = TimeSeriesCollector(db)
+        snapshots = await collector.collect_finding_metrics(org.org_id)
+
+        stored_snapshots: List[str] = []
+        for snapshot in snapshots:
+            db_snapshot = await collector.store_snapshot(
+                org.org_id,
+                snapshot,
+                aggregation_period=AggregationPeriod.DAILY,
+            )
+            stored_snapshots.append(str(db_snapshot.snapshot_id))
+
+        risk_engine = RiskScoringEngine(db)
+        risk_score = await risk_engine.calculate_organization_risk_score(org.org_id)
+
+        risk_snapshot = MetricSnapshot(
+            timestamp=risk_score.calculation_date,
+            metric_type=MetricType.OVERALL_RISK_SCORE.value,
+            value=risk_score.overall_score,
+            metadata={
+                "category": "risk",
+                "details": _serialize_risk_score(risk_score),
+            },
+        )
+
+        db_risk_snapshot = await collector.store_snapshot(
+            org.org_id,
+            risk_snapshot,
+            aggregation_period=AggregationPeriod.DAILY,
+        )
+        stored_snapshots.append(str(db_risk_snapshot.snapshot_id))
+
+        return {
+            "org_id": str(org.org_id),
+            "snapshots_created": stored_snapshots,
+            "risk_score": risk_snapshot.value,
+        }
+
+
+@celery_app.task(
+    bind=True,
+    name="cerebro.tasks.analytics_tasks.collect_security_metrics_for_org",
+)
+def collect_security_metrics_for_org(self, org_id: str) -> Dict[str, object]:
+    """Collect and persist security analytics for a single organization."""
+
+    async def _run() -> Dict[str, object]:
+        try:
+            self.update_state(
+                state=states.STARTED,
+                meta={"status": "Collecting security metrics"},
+            )
+
+            result = await _collect_security_metrics_for_org(UUID(org_id))
+
+            self.update_state(
+                state=states.SUCCESS,
+                meta={"status": "Completed", **result},
+            )
+            return result
+        except Exception as exc:  # pragma: no cover - surfaced through Celery
+            logger.exception("Metric collection failed for org %s", org_id)
+            self.update_state(state=states.FAILURE, meta={"error": str(exc)})
+            raise
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(
+    bind=True,
+    name="cerebro.tasks.analytics_tasks.collect_security_metrics_all_orgs",
+)
+def collect_security_metrics_all_orgs(self) -> Dict[str, object]:
+    """Collect security analytics for every organization."""
+
+    async def _run() -> Dict[str, object]:
+        async with async_session_factory() as db:
+            from sqlalchemy import select
+
+            org_ids = list(await db.scalars(select(Organization.org_id)))
+
+        results: List[Dict[str, object]] = []
+        for index, org_id in enumerate(org_ids, start=1):
+            self.update_state(
+                state=states.STARTED,
+                meta={
+                    "status": f"Collecting metrics {index}/{len(org_ids)}",
+                    "org_id": str(org_id),
+                },
+            )
+
+            try:
+                result = await _collect_security_metrics_for_org(org_id)
+                results.append(result)
+            except Exception as exc:  # pragma: no cover - surfaced via result payload
+                logger.exception("Metric collection failed for org %s", org_id)
+                results.append({"org_id": str(org_id), "error": str(exc)})
+
+        return {"processed": len(results), "results": results}
+
+    return asyncio.run(_run())

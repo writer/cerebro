@@ -5,7 +5,7 @@ from typing import List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
@@ -33,7 +33,7 @@ class EmailConfigCreate(BaseModel):
     smtp_password: Optional[str] = Field(None, description="SMTP password (encrypted)")
     from_email: EmailStr = Field(..., description="Sender email address")
     from_name: Optional[str] = Field(None, max_length=255, description="Sender display name")
-    to_emails: List[EmailStr] = Field(..., min_items=1, description="List of recipient emails")
+    to_emails: List[EmailStr] = Field(..., min_length=1, description="List of recipient emails")
     cc_emails: Optional[List[EmailStr]] = Field(None, description="CC recipient emails")
     use_tls: bool = Field(default=True, description="Use TLS for SMTP connection")
     enabled: bool = Field(default=True, description="Enable this email config")
@@ -41,7 +41,7 @@ class EmailConfigCreate(BaseModel):
         None, description="Filter by severity (critical, high, medium, low)"
     )
     event_types: List[str] = Field(
-        ..., min_items=1, description="Event types to send (finding.created, compliance.check_failed, etc.)"
+        ..., min_length=1, description="Event types to send (finding.created, compliance.check_failed, etc.)"
     )
     digest_mode: bool = Field(default=False, description="Send digest instead of immediate")
     digest_frequency: Optional[str] = Field(
@@ -71,12 +71,12 @@ class EmailConfigUpdate(BaseModel):
     smtp_password: Optional[str] = Field(None)
     from_email: Optional[EmailStr] = None
     from_name: Optional[str] = Field(None, max_length=255)
-    to_emails: Optional[List[EmailStr]] = Field(None, min_items=1)
+    to_emails: Optional[List[EmailStr]] = Field(None, min_length=1)
     cc_emails: Optional[List[EmailStr]] = None
     use_tls: Optional[bool] = None
     enabled: Optional[bool] = None
     severity_filter: Optional[List[str]] = None
-    event_types: Optional[List[str]] = Field(None, min_items=1)
+    event_types: Optional[List[str]] = Field(None, min_length=1)
     digest_mode: Optional[bool] = None
     digest_frequency: Optional[str] = None
     email_metadata: Optional[dict] = None
@@ -118,8 +118,7 @@ class EmailConfigResponse(BaseModel):
     updated_at: datetime
     created_by: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmailNotificationResponse(BaseModel):
@@ -140,8 +139,7 @@ class EmailNotificationResponse(BaseModel):
     sent_at: Optional[datetime]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmailNotificationStatsResponse(BaseModel):

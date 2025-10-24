@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, HttpUrl, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, HttpUrl, ValidationInfo, field_validator, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
@@ -44,7 +44,7 @@ class WebhookConfigCreate(BaseModel):
         None, description="Filter by severity (critical, high, medium, low)"
     )
     event_types: List[str] = Field(
-        ..., min_items=1, description="Event types to send (finding.created, compliance.check_failed, etc.)"
+        ..., min_length=1, description="Event types to send (finding.created, compliance.check_failed, etc.)"
     )
     timeout_seconds: int = Field(default=10, ge=1, le=60, description="Request timeout in seconds")
     webhook_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
@@ -80,7 +80,7 @@ class WebhookConfigUpdate(BaseModel):
     hmac_secret: Optional[str] = None
     enabled: Optional[bool] = None
     severity_filter: Optional[List[str]] = None
-    event_types: Optional[List[str]] = Field(None, min_items=1)
+    event_types: Optional[List[str]] = Field(None, min_length=1)
     timeout_seconds: Optional[int] = Field(None, ge=1, le=60)
     webhook_metadata: Optional[Dict[str, Any]] = None
 
@@ -107,8 +107,7 @@ class WebhookConfigResponse(BaseModel):
     updated_at: datetime
     created_by: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WebhookNotificationResponse(BaseModel):
@@ -130,8 +129,7 @@ class WebhookNotificationResponse(BaseModel):
     sent_at: Optional[datetime]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WebhookNotificationStatsResponse(BaseModel):

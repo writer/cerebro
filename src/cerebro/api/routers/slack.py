@@ -9,7 +9,7 @@ from typing import List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, HttpUrl, Field, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select, func
@@ -46,7 +46,7 @@ class SlackWebhookCreate(BaseModel):
     )
     event_types: List[str] = Field(
         ...,
-        min_items=1,
+        min_length=1,
         description="Event types: finding_created, finding_updated, compliance_failed, monitoring_alert",
     )
 
@@ -79,8 +79,7 @@ class SlackWebhookResponse(BaseModel):
     updated_at: datetime
     created_by: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SlackNotificationResponse(BaseModel):
@@ -98,8 +97,7 @@ class SlackNotificationResponse(BaseModel):
     sent_at: Optional[datetime]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SlackNotificationStats(BaseModel):

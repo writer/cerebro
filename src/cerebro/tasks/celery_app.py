@@ -21,7 +21,8 @@ celery_kwargs = {
         'cerebro.tasks.finding_tasks',
         'cerebro.tasks.maintenance_tasks',
         'cerebro.tasks.notification_digest',
-        'cerebro.tasks.self_play_tasks'
+        'cerebro.tasks.self_play_tasks',
+        'cerebro.tasks.analytics_tasks'
     ],
 }
 
@@ -32,6 +33,7 @@ task_routes = {
     'cerebro.tasks.collection_tasks.collect_organization_task': {'queue': 'collection'},
     'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
     'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
+    'cerebro.tasks.analytics_tasks.*': {'queue': 'analytics'},
     'process_email_digests': {'queue': 'notifications'},
 }
 
@@ -39,6 +41,7 @@ task_queues = [
     Queue('collection', routing_key='collection'),
     Queue('findings', routing_key='findings'),
     Queue('maintenance', routing_key='maintenance'),
+    Queue('analytics', routing_key='analytics'),
     Queue('notifications', routing_key='notifications'),
     Queue('default', routing_key='default'),
 ]
@@ -56,6 +59,10 @@ beat_schedule = {
     'process-email-digests-daily': {
         'task': 'process_email_digests',
         'schedule': crontab(hour=8, minute=0),  # Daily at 8 AM UTC
+    },
+    'collect-security-metrics-hourly': {
+        'task': 'cerebro.tasks.analytics_tasks.collect_security_metrics_all_orgs',
+        'schedule': 3600.0,
     },
 }
 
