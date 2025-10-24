@@ -1,5 +1,6 @@
 """Alerting utilities for telemetry automation."""
 
+from .config import default_rules, rules_from_env
 from .rules import AlertRule, RuleComparison, RuleSeverity
 from .results import AlertResult
 from .evaluator import evaluate_rules
@@ -10,4 +11,6 @@ __all__ = [
     "RuleSeverity",
     "AlertResult",
     "evaluate_rules",
+    "default_rules",
+    "rules_from_env",
 ]
