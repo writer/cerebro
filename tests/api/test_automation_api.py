@@ -115,3 +115,31 @@ def test_alerts_preview_filters_rules(monkeypatch, client, admin_token) -> None:
     assert response.status_code == 200
     assert captured
     assert all(rule.rule_id == "low-events" for rule in captured[0])
+
+
+def test_alerts_preview_unknown_rule_returns_empty(monkeypatch, client, admin_token) -> None:
+    from cerebro.api.routers import automation
+
+    async def fake_collect(*args, **kwargs):
+        return (tuple(), _snapshot())
+
+    monkeypatch.setattr(automation, "collect_telemetry_alerts", fake_collect)
+
+    response = client.get(
+        "/api/v1/automation/telemetry/alerts?rule_id=does-not-exist",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["alerts"] == []
+
+
+def test_health_validates_window_days(client, admin_token) -> None:
+    response = client.get(
+        "/api/v1/automation/telemetry/health",
+        params={"window_days": 0},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 422

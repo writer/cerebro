@@ -148,3 +148,50 @@ async def test_automation_tool_applies_severity_filter(monkeypatch) -> None:
 
     assert captured_rules
     assert all(rule.severity == RuleSeverity.CRITICAL for rule in captured_rules[0])
+
+
+@pytest.mark.asyncio
+async def test_automation_tool_respects_limit(monkeypatch) -> None:
+    from cerebro.agents.tools import automation_summary as module
+
+    rules = [
+        AlertRule(
+            rule_id=f"rule-{idx}",
+            metric="metric",
+            comparison=RuleComparison.GREATER_THAN,
+            threshold=1,
+            severity=RuleSeverity.WARNING,
+            description="Test rule",
+        )
+        for idx in range(3)
+    ]
+
+    async def fake_collect(*, rules: Optional[Sequence[AlertRule]] = None, **kwargs):
+        alerts = tuple(_alert(rule) for rule in rules or tuple())
+        return (alerts, _snapshot())
+
+    monkeypatch.setattr(module, "default_rules", lambda: tuple(rules))
+    monkeypatch.setattr(module, "collect_telemetry_alerts", fake_collect)
+    monkeypatch.setattr(module, "evaluate_health_thresholds", lambda snapshot, **_: [])
+    monkeypatch.setattr(module, "async_session_factory", lambda: _DummySession())
+
+    tool = TelemetryAutomationSummaryTool()
+    context = AgentContext(
+        session_id=uuid4(),
+        org_id=uuid4(),
+        user_id="agent",
+        agent_type="automation",
+    )
+
+    result = await tool._run(
+        context=context,
+        window_days=1,
+        severity=None,
+        max_missing_metadata_ratio=0.3,
+        max_missing_component_ratio=0.1,
+        min_total_events=10,
+        limit_alerts=1,
+    )
+
+    assert result.success
+    assert len(result.data["alerts"]) == 1
