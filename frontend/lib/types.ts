@@ -231,9 +231,84 @@ export type InvestmentRecommendation = {
   investment_level: string;
 };
 
+export type IdentityAnalyticsSummary = {
+  total_identities: number;
+  high_privilege_identities: number;
+  cross_provider_identities: number;
+  avg_permissions_per_identity: number;
+  max_permissions_per_identity: number;
+};
+
+export type IdentityAnalyticsRiskyIdentity = {
+  principal_id: string;
+  display_name: string | null;
+  email: string | null;
+  risk_score: number;
+  risk_level: string;
+  cross_provider_access: number;
+  admin_access_count: number;
+  mfa_status: string;
+  top_risk_factor?: string | null;
+};
+
+export type IdentityPrivilegeAnomaly = {
+  type: string;
+  principal_id: string;
+  principal_name?: string | null;
+  description: string;
+  risk_level: string;
+  recommendation: string;
+};
+
+export type IdentityProviderBreakdown = {
+  identity_count: number;
+  unique_permissions: number;
+  admin_grants: number;
+  recent_activity_ratio: number;
+  risk_level: string;
+};
+
+export type IdentityMfaCompliance = {
+  total_users: number;
+  mfa_enabled_users: number;
+  compliance_rate: number;
+  status: string;
+};
+
+export type IdentityAnalyticsResponse = {
+  summary: IdentityAnalyticsSummary;
+  privilege_distribution: Record<string, number>;
+  top_risky_identities: IdentityAnalyticsRiskyIdentity[];
+  privilege_anomalies: IdentityPrivilegeAnomaly[];
+  mfa_compliance_by_provider: Record<string, IdentityMfaCompliance>;
+  provider_breakdown: Record<string, IdentityProviderBreakdown>;
+};
+
+export type RiskHeatmapArea = {
+  provider: string;
+  resource_type: string;
+  risk_score: number;
+  finding_count: number;
+};
+
+export type RiskImprovementOpportunity = {
+  area: string;
+  current_risk: number;
+  potential_reduction: number;
+  impact: string;
+};
+
+export type RiskHeatmapResponse = {
+  heatmap_data: Record<string, Record<string, number>>;
+  high_risk_areas: RiskHeatmapArea[];
+  improvement_opportunities: RiskImprovementOpportunity[];
+};
+
 export type ExecutiveDashboardResponse = {
   executive_summary: ExecutiveSummaryResponse;
   security_metrics: SecurityMetricsResponse;
   compliance_status: Record<string, ComplianceStatusEntry>;
   investment_recommendations: InvestmentRecommendation[];
+  identity_analytics: IdentityAnalyticsResponse;
+  risk_heatmap: RiskHeatmapResponse;
 };

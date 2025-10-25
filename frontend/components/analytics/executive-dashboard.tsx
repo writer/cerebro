@@ -7,7 +7,9 @@ import { apiGet } from "@/lib/api";
 import {
   ExecutiveDashboardResponse,
   ExecutiveSummaryResponse,
+  IdentityAnalyticsResponse,
   OrganizationSummary,
+  RiskHeatmapResponse,
   SecurityMetricsResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -56,6 +58,8 @@ export function ExecutiveDashboard() {
 
   const summary: ExecutiveSummaryResponse | undefined = dashboard?.executive_summary;
   const metrics: SecurityMetricsResponse | undefined = dashboard?.security_metrics;
+  const identity: IdentityAnalyticsResponse | undefined = dashboard?.identity_analytics;
+  const heatmap: RiskHeatmapResponse | undefined = dashboard?.risk_heatmap;
 
   const riskLevelClass = useMemo(() => {
     if (!summary) {
@@ -287,6 +291,168 @@ export function ExecutiveDashboard() {
           </div>
         )}
       </Panel>
+
+      <Panel
+        title="Identity risk posture"
+        description="Privilege sprawl, risky identities, and MFA coverage across providers."
+      >
+        {isLoadingDashboard ? (
+          <p className="text-sm text-zinc-500">Loading identity analytics…</p>
+        ) : !identity ? (
+          <p className="text-sm text-zinc-500">Identity analytics will appear once data collection completes.</p>
+        ) : (
+          <div className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MetricStat label="Total identities" value={identity.summary.total_identities} formatter={formatInteger} />
+              <MetricStat
+                label="High privilege"
+                value={identity.summary.high_privilege_identities}
+                formatter={formatInteger}
+              />
+              <MetricStat
+                label="Cross-provider"
+                value={identity.summary.cross_provider_identities}
+                formatter={formatInteger}
+              />
+              <MetricStat
+                label="Avg permissions"
+                value={identity.summary.avg_permissions_per_identity}
+                formatter={(val) => val.toFixed(1)}
+              />
+              <MetricStat
+                label="Max permissions"
+                value={identity.summary.max_permissions_per_identity}
+                formatter={formatInteger}
+              />
+              <div className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                <div className="text-[10px] uppercase tracking-wide text-zinc-500">Privilege mix</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  {Object.entries(identity.privilege_distribution).map(([label, count]) => (
+                    <span key={label} className="rounded-full border border-zinc-800 px-2 py-1 text-zinc-300">
+                      {label.replace(/_/g, " ")} · {formatInteger(count)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Top risky identities</div>
+                <ul className="mt-3 space-y-3 text-sm text-zinc-200">
+                  {identity.top_risky_identities.length === 0 ? (
+                    <li className="text-zinc-500">No high-risk identities detected.</li>
+                  ) : (
+                    identity.top_risky_identities.map((person) => (
+                      <li key={person.principal_id} className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                        <div className="flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
+                          <span>{person.display_name ?? person.email ?? person.principal_id.slice(0, 8)}</span>
+                          <span className={riskBadgeClass(person.risk_level)}>{person.risk_level}</span>
+                        </div>
+                        <div className="mt-1 text-[13px] text-zinc-200">Risk score {person.risk_score.toFixed(1)}</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          Admin roles: {person.admin_access_count} · Providers: {person.cross_provider_access} · MFA: {person.mfa_status}
+                        </div>
+                        {person.top_risk_factor ? (
+                          <div className="mt-1 text-xs text-zinc-400">{person.top_risk_factor}</div>
+                        ) : null}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-zinc-500">MFA by provider</div>
+                  <ul className="mt-3 space-y-2 text-xs text-zinc-300">
+                    {Object.entries(identity.mfa_compliance_by_provider).map(([provider, stats]) => (
+                      <li key={provider} className="flex items-center justify-between rounded-md border border-zinc-900 bg-black/40 px-3 py-2">
+                        <span className="font-medium text-zinc-100">{provider}</span>
+                        <span>
+                          {stats.compliance_rate.toFixed(1)}% · {formatInteger(stats.mfa_enabled_users)}/{formatInteger(stats.total_users)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-zinc-500">Privilege anomalies</div>
+                  <ul className="mt-3 space-y-2 text-xs text-zinc-300">
+                    {identity.privilege_anomalies.slice(0, 4).map((anomaly) => (
+                      <li key={`${anomaly.type}-${anomaly.principal_id}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                          <span>{anomaly.type.replace(/_/g, " ")}</span>
+                          <span className={riskBadgeClass(anomaly.risk_level)}>{anomaly.risk_level}</span>
+                        </div>
+                        <div className="mt-1 text-zinc-200">{anomaly.description}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">{anomaly.recommendation}</div>
+                      </li>
+                    ))}
+                    {identity.privilege_anomalies.length === 0 ? (
+                      <li className="text-zinc-500">No anomalies detected.</li>
+                    ) : null}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title="Risk heatmap"
+        description="Risk concentration by provider and resource type with improvement suggestions."
+      >
+        {isLoadingDashboard ? (
+          <p className="text-sm text-zinc-500">Loading risk heatmap…</p>
+        ) : !heatmap ? (
+          <p className="text-sm text-zinc-500">Heatmap data is unavailable until metrics are collected.</p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+              <div className="text-xs uppercase tracking-wide text-zinc-500">High-risk areas</div>
+              <ul className="mt-3 space-y-2 text-sm text-zinc-200">
+                {heatmap.high_risk_areas.length === 0 ? (
+                  <li className="text-zinc-500">No high-risk clusters detected.</li>
+                ) : (
+                  heatmap.high_risk_areas.map((area) => (
+                    <li key={`${area.provider}-${area.resource_type}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                      <div className="text-xs uppercase tracking-wide text-zinc-500">
+                        {area.provider} · {area.resource_type}
+                      </div>
+                      <div className="mt-1 text-[13px] text-zinc-100">Risk score {area.risk_score.toFixed(1)}</div>
+                      <div className="mt-1 text-xs text-zinc-500">Open findings: {formatInteger(area.finding_count)}</div>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+
+            <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+              <div className="text-xs uppercase tracking-wide text-zinc-500">Improvement opportunities</div>
+              <ul className="mt-3 space-y-2 text-sm text-zinc-200">
+                {heatmap.improvement_opportunities.length === 0 ? (
+                  <li className="text-zinc-500">No prioritized improvements suggested.</li>
+                ) : (
+                  heatmap.improvement_opportunities.map((item) => (
+                    <li key={item.area} className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                      <div className="flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
+                        <span>{item.area}</span>
+                        <span className={riskBadgeClass(item.impact)}>{item.impact}</span>
+                      </div>
+                      <div className="mt-1 text-[13px] text-zinc-100">
+                        Current {item.current_risk.toFixed(1)} · Potential reduction {item.potential_reduction.toFixed(1)}
+                      </div>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }
@@ -306,4 +472,24 @@ function MetricStat({ label, value, formatter }: MetricStatProps) {
       <div className="mt-1 text-lg font-semibold text-zinc-100">{formatted}</div>
     </div>
   );
+}
+
+function formatInteger(value: number): string {
+  return Number.isFinite(value) ? Math.round(value).toLocaleString() : "—";
+}
+
+function riskBadgeClass(level: string): string {
+  switch (level?.toLowerCase()) {
+    case "critical":
+      return "text-red-400";
+    case "high":
+      return "text-orange-400";
+    case "medium":
+      return "text-amber-300";
+    case "low":
+    case "minimal":
+      return "text-emerald-300";
+    default:
+      return "text-zinc-300";
+  }
 }
