@@ -85,6 +85,7 @@ dev = [
     "flake8>=6.1.0",
     "pre-commit>=3.5.0",
     "ruff>=0.1.0",
+    "testcontainers>=4.13.2",
 ]
 
 [project.scripts]

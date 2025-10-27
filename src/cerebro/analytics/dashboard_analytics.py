@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from uuid import UUID
+from time import perf_counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func, text
@@ -14,8 +15,16 @@ from .time_series import TimeSeriesCollector, TrendAnalyzer, MetricType
 from .risk_scoring import RiskScoringEngine
 from .identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector
 from .dashboard_repository import DashboardRepository
+from prometheus_client import Histogram
 
 logger = logging.getLogger(__name__)
+
+
+dashboard_component_duration = Histogram(
+    "cerebro_dashboard_component_duration_seconds",
+    "Time spent generating executive dashboard components",
+    labelnames=("component",),
+)
 
 
 @dataclass
@@ -81,6 +90,28 @@ class DashboardAnalytics:
         self.risk_engine = RiskScoringEngine(db_session)
         self.identity_analyzer = IdentityAnalyzer(db_session)
         self.repository = DashboardRepository(db_session)
+        self._last_generation_timings: Dict[str, float] = {}
+
+    @property
+    def last_generation_timings(self) -> Dict[str, float]:
+        """Expose timings from the last dashboard generation cycle."""
+
+        return dict(self._last_generation_timings)
+
+    async def _track_component(self, component: str, coroutine):
+        start = perf_counter()
+        try:
+            return await coroutine
+        finally:
+            duration = perf_counter() - start
+            self._last_generation_timings[component] = duration
+            try:
+                dashboard_component_duration.labels(component=component).observe(duration)
+            except Exception:  # pragma: no cover - metrics registration edge cases
+                logger.debug(
+                    "Failed to record dashboard timing metric",
+                    exc_info=True,
+                )
     
     async def generate_security_metrics(self, org_id: UUID) -> SecurityMetrics:
         """Generate core security metrics for dashboard KPIs."""
@@ -377,22 +408,54 @@ class DashboardAnalytics:
         """Generate comprehensive dashboard data combining all analytics."""
         
         logger.info(f"Generating comprehensive dashboard for org {org_id}")
+
+        self._last_generation_timings = {}
+        total_start = perf_counter()
         
         # Collect all analytics
-        security_metrics = await self.generate_security_metrics(org_id)
-        executive_summary = await self.generate_executive_summary(org_id)
+        security_metrics = await self._track_component(
+            "security_metrics",
+            self.generate_security_metrics(org_id),
+        )
+        executive_summary = await self._track_component(
+            "executive_summary",
+            self.generate_executive_summary(org_id),
+        )
         
         # Identity analytics
-        identity_data = await IdentityAnalyzer(self.db).generate_identity_dashboard_data(org_id)
+        identity_data = await self._track_component(
+            "identity_analytics",
+            self.identity_analyzer.generate_identity_dashboard_data(org_id),
+        )
         
         # Risk heatmap
-        risk_heatmap = await self.risk_engine.generate_risk_heatmap(org_id)
+        risk_heatmap = await self._track_component(
+            "risk_heatmap",
+            self.risk_engine.generate_risk_heatmap(org_id),
+        )
         
         # Compliance status
-        compliance_status = await self._get_compliance_status_by_framework(org_id)
+        compliance_status = await self._track_component(
+            "compliance_status",
+            self._get_compliance_status_by_framework(org_id),
+        )
+
+        total_duration = perf_counter() - total_start
+        self._last_generation_timings["total"] = total_duration
+        try:
+            dashboard_component_duration.labels(component="total").observe(total_duration)
+        except Exception:  # pragma: no cover - metrics registration edge cases
+            logger.debug("Failed to record total dashboard timing", exc_info=True)
+
+        logger.debug(
+            "Dashboard generation timings",
+            extra={"org_id": str(org_id), "timings": self._last_generation_timings},
+        )
         
         return {
             "executive_summary": {
+                "org_id": str(executive_summary.org_id),
+                "report_date": executive_summary.report_date.isoformat(),
                 "overall_risk_score": executive_summary.overall_risk_score,
                 "risk_level": executive_summary.risk_level,
                 "risk_trend": executive_summary.risk_trend,
@@ -401,7 +464,12 @@ class DashboardAnalytics:
                 "total_identities": executive_summary.total_identities,
                 "active_findings": executive_summary.active_findings,
                 "compliance_score": executive_summary.compliance_score,
-                "top_5_risks": executive_summary.top_5_risks
+                "top_5_risks": executive_summary.top_5_risks,
+                "progress_indicators": {
+                    "findings_burned_down_30d": executive_summary.findings_burned_down_30d,
+                    "new_controls_implemented": executive_summary.new_controls_implemented,
+                    "risk_score_change_30d": executive_summary.risk_score_change_30d,
+                },
             },
             "security_metrics": {
                 "findings": {

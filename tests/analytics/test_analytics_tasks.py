@@ -102,3 +102,116 @@ async def test_collect_security_metrics_for_org_records_snapshots(
     assert any(
         snapshot.metric_type == "overall_risk_score" for snapshot in snapshots
     ), "Overall risk score snapshot missing"
+
+
+class _FakeScalarResult:
+    def __init__(self, items):
+        self._items = items
+
+    def __iter__(self):
+        return iter(self._items)
+
+
+class _FakeSession:
+    def __init__(self, items):
+        self._items = items
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def scalars(self, stmt):  # pragma: no cover - matches AsyncSession API
+        return _FakeScalarResult(self._items)
+
+
+@pytest.mark.asyncio
+async def test_collect_all_orgs_retries_transient_failure(monkeypatch, test_org):
+    org_ids = [test_org.org_id]
+
+    monkeypatch.setattr(
+        analytics_tasks,
+        "async_session_factory",
+        lambda: _FakeSession(org_ids),
+    )
+
+    attempts = []
+
+    async def _flaky_collect(org_id):
+        attempts.append(org_id)
+        if len(attempts) == 1:
+            raise RuntimeError("transient error")
+        return {
+            "org_id": str(org_id),
+            "snapshots_created": ["snap"],
+            "risk_score": 10.0,
+        }
+
+    monkeypatch.setattr(
+        analytics_tasks,
+        "_collect_security_metrics_for_org",
+        _flaky_collect,
+    )
+
+    sleep_calls = []
+
+    async def _no_sleep(delay):
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(analytics_tasks.asyncio, "sleep", _no_sleep)
+
+    updates = []
+
+    def _update(state, meta):
+        updates.append((state, meta))
+
+    result = await analytics_tasks._collect_security_metrics_for_all_orgs(
+        max_attempts=2,
+        update_state_cb=_update,
+    )
+
+    assert attempts.count(test_org.org_id) == 2
+    assert sleep_calls == [1.0]
+    assert any(state == "RETRY" for state, _ in updates)
+    assert result["processed"] == 1
+    assert result["results"][0]["snapshots_created"] == ["snap"]
+
+
+@pytest.mark.asyncio
+async def test_collect_all_orgs_records_failure_after_retries(monkeypatch, test_org):
+    org_ids = [test_org.org_id]
+
+    monkeypatch.setattr(
+        analytics_tasks,
+        "async_session_factory",
+        lambda: _FakeSession(org_ids),
+    )
+
+    async def _always_fail(org_id):
+        raise RuntimeError("persistent failure")
+
+    monkeypatch.setattr(
+        analytics_tasks,
+        "_collect_security_metrics_for_org",
+        _always_fail,
+    )
+
+    async def _no_sleep(delay):
+        return None
+
+    monkeypatch.setattr(analytics_tasks.asyncio, "sleep", _no_sleep)
+
+    updates = []
+
+    def _update(state, meta):
+        updates.append((state, meta))
+
+    result = await analytics_tasks._collect_security_metrics_for_all_orgs(
+        max_attempts=2,
+        update_state_cb=_update,
+    )
+
+    assert any(state == "FAILURE" for state, _ in updates)
+    assert result["processed"] == 1
+    assert "error" in result["results"][0]

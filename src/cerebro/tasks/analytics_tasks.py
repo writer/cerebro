@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, List
+from typing import Callable, Dict, List
 from uuid import UUID
 
 from celery import states
@@ -100,6 +100,91 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
         }
 
 
+async def _collect_security_metrics_with_retry(
+    org_id: UUID,
+    *,
+    max_attempts: int = 3,
+    retry_backoff: float = 2.0,
+    initial_delay: float = 1.0,
+    update_state_cb: Callable[[str, Dict[str, object]], None] | None = None,
+) -> Dict[str, object]:
+    """Collect metrics with retry support for transient failures."""
+
+    attempt = 0
+    delay = initial_delay
+    while True:
+        try:
+            return await _collect_security_metrics_for_org(org_id)
+        except Exception as exc:
+            attempt += 1
+            logger.warning(
+                "Metric collection attempt %s/%s failed for org %s: %s",
+                attempt,
+                max_attempts,
+                org_id,
+                exc,
+            )
+
+            if update_state_cb is not None:
+                update_state_cb(
+                    "RETRY",
+                    {
+                        "org_id": str(org_id),
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "error": str(exc),
+                    },
+                )
+
+            if attempt >= max_attempts:
+                raise
+
+            await asyncio.sleep(delay)
+            delay *= retry_backoff
+
+
+async def _collect_security_metrics_for_all_orgs(
+    *,
+    max_attempts: int = 3,
+    update_state_cb: Callable[[str, Dict[str, object]], None] | None = None,
+) -> Dict[str, object]:
+    """Collect metrics for every organization with retry and progress callbacks."""
+
+    async with async_session_factory() as db:
+        from sqlalchemy import select
+
+        org_ids = list(await db.scalars(select(Organization.org_id)))
+
+    results: List[Dict[str, object]] = []
+    total = len(org_ids)
+
+    for index, org_id in enumerate(org_ids, start=1):
+        if update_state_cb is not None:
+            update_state_cb(
+                states.STARTED,
+                {
+                    "status": f"Collecting metrics {index}/{total}",
+                    "org_id": str(org_id),
+                },
+            )
+
+        try:
+            result = await _collect_security_metrics_with_retry(
+                org_id,
+                max_attempts=max_attempts,
+                update_state_cb=update_state_cb,
+            )
+            results.append(result)
+        except Exception as exc:  # pragma: no cover - surfaced via result payload
+            logger.exception("Metric collection failed for org %s", org_id)
+            error_meta = {"org_id": str(org_id), "error": str(exc)}
+            if update_state_cb is not None:
+                update_state_cb(states.FAILURE, error_meta)
+            results.append(error_meta)
+
+    return {"processed": total, "results": results}
+
+
 @celery_app.task(
     bind=True,
     name="cerebro.tasks.analytics_tasks.collect_security_metrics_for_org",
@@ -114,7 +199,13 @@ def collect_security_metrics_for_org(self, org_id: str) -> Dict[str, object]:
                 meta={"status": "Collecting security metrics"},
             )
 
-            result = await _collect_security_metrics_for_org(UUID(org_id))
+            result = await _collect_security_metrics_with_retry(
+                UUID(org_id),
+                update_state_cb=lambda state, meta: self.update_state(
+                    state=state,
+                    meta={"status": meta.get("status", "Retrying"), **meta},
+                ),
+            )
 
             self.update_state(
                 state=states.SUCCESS,
@@ -137,28 +228,11 @@ def collect_security_metrics_all_orgs(self) -> Dict[str, object]:
     """Collect security analytics for every organization."""
 
     async def _run() -> Dict[str, object]:
-        async with async_session_factory() as db:
-            from sqlalchemy import select
-
-            org_ids = list(await db.scalars(select(Organization.org_id)))
-
-        results: List[Dict[str, object]] = []
-        for index, org_id in enumerate(org_ids, start=1):
-            self.update_state(
-                state=states.STARTED,
-                meta={
-                    "status": f"Collecting metrics {index}/{len(org_ids)}",
-                    "org_id": str(org_id),
-                },
+        return await _collect_security_metrics_for_all_orgs(
+            update_state_cb=lambda state, meta: self.update_state(
+                state=state,
+                meta=meta,
             )
-
-            try:
-                result = await _collect_security_metrics_for_org(org_id)
-                results.append(result)
-            except Exception as exc:  # pragma: no cover - surfaced via result payload
-                logger.exception("Metric collection failed for org %s", org_id)
-                results.append({"org_id": str(org_id), "error": str(exc)})
-
-        return {"processed": len(results), "results": results}
+        )
 
     return asyncio.run(_run())

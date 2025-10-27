@@ -522,11 +522,11 @@ class RiskScoringEngine:
         
         # Analyze patterns for strategic recommendations
         provider_coverage_query = text("""
-            SELECT provider, COUNT(DISTINCT resource_id) as resource_count
+            SELECT r.provider, COUNT(DISTINCT r.resource_id) as resource_count
             FROM resources r
             JOIN accounts a ON r.account_id = a.account_id
             WHERE a.org_id = :org_id
-            GROUP BY provider
+            GROUP BY r.provider
             ORDER BY resource_count DESC
         """)
         
