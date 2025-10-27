@@ -355,9 +355,11 @@ export function ExecutiveDashboard() {
             </div>
             <div className="mt-2 text-[11px] text-zinc-500">
               Cache TTL: {cacheTtlSeconds ? `${cacheTtlSeconds}s` : "n/a"}
+              <InfoTooltip message="Metrics refreshed via scheduled Celery worker snapshots." />
             </div>
             <div className="mt-1 text-[11px] text-zinc-500">
               Streaming updates: {supportsStreaming ? "enabled" : "disabled"}
+              <InfoTooltip message="Indicates whether WebSocket feeds push live findings updates." />
             </div>
           </div>
         </div>
@@ -379,7 +381,10 @@ export function ExecutiveDashboard() {
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-4">
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">Risk score</div>
+                  <SectionHeading
+                    label="Risk score"
+                    tooltip="Aggregated from dashboard analytics risk scoring against organization findings and assets."
+                  />
                 <div className="mt-2 flex items-baseline gap-3">
                   <span className="text-3xl font-semibold text-zinc-100">
                     {summary.overall_risk_score.toFixed(1)}
@@ -402,9 +407,10 @@ export function ExecutiveDashboard() {
               </div>
 
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">
-                  Progress indicators (30 days)
-                </div>
+                <SectionHeading
+                  label="Progress indicators (30 days)"
+                  tooltip="Derived from 30-day security_metric_snapshots captured by Celery analytics tasks."
+                />
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   <MetricStat
                     label="Findings burned down"
@@ -425,7 +431,10 @@ export function ExecutiveDashboard() {
 
             <div className="space-y-4">
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">Top risks</div>
+                <SectionHeading
+                  label="Top risks"
+                  tooltip="Summarizes highest-impact risk categories from open findings grouped via dashboard analytics."
+                />
                 <ol className="mt-3 space-y-2 text-sm text-zinc-200">
                   {summary.top_5_risks.length === 0 ? (
                     <li className="text-zinc-500">No prioritized risks available.</li>
@@ -437,9 +446,10 @@ export function ExecutiveDashboard() {
 
               {dashboard?.investment_recommendations?.length ? (
                 <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">
-                    Investment recommendations
-                  </div>
+                  <SectionHeading
+                    label="Investment recommendations"
+                    tooltip="Prioritized actions suggested by dashboard analytics investment heuristics."
+                  />
                   <ul className="mt-3 space-y-3 text-sm text-zinc-200">
                     {dashboard.investment_recommendations.map((rec, index) => (
                       <li key={`${rec.category}-${index}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
@@ -476,7 +486,10 @@ export function ExecutiveDashboard() {
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">Findings</div>
+                <SectionHeading
+                  label="Findings"
+                  tooltip="Counts queried directly from findings table scoped to selected organization."
+                />
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-zinc-200">
                   <MetricStat
                     label="Total"
@@ -500,7 +513,10 @@ export function ExecutiveDashboard() {
               </div>
 
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">SLA performance</div>
+                <SectionHeading
+                  label="SLA performance"
+                  tooltip="Breach/MTTR derived from dashboard_repository SLA queries against finding age."
+                />
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-zinc-200">
                   <MetricStat
                     label="SLA breaches"
@@ -525,7 +541,10 @@ export function ExecutiveDashboard() {
 
             {providerBreakdown.length ? (
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">Findings by provider</div>
+                <SectionHeading
+                  label="Findings by provider"
+                  tooltip="Aggregated via get_findings_by_provider for SLA-aware provider insights."
+                />
                 <div className="mt-3 overflow-x-auto">
                   <table className="min-w-full text-left text-xs text-zinc-300">
                     <thead className="text-[11px] uppercase tracking-wide text-zinc-500">
@@ -589,7 +608,10 @@ export function ExecutiveDashboard() {
                   key={framework}
                   className="rounded-lg border border-zinc-900 bg-black/60 p-4 text-sm text-zinc-200"
                 >
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">{framework}</div>
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500">
+                    <span>{framework}</span>
+                    <InfoTooltip message="Compliance sourced from assessment_results snapshots filtered by active findings." />
+                  </div>
                   <div className="mt-2 text-2xl font-semibold text-zinc-100">
                     {stats.compliance_percentage.toFixed(1)}%
                   </div>
@@ -676,7 +698,10 @@ export function ExecutiveDashboard() {
 
             {riskSegments.length ? (
               <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">Identity risk distribution</div>
+                <SectionHeading
+                  label="Identity risk distribution"
+                  tooltip="Risk levels computed from IAM edge metrics scored in get_risk_level_breakdown."
+                />
                 <div className="mt-3 flex h-4 overflow-hidden rounded-full border border-zinc-800">
                   {riskSegments.map((segment) => {
                     const percentage = totalRiskIdentities
@@ -742,7 +767,10 @@ export function ExecutiveDashboard() {
 
               <div className="space-y-4">
                 <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">MFA by provider</div>
+                  <SectionHeading
+                    label="MFA by provider"
+                    tooltip="Calculated from MFA-related findings joined with IAM edges to highlight coverage gaps."
+                  />
                   <ul className="mt-3 space-y-2 text-xs text-zinc-300">
                     {Object.entries(identity.mfa_compliance_by_provider).map(([provider, stats]) => (
                       <li key={provider} className="flex items-center justify-between rounded-md border border-zinc-900 bg-black/40 px-3 py-2">
@@ -756,7 +784,10 @@ export function ExecutiveDashboard() {
                 </div>
 
                 <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">Privilege anomalies</div>
+                  <SectionHeading
+                    label="Privilege anomalies"
+                    tooltip="Detected by identity analyzer heuristics flagging stale access and multi-provider admin grants."
+                  />
                   <ul className="mt-3 space-y-2 text-xs text-zinc-300">
                     {identity.privilege_anomalies.slice(0, 4).map((anomaly) => (
                       <li key={`${anomaly.type}-${anomaly.principal_id}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
@@ -797,7 +828,10 @@ export function ExecutiveDashboard() {
 
             {filteredDrilldownIdentities.length ? (
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">Identity drill-down</div>
+                <SectionHeading
+                  label="Identity drill-down"
+                  tooltip="Data fetched from iam_edges and findings for each selected principal."
+                />
                 {riskFilter !== "all" ? (
                   <div className="mt-1 text-[11px] text-zinc-500">
                     Showing identities with {riskFilter} risk level
@@ -883,7 +917,10 @@ export function ExecutiveDashboard() {
 
             {filteredRemediationQueue.length ? (
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-                <div className="text-xs uppercase tracking-wide text-zinc-500">Remediation queue</div>
+                <SectionHeading
+                  label="Remediation queue"
+                  tooltip="Recommended actions scored from identity remediation heuristics."
+                />
                 <ul className="mt-3 space-y-2 text-xs text-zinc-300">
                   {filteredRemediationQueue.slice(0, 6).map((item, index) => (
                     <li key={`${item.principal_id}-${index}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
@@ -923,7 +960,10 @@ export function ExecutiveDashboard() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
-              <div className="text-xs uppercase tracking-wide text-zinc-500">High-risk areas</div>
+              <SectionHeading
+                label="High-risk areas"
+                tooltip="Generated by risk heatmap engine aggregating open findings by provider/resource."
+              />
               <ul className="mt-3 space-y-2 text-sm text-zinc-200">
                 {heatmap.high_risk_areas.length === 0 ? (
                   <li className="text-zinc-500">No high-risk clusters detected.</li>
@@ -942,7 +982,10 @@ export function ExecutiveDashboard() {
             </div>
 
             <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
-              <div className="text-xs uppercase tracking-wide text-zinc-500">Improvement opportunities</div>
+              <SectionHeading
+                label="Improvement opportunities"
+                tooltip="Highlights estimated risk reduction if recommended remediation tasks are completed."
+              />
               <ul className="mt-3 space-y-2 text-sm text-zinc-200">
                 {heatmap.improvement_opportunities.length === 0 ? (
                   <li className="text-zinc-500">No prioritized improvements suggested.</li>
@@ -1246,4 +1289,25 @@ function riskBadgeClass(level: string): string {
     default:
       return "text-zinc-300";
   }
+}
+
+function SectionHeading({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500">
+      <span>{label}</span>
+      <InfoTooltip message={tooltip} />
+    </div>
+  );
+}
+
+function InfoTooltip({ message }: { message: string }) {
+  return (
+    <span
+      className="cursor-help text-[11px] text-zinc-500"
+      title={message}
+      aria-label={message}
+    >
+      ⓘ
+    </span>
+  );
 }
