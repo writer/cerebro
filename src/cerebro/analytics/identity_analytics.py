@@ -599,3 +599,185 @@ class PrivilegeSprawlDetector:
             }
         
         return compliance_data
+
+
+if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
+    async def _identify_privilege_anomalies(self: IdentityAnalyzer, org_id: UUID) -> List[Dict[str, Any]]:
+        """Identify privilege anomalies requiring investigation."""
+
+        anomalies: List[Dict[str, Any]] = []
+
+        orphaned_query = text(
+            """
+            SELECT
+                p.principal_id,
+                p.display_name,
+                p.email,
+                COUNT(ie.permission) as permission_count,
+                MAX(ie.effective_at) as last_permission_grant
+            FROM principals p
+            JOIN accounts a ON p.account_id = a.account_id
+            JOIN iam_edges ie ON p.principal_id = ie.principal_id
+            WHERE a.org_id = :org_id
+                AND p.is_human = true
+                AND ie.effective_at < :stale_threshold
+                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+            GROUP BY p.principal_id, p.display_name, p.email
+            HAVING COUNT(ie.permission) > 10
+            ORDER BY permission_count DESC
+            LIMIT 10
+            """
+        )
+
+        stale_threshold = datetime.utcnow() - timedelta(days=180)
+        result = await self.db.execute(
+            orphaned_query,
+            {"org_id": org_id, "stale_threshold": stale_threshold},
+        )
+
+        for row in result.fetchall():
+            anomalies.append(
+                {
+                    "type": "orphaned_permissions",
+                    "principal_id": str(row.principal_id),
+                    "principal_name": row.display_name,
+                    "description": (
+                        f"Identity has {row.permission_count} permissions but no activity since "
+                        f"{row.last_permission_grant.strftime('%Y-%m-%d')}"
+                    ),
+                    "risk_level": "medium",
+                    "recommendation": "Review and remove unused permissions",
+                }
+            )
+
+        cross_admin_query = text(
+            """
+            SELECT
+                p.principal_id,
+                p.display_name,
+                COUNT(DISTINCT ie.provider) as admin_provider_count,
+                array_agg(DISTINCT ie.provider) as admin_providers
+            FROM principals p
+            JOIN accounts a ON p.account_id = a.account_id
+            JOIN iam_edges ie ON p.principal_id = ie.principal_id
+            WHERE a.org_id = :org_id
+                AND p.is_human = true
+                AND ie.is_admin = true
+                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+            GROUP BY p.principal_id, p.display_name
+            HAVING COUNT(DISTINCT ie.provider) > 2
+            ORDER BY admin_provider_count DESC
+            """
+        )
+
+        result = await self.db.execute(cross_admin_query, {"org_id": org_id})
+
+        for row in result.fetchall():
+            anomalies.append(
+                {
+                    "type": "excessive_cross_provider_admin",
+                    "principal_id": str(row.principal_id),
+                    "principal_name": row.display_name,
+                    "description": (
+                        "Administrative access across "
+                        f"{row.admin_provider_count} providers: {', '.join(row.admin_providers)}"
+                    ),
+                    "risk_level": "high",
+                    "recommendation": "Implement role-based access with provider-specific admins",
+                }
+            )
+
+        return anomalies
+
+    IdentityAnalyzer.identify_privilege_anomalies = _identify_privilege_anomalies
+
+
+if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
+    async def _get_mfa_compliance_by_provider(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Dict[str, Any]]:
+        """Get MFA compliance status by provider."""
+
+        mfa_query = text(
+            """
+            SELECT
+                ie.provider,
+                COUNT(DISTINCT p.principal_id) as total_users,
+                COUNT(DISTINCT CASE WHEN f.finding_id IS NULL THEN p.principal_id END) as mfa_enabled_users
+            FROM principals p
+            JOIN accounts a ON p.account_id = a.account_id
+            JOIN iam_edges ie ON p.principal_id = ie.principal_id
+            LEFT JOIN findings f ON p.principal_id = f.principal_id
+                AND f.rule_id IN (
+                    SELECT rule_id FROM rules
+                    WHERE name ILIKE '%mfa%' OR description ILIKE '%multi-factor%'
+                )
+                AND f.status = 'open'
+            WHERE a.org_id = :org_id
+                AND p.is_human = true
+                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+            GROUP BY ie.provider
+            """
+        )
+
+        result = await self.db.execute(mfa_query, {"org_id": org_id})
+
+        compliance_data: Dict[str, Dict[str, Any]] = {}
+        for row in result.fetchall():
+            total = row.total_users
+            enabled = row.mfa_enabled_users
+            compliance_rate = (enabled / total * 100) if total > 0 else 0
+
+            compliance_data[row.provider] = {
+                "total_users": total,
+                "mfa_enabled_users": enabled,
+                "compliance_rate": round(compliance_rate, 1),
+                "status": (
+                    "compliant"
+                    if compliance_rate >= 95
+                    else "non_compliant"
+                    if compliance_rate < 80
+                    else "partial"
+                ),
+            }
+
+        return compliance_data
+
+    IdentityAnalyzer._get_mfa_compliance_by_provider = _get_mfa_compliance_by_provider
+
+
+if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
+    async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Any]:
+        """Generate comprehensive identity analytics for dashboard consumers."""
+
+        sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(org_id)
+        anomalies = await self.identify_privilege_anomalies(org_id)
+        mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
+
+        return {
+            "summary": {
+                "total_identities": sprawl_analysis.total_identities,
+                "high_privilege_identities": sprawl_analysis.high_privilege_identities,
+                "cross_provider_identities": sprawl_analysis.cross_provider_identities,
+                "avg_permissions_per_identity": round(sprawl_analysis.avg_permissions_per_identity, 1),
+                "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity,
+            },
+            "privilege_distribution": sprawl_analysis.privilege_distribution,
+            "top_risky_identities": [
+                {
+                    "principal_id": str(identity.principal_id),
+                    "display_name": identity.display_name,
+                    "email": identity.email,
+                    "risk_score": round(identity.risk_score, 1),
+                    "risk_level": identity.risk_level.value,
+                    "cross_provider_access": identity.cross_provider_access,
+                    "admin_access_count": identity.admin_access_count,
+                    "mfa_status": identity.mfa_status,
+                    "top_risk_factor": identity.risk_factors[0] if identity.risk_factors else None,
+                }
+                for identity in sprawl_analysis.top_risky_identities[:5]
+            ],
+            "privilege_anomalies": anomalies,
+            "mfa_compliance_by_provider": mfa_compliance,
+            "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
+        }
+
+    IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data

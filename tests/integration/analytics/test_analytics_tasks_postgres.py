@@ -1,6 +1,7 @@
 import asyncio
 import shutil
 from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select, text
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from testcontainers.postgres import PostgresContainer
 
 import cerebro.tasks.analytics_tasks as analytics_tasks
+from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 from cerebro.analytics.time_series import SecurityMetricSnapshot, TimeSeriesCollector
 from cerebro.core.database import Base
 from cerebro.core.models import (
@@ -65,115 +67,146 @@ async def pg_session_factory(pg_engine):
     yield factory
 
 
+async def _seed_sample_org(session: AsyncSession) -> UUID:
+    org = Organization(name="Integration Org")
+    session.add(org)
+    await session.flush()
+
+    account = Account(
+        org_id=org.org_id,
+        provider="github",
+        external_id="acct-1",
+        display_name="GitHub Account",
+    )
+    session.add(account)
+    await session.flush()
+
+    principal = Principal(
+        account_id=account.account_id,
+        provider="github",
+        principal_type="user",
+        external_id="user-1",
+        email="analyst@example.com",
+        display_name="Analyst",
+        is_human=True,
+    )
+    session.add(principal)
+    await session.flush()
+
+    resource = Resource(
+        account_id=account.account_id,
+        provider="github",
+        resource_type="repository",
+        external_id="repo-1",
+        name="security-repo",
+    )
+    session.add(resource)
+    await session.flush()
+
+    rule = Rule(
+        name="Enforce MFA",
+        provider=["github"],
+        resource_types=["repository"],
+        expression_lang="cel",
+        expression="true",
+        severity="critical",
+        cis=["CIS.1"],
+        nist_800_53=["AC-1"],
+        version=1,
+        is_active=True,
+    )
+    session.add(rule)
+    await session.flush()
+
+    now = datetime.now(timezone.utc)
+
+    finding_open = Finding(
+        org_id=org.org_id,
+        account_id=account.account_id,
+        provider="github",
+        rule_id=rule.rule_id,
+        rule_version=1,
+        resource_id=resource.resource_id,
+        principal_id=principal.principal_id,
+        first_seen=now - timedelta(days=10),
+        last_seen=now,
+        status="open",
+        severity="critical",
+        fingerprint="critical-repo-public",
+        title="Repository publicly accessible",
+        summary="Open finding for risk scoring",
+    )
+    session.add(finding_open)
+
+    finding_fixed = Finding(
+        org_id=org.org_id,
+        account_id=account.account_id,
+        provider="github",
+        rule_id=rule.rule_id,
+        rule_version=1,
+        resource_id=resource.resource_id,
+        principal_id=principal.principal_id,
+        first_seen=now - timedelta(days=5),
+        last_seen=now - timedelta(days=1),
+        status="fixed",
+        severity="high",
+        fingerprint="critical-repo-public-fixed",
+        title="Repository access restricted",
+        summary="Resolved finding for MTTR calculation",
+    )
+    session.add(finding_fixed)
+
+    edge = IamEdge(
+        account_id=account.account_id,
+        provider="github",
+        principal_id=principal.principal_id,
+        resource_id=resource.resource_id,
+        permission="repo:admin",
+        effective_at=now - timedelta(days=120),
+        expires_at=None,
+        is_admin=True,
+    )
+    session.add(edge)
+
+    await session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS assessment_results (
+                assessment_result_id UUID PRIMARY KEY,
+                org_id UUID NOT NULL,
+                rule_id UUID NOT NULL,
+                status TEXT NOT NULL
+            )
+            """
+        )
+    )
+
+    await session.execute(
+        text(
+            """
+            INSERT INTO assessment_results (assessment_result_id, org_id, rule_id, status)
+            VALUES (:assessment_result_id, :org_id, :rule_id, :status)
+            """
+        ),
+        {
+            "assessment_result_id": str(uuid4()),
+            "org_id": org.org_id,
+            "rule_id": rule.rule_id,
+            "status": "passed",
+        },
+    )
+
+    await session.commit()
+    return org.org_id
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_collect_metrics_round_trip_with_postgres(pg_session_factory, monkeypatch):
     session_maker = pg_session_factory
 
     async with session_maker() as session:
-        org = Organization(name="Integration Org")
-        session.add(org)
-        await session.flush()
-
-        account = Account(
-            org_id=org.org_id,
-            provider="github",
-            external_id="acct-1",
-            display_name="GitHub Account",
-        )
-        session.add(account)
-        await session.flush()
-
-        principal = Principal(
-            account_id=account.account_id,
-            provider="github",
-            principal_type="user",
-            external_id="user-1",
-            email="analyst@example.com",
-            display_name="Analyst",
-            is_human=True,
-        )
-        session.add(principal)
-        await session.flush()
-
-        resource = Resource(
-            account_id=account.account_id,
-            provider="github",
-            resource_type="repository",
-            external_id="repo-1",
-            name="security-repo",
-        )
-        session.add(resource)
-        await session.flush()
-
-        rule = Rule(
-            name="Enforce MFA",
-            provider=["github"],
-            resource_types=["repository"],
-            expression_lang="cel",
-            expression="true",
-            severity="critical",
-            cis=["CIS.1"],
-            nist_800_53=["AC-1"],
-            version=1,
-            is_active=True,
-        )
-        session.add(rule)
-        await session.flush()
-
-        now = datetime.now(timezone.utc)
-
-        finding_open = Finding(
-            org_id=org.org_id,
-            account_id=account.account_id,
-            provider="github",
-            rule_id=rule.rule_id,
-            rule_version=1,
-            resource_id=resource.resource_id,
-            principal_id=principal.principal_id,
-            first_seen=now - timedelta(days=10),
-            last_seen=now,
-            status="open",
-            severity="critical",
-            fingerprint="critical-repo-public",
-            title="Repository publicly accessible",
-            summary="Open finding for risk scoring",
-        )
-        session.add(finding_open)
-
-        finding_fixed = Finding(
-            org_id=org.org_id,
-            account_id=account.account_id,
-            provider="github",
-            rule_id=rule.rule_id,
-            rule_version=1,
-            resource_id=resource.resource_id,
-            principal_id=principal.principal_id,
-            first_seen=now - timedelta(days=5),
-            last_seen=now - timedelta(days=1),
-            status="fixed",
-            severity="high",
-            fingerprint="critical-repo-public-fixed",
-            title="Repository access restricted",
-            summary="Resolved finding for MTTR calculation",
-        )
-        session.add(finding_fixed)
-
-        edge = IamEdge(
-            account_id=account.account_id,
-            provider="github",
-            principal_id=principal.principal_id,
-            resource_id=resource.resource_id,
-            permission="repo:admin",
-            effective_at=now - timedelta(days=120),
-            expires_at=None,
-            is_admin=True,
-        )
-        session.add(edge)
-
-        await session.commit()
-
-        org_id = org.org_id
+        org_id = await _seed_sample_org(session)
 
     monkeypatch.setattr(analytics_tasks, "async_session_factory", session_maker)
 
@@ -199,3 +232,30 @@ async def test_collect_metrics_round_trip_with_postgres(pg_session_factory, monk
     assert snapshots, "SecurityMetricSnapshot records should exist"
     assert mttr == pytest.approx(96.0)
     assert sla_breaches == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory):
+    async with pg_session_factory() as session:
+        org_id = await _seed_sample_org(session)
+        analytics = DashboardAnalytics(session)
+
+        payload = await analytics.generate_comprehensive_dashboard(org_id)
+
+        executive = payload["executive_summary"]
+        assert executive["org_id"] == str(org_id)
+        assert executive["total_assets"] == 1
+        assert executive["total_identities"] == 1
+        assert executive["progress_indicators"]["findings_burned_down_30d"] >= 0
+
+        metrics = payload["security_metrics"]
+        assert metrics["findings"]["total"] == 2
+        assert metrics["sla_performance"]["breaches"] >= 1
+
+        heatmap = payload["risk_heatmap"]
+        assert "github" in heatmap["heatmap_data"]
+        assert heatmap["high_risk_areas"]
+
+        compliance = payload["compliance_status"]
+        assert "CIS" in compliance

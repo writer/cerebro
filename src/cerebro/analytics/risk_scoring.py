@@ -602,11 +602,12 @@ class RiskScoringEngine:
         # Identify improvement opportunities
         improvement_opportunities = []
         for area in high_risk_areas[:3]:  # Top 3 opportunities
+            current_risk = float(area["risk_score"])
             improvement_opportunities.append({
                 "area": f"{area['provider']} {area['resource_type']}",
-                "current_risk": area["risk_score"],
-                "potential_reduction": area["risk_score"] * 0.7,  # Estimate 70% reduction potential
-                "impact": "high" if area["risk_score"] > 80 else "medium"
+                "current_risk": current_risk,
+                "potential_reduction": current_risk * 0.7,  # Estimate 70% reduction potential
+                "impact": "high" if current_risk > 80 else "medium"
             })
         
         return RiskHeatmap(
