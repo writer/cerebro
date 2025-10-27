@@ -14,6 +14,7 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "executive_summary",
         "security_metrics",
         "compliance_status",
+        "compliance_trends",
         "investment_recommendations",
         "identity_analytics",
         "risk_heatmap",
@@ -59,6 +60,8 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "privilege_anomalies",
         "mfa_compliance_by_provider",
         "provider_breakdown",
+        "drilldown_identities",
+        "remediation_queue",
     },
     "IdentityAnalyticsSummary": {
         "total_identities",
@@ -85,6 +88,38 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "description",
         "risk_level",
         "recommendation",
+    },
+    "IdentityDrilldownPermission": {
+        "provider",
+        "permission",
+        "is_admin",
+        "granted_at",
+    },
+    "IdentityDrilldownFinding": {
+        "finding_id",
+        "title",
+        "severity",
+        "status",
+        "last_seen",
+    },
+    "IdentityDrilldownIdentity": {
+        "principal_id",
+        "display_name",
+        "email",
+        "risk_score",
+        "risk_level",
+        "providers",
+        "permissions",
+        "open_findings",
+        "recommended_actions",
+        "risk_factors",
+    },
+    "IdentityRemediationItem": {
+        "principal_id",
+        "priority",
+        "summary",
+        "recommended_action",
+        "evidence",
     },
     "IdentityMfaCompliance": {
         "total_users",
@@ -116,6 +151,8 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "potential_reduction",
         "impact",
     },
+    "ComplianceTrendPoint": {"date", "score"},
+    "ComplianceTrendResponse": {"overall", "frameworks"},
 }
 
 
@@ -223,6 +260,20 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     for breakdown in identity["provider_breakdown"].values():
         assert set(breakdown.keys()) == EXPECTED_FIELDS["IdentityProviderBreakdown"]
 
+    drilldown = identity["drilldown_identities"]
+    assert drilldown, "Drilldown identities should not be empty"
+    for detailed in drilldown:
+        assert set(detailed.keys()) == EXPECTED_FIELDS["IdentityDrilldownIdentity"]
+        for permission in detailed["permissions"]:
+            assert set(permission.keys()) == EXPECTED_FIELDS["IdentityDrilldownPermission"]
+        for finding in detailed["open_findings"]:
+            assert set(finding.keys()) == EXPECTED_FIELDS["IdentityDrilldownFinding"]
+
+    remediation_queue = identity["remediation_queue"]
+    assert remediation_queue, "Remediation queue should surface actions"
+    for item in remediation_queue:
+        assert set(item.keys()) == EXPECTED_FIELDS["IdentityRemediationItem"]
+
     heatmap = payload["risk_heatmap"]
     assert set(heatmap.keys()) == EXPECTED_FIELDS["RiskHeatmapResponse"]
     assert heatmap["heatmap_data"], "Heatmap data should not be empty"
@@ -230,6 +281,15 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
         assert set(area.keys()) == EXPECTED_FIELDS["RiskHeatmapArea"]
     for opportunity in heatmap["improvement_opportunities"]:
         assert set(opportunity.keys()) == EXPECTED_FIELDS["RiskImprovementOpportunity"]
+
+    trends = payload["compliance_trends"]
+    assert set(trends.keys()) == EXPECTED_FIELDS["ComplianceTrendResponse"]
+    assert trends["overall"], "Overall compliance trend should not be empty"
+    for point in trends["overall"]:
+        assert set(point.keys()) == EXPECTED_FIELDS["ComplianceTrendPoint"]
+    for series in trends["frameworks"].values():
+        for point in series:
+            assert set(point.keys()) == EXPECTED_FIELDS["ComplianceTrendPoint"]
 
 
 def test_typescript_contract_matches_api_schema(client, test_db, test_org, test_token, monkeypatch):
@@ -256,3 +316,44 @@ def test_typescript_contract_matches_api_schema(client, test_db, test_org, test_
     payload = response.json()
 
     _validate_api_response(payload)
+
+
+def test_dashboard_contract_captures_generation_timings(client, test_db, test_org, test_token, monkeypatch):
+    sample = build_sample_dashboard_response()
+    captured: Dict[str, DashboardAnalytics] = {}
+
+    async def _fake_dashboard(self, org_id):
+        payload = deepcopy(sample)
+        payload["executive_summary"]["org_id"] = str(org_id)
+        self._last_generation_timings = {
+            "security_metrics": 0.05,
+            "executive_summary": 0.02,
+            "identity_analytics": 0.04,
+            "risk_heatmap": 0.03,
+            "compliance_status": 0.01,
+            "compliance_trends": 0.015,
+            "total": 0.17,
+        }
+        captured["instance"] = self
+        return payload
+
+    monkeypatch.setattr(DashboardAnalytics, "generate_comprehensive_dashboard", _fake_dashboard)
+
+    response = client.get(
+        f"/api/v1/analytics/organizations/{test_org.org_id}/dashboard",
+        headers={"Authorization": f"Bearer {test_token}"},
+    )
+
+    assert response.status_code == 200
+    instance = captured["instance"]
+    timings = instance.last_generation_timings
+    assert timings["total"] == 0.17
+    assert set(timings.keys()) == {
+        "security_metrics",
+        "executive_summary",
+        "identity_analytics",
+        "risk_heatmap",
+        "compliance_status",
+        "compliance_trends",
+        "total",
+    }

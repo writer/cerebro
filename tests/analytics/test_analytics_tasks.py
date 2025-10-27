@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 import cerebro.tasks.analytics_tasks as analytics_tasks
-from cerebro.analytics.time_series import MetricSnapshot, SecurityMetricSnapshot, TimeSeriesCollector
+from cerebro.analytics.time_series import MetricSnapshot, SecurityMetricSnapshot, TimeSeriesCollector, MetricType
 from cerebro.analytics.risk_scoring import OrganizationRiskScore, RiskSeverity
 
 sqlite3.register_adapter(UUID, lambda value: str(value))
@@ -88,6 +88,30 @@ async def test_collect_security_metrics_for_org_records_snapshots(
         _fake_risk,
     )
 
+    async def _fake_compliance_score(self, org_id):
+        return 95.0
+
+    async def _fake_framework(self, org_id):
+        return {
+            "CIS": {
+                "total_controls": 10,
+                "compliant_controls": 9,
+                "compliance_percentage": 90.0,
+                "status": "partial",
+            }
+        }
+
+    monkeypatch.setattr(
+        analytics_tasks.DashboardRepository,
+        "calculate_compliance_score",
+        _fake_compliance_score,
+    )
+    monkeypatch.setattr(
+        analytics_tasks.DashboardRepository,
+        "get_compliance_by_framework",
+        _fake_framework,
+    )
+
     result = await analytics_tasks._collect_security_metrics_for_org(test_org.org_id)
 
     assert result["org_id"] == str(test_org.org_id)
@@ -102,6 +126,9 @@ async def test_collect_security_metrics_for_org_records_snapshots(
     assert any(
         snapshot.metric_type == "overall_risk_score" for snapshot in snapshots
     ), "Overall risk score snapshot missing"
+    assert any(
+        snapshot.metric_type == MetricType.COMPLIANCE_SCORE.value for snapshot in snapshots
+    ), "Compliance score snapshot missing"
 
 
 class _FakeScalarResult:

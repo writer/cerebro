@@ -8,6 +8,7 @@ import {
   ExecutiveDashboardResponse,
   ExecutiveSummaryResponse,
   IdentityAnalyticsResponse,
+  ComplianceTrendResponse,
   OrganizationSummary,
   RiskHeatmapResponse,
   SecurityMetricsResponse,
@@ -60,6 +61,31 @@ export function ExecutiveDashboard() {
   const metrics: SecurityMetricsResponse | undefined = dashboard?.security_metrics;
   const identity: IdentityAnalyticsResponse | undefined = dashboard?.identity_analytics;
   const heatmap: RiskHeatmapResponse | undefined = dashboard?.risk_heatmap;
+  const complianceTrends: ComplianceTrendResponse | undefined = dashboard?.compliance_trends;
+
+  const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (identity?.drilldown_identities?.length) {
+      setSelectedIdentity((current) =>
+        current && identity.drilldown_identities.some((detail) => detail.principal_id === current)
+          ? current
+          : identity.drilldown_identities[0].principal_id,
+      );
+    } else {
+      setSelectedIdentity(null);
+    }
+  }, [identity]);
+
+  const selectedDrilldown = useMemo(() => {
+    if (!identity?.drilldown_identities?.length) {
+      return null;
+    }
+    return (
+      identity.drilldown_identities.find((detail) => detail.principal_id === selectedIdentity) ??
+      identity.drilldown_identities[0]
+    );
+  }, [identity, selectedIdentity]);
 
   const riskLevelClass = useMemo(() => {
     if (!summary) {
@@ -270,24 +296,27 @@ export function ExecutiveDashboard() {
         ) : !dashboard?.compliance_status ? (
           <p className="text-sm text-zinc-500">No compliance data available.</p>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(dashboard.compliance_status).map(([framework, stats]) => (
-              <div
-                key={framework}
-                className="rounded-lg border border-zinc-900 bg-black/60 p-4 text-sm text-zinc-200"
-              >
-                <div className="text-xs uppercase tracking-wide text-zinc-500">{framework}</div>
-                <div className="mt-2 text-2xl font-semibold text-zinc-100">
-                  {stats.compliance_percentage.toFixed(1)}%
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {Object.entries(dashboard.compliance_status).map(([framework, stats]) => (
+                <div
+                  key={framework}
+                  className="rounded-lg border border-zinc-900 bg-black/60 p-4 text-sm text-zinc-200"
+                >
+                  <div className="text-xs uppercase tracking-wide text-zinc-500">{framework}</div>
+                  <div className="mt-2 text-2xl font-semibold text-zinc-100">
+                    {stats.compliance_percentage.toFixed(1)}%
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    {stats.compliant_controls}/{stats.total_controls} controls compliant
+                  </div>
+                  <div className="mt-2 text-[11px] uppercase tracking-wide text-zinc-400">
+                    Status: {stats.status.replace(/_/g, " ")}
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-zinc-500">
-                  {stats.compliant_controls}/{stats.total_controls} controls compliant
-                </div>
-                <div className="mt-2 text-[11px] uppercase tracking-wide text-zinc-400">
-                  Status: {stats.status.replace(/_/g, " ")}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            {complianceTrends ? <ComplianceTrendCard trend={complianceTrends} /> : null}
           </div>
         )}
       </Panel>
@@ -397,6 +426,105 @@ export function ExecutiveDashboard() {
                 </div>
               </div>
             </div>
+
+            {identity.drilldown_identities.length ? (
+              <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Identity drill-down</div>
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <div className="space-y-2">
+                    {identity.drilldown_identities.map((detail) => {
+                      const isActive = detail.principal_id === selectedDrilldown?.principal_id;
+                      return (
+                        <button
+                          key={detail.principal_id}
+                          type="button"
+                          onClick={() => setSelectedIdentity(detail.principal_id)}
+                          className={cn(
+                            "w-full rounded-md border px-3 py-2 text-left text-xs transition",
+                            isActive
+                              ? "border-zinc-500 bg-zinc-900 text-zinc-100"
+                              : "border-zinc-900 bg-black/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100",
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>{detail.display_name ?? detail.email ?? detail.principal_id.slice(0, 8)}</span>
+                            <span className={riskBadgeClass(detail.risk_level)}>{detail.risk_level}</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-zinc-500">
+                            Providers: {detail.providers.join(", ")} · Risk {detail.risk_score.toFixed(1)}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-zinc-500">Permissions</div>
+                    <ul className="mt-2 space-y-1 text-xs text-zinc-300">
+                      {selectedDrilldown?.permissions.length ? (
+                        selectedDrilldown.permissions.slice(0, 8).map((permission, index) => (
+                          <li key={`${permission.provider}-${permission.permission}-${index}`} className="flex justify-between">
+                            <span>
+                              {permission.provider} · {permission.permission}
+                            </span>
+                            {permission.is_admin ? <span className="text-red-400">admin</span> : null}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-zinc-500">No permissions recorded.</li>
+                      )}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-zinc-500">Open findings & actions</div>
+                    <ul className="mt-2 space-y-1 text-xs text-zinc-300">
+                      {selectedDrilldown?.open_findings.length ? (
+                        selectedDrilldown.open_findings.map((finding) => (
+                          <li key={finding.finding_id}>
+                            <span className={riskBadgeClass(finding.severity)}>{finding.severity}</span> · {finding.title}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-zinc-500">No open findings for this identity.</li>
+                      )}
+                    </ul>
+                    <div className="mt-3 text-[11px] uppercase tracking-wide text-zinc-500">Recommended actions</div>
+                    <ul className="mt-1 space-y-1 text-xs text-zinc-300">
+                      {selectedDrilldown?.recommended_actions.length ? (
+                        selectedDrilldown.recommended_actions.map((action, index) => (
+                          <li key={`${selectedDrilldown.principal_id}-action-${index}`}>{action}</li>
+                        ))
+                      ) : (
+                        <li className="text-zinc-500">No recommended actions recorded.</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {identity.remediation_queue.length ? (
+              <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Remediation queue</div>
+                <ul className="mt-3 space-y-2 text-xs text-zinc-300">
+                  {identity.remediation_queue.slice(0, 6).map((item, index) => (
+                    <li key={`${item.principal_id}-${index}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                        <span>{item.summary}</span>
+                        <span className={riskBadgeClass(item.priority)}>{item.priority}</span>
+                      </div>
+                      <div className="mt-1 text-zinc-200">{item.recommended_action}</div>
+                      {item.evidence.length ? (
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          Evidence: {item.evidence.join(", ")}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
         )}
       </Panel>
@@ -461,21 +589,82 @@ type MetricStatProps = {
   label: string;
   value: number;
   formatter?: (value: number) => string;
+  description?: string;
 };
 
-function MetricStat({ label, value, formatter }: MetricStatProps) {
-  const formatted = Number.isFinite(value) ? (formatter ? formatter(value) : value.toString()) : "—";
+function MetricStat({ label, value, formatter, description }: MetricStatProps) {
+  const formatted = Number.isFinite(value)
+    ? formatter
+      ? formatter(value)
+      : value.toLocaleString()
+    : "—";
 
   return (
     <div className="rounded-md border border-zinc-900 bg-black/40 p-3">
       <div className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</div>
       <div className="mt-1 text-lg font-semibold text-zinc-100">{formatted}</div>
+      {description ? <div className="mt-1 text-[11px] text-zinc-500">{description}</div> : null}
+    </div>
+  );
+}
+
+function ComplianceTrendCard({ trend }: { trend: ComplianceTrendResponse }) {
+  const overall = trend.overall.slice(-12);
+  if (!overall.length) {
+    return null;
+  }
+
+  const earliest = overall[0];
+  const latest = overall[overall.length - 1];
+  const delta = latest.score - earliest.score;
+  const frameworkSummaries = Object.entries(trend.frameworks ?? {});
+
+  const bars = overall.map((point) => {
+    const bounded = Math.max(Math.min(point.score, 100), 0);
+    return { ...point, height: bounded };
+  });
+
+  return (
+    <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+      <div className="text-xs uppercase tracking-wide text-zinc-500">Compliance trend (30 days)</div>
+      <div className="mt-3 flex h-20 items-end gap-1">
+        {bars.map((bar) => (
+          <div
+            key={bar.date}
+            className="flex-1 rounded-sm bg-emerald-500/70"
+            style={{ height: `${bar.height}%` }}
+            title={`${bar.date}: ${bar.score.toFixed(1)}%`}
+          />
+        ))}
+      </div>
+      <div className="mt-3 text-xs text-zinc-400">
+        Latest {formatPercentage(latest.score)} ({delta >= 0 ? "+" : ""}
+        {delta.toFixed(1)} vs {earliest.date})
+      </div>
+      {frameworkSummaries.length ? (
+        <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+          {frameworkSummaries.map(([framework, series]) => {
+            const points = series as { date: string; score: number }[];
+            const lastPoint = points[points.length - 1];
+            return (
+              <div key={framework} className="flex items-center justify-between">
+                <span>{framework}</span>
+                <span>{lastPoint ? formatPercentage(lastPoint.score) : "—"}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function formatInteger(value: number): string {
   return Number.isFinite(value) ? Math.round(value).toLocaleString() : "—";
+}
+
+function formatPercentage(value: number): string {
+  return Number.isFinite(value) ? `${value.toFixed(1)}%` : "—";
 }
 
 function riskBadgeClass(level: string): string {

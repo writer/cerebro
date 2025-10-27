@@ -260,6 +260,42 @@ export type IdentityPrivilegeAnomaly = {
   recommendation: string;
 };
 
+export type IdentityDrilldownPermission = {
+  provider: string;
+  permission: string;
+  is_admin: boolean;
+  granted_at?: string | null;
+};
+
+export type IdentityDrilldownFinding = {
+  finding_id: string;
+  title: string;
+  severity: string;
+  status: string;
+  last_seen?: string | null;
+};
+
+export type IdentityDrilldownIdentity = {
+  principal_id: string;
+  display_name: string | null;
+  email: string | null;
+  risk_score: number;
+  risk_level: string;
+  providers: string[];
+  permissions: IdentityDrilldownPermission[];
+  open_findings: IdentityDrilldownFinding[];
+  recommended_actions: string[];
+  risk_factors: string[];
+};
+
+export type IdentityRemediationItem = {
+  principal_id: string;
+  priority: "low" | "medium" | "high";
+  summary: string;
+  recommended_action: string;
+  evidence: string[];
+};
+
 export type IdentityProviderBreakdown = {
   identity_count: number;
   unique_permissions: number;
@@ -282,6 +318,8 @@ export type IdentityAnalyticsResponse = {
   privilege_anomalies: IdentityPrivilegeAnomaly[];
   mfa_compliance_by_provider: Record<string, IdentityMfaCompliance>;
   provider_breakdown: Record<string, IdentityProviderBreakdown>;
+  drilldown_identities: IdentityDrilldownIdentity[];
+  remediation_queue: IdentityRemediationItem[];
 };
 
 export type RiskHeatmapArea = {
@@ -304,6 +342,16 @@ export type RiskHeatmapResponse = {
   improvement_opportunities: RiskImprovementOpportunity[];
 };
 
+export type ComplianceTrendPoint = {
+  date: string;
+  score: number;
+};
+
+export type ComplianceTrendResponse = {
+  overall: ComplianceTrendPoint[];
+  frameworks: Record<string, ComplianceTrendPoint[]>;
+};
+
 export type ExecutiveDashboardResponse = {
   executive_summary: ExecutiveSummaryResponse;
   security_metrics: SecurityMetricsResponse;
@@ -311,4 +359,5 @@ export type ExecutiveDashboardResponse = {
   investment_recommendations: InvestmentRecommendation[];
   identity_analytics: IdentityAnalyticsResponse;
   risk_heatmap: RiskHeatmapResponse;
+  compliance_trends: ComplianceTrendResponse;
 };

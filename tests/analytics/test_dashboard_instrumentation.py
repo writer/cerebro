@@ -80,6 +80,8 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
             "privilege_anomalies": [],
             "mfa_compliance_by_provider": {},
             "provider_breakdown": {},
+            "drilldown_identities": [],
+            "remediation_queue": [],
         }
 
     async def _fake_heatmap(self, org_id):
@@ -92,6 +94,9 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
 
     async def _fake_compliance(self, org_id):
         return {"CIS": {"total_controls": 10, "compliant_controls": 9, "compliance_percentage": 90.0, "status": "partial"}}
+
+    async def _fake_compliance_trends(self, org_id, framework_status):
+        return {"overall": [], "frameworks": {framework: [] for framework in framework_status}}
 
     monkeypatch.setattr(DashboardAnalytics, "generate_security_metrics", _fake_security_metrics)
     monkeypatch.setattr(DashboardAnalytics, "generate_executive_summary", _fake_executive_summary)
@@ -113,6 +118,12 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
         _fake_compliance,
         raising=False,
     )
+    monkeypatch.setattr(
+        DashboardAnalytics,
+        "_get_compliance_trends",
+        _fake_compliance_trends,
+        raising=False,
+    )
 
     analytics = DashboardAnalytics(test_db)
     payload = await analytics.generate_comprehensive_dashboard(test_org.org_id)
@@ -124,6 +135,7 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
         "identity_analytics",
         "risk_heatmap",
         "compliance_status",
+        "compliance_trends",
         "total",
     }
 

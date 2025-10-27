@@ -744,6 +744,81 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
     IdentityAnalyzer._get_mfa_compliance_by_provider = _get_mfa_compliance_by_provider
 
 
+async def _build_drilldown_identities(
+    analyzer: IdentityAnalyzer, risky_identities: List[RiskyIdentity]
+) -> List[Dict[str, Any]]:
+    drilldown: List[Dict[str, Any]] = []
+
+    permissions_query = text(
+        """
+        SELECT provider, permission, is_admin, effective_at
+        FROM iam_edges
+        WHERE principal_id = :principal_id
+        ORDER BY effective_at DESC NULLS LAST
+        LIMIT 12
+        """
+    )
+
+    findings_query = text(
+        """
+        SELECT finding_id, title, severity, status, last_seen
+        FROM findings
+        WHERE principal_id = :principal_id AND status = 'open'
+        ORDER BY severity DESC, last_seen DESC NULLS LAST
+        LIMIT 6
+        """
+    )
+
+    for identity in risky_identities:
+        permissions_result = await analyzer.db.execute(
+            permissions_query,
+            {"principal_id": identity.principal_id},
+        )
+        permission_rows = permissions_result.fetchall()
+
+        findings_result = await analyzer.db.execute(
+            findings_query,
+            {"principal_id": identity.principal_id},
+        )
+        finding_rows = findings_result.fetchall()
+
+        providers = sorted({row.provider for row in permission_rows})
+
+        drilldown.append(
+            {
+                "principal_id": str(identity.principal_id),
+                "display_name": identity.display_name,
+                "email": identity.email,
+                "risk_score": round(identity.risk_score, 1),
+                "risk_level": identity.risk_level.value,
+                "providers": providers,
+                "permissions": [
+                    {
+                        "provider": row.provider,
+                        "permission": row.permission,
+                        "is_admin": bool(row.is_admin),
+                        "granted_at": row.effective_at.isoformat() if row.effective_at else None,
+                    }
+                    for row in permission_rows
+                ],
+                "open_findings": [
+                    {
+                        "finding_id": str(row.finding_id),
+                        "title": row.title,
+                        "severity": row.severity,
+                        "status": row.status,
+                        "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+                    }
+                    for row in finding_rows
+                ],
+                "recommended_actions": identity.remediation_actions,
+                "risk_factors": identity.risk_factors,
+            }
+        )
+
+    return drilldown
+
+
 if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
     async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Any]:
         """Generate comprehensive identity analytics for dashboard consumers."""
@@ -751,6 +826,26 @@ if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
         sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(org_id)
         anomalies = await self.identify_privilege_anomalies(org_id)
         mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
+
+        top_risky = sprawl_analysis.top_risky_identities[:5]
+        drilldown_identities = await _build_drilldown_identities(self, top_risky)
+
+        remediation_queue = []
+        for entry in drilldown_identities:
+            risk_level = entry["risk_level"]
+            priority = "high" if risk_level in {"high", "critical"} else "medium" if risk_level == "medium" else "low"
+            recommended_action = entry["recommended_actions"][0] if entry["recommended_actions"] else "Review access assignments"
+            evidence = [finding["title"] for finding in entry["open_findings"]] or entry["providers"]
+
+            remediation_queue.append(
+                {
+                    "principal_id": entry["principal_id"],
+                    "priority": priority,
+                    "summary": entry["display_name"] or entry["email"] or entry["principal_id"],
+                    "recommended_action": recommended_action,
+                    "evidence": evidence[:5],
+                }
+            )
 
         return {
             "summary": {
@@ -773,11 +868,13 @@ if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
                     "mfa_status": identity.mfa_status,
                     "top_risk_factor": identity.risk_factors[0] if identity.risk_factors else None,
                 }
-                for identity in sprawl_analysis.top_risky_identities[:5]
+                for identity in top_risky
             ],
             "privilege_anomalies": anomalies,
             "mfa_compliance_by_provider": mfa_compliance,
             "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
+            "drilldown_identities": drilldown_identities,
+            "remediation_queue": remediation_queue,
         }
 
     IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data

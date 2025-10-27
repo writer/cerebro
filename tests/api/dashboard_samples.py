@@ -99,6 +99,44 @@ def build_sample_dashboard_response() -> dict:
                     "risk_level": "medium",
                 }
             },
+            "drilldown_identities": [
+                {
+                    "principal_id": "123",
+                    "display_name": "Analyst",
+                    "email": "analyst@example.com",
+                    "risk_score": 65.0,
+                    "risk_level": "high",
+                    "providers": ["github", "aws"],
+                    "permissions": [
+                        {
+                            "provider": "github",
+                            "permission": "repo:admin",
+                            "is_admin": True,
+                            "granted_at": now,
+                        }
+                    ],
+                    "open_findings": [
+                        {
+                            "finding_id": "f-1",
+                            "title": "Repository publicly accessible",
+                            "severity": "critical",
+                            "status": "open",
+                            "last_seen": now,
+                        }
+                    ],
+                    "recommended_actions": ["Restrict admin access", "Rotate credentials"],
+                    "risk_factors": ["Cross-provider admin"],
+                }
+            ],
+            "remediation_queue": [
+                {
+                    "principal_id": "123",
+                    "priority": "high",
+                    "summary": "Analyst",
+                    "recommended_action": "Enable least privilege roles",
+                    "evidence": ["Repository publicly accessible"],
+                }
+            ],
         },
         "risk_heatmap": {
             "heatmap_data": {"github": {"repo": 70.0}},
@@ -129,4 +167,20 @@ def build_sample_dashboard_response() -> dict:
                 "investment_level": "medium",
             }
         ],
+        "compliance_trends": {
+            "overall": [
+                {
+                    "date": now,
+                    "score": 92.0,
+                }
+            ],
+            "frameworks": {
+                "CIS": [
+                    {
+                        "date": now,
+                        "score": 90.0,
+                    }
+                ]
+            },
+        },
     }

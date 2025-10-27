@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Callable, Dict, List
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from cerebro.analytics.time_series import (
     TimeSeriesCollector,
 )
 from cerebro.analytics.risk_scoring import RiskScoringEngine, RiskFactor, OrganizationRiskScore
+from cerebro.analytics.dashboard_repository import DashboardRepository
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,27 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
             aggregation_period=AggregationPeriod.DAILY,
         )
         stored_snapshots.append(str(db_risk_snapshot.snapshot_id))
+
+        repository = DashboardRepository(db)
+        compliance_score = await repository.calculate_compliance_score(org.org_id)
+        framework_compliance = await repository.get_compliance_by_framework(org.org_id)
+
+        compliance_snapshot = MetricSnapshot(
+            timestamp=datetime.utcnow(),
+            metric_type=MetricType.COMPLIANCE_SCORE.value,
+            value=compliance_score,
+            metadata={
+                "category": "compliance",
+                "framework_breakdown": framework_compliance,
+            },
+        )
+
+        db_compliance_snapshot = await collector.store_snapshot(
+            org.org_id,
+            compliance_snapshot,
+            aggregation_period=AggregationPeriod.DAILY,
+        )
+        stored_snapshots.append(str(db_compliance_snapshot.snapshot_id))
 
         return {
             "org_id": str(org.org_id),

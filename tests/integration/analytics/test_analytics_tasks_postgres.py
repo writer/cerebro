@@ -11,7 +11,11 @@ from testcontainers.postgres import PostgresContainer
 
 import cerebro.tasks.analytics_tasks as analytics_tasks
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
-from cerebro.analytics.time_series import SecurityMetricSnapshot, TimeSeriesCollector
+from cerebro.analytics.time_series import (
+    MetricType,
+    SecurityMetricSnapshot,
+    TimeSeriesCollector,
+)
 from cerebro.core.database import Base
 from cerebro.core.models import (
     Account,
@@ -68,21 +72,32 @@ async def pg_session_factory(pg_engine):
 
 
 async def _seed_sample_org(session: AsyncSession) -> UUID:
+    """Create a rich, multi-provider fixture that exercises analytics SQL paths."""
+
     org = Organization(name="Integration Org")
     session.add(org)
     await session.flush()
 
-    account = Account(
-        org_id=org.org_id,
-        provider="github",
-        external_id="acct-1",
-        display_name="GitHub Account",
+    providers = (
+        ("github", "acct-1", "GitHub Account"),
+        ("aws", "acct-aws", "AWS Production"),
+        ("gcp", "acct-gcp", "GCP Security"),
     )
-    session.add(account)
-    await session.flush()
 
-    principal = Principal(
-        account_id=account.account_id,
+    accounts: dict[str, Account] = {}
+    for provider, external_id, display_name in providers:
+        account = Account(
+            org_id=org.org_id,
+            provider=provider,
+            external_id=external_id,
+            display_name=display_name,
+        )
+        session.add(account)
+        await session.flush()
+        accounts[provider] = account
+
+    primary_principal = Principal(
+        account_id=accounts["github"].account_id,
         provider="github",
         principal_type="user",
         external_id="user-1",
@@ -90,23 +105,52 @@ async def _seed_sample_org(session: AsyncSession) -> UUID:
         display_name="Analyst",
         is_human=True,
     )
-    session.add(principal)
+    session.add(primary_principal)
     await session.flush()
 
-    resource = Resource(
-        account_id=account.account_id,
-        provider="github",
-        resource_type="repository",
-        external_id="repo-1",
-        name="security-repo",
+    cloud_engineer = Principal(
+        account_id=accounts["aws"].account_id,
+        provider="aws",
+        principal_type="user",
+        external_id="user-2",
+        email="cloud@example.com",
+        display_name="Cloud Engineer",
+        is_human=True,
     )
-    session.add(resource)
+    session.add(cloud_engineer)
     await session.flush()
 
-    rule = Rule(
+    service_principal = Principal(
+        account_id=accounts["gcp"].account_id,
+        provider="gcp",
+        principal_type="service_account",
+        external_id="svc-1",
+        email=None,
+        display_name="CI Pipeline",
+        is_human=False,
+    )
+    session.add(service_principal)
+    await session.flush()
+
+    resources = []
+    for provider, account in accounts.items():
+        resource = Resource(
+            account_id=account.account_id,
+            provider=provider,
+            resource_type="repository" if provider == "github" else "bucket",
+            external_id=f"{provider}-resource",
+            name=f"{provider}-asset",
+        )
+        session.add(resource)
+        await session.flush()
+        resources.append(resource)
+
+    now = datetime.now(timezone.utc)
+
+    mfa_rule = Rule(
         name="Enforce MFA",
-        provider=["github"],
-        resource_types=["repository"],
+        provider=["github", "aws"],
+        resource_types=["repository", "iam_user"],
         expression_lang="cel",
         expression="true",
         severity="critical",
@@ -115,58 +159,174 @@ async def _seed_sample_org(session: AsyncSession) -> UUID:
         version=1,
         is_active=True,
     )
-    session.add(rule)
+    encryption_rule = Rule(
+        name="Require Encryption",
+        provider=["aws"],
+        resource_types=["bucket"],
+        expression_lang="cel",
+        expression="resource.encrypted == true",
+        severity="high",
+        cis=["CIS.2"],
+        nist_800_53=["SC-13"],
+        version=1,
+        is_active=True,
+    )
+    iam_rule = Rule(
+        name="Limit Admin Grants",
+        provider=["gcp", "github", "aws"],
+        resource_types=["iam_user"],
+        expression_lang="cel",
+        expression="!principal.is_admin",
+        severity="medium",
+        cis=["CIS.3"],
+        nist_800_53=["AC-2"],
+        version=1,
+        is_active=True,
+    )
+    session.add_all([mfa_rule, encryption_rule, iam_rule])
     await session.flush()
 
-    now = datetime.now(timezone.utc)
+    github_resource = resources[0]
+    aws_resource = resources[1]
+    gcp_resource = resources[2]
 
-    finding_open = Finding(
-        org_id=org.org_id,
-        account_id=account.account_id,
-        provider="github",
-        rule_id=rule.rule_id,
-        rule_version=1,
-        resource_id=resource.resource_id,
-        principal_id=principal.principal_id,
-        first_seen=now - timedelta(days=10),
-        last_seen=now,
-        status="open",
-        severity="critical",
-        fingerprint="critical-repo-public",
-        title="Repository publicly accessible",
-        summary="Open finding for risk scoring",
-    )
-    session.add(finding_open)
+    findings = [
+        Finding(
+            org_id=org.org_id,
+            account_id=github_resource.account_id,
+            provider="github",
+            rule_id=mfa_rule.rule_id,
+            rule_version=1,
+            resource_id=github_resource.resource_id,
+            principal_id=primary_principal.principal_id,
+            first_seen=now - timedelta(days=15),
+            last_seen=now,
+            status="open",
+            severity="critical",
+            fingerprint="critical-repo-public",
+            title="Repository publicly accessible",
+            summary="Open GitHub finding",
+        ),
+        Finding(
+            org_id=org.org_id,
+            account_id=github_resource.account_id,
+            provider="github",
+            rule_id=mfa_rule.rule_id,
+            rule_version=1,
+            resource_id=github_resource.resource_id,
+            principal_id=primary_principal.principal_id,
+            first_seen=now - timedelta(days=5),
+            last_seen=now - timedelta(days=1),
+            status="fixed",
+            severity="high",
+            fingerprint="critical-repo-public-fixed",
+            title="Repository access restricted",
+            summary="Resolved GitHub finding",
+        ),
+        Finding(
+            org_id=org.org_id,
+            account_id=aws_resource.account_id,
+            provider="aws",
+            rule_id=encryption_rule.rule_id,
+            rule_version=1,
+            resource_id=aws_resource.resource_id,
+            principal_id=cloud_engineer.principal_id,
+            first_seen=now - timedelta(days=20),
+            last_seen=now - timedelta(days=2),
+            status="open",
+            severity="high",
+            fingerprint="s3-bucket-unencrypted",
+            title="S3 bucket missing encryption",
+            summary="AWS bucket requires encryption",
+        ),
+        Finding(
+            org_id=org.org_id,
+            account_id=gcp_resource.account_id,
+            provider="gcp",
+            rule_id=iam_rule.rule_id,
+            rule_version=1,
+            resource_id=gcp_resource.resource_id,
+            principal_id=primary_principal.principal_id,
+            first_seen=now - timedelta(days=40),
+            last_seen=now - timedelta(days=3),
+            status="open",
+            severity="medium",
+            fingerprint="gcp-admin-excess",
+            title="GCP admin permissions excessive",
+            summary="Excessive cross-cloud admin grants",
+        ),
+    ]
+    session.add_all(findings)
 
-    finding_fixed = Finding(
-        org_id=org.org_id,
-        account_id=account.account_id,
-        provider="github",
-        rule_id=rule.rule_id,
-        rule_version=1,
-        resource_id=resource.resource_id,
-        principal_id=principal.principal_id,
-        first_seen=now - timedelta(days=5),
-        last_seen=now - timedelta(days=1),
-        status="fixed",
-        severity="high",
-        fingerprint="critical-repo-public-fixed",
-        title="Repository access restricted",
-        summary="Resolved finding for MTTR calculation",
-    )
-    session.add(finding_fixed)
+    # Multi-provider IAM edges to trigger identity analytics
+    edges: list[IamEdge] = []
+    for index in range(12):
+        edges.append(
+            IamEdge(
+                account_id=github_resource.account_id,
+                provider="github",
+                principal_id=primary_principal.principal_id,
+                resource_id=github_resource.resource_id,
+                permission=f"repo:perm:{index}",
+                effective_at=now - timedelta(days=30 + index),
+                expires_at=None,
+                is_admin=index % 5 == 0,
+            )
+        )
 
-    edge = IamEdge(
-        account_id=account.account_id,
-        provider="github",
-        principal_id=principal.principal_id,
-        resource_id=resource.resource_id,
-        permission="repo:admin",
-        effective_at=now - timedelta(days=120),
-        expires_at=None,
-        is_admin=True,
+    # Cross-provider admin access
+    edges.extend(
+        [
+            IamEdge(
+                account_id=aws_resource.account_id,
+                provider="aws",
+                principal_id=primary_principal.principal_id,
+                resource_id=aws_resource.resource_id,
+                permission="iam:AdministratorAccess",
+                effective_at=now - timedelta(days=200),
+                expires_at=None,
+                is_admin=True,
+            ),
+            IamEdge(
+                account_id=gcp_resource.account_id,
+                provider="gcp",
+                principal_id=primary_principal.principal_id,
+                resource_id=gcp_resource.resource_id,
+                permission="roles/owner",
+                effective_at=now - timedelta(days=210),
+                expires_at=None,
+                is_admin=True,
+            ),
+        ]
     )
-    session.add(edge)
+
+    # Additional engineer edges
+    edges.extend(
+        [
+            IamEdge(
+                account_id=aws_resource.account_id,
+                provider="aws",
+                principal_id=cloud_engineer.principal_id,
+                resource_id=aws_resource.resource_id,
+                permission="s3:ListBucket",
+                effective_at=now - timedelta(days=12),
+                expires_at=None,
+                is_admin=False,
+            ),
+            IamEdge(
+                account_id=aws_resource.account_id,
+                provider="aws",
+                principal_id=cloud_engineer.principal_id,
+                resource_id=aws_resource.resource_id,
+                permission="iam:CreateUser",
+                effective_at=now - timedelta(days=60),
+                expires_at=None,
+                is_admin=True,
+            ),
+        ]
+    )
+
+    session.add_all(edges)
 
     await session.execute(
         text(
@@ -181,6 +341,27 @@ async def _seed_sample_org(session: AsyncSession) -> UUID:
         )
     )
 
+    session.add_all(
+        [
+            Finding(
+                org_id=org.org_id,
+                account_id=aws_resource.account_id,
+                provider="aws",
+                rule_id=encryption_rule.rule_id,
+                rule_version=1,
+                resource_id=aws_resource.resource_id,
+                principal_id=cloud_engineer.principal_id,
+                first_seen=now - timedelta(days=2),
+                last_seen=now - timedelta(days=1),
+                status="fixed",
+                severity="high",
+                fingerprint="s3-bucket-remediated",
+                title="S3 bucket encrypted",
+                summary="Encryption enabled",
+            )
+        ]
+    )
+
     await session.execute(
         text(
             """
@@ -191,7 +372,37 @@ async def _seed_sample_org(session: AsyncSession) -> UUID:
         {
             "assessment_result_id": str(uuid4()),
             "org_id": org.org_id,
-            "rule_id": rule.rule_id,
+            "rule_id": mfa_rule.rule_id,
+            "status": "passed",
+        },
+    )
+
+    await session.execute(
+        text(
+            """
+            INSERT INTO assessment_results (assessment_result_id, org_id, rule_id, status)
+            VALUES (:assessment_result_id, :org_id, :rule_id, :status)
+            """
+        ),
+        {
+            "assessment_result_id": str(uuid4()),
+            "org_id": org.org_id,
+            "rule_id": encryption_rule.rule_id,
+            "status": "failed",
+        },
+    )
+
+    await session.execute(
+        text(
+            """
+            INSERT INTO assessment_results (assessment_result_id, org_id, rule_id, status)
+            VALUES (:assessment_result_id, :org_id, :rule_id, :status)
+            """
+        ),
+        {
+            "assessment_result_id": str(uuid4()),
+            "org_id": org.org_id,
+            "rule_id": iam_rule.rule_id,
             "status": "passed",
         },
     )
@@ -229,29 +440,50 @@ async def test_collect_metrics_round_trip_with_postgres(pg_session_factory, monk
             )
         ).all()
 
+        metric_snapshots = await collector.collect_finding_metrics(org_id)
+
     assert snapshots, "SecurityMetricSnapshot records should exist"
-    assert mttr == pytest.approx(96.0)
-    assert sla_breaches == 1
+    snapshot_types = {snapshot.metric_type for snapshot in snapshots}
+    assert MetricType.OVERALL_RISK_SCORE.value in snapshot_types
+    assert MetricType.COMPLIANCE_SCORE.value in snapshot_types
+
+    assert mttr == pytest.approx(60.0)
+    assert sla_breaches == 3
+
+    collected_types = {snap.metric_type for snap in metric_snapshots}
+    assert MetricType.FINDING_SEVERITY_DISTRIBUTION.value in collected_types
+    severity_snapshot = next(
+        snap for snap in metric_snapshots if snap.metric_type == MetricType.FINDING_SEVERITY_DISTRIBUTION.value
+    )
+    assert severity_snapshot.metadata["distribution"]["critical"] >= 1
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory):
+async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory, monkeypatch):
     async with pg_session_factory() as session:
         org_id = await _seed_sample_org(session)
+
+    monkeypatch.setattr(analytics_tasks, "async_session_factory", pg_session_factory)
+
+    await analytics_tasks._collect_security_metrics_for_org(org_id)
+
+    async with pg_session_factory() as session:
         analytics = DashboardAnalytics(session)
 
         payload = await analytics.generate_comprehensive_dashboard(org_id)
 
         executive = payload["executive_summary"]
         assert executive["org_id"] == str(org_id)
-        assert executive["total_assets"] == 1
-        assert executive["total_identities"] == 1
+        assert executive["total_assets"] == 3
+        assert executive["total_identities"] == 2
         assert executive["progress_indicators"]["findings_burned_down_30d"] >= 0
 
         metrics = payload["security_metrics"]
-        assert metrics["findings"]["total"] == 2
-        assert metrics["sla_performance"]["breaches"] >= 1
+        assert metrics["findings"]["total"] >= 4
+        assert metrics["findings"]["critical"] >= 1
+        assert metrics["findings"]["open"] >= 3
+        assert metrics["sla_performance"]["breaches"] >= 3
 
         heatmap = payload["risk_heatmap"]
         assert "github" in heatmap["heatmap_data"]
@@ -259,3 +491,28 @@ async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory
 
         compliance = payload["compliance_status"]
         assert "CIS" in compliance
+
+        identity = payload["identity_analytics"]
+        assert identity["summary"]["cross_provider_identities"] >= 1
+        assert "aws" in identity["provider_breakdown"]
+        assert any(
+            anomaly["type"] == "excessive_cross_provider_admin"
+            for anomaly in identity["privilege_anomalies"]
+        )
+        assert identity["drilldown_identities"], "Drill-down identities should be populated"
+        assert identity["remediation_queue"], "Remediation queue should surface actions"
+
+        compliance_trends = payload.get("compliance_trends")
+        assert compliance_trends is not None
+        assert compliance_trends["overall"], "Overall compliance trend should not be empty"
+
+        timings = analytics.last_generation_timings
+        assert {
+            "security_metrics",
+            "executive_summary",
+            "identity_analytics",
+            "risk_heatmap",
+            "compliance_status",
+            "compliance_trends",
+            "total",
+        }.issubset(timings.keys())

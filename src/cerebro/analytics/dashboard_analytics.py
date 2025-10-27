@@ -434,10 +434,14 @@ class DashboardAnalytics:
             self.risk_engine.generate_risk_heatmap(org_id),
         )
         
-        # Compliance status
+        # Compliance status and trends
         compliance_status = await self._track_component(
             "compliance_status",
             self._get_compliance_status_by_framework(org_id),
+        )
+        compliance_trends = await self._track_component(
+            "compliance_trends",
+            self._get_compliance_trends(org_id, compliance_status),
         )
 
         total_duration = perf_counter() - total_start
@@ -494,63 +498,57 @@ class DashboardAnalytics:
                 "improvement_opportunities": risk_heatmap.improvement_opportunities
             },
             "compliance_status": compliance_status,
+            "compliance_trends": compliance_trends,
             "investment_recommendations": executive_summary.recommended_investments
         }
     
     async def _get_compliance_status_by_framework(self, org_id: UUID) -> Dict[str, Any]:
         """Get compliance status breakdown by framework."""
-        
-        frameworks_query = text("""
-            SELECT 
-                UNNEST(r.cis) as framework_control,
-                COUNT(*) as total_controls,
-                COUNT(CASE WHEN f.finding_id IS NULL THEN 1 END) as compliant_controls
-            FROM rules r
-            LEFT JOIN findings f ON r.rule_id = f.rule_id 
-                AND f.status = 'open'
-                AND f.account_id IN (
-                    SELECT account_id FROM accounts WHERE org_id = :org_id
+
+        return await self.repository.get_compliance_by_framework(org_id)
+
+    async def _get_compliance_trends(
+        self, org_id: UUID, framework_status: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Hydrate compliance trend data from stored snapshots."""
+
+        trend_query = text(
+            """
+            SELECT captured_at, value, metric_metadata
+            FROM security_metric_snapshots
+            WHERE org_id = :org_id
+                AND metric_type = 'compliance_score'
+            ORDER BY captured_at DESC
+            LIMIT 30
+            """
+        )
+
+        result = await self.db.execute(trend_query, {"org_id": org_id})
+        rows = list(result.fetchall())
+
+        overall: List[Dict[str, Any]] = []
+        frameworks: Dict[str, List[Dict[str, Any]]] = {
+            framework: [] for framework in framework_status.keys()
+        }
+
+        for row in reversed(rows):
+            captured_at = row.captured_at
+            value = float(row.value) if row.value is not None else 0.0
+            capture_date = captured_at.date().isoformat() if captured_at else datetime.utcnow().date().isoformat()
+            overall.append({"date": capture_date, "score": value})
+
+            metadata = row.metric_metadata or {}
+            breakdown = metadata.get("framework_breakdown", {})
+
+            for framework, points in frameworks.items():
+                framework_meta = breakdown.get(framework)
+                if framework_meta is None:
+                    continue
+                points.append(
+                    {
+                        "date": capture_date,
+                        "score": framework_meta.get("compliance_percentage", 0.0),
+                    }
                 )
-            WHERE r.cis IS NOT NULL
-            GROUP BY UNNEST(r.cis)
-            
-            UNION ALL
-            
-            SELECT 
-                UNNEST(r.nist_800_53) as framework_control,
-                COUNT(*) as total_controls,
-                COUNT(CASE WHEN f.finding_id IS NULL THEN 1 END) as compliant_controls
-            FROM rules r
-            LEFT JOIN findings f ON r.rule_id = f.rule_id 
-                AND f.status = 'open'
-                AND f.account_id IN (
-                    SELECT account_id FROM accounts WHERE org_id = :org_id
-                )
-            WHERE r.nist_800_53 IS NOT NULL
-            GROUP BY UNNEST(r.nist_800_53)
-        """)
-        
-        result = await self.db.execute(frameworks_query, {"org_id": org_id})
-        
-        framework_compliance = {}
-        for row in result.fetchall():
-            framework = row.framework_control.split('.')[0] if '.' in row.framework_control else 'Unknown'
-            
-            if framework not in framework_compliance:
-                framework_compliance[framework] = {
-                    "total_controls": 0,
-                    "compliant_controls": 0
-                }
-            
-            framework_compliance[framework]["total_controls"] += row.total_controls
-            framework_compliance[framework]["compliant_controls"] += row.compliant_controls
-        
-        # Calculate compliance percentages
-        for framework, data in framework_compliance.items():
-            total = data["total_controls"]
-            compliant = data["compliant_controls"]
-            percentage = (compliant / total * 100) if total > 0 else 0
-            data["compliance_percentage"] = round(percentage, 1)
-            data["status"] = "compliant" if percentage >= 90 else "partial" if percentage >= 70 else "non_compliant"
-        
-        return framework_compliance
+
+        return {"overall": overall, "frameworks": frameworks}
