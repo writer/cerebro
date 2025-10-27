@@ -13,6 +13,7 @@ import {
   RiskHeatmapResponse,
   SecurityMetricsResponse,
   ProviderFindingBreakdown,
+  ProviderFindingsResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
@@ -188,6 +189,23 @@ export function ExecutiveDashboard() {
   }, [identity, riskFilter]);
 
   const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
+  const [providerDetail, setProviderDetail] = useState<string | null>(null);
+
+  const {
+    data: providerFindingsResponse,
+    isLoading: isLoadingProviderFindings,
+    isError: isProviderFindingsError,
+    error: providerFindingsError,
+    refetch: refetchProviderFindings,
+  } = useQuery({
+    queryKey: ["providerFindings", selectedOrg, providerDetail],
+    queryFn: () =>
+      apiGet<ProviderFindingsResponse>(
+        `/analytics/dashboard/organizations/${selectedOrg}/providers/${providerDetail}/findings?limit=25`
+      ),
+    enabled: Boolean(selectedOrg && providerDetail),
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     if (filteredDrilldownIdentities.length > 0) {
@@ -244,6 +262,12 @@ export function ExecutiveDashboard() {
   const totalRiskIdentities = riskSegments.reduce((acc, segment) => acc + segment.count, 0);
   const privilegeTotal = privilegeSegments.reduce((acc, segment) => acc + segment.count, 0);
   const frameworkDeltaEntries = Object.entries(complianceDelta?.frameworks ?? {});
+  const providerFindings = providerFindingsResponse?.findings ?? [];
+  const providerDialogProvider = providerFindingsResponse?.provider ?? providerDetail;
+  const providerFindingsErrorMessage = isProviderFindingsError
+    ? toErrorMessage(providerFindingsError, "Unable to load provider findings.")
+    : null;
+  const closeProviderDialog = () => setProviderDetail(null);
 
   return (
     <div className="space-y-6">
@@ -556,6 +580,7 @@ export function ExecutiveDashboard() {
                         <th className="px-3 py-2">New (24h)</th>
                         <th className="px-3 py-2">SLA breaches</th>
                         <th className="px-3 py-2">MTTR (h)</th>
+                        <th className="px-3 py-2 text-right">Details</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -578,6 +603,15 @@ export function ExecutiveDashboard() {
                           </td>
                           <td className="px-3 py-2">
                             {entry.mttr_hours != null ? entry.mttr_hours.toFixed(1) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setProviderDetail(entry.provider)}
+                              className="rounded border border-zinc-800 px-2 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
+                            >
+                              View
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1007,6 +1041,15 @@ export function ExecutiveDashboard() {
           </div>
         )}
       </Panel>
+
+      <ProviderFindingsDialog
+        provider={providerDialogProvider}
+        findings={providerFindings}
+        isLoading={isLoadingProviderFindings}
+        error={providerFindingsErrorMessage}
+        onRefresh={() => refetchProviderFindings()}
+        onClose={closeProviderDialog}
+      />
     </div>
   );
 }
@@ -1074,6 +1117,81 @@ function ErrorState({ message }: { message: string }) {
   return (
     <div className="rounded-md border border-red-900/40 bg-red-950/20 p-4 text-sm text-red-200">
       {message}
+    </div>
+  );
+}
+
+type ProviderFindingsDialogProps = {
+  provider: string | null;
+  findings: ProviderFindingsResponse["findings"];
+  isLoading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onClose: () => void;
+};
+
+function ProviderFindingsDialog({ provider, findings, isLoading, error, onRefresh, onClose }: ProviderFindingsDialogProps) {
+  if (!provider) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+      <div className="w-full max-w-3xl rounded-lg border border-zinc-900 bg-black/90 p-6 shadow-xl">
+        <div className="flex items-center justify-between text-sm text-zinc-300">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500">Provider</div>
+            <div className="text-lg font-semibold text-zinc-100">{provider}</div>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="rounded border border-zinc-700 px-3 py-1 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-zinc-800 px-3 py-1 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-200"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 max-h-96 overflow-y-auto text-xs text-zinc-200">
+          {isLoading ? (
+            <p className="text-zinc-500">Loading provider findings…</p>
+          ) : error ? (
+            <ErrorState message={error} />
+          ) : findings.length === 0 ? (
+            <p className="text-zinc-500">No findings recorded for this provider.</p>
+          ) : (
+            <ul className="space-y-3">
+              {findings.map((finding) => (
+                <li key={finding.finding_id} className="rounded-md border border-zinc-900 bg-black/50 p-3">
+                  <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                    <span>{finding.severity}</span>
+                    <span>{finding.status}</span>
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-zinc-100">{finding.title}</div>
+                  {finding.rule_name ? (
+                    <div className="mt-1 text-[11px] text-zinc-500">Rule: {finding.rule_name}</div>
+                  ) : null}
+                  <div className="mt-1 grid gap-3 text-[11px] text-zinc-500 sm:grid-cols-2">
+                    <span>First seen: {finding.first_seen ? formatTimestamp(finding.first_seen) : "—"}</span>
+                    <span>Last seen: {finding.last_seen ? formatTimestamp(finding.last_seen) : "—"}</span>
+                    <span>Resource: {finding.resource_id ?? "—"}</span>
+                    <span>ID: {finding.finding_id}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

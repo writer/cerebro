@@ -49,6 +49,17 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "sla_breaches",
         "mttr_hours",
     },
+    "ProviderFindingDetail": {
+        "finding_id",
+        "title",
+        "severity",
+        "status",
+        "first_seen",
+        "last_seen",
+        "resource_id",
+        "rule_name",
+    },
+    "ProviderFindingsResponse": {"provider", "findings"},
     "ComplianceStatusEntry": {
         "total_controls",
         "compliant_controls",

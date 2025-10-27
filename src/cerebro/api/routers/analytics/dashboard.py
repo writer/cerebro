@@ -2,13 +2,14 @@
 
 from typing import Dict, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
+from cerebro.analytics.dashboard_repository import DashboardRepository
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -66,4 +67,27 @@ async def get_executive_summary(
             "risk_score_change_30d": executive_summary.risk_score_change_30d
         },
         "recommended_investments": executive_summary.recommended_investments
+    }
+
+
+@router.get("/organizations/{org_id}/providers/{provider}/findings")
+async def get_provider_findings(
+    org_id: UUID,
+    provider: str,
+    limit: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("read:findings")),
+):
+    """List detailed findings for a specific provider."""
+
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    repository = DashboardRepository(db)
+    findings = await repository.get_findings_by_provider(org_id, provider, limit=limit)
+
+    return {
+        "provider": provider,
+        "findings": findings,
     }

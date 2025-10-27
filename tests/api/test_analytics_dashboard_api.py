@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
+from cerebro.analytics.dashboard_repository import DashboardRepository
 
 from tests.api.dashboard_samples import build_sample_dashboard_response
 
@@ -51,3 +52,56 @@ def test_dashboard_endpoint_includes_identity_and_heatmap(
     assert metadata.get("cache_ttl_seconds") is not None
     assert "supports_streaming_updates" in metadata
     assert provider_breakdown, "Provider breakdown should be populated"
+
+
+def test_provider_findings_endpoint_returns_details(
+    client,
+    test_db,
+    test_org,
+    test_token,
+    monkeypatch,
+):
+    sample_findings = [
+        {
+            "finding_id": "f-123",
+            "title": "Excessive admin access",
+            "severity": "critical",
+            "status": "open",
+            "first_seen": "2024-01-01T00:00:00+00:00",
+            "last_seen": "2024-01-03T00:00:00+00:00",
+            "resource_id": "res-1",
+            "rule_name": "admin_access_rule",
+        },
+        {
+            "finding_id": "f-456",
+            "title": "Stale credentials",
+            "severity": "high",
+            "status": "investigating",
+            "first_seen": "2024-01-02T00:00:00+00:00",
+            "last_seen": "2024-01-04T00:00:00+00:00",
+            "resource_id": "res-2",
+            "rule_name": None,
+        },
+    ]
+
+    async def _fake_provider_findings(self, org_id, provider, limit):
+        assert org_id == test_org.org_id
+        assert provider == "github"
+        assert limit == 10
+        return sample_findings[:limit]
+
+    monkeypatch.setattr(DashboardRepository, "get_findings_by_provider", _fake_provider_findings)
+
+    response = client.get(
+        f"/api/v1/analytics/organizations/{test_org.org_id}/providers/github/findings?limit=10",
+        headers={"Authorization": f"Bearer {test_token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    assert payload["provider"] == "github"
+    assert len(payload["findings"]) == 2
+    first = payload["findings"][0]
+    assert first["title"] == "Excessive admin access"
+    assert first["severity"] == "critical"

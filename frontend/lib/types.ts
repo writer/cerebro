@@ -226,6 +226,22 @@ export type ProviderFindingBreakdown = {
   mttr_hours: number | null;
 };
 
+export type ProviderFindingDetail = {
+  finding_id: string;
+  title: string;
+  severity: string;
+  status: string;
+  first_seen: string | null;
+  last_seen: string | null;
+  resource_id: string | null;
+  rule_name: string | null;
+};
+
+export type ProviderFindingsResponse = {
+  provider: string;
+  findings: ProviderFindingDetail[];
+};
+
 export type ComplianceStatusEntry = {
   total_controls: number;
   compliant_controls: number;

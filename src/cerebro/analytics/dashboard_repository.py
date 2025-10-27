@@ -235,6 +235,61 @@ class DashboardRepository:
 
         return framework_compliance
 
+    async def get_findings_by_provider(
+        self, org_id: UUID, provider: str, limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """Return detailed findings for a given provider."""
+
+        provider_query = text(
+            """
+            SELECT
+                f.finding_id,
+                f.title,
+                f.severity,
+                f.status,
+                f.first_seen,
+                f.last_seen,
+                f.resource_id,
+                r.name AS rule_name
+            FROM findings f
+            JOIN accounts a ON f.account_id = a.account_id
+            LEFT JOIN rules r ON f.rule_id = r.rule_id
+            WHERE a.org_id = :org_id
+              AND a.provider = :provider
+            ORDER BY
+                CASE f.severity
+                    WHEN 'critical' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    ELSE 4
+                END,
+                f.first_seen DESC
+            LIMIT :limit
+            """
+        )
+
+        result = await self._db.execute(
+            provider_query,
+            {"org_id": org_id, "provider": provider, "limit": limit},
+        )
+
+        findings: List[Dict[str, Any]] = []
+        for row in result.fetchall():
+            findings.append(
+                {
+                    "finding_id": str(row.finding_id),
+                    "title": row.title,
+                    "severity": row.severity,
+                    "status": row.status,
+                    "first_seen": row.first_seen.isoformat() if row.first_seen else None,
+                    "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+                    "resource_id": str(row.resource_id) if row.resource_id else None,
+                    "rule_name": row.rule_name,
+                }
+            )
+
+        return findings
+
     async def get_findings_by_provider(self, org_id: UUID) -> List[Dict[str, Any]]:
         """Aggregate findings by provider with severity and SLA context."""
 
