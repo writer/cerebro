@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from testcontainers.postgres import PostgresContainer
 
 import cerebro.tasks.analytics_tasks as analytics_tasks
-from cerebro.analytics.time_series import SecurityMetricSnapshot
+from cerebro.analytics.time_series import SecurityMetricSnapshot, TimeSeriesCollector
 from cerebro.core.database import Base
 from cerebro.core.models import (
     Account,
@@ -184,6 +184,10 @@ async def test_collect_metrics_round_trip_with_postgres(pg_session_factory, monk
     assert result["risk_score"] >= 0
 
     async with session_maker() as verification_session:
+        collector = TimeSeriesCollector(verification_session)
+        mttr = await collector._calculate_mttr(org_id)
+        sla_breaches = await collector._count_sla_breaches(org_id)
+
         snapshots = (
             await verification_session.scalars(
                 select(SecurityMetricSnapshot).where(
@@ -193,3 +197,5 @@ async def test_collect_metrics_round_trip_with_postgres(pg_session_factory, monk
         ).all()
 
     assert snapshots, "SecurityMetricSnapshot records should exist"
+    assert mttr == pytest.approx(96.0)
+    assert sla_breaches == 1
