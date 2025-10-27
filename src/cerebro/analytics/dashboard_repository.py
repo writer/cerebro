@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-from typing import Dict
+from typing import Dict, List, Any
 
 from .orientation import generate_orientation_summary
 
@@ -234,6 +234,60 @@ class DashboardRepository:
             }
 
         return framework_compliance
+
+    async def get_findings_by_provider(self, org_id: UUID) -> List[Dict[str, Any]]:
+        """Aggregate findings by provider with severity and SLA context."""
+
+        provider_query = text(
+            """
+            SELECT
+                a.provider,
+                SUM(CASE WHEN f.status = 'open' THEN 1 ELSE 0 END) AS open_findings,
+                SUM(CASE WHEN f.status = 'open' AND f.severity = 'critical' THEN 1 ELSE 0 END) AS critical_open,
+                SUM(CASE WHEN f.status = 'open' AND f.severity = 'high' THEN 1 ELSE 0 END) AS high_open,
+                SUM(CASE WHEN f.first_seen >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END) AS new_last_24h,
+                SUM(
+                    CASE
+                        WHEN f.status = 'open'
+                            AND (
+                                (f.severity = 'critical' AND f.first_seen <= NOW() - INTERVAL '7 days') OR
+                                (f.severity = 'high' AND f.first_seen <= NOW() - INTERVAL '14 days') OR
+                                (f.severity = 'medium' AND f.first_seen <= NOW() - INTERVAL '30 days')
+                            )
+                        THEN 1 ELSE 0 END
+                ) AS sla_breaches,
+                AVG(
+                    CASE
+                        WHEN f.status IN ('fixed', 'accepted_risk') THEN
+                            EXTRACT(EPOCH FROM (f.last_seen - f.first_seen)) / 3600
+                        ELSE NULL
+                    END
+                ) AS mttr_hours
+            FROM findings f
+            JOIN accounts a ON f.account_id = a.account_id
+            WHERE a.org_id = :org_id
+            GROUP BY a.provider
+            ORDER BY open_findings DESC
+            """
+        )
+
+        result = await self._db.execute(provider_query, {"org_id": org_id})
+
+        breakdown: List[Dict[str, Any]] = []
+        for row in result.fetchall():
+            breakdown.append(
+                {
+                    "provider": row.provider,
+                    "open_findings": int(row.open_findings or 0),
+                    "critical_open": int(row.critical_open or 0),
+                    "high_open": int(row.high_open or 0),
+                    "new_last_24h": int(row.new_last_24h or 0),
+                    "sla_breaches": int(row.sla_breaches or 0),
+                    "mttr_hours": float(row.mttr_hours) if row.mttr_hours is not None else None,
+                }
+            )
+
+        return breakdown
 
     async def get_orientation_summary(self) -> dict:
         """Return trending telemetry summary for dashboard widgets."""

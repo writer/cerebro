@@ -213,6 +213,17 @@ export type SecurityMetricsResponse = {
     new_24h: number;
     resolved_24h: number;
   };
+  provider_breakdown?: ProviderFindingBreakdown[];
+};
+
+export type ProviderFindingBreakdown = {
+  provider: string;
+  open_findings: number;
+  critical_open: number;
+  high_open: number;
+  new_last_24h: number;
+  sla_breaches: number;
+  mttr_hours: number | null;
 };
 
 export type ComplianceStatusEntry = {
@@ -314,13 +325,28 @@ export type IdentityMfaCompliance = {
 export type IdentityAnalyticsResponse = {
   summary: IdentityAnalyticsSummary;
   privilege_distribution: Record<string, number>;
+  privilege_segments: IdentityPrivilegeSegment[];
   top_risky_identities: IdentityAnalyticsRiskyIdentity[];
   privilege_anomalies: IdentityPrivilegeAnomaly[];
   mfa_compliance_by_provider: Record<string, IdentityMfaCompliance>;
   provider_breakdown: Record<string, IdentityProviderBreakdown>;
+  provider_segments: IdentityProviderSegment[];
   drilldown_identities: IdentityDrilldownIdentity[];
   remediation_queue: IdentityRemediationItem[];
+  risk_level_breakdown: Record<string, number>;
   generated_at: string;
+};
+
+export type IdentityPrivilegeSegment = {
+  label: string;
+  count: number;
+};
+
+export type IdentityProviderSegment = {
+  provider: string;
+  identity_count: number;
+  admin_grants: number;
+  risk_level: string;
 };
 
 export type RiskHeatmapArea = {
@@ -351,6 +377,10 @@ export type ComplianceTrendPoint = {
 export type ComplianceTrendResponse = {
   overall: ComplianceTrendPoint[];
   frameworks: Record<string, ComplianceTrendPoint[]>;
+  delta?: {
+    overall: number;
+    frameworks: Record<string, number>;
+  };
 };
 
 export type DashboardMetadata = {
@@ -360,6 +390,9 @@ export type DashboardMetadata = {
     identity_risk_filter: string;
     compliance_trend_range: string;
   };
+  cache_ttl_seconds?: number;
+  supports_streaming_updates?: boolean;
+  alert_thresholds?: Record<string, { warning: number; critical: number }>;
 };
 
 export type ExecutiveDashboardResponse = {

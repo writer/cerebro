@@ -76,12 +76,15 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
                 "max_permissions_per_identity": 20,
             },
             "privilege_distribution": {"admin": 2},
+            "privilege_segments": [{"label": "admin", "count": 2}],
             "top_risky_identities": [],
             "privilege_anomalies": [],
             "mfa_compliance_by_provider": {},
             "provider_breakdown": {},
             "drilldown_identities": [],
             "remediation_queue": [],
+            "provider_segments": [],
+            "risk_level_breakdown": {"critical": 0, "high": 0, "medium": 0, "low": 5},
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 

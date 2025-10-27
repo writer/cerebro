@@ -37,10 +37,17 @@ def test_dashboard_endpoint_includes_identity_and_heatmap(
     identity = payload["identity_analytics"]
     heatmap = payload["risk_heatmap"]
     metadata = payload["metadata"]
+    provider_breakdown = payload["security_metrics"].get("provider_breakdown")
 
     assert identity["summary"]["total_identities"] >= 1
     assert "drilldown_identities" in identity
     assert "remediation_queue" in identity
     assert identity["generated_at"], "Identity analytics should include generated_at"
+    assert identity.get("risk_level_breakdown"), "Risk level breakdown should exist"
+    assert identity.get("privilege_segments"), "Privilege segments should exist"
+    assert identity.get("provider_segments"), "Provider segments should exist"
     assert heatmap["heatmap_data"], "Heatmap data should not be empty"
     assert metadata["generated_at"], "Metadata should include generated_at"
+    assert metadata.get("cache_ttl_seconds") is not None
+    assert "supports_streaming_updates" in metadata
+    assert provider_breakdown, "Provider breakdown should be populated"

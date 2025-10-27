@@ -484,6 +484,7 @@ async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory
         assert metrics["findings"]["critical"] >= 1
         assert metrics["findings"]["open"] >= 3
         assert metrics["sla_performance"]["breaches"] >= 3
+        assert metrics["provider_breakdown"]
 
         heatmap = payload["risk_heatmap"]
         assert "github" in heatmap["heatmap_data"]
@@ -510,6 +511,7 @@ async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory
         metadata = payload["metadata"]
         assert metadata["generated_at"]
         assert metadata["component_timings"]["total"] >= 0
+        assert metadata["cache_ttl_seconds"] == 60
 
         timings = analytics.last_generation_timings
         assert {

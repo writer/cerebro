@@ -39,7 +39,16 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "new_controls_implemented",
         "risk_score_change_30d",
     },
-    "SecurityMetricsResponse": {"findings", "sla_performance"},
+    "SecurityMetricsResponse": {"findings", "sla_performance", "provider_breakdown"},
+    "ProviderFindingBreakdown": {
+        "provider",
+        "open_findings",
+        "critical_open",
+        "high_open",
+        "new_last_24h",
+        "sla_breaches",
+        "mttr_hours",
+    },
     "ComplianceStatusEntry": {
         "total_controls",
         "compliant_controls",
@@ -57,13 +66,23 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
     "IdentityAnalyticsResponse": {
         "summary",
         "privilege_distribution",
+        "privilege_segments",
         "top_risky_identities",
         "privilege_anomalies",
         "mfa_compliance_by_provider",
         "provider_breakdown",
+        "provider_segments",
         "drilldown_identities",
         "remediation_queue",
+        "risk_level_breakdown",
         "generated_at",
+    },
+    "IdentityPrivilegeSegment": {"label", "count"},
+    "IdentityProviderSegment": {
+        "provider",
+        "identity_count",
+        "admin_grants",
+        "risk_level",
     },
     "IdentityAnalyticsSummary": {
         "total_identities",
@@ -154,8 +173,15 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "impact",
     },
     "ComplianceTrendPoint": {"date", "score"},
-    "ComplianceTrendResponse": {"overall", "frameworks"},
-    "DashboardMetadata": {"generated_at", "component_timings", "filters_applied"},
+    "ComplianceTrendResponse": {"overall", "frameworks", "delta"},
+    "DashboardMetadata": {
+        "generated_at",
+        "component_timings",
+        "filters_applied",
+        "cache_ttl_seconds",
+        "supports_streaming_updates",
+        "alert_thresholds",
+    },
 }
 
 
@@ -236,6 +262,9 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
         "new_24h",
         "resolved_24h",
     }
+    provider_breakdown = metrics.get("provider_breakdown") or []
+    for entry in provider_breakdown:
+        assert set(entry.keys()) == EXPECTED_FIELDS["ProviderFindingBreakdown"]
 
     for entry in payload["compliance_status"].values():
         assert set(entry.keys()) == EXPECTED_FIELDS["ComplianceStatusEntry"]
@@ -249,6 +278,8 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     assert set(identity.keys()) == EXPECTED_FIELDS["IdentityAnalyticsResponse"]
     assert set(identity["summary"].keys()) == EXPECTED_FIELDS["IdentityAnalyticsSummary"]
     assert identity["privilege_distribution"], "Privilege distribution should not be empty"
+    for segment in identity.get("privilege_segments", []):
+        assert set(segment.keys()) == EXPECTED_FIELDS["IdentityPrivilegeSegment"]
     assert identity["generated_at"], "Identity analytics should include generation timestamp"
 
     assert identity["top_risky_identities"], "Risky identities should not be empty"
@@ -263,6 +294,11 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
 
     for breakdown in identity["provider_breakdown"].values():
         assert set(breakdown.keys()) == EXPECTED_FIELDS["IdentityProviderBreakdown"]
+    for provider_segment in identity.get("provider_segments", []):
+        assert set(provider_segment.keys()) == EXPECTED_FIELDS["IdentityProviderSegment"]
+
+    risk_breakdown = identity.get("risk_level_breakdown") or {}
+    assert risk_breakdown, "Risk level breakdown should be provided"
 
     drilldown = identity["drilldown_identities"]
     assert drilldown, "Drilldown identities should not be empty"
@@ -294,6 +330,8 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     for series in trends["frameworks"].values():
         for point in series:
             assert set(point.keys()) == EXPECTED_FIELDS["ComplianceTrendPoint"]
+    delta = trends.get("delta") or {}
+    assert "overall" in delta
 
     metadata = payload["metadata"]
     assert set(metadata.keys()) == EXPECTED_FIELDS["DashboardMetadata"]
@@ -302,6 +340,11 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     assert component_timings, "Component timings should be present"
     if metadata.get("filters_applied"):
         assert set(metadata["filters_applied"].keys()) == {"identity_risk_filter", "compliance_trend_range"}
+    assert metadata.get("cache_ttl_seconds") is not None
+    assert "supports_streaming_updates" in metadata
+    alert_thresholds = metadata.get("alert_thresholds") or {}
+    for thresholds in alert_thresholds.values():
+        assert set(thresholds.keys()) == {"warning", "critical"}
 
 
 def test_typescript_contract_matches_api_schema(client, test_db, test_org, test_token, monkeypatch):

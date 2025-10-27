@@ -745,6 +745,61 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
     IdentityAnalyzer._get_mfa_compliance_by_provider = _get_mfa_compliance_by_provider
 
 
+if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
+    async def _get_risk_level_breakdown(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, int]:
+        """Return identity counts grouped by risk level."""
+
+        risk_level_query = text(
+            """
+            WITH identity_stats AS (
+                SELECT 
+                    p.principal_id,
+                    COUNT(DISTINCT ie.provider) AS provider_count,
+                    COUNT(DISTINCT ie.permission) AS permission_count,
+                    SUM(CASE WHEN ie.is_admin THEN 1 ELSE 0 END) AS admin_count,
+                    SUM(
+                        CASE 
+                            WHEN ie.effective_at < NOW() - INTERVAL '90 days' THEN 1 
+                            ELSE 0 
+                        END
+                    ) AS stale_count
+                FROM principals p
+                JOIN accounts a ON p.account_id = a.account_id
+                LEFT JOIN iam_edges ie ON p.principal_id = ie.principal_id
+                WHERE a.org_id = :org_id
+                    AND p.is_human = true
+                    AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                GROUP BY p.principal_id
+            ),
+            scored_identities AS (
+                SELECT
+                    principal_id,
+                    (provider_count * 10.0 + permission_count * 0.5 + admin_count * 15.0 + stale_count * 2.0) AS risk_score
+                FROM identity_stats
+            )
+            SELECT
+                CASE
+                    WHEN risk_score >= 80 THEN 'critical'
+                    WHEN risk_score >= 60 THEN 'high'
+                    WHEN risk_score >= 40 THEN 'medium'
+                    ELSE 'low'
+                END AS risk_level,
+                COUNT(*) AS identity_count
+            FROM scored_identities
+            GROUP BY risk_level
+            """
+        )
+
+        result = await self.db.execute(risk_level_query, {"org_id": org_id})
+        breakdown = {level: 0 for level in ["critical", "high", "medium", "low"]}
+        for row in result.fetchall():
+            breakdown[row.risk_level] = int(row.identity_count or 0)
+
+        return breakdown
+
+    IdentityAnalyzer.get_risk_level_breakdown = _get_risk_level_breakdown
+
+
 async def _build_drilldown_identities(
     analyzer: IdentityAnalyzer, risky_identities: List[RiskyIdentity]
 ) -> List[Dict[str, Any]]:
@@ -845,6 +900,7 @@ if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
         sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(org_id)
         anomalies = await self.identify_privilege_anomalies(org_id)
         mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
+        risk_level_breakdown = await self.get_risk_level_breakdown(org_id)
 
         top_risky = sprawl_analysis.top_risky_identities[:5]
         drilldown_identities = await _build_drilldown_identities(self, top_risky)
@@ -875,6 +931,13 @@ if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
                 "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity,
             },
             "privilege_distribution": sprawl_analysis.privilege_distribution,
+            "privilege_segments": [
+                {
+                    "label": label,
+                    "count": int(count),
+                }
+                for label, count in sprawl_analysis.privilege_distribution.items()
+            ],
             "top_risky_identities": [
                 {
                     "principal_id": str(identity.principal_id),
@@ -892,8 +955,18 @@ if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
             "privilege_anomalies": anomalies,
             "mfa_compliance_by_provider": mfa_compliance,
             "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
+            "provider_segments": [
+                {
+                    "provider": provider,
+                    "identity_count": data.get("identity_count", 0),
+                    "admin_grants": data.get("admin_grants", 0),
+                    "risk_level": data.get("risk_level", "unknown"),
+                }
+                for provider, data in sprawl_analysis.provider_privilege_breakdown.items()
+            ],
             "drilldown_identities": drilldown_identities,
             "remediation_queue": remediation_queue,
+            "risk_level_breakdown": risk_level_breakdown,
             "generated_at": sprawl_analysis.analysis_date.isoformat() + "Z",
         }
 

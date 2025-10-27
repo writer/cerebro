@@ -47,6 +47,7 @@ class SecurityMetrics:
     # Recent activity
     new_findings_24h: int
     resolved_findings_24h: int
+    provider_breakdown: Optional[List[Dict[str, Any]]] = None
 
 
 @dataclass
@@ -151,6 +152,8 @@ class DashboardAnalytics:
         # Calculate MTTR
         mttr = await self.repository.calculate_mttr(org_id)
 
+        provider_breakdown = await self.repository.get_findings_by_provider(org_id)
+
         # Recent activity (24 hours)
         new_findings_24h = await self.repository.count_new_findings(org_id)
         resolved_findings_24h = await self.repository.count_resolved_findings(org_id)
@@ -165,7 +168,8 @@ class DashboardAnalytics:
             sla_breaches=sla_breaches,
             mean_time_to_remediation=mttr,
             new_findings_24h=new_findings_24h,
-            resolved_findings_24h=resolved_findings_24h
+            resolved_findings_24h=resolved_findings_24h,
+            provider_breakdown=provider_breakdown,
         )
     
     async def generate_executive_summary(self, org_id: UUID) -> ExecutiveSummary:
@@ -466,6 +470,13 @@ class DashboardAnalytics:
                 "identity_risk_filter": "all",
                 "compliance_trend_range": "30d",
             },
+            "cache_ttl_seconds": 60,
+            "supports_streaming_updates": False,
+            "alert_thresholds": {
+                "critical_findings": {"warning": 5, "critical": 10},
+                "mttr_hours": {"warning": 24, "critical": 48},
+                "sla_breaches": {"warning": 5, "critical": 10},
+            },
         }
 
         return {
@@ -501,7 +512,8 @@ class DashboardAnalytics:
                     "mttr_hours": round(security_metrics.mean_time_to_remediation, 1),
                     "new_24h": security_metrics.new_findings_24h,
                     "resolved_24h": security_metrics.resolved_findings_24h
-                }
+                },
+                "provider_breakdown": security_metrics.provider_breakdown or [],
             },
             "identity_analytics": identity_data,
             "risk_heatmap": {
@@ -562,4 +574,24 @@ class DashboardAnalytics:
                     }
                 )
 
-        return {"overall": overall, "frameworks": frameworks}
+        overall_delta = 0.0
+        if len(overall) >= 2:
+            overall_delta = overall[-1]["score"] - overall[-2]["score"]
+
+        framework_deltas: Dict[str, float] = {}
+        for framework_name, points in frameworks.items():
+            if len(points) >= 2:
+                framework_deltas[framework_name] = points[-1]["score"] - points[-2]["score"]
+            elif points:
+                framework_deltas[framework_name] = 0.0
+            else:
+                framework_deltas[framework_name] = 0.0
+
+        return {
+            "overall": overall,
+            "frameworks": frameworks,
+            "delta": {
+                "overall": round(overall_delta, 2),
+                "frameworks": {name: round(delta, 2) for name, delta in framework_deltas.items()},
+            },
+        }

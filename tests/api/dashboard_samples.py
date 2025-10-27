@@ -43,6 +43,17 @@ def build_sample_dashboard_response() -> dict:
                 "new_24h": 2,
                 "resolved_24h": 3,
             },
+            "provider_breakdown": [
+                {
+                    "provider": "github",
+                    "open_findings": 3,
+                    "critical_open": 1,
+                    "high_open": 1,
+                    "new_last_24h": 1,
+                    "sla_breaches": 1,
+                    "mttr_hours": 10.0,
+                }
+            ],
         },
         "compliance_status": {
             "CIS": {
@@ -61,6 +72,10 @@ def build_sample_dashboard_response() -> dict:
                 "max_permissions_per_identity": 20,
             },
             "privilege_distribution": {"admin": 1, "low_privilege": 1},
+            "privilege_segments": [
+                {"label": "admin", "count": 1},
+                {"label": "low_privilege", "count": 1},
+            ],
             "top_risky_identities": [
                 {
                     "principal_id": "123",
@@ -101,6 +116,14 @@ def build_sample_dashboard_response() -> dict:
                     "risk_level": "medium",
                 }
             },
+            "provider_segments": [
+                {
+                    "provider": "github",
+                    "identity_count": 2,
+                    "admin_grants": 1,
+                    "risk_level": "medium",
+                }
+            ],
             "drilldown_identities": [
                 {
                     "principal_id": "123",
@@ -139,6 +162,7 @@ def build_sample_dashboard_response() -> dict:
                     "evidence": ["Repository publicly accessible"],
                 }
             ],
+            "risk_level_breakdown": {"critical": 0, "high": 1, "medium": 1, "low": 0},
             "generated_at": now,
         },
         "risk_heatmap": {
@@ -193,6 +217,10 @@ def build_sample_dashboard_response() -> dict:
                     }
                 ]
             },
+            "delta": {
+                "overall": 2.0,
+                "frameworks": {"CIS": 1.0},
+            },
         },
         "metadata": {
             "generated_at": now,
@@ -208,6 +236,13 @@ def build_sample_dashboard_response() -> dict:
             "filters_applied": {
                 "identity_risk_filter": "all",
                 "compliance_trend_range": "30d",
+            },
+            "cache_ttl_seconds": 60,
+            "supports_streaming_updates": False,
+            "alert_thresholds": {
+                "critical_findings": {"warning": 5, "critical": 10},
+                "mttr_hours": {"warning": 24, "critical": 48},
+                "sla_breaches": {"warning": 5, "critical": 10},
             },
         },
     }

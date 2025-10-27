@@ -12,6 +12,7 @@ import {
   OrganizationSummary,
   RiskHeatmapResponse,
   SecurityMetricsResponse,
+  ProviderFindingBreakdown,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
@@ -22,6 +23,13 @@ const RISK_LEVEL_STYLES: Record<string, string> = {
   moderate: "text-amber-300",
   high: "text-orange-400",
   critical: "text-red-400",
+};
+
+const RISK_BAR_BACKGROUND: Record<string, string> = {
+  critical: "bg-red-500/70",
+  high: "bg-orange-400/70",
+  medium: "bg-amber-300/60",
+  low: "bg-emerald-400/60",
 };
 
 type TimeRangeOption = "7d" | "30d" | "90d";
@@ -111,9 +119,29 @@ export function ExecutiveDashboard() {
       {} as Record<string, typeof complianceTrends.overall>,
     );
 
+    const filteredOverall = filterPoints(complianceTrends.overall);
+
+    const computeDelta = (points: ComplianceTrendResponse["overall"]) => {
+      if (points.length < 2) {
+        return 0;
+      }
+      const last = points[points.length - 1]?.score ?? 0;
+      const previousPoint = points[points.length - 2]?.score ?? last;
+      return Number((last - previousPoint).toFixed(2));
+    };
+
+    const frameworkDelta: Record<string, number> = {};
+    for (const [framework, points] of Object.entries(filteredFrameworks)) {
+      frameworkDelta[framework] = computeDelta(points);
+    }
+
     return {
-      overall: filterPoints(complianceTrends.overall),
+      overall: filteredOverall,
       frameworks: filteredFrameworks,
+      delta: {
+        overall: computeDelta(filteredOverall),
+        frameworks: frameworkDelta,
+      },
     };
   }, [complianceTrends, timeRange]);
 
@@ -194,6 +222,28 @@ export function ExecutiveDashboard() {
   const identityGeneratedAt = identity?.generated_at;
   const complianceStatusEntries = dashboard?.compliance_status ?? {};
   const hasComplianceData = Object.keys(complianceStatusEntries).length > 0;
+  const providerBreakdown: ProviderFindingBreakdown[] = metrics?.provider_breakdown ?? [];
+  const alertThresholds = metadata?.alert_thresholds ?? {};
+  const cacheTtlSeconds = metadata?.cache_ttl_seconds ?? null;
+  const supportsStreaming = metadata?.supports_streaming_updates ?? false;
+  const riskLevelBreakdown = identity?.risk_level_breakdown ?? {};
+  const privilegeSegments = identity?.privilege_segments ?? [];
+  const complianceDelta = filteredComplianceTrends?.delta ?? complianceTrends?.delta;
+  const providerSegments = identity?.provider_segments ?? [];
+  const riskSegments = useMemo(() => {
+    const order: Array<"critical" | "high" | "medium" | "low"> = [
+      "critical",
+      "high",
+      "medium",
+      "low",
+    ];
+    return order
+      .map((level) => ({ level, count: riskLevelBreakdown[level] ?? 0 }))
+      .filter((segment) => segment.count > 0);
+  }, [riskLevelBreakdown]);
+  const totalRiskIdentities = riskSegments.reduce((acc, segment) => acc + segment.count, 0);
+  const privilegeTotal = privilegeSegments.reduce((acc, segment) => acc + segment.count, 0);
+  const frameworkDeltaEntries = Object.entries(complianceDelta?.frameworks ?? {});
 
   return (
     <div className="space-y-6">
@@ -302,6 +352,12 @@ export function ExecutiveDashboard() {
             <div className="mt-2 text-sm text-zinc-200">
               {lastGeneratedAt ? formatTimestamp(lastGeneratedAt) : "—"}
               {isFetchingDashboard ? <span className="ml-1 text-xs text-zinc-500">(refreshing…)</span> : null}
+            </div>
+            <div className="mt-2 text-[11px] text-zinc-500">
+              Cache TTL: {cacheTtlSeconds ? `${cacheTtlSeconds}s` : "n/a"}
+            </div>
+            <div className="mt-1 text-[11px] text-zinc-500">
+              Streaming updates: {supportsStreaming ? "enabled" : "disabled"}
             </div>
           </div>
         </div>
@@ -417,36 +473,100 @@ export function ExecutiveDashboard() {
         ) : !metrics ? (
           <p className="text-sm text-zinc-500">No metrics available.</p>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-              <div className="text-xs uppercase tracking-wide text-zinc-500">Findings</div>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-zinc-200">
-                <MetricStat label="Total" value={metrics.findings.total} />
-                <MetricStat label="Critical" value={metrics.findings.critical} />
-                <MetricStat label="High" value={metrics.findings.high} />
-                <MetricStat label="Open" value={metrics.findings.open} />
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Findings</div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-zinc-200">
+                  <MetricStat
+                    label="Total"
+                    value={metrics.findings.total}
+                    thresholds={alertThresholds.critical_findings}
+                  />
+                  <MetricStat
+                    label="Critical"
+                    value={metrics.findings.critical}
+                    thresholds={alertThresholds.critical_findings}
+                  />
+                  <MetricStat label="High" value={metrics.findings.high} />
+                  <MetricStat label="Open" value={metrics.findings.open} />
+                </div>
+                <div className="mt-4 text-xs text-zinc-500">
+                  7-day trend: {metrics.findings.trend_7d.join(" • ") || "n/a"}
+                </div>
+                <div className="mt-1 text-xs text-zinc-500">
+                  Critical trend: {metrics.findings.critical_trend_7d.join(" • ") || "n/a"}
+                </div>
               </div>
-              <div className="mt-4 text-xs text-zinc-500">
-                7-day trend: {metrics.findings.trend_7d.join(" • ") || "n/a"}
-              </div>
-              <div className="mt-1 text-xs text-zinc-500">
-                Critical trend: {metrics.findings.critical_trend_7d.join(" • ") || "n/a"}
+
+              <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">SLA performance</div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-zinc-200">
+                  <MetricStat
+                    label="SLA breaches"
+                    value={metrics.sla_performance.breaches}
+                    thresholds={alertThresholds.sla_breaches}
+                  />
+                  <MetricStat
+                    label="MTTR (hours)"
+                    value={metrics.sla_performance.mttr_hours}
+                    formatter={(val) => val.toFixed(1)}
+                    thresholds={
+                      alertThresholds.mttr_hours
+                        ? { ...alertThresholds.mttr_hours, direction: "above" as const }
+                        : undefined
+                    }
+                  />
+                  <MetricStat label="New (24h)" value={metrics.sla_performance.new_24h} />
+                  <MetricStat label="Resolved (24h)" value={metrics.sla_performance.resolved_24h} />
+                </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
-              <div className="text-xs uppercase tracking-wide text-zinc-500">SLA performance</div>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-zinc-200">
-                <MetricStat label="SLA breaches" value={metrics.sla_performance.breaches} />
-                <MetricStat
-                  label="MTTR (hours)"
-                  value={metrics.sla_performance.mttr_hours}
-                  formatter={(val) => val.toFixed(1)}
-                />
-                <MetricStat label="New (24h)" value={metrics.sla_performance.new_24h} />
-                <MetricStat label="Resolved (24h)" value={metrics.sla_performance.resolved_24h} />
+            {providerBreakdown.length ? (
+              <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Findings by provider</div>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-left text-xs text-zinc-300">
+                    <thead className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      <tr>
+                        <th className="px-3 py-2">Provider</th>
+                        <th className="px-3 py-2">Open</th>
+                        <th className="px-3 py-2">Critical</th>
+                        <th className="px-3 py-2">High</th>
+                        <th className="px-3 py-2">New (24h)</th>
+                        <th className="px-3 py-2">SLA breaches</th>
+                        <th className="px-3 py-2">MTTR (h)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {providerBreakdown.map((entry) => (
+                        <tr key={entry.provider} className="border-t border-zinc-900/70">
+                          <td className="px-3 py-2 text-zinc-100">{entry.provider}</td>
+                          <td className="px-3 py-2">{formatInteger(entry.open_findings)}</td>
+                          <td className={cn("px-3 py-2", entry.critical_open ? "text-red-400" : "text-zinc-300")}
+                          >
+                            {formatInteger(entry.critical_open)}
+                          </td>
+                          <td className="px-3 py-2">{formatInteger(entry.high_open)}</td>
+                          <td className="px-3 py-2">{formatInteger(entry.new_last_24h)}</td>
+                          <td className={cn(
+                            "px-3 py-2",
+                            alertSeverityClass(entry.sla_breaches, alertThresholds.sla_breaches),
+                          )}
+                          >
+                            {formatInteger(entry.sla_breaches)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {entry.mttr_hours != null ? entry.mttr_hours.toFixed(1) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         )}
       </Panel>
@@ -482,6 +602,17 @@ export function ExecutiveDashboard() {
                 </div>
               ))}
             </div>
+            {complianceDelta ? (
+              <div className="text-xs text-zinc-500">
+                Overall change: {formatDeltaValue(complianceDelta.overall)}
+                {frameworkDeltaEntries.length
+                  ? ` · ${frameworkDeltaEntries
+                      .slice(0, 3)
+                      .map(([name, delta]) => `${name}: ${formatDeltaValue(delta)}`)
+                      .join(" · ")}`
+                  : ""}
+              </div>
+            ) : null}
             {filteredComplianceTrends ? (
               <ComplianceTrendCard trend={filteredComplianceTrends} timeRange={timeRange} />
             ) : null}
@@ -525,15 +656,57 @@ export function ExecutiveDashboard() {
               />
               <div className="rounded-md border border-zinc-900 bg-black/40 p-3">
                 <div className="text-[10px] uppercase tracking-wide text-zinc-500">Privilege mix</div>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                  {Object.entries(identity.privilege_distribution).map(([label, count]) => (
-                    <span key={label} className="rounded-full border border-zinc-800 px-2 py-1 text-zinc-300">
-                      {label.replace(/_/g, " ")} · {formatInteger(count)}
+                <div className="mt-2 space-y-1 text-xs">
+                  {privilegeSegments.length ? (
+                    privilegeSegments.map((segment) => {
+                      const percent = privilegeTotal ? Math.round((segment.count / privilegeTotal) * 100) : 0;
+                      return (
+                        <div key={segment.label} className="flex items-center justify-between text-zinc-300">
+                          <span>{segment.label.replace(/_/g, " ")}</span>
+                          <span>{formatInteger(segment.count)} · {percent}%</span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-zinc-500">No privilege data.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {riskSegments.length ? (
+              <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Identity risk distribution</div>
+                <div className="mt-3 flex h-4 overflow-hidden rounded-full border border-zinc-800">
+                  {riskSegments.map((segment) => {
+                    const percentage = totalRiskIdentities
+                      ? (segment.count / totalRiskIdentities) * 100
+                      : 0;
+                    return (
+                      <div
+                        key={segment.level}
+                        className={cn("h-full", RISK_BAR_BACKGROUND[segment.level] ?? "bg-zinc-700/60")}
+                        style={{ width: `${percentage}%` }}
+                        title={`${segment.level} · ${segment.count}`}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-zinc-400">
+                  {riskSegments.map((segment) => (
+                    <span key={`legend-${segment.level}`} className="flex items-center gap-1">
+                      <span
+                        className={cn(
+                          "inline-block h-2 w-2 rounded-full",
+                          RISK_BAR_BACKGROUND[segment.level] ?? "bg-zinc-700/60",
+                        )}
+                      />
+                      {segment.level} · {formatInteger(segment.count)}
                     </span>
                   ))}
                 </div>
               </div>
-            </div>
+            ) : null}
 
             {identityGeneratedAt ? (
               <div className="text-xs text-zinc-500">
@@ -600,6 +773,25 @@ export function ExecutiveDashboard() {
                     ) : null}
                   </ul>
                 </div>
+
+                {providerSegments.length ? (
+                  <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
+                    <div className="text-xs uppercase tracking-wide text-zinc-500">Provider privilege hotspots</div>
+                    <ul className="mt-3 space-y-2 text-xs text-zinc-300">
+                      {providerSegments.slice(0, 4).map((segment) => (
+                        <li key={segment.provider} className="rounded-md border border-zinc-900 bg-black/40 p-3">
+                          <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                            <span>{segment.provider}</span>
+                            <span className={riskBadgeClass(segment.risk_level)}>{segment.risk_level}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-zinc-400">
+                            Identities: {formatInteger(segment.identity_count)} · Admin grants: {formatInteger(segment.admin_grants)}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -848,22 +1040,71 @@ type MetricStatProps = {
   value: number;
   formatter?: (value: number) => string;
   description?: string;
+  thresholds?: ThresholdOptions;
 };
 
-function MetricStat({ label, value, formatter, description }: MetricStatProps) {
+type ThresholdOptions = {
+  warning: number;
+  critical: number;
+  direction?: "above" | "below";
+};
+
+function MetricStat({ label, value, formatter, description, thresholds }: MetricStatProps) {
   const formatted = Number.isFinite(value)
     ? formatter
       ? formatter(value)
       : value.toLocaleString()
     : "—";
+  const severity = getThresholdSeverity(value, thresholds);
+  const valueClass =
+    severity === "critical"
+      ? "text-red-400"
+      : severity === "warning"
+      ? "text-orange-300"
+      : "text-zinc-100";
 
   return (
     <div className="rounded-md border border-zinc-900 bg-black/40 p-3">
       <div className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-zinc-100">{formatted}</div>
+      <div className={cn("mt-1 text-lg font-semibold", valueClass)}>{formatted}</div>
       {description ? <div className="mt-1 text-[11px] text-zinc-500">{description}</div> : null}
     </div>
   );
+}
+
+function getThresholdSeverity(value: number, thresholds?: ThresholdOptions): "critical" | "warning" | "normal" {
+  if (!thresholds || !Number.isFinite(value)) {
+    return "normal";
+  }
+  const direction = thresholds.direction ?? "above";
+  if (direction === "below") {
+    if (value <= thresholds.critical) {
+      return "critical";
+    }
+    if (value <= thresholds.warning) {
+      return "warning";
+    }
+    return "normal";
+  }
+
+  if (value >= thresholds.critical) {
+    return "critical";
+  }
+  if (value >= thresholds.warning) {
+    return "warning";
+  }
+  return "normal";
+}
+
+function alertSeverityClass(value: number, thresholds?: ThresholdOptions): string {
+  const severity = getThresholdSeverity(value, thresholds);
+  if (severity === "critical") {
+    return "text-red-400";
+  }
+  if (severity === "warning") {
+    return "text-orange-300";
+  }
+  return "text-zinc-300";
 }
 
 function ComplianceTrendCard({ trend, timeRange }: { trend: ComplianceTrendResponse; timeRange: TimeRangeOption }) {
@@ -908,11 +1149,12 @@ function ComplianceTrendCard({ trend, timeRange }: { trend: ComplianceTrendRespo
   const earliest = points[0];
   const latest = points[points.length - 1];
   const previous = points.length > 1 ? points[points.length - 2] : null;
-  const delta = latest.score - (previous?.score ?? latest.score);
+  const overallDelta = trend.delta?.overall ?? latest.score - (previous?.score ?? latest.score);
 
   const frameworkSummaries = Object.entries(trend.frameworks || {}).filter(
     ([, series]) => series.length,
   );
+  const frameworkDeltaMap = trend.delta?.frameworks ?? {};
 
   return (
     <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
@@ -944,8 +1186,8 @@ function ComplianceTrendCard({ trend, timeRange }: { trend: ComplianceTrendRespo
         </svg>
       </div>
       <div className="mt-3 text-xs text-zinc-400">
-        Latest {formatPercentage(latest.score)} ({delta >= 0 ? "+" : ""}
-        {delta.toFixed(1)} vs {previous ? previous.date : earliest.date}) ·
+        Latest {formatPercentage(latest.score)} ({overallDelta >= 0 ? "+" : ""}
+        {overallDelta.toFixed(1)} vs {previous ? previous.date : earliest.date}) ·
         Range {formatPercentage(minValue)} – {formatPercentage(maxValue)}
       </div>
       {frameworkSummaries.length ? (
@@ -954,7 +1196,9 @@ function ComplianceTrendCard({ trend, timeRange }: { trend: ComplianceTrendRespo
             const frameworkPoints = series as { date: string; score: number }[];
             const latestPoint = frameworkPoints[frameworkPoints.length - 1];
             const previousPoint = frameworkPoints.length > 1 ? frameworkPoints[frameworkPoints.length - 2] : null;
-            const frameworkDelta = latestPoint && previousPoint ? latestPoint.score - previousPoint.score : 0;
+            const frameworkDelta =
+              frameworkDeltaMap[framework] ??
+              (latestPoint && previousPoint ? latestPoint.score - previousPoint.score : 0);
 
             return (
               <div key={framework} className="flex items-center justify-between">
@@ -978,6 +1222,14 @@ function formatInteger(value: number): string {
 
 function formatPercentage(value: number): string {
   return Number.isFinite(value) ? `${value.toFixed(1)}%` : "—";
+}
+
+function formatDeltaValue(value: number | undefined): string {
+  if (value === undefined || Number.isNaN(value)) {
+    return "0.0%";
+  }
+  const sign = value > 0 ? "+" : value === 0 ? "" : "";
+  return `${sign}${value.toFixed(1)}%`;
 }
 
 function riskBadgeClass(level: string): string {
