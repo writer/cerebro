@@ -32,11 +32,15 @@ def test_dashboard_endpoint_includes_identity_and_heatmap(
     assert "identity_analytics" in payload
     assert "risk_heatmap" in payload
     assert "compliance_trends" in payload
+    assert "metadata" in payload
 
     identity = payload["identity_analytics"]
     heatmap = payload["risk_heatmap"]
+    metadata = payload["metadata"]
 
     assert identity["summary"]["total_identities"] >= 1
     assert "drilldown_identities" in identity
     assert "remediation_queue" in identity
+    assert identity["generated_at"], "Identity analytics should include generated_at"
     assert heatmap["heatmap_data"], "Heatmap data should not be empty"
+    assert metadata["generated_at"], "Metadata should include generated_at"

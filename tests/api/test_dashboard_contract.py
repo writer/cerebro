@@ -18,6 +18,7 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "investment_recommendations",
         "identity_analytics",
         "risk_heatmap",
+        "metadata",
     },
     "ExecutiveSummaryResponse": {
         "org_id",
@@ -62,6 +63,7 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "provider_breakdown",
         "drilldown_identities",
         "remediation_queue",
+        "generated_at",
     },
     "IdentityAnalyticsSummary": {
         "total_identities",
@@ -153,6 +155,7 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
     },
     "ComplianceTrendPoint": {"date", "score"},
     "ComplianceTrendResponse": {"overall", "frameworks"},
+    "DashboardMetadata": {"generated_at", "component_timings", "filters_applied"},
 }
 
 
@@ -246,6 +249,7 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     assert set(identity.keys()) == EXPECTED_FIELDS["IdentityAnalyticsResponse"]
     assert set(identity["summary"].keys()) == EXPECTED_FIELDS["IdentityAnalyticsSummary"]
     assert identity["privilege_distribution"], "Privilege distribution should not be empty"
+    assert identity["generated_at"], "Identity analytics should include generation timestamp"
 
     assert identity["top_risky_identities"], "Risky identities should not be empty"
     for risky in identity["top_risky_identities"]:
@@ -291,6 +295,14 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
         for point in series:
             assert set(point.keys()) == EXPECTED_FIELDS["ComplianceTrendPoint"]
 
+    metadata = payload["metadata"]
+    assert set(metadata.keys()) == EXPECTED_FIELDS["DashboardMetadata"]
+    assert metadata["generated_at"], "Dashboard metadata should include generation timestamp"
+    component_timings = metadata.get("component_timings") or {}
+    assert component_timings, "Component timings should be present"
+    if metadata.get("filters_applied"):
+        assert set(metadata["filters_applied"].keys()) == {"identity_risk_filter", "compliance_trend_range"}
+
 
 def test_typescript_contract_matches_api_schema(client, test_db, test_org, test_token, monkeypatch):
     types_source = TYPES_PATH.read_text(encoding="utf-8")
@@ -334,6 +346,10 @@ def test_dashboard_contract_captures_generation_timings(client, test_db, test_or
             "compliance_trends": 0.015,
             "total": 0.17,
         }
+        payload["metadata"]["component_timings"] = {
+            **payload["metadata"].get("component_timings", {}),
+            **self._last_generation_timings,
+        }
         captured["instance"] = self
         return payload
 
@@ -345,6 +361,7 @@ def test_dashboard_contract_captures_generation_timings(client, test_db, test_or
     )
 
     assert response.status_code == 200
+    payload = response.json()
     instance = captured["instance"]
     timings = instance.last_generation_timings
     assert timings["total"] == 0.17
@@ -357,3 +374,4 @@ def test_dashboard_contract_captures_generation_timings(client, test_db, test_or
         "compliance_trends",
         "total",
     }
+    assert payload["metadata"]["component_timings"]["total"] == 0.17

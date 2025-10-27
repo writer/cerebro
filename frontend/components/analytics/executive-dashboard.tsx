@@ -24,12 +24,33 @@ const RISK_LEVEL_STYLES: Record<string, string> = {
   critical: "text-red-400",
 };
 
+type TimeRangeOption = "7d" | "30d" | "90d";
+type RiskFilterOption = "all" | "critical" | "high" | "medium" | "low";
+
+const TIME_RANGE_OPTIONS: Array<{ label: string; value: TimeRangeOption }> = [
+  { label: "Last 7 days", value: "7d" },
+  { label: "Last 30 days", value: "30d" },
+  { label: "Last 90 days", value: "90d" },
+];
+
+const RISK_FILTER_OPTIONS: Array<{ label: string; value: RiskFilterOption }> = [
+  { label: "All risks", value: "all" },
+  { label: "Critical", value: "critical" },
+  { label: "High", value: "high" },
+  { label: "Medium", value: "medium" },
+  { label: "Low", value: "low" },
+];
+
 export function ExecutiveDashboard() {
   const [selectedOrg, setSelectedOrg] = useState<string>("");
+  const [timeRange, setTimeRange] = useState<TimeRangeOption>("30d");
+  const [riskFilter, setRiskFilter] = useState<RiskFilterOption>("all");
 
   const {
     data: organizations = [],
     isLoading: isLoadingOrganizations,
+    isError: isOrganizationsError,
+    error: organizationsError,
   } = useQuery({
     queryKey: ["organizations"],
     queryFn: () => apiGet<OrganizationSummary[]>("/organizations"),
@@ -46,6 +67,8 @@ export function ExecutiveDashboard() {
     data: dashboard,
     isLoading: isLoadingDashboard,
     isFetching: isFetchingDashboard,
+    isError: isDashboardError,
+    error: dashboardError,
     refetch,
   } = useQuery({
     queryKey: ["executiveDashboard", selectedOrg],
@@ -62,30 +85,103 @@ export function ExecutiveDashboard() {
   const identity: IdentityAnalyticsResponse | undefined = dashboard?.identity_analytics;
   const heatmap: RiskHeatmapResponse | undefined = dashboard?.risk_heatmap;
   const complianceTrends: ComplianceTrendResponse | undefined = dashboard?.compliance_trends;
+  const metadata = dashboard?.metadata;
+
+  const filteredComplianceTrends = useMemo(() => {
+    if (!complianceTrends) {
+      return null;
+    }
+
+    const rangeInDays = timeRange === "7d" ? 7 : timeRange === "90d" ? 90 : 30;
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - (rangeInDays - 1));
+
+    const filterPoints = (points: ComplianceTrendResponse["overall"]) =>
+      points.filter((point) => {
+        const pointDate = new Date(point.date);
+        return Number.isNaN(pointDate.getTime()) ? true : pointDate >= cutoff;
+      });
+
+    const filteredFrameworks = Object.entries(complianceTrends.frameworks || {}).reduce(
+      (acc, [framework, points]) => {
+        acc[framework] = filterPoints(points);
+        return acc;
+      },
+      {} as Record<string, typeof complianceTrends.overall>,
+    );
+
+    return {
+      overall: filterPoints(complianceTrends.overall),
+      frameworks: filteredFrameworks,
+    };
+  }, [complianceTrends, timeRange]);
+
+  const filteredRiskyIdentities = useMemo(() => {
+    if (!identity?.top_risky_identities) {
+      return [];
+    }
+    if (riskFilter === "all") {
+      return identity.top_risky_identities;
+    }
+    return identity.top_risky_identities.filter(
+      (item) => item.risk_level?.toLowerCase() === riskFilter,
+    );
+  }, [identity, riskFilter]);
+
+  const filteredDrilldownIdentities = useMemo(() => {
+    if (!identity?.drilldown_identities) {
+      return [];
+    }
+    if (riskFilter === "all") {
+      return identity.drilldown_identities;
+    }
+    return identity.drilldown_identities.filter(
+      (detail) => detail.risk_level?.toLowerCase() === riskFilter,
+    );
+  }, [identity, riskFilter]);
+
+  const filteredRemediationQueue = useMemo(() => {
+    if (!identity?.remediation_queue) {
+      return [];
+    }
+    if (riskFilter === "all") {
+      return identity.remediation_queue;
+    }
+    const priorityMap: Record<RiskFilterOption, "high" | "medium" | "low"> = {
+      all: "high",
+      critical: "high",
+      high: "high",
+      medium: "medium",
+      low: "low",
+    };
+    const targetPriority = priorityMap[riskFilter];
+    return identity.remediation_queue.filter((item) => item.priority === targetPriority);
+  }, [identity, riskFilter]);
 
   const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
 
   useEffect(() => {
-    if (identity?.drilldown_identities?.length) {
+    if (filteredDrilldownIdentities.length > 0) {
       setSelectedIdentity((current) =>
-        current && identity.drilldown_identities.some((detail) => detail.principal_id === current)
+        current && filteredDrilldownIdentities.some((detail) => detail.principal_id === current)
           ? current
-          : identity.drilldown_identities[0].principal_id,
+          : filteredDrilldownIdentities[0].principal_id,
       );
     } else {
       setSelectedIdentity(null);
     }
-  }, [identity]);
+  }, [filteredDrilldownIdentities]);
 
   const selectedDrilldown = useMemo(() => {
-    if (!identity?.drilldown_identities?.length) {
+    if (!filteredDrilldownIdentities.length) {
       return null;
     }
     return (
-      identity.drilldown_identities.find((detail) => detail.principal_id === selectedIdentity) ??
-      identity.drilldown_identities[0]
+      filteredDrilldownIdentities.find((detail) => detail.principal_id === selectedIdentity) ??
+      filteredDrilldownIdentities[0]
     );
-  }, [identity, selectedIdentity]);
+  }, [filteredDrilldownIdentities, selectedIdentity]);
 
   const riskLevelClass = useMemo(() => {
     if (!summary) {
@@ -93,6 +189,11 @@ export function ExecutiveDashboard() {
     }
     return RISK_LEVEL_STYLES[summary.risk_level] ?? "text-zinc-300";
   }, [summary]);
+
+  const lastGeneratedAt = metadata?.generated_at;
+  const identityGeneratedAt = identity?.generated_at;
+  const complianceStatusEntries = dashboard?.compliance_status ?? {};
+  const hasComplianceData = Object.keys(complianceStatusEntries).length > 0;
 
   return (
     <div className="space-y-6">
@@ -118,7 +219,9 @@ export function ExecutiveDashboard() {
         }
       >
         {isLoadingOrganizations ? (
-          <p className="text-sm text-zinc-500">Loading organizations…</p>
+          <PanelSkeleton rows={2} />
+        ) : isOrganizationsError ? (
+          <ErrorState message={toErrorMessage(organizationsError, "Unable to load organizations.")} />
         ) : organizations.length === 0 ? (
           <p className="text-sm text-zinc-500">
             No organizations available. Ingest data before viewing analytics.
@@ -141,10 +244,67 @@ export function ExecutiveDashboard() {
               ))}
             </select>
             <span className="text-xs text-zinc-500">
-              Updated {isFetchingDashboard ? "now" : "recently"}
+              Updated {isFetchingDashboard ? "now" : lastGeneratedAt ? formatTimestamp(lastGeneratedAt) : "recently"}
             </span>
           </div>
         )}
+      </Panel>
+
+      <Panel
+        title="Dashboard filters"
+        description="Focus analytics by timeframe and identity risk level."
+      >
+        <div className="flex flex-wrap items-start gap-6 text-sm text-zinc-300">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500">Time range</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {TIME_RANGE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setTimeRange(option.value)}
+                  className={cn(
+                    "rounded-md border px-3 py-1 text-xs transition",
+                    timeRange === option.value
+                      ? "border-zinc-500 bg-zinc-900 text-zinc-100"
+                      : "border-zinc-900 bg-black/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100",
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500">Identity risk</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {RISK_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setRiskFilter(option.value)}
+                  className={cn(
+                    "rounded-md border px-3 py-1 text-xs transition",
+                    riskFilter === option.value
+                      ? "border-zinc-500 bg-zinc-900 text-zinc-100"
+                      : "border-zinc-900 bg-black/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100",
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-w-[14rem] text-xs text-zinc-500">
+            <div className="uppercase tracking-wide">Last refreshed</div>
+            <div className="mt-2 text-sm text-zinc-200">
+              {lastGeneratedAt ? formatTimestamp(lastGeneratedAt) : "—"}
+              {isFetchingDashboard ? <span className="ml-1 text-xs text-zinc-500">(refreshing…)</span> : null}
+            </div>
+          </div>
+        </div>
       </Panel>
 
       <Panel
@@ -152,7 +312,9 @@ export function ExecutiveDashboard() {
         description="High-level risk posture, trends, and top risks."
       >
         {isLoadingDashboard ? (
-          <p className="text-sm text-zinc-500">Loading executive summary…</p>
+          <ExecutiveOverviewSkeleton />
+        ) : isDashboardError ? (
+          <ErrorState message={toErrorMessage(dashboardError, "Unable to load dashboard data.")} />
         ) : !summary ? (
           <p className="text-sm text-zinc-500">
             Select an organization to view executive analytics.
@@ -249,7 +411,9 @@ export function ExecutiveDashboard() {
         description="Key findings volume and SLA adherence metrics."
       >
         {isLoadingDashboard ? (
-          <p className="text-sm text-zinc-500">Loading metrics…</p>
+          <MetricsPanelSkeleton />
+        ) : isDashboardError ? (
+          <ErrorState message={toErrorMessage(dashboardError, "Unable to load findings metrics.")} />
         ) : !metrics ? (
           <p className="text-sm text-zinc-500">No metrics available.</p>
         ) : (
@@ -292,13 +456,15 @@ export function ExecutiveDashboard() {
         description="Framework compliance status derived from latest control assessments."
       >
         {isLoadingDashboard ? (
-          <p className="text-sm text-zinc-500">Loading compliance data…</p>
-        ) : !dashboard?.compliance_status ? (
+          <PanelSkeleton rows={4} />
+        ) : isDashboardError ? (
+          <ErrorState message={toErrorMessage(dashboardError, "Unable to load compliance data.")} />
+        ) : !hasComplianceData ? (
           <p className="text-sm text-zinc-500">No compliance data available.</p>
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(dashboard.compliance_status).map(([framework, stats]) => (
+              {Object.entries(complianceStatusEntries).map(([framework, stats]) => (
                 <div
                   key={framework}
                   className="rounded-lg border border-zinc-900 bg-black/60 p-4 text-sm text-zinc-200"
@@ -316,7 +482,9 @@ export function ExecutiveDashboard() {
                 </div>
               ))}
             </div>
-            {complianceTrends ? <ComplianceTrendCard trend={complianceTrends} /> : null}
+            {filteredComplianceTrends ? (
+              <ComplianceTrendCard trend={filteredComplianceTrends} timeRange={timeRange} />
+            ) : null}
           </div>
         )}
       </Panel>
@@ -326,7 +494,9 @@ export function ExecutiveDashboard() {
         description="Privilege sprawl, risky identities, and MFA coverage across providers."
       >
         {isLoadingDashboard ? (
-          <p className="text-sm text-zinc-500">Loading identity analytics…</p>
+          <IdentityPanelSkeleton />
+        ) : isDashboardError ? (
+          <ErrorState message={toErrorMessage(dashboardError, "Unable to load identity analytics.")} />
         ) : !identity ? (
           <p className="text-sm text-zinc-500">Identity analytics will appear once data collection completes.</p>
         ) : (
@@ -365,14 +535,20 @@ export function ExecutiveDashboard() {
               </div>
             </div>
 
+            {identityGeneratedAt ? (
+              <div className="text-xs text-zinc-500">
+                Last analyzed {formatTimestamp(identityGeneratedAt)}
+              </div>
+            ) : null}
+
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
                 <div className="text-xs uppercase tracking-wide text-zinc-500">Top risky identities</div>
                 <ul className="mt-3 space-y-3 text-sm text-zinc-200">
-                  {identity.top_risky_identities.length === 0 ? (
-                    <li className="text-zinc-500">No high-risk identities detected.</li>
+                  {filteredRiskyIdentities.length === 0 ? (
+                    <li className="text-zinc-500">No identities match the current risk filter.</li>
                   ) : (
-                    identity.top_risky_identities.map((person) => (
+                    filteredRiskyIdentities.map((person) => (
                       <li key={person.principal_id} className="rounded-md border border-zinc-900 bg-black/40 p-3">
                         <div className="flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
                           <span>{person.display_name ?? person.email ?? person.principal_id.slice(0, 8)}</span>
@@ -427,12 +603,17 @@ export function ExecutiveDashboard() {
               </div>
             </div>
 
-            {identity.drilldown_identities.length ? (
+            {filteredDrilldownIdentities.length ? (
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
                 <div className="text-xs uppercase tracking-wide text-zinc-500">Identity drill-down</div>
+                {riskFilter !== "all" ? (
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    Showing identities with {riskFilter} risk level
+                  </div>
+                ) : null}
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   <div className="space-y-2">
-                    {identity.drilldown_identities.map((detail) => {
+                    {filteredDrilldownIdentities.map((detail) => {
                       const isActive = detail.principal_id === selectedDrilldown?.principal_id;
                       return (
                         <button
@@ -502,13 +683,17 @@ export function ExecutiveDashboard() {
                   </div>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="rounded-lg border border-dashed border-zinc-900 bg-black/40 p-6 text-sm text-zinc-500">
+                No drill-down data for the selected risk filter.
+              </div>
+            )}
 
-            {identity.remediation_queue.length ? (
+            {filteredRemediationQueue.length ? (
               <div className="rounded-lg border border-zinc-900 bg-black/60 p-4">
                 <div className="text-xs uppercase tracking-wide text-zinc-500">Remediation queue</div>
                 <ul className="mt-3 space-y-2 text-xs text-zinc-300">
-                  {identity.remediation_queue.slice(0, 6).map((item, index) => (
+                  {filteredRemediationQueue.slice(0, 6).map((item, index) => (
                     <li key={`${item.principal_id}-${index}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
                       <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
                         <span>{item.summary}</span>
@@ -524,7 +709,11 @@ export function ExecutiveDashboard() {
                   ))}
                 </ul>
               </div>
-            ) : null}
+            ) : (
+              <div className="rounded-lg border border-dashed border-zinc-900 bg-black/40 p-6 text-sm text-zinc-500">
+                No remediation actions match the current filter.
+              </div>
+            )}
           </div>
         )}
       </Panel>
@@ -534,7 +723,9 @@ export function ExecutiveDashboard() {
         description="Risk concentration by provider and resource type with improvement suggestions."
       >
         {isLoadingDashboard ? (
-          <p className="text-sm text-zinc-500">Loading risk heatmap…</p>
+          <PanelSkeleton rows={4} />
+        ) : isDashboardError ? (
+          <ErrorState message={toErrorMessage(dashboardError, "Unable to load risk heatmap data.")} />
         ) : !heatmap ? (
           <p className="text-sm text-zinc-500">Heatmap data is unavailable until metrics are collected.</p>
         ) : (
@@ -585,6 +776,73 @@ export function ExecutiveDashboard() {
   );
 }
 
+function formatTimestamp(value?: string): string {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (!error) {
+    return fallback;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch (
+    _error
+  ) {
+    return fallback;
+  }
+}
+
+function PanelSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div key={index} className="h-10 animate-pulse rounded-md bg-zinc-900/60" />
+      ))}
+    </div>
+  );
+}
+
+function ExecutiveOverviewSkeleton() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <div className="space-y-4">
+        <PanelSkeleton rows={3} />
+      </div>
+      <PanelSkeleton rows={3} />
+    </div>
+  );
+}
+
+function MetricsPanelSkeleton() {
+  return <PanelSkeleton rows={4} />;
+}
+
+function IdentityPanelSkeleton() {
+  return <PanelSkeleton rows={6} />;
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-red-900/40 bg-red-950/20 p-4 text-sm text-red-200">
+      {message}
+    </div>
+  );
+}
+
 type MetricStatProps = {
   label: string;
   value: number;
@@ -608,48 +866,103 @@ function MetricStat({ label, value, formatter, description }: MetricStatProps) {
   );
 }
 
-function ComplianceTrendCard({ trend }: { trend: ComplianceTrendResponse }) {
-  const overall = trend.overall.slice(-12);
-  if (!overall.length) {
+function ComplianceTrendCard({ trend, timeRange }: { trend: ComplianceTrendResponse; timeRange: TimeRangeOption }) {
+  const points = trend.overall;
+  if (!points.length) {
     return null;
   }
 
-  const earliest = overall[0];
-  const latest = overall[overall.length - 1];
-  const delta = latest.score - earliest.score;
-  const frameworkSummaries = Object.entries(trend.frameworks ?? {});
+  const rangeLabel: Record<TimeRangeOption, string> = {
+    "7d": "7 days",
+    "30d": "30 days",
+    "90d": "90 days",
+  };
 
-  const bars = overall.map((point) => {
-    const bounded = Math.max(Math.min(point.score, 100), 0);
-    return { ...point, height: bounded };
+  const values = points.map((point) => point.score);
+  const minValue = Math.min(...values, 0);
+  const maxValue = Math.max(...values, 100);
+  const valueRange = maxValue - minValue || 1;
+
+  const width = 100;
+  const height = 40;
+  const step = points.length > 1 ? width / (points.length - 1) : 0;
+
+  const coordinates = points.map((point, index) => {
+    const x = index * step;
+    const normalized = (point.score - minValue) / valueRange;
+    const y = height - normalized * height;
+    return { x, y, ...point };
   });
+
+  const linePath = coordinates
+    .map((coord, index) => `${index === 0 ? "M" : "L"}${coord.x},${coord.y}`)
+    .join(" ");
+
+  const areaPath = [
+    `M0,${height}`,
+    ...coordinates.map((coord) => `L${coord.x},${coord.y}`),
+    `L${coordinates[coordinates.length - 1].x},${height}`,
+    "Z",
+  ].join(" ");
+
+  const earliest = points[0];
+  const latest = points[points.length - 1];
+  const previous = points.length > 1 ? points[points.length - 2] : null;
+  const delta = latest.score - (previous?.score ?? latest.score);
+
+  const frameworkSummaries = Object.entries(trend.frameworks || {}).filter(
+    ([, series]) => series.length,
+  );
 
   return (
     <div className="rounded-lg border border-zinc-900 bg-black/50 p-4">
-      <div className="text-xs uppercase tracking-wide text-zinc-500">Compliance trend (30 days)</div>
-      <div className="mt-3 flex h-20 items-end gap-1">
-        {bars.map((bar) => (
-          <div
-            key={bar.date}
-            className="flex-1 rounded-sm bg-emerald-500/70"
-            style={{ height: `${bar.height}%` }}
-            title={`${bar.date}: ${bar.score.toFixed(1)}%`}
-          />
-        ))}
+      <div className="flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
+        <span>Compliance trend ({rangeLabel[timeRange]})</span>
+        <span className="text-[11px] text-zinc-600">{points.length} data points</span>
+      </div>
+      <div className="mt-3 h-32 overflow-hidden">
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
+          <defs>
+            <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#34d399" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={areaPath} fill="url(#trendGradient)" stroke="none" />
+          <path d={linePath} fill="none" stroke="#34d399" strokeWidth={1.5} />
+          {coordinates.map((coord) => (
+            <circle
+              key={coord.date}
+              cx={coord.x}
+              cy={coord.y}
+              r={1.8}
+              fill="#34d399"
+            >
+              <title>{`${coord.date}: ${coord.score.toFixed(1)}%`}</title>
+            </circle>
+          ))}
+        </svg>
       </div>
       <div className="mt-3 text-xs text-zinc-400">
         Latest {formatPercentage(latest.score)} ({delta >= 0 ? "+" : ""}
-        {delta.toFixed(1)} vs {earliest.date})
+        {delta.toFixed(1)} vs {previous ? previous.date : earliest.date}) ·
+        Range {formatPercentage(minValue)} – {formatPercentage(maxValue)}
       </div>
       {frameworkSummaries.length ? (
         <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
           {frameworkSummaries.map(([framework, series]) => {
-            const points = series as { date: string; score: number }[];
-            const lastPoint = points[points.length - 1];
+            const frameworkPoints = series as { date: string; score: number }[];
+            const latestPoint = frameworkPoints[frameworkPoints.length - 1];
+            const previousPoint = frameworkPoints.length > 1 ? frameworkPoints[frameworkPoints.length - 2] : null;
+            const frameworkDelta = latestPoint && previousPoint ? latestPoint.score - previousPoint.score : 0;
+
             return (
               <div key={framework} className="flex items-center justify-between">
                 <span>{framework}</span>
-                <span>{lastPoint ? formatPercentage(lastPoint.score) : "—"}</span>
+                <span>
+                  {latestPoint ? formatPercentage(latestPoint.score) : "—"}
+                  {latestPoint && previousPoint ? ` (${frameworkDelta >= 0 ? "+" : ""}${frameworkDelta.toFixed(1)})` : ""}
+                </span>
               </div>
             );
           })}

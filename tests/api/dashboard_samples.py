@@ -1,8 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 def build_sample_dashboard_response() -> dict:
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    previous = (now_dt - timedelta(days=1)).isoformat()
 
     return {
         "executive_summary": {
@@ -137,6 +139,7 @@ def build_sample_dashboard_response() -> dict:
                     "evidence": ["Repository publicly accessible"],
                 }
             ],
+            "generated_at": now,
         },
         "risk_heatmap": {
             "heatmap_data": {"github": {"repo": 70.0}},
@@ -170,17 +173,41 @@ def build_sample_dashboard_response() -> dict:
         "compliance_trends": {
             "overall": [
                 {
+                    "date": previous,
+                    "score": 90.0,
+                },
+                {
                     "date": now,
                     "score": 92.0,
-                }
+                },
             ],
             "frameworks": {
                 "CIS": [
+                    {
+                        "date": previous,
+                        "score": 89.0,
+                    },
                     {
                         "date": now,
                         "score": 90.0,
                     }
                 ]
+            },
+        },
+        "metadata": {
+            "generated_at": now,
+            "component_timings": {
+                "security_metrics": 0.12,
+                "executive_summary": 0.05,
+                "identity_analytics": 0.09,
+                "risk_heatmap": 0.07,
+                "compliance_status": 0.02,
+                "compliance_trends": 0.03,
+                "total": 0.38,
+            },
+            "filters_applied": {
+                "identity_risk_filter": "all",
+                "compliance_trend_range": "30d",
             },
         },
     }

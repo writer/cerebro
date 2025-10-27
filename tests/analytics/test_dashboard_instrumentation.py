@@ -82,6 +82,7 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
             "provider_breakdown": {},
             "drilldown_identities": [],
             "remediation_queue": [],
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
     async def _fake_heatmap(self, org_id):
@@ -144,3 +145,4 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
     recorded_components = {labels["component"] for labels, _ in fake_histogram.records}
     assert expected_keys.issubset(recorded_components)
     assert payload["executive_summary"]["org_id"] == str(test_org.org_id)
+    assert payload["metadata"]["generated_at"]

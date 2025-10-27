@@ -411,6 +411,7 @@ class DashboardAnalytics:
 
         self._last_generation_timings = {}
         total_start = perf_counter()
+        generated_at = datetime.utcnow()
         
         # Collect all analytics
         security_metrics = await self._track_component(
@@ -456,6 +457,17 @@ class DashboardAnalytics:
             extra={"org_id": str(org_id), "timings": self._last_generation_timings},
         )
         
+        metadata = {
+            "generated_at": generated_at.replace(microsecond=0).isoformat() + "Z",
+            "component_timings": {
+                key: round(value, 6) for key, value in self._last_generation_timings.items()
+            },
+            "filters_applied": {
+                "identity_risk_filter": "all",
+                "compliance_trend_range": "30d",
+            },
+        }
+
         return {
             "executive_summary": {
                 "org_id": str(executive_summary.org_id),
@@ -499,7 +511,8 @@ class DashboardAnalytics:
             },
             "compliance_status": compliance_status,
             "compliance_trends": compliance_trends,
-            "investment_recommendations": executive_summary.recommended_investments
+            "investment_recommendations": executive_summary.recommended_investments,
+            "metadata": metadata,
         }
     
     async def _get_compliance_status_by_framework(self, org_id: UUID) -> Dict[str, Any]:
@@ -540,11 +553,9 @@ class DashboardAnalytics:
             metadata = row.metric_metadata or {}
             breakdown = metadata.get("framework_breakdown", {})
 
-            for framework, points in frameworks.items():
-                framework_meta = breakdown.get(framework)
-                if framework_meta is None:
-                    continue
-                points.append(
+            for framework_name, framework_meta in breakdown.items():
+                framework_points = frameworks.setdefault(framework_name, [])
+                framework_points.append(
                     {
                         "date": capture_date,
                         "score": framework_meta.get("compliance_percentage", 0.0),

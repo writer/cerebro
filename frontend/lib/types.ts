@@ -320,6 +320,7 @@ export type IdentityAnalyticsResponse = {
   provider_breakdown: Record<string, IdentityProviderBreakdown>;
   drilldown_identities: IdentityDrilldownIdentity[];
   remediation_queue: IdentityRemediationItem[];
+  generated_at: string;
 };
 
 export type RiskHeatmapArea = {
@@ -352,6 +353,15 @@ export type ComplianceTrendResponse = {
   frameworks: Record<string, ComplianceTrendPoint[]>;
 };
 
+export type DashboardMetadata = {
+  generated_at: string;
+  component_timings?: Record<string, number>;
+  filters_applied?: {
+    identity_risk_filter: string;
+    compliance_trend_range: string;
+  };
+};
+
 export type ExecutiveDashboardResponse = {
   executive_summary: ExecutiveSummaryResponse;
   security_metrics: SecurityMetricsResponse;
@@ -360,4 +370,5 @@ export type ExecutiveDashboardResponse = {
   identity_analytics: IdentityAnalyticsResponse;
   risk_heatmap: RiskHeatmapResponse;
   compliance_trends: ComplianceTrendResponse;
+  metadata: DashboardMetadata;
 };

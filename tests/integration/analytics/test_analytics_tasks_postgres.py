@@ -501,10 +501,15 @@ async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory
         )
         assert identity["drilldown_identities"], "Drill-down identities should be populated"
         assert identity["remediation_queue"], "Remediation queue should surface actions"
+        assert identity["generated_at"], "Identity analytics should include generated_at"
 
         compliance_trends = payload.get("compliance_trends")
         assert compliance_trends is not None
         assert compliance_trends["overall"], "Overall compliance trend should not be empty"
+
+        metadata = payload["metadata"]
+        assert metadata["generated_at"]
+        assert metadata["component_timings"]["total"] >= 0
 
         timings = analytics.last_generation_timings
         assert {

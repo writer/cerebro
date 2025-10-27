@@ -1,6 +1,7 @@
 """Identity-centric analytics for privilege sprawl and risk detection."""
 
 import logging
+from collections import defaultdict
 from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -749,40 +750,58 @@ async def _build_drilldown_identities(
 ) -> List[Dict[str, Any]]:
     drilldown: List[Dict[str, Any]] = []
 
-    permissions_query = text(
-        """
-        SELECT provider, permission, is_admin, effective_at
-        FROM iam_edges
-        WHERE principal_id = :principal_id
-        ORDER BY effective_at DESC NULLS LAST
-        LIMIT 12
-        """
+    if not risky_identities:
+        return drilldown
+
+    principal_ids = [identity.principal_id for identity in risky_identities]
+
+    permissions_stmt = (
+        select(
+            IamEdge.principal_id,
+            IamEdge.provider,
+            IamEdge.permission,
+            IamEdge.is_admin,
+            IamEdge.effective_at,
+        )
+        .where(IamEdge.principal_id.in_(principal_ids))
+        .order_by(IamEdge.principal_id, desc(IamEdge.effective_at))
     )
 
-    findings_query = text(
-        """
-        SELECT finding_id, title, severity, status, last_seen
-        FROM findings
-        WHERE principal_id = :principal_id AND status = 'open'
-        ORDER BY severity DESC, last_seen DESC NULLS LAST
-        LIMIT 6
-        """
+    findings_stmt = (
+        select(
+            Finding.principal_id,
+            Finding.finding_id,
+            Finding.title,
+            Finding.severity,
+            Finding.status,
+            Finding.last_seen,
+        )
+        .where(
+            Finding.principal_id.in_(principal_ids),
+            Finding.status == "open",
+        )
+        .order_by(Finding.principal_id, desc(Finding.severity), desc(Finding.last_seen))
     )
+
+    permissions_result = await analyzer.db.execute(permissions_stmt)
+    findings_result = await analyzer.db.execute(findings_stmt)
+
+    permissions_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
+    for row in permissions_result.fetchall():
+        if len(permissions_by_identity[row.principal_id]) >= 12:
+            continue
+        permissions_by_identity[row.principal_id].append(row)
+
+    findings_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
+    for row in findings_result.fetchall():
+        if len(findings_by_identity[row.principal_id]) >= 6:
+            continue
+        findings_by_identity[row.principal_id].append(row)
 
     for identity in risky_identities:
-        permissions_result = await analyzer.db.execute(
-            permissions_query,
-            {"principal_id": identity.principal_id},
-        )
-        permission_rows = permissions_result.fetchall()
-
-        findings_result = await analyzer.db.execute(
-            findings_query,
-            {"principal_id": identity.principal_id},
-        )
-        finding_rows = findings_result.fetchall()
-
-        providers = sorted({row.provider for row in permission_rows})
+        permission_rows = permissions_by_identity.get(identity.principal_id, [])
+        finding_rows = findings_by_identity.get(identity.principal_id, [])
+        providers = sorted({row.provider for row in permission_rows}) if permission_rows else []
 
         drilldown.append(
             {
@@ -875,6 +894,7 @@ if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
             "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
             "drilldown_identities": drilldown_identities,
             "remediation_queue": remediation_queue,
+            "generated_at": sprawl_analysis.analysis_date.isoformat() + "Z",
         }
 
     IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data
