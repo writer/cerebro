@@ -11,6 +11,7 @@ from cerebro.telemetry.schemas import (
     ComplianceEvidence,
     DependencyGraph,
     FrontendObservationTelemetry,
+    HostTelemetry,
     RepositoryTelemetry,
     RuntimeTelemetry,
 )
@@ -51,6 +52,21 @@ async def receive_runtime_telemetry(
 
     try:
         return await TelemetryIngestionService(db).process_runtime(telemetry)
+    except TelemetryProcessingError as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/host", status_code=200)
+async def receive_host_telemetry(
+    telemetry: HostTelemetry,
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("ingest:telemetry")),
+    _authorization: Optional[str] = Header(None)
+):
+    """Receive endpoint telemetry from the Cerebro desktop agent."""
+
+    try:
+        return await TelemetryIngestionService(db).process_host(telemetry)
     except TelemetryProcessingError as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

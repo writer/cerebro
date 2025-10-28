@@ -38,6 +38,19 @@ class RuntimeContext:
 
 
 @dataclass(frozen=True)
+class HostContext:
+    """Resolved context for endpoint/desktop telemetry."""
+
+    org_id: UUID
+    account_id: UUID
+    resource_id: UUID
+    host_id: str
+    hostname: str
+    received_at: datetime
+    metadata: Dict[str, Any]
+
+
+@dataclass(frozen=True)
 class TelemetryResult:
     """Summary of telemetry processing outcomes."""
 

@@ -58,7 +58,9 @@ class Account(Base):
     
     __table_args__ = (
         UniqueConstraint("org_id", "provider", "external_id"),
-        CheckConstraint("provider IN ('github','google_workspace','aws','gcp')"),
+        CheckConstraint(
+            "provider IN ('github','google_workspace','aws','gcp','runtime','endpoint')"
+        ),
     )
     
     # Relationships

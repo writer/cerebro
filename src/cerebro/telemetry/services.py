@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,13 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import (
     Account,
+    ConfigSnapshot,
     Finding,
     FrontendObservationEvent,
     Organization,
     Resource,
     Rule,
 )
-from cerebro.telemetry.models import RepositoryContext, RuntimeContext, TelemetryResult
+from cerebro.telemetry.models import HostContext, RepositoryContext, RuntimeContext, TelemetryResult
 from cerebro.telemetry.schemas import (
     ComplianceEvidence,
     DependencyGraph,
@@ -32,6 +34,7 @@ from cerebro.telemetry.schemas import (
     SecretsScanResult,
     SecurityEvent,
     ConfigurationDrift,
+    HostTelemetry,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,6 +185,63 @@ class TelemetryIngestionService:
             "event_id": str(event.event_id),
         }
 
+    async def process_host(self, payload: HostTelemetry) -> Dict[str, Any]:
+        """Ingest endpoint telemetry emitted by the desktop agent."""
+
+        logger.info(
+            "Received host telemetry",
+            extra={
+                "host_id": payload.host_id,
+                "hostname": payload.hostname,
+                "org": payload.organization,
+            },
+        )
+
+        collected_at = payload.collected_at
+        if collected_at.tzinfo is None:
+            collected_at = collected_at.replace(tzinfo=timezone.utc)
+
+        try:
+            context = await self._ensure_host_context(payload)
+            snapshot_id = await self._persist_host_snapshot(context, payload, collected_at)
+            findings: list[UUID] = []
+
+            if payload.security_events:
+                for event in payload.security_events:
+                    if not self._is_suspicious_event(event):
+                        continue
+                    finding = await self._create_host_security_event_finding(
+                        event,
+                        payload,
+                        context,
+                    )
+                    if finding:
+                        findings.append(finding)
+
+            if payload.configuration_drift:
+                for drift in payload.configuration_drift:
+                    finding = await self._create_host_drift_finding(
+                        drift,
+                        payload,
+                        context,
+                    )
+                    if finding:
+                        findings.append(finding)
+
+            await self.db.commit()
+
+            return {
+                "status": "processed",
+                "host_id": payload.host_id,
+                "hostname": payload.hostname,
+                "snapshot_id": str(snapshot_id) if snapshot_id else None,
+                "findings_created": len(findings),
+            }
+        except Exception as exc:  # pragma: no cover
+            await self.db.rollback()
+            logger.exception("Host telemetry processing failed", exc_info=exc)
+            raise TelemetryProcessingError(str(exc)) from exc
+
     async def process_compliance_evidence(self, payload: ComplianceEvidence) -> Dict[str, Any]:
         """Persist compliance evidence metadata."""
 
@@ -305,6 +365,31 @@ class TelemetryIngestionService:
             metadata={},
         )
 
+    async def _ensure_host_context(self, payload: HostTelemetry) -> HostContext:
+        org_name = payload.organization or "endpoint-devices"
+        org = await self._get_or_create_org(org_name)
+        account = await self._get_or_create_account(org.org_id, "endpoint", org_name)
+        resource = await self._get_or_create_resource(
+            account.account_id,
+            "endpoint.device",
+            payload.host_id,
+            payload.hostname,
+        )
+
+        metadata: Dict[str, Any] = {}
+        if payload.site:
+            metadata["site"] = payload.site
+
+        return HostContext(
+            org_id=org.org_id,
+            account_id=account.account_id,
+            resource_id=resource.resource_id,
+            host_id=payload.host_id,
+            hostname=payload.hostname,
+            received_at=datetime.utcnow(),
+            metadata=metadata,
+        )
+
     async def _get_or_create_org(self, name: str) -> Organization:
         stmt = select(Organization).where(Organization.name == name)
         org = await self.db.scalar(stmt)
@@ -312,7 +397,7 @@ class TelemetryIngestionService:
             org = Organization(name=name)
             self.db.add(org)
             await self.db.flush()
-            logger.info("Created organization", name=name)
+            logger.info("Created organization %s", name)
         return org
 
     async def _get_or_create_account(
@@ -336,7 +421,11 @@ class TelemetryIngestionService:
             )
             self.db.add(account)
             await self.db.flush()
-            logger.info("Created account", provider=provider, external_id=external_id)
+            logger.info(
+                "Created account provider=%s external_id=%s",
+                provider,
+                external_id,
+            )
         return account
 
     async def _get_or_create_resource(
@@ -361,8 +450,86 @@ class TelemetryIngestionService:
             )
             self.db.add(resource)
             await self.db.flush()
-            logger.info("Created resource", resource_type=resource_type, external_id=external_id)
+            logger.info(
+                "Created resource type=%s external_id=%s",
+                resource_type,
+                external_id,
+            )
         return resource
+
+    async def _persist_host_snapshot(
+        self,
+        context: HostContext,
+        payload: HostTelemetry,
+        collected_at: datetime,
+    ) -> Optional[UUID]:
+        normalized_config = self._build_host_snapshot(payload, collected_at)
+
+        config_json = json.dumps(
+            normalized_config,
+            sort_keys=True,
+            default=self._snapshot_default,
+        )
+        config_sha = hashlib.sha256(config_json.encode("utf-8")).digest()
+
+        stmt = select(ConfigSnapshot).where(
+            ConfigSnapshot.resource_id == context.resource_id,
+            ConfigSnapshot.config_sha == config_sha,
+        )
+        snapshot = await self.db.scalar(stmt)
+        if snapshot:
+            snapshot.captured_at = collected_at
+            snapshot.normalized_config = normalized_config
+            snapshot.collector_version = payload.agent_version
+            await self.db.flush()
+            return snapshot.snapshot_id
+
+        snapshot = ConfigSnapshot(
+            resource_id=context.resource_id,
+            captured_at=collected_at,
+            config_sha=config_sha,
+            normalized_config=normalized_config,
+            collector_version=payload.agent_version,
+        )
+        self.db.add(snapshot)
+        await self.db.flush()
+        return snapshot.snapshot_id
+
+    def _build_host_snapshot(
+        self,
+        payload: HostTelemetry,
+        collected_at: datetime,
+    ) -> Dict[str, Any]:
+        host_info = {
+            "host_id": payload.host_id,
+            "hostname": payload.hostname,
+            "serial_number": payload.serial_number,
+            "os_family": payload.os_family,
+            "os_version": payload.os_version,
+            "kernel_version": payload.kernel_version,
+            "architecture": payload.architecture,
+            "ip_addresses": payload.ip_addresses,
+            "mac_addresses": payload.mac_addresses,
+            "logged_in_users": payload.logged_in_users,
+            "tags": payload.tags,
+            "agent_version": payload.agent_version,
+        }
+
+        snapshot: Dict[str, Any] = {
+            "host": {k: v for k, v in host_info.items() if v is not None},
+            "health": payload.health.model_dump(exclude_none=True) if payload.health else None,
+            "processes": [proc.model_dump(exclude_none=True) for proc in payload.processes],
+            "network_connections": [
+                conn.model_dump(exclude_none=True) for conn in (payload.network_connections or [])
+            ],
+            "installed_packages": [
+                pkg.model_dump(exclude_none=True) for pkg in (payload.installed_packages or [])
+            ],
+        }
+
+        # Drop empty collections to keep snapshot concise
+        compact = {k: v for k, v in snapshot.items() if v not in (None, [], {})}
+        return self._normalize_datetimes(compact)
 
     async def _get_or_create_rule(
         self,
@@ -641,6 +808,132 @@ class TelemetryIngestionService:
         await self.db.flush()
         return finding.finding_id
 
+    async def _create_host_security_event_finding(
+        self,
+        event: SecurityEvent,
+        telemetry: HostTelemetry,
+        context: HostContext,
+    ) -> Optional[UUID]:
+        severity = {
+            "critical": "critical",
+            "high": "high",
+            "medium": "medium",
+            "low": "low",
+        }.get(event.severity.lower(), "medium")
+
+        rule = await self._get_or_create_rule(
+            name=f"Endpoint Security Event: {event.event_type}",
+            description=f"Security event detected on endpoint: {event.event_type}",
+            severity=severity,
+            provider="telemetry",
+        )
+
+        event_ts = event.timestamp
+        if event_ts.tzinfo is None:
+            event_ts = event_ts.replace(tzinfo=timezone.utc)
+
+        fingerprint = self._fingerprint(
+            "telemetry-host-event",
+            context.host_id,
+            event.event_type,
+            event_ts.isoformat(),
+        )
+
+        finding = Finding(
+            org_id=context.org_id,
+            account_id=context.account_id,
+            provider="endpoint",
+            rule_id=rule.rule_id,
+            rule_version=rule.version,
+            resource_id=context.resource_id,
+            first_seen=event_ts,
+            last_seen=event_ts,
+            status="open",
+            severity=severity,
+            fingerprint=fingerprint,
+            title=f"Endpoint security event: {event.event_type}",
+            summary=(
+                f"Security event '{event.event_type}' detected on host {telemetry.hostname}"
+            ),
+            evidence={
+                "source": "telemetry",
+                "host_id": telemetry.host_id,
+                "hostname": telemetry.hostname,
+                "event_type": event.event_type,
+                "details": event.details,
+                "severity": event.severity,
+                "detected_at": event_ts.isoformat(),
+                "ip_addresses": telemetry.ip_addresses,
+                "users": telemetry.logged_in_users,
+            },
+        )
+        self.db.add(finding)
+        await self.db.flush()
+        return finding.finding_id
+
+    async def _create_host_drift_finding(
+        self,
+        drift: ConfigurationDrift,
+        telemetry: HostTelemetry,
+        context: HostContext,
+    ) -> Optional[UUID]:
+        rule = await self._get_or_create_rule(
+            name="Endpoint Configuration Drift Detected",
+            description="Endpoint configuration has drifted from expected baseline",
+            severity="high",
+            provider="telemetry",
+        )
+
+        fingerprint = self._fingerprint(
+            "telemetry-host-drift",
+            context.host_id,
+            drift.config_key,
+        )
+
+        existing = await self._get_existing_finding(context.org_id, fingerprint)
+        collected_at = telemetry.collected_at
+        if collected_at.tzinfo is None:
+            collected_at = collected_at.replace(tzinfo=timezone.utc)
+
+        if existing:
+            existing.last_seen = collected_at
+            if existing.evidence:
+                existing.evidence["actual_value"] = drift.actual_value
+                existing.evidence["last_detected"] = collected_at.isoformat()
+            return existing.finding_id
+
+        finding = Finding(
+            org_id=context.org_id,
+            account_id=context.account_id,
+            provider="endpoint",
+            rule_id=rule.rule_id,
+            rule_version=rule.version,
+            resource_id=context.resource_id,
+            first_seen=collected_at,
+            last_seen=collected_at,
+            status="open",
+            severity="high",
+            fingerprint=fingerprint,
+            title=f"Endpoint configuration drift: {drift.config_key}",
+            summary=(
+                f"Configuration '{drift.config_key}' on host {telemetry.hostname} drifted."
+                f" Expected: {drift.expected_value}, Actual: {drift.actual_value}."
+            ),
+            evidence={
+                "source": "telemetry",
+                "host_id": telemetry.host_id,
+                "hostname": telemetry.hostname,
+                "config_key": drift.config_key,
+                "expected_value": drift.expected_value,
+                "actual_value": drift.actual_value,
+                "drift_type": drift.drift_type,
+                "detected_at": collected_at.isoformat(),
+            },
+        )
+        self.db.add(finding)
+        await self.db.flush()
+        return finding.finding_id
+
     def _extract_vulnerabilities(
         self, scan: DependencyScan
     ) -> Iterable[DependencyVulnerability]:
@@ -698,3 +991,22 @@ class TelemetryIngestionService:
             "malicious_payload",
         }
         return event.event_type in suspicious_types or event.severity.lower() in {"high", "critical"}
+
+    @staticmethod
+    def _snapshot_default(value: Any) -> Any:
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.isoformat()
+        return value
+
+    def _normalize_datetimes(self, value: Any) -> Any:
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.isoformat()
+        if isinstance(value, list):
+            return [self._normalize_datetimes(item) for item in value]
+        if isinstance(value, dict):
+            return {key: self._normalize_datetimes(item) for key, item in value.items()}
+        return value

@@ -87,6 +87,102 @@ class ConfigurationDrift(BaseModel):
     drift_type: str  # modified, missing, added
 
 
+class ProcessSnapshot(BaseModel):
+    """Process state captured on the endpoint."""
+
+    pid: int = Field(..., description="Process identifier")
+    parent_pid: Optional[int] = Field(None, description="Parent process identifier")
+    name: str = Field(..., description="Executable name")
+    command: Optional[str] = Field(None, description="Full command line")
+    binary_hash: Optional[str] = Field(
+        None,
+        description="SHA256 hash of the executable binary",
+    )
+    user: Optional[str] = Field(None, description="Owning user account")
+    start_time: Optional[datetime] = Field(None, description="Process start time")
+    integrity_level: Optional[str] = Field(None, description="Integrity level or sandbox tier")
+    network_ports: Optional[List[int]] = Field(
+        None,
+        description="Local ports opened by this process",
+    )
+
+
+class NetworkConnection(BaseModel):
+    """Network connection snapshot."""
+
+    protocol: str = Field(..., description="Protocol (tcp, udp, unix)")
+    local_address: str = Field(..., description="Local IP or path")
+    local_port: int = Field(..., description="Local port or 0 for unix sockets")
+    remote_address: Optional[str] = Field(None, description="Remote IP if applicable")
+    remote_port: Optional[int] = Field(None, description="Remote port")
+    status: Optional[str] = Field(None, description="Connection state (LISTEN, ESTABLISHED, etc.)")
+    process_id: Optional[int] = Field(None, description="Owning process identifier")
+
+
+class SoftwarePackage(BaseModel):
+    """Installed software inventory entry."""
+
+    name: str
+    version: str
+    source: Optional[str] = Field(None, description="Package manager or installer")
+    install_time: Optional[datetime] = Field(None, description="Installation timestamp")
+    vendor: Optional[str] = Field(None, description="Software vendor if known")
+    signature: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Digital signature metadata (subject, issuer, status)",
+    )
+
+
+class AgentHealth(BaseModel):
+    """Agent self-reported health information."""
+
+    status: str = Field(..., description="Status indicator: healthy, degraded, or error")
+    last_heartbeat: datetime = Field(..., description="Timestamp of last successful heartbeat")
+    issues: Optional[List[str]] = Field(None, description="Outstanding health issues")
+
+
+class HostTelemetry(BaseModel):
+    """Endpoint telemetry emitted by the Cerebro desktop agent."""
+
+    organization: Optional[str] = Field(
+        None,
+        description="Owning organization name; defaults to endpoint-devices if omitted",
+    )
+    site: Optional[str] = Field(None, description="Location or business unit tag")
+    host_id: str = Field(..., description="Stable host identifier (UUID, device ID)")
+    hostname: str = Field(..., description="System hostname")
+    serial_number: Optional[str] = Field(None, description="Hardware serial number")
+    agent_version: str = Field(..., description="Desktop agent version")
+    os_family: str = Field(..., description="Operating system family (windows, darwin, linux)")
+    os_version: Optional[str] = Field(None, description="Operating system version")
+    kernel_version: Optional[str] = Field(None, description="Kernel or build version")
+    architecture: Optional[str] = Field(None, description="CPU architecture")
+    collected_at: datetime = Field(..., description="Collection timestamp")
+
+    ip_addresses: List[str] = Field(default_factory=list, description="Observed IP addresses")
+    mac_addresses: Optional[List[str]] = Field(None, description="MAC addresses")
+    logged_in_users: Optional[List[str]] = Field(None, description="Interactive users at collection time")
+    tags: Optional[Dict[str, str]] = Field(None, description="Arbitrary device metadata tags")
+
+    health: Optional[AgentHealth] = Field(None, description="Agent health snapshot")
+    processes: List[ProcessSnapshot] = Field(default_factory=list, description="Active process inventory")
+    network_connections: Optional[List[NetworkConnection]] = Field(
+        None,
+        description="Active network connections",
+    )
+    installed_packages: Optional[List[SoftwarePackage]] = Field(
+        None,
+        description="Installed software inventory",
+    )
+    security_events: Optional[List[SecurityEvent]] = Field(
+        None,
+        description="Security-relevant events observed on the host",
+    )
+    configuration_drift: Optional[List[ConfigurationDrift]] = Field(
+        None,
+        description="Detected configuration drift items",
+    )
+
 class RuntimeTelemetry(BaseModel):
     """Runtime telemetry from application."""
 

@@ -1,0 +1,103 @@
+import pytest
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import select
+
+from cerebro.telemetry.schemas import HostTelemetry, SecurityEvent, ConfigurationDrift, AgentHealth, ProcessSnapshot
+from cerebro.telemetry.services import TelemetryIngestionService
+from cerebro.core.models import ConfigSnapshot, Finding
+
+
+@pytest.mark.asyncio
+async def test_process_host_creates_snapshot_and_findings(test_db):
+    service = TelemetryIngestionService(test_db)
+
+    telemetry = HostTelemetry(
+        organization="Acme",
+        site="HQ",
+        host_id="host-123",
+        hostname="acme-mbp",
+        serial_number="SN-001",
+        agent_version="1.0.0",
+        os_family="darwin",
+        os_version="14.6",
+        kernel_version="23.6.0",
+        architecture="arm64",
+        collected_at=datetime.now(timezone.utc),
+        ip_addresses=["10.0.0.10"],
+        mac_addresses=["AA:BB:CC:DD:EE:FF"],
+        logged_in_users=["alice"],
+        tags={"environment": "prod"},
+        health=AgentHealth(status="healthy", last_heartbeat=datetime.now(timezone.utc)),
+        processes=[
+            ProcessSnapshot(
+                pid=1234,
+                parent_pid=1,
+                name="cerebro-agent",
+                command="/usr/local/bin/cerebro-agent",
+                binary_hash="deadbeef",
+                user="alice",
+                start_time=datetime.now(timezone.utc),
+            )
+        ],
+        security_events=[
+            SecurityEvent(
+                event_type="unauthorized_access",
+                timestamp=datetime.now(timezone.utc),
+                severity="high",
+                source_ip="10.1.1.1",
+                user_id="alice",
+                details={"process": "unknown"},
+            )
+        ],
+        configuration_drift=[
+            ConfigurationDrift(
+                config_key="os.patch_level",
+                expected_value="2025-10",
+                actual_value="2025-08",
+                drift_type="modified",
+            )
+        ],
+    )
+
+    result = await service.process_host(telemetry)
+
+    assert result["status"] == "processed"
+    assert result["host_id"] == "host-123"
+
+    snapshots = (await test_db.execute(select(ConfigSnapshot))).scalars().all()
+    assert len(snapshots) == 1
+    assert snapshots[0].collector_version == "1.0.0"
+
+    findings = (await test_db.execute(select(Finding))).scalars().all()
+    assert findings, "Expected endpoint findings to be created"
+    assert all(f.provider == "endpoint" for f in findings)
+
+
+@pytest.mark.asyncio
+async def test_process_host_deduplicates_snapshots(test_db):
+    service = TelemetryIngestionService(test_db)
+
+    base_time = datetime.now(timezone.utc)
+    telemetry = HostTelemetry(
+        organization="Acme",
+        host_id="host-123",
+        hostname="acme-mbp",
+        agent_version="1.0.0",
+        os_family="darwin",
+        collected_at=base_time,
+        ip_addresses=["10.0.0.10"],
+        processes=[],
+    )
+
+    await service.process_host(telemetry)
+
+    # Second telemetry with same config but newer timestamp should update snapshot
+    telemetry_new = telemetry.model_copy(update={"collected_at": base_time + timedelta(hours=1)})
+    await service.process_host(telemetry_new)
+
+    snapshots = (await test_db.execute(select(ConfigSnapshot))).scalars().all()
+    assert len(snapshots) == 1
+    saved_at = snapshots[0].captured_at
+    if saved_at.tzinfo is None:
+        saved_at = saved_at.replace(tzinfo=timezone.utc)
+    assert saved_at == telemetry_new.collected_at
