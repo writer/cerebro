@@ -63,6 +63,7 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
             findings_burned_down_30d=1,
             new_controls_implemented=1,
             risk_score_change_30d=-2.0,
+            risk_score_change_7d=-0.5,
             recommended_investments=[{"priority": "high"}],
         )
 
@@ -82,7 +83,26 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
             "mfa_compliance_by_provider": {},
             "provider_breakdown": {},
             "drilldown_identities": [],
-            "remediation_queue": [],
+            "remediation_queue": [
+                {
+                    "action_id": "action-1",
+                    "principal_id": "123",
+                    "priority": "high",
+                    "summary": "Analyst",
+                    "recommended_action": "Enable MFA",
+                    "evidence": ["MFA disabled"],
+                    "risk_level": "high",
+                    "status": "pending",
+                    "notes": [],
+                    "accepted_at": None,
+                    "accepted_by": None,
+                    "completed_at": None,
+                    "completed_by": None,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "source": "analytics",
+                }
+            ],
             "provider_segments": [],
             "risk_level_breakdown": {"critical": 0, "high": 0, "medium": 0, "low": 5},
             "generated_at": datetime.now(timezone.utc).isoformat(),

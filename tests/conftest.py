@@ -182,7 +182,7 @@ async def test_user(test_db: AsyncSession) -> User:
         username="testuser",
         email="test@example.com",
         password="testpass123",
-        scopes=["read:findings", "read:rules"]
+        scopes=["read:findings", "read:rules", "write:findings"]
     )
     user.org_id = await test_db.scalar(select(Organization.org_id).limit(1))
     await test_db.commit()

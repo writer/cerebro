@@ -181,6 +181,7 @@ export type ExecutiveSummaryProgress = {
   findings_burned_down_30d: number;
   new_controls_implemented: number;
   risk_score_change_30d: number;
+  risk_score_change_7d: number;
 };
 
 export type ExecutiveSummaryResponse = {
@@ -315,12 +316,43 @@ export type IdentityDrilldownIdentity = {
   risk_factors: string[];
 };
 
+export type IdentityRemediationNote = {
+  note_id: string;
+  author_id: string | null;
+  author?: string | null;
+  note: string;
+  created_at: string;
+};
+
 export type IdentityRemediationItem = {
+  action_id: string;
   principal_id: string;
   priority: "low" | "medium" | "high";
   summary: string;
   recommended_action: string;
   evidence: string[];
+  risk_level?: string;
+  status: "pending" | "accepted" | "completed";
+  notes: IdentityRemediationNote[];
+  accepted_at: string | null;
+  accepted_by: string | null;
+  completed_at: string | null;
+  completed_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  source?: "analytics" | "manual";
+};
+
+export type IdentityRemediationBulkResponse = {
+  updated: IdentityRemediationItem[];
+};
+
+export type IdentityDrilldownExportResponse = {
+  org_id: string;
+  generated_at: string;
+  count: number;
+  risk_level_filter?: string | null;
+  drilldown: IdentityDrilldownIdentity[];
 };
 
 export type IdentityProviderBreakdown = {

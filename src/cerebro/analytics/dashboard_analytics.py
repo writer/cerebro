@@ -75,6 +75,7 @@ class ExecutiveSummary:
     findings_burned_down_30d: int
     new_controls_implemented: int
     risk_score_change_30d: float
+    risk_score_change_7d: float
     
     # Investment priorities
     recommended_investments: List[Dict[str, Any]]
@@ -202,6 +203,7 @@ class DashboardAnalytics:
         findings_burned_30d = await self._calculate_findings_burned_down(org_id, 30)
         new_controls = await self._count_new_controls_implemented(org_id, 30)
         risk_change_30d = await self._calculate_risk_score_change(org_id, 30)
+        risk_change_7d = await self._calculate_risk_score_change(org_id, 7)
         
         # Generate investment recommendations
         investment_recommendations = await self._generate_investment_recommendations(org_id)
@@ -221,6 +223,7 @@ class DashboardAnalytics:
             findings_burned_down_30d=findings_burned_30d,
             new_controls_implemented=new_controls,
             risk_score_change_30d=risk_change_30d,
+            risk_score_change_7d=risk_change_7d,
             recommended_investments=investment_recommendations
         )
     
@@ -496,6 +499,7 @@ class DashboardAnalytics:
                     "findings_burned_down_30d": executive_summary.findings_burned_down_30d,
                     "new_controls_implemented": executive_summary.new_controls_implemented,
                     "risk_score_change_30d": executive_summary.risk_score_change_30d,
+                    "risk_score_change_7d": executive_summary.risk_score_change_7d,
                 },
             },
             "security_metrics": {

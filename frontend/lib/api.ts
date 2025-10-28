@@ -215,3 +215,12 @@ export async function apiPost<T>(path: string, body: unknown) {
   const response = await getClient().post<T>(path, body);
   return response.data;
 }
+
+export async function apiGetBlob(
+  path: string,
+  params?: Record<string, unknown>,
+  responseType: "blob" | "arraybuffer" | "text" = "blob",
+) {
+  const response = await getClient().get(path, { params, responseType });
+  return response.data;
+}

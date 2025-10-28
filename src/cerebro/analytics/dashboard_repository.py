@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from sqlalchemy import text
+import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Sequence, Set
+from uuid import UUID, uuid4
+
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
-from typing import Dict, List, Any
+
+from cerebro.core.models import IdentityRemediationAction
 
 from .orientation import generate_orientation_summary
+
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardRepository:
@@ -234,6 +242,244 @@ class DashboardRepository:
             }
 
         return framework_compliance
+
+    async def get_remediation_actions(self, org_id: UUID) -> List[IdentityRemediationAction]:
+        statement = (
+            select(IdentityRemediationAction)
+            .where(IdentityRemediationAction.org_id == org_id)
+            .order_by(
+                IdentityRemediationAction.status.asc(),
+                IdentityRemediationAction.priority.desc(),
+                IdentityRemediationAction.created_at.asc(),
+            )
+        )
+        result = await self._db.execute(statement)
+        return list(result.scalars().all())
+
+    async def ensure_remediation_action(
+        self,
+        org_id: UUID,
+        principal_id: UUID,
+        summary: str,
+        recommended_action: str,
+        priority: str,
+        evidence: List[str],
+        initiated_by: Optional[UUID] = None,
+    ) -> IdentityRemediationAction:
+        statement = select(IdentityRemediationAction).where(
+            IdentityRemediationAction.org_id == org_id,
+            IdentityRemediationAction.principal_id == principal_id,
+            IdentityRemediationAction.recommended_action == recommended_action,
+        )
+        result = await self._db.execute(statement)
+        action = result.scalar_one_or_none()
+
+        now = datetime.utcnow()
+
+        if action is None:
+            action = IdentityRemediationAction(
+                org_id=org_id,
+                principal_id=principal_id,
+                summary=summary,
+                recommended_action=recommended_action,
+                priority=priority,
+                status="pending",
+                evidence=list(evidence),
+                notes=[],
+                created_by=initiated_by,
+                updated_by=initiated_by,
+                created_at=now,
+                updated_at=now,
+            )
+            self._db.add(action)
+            await self._db.flush()
+            return action
+
+        updated = False
+        if action.summary != summary:
+            action.summary = summary
+            updated = True
+        if action.priority != priority:
+            action.priority = priority
+            updated = True
+        if action.evidence != evidence:
+            action.evidence = list(evidence)
+            updated = True
+
+        if updated:
+            action.updated_at = now
+            action.updated_by = initiated_by or action.updated_by
+            await self._db.flush()
+
+        return action
+
+    async def update_remediation_action_status(
+        self,
+        org_id: UUID,
+        action_id: UUID,
+        status: str,
+        user_id: UUID,
+        note: Optional[str] = None,
+        user_display_name: Optional[str] = None,
+    ) -> IdentityRemediationAction:
+        action = await self._db.get(IdentityRemediationAction, action_id)
+        if action is None or action.org_id != org_id:
+            raise ValueError("Remediation action not found")
+
+        now = datetime.utcnow()
+        if status == "accepted":
+            action.status = "accepted"
+            action.accepted_at = now
+            action.accepted_by = user_id
+        elif status == "completed":
+            action.status = "completed"
+            action.completed_at = now
+            action.completed_by = user_id
+        else:
+            raise ValueError("Invalid remediation status")
+
+        action.updated_at = now
+        action.updated_by = user_id
+
+        if note:
+            action.notes = list(action.notes or []) + [
+                self._build_note_entry(user_id, note, user_display_name, now)
+            ]
+
+        await self._db.flush()
+        return action
+
+    async def update_remediation_actions_status_bulk(
+        self,
+        org_id: UUID,
+        action_ids: Sequence[UUID],
+        status: str,
+        user_id: UUID,
+        note: Optional[str] = None,
+        user_display_name: Optional[str] = None,
+    ) -> List[IdentityRemediationAction]:
+        if not action_ids:
+            raise ValueError("No remediation actions supplied")
+
+        unique_ids: List[UUID] = []
+        seen: Set[UUID] = set()
+        for action_id in action_ids:
+            if action_id not in seen:
+                unique_ids.append(action_id)
+                seen.add(action_id)
+
+        result = await self._db.execute(
+            select(IdentityRemediationAction).where(
+                IdentityRemediationAction.action_id.in_(unique_ids),
+                IdentityRemediationAction.org_id == org_id,
+            )
+        )
+        actions = result.scalars().all()
+        action_lookup = {action.action_id: action for action in actions}
+
+        found_ids = set(action_lookup)
+        missing = {action_id for action_id in unique_ids if action_id not in found_ids}
+        if missing:
+            raise ValueError("Remediation action not found")
+
+        now = datetime.utcnow()
+        updated: List[IdentityRemediationAction] = []
+        for action_id in unique_ids:
+            action = action_lookup[action_id]
+            if status == "accepted":
+                if action.status != "accepted":
+                    action.status = "accepted"
+                    action.accepted_at = now
+                    action.accepted_by = user_id
+            elif status == "completed":
+                if action.status != "completed":
+                    action.status = "completed"
+                    action.completed_at = now
+                    action.completed_by = user_id
+            else:
+                raise ValueError("Invalid remediation status")
+
+            if note:
+                action.notes = list(action.notes or []) + [
+                    self._build_note_entry(user_id, note, user_display_name, now)
+                ]
+
+            action.updated_at = now
+            action.updated_by = user_id
+            updated.append(action)
+
+        await self._db.flush()
+
+        logger.info(
+            "Updated %s remediation actions for org %s to %s",
+            len(updated),
+            org_id,
+            status,
+        )
+
+        return updated
+
+    async def add_remediation_note(
+        self,
+        org_id: UUID,
+        action_id: UUID,
+        user_id: UUID,
+        note: str,
+        user_display_name: Optional[str] = None,
+    ) -> IdentityRemediationAction:
+        action = await self._db.get(IdentityRemediationAction, action_id)
+        if action is None or action.org_id != org_id:
+            raise ValueError("Remediation action not found")
+
+        now = datetime.utcnow()
+        action.notes = list(action.notes or []) + [
+            self._build_note_entry(user_id, note, user_display_name, now)
+        ]
+        action.updated_at = now
+        action.updated_by = user_id
+        await self._db.flush()
+        return action
+
+    @staticmethod
+    def serialize_remediation_action(action: IdentityRemediationAction) -> Dict[str, Any]:
+        return {
+            "action_id": str(action.action_id),
+            "principal_id": str(action.principal_id),
+            "summary": action.summary,
+            "recommended_action": action.recommended_action,
+            "priority": action.priority,
+            "status": action.status,
+            "evidence": action.evidence or [],
+            "notes": action.notes or [],
+            "accepted_at": action.accepted_at.isoformat() if action.accepted_at else None,
+            "accepted_by": str(action.accepted_by) if action.accepted_by else None,
+            "completed_at": action.completed_at.isoformat() if action.completed_at else None,
+            "completed_by": str(action.completed_by) if action.completed_by else None,
+            "created_at": action.created_at.isoformat() if action.created_at else None,
+            "updated_at": action.updated_at.isoformat() if action.updated_at else None,
+            "source": "manual" if action.created_by else "analytics",
+        }
+
+    @staticmethod
+    def serialize_remediation_actions(
+        actions: Sequence[IdentityRemediationAction],
+    ) -> List[Dict[str, Any]]:
+        return [DashboardRepository.serialize_remediation_action(action) for action in actions]
+
+    @staticmethod
+    def _build_note_entry(
+        user_id: UUID,
+        note: str,
+        user_display_name: Optional[str],
+        timestamp: datetime,
+    ) -> Dict[str, Any]:
+        return {
+            "note_id": str(uuid4()),
+            "author_id": str(user_id),
+            "author": user_display_name,
+            "note": note,
+            "created_at": timestamp.isoformat() + "Z",
+        }
 
     async def get_findings_by_provider(
         self, org_id: UUID, provider: str, limit: int = 25

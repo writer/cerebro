@@ -38,6 +38,7 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "findings_burned_down_30d",
         "new_controls_implemented",
         "risk_score_change_30d",
+        "risk_score_change_7d",
     },
     "SecurityMetricsResponse": {"findings", "sla_performance", "provider_breakdown"},
     "ProviderFindingBreakdown": {
@@ -147,11 +148,30 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "risk_factors",
     },
     "IdentityRemediationItem": {
+        "action_id",
         "principal_id",
         "priority",
         "summary",
         "recommended_action",
         "evidence",
+        "risk_level",
+        "status",
+        "notes",
+        "accepted_at",
+        "accepted_by",
+        "completed_at",
+        "completed_by",
+        "created_at",
+        "updated_at",
+        "source",
+    },
+    "IdentityRemediationBulkResponse": {"updated"},
+    "IdentityRemediationNote": {
+        "note_id",
+        "author_id",
+        "author",
+        "note",
+        "created_at",
     },
     "IdentityMfaCompliance": {
         "total_users",
@@ -324,6 +344,8 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     assert remediation_queue, "Remediation queue should surface actions"
     for item in remediation_queue:
         assert set(item.keys()) == EXPECTED_FIELDS["IdentityRemediationItem"]
+        for note in item["notes"]:
+            assert set(note.keys()) == EXPECTED_FIELDS["IdentityRemediationNote"]
 
     heatmap = payload["risk_heatmap"]
     assert set(heatmap.keys()) == EXPECTED_FIELDS["RiskHeatmapResponse"]

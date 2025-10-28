@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
-import { apiGet } from "@/lib/api";
+import { apiGet, apiGetBlob, apiPost } from "@/lib/api";
 import {
   ExecutiveDashboardResponse,
   ExecutiveSummaryResponse,
@@ -14,6 +14,9 @@ import {
   SecurityMetricsResponse,
   ProviderFindingBreakdown,
   ProviderFindingsResponse,
+  IdentityRemediationItem,
+  IdentityDrilldownExportResponse,
+  IdentityRemediationBulkResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
@@ -54,6 +57,9 @@ export function ExecutiveDashboard() {
   const [selectedOrg, setSelectedOrg] = useState<string>("");
   const [timeRange, setTimeRange] = useState<TimeRangeOption>("30d");
   const [riskFilter, setRiskFilter] = useState<RiskFilterOption>("all");
+  const [remediationError, setRemediationError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [selectedRemediationIds, setSelectedRemediationIds] = useState<string[]>([]);
 
   const {
     data: organizations = [],
@@ -188,6 +194,62 @@ export function ExecutiveDashboard() {
     return identity.remediation_queue.filter((item) => item.priority === targetPriority);
   }, [identity, riskFilter]);
 
+  const remediationQueue = useMemo(
+    () => identity?.remediation_queue ?? [],
+    [identity?.remediation_queue],
+  );
+
+  useEffect(() => {
+    if (!remediationQueue.length) {
+      if (selectedRemediationIds.length) {
+        setSelectedRemediationIds([]);
+      }
+      return;
+    }
+    const available = new Set(remediationQueue.map((item) => item.action_id));
+    setSelectedRemediationIds((prev) => {
+      const next = prev.filter((id) => available.has(id));
+      if (next.length === prev.length && next.every((id, index) => id === prev[index])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [remediationQueue, selectedRemediationIds]);
+
+  const remediationById = useMemo(() => {
+    const map = new Map<string, IdentityRemediationItem>();
+    for (const item of remediationQueue) {
+      if (item.action_id) {
+        map.set(item.action_id, item);
+      }
+    }
+    return map;
+  }, [remediationQueue]);
+
+  const selectedRemediationSet = useMemo(
+    () => new Set(selectedRemediationIds),
+    [selectedRemediationIds],
+  );
+
+  const selectedRemediationCount = selectedRemediationIds.length;
+
+  const pendingSelectedCount = useMemo(
+    () =>
+      selectedRemediationIds.reduce((count, id) => {
+        return count + (remediationById.get(id)?.status === "pending" ? 1 : 0);
+      }, 0),
+    [selectedRemediationIds, remediationById],
+  );
+
+  const completableSelectedCount = useMemo(
+    () =>
+      selectedRemediationIds.reduce((count, id) => {
+        const status = remediationById.get(id)?.status;
+        return count + (status && status !== "completed" ? 1 : 0);
+      }, 0),
+    [selectedRemediationIds, remediationById],
+  );
+
   const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
   const [providerDetail, setProviderDetail] = useState<string | null>(null);
 
@@ -244,7 +306,10 @@ export function ExecutiveDashboard() {
   const alertThresholds = metadata?.alert_thresholds ?? {};
   const cacheTtlSeconds = metadata?.cache_ttl_seconds ?? null;
   const supportsStreaming = metadata?.supports_streaming_updates ?? false;
-  const riskLevelBreakdown = identity?.risk_level_breakdown ?? {};
+  const riskLevelBreakdown = useMemo(
+    () => identity?.risk_level_breakdown ?? {},
+    [identity?.risk_level_breakdown],
+  );
   const privilegeSegments = identity?.privilege_segments ?? [];
   const complianceDelta = filteredComplianceTrends?.delta ?? complianceTrends?.delta;
   const providerSegments = identity?.provider_segments ?? [];
@@ -268,6 +333,325 @@ export function ExecutiveDashboard() {
     ? toErrorMessage(providerFindingsError, "Unable to load provider findings.")
     : null;
   const closeProviderDialog = () => setProviderDetail(null);
+
+  const toggleRemediationSelection = useCallback((actionId: string, selected: boolean) => {
+    setSelectedRemediationIds((prev) => {
+      if (selected) {
+        if (prev.includes(actionId)) {
+          return prev;
+        }
+        return [...prev, actionId];
+      }
+      if (!prev.includes(actionId)) {
+        return prev;
+      }
+      return prev.filter((id) => id !== actionId);
+    });
+  }, []);
+
+  const handleSelectVisibleRemediation = useCallback(() => {
+    const ids = filteredRemediationQueue.map((item) => item.action_id);
+    setSelectedRemediationIds((prev) => {
+      const merged = new Set(prev);
+      ids.forEach((id) => merged.add(id));
+      return Array.from(merged);
+    });
+  }, [filteredRemediationQueue]);
+
+  const handleSelectAllRemediation = useCallback(() => {
+    const ids = remediationQueue.map((item) => item.action_id);
+    setSelectedRemediationIds(Array.from(new Set(ids)));
+  }, [remediationQueue]);
+
+  const handleClearRemediationSelection = useCallback(() => {
+    setSelectedRemediationIds([]);
+  }, []);
+
+  const acceptRemediationMutation = useMutation({
+    mutationFn: async ({ actionId, note }: { actionId: string; note?: string }) => {
+      if (!selectedOrg) {
+        throw new Error("Select an organization before updating remediation actions.");
+      }
+      return apiPost<IdentityRemediationItem>(
+        `/analytics/dashboard/organizations/${selectedOrg}/remediation/actions/${actionId}/accept`,
+        { note: note ?? null },
+      );
+    },
+    onSuccess: () => {
+      setRemediationError(null);
+      void refetch();
+    },
+    onError: (error) => {
+      setRemediationError(toErrorMessage(error, "Unable to accept remediation action."));
+    },
+  });
+
+  const completeRemediationMutation = useMutation({
+    mutationFn: async ({ actionId, note }: { actionId: string; note?: string }) => {
+      if (!selectedOrg) {
+        throw new Error("Select an organization before updating remediation actions.");
+      }
+      return apiPost<IdentityRemediationItem>(
+        `/analytics/dashboard/organizations/${selectedOrg}/remediation/actions/${actionId}/complete`,
+        { note: note ?? null },
+      );
+    },
+    onSuccess: () => {
+      setRemediationError(null);
+      void refetch();
+    },
+    onError: (error) => {
+      setRemediationError(toErrorMessage(error, "Unable to complete remediation action."));
+    },
+  });
+
+  const addRemediationNoteMutation = useMutation({
+    mutationFn: async ({ actionId, note }: { actionId: string; note: string }) => {
+      if (!selectedOrg) {
+        throw new Error("Select an organization before adding notes.");
+      }
+      return apiPost<IdentityRemediationItem>(
+        `/analytics/dashboard/organizations/${selectedOrg}/remediation/actions/${actionId}/notes`,
+        { note },
+      );
+    },
+    onSuccess: () => {
+      setRemediationError(null);
+      void refetch();
+    },
+    onError: (error) => {
+      setRemediationError(toErrorMessage(error, "Unable to add note."));
+    },
+  });
+
+  const bulkAcceptRemediationMutation = useMutation({
+    mutationFn: async ({ actionIds, note }: { actionIds: string[]; note?: string }) => {
+      if (!selectedOrg) {
+        throw new Error("Select an organization before updating remediation actions.");
+      }
+      return apiPost<IdentityRemediationBulkResponse>(
+        `/analytics/dashboard/organizations/${selectedOrg}/remediation/actions/bulk/accept`,
+        {
+          action_ids: actionIds,
+          note: note ?? null,
+        },
+      );
+    },
+    onSuccess: () => {
+      setRemediationError(null);
+      void refetch();
+    },
+    onError: (error) => {
+      setRemediationError(toErrorMessage(error, "Unable to accept remediation actions."));
+    },
+  });
+
+  const bulkCompleteRemediationMutation = useMutation({
+    mutationFn: async ({ actionIds, note }: { actionIds: string[]; note?: string }) => {
+      if (!selectedOrg) {
+        throw new Error("Select an organization before updating remediation actions.");
+      }
+      return apiPost<IdentityRemediationBulkResponse>(
+        `/analytics/dashboard/organizations/${selectedOrg}/remediation/actions/bulk/complete`,
+        {
+          action_ids: actionIds,
+          note: note ?? null,
+        },
+      );
+    },
+    onSuccess: () => {
+      setRemediationError(null);
+      void refetch();
+    },
+    onError: (error) => {
+      setRemediationError(toErrorMessage(error, "Unable to complete remediation actions."));
+    },
+  });
+
+  const handleBulkAcceptRemediation = useCallback(async () => {
+    if (!selectedRemediationIds.length) {
+      return;
+    }
+    const eligible = selectedRemediationIds.filter((id) => remediationById.get(id)?.status === "pending");
+    if (!eligible.length) {
+      setRemediationError("Select pending remediation actions to accept.");
+      return;
+    }
+    const noteInput = window.prompt(
+      `Optional note to capture context for ${eligible.length} selected action${eligible.length > 1 ? "s" : ""}:`,
+      "",
+    );
+    if (noteInput === null) {
+      return;
+    }
+    const trimmed = noteInput.trim();
+    try {
+      await bulkAcceptRemediationMutation.mutateAsync({
+        actionIds: eligible,
+        note: trimmed ? trimmed : undefined,
+      });
+      setSelectedRemediationIds((prev) => prev.filter((id) => !eligible.includes(id)));
+    } catch (error) {
+      console.error(error);
+    }
+  }, [bulkAcceptRemediationMutation, remediationById, selectedRemediationIds]);
+
+  const handleBulkCompleteRemediation = useCallback(async () => {
+    if (!selectedRemediationIds.length) {
+      return;
+    }
+    const eligible = selectedRemediationIds.filter((id) => {
+      const status = remediationById.get(id)?.status;
+      return status && status !== "completed";
+    });
+    if (!eligible.length) {
+      setRemediationError("Selected actions are already completed.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Mark ${eligible.length} remediation action${eligible.length > 1 ? "s" : ""} as completed?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    const noteInput = window.prompt(
+      `Optional note to capture resolution details for ${eligible.length} action${eligible.length > 1 ? "s" : ""}:`,
+      "",
+    );
+    if (noteInput === null) {
+      return;
+    }
+    const trimmed = noteInput.trim();
+    try {
+      await bulkCompleteRemediationMutation.mutateAsync({
+        actionIds: eligible,
+        note: trimmed ? trimmed : undefined,
+      });
+      setSelectedRemediationIds((prev) => prev.filter((id) => !eligible.includes(id)));
+    } catch (error) {
+      console.error(error);
+    }
+  }, [bulkCompleteRemediationMutation, remediationById, selectedRemediationIds]);
+
+  const exportIdentityMutation = useMutation({
+    mutationFn: async ({ format }: { format: "json" | "csv" }) => {
+      if (!selectedOrg) {
+        throw new Error("Select an organization before exporting.");
+      }
+      const params: Record<string, string> = { format };
+      if (riskFilter !== "all") {
+        params.risk_level = riskFilter;
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filenameBase = `identity-drilldown-${selectedOrg}-${timestamp}`;
+
+      if (format === "json") {
+        const data = await apiGet<IdentityDrilldownExportResponse>(
+          `/analytics/dashboard/organizations/${selectedOrg}/identity/drilldown/export`,
+          params,
+        );
+        const blob = new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        });
+        triggerDownload(blob, `${filenameBase}.json`);
+        return;
+      }
+
+      const blobData = await apiGetBlob(
+        `/analytics/dashboard/organizations/${selectedOrg}/identity/drilldown/export`,
+        params,
+        "blob",
+      );
+      const blob = new Blob([blobData], { type: "text/csv;charset=utf-8" });
+      triggerDownload(blob, `${filenameBase}.csv`);
+    },
+    onSuccess: () => {
+      setExportError(null);
+    },
+    onError: (error) => {
+      setExportError(toErrorMessage(error, "Unable to export identity drill-down."));
+    },
+  });
+
+  const handleAcceptRemediation = useCallback(
+    async (item: IdentityRemediationItem) => {
+      if (!item.action_id || item.status !== "pending") {
+        return;
+      }
+      const note = window.prompt("Optional note to capture context:", "");
+      try {
+        await acceptRemediationMutation.mutateAsync({
+          actionId: item.action_id,
+          note: note?.trim() ? note.trim() : undefined,
+        });
+        setSelectedRemediationIds((prev) => prev.filter((id) => id !== item.action_id));
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [acceptRemediationMutation],
+  );
+
+  const handleCompleteRemediation = useCallback(
+    async (item: IdentityRemediationItem) => {
+      if (!item.action_id || item.status === "completed") {
+        return;
+      }
+      const confirmed = window.confirm(
+        "Mark this remediation action as completed? This will update dashboards immediately.",
+      );
+      if (!confirmed) {
+        return;
+      }
+      const note = window.prompt("Optional note to capture resolution details:", "");
+      try {
+        await completeRemediationMutation.mutateAsync({
+          actionId: item.action_id,
+          note: note?.trim() ? note.trim() : undefined,
+        });
+        setSelectedRemediationIds((prev) => prev.filter((id) => id !== item.action_id));
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [completeRemediationMutation],
+  );
+
+  const handleAddRemediationNote = useCallback(
+    async (item: IdentityRemediationItem) => {
+      if (!item.action_id) {
+        return;
+      }
+      const note = window.prompt("Add a note to this remediation item:");
+      if (!note || !note.trim()) {
+        return;
+      }
+      try {
+        await addRemediationNoteMutation.mutateAsync({
+          actionId: item.action_id,
+          note: note.trim(),
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [addRemediationNoteMutation],
+  );
+
+  const handleExportIdentity = useCallback(
+    (format: "json" | "csv") => {
+      exportIdentityMutation.mutate({ format });
+    },
+    [exportIdentityMutation],
+  );
+
+  const isRemediationBusy =
+    acceptRemediationMutation.isPending ||
+    completeRemediationMutation.isPending ||
+    addRemediationNoteMutation.isPending ||
+    bulkAcceptRemediationMutation.isPending ||
+    bulkCompleteRemediationMutation.isPending;
+  const isExportingIdentity = exportIdentityMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -435,7 +819,7 @@ export function ExecutiveDashboard() {
                   label="Progress indicators (30 days)"
                   tooltip="Derived from 30-day security_metric_snapshots captured by Celery analytics tasks."
                 />
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="mt-3 grid gap-3 sm:grid-cols-4">
                   <MetricStat
                     label="Findings burned down"
                     value={summary.progress_indicators.findings_burned_down_30d}
@@ -445,8 +829,13 @@ export function ExecutiveDashboard() {
                     value={summary.progress_indicators.new_controls_implemented}
                   />
                   <MetricStat
-                    label="Risk delta"
+                    label="Risk delta (30d)"
                     value={summary.progress_indicators.risk_score_change_30d}
+                    formatter={(val) => `${val >= 0 ? "+" : ""}${val.toFixed(1)}`}
+                  />
+                  <MetricStat
+                    label="Risk delta (7d)"
+                    value={summary.progress_indicators.risk_score_change_7d}
                     formatter={(val) => `${val >= 0 ? "+" : ""}${val.toFixed(1)}`}
                   />
                 </div>
@@ -688,6 +1077,34 @@ export function ExecutiveDashboard() {
           <p className="text-sm text-zinc-500">Identity analytics will appear once data collection completes.</p>
         ) : (
           <div className="space-y-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs text-zinc-500">
+                Export drill-down identities for investigations or workflow automation.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleExportIdentity("json")}
+                  disabled={isExportingIdentity}
+                  className="rounded border border-zinc-800 px-3 py-1 text-xs text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isExportingIdentity ? "Exporting…" : "Export JSON"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportIdentity("csv")}
+                  disabled={isExportingIdentity}
+                  className="rounded border border-zinc-800 px-3 py-1 text-xs text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isExportingIdentity ? "Working…" : "Export CSV"}
+                </button>
+              </div>
+            </div>
+            {exportError ? (
+              <div className="rounded-md border border-yellow-900/40 bg-yellow-950/10 p-3 text-xs text-yellow-200">
+                {exportError}
+              </div>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-3">
               <MetricStat label="Total identities" value={identity.summary.total_identities} formatter={formatInteger} />
               <MetricStat
@@ -955,21 +1372,141 @@ export function ExecutiveDashboard() {
                   label="Remediation queue"
                   tooltip="Recommended actions scored from identity remediation heuristics."
                 />
-                <ul className="mt-3 space-y-2 text-xs text-zinc-300">
-                  {filteredRemediationQueue.slice(0, 6).map((item, index) => (
-                    <li key={`${item.principal_id}-${index}`} className="rounded-md border border-zinc-900 bg-black/40 p-3">
-                      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
-                        <span>{item.summary}</span>
-                        <span className={riskBadgeClass(item.priority)}>{item.priority}</span>
-                      </div>
-                      <div className="mt-1 text-zinc-200">{item.recommended_action}</div>
-                      {item.evidence.length ? (
-                        <div className="mt-1 text-[11px] text-zinc-500">
-                          Evidence: {item.evidence.join(", ")}
+                {remediationError ? (
+                  <div className="mt-3 rounded-md border border-red-900/40 bg-red-950/10 p-3 text-xs text-red-200">
+                    {remediationError}
+                  </div>
+                ) : null}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-zinc-500">
+                  <div>
+                    {selectedRemediationCount} selected
+                    {pendingSelectedCount ? ` · ${pendingSelectedCount} pending` : ""}
+                    {completableSelectedCount ? ` · ${completableSelectedCount} open` : ""}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelectVisibleRemediation}
+                      className="rounded border border-zinc-800 px-2 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
+                    >
+                      Select shown
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectAllRemediation}
+                      className="rounded border border-zinc-800 px-2 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearRemediationSelection}
+                      disabled={!selectedRemediationCount || isRemediationBusy}
+                      className="rounded border border-zinc-800 px-2 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Clear
+                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleBulkAcceptRemediation}
+                        disabled={pendingSelectedCount === 0 || isRemediationBusy}
+                        className="rounded border border-emerald-700/70 px-3 py-1 text-[11px] text-emerald-300 transition hover:border-emerald-500 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Accept selected
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleBulkCompleteRemediation}
+                        disabled={completableSelectedCount === 0 || isRemediationBusy}
+                        className="rounded border border-blue-700/70 px-3 py-1 text-[11px] text-blue-300 transition hover:border-blue-500 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Complete selected
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <ul className="mt-4 space-y-2 text-xs text-zinc-300">
+                  {filteredRemediationQueue.map((item) => {
+                    const isSelected = selectedRemediationSet.has(item.action_id);
+                    return (
+                      <li
+                        key={item.action_id}
+                        className={cn(
+                          "rounded-md border border-zinc-900 bg-black/40 p-3 transition",
+                          isSelected ? "border-emerald-500/60 bg-emerald-500/10" : undefined,
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3 text-[11px] uppercase tracking-wide text-zinc-500">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="h-3 w-3 rounded border border-zinc-700 bg-black text-emerald-400 focus:ring-emerald-500"
+                              checked={isSelected}
+                              onChange={(event) => toggleRemediationSelection(item.action_id, event.target.checked)}
+                              disabled={isRemediationBusy}
+                            />
+                            <span>{item.summary}</span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <span className={statusBadgeClass(item.status)}>{item.status}</span>
+                            <span className={riskBadgeClass(item.priority)}>{item.priority}</span>
+                          </div>
                         </div>
-                      ) : null}
-                    </li>
-                  ))}
+                        <div className="mt-1 text-zinc-200">{item.recommended_action}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          Source: {item.source === "manual" ? "manual" : "analytics"} · Updated {formatTimestamp(item.updated_at ?? item.created_at ?? undefined)}
+                        </div>
+                        {item.evidence.length ? (
+                          <div className="mt-1 text-[11px] text-zinc-500">
+                            Evidence: {item.evidence.join(", ")}
+                          </div>
+                        ) : null}
+                        {item.notes.length ? (
+                          <div className="mt-2 space-y-1">
+                            <div className="text-[10px] uppercase tracking-wide text-zinc-500">Notes</div>
+                            <ul className="space-y-1 text-[11px] text-zinc-400">
+                              {item.notes.slice(-3).map((note) => (
+                                <li key={note.note_id} className="rounded bg-black/30 px-2 py-1">
+                                  <div className="flex items-center justify-between">
+                                    <span>{note.author ?? "Unknown"}</span>
+                                    <span>{formatTimestamp(note.created_at)}</span>
+                                  </div>
+                                  <div className="mt-1 text-zinc-200">{note.note}</div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => handleAcceptRemediation(item)}
+                            disabled={item.status !== "pending" || isRemediationBusy}
+                            className="rounded border border-zinc-800 px-3 py-1 text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteRemediation(item)}
+                            disabled={item.status === "completed" || isRemediationBusy}
+                            className="rounded border border-zinc-800 px-3 py-1 text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Complete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddRemediationNote(item)}
+                            disabled={isRemediationBusy}
+                            className="rounded border border-zinc-800 px-3 py-1 text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Add note
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (
@@ -1409,6 +1946,18 @@ function riskBadgeClass(level: string): string {
   }
 }
 
+function statusBadgeClass(status: string): string {
+  switch (status?.toLowerCase()) {
+    case "completed":
+      return "text-emerald-300";
+    case "accepted":
+      return "text-sky-300";
+    case "pending":
+    default:
+      return "text-zinc-400";
+  }
+}
+
 function SectionHeading({ label, tooltip }: { label: string; tooltip: string }) {
   return (
     <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500">
@@ -1428,4 +1977,15 @@ function InfoTooltip({ message }: { message: string }) {
       ⓘ
     </span>
   );
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }

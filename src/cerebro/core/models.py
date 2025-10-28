@@ -34,6 +34,11 @@ class Organization(Base):
     findings: Mapped[List["Finding"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     suppressions: Mapped[List["Suppression"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     slack_webhooks: Mapped[List["SlackWebhook"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    remediation_actions: Mapped[List["IdentityRemediationAction"]] = relationship(
+        "IdentityRemediationAction",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
     frontend_observations: Mapped[List["FrontendObservationEvent"]] = relationship(
         "FrontendObservationEvent",
         back_populates="organization",
@@ -87,6 +92,11 @@ class Principal(Base):
     account: Mapped["Account"] = relationship(back_populates="principals")
     iam_edges: Mapped[List["IamEdge"]] = relationship(back_populates="principal", cascade="all, delete-orphan")
     findings: Mapped[List["Finding"]] = relationship(back_populates="principal")
+    remediation_actions: Mapped[List["IdentityRemediationAction"]] = relationship(
+        "IdentityRemediationAction",
+        back_populates="principal",
+        cascade="all, delete-orphan",
+    )
 
 
 class Resource(Base):
@@ -265,6 +275,50 @@ class EvidenceArtifact(Base):
     
     # Relationships
     finding: Mapped["Finding"] = relationship(back_populates="evidence_artifacts")
+
+
+class IdentityRemediationAction(Base):
+    """Persistent state for identity remediation queue actions."""
+
+    __tablename__ = "identity_remediation_actions"
+
+    action_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"))
+    principal_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("principals.principal_id", ondelete="CASCADE"))
+
+    summary: Mapped[str] = mapped_column(String(255), nullable=False)
+    recommended_action: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+
+    evidence: Mapped[List[str]] = mapped_column(JSONType, nullable=False, default=list)
+    notes: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
+
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    accepted_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    created_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"))
+    updated_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"))
+
+    organization: Mapped["Organization"] = relationship(back_populates="remediation_actions")
+    principal: Mapped["Principal"] = relationship(back_populates="remediation_actions")
+    accepted_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[accepted_by])
+    completed_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[completed_by])
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+    updater: Mapped[Optional["User"]] = relationship("User", foreign_keys=[updated_by])
+
+    __table_args__ = (
+        CheckConstraint("priority IN ('low','medium','high')"),
+        CheckConstraint("status IN ('pending','accepted','completed')"),
+        UniqueConstraint("org_id", "principal_id", "recommended_action", name="uq_remediation_rec"),
+        Index("ix_remediation_actions_org", "org_id"),
+        Index("ix_remediation_actions_principal", "principal_id"),
+        Index("ix_remediation_actions_status", "status"),
+    )
 
 
 class AuditEvent(Base):

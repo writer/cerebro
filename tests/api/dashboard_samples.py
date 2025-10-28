@@ -26,6 +26,7 @@ def build_sample_dashboard_response() -> dict:
                 "findings_burned_down_30d": 3,
                 "new_controls_implemented": 2,
                 "risk_score_change_30d": -1.2,
+                "risk_score_change_7d": -0.4,
             },
         },
         "security_metrics": {
@@ -155,11 +156,22 @@ def build_sample_dashboard_response() -> dict:
             ],
             "remediation_queue": [
                 {
+                    "action_id": "action-1",
                     "principal_id": "123",
                     "priority": "high",
                     "summary": "Analyst",
                     "recommended_action": "Enable least privilege roles",
                     "evidence": ["Repository publicly accessible"],
+                    "risk_level": "high",
+                    "status": "pending",
+                    "notes": [],
+                    "accepted_at": None,
+                    "accepted_by": None,
+                    "completed_at": None,
+                    "completed_by": None,
+                    "created_at": now,
+                    "updated_at": now,
+                    "source": "analytics",
                 }
             ],
             "risk_level_breakdown": {"critical": 0, "high": 1, "medium": 1, "low": 0},

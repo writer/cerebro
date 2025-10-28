@@ -1,9 +1,10 @@
 """Dashboard analytics API endpoints."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Sequence
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
@@ -12,6 +13,95 @@ from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 from cerebro.analytics.dashboard_repository import DashboardRepository
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+class RemediationActionUpdateRequest(BaseModel):
+    note: Optional[str] = Field(None, max_length=2000)
+
+
+class RemediationNoteRequest(BaseModel):
+    note: str = Field(..., min_length=1, max_length=2000)
+
+
+class RemediationBulkUpdateRequest(BaseModel):
+    action_ids: Sequence[UUID] = Field(..., min_items=1, max_items=500)
+    note: Optional[str] = Field(None, max_length=2000)
+
+
+def _map_bulk_error(exc: ValueError) -> HTTPException:
+    message = str(exc)
+    status = 404 if "not found" in message.lower() else 400
+    return HTTPException(status_code=status, detail=message)
+
+
+async def _ensure_org(db: AsyncSession, org_id: UUID) -> Organization:
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return org
+
+
+async def _bulk_update_remediation_actions(
+    *,
+    org_id: UUID,
+    status: str,
+    payload: RemediationBulkUpdateRequest,
+    db: AsyncSession,
+    current_user: User,
+) -> Dict[str, Any]:
+    await _ensure_org(db, org_id)
+
+    repository = DashboardRepository(db)
+    try:
+        actions = await repository.update_remediation_actions_status_bulk(
+            org_id=org_id,
+            action_ids=payload.action_ids,
+            status=status,
+            user_id=current_user.user_id,
+            note=payload.note,
+            user_display_name=current_user.username or current_user.email,
+        )
+    except ValueError as exc:
+        raise _map_bulk_error(exc) from exc
+
+    await db.commit()
+    return {"updated": repository.serialize_remediation_actions(actions)}
+
+
+@router.post("/organizations/{org_id}/remediation/actions/bulk/accept")
+async def bulk_accept_remediation_actions(
+    org_id: UUID,
+    payload: RemediationBulkUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("write:findings")),
+):
+    """Accept multiple remediation actions in a single request."""
+
+    return await _bulk_update_remediation_actions(
+        org_id=org_id,
+        status="accepted",
+        payload=payload,
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.post("/organizations/{org_id}/remediation/actions/bulk/complete")
+async def bulk_complete_remediation_actions(
+    org_id: UUID,
+    payload: RemediationBulkUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("write:findings")),
+):
+    """Complete multiple remediation actions in a single request."""
+
+    return await _bulk_update_remediation_actions(
+        org_id=org_id,
+        status="completed",
+        payload=payload,
+        db=db,
+        current_user=current_user,
+    )
 
 
 @router.get("/organizations/{org_id}/dashboard")
@@ -91,3 +181,90 @@ async def get_provider_findings(
         "provider": provider,
         "findings": findings,
     }
+
+
+@router.post("/organizations/{org_id}/remediation/actions/{action_id}/accept")
+async def accept_remediation_action(
+    org_id: UUID,
+    action_id: UUID,
+    payload: RemediationActionUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("write:findings")),
+):
+    """Accept a remediation action and optionally append a note."""
+
+    await _ensure_org(db, org_id)
+
+    repository = DashboardRepository(db)
+    try:
+        action = await repository.update_remediation_action_status(
+            org_id=org_id,
+            action_id=action_id,
+            status="accepted",
+            user_id=current_user.user_id,
+            note=payload.note,
+            user_display_name=current_user.username or current_user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    await db.commit()
+    return repository.serialize_remediation_action(action)
+
+
+@router.post("/organizations/{org_id}/remediation/actions/{action_id}/complete")
+async def complete_remediation_action(
+    org_id: UUID,
+    action_id: UUID,
+    payload: RemediationActionUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("write:findings")),
+):
+    """Mark a remediation action as completed."""
+
+    await _ensure_org(db, org_id)
+
+    repository = DashboardRepository(db)
+    try:
+        action = await repository.update_remediation_action_status(
+            org_id=org_id,
+            action_id=action_id,
+            status="completed",
+            user_id=current_user.user_id,
+            note=payload.note,
+            user_display_name=current_user.username or current_user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    await db.commit()
+    return repository.serialize_remediation_action(action)
+
+
+@router.post("/organizations/{org_id}/remediation/actions/{action_id}/notes")
+async def add_remediation_note(
+    org_id: UUID,
+    action_id: UUID,
+    payload: RemediationNoteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("write:findings")),
+):
+    """Append a note to a remediation action."""
+
+    await _ensure_org(db, org_id)
+
+    repository = DashboardRepository(db)
+    try:
+        action = await repository.add_remediation_note(
+            org_id=org_id,
+            action_id=action_id,
+            user_id=current_user.user_id,
+            note=payload.note,
+            user_display_name=current_user.username or current_user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    await db.commit()
+    return repository.serialize_remediation_action(action)
+

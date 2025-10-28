@@ -502,6 +502,10 @@ async def test_dashboard_analytics_generates_postgres_payload(pg_session_factory
         )
         assert identity["drilldown_identities"], "Drill-down identities should be populated"
         assert identity["remediation_queue"], "Remediation queue should surface actions"
+        first_action = identity["remediation_queue"][0]
+        assert first_action["action_id"], "Remediation actions should include persistent IDs"
+        assert first_action["status"] in {"pending", "accepted", "completed"}
+        assert isinstance(first_action["notes"], list)
         assert identity["generated_at"], "Identity analytics should include generated_at"
 
         compliance_trends = payload.get("compliance_trends")

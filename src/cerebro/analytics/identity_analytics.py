@@ -11,7 +11,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func, text
 
-from cerebro.core.models import Principal, IamEdge, Finding, Account
+from cerebro.core.models import Principal, IamEdge, Finding, Account, IdentityRemediationAction
+from .dashboard_repository import DashboardRepository
 
 logger = logging.getLogger(__name__)
 
@@ -893,36 +894,90 @@ async def _build_drilldown_identities(
     return drilldown
 
 
-if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
-    async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Any]:
-        """Generate comprehensive identity analytics for dashboard consumers."""
+async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Any]:
+    """Generate comprehensive identity analytics for dashboard consumers."""
+    sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(org_id)
+    anomalies = await self.identify_privilege_anomalies(org_id)
+    mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
+    risk_level_breakdown = await self.get_risk_level_breakdown(org_id)
 
-        sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(org_id)
-        anomalies = await self.identify_privilege_anomalies(org_id)
-        mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
-        risk_level_breakdown = await self.get_risk_level_breakdown(org_id)
+    top_risky = sprawl_analysis.top_risky_identities[:5]
+    drilldown_identities = await _build_drilldown_identities(self, top_risky)
 
-        top_risky = sprawl_analysis.top_risky_identities[:5]
-        drilldown_identities = await _build_drilldown_identities(self, top_risky)
+    repository = DashboardRepository(self.db)
+    existing_actions = await repository.get_remediation_actions(org_id)
+    action_map: Dict[tuple[str, str], IdentityRemediationAction] = {
+        (str(action.principal_id), action.recommended_action): action
+        for action in existing_actions
+    }
 
-        remediation_queue = []
-        for entry in drilldown_identities:
-            risk_level = entry["risk_level"]
-            priority = "high" if risk_level in {"high", "critical"} else "medium" if risk_level == "medium" else "low"
-            recommended_action = entry["recommended_actions"][0] if entry["recommended_actions"] else "Review access assignments"
-            evidence = [finding["title"] for finding in entry["open_findings"]] or entry["providers"]
+    remediation_queue: List[Dict[str, Any]] = []
+    used_keys: Set[tuple[str, str]] = set()
 
-            remediation_queue.append(
+    for entry in drilldown_identities:
+        risk_level = entry["risk_level"]
+        priority = (
+            "high"
+            if risk_level in {"high", "critical"}
+            else "medium"
+            if risk_level == "medium"
+            else "low"
+        )
+        recommended_action = (
+            entry["recommended_actions"][0]
+            if entry["recommended_actions"]
+            else "Review access assignments"
+        )
+        evidence = [finding["title"] for finding in entry["open_findings"]] or entry["providers"]
+        key = (entry["principal_id"], recommended_action)
+
+        action = action_map.get(key)
+        if action is None:
+            action = await repository.ensure_remediation_action(
+                org_id=org_id,
+                principal_id=UUID(entry["principal_id"]),
+                summary=entry["display_name"] or entry["email"] or entry["principal_id"],
+                recommended_action=recommended_action,
+                priority=priority,
+                evidence=evidence[:5],
+            )
+            action_map[key] = action
+
+        used_keys.add(key)
+        remediation_queue.append(
+            _merge_remediation_action(
                 {
                     "principal_id": entry["principal_id"],
                     "priority": priority,
                     "summary": entry["display_name"] or entry["email"] or entry["principal_id"],
                     "recommended_action": recommended_action,
                     "evidence": evidence[:5],
-                }
+                    "risk_level": risk_level,
+                    "source": "analytics",
+                },
+                action,
             )
+        )
 
-        return {
+    for key, action in action_map.items():
+        if key in used_keys:
+            continue
+        remediation_queue.append(
+            _merge_remediation_action(
+                {
+                    "principal_id": key[0],
+                    "priority": action.priority,
+                    "summary": action.summary,
+                    "recommended_action": action.recommended_action,
+                    "evidence": (action.evidence or [])[:5],
+                    "risk_level": "unknown",
+                    "source": "manual",
+                },
+                action,
+            )
+        )
+
+    return {
             "summary": {
                 "total_identities": sprawl_analysis.total_identities,
                 "high_privilege_identities": sprawl_analysis.high_privilege_identities,
@@ -970,4 +1025,27 @@ if not hasattr(IdentityAnalyzer, "generate_identity_dashboard_data"):
             "generated_at": sprawl_analysis.analysis_date.isoformat() + "Z",
         }
 
-    IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data
+IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data
+
+
+def _merge_remediation_action(
+    base: Dict[str, Any],
+    action: IdentityRemediationAction,
+) -> Dict[str, Any]:
+    serialized = DashboardRepository.serialize_remediation_action(action)
+    merged = dict(base)
+    merged.update(
+        {
+            "action_id": serialized["action_id"],
+            "status": serialized["status"],
+            "notes": serialized["notes"],
+            "accepted_at": serialized["accepted_at"],
+            "accepted_by": serialized["accepted_by"],
+            "completed_at": serialized["completed_at"],
+            "completed_by": serialized["completed_by"],
+            "created_at": serialized["created_at"],
+            "updated_at": serialized["updated_at"],
+            "evidence": serialized["evidence"],
+        }
+    )
+    return merged
