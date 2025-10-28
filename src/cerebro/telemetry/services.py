@@ -22,13 +22,20 @@ from cerebro.core.models import (
     Resource,
     Rule,
 )
-from cerebro.telemetry.models import HostContext, RepositoryContext, RuntimeContext, TelemetryResult
+from cerebro.telemetry.models import (
+    HostContext,
+    HostTelemetryEvent,
+    RepositoryContext,
+    RuntimeContext,
+    TelemetryResult,
+)
 from cerebro.telemetry.schemas import (
     ComplianceEvidence,
     DependencyGraph,
     DependencyScan,
     DependencyVulnerability,
     FrontendObservationTelemetry,
+    HostEventBatch,
     RepositoryTelemetry,
     RuntimeTelemetry,
     SecretsScanResult,
@@ -242,6 +249,78 @@ class TelemetryIngestionService:
             logger.exception("Host telemetry processing failed", exc_info=exc)
             raise TelemetryProcessingError(str(exc)) from exc
 
+    async def process_host_events(self, payload: HostEventBatch) -> Dict[str, Any]:
+        """Ingest incremental host events emitted by the desktop agent."""
+
+        logger.info(
+            "Received host events",
+            extra={
+                "host_id": payload.host_id,
+                "hostname": payload.hostname,
+                "org": payload.organization,
+                "count": len(payload.events),
+            },
+        )
+
+        if not payload.events:
+            return {
+                "status": "processed",
+                "host_id": payload.host_id,
+                "events_ingested": 0,
+            }
+
+        try:
+            context = await self._ensure_host_context_from_values(
+                host_id=payload.host_id,
+                hostname=payload.hostname,
+                organization=payload.organization,
+                site=payload.site,
+            )
+
+            ingested = 0
+
+            for event in payload.events:
+                observed_at = event.timestamp
+                if observed_at.tzinfo is None:
+                    observed_at = observed_at.replace(tzinfo=timezone.utc)
+
+                record = HostTelemetryEvent(
+                    org_id=context.org_id,
+                    account_id=context.account_id,
+                    resource_id=context.resource_id,
+                    host_id=context.host_id,
+                    hostname=event.hostname or context.hostname,
+                    category=event.category,
+                    event_type=event.event_type,
+                    severity=event.severity,
+                    process_id=event.process_id,
+                    parent_pid=event.parent_pid,
+                    user=event.user,
+                    command_line=event.command_line,
+                    source=event.source,
+                    agent_version=payload.agent_version,
+                    payload=event.payload,
+                    observed_at=observed_at,
+                )
+
+                if event.event_id:
+                    record.event_id = event.event_id
+
+                self.db.add(record)
+                ingested += 1
+
+            await self.db.commit()
+
+            return {
+                "status": "processed",
+                "host_id": payload.host_id,
+                "events_ingested": ingested,
+            }
+        except Exception as exc:  # pragma: no cover
+            await self.db.rollback()
+            logger.exception("Host events processing failed", exc_info=exc)
+            raise TelemetryProcessingError(str(exc)) from exc
+
     async def process_compliance_evidence(self, payload: ComplianceEvidence) -> Dict[str, Any]:
         """Persist compliance evidence metadata."""
 
@@ -366,26 +445,42 @@ class TelemetryIngestionService:
         )
 
     async def _ensure_host_context(self, payload: HostTelemetry) -> HostContext:
-        org_name = payload.organization or "endpoint-devices"
+        context = await self._ensure_host_context_from_values(
+            host_id=payload.host_id,
+            hostname=payload.hostname,
+            organization=payload.organization,
+            site=payload.site,
+        )
+        return context
+
+    async def _ensure_host_context_from_values(
+        self,
+        *,
+        host_id: str,
+        hostname: Optional[str],
+        organization: Optional[str],
+        site: Optional[str],
+    ) -> HostContext:
+        org_name = organization or "endpoint-devices"
         org = await self._get_or_create_org(org_name)
         account = await self._get_or_create_account(org.org_id, "endpoint", org_name)
         resource = await self._get_or_create_resource(
             account.account_id,
             "endpoint.device",
-            payload.host_id,
-            payload.hostname,
+            host_id,
+            hostname or host_id,
         )
 
         metadata: Dict[str, Any] = {}
-        if payload.site:
-            metadata["site"] = payload.site
+        if site:
+            metadata["site"] = site
 
         return HostContext(
             org_id=org.org_id,
             account_id=account.account_id,
             resource_id=resource.resource_id,
-            host_id=payload.host_id,
-            hostname=payload.hostname,
+            host_id=host_id,
+            hostname=hostname or host_id,
             received_at=datetime.utcnow(),
             metadata=metadata,
         )

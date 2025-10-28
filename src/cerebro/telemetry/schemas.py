@@ -183,6 +183,36 @@ class HostTelemetry(BaseModel):
         description="Detected configuration drift items",
     )
 
+
+class HostEvent(BaseModel):
+    """Discrete host event emitted by the desktop agent."""
+
+    event_id: Optional[UUID] = Field(None, description="Unique identifier for the event")
+    host_id: str = Field(..., description="Host identifier associated with the event")
+    hostname: Optional[str] = Field(None, description="Host name associated with the event")
+    category: str = Field(..., description="Logical category for the event (process, network, etc.)")
+    event_type: str = Field(..., description="Specific event type name")
+    severity: Optional[str] = Field(None, description="Severity label (info, high, etc.)")
+    timestamp: datetime = Field(..., description="Timestamp recorded by the agent")
+    process_id: Optional[int] = Field(None, description="Process identifier if relevant")
+    parent_pid: Optional[int] = Field(None, description="Parent process identifier")
+    user: Optional[str] = Field(None, description="User associated with the event")
+    command_line: Optional[str] = Field(None, description="Command line for process events")
+    source: str = Field(..., description="Collector source that produced the event")
+    payload: Optional[Dict[str, Any]] = Field(None, description="Arbitrary event metadata")
+
+
+class HostEventBatch(BaseModel):
+    """Batch transport envelope for host events."""
+
+    host_id: str = Field(..., description="Host identifier")
+    hostname: Optional[str] = Field(None, description="Host name")
+    organization: Optional[str] = Field(None, description="Organization identifier")
+    site: Optional[str] = Field(None, description="Optional site/location tag")
+    agent_version: str = Field(..., description="Agent version transmitting the batch")
+    collected_at: datetime = Field(..., description="Batch collection timestamp")
+    events: List[HostEvent] = Field(..., description="List of events included in the batch")
+
 class RuntimeTelemetry(BaseModel):
     """Runtime telemetry from application."""
 

@@ -11,6 +11,7 @@ from cerebro.telemetry.schemas import (
     ComplianceEvidence,
     DependencyGraph,
     FrontendObservationTelemetry,
+    HostEventBatch,
     HostTelemetry,
     RepositoryTelemetry,
     RuntimeTelemetry,
@@ -67,6 +68,21 @@ async def receive_host_telemetry(
 
     try:
         return await TelemetryIngestionService(db).process_host(telemetry)
+    except TelemetryProcessingError as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/host/events", status_code=200)
+async def receive_host_event_batch(
+    batch: HostEventBatch,
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("ingest:telemetry")),
+    _authorization: Optional[str] = Header(None),
+):
+    """Receive host event batches from the desktop agent."""
+
+    try:
+        return await TelemetryIngestionService(db).process_host_events(batch)
     except TelemetryProcessingError as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

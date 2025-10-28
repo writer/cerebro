@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -20,7 +21,17 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
-func Collect(cfg config.Config) (*types.HostTelemetry, error) {
+type Snapshot struct{}
+
+func NewSnapshotCollector() Snapshot {
+	return Snapshot{}
+}
+
+func (Snapshot) Name() string {
+	return "snapshot.basic"
+}
+
+func (Snapshot) Collect(_ context.Context, cfg config.Config) (*types.HostTelemetry, error) {
 	now := time.Now().UTC()
 
 	hostInfo, _ := host.Info()
@@ -161,9 +172,15 @@ func collectProcesses(limit int) ([]types.ProcessSnapshot, error) {
 		return nil, err
 	}
 
-	snapshots := make([]types.ProcessSnapshot, 0, limit)
+	unlimited := limit <= 0
+	initialCap := limit
+	if unlimited {
+		initialCap = len(pids)
+	}
+
+	snapshots := make([]types.ProcessSnapshot, 0, initialCap)
 	for _, pid := range pids {
-		if len(snapshots) >= limit {
+		if !unlimited && len(snapshots) >= limit {
 			break
 		}
 		proc, err := process.NewProcess(pid)

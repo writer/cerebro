@@ -75,3 +75,29 @@ type ConfigurationDrift struct {
 	ActualValue   any    `json:"actual_value"`
 	DriftType     string `json:"drift_type"`
 }
+
+type HostEvent struct {
+	EventID     string         `json:"event_id,omitempty"`
+	HostID      string         `json:"host_id"`
+	Hostname    string         `json:"hostname"`
+	Category    string         `json:"category"`
+	EventType   string         `json:"event_type"`
+	Severity    string         `json:"severity,omitempty"`
+	Timestamp   time.Time      `json:"timestamp"`
+	ProcessID   int            `json:"process_id,omitempty"`
+	ParentPID   int            `json:"parent_pid,omitempty"`
+	User        string         `json:"user,omitempty"`
+	CommandLine string         `json:"command_line,omitempty"`
+	Source      string         `json:"source"`
+	Payload     map[string]any `json:"payload,omitempty"`
+}
+
+type HostEventBatch struct {
+	HostID       string      `json:"host_id"`
+	Hostname     string      `json:"hostname"`
+	Organization string      `json:"organization,omitempty"`
+	Site         string      `json:"site,omitempty"`
+	AgentVersion string      `json:"agent_version"`
+	CollectedAt  time.Time   `json:"collected_at"`
+	Events       []HostEvent `json:"events"`
+}

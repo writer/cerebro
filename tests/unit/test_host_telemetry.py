@@ -2,9 +2,18 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
-from cerebro.telemetry.schemas import HostTelemetry, SecurityEvent, ConfigurationDrift, AgentHealth, ProcessSnapshot
+from cerebro.telemetry.schemas import (
+    AgentHealth,
+    ConfigurationDrift,
+    HostEvent,
+    HostEventBatch,
+    HostTelemetry,
+    ProcessSnapshot,
+    SecurityEvent,
+)
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.core.models import ConfigSnapshot, Finding
+from cerebro.telemetry.models import HostTelemetryEvent
 
 
 @pytest.mark.asyncio
@@ -101,3 +110,47 @@ async def test_process_host_deduplicates_snapshots(test_db):
     if saved_at.tzinfo is None:
         saved_at = saved_at.replace(tzinfo=timezone.utc)
     assert saved_at == telemetry_new.collected_at
+
+
+@pytest.mark.asyncio
+async def test_process_host_events_persists_records(test_db):
+    service = TelemetryIngestionService(test_db)
+
+    now = datetime.now(timezone.utc)
+    batch = HostEventBatch(
+        host_id="host-123",
+        hostname="acme-mbp",
+        organization="Acme",
+        site="HQ",
+        agent_version="1.0.0",
+        collected_at=now,
+        events=[
+            HostEvent(
+                host_id="host-123",
+                hostname="acme-mbp",
+                category="process",
+                event_type="process_started",
+                severity="info",
+                timestamp=now,
+                process_id=4242,
+                parent_pid=1,
+                user="alice",
+                command_line="/bin/bash",
+                source="process_watcher",
+                payload={"name": "bash"},
+            ),
+        ],
+    )
+
+    result = await service.process_host_events(batch)
+
+    assert result["status"] == "processed"
+    assert result["events_ingested"] == 1
+
+    events = (await test_db.execute(select(HostTelemetryEvent))).scalars().all()
+    assert len(events) == 1
+    stored = events[0]
+    assert stored.host_id == "host-123"
+    assert stored.category == "process"
+    assert stored.event_type == "process_started"
+    assert stored.process_id == 4242

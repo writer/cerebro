@@ -9,36 +9,44 @@ import (
 )
 
 type Config struct {
-	APIBaseURL       string
-	APIToken         string
-	Organization     string
-	Site             string
-	Interval         time.Duration
-	Once             bool
-	MaxProcesses     int
-	AgentVersion     string
-	InsecureTLS      bool
-	TLSMinVersion    uint16
-	HostnameOverride string
-	Tags             map[string]string
+	APIBaseURL           string
+	APIToken             string
+	Organization         string
+	Site                 string
+	Interval             time.Duration
+	Once                 bool
+	MaxProcesses         int
+	AgentVersion         string
+	InsecureTLS          bool
+	TLSMinVersion        uint16
+	HostnameOverride     string
+	Tags                 map[string]string
+	EventFlushInterval   time.Duration
+	EventBatchSize       int
+	PackDirectory        string
+	ArtifactPollInterval time.Duration
 }
 
 const defaultInterval = 5 * time.Minute
 
 func Load() Config {
 	cfg := Config{
-		APIBaseURL:       envOr("CEREBRO_API_BASE_URL", "http://localhost:8000/api/v1"),
-		APIToken:         os.Getenv("CEREBRO_API_TOKEN"),
-		Organization:     os.Getenv("CEREBRO_AGENT_ORG"),
-		Site:             os.Getenv("CEREBRO_AGENT_SITE"),
-		Interval:         parseDurationEnv("CEREBRO_COLLECTION_INTERVAL", defaultInterval),
-		Once:             parseBoolEnv("CEREBRO_AGENT_ONCE", false),
-		MaxProcesses:     parseIntEnv("CEREBRO_AGENT_MAX_PROCESSES", 40),
-		AgentVersion:     envOr("CEREBRO_AGENT_VERSION", "0.1.0"),
-		InsecureTLS:      parseBoolEnv("CEREBRO_AGENT_INSECURE_TLS", false),
-		TLSMinVersion:    tls.VersionTLS12,
-		HostnameOverride: os.Getenv("CEREBRO_AGENT_HOSTNAME"),
-		Tags:             map[string]string{"agent": "desktop-go"},
+		APIBaseURL:           envOr("CEREBRO_API_BASE_URL", "http://localhost:8000/api/v1"),
+		APIToken:             os.Getenv("CEREBRO_API_TOKEN"),
+		Organization:         os.Getenv("CEREBRO_AGENT_ORG"),
+		Site:                 os.Getenv("CEREBRO_AGENT_SITE"),
+		Interval:             parseDurationEnv("CEREBRO_COLLECTION_INTERVAL", defaultInterval),
+		Once:                 parseBoolEnv("CEREBRO_AGENT_ONCE", false),
+		MaxProcesses:         parseIntEnv("CEREBRO_AGENT_MAX_PROCESSES", 40),
+		AgentVersion:         envOr("CEREBRO_AGENT_VERSION", "0.1.0"),
+		InsecureTLS:          parseBoolEnv("CEREBRO_AGENT_INSECURE_TLS", false),
+		TLSMinVersion:        tls.VersionTLS12,
+		HostnameOverride:     os.Getenv("CEREBRO_AGENT_HOSTNAME"),
+		Tags:                 map[string]string{"agent": "desktop-go"},
+		EventFlushInterval:   parseDurationEnv("CEREBRO_EVENT_FLUSH_INTERVAL", time.Minute),
+		EventBatchSize:       parseIntEnv("CEREBRO_EVENT_BATCH_SIZE", 256),
+		PackDirectory:        envOr("CEREBRO_PACK_DIRECTORY", ""),
+		ArtifactPollInterval: parseDurationEnv("CEREBRO_ARTIFACT_POLL_INTERVAL", 5*time.Minute),
 	}
 
 	minTLS := os.Getenv("CEREBRO_AGENT_TLS_MIN_VERSION")
@@ -60,6 +68,10 @@ func Load() Config {
 	org := flag.String("org", cfg.Organization, "Organization name override")
 	site := flag.String("site", cfg.Site, "Site or location tag")
 	hostOverride := flag.String("hostname", cfg.HostnameOverride, "Hostname override")
+	eventFlush := flag.Duration("event-flush", cfg.EventFlushInterval, "Interval to flush queued host events")
+	eventBatch := flag.Int("event-batch", cfg.EventBatchSize, "Maximum queued events per batch")
+	packDir := flag.String("pack-dir", cfg.PackDirectory, "Directory containing artifact packs")
+	artifactPoll := flag.Duration("artifact-poll", cfg.ArtifactPollInterval, "Interval to poll for artifact jobs")
 
 	flag.Parse()
 
@@ -72,6 +84,10 @@ func Load() Config {
 	cfg.Organization = *org
 	cfg.Site = *site
 	cfg.HostnameOverride = *hostOverride
+	cfg.EventFlushInterval = *eventFlush
+	cfg.EventBatchSize = *eventBatch
+	cfg.PackDirectory = *packDir
+	cfg.ArtifactPollInterval = *artifactPoll
 
 	return cfg
 }
