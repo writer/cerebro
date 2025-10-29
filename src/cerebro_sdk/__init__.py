@@ -9,6 +9,8 @@ from .organizations import (
     AccountRecord,
     ResourceRecord,
 )
+from .findings import FindingService, FindingRecord
+from cerebro.findings.manager import FindingResult
 
 __all__ = [
     "get_settings",
@@ -21,4 +23,7 @@ __all__ = [
     "OrganizationRecord",
     "AccountRecord",
     "ResourceRecord",
+    "FindingService",
+    "FindingRecord",
+    "FindingResult",
 ]
