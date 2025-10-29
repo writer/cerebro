@@ -38,6 +38,14 @@ from .agents import (
     AgentEventRecord,
     AgentEventSummary,
     AgentAnalyticsSummary,
+    AgentToolingManager,
+    ToolInvocationRecord,
+    ToolApprovalRecord,
+    AgentPolicySuggestionRecord,
+    AgentNotificationManager,
+    AgentNotificationRecord,
+    AgentTicketRecord,
+    AgentPlaybook,
 )
 
 __all__ = [
@@ -78,4 +86,12 @@ __all__ = [
     "AgentEventRecord",
     "AgentEventSummary",
     "AgentAnalyticsSummary",
+    "AgentToolingManager",
+    "ToolInvocationRecord",
+    "ToolApprovalRecord",
+    "AgentPolicySuggestionRecord",
+    "AgentNotificationManager",
+    "AgentNotificationRecord",
+    "AgentTicketRecord",
+    "AgentPlaybook",
 ]

@@ -13,12 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.agents.models import (
     AgentMessage,
     AgentMemoryEntry,
+    AgentPolicySuggestion,
     AgentReviewComment,
     AgentReviewHistory,
+    AgentReviewNotification,
     AgentReviewTask,
+    AgentReviewTicket,
     AgentRuntimeEvent,
     AgentSession,
     AgentType,
+    ToolApproval,
+    ToolInvocation,
+    ToolInvocationStatus,
+    ApprovalStatus,
     MessageRole,
     ReviewTaskStatus,
 )
@@ -144,6 +151,77 @@ class AgentAnalyticsSummary:
     event_count: int
     skill_tag_counts: dict[str, int]
     agent_type_counts: dict[str, int]
+
+
+@dataclass(slots=True)
+class ToolInvocationRecord:
+    invocation_id: UUID
+    session_id: UUID
+    tool_name: str
+    tool_version: str
+    status: str
+    started_at: datetime
+    completed_at: Optional[datetime]
+    input_data: dict[str, Any]
+    output_data: Optional[dict[str, Any]]
+    error_message: Optional[str]
+    cel_policy_key: Optional[str]
+    cel_expression: Optional[str]
+    cel_result: Optional[bool]
+
+
+@dataclass(slots=True)
+class ToolApprovalRecord:
+    approval_id: UUID
+    org_id: UUID
+    tool_invocation_id: UUID
+    requested_by: str
+    requested_at: datetime
+    reason: str
+    status: str
+    decided_by: Optional[str]
+    decided_at: Optional[datetime]
+    decision_reason: Optional[str]
+    expires_at: Optional[datetime]
+    risk_assessment: dict[str, Any]
+
+
+@dataclass(slots=True)
+class AgentPolicySuggestionRecord:
+    suggestion_id: UUID
+    org_id: UUID
+    tool_name: str
+    cel_expression: str
+    support_count: int
+    reject_count: int
+    details: dict[str, Any]
+    last_seen: datetime
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class AgentNotificationRecord:
+    notification_id: UUID
+    task_id: UUID
+    org_id: UUID
+    channel: str
+    status: str
+    payload: dict[str, Any]
+    created_at: datetime
+    delivered_at: Optional[datetime]
+
+
+@dataclass(slots=True)
+class AgentTicketRecord:
+    ticket_id: UUID
+    task_id: UUID
+    org_id: UUID
+    system: str
+    status: str
+    details: dict[str, Any]
+    external_id: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
 
 
 class AgentManager:
@@ -935,3 +1013,417 @@ class AgentAnalyticsClient:
             skill_tag_counts=skill_tag_counts,
             agent_type_counts=agent_type_counts,
         )
+
+
+class AgentToolingManager:
+    """Inspect and manage tool invocations and approvals."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def list_invocations(
+        self,
+        *,
+        session_id: Optional[UUID] = None,
+        org_id: Optional[UUID] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ToolInvocationRecord]:
+        stmt = select(ToolInvocation)
+        if org_id:
+            stmt = stmt.join(AgentSession).where(AgentSession.org_id == org_id)
+        if session_id:
+            stmt = stmt.where(ToolInvocation.session_id == session_id)
+        if status:
+            try:
+                status_enum = ToolInvocationStatus(status)
+            except ValueError:
+                return []
+            stmt = stmt.where(ToolInvocation.status == status_enum)
+        stmt = stmt.order_by(ToolInvocation.started_at.desc()).offset(offset).limit(limit)
+        invocations = list(await self._db.scalars(stmt))
+        return [self._invocation_to_record(invocation) for invocation in invocations]
+
+    async def get_invocation(self, invocation_id: UUID) -> Optional[ToolInvocationRecord]:
+        invocation = await self._db.get(ToolInvocation, invocation_id)
+        if not invocation:
+            return None
+        return self._invocation_to_record(invocation)
+
+    async def list_approvals(
+        self,
+        *,
+        org_id: UUID,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ToolApprovalRecord]:
+        stmt = select(ToolApproval).where(ToolApproval.org_id == org_id)
+        if status:
+            try:
+                status_enum = ApprovalStatus(status)
+            except ValueError:
+                return []
+            stmt = stmt.where(ToolApproval.status == status_enum)
+        stmt = stmt.order_by(ToolApproval.requested_at.desc()).offset(offset).limit(limit)
+        approvals = list(await self._db.scalars(stmt))
+        return [self._approval_to_record(approval) for approval in approvals]
+
+    async def update_approval_status(
+        self,
+        *,
+        approval_id: UUID,
+        status: str,
+        decided_by: str,
+        decision_reason: Optional[str] = None,
+    ) -> Optional[ToolApprovalRecord]:
+        approval = await self._db.get(ToolApproval, approval_id)
+        if not approval:
+            return None
+        try:
+            status_enum = ApprovalStatus(status)
+        except ValueError as exc:
+            raise ValueError("Invalid approval status") from exc
+
+        now = datetime.now(timezone.utc)
+        approval.status = status_enum
+        approval.decided_by = decided_by
+        approval.decided_at = now
+        approval.decision_reason = decision_reason
+
+        invocation = approval.tool_invocation
+        if invocation:
+            if status_enum == ApprovalStatus.APPROVED:
+                invocation.status = ToolInvocationStatus.SUCCESS
+                invocation.completed_at = now
+            elif status_enum == ApprovalStatus.REJECTED:
+                invocation.status = ToolInvocationStatus.ERROR
+                invocation.error_message = decision_reason or "Rejected by reviewer"
+                invocation.completed_at = now
+
+        await self._db.commit()
+        await self._db.refresh(approval)
+        if invocation:
+            await self._db.refresh(invocation)
+        return self._approval_to_record(approval)
+
+    async def list_policy_suggestions(
+        self,
+        *,
+        org_id: UUID,
+        tool_name: Optional[str] = None,
+    ) -> list[AgentPolicySuggestionRecord]:
+        stmt = select(AgentPolicySuggestion).where(AgentPolicySuggestion.org_id == org_id)
+        if tool_name:
+            stmt = stmt.where(AgentPolicySuggestion.tool_name == tool_name)
+        stmt = stmt.order_by(AgentPolicySuggestion.last_seen.desc())
+        suggestions = list(await self._db.scalars(stmt))
+        return [self._policy_to_record(suggestion) for suggestion in suggestions]
+
+    @staticmethod
+    def _invocation_to_record(invocation: ToolInvocation) -> ToolInvocationRecord:
+        input_payload = invocation.input_data if isinstance(invocation.input_data, dict) else {"value": invocation.input_data}
+        output_payload = None
+        if invocation.output_data is not None:
+            output_payload = invocation.output_data if isinstance(invocation.output_data, dict) else {"value": invocation.output_data}
+        return ToolInvocationRecord(
+            invocation_id=invocation.id,
+            session_id=invocation.session_id,
+            tool_name=invocation.tool_name,
+            tool_version=invocation.tool_version,
+            status=invocation.status.value,
+            started_at=invocation.started_at,
+            completed_at=invocation.completed_at,
+            input_data=input_payload,
+            output_data=output_payload,
+            error_message=invocation.error_message,
+            cel_policy_key=invocation.cel_policy_key,
+            cel_expression=invocation.cel_expression,
+            cel_result=invocation.cel_result,
+        )
+
+    @staticmethod
+    def _approval_to_record(approval: ToolApproval) -> ToolApprovalRecord:
+        return ToolApprovalRecord(
+            approval_id=approval.id,
+            org_id=approval.org_id,
+            tool_invocation_id=approval.tool_invocation_id,
+            requested_by=approval.requested_by,
+            requested_at=approval.requested_at,
+            reason=approval.reason,
+            status=approval.status.value,
+            decided_by=approval.decided_by,
+            decided_at=approval.decided_at,
+            decision_reason=approval.decision_reason,
+            expires_at=approval.expires_at,
+            risk_assessment=approval.risk_assessment if isinstance(approval.risk_assessment, dict) else {},
+        )
+
+    @staticmethod
+    def _policy_to_record(suggestion: AgentPolicySuggestion) -> AgentPolicySuggestionRecord:
+        return AgentPolicySuggestionRecord(
+            suggestion_id=suggestion.id,
+            org_id=suggestion.org_id,
+            tool_name=suggestion.tool_name,
+            cel_expression=suggestion.cel_expression,
+            support_count=suggestion.support_count,
+            reject_count=suggestion.reject_count,
+            details=suggestion.details if isinstance(suggestion.details, dict) else {},
+            last_seen=suggestion.last_seen,
+            created_at=suggestion.created_at,
+        )
+
+
+class AgentNotificationManager:
+    """Manage notification and ticket records for agent workflows."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def enqueue_notification(
+        self,
+        *,
+        org_id: UUID,
+        task_id: UUID,
+        channel: str,
+        payload: Optional[dict[str, Any]] = None,
+    ) -> AgentNotificationRecord:
+        notification = AgentReviewNotification(
+            org_id=org_id,
+            task_id=task_id,
+            channel=channel,
+            payload=dict(payload or {}),
+            status="pending",
+        )
+        self._db.add(notification)
+        await self._db.commit()
+        await self._db.refresh(notification)
+        return self._notification_to_record(notification)
+
+    async def list_notifications(
+        self,
+        *,
+        org_id: UUID,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[AgentNotificationRecord]:
+        stmt = select(AgentReviewNotification).where(AgentReviewNotification.org_id == org_id)
+        if status:
+            stmt = stmt.where(AgentReviewNotification.status == status)
+        stmt = stmt.order_by(AgentReviewNotification.created_at.desc()).limit(limit)
+        notifications = list(await self._db.scalars(stmt))
+        return [self._notification_to_record(notification) for notification in notifications]
+
+    async def mark_delivered(self, notification_id: UUID) -> Optional[AgentNotificationRecord]:
+        notification = await self._db.get(AgentReviewNotification, notification_id)
+        if not notification:
+            return None
+        notification.status = "delivered"
+        notification.delivered_at = datetime.now(timezone.utc)
+        await self._db.commit()
+        await self._db.refresh(notification)
+        return self._notification_to_record(notification)
+
+    async def create_ticket(
+        self,
+        *,
+        org_id: UUID,
+        task_id: UUID,
+        system: str,
+        summary: str,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> AgentTicketRecord:
+        details = dict(metadata or {})
+        details.setdefault("summary", summary)
+        ticket = AgentReviewTicket(
+            org_id=org_id,
+            task_id=task_id,
+            system=system,
+            details=details,
+            status="open",
+        )
+        self._db.add(ticket)
+        await self._db.commit()
+        await self._db.refresh(ticket)
+        return self._ticket_to_record(ticket)
+
+    async def close_ticket(
+        self,
+        *,
+        ticket_id: UUID,
+        external_id: Optional[str] = None,
+    ) -> Optional[AgentTicketRecord]:
+        ticket = await self._db.get(AgentReviewTicket, ticket_id)
+        if not ticket:
+            return None
+        ticket.status = "closed"
+        ticket.updated_at = datetime.now(timezone.utc)
+        if external_id:
+            ticket.external_id = external_id
+        await self._db.commit()
+        await self._db.refresh(ticket)
+        return self._ticket_to_record(ticket)
+
+    async def list_tickets(self, *, task_id: UUID) -> list[AgentTicketRecord]:
+        stmt = select(AgentReviewTicket).where(AgentReviewTicket.task_id == task_id)
+        tickets = list(await self._db.scalars(stmt))
+        return [self._ticket_to_record(ticket) for ticket in tickets]
+
+    @staticmethod
+    def _notification_to_record(notification: AgentReviewNotification) -> AgentNotificationRecord:
+        return AgentNotificationRecord(
+            notification_id=notification.id,
+            task_id=notification.task_id,
+            org_id=notification.org_id,
+            channel=notification.channel,
+            status=notification.status,
+            payload=dict(notification.payload or {}),
+            created_at=notification.created_at,
+            delivered_at=notification.delivered_at,
+        )
+
+    @staticmethod
+    def _ticket_to_record(ticket: AgentReviewTicket) -> AgentTicketRecord:
+        return AgentTicketRecord(
+            ticket_id=ticket.id,
+            task_id=ticket.task_id,
+            org_id=ticket.org_id,
+            system=ticket.system,
+            status=ticket.status,
+            details=dict(ticket.details or {}),
+            external_id=ticket.external_id,
+            created_at=ticket.created_at,
+            updated_at=ticket.updated_at,
+        )
+
+
+class AgentPlaybook:
+    """High-level helpers orchestrating common agent playbooks."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def start_incident_playbook(
+        self,
+        *,
+        org_id: UUID,
+        created_by: str,
+        incident_id: UUID | str,
+        finding_ids: Optional[Iterable[UUID | str]] = None,
+        title: Optional[str] = None,
+    ) -> AgentSessionRecord:
+        manager = AgentManager(self._db)
+        session = await manager.create_incident_session(
+            org_id=org_id,
+            created_by=created_by,
+            incident_id=incident_id,
+            title=title,
+        )
+        if finding_ids:
+            await manager.link_findings(session_id=session.session_id, finding_ids=finding_ids)
+            session = await manager.get_session(session.session_id)
+            if session is None:
+                raise RuntimeError("Failed to refresh session after linking findings")
+        return session
+
+    async def kickoff_findings_playbook(
+        self,
+        *,
+        org_id: UUID,
+        created_by: str,
+        finding_ids: Iterable[UUID | str],
+        title: Optional[str] = None,
+    ) -> AgentSessionRecord:
+        manager = AgentManager(self._db)
+        return await manager.create_session_for_findings(
+            org_id=org_id,
+            created_by=created_by,
+            finding_ids=finding_ids,
+            title=title,
+        )
+
+    async def memory_snapshot(self, session_id: UUID) -> Optional[AgentMemoryStats]:
+        manager = AgentManager(self._db)
+        return await manager.get_memory_stats(session_id=session_id)
+
+    async def schedule_notifications(
+        self,
+        *,
+        task_id: UUID,
+        channels: Iterable[str],
+    ) -> list[AgentNotificationRecord]:
+        task = await self._db.get(AgentReviewTask, task_id)
+        if not task:
+            return []
+        notification_manager = AgentNotificationManager(self._db)
+        results: list[AgentNotificationRecord] = []
+        for channel in channels:
+            record = await notification_manager.enqueue_notification(
+                org_id=task.org_id,
+                task_id=task_id,
+                channel=channel,
+            )
+            results.append(record)
+        return results
+
+    async def escalate_to_ticket(
+        self,
+        *,
+        task_id: UUID,
+        system: str,
+        summary: str,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> Optional[AgentTicketRecord]:
+        task = await self._db.get(AgentReviewTask, task_id)
+        if not task:
+            return None
+        notification_manager = AgentNotificationManager(self._db)
+        return await notification_manager.create_ticket(
+            org_id=task.org_id,
+            task_id=task_id,
+            system=system,
+            summary=summary,
+            metadata=metadata,
+        )
+
+    async def record_policy_suggestion(
+        self,
+        *,
+        org_id: UUID,
+        tool_name: str,
+        cel_expression: str,
+        support_delta: int = 1,
+        reject_delta: int = 0,
+        details: Optional[dict[str, Any]] = None,
+    ) -> AgentPolicySuggestionRecord:
+        now = datetime.now(timezone.utc)
+        stmt = select(AgentPolicySuggestion).where(
+            AgentPolicySuggestion.org_id == org_id,
+            AgentPolicySuggestion.tool_name == tool_name,
+            AgentPolicySuggestion.cel_expression == cel_expression,
+        )
+        existing = await self._db.scalar(stmt)
+        if existing:
+            existing.support_count += support_delta
+            existing.reject_count += reject_delta
+            existing.details.update(details or {})
+            existing.last_seen = now
+            await self._db.commit()
+            await self._db.refresh(existing)
+            return AgentToolingManager._policy_to_record(existing)
+
+        suggestion = AgentPolicySuggestion(
+            org_id=org_id,
+            tool_name=tool_name,
+            cel_expression=cel_expression,
+            support_count=support_delta,
+            reject_count=reject_delta,
+            details=dict(details or {}),
+            last_seen=now,
+            created_at=now,
+        )
+        self._db.add(suggestion)
+        await self._db.commit()
+        await self._db.refresh(suggestion)
+        return AgentToolingManager._policy_to_record(suggestion)

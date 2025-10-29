@@ -6,12 +6,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
     AgentMemoryEntry,
+    AgentPolicySuggestion,
     AgentReviewTask,
     AgentRuntimeEvent,
+    ToolApproval,
+    ToolInvocation,
     MessageRole,
     ReviewTaskStatus,
+    ToolInvocationStatus,
+    ApprovalStatus,
 )
-from cerebro_sdk.agents import AgentAnalyticsClient, AgentManager, AgentReviewManager
+from cerebro_sdk.agents import (
+    AgentAnalyticsClient,
+    AgentManager,
+    AgentNotificationManager,
+    AgentPlaybook,
+    AgentReviewManager,
+    AgentToolingManager,
+)
 
 
 @pytest.mark.asyncio
@@ -201,39 +213,197 @@ async def test_agent_analytics_client_summary(test_db: AsyncSession, test_org):
 
 
 @pytest.mark.asyncio
-async def test_agent_manager_workflows_linking(test_db: AsyncSession, test_org):
+async def test_agent_tooling_manager_operations(test_db: AsyncSession, test_org):
+    agent_manager = AgentManager(test_db)
+    session = await agent_manager.create_session(
+        org_id=test_org.org_id,
+        agent_type="security_analyst",
+        created_by="tooling@example.com",
+        context={},
+    )
+
+    invocation = ToolInvocation(
+        session_id=session.session_id,
+        tool_name="timeline.generate",
+        tool_version="1.0",
+        input_data={"scope": "incident"},
+        status=ToolInvocationStatus.PENDING,
+    )
+    test_db.add(invocation)
+    await test_db.commit()
+    await test_db.refresh(invocation)
+
+    approval = ToolApproval(
+        org_id=test_org.org_id,
+        tool_invocation_id=invocation.id,
+        requested_by="tooling@example.com",
+        reason="Requires approval",
+        risk_assessment={"impact": "high"},
+        status=ApprovalStatus.PENDING,
+    )
+    suggestion = AgentPolicySuggestion(
+        org_id=test_org.org_id,
+        tool_name="timeline.generate",
+        cel_expression="input.scope == 'incident'",
+        support_count=1,
+        reject_count=0,
+        details={"source": "sdk-test"},
+    )
+    test_db.add_all([approval, suggestion])
+    await test_db.commit()
+
+    tooling = AgentToolingManager(test_db)
+
+    invocations = await tooling.list_invocations(org_id=test_org.org_id)
+    assert len(invocations) == 1 and invocations[0].tool_name == "timeline.generate"
+
+    approvals = await tooling.list_approvals(org_id=test_org.org_id)
+    assert approvals and approvals[0].status == "pending"
+
+    updated = await tooling.update_approval_status(
+        approval_id=approval.id,
+        status="approved",
+        decided_by="lead@example.com",
+        decision_reason="Verified",
+    )
+    assert updated is not None and updated.status == "approved"
+
+    await test_db.refresh(invocation)
+    assert invocation.status == ToolInvocationStatus.SUCCESS
+
+    suggestions = await tooling.list_policy_suggestions(org_id=test_org.org_id)
+    assert suggestions and suggestions[0].tool_name == "timeline.generate"
+
+
+@pytest.mark.asyncio
+async def test_agent_notification_manager(test_db: AsyncSession, test_org):
     manager = AgentManager(test_db)
     session = await manager.create_session(
         org_id=test_org.org_id,
         agent_type="security_analyst",
-        created_by="workflow@example.com",
+        created_by="notify@example.com",
         context={},
     )
 
-    finding_id = uuid4()
-    updated_session = await manager.link_findings(session_id=session.session_id, finding_ids=[finding_id])
-    assert updated_session is not None and str(finding_id) in updated_session.context["finding_ids"]
+    task = AgentReviewTask(
+        org_id=test_org.org_id,
+        session_id=session.session_id,
+        title="Verify containment",
+        summary="Confirm containment steps",
+        payload={},
+        created_by="system",
+        status=ReviewTaskStatus.PENDING,
+    )
+    test_db.add(task)
+    await test_db.commit()
+    await test_db.refresh(task)
 
-    sessions = await manager.sessions_for_finding(org_id=test_org.org_id, finding_id=finding_id)
-    assert len(sessions) == 1
+    notification_manager = AgentNotificationManager(test_db)
+    notification = await notification_manager.enqueue_notification(
+        org_id=test_org.org_id,
+        task_id=task.id,
+        channel="slack",
+        payload={"priority": "high"},
+    )
+    assert notification.status == "pending"
+
+    notifications = await notification_manager.list_notifications(org_id=test_org.org_id)
+    assert len(notifications) == 1
+
+    delivered = await notification_manager.mark_delivered(notification.notification_id)
+    assert delivered is not None and delivered.status == "delivered"
+
+    ticket = await notification_manager.create_ticket(
+        org_id=test_org.org_id,
+        task_id=task.id,
+        system="jira",
+        summary="Investigate containment",
+        metadata={"project": "SEC"},
+    )
+    assert ticket.status == "open"
+
+    tickets = await notification_manager.list_tickets(task_id=task.id)
+    assert len(tickets) == 1
+
+    closed = await notification_manager.close_ticket(ticket_id=ticket.ticket_id, external_id="JIRA-123")
+    assert closed is not None and closed.status == "closed"
+
+
+@pytest.mark.asyncio
+async def test_agent_playbook_helpers(test_db: AsyncSession, test_org):
+    playbook = AgentPlaybook(test_db)
+    finding_id = uuid4()
+
+    findings_session = await playbook.kickoff_findings_playbook(
+        org_id=test_org.org_id,
+        created_by="playbook@example.com",
+        finding_ids=[finding_id],
+        title="Finding triage",
+    )
+    assert str(finding_id) in findings_session.context["finding_ids"]
 
     incident_id = uuid4()
-    await manager.link_incident(session_id=session.session_id, incident_id=incident_id)
-
-    incident_sessions = await manager.sessions_for_incident(org_id=test_org.org_id, incident_id=incident_id)
-    assert len(incident_sessions) == 1
-
-    derived = await manager.create_session_for_findings(
+    incident_session = await playbook.start_incident_playbook(
         org_id=test_org.org_id,
-        created_by="workflow@example.com",
-        finding_ids=[finding_id],
-        title="Finding follow-up",
-    )
-    assert str(finding_id) in derived.context["finding_ids"]
-
-    incident_session = await manager.create_incident_session(
-        org_id=test_org.org_id,
-        created_by="workflow@example.com",
+        created_by="playbook@example.com",
         incident_id=incident_id,
+        finding_ids=[finding_id],
+        title="Incident response",
     )
     assert incident_session.context["incident_id"] == str(incident_id)
+
+    entry = AgentMemoryEntry(
+        org_id=test_org.org_id,
+        session_id=findings_session.session_id,
+        role=MessageRole.ASSISTANT,
+        scopes=[{"type": "finding", "value": str(finding_id)}],
+        content="Initial assessment",
+        summary="assessment",
+        decay_score=1.0,
+        token_count=16,
+        last_accessed_at=datetime.now(timezone.utc),
+    )
+    test_db.add(entry)
+    await test_db.commit()
+
+    snapshot = await playbook.memory_snapshot(session_id=findings_session.session_id)
+    assert snapshot is not None and snapshot.total_entries == 1
+
+    task = AgentReviewTask(
+        org_id=test_org.org_id,
+        session_id=incident_session.session_id,
+        title="Review containment",
+        summary="Need approval",
+        payload={},
+        created_by="system",
+        status=ReviewTaskStatus.PENDING,
+    )
+    test_db.add(task)
+    await test_db.commit()
+    await test_db.refresh(task)
+
+    notifications = await playbook.schedule_notifications(task_id=task.id, channels=["slack", "pagerduty"])
+    assert len(notifications) == 2
+
+    ticket = await playbook.escalate_to_ticket(
+        task_id=task.id,
+        system="pagerduty",
+        summary="Escalate containment",
+    )
+    assert ticket is not None and ticket.status == "open"
+
+    suggestion = await playbook.record_policy_suggestion(
+        org_id=test_org.org_id,
+        tool_name="timeline.generate",
+        cel_expression="input.scope == 'incident'",
+        details={"reason": "pattern"},
+    )
+    assert suggestion.support_count == 1
+
+    updated = await playbook.record_policy_suggestion(
+        org_id=test_org.org_id,
+        tool_name="timeline.generate",
+        cel_expression="input.scope == 'incident'",
+        support_delta=2,
+    )
+    assert updated.support_count == 3
