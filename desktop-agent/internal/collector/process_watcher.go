@@ -10,18 +10,25 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
+// ProcessWatcher is an event collector that emits process start/exit deltas by
+// diffing the current process list with the previous collection cycle.
 type ProcessWatcher struct {
 	previous map[int]types.ProcessSnapshot
 }
 
+// NewProcessWatcher constructs a delta tracker with an empty baseline.
 func NewProcessWatcher() *ProcessWatcher {
 	return &ProcessWatcher{previous: make(map[int]types.ProcessSnapshot)}
 }
 
+// Name returns the registry identifier for this event collector.
 func (w *ProcessWatcher) Name() string {
 	return "events.process.delta"
 }
 
+// Collect lists processes, compares them to the prior snapshot, and emits
+// process_started/process_exited events for changes. It keeps the collector
+// lightweight by reusing the helper snapshot logic.
 func (w *ProcessWatcher) Collect(_ context.Context, cfg config.Config) ([]types.HostEvent, error) {
 	now := time.Now().UTC()
 
