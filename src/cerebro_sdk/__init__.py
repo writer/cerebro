@@ -18,6 +18,11 @@ from .telemetry import (
     create_histogram,
     time_operation,
 )
+from .integrations import (
+    IntegrationService,
+    IntegrationStateRecord,
+    IntegrationIssueRecord,
+)
 
 __all__ = [
     "get_settings",
@@ -38,4 +43,7 @@ __all__ = [
     "create_counter",
     "create_histogram",
     "time_operation",
+    "IntegrationService",
+    "IntegrationStateRecord",
+    "IntegrationIssueRecord",
 ]
