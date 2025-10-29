@@ -134,6 +134,19 @@ class Settings(BaseSettings):
     kandji_verify_tls: bool = Field(
         default=True, description="Verify TLS certificates for Kandji requests"
     )
+
+    integration_sync_stale_seconds: int = Field(
+        default=3600,
+        description="Seconds after which an integration sync is considered stale",
+    )
+    integration_sync_alert_cooldown_seconds: int = Field(
+        default=1800,
+        description="Cooldown period in seconds before repeating integration sync alerts",
+    )
+    integration_sync_alert_webhook: Optional[str] = Field(
+        default=None,
+        description="Slack webhook URL used for integration sync health alerts",
+    )
     
     # Logging
     log_level: str = Field(default="INFO", description="Log level")

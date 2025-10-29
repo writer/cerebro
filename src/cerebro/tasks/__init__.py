@@ -10,6 +10,7 @@ from .analytics_tasks import (
 )
 from .self_play_tasks import run_self_play_batch
 from .integration_tasks import sync_kandji, sync_sentinelone
+from .integration_monitor import monitor_sync_health
 
 __all__ = [
     "celery_app",
@@ -22,4 +23,5 @@ __all__ = [
     "collect_security_metrics_all_orgs",
     "sync_sentinelone",
     "sync_kandji",
+    "monitor_sync_health",
 ]

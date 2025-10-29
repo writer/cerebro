@@ -9,7 +9,8 @@ const NAV_ITEMS = [
   { href: "/agents/review", label: "Review Queue" },
   { href: "/agents/notifications", label: "Notifications" },
   { href: "/agents/policy", label: "Policy Suggestions" },
-  { href: "/agents/analytics", label: "Runtime Analytics" }
+  { href: "/agents/analytics", label: "Runtime Analytics" },
+  { href: "/integrations", label: "Integrations" }
 ];
 
 export function Sidebar() {

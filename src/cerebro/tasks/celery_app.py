@@ -24,6 +24,7 @@ celery_kwargs = {
         'cerebro.tasks.self_play_tasks',
         'cerebro.tasks.analytics_tasks',
         'cerebro.tasks.integration_tasks',
+        'cerebro.tasks.integration_monitor',
     ],
 }
 
@@ -75,6 +76,11 @@ beat_schedule = {
     'sync-kandji-inventory': {
         'task': 'cerebro.tasks.integration.sync_kandji',
         'schedule': 3600.0,
+        'options': {'queue': 'integrations'},
+    },
+    'monitor-integration-sync': {
+        'task': 'cerebro.tasks.integration.monitor_sync_health',
+        'schedule': 900.0,
         'options': {'queue': 'integrations'},
     },
 }

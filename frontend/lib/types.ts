@@ -177,6 +177,14 @@ export type OrganizationSummary = {
   created_at: string;
 };
 
+export type IntegrationStatus = {
+  integration: string;
+  scope: string;
+  last_timestamp: string | null;
+  last_cursor: string | null;
+  metadata: Record<string, unknown>;
+};
+
 export type ExecutiveSummaryProgress = {
   findings_burned_down_30d: number;
   new_controls_implemented: number;

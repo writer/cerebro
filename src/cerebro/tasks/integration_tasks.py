@@ -12,6 +12,7 @@ from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
 from cerebro.integrations.kandji import KandjiClient, KandjiIngestion
 from cerebro.integrations.sentinelone import SentinelOneClient, SentinelOneConfig, SentinelOneIngestion
+from cerebro.integrations.state import IntegrationStateRepository
 
 from .celery_app import celery_app
 
@@ -45,6 +46,38 @@ async def _log_integration_sync(
         )
     except Exception:  # pragma: no cover - logging must not break tasks
         logger.exception("Failed to append integration sync audit entry")
+        return
+
+    metadata_update: dict[str, Any] = {
+        "last_status": status,
+        "last_status_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if payload:
+        metadata_update["last_payload"] = payload
+    if status == "error":
+        error_value = payload.get("error") if isinstance(payload, dict) else None
+        if error_value:
+            metadata_update["last_error"] = str(error_value)
+    if isinstance(payload, dict) and "last_sync_unix" in payload:
+        try:
+            sync_ts = datetime.fromtimestamp(float(payload["last_sync_unix"]), tz=timezone.utc)
+        except Exception:  # pragma: no cover - defensive only
+            sync_ts = None
+        if sync_ts is not None:
+            metadata_update["last_sync_unix"] = float(payload["last_sync_unix"])
+            metadata_update["last_sync_at"] = sync_ts.isoformat()
+
+    try:
+        async with async_session_factory() as db:
+            repo = IntegrationStateRepository(db)
+            await repo.upsert_state(
+                integration=integration,
+                scope=scope or "default",
+                metadata=metadata_update,
+            )
+            await db.commit()
+    except Exception:  # pragma: no cover - metadata update should not break tasks
+        logger.exception("Failed to persist integration sync metadata for %%s", resource_id)
 
 
 @celery_app.task(bind=True, name="cerebro.tasks.integration.sync_sentinelone")
