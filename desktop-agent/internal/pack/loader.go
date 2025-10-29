@@ -14,6 +14,8 @@ import (
 type Loader struct{}
 
 // LoadDirectory parses all YAML packs under dir and returns aggregated packs.
+// Non-existent directories are treated as empty so agents can run without
+// local packs.
 func (Loader) LoadDirectory(dir string) ([]Pack, error) {
 	if dir == "" {
 		return nil, nil
@@ -55,6 +57,8 @@ func (Loader) LoadDirectory(dir string) ([]Pack, error) {
 	return packs, nil
 }
 
+// loadFile reads a single YAML pack definition and unmarshals it into a Pack
+// struct. Errors include the file path to simplify troubleshooting.
 func loadFile(path string) (Pack, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

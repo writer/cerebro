@@ -13,6 +13,9 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/runtime"
 )
 
+// main bootstraps the desktop agent: load config, prepare the API client,
+// register collectors, and start the runtime manager. The --once flag runs a
+// single collection cycle for diagnostics.
 func main() {
 	cfg := config.Load()
 

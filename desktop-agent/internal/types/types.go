@@ -2,6 +2,9 @@ package types
 
 import "time"
 
+// HostTelemetry captures a point-in-time snapshot of host state that the agent
+// posts to Cerebro. It is deliberately broad to support multiple downstream
+// use cases (inventory, drift, detection).
 type HostTelemetry struct {
 	Organization       string               `json:"organization,omitempty"`
 	Site               string               `json:"site,omitempty"`
@@ -26,12 +29,15 @@ type HostTelemetry struct {
 	ConfigurationDrift []ConfigurationDrift `json:"configuration_drift,omitempty"`
 }
 
+// AgentHealth summarises the agent's liveness at collection time.
 type AgentHealth struct {
 	Status        string    `json:"status"`
 	LastHeartbeat time.Time `json:"last_heartbeat"`
 	Issues        []string  `json:"issues,omitempty"`
 }
 
+// ProcessSnapshot provides lightweight process metadata used in snapshots and
+// delta calculations.
 type ProcessSnapshot struct {
 	PID        int        `json:"pid"`
 	ParentPID  int        `json:"parent_pid,omitempty"`
@@ -42,6 +48,8 @@ type ProcessSnapshot struct {
 	StartTime  *time.Time `json:"start_time,omitempty"`
 }
 
+// NetworkConnection describes an active socket observed during snapshot
+// collection.
 type NetworkConnection struct {
 	Protocol      string `json:"protocol"`
 	LocalAddress  string `json:"local_address"`
@@ -52,6 +60,7 @@ type NetworkConnection struct {
 	ProcessID     int    `json:"process_id,omitempty"`
 }
 
+// SoftwarePackage records installed software for inventory use cases.
 type SoftwarePackage struct {
 	Name      string    `json:"name"`
 	Version   string    `json:"version"`
@@ -60,6 +69,8 @@ type SoftwarePackage struct {
 	Vendor    string    `json:"vendor,omitempty"`
 }
 
+// SecurityEvent models host-level security events collected from the agent or
+// operating system.
 type SecurityEvent struct {
 	EventType string         `json:"event_type"`
 	Timestamp time.Time      `json:"timestamp"`
@@ -69,6 +80,8 @@ type SecurityEvent struct {
 	Details   map[string]any `json:"details"`
 }
 
+// ConfigurationDrift captures deviations between expected and observed host
+// settings.
 type ConfigurationDrift struct {
 	ConfigKey     string `json:"config_key"`
 	ExpectedValue any    `json:"expected_value"`
@@ -76,6 +89,7 @@ type ConfigurationDrift struct {
 	DriftType     string `json:"drift_type"`
 }
 
+// HostEvent represents an individual event emitted by an EventCollector.
 type HostEvent struct {
 	EventID     string         `json:"event_id,omitempty"`
 	HostID      string         `json:"host_id"`
@@ -92,6 +106,7 @@ type HostEvent struct {
 	Payload     map[string]any `json:"payload,omitempty"`
 }
 
+// HostEventBatch aggregates host events for transport to the backend.
 type HostEventBatch struct {
 	HostID       string      `json:"host_id"`
 	Hostname     string      `json:"hostname"`
@@ -102,6 +117,8 @@ type HostEventBatch struct {
 	Events       []HostEvent `json:"events"`
 }
 
+// ArtifactTaskDefinition describes a single task assigned to the agent as part
+// of an artifact pack.
 type ArtifactTaskDefinition struct {
 	TaskID          string                  `json:"task_id"`
 	Name            string                  `json:"name"`
@@ -116,6 +133,8 @@ type ArtifactTaskDefinition struct {
 	Tools           []ArtifactTool          `json:"tools,omitempty"`
 }
 
+// ArtifactPackDefinition bundles tasks and metadata that agents can schedule
+// locally. It mirrors the backend schema for remote packs.
 type ArtifactPackDefinition struct {
 	PackID      string                   `json:"pack_id"`
 	Name        string                   `json:"name"`
@@ -125,6 +144,8 @@ type ArtifactPackDefinition struct {
 	Tasks       []ArtifactTaskDefinition `json:"tasks"`
 }
 
+// ArtifactTaskParameter defines a configurable parameter exposed to pack
+// authors.
 type ArtifactTaskParameter struct {
 	Name        string   `json:"name"`
 	Type        string   `json:"type,omitempty"`
@@ -134,6 +155,8 @@ type ArtifactTaskParameter struct {
 	Choices     []string `json:"choices,omitempty"`
 }
 
+// ArtifactTaskResources conveys resource hints to collectors (timeouts, row
+// limits, throttling).
 type ArtifactTaskResources struct {
 	TimeoutSeconds int   `json:"timeout_seconds,omitempty"`
 	MaxRows        int   `json:"max_rows,omitempty"`
@@ -141,6 +164,7 @@ type ArtifactTaskResources struct {
 	OpsPerSecond   int   `json:"ops_per_second,omitempty"`
 }
 
+// ArtifactTool identifies optional supporting binaries that a task requires.
 type ArtifactTool struct {
 	Name         string `json:"name"`
 	URL          string `json:"url,omitempty"`

@@ -14,11 +14,17 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
+// Service wraps HTTP interactions with the Cerebro API. It centralises TLS
+// configuration, headers, and request construction so collectors can focus on
+// payload generation.
 type Service struct {
 	client *http.Client
 	cfg    config.Config
 }
 
+// New constructs a Service with a hardened HTTP client. TLS settings are
+// derived from the agent configuration, including optional insecure mode for
+// local development.
 func New(cfg config.Config) (*Service, error) {
 	transport := &http.Transport{}
 	if cfg.InsecureTLS {
@@ -36,6 +42,9 @@ func New(cfg config.Config) (*Service, error) {
 	}, nil
 }
 
+// SendSnapshot transports the host snapshot payload to the Cerebro ingest API.
+// The method short-circuits when the payload is nil, allowing callers to skip
+// allocations when no data was collected.
 func (s *Service) SendSnapshot(ctx context.Context, telemetry *types.HostTelemetry) error {
 	if telemetry == nil {
 		return nil
@@ -65,6 +74,8 @@ func (s *Service) SendSnapshot(ctx context.Context, telemetry *types.HostTelemet
 	return nil
 }
 
+// SendEvents uploads a batch of host events. Empty batches are ignored to save
+// unnecessary network round-trips.
 func (s *Service) SendEvents(ctx context.Context, batch types.HostEventBatch) error {
 	if len(batch.Events) == 0 {
 		return nil
@@ -94,6 +105,8 @@ func (s *Service) SendEvents(ctx context.Context, batch types.HostEventBatch) er
 	return nil
 }
 
+// decorate attaches shared headers (content type, bearer token) to outbound
+// requests.
 func (s *Service) decorate(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	if s.cfg.APIToken != "" {
@@ -101,6 +114,9 @@ func (s *Service) decorate(req *http.Request) {
 	}
 }
 
+// FetchArtifactPacks queries the control plane for artifact packs that match
+// the host identity and tag selectors. It returns nil when no packs are
+// available.
 func (s *Service) FetchArtifactPacks(ctx context.Context, hostID, hostname string, tags map[string]string) ([]types.ArtifactPackDefinition, error) {
 	if hostID == "" {
 		return nil, fmt.Errorf("host id required for pack retrieval")
