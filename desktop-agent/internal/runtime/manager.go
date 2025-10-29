@@ -186,8 +186,9 @@ func (m *Manager) RunOnce(ctx context.Context) error {
 	return nil
 }
 
-// collectSnapshots invokes each registered snapshot collector and forwards the
-// resulting payloads to the Cerebro API.
+// collectSnapshots invokes each registered snapshot collector, updates the
+// manager's cached host identity, and forwards the resulting payloads to the
+// Cerebro API.
 func (m *Manager) collectSnapshots(ctx context.Context) error {
 	for _, collector := range m.snapshotCollectors {
 		telemetry, err := collector.Collect(ctx, m.cfg, nil)
@@ -502,6 +503,8 @@ func packFromDefinition(def types.ArtifactPackDefinition) pack.Pack {
 	}
 }
 
+// cloneStringMap deep copies a string map so scheduler mutations do not leak
+// back into the artifact pack definition.
 func cloneStringMap(input map[string]string) map[string]string {
 	if input == nil {
 		return nil
@@ -657,6 +660,7 @@ func (m *Manager) evaluateDiscoveryClause(
 }
 
 // matchTagClause resolves tag equality expressions used in discovery clauses.
+// A bare key checks for presence, while key=value enforces an exact match.
 func matchTagClause(clause string, tags map[string]string) bool {
 	key := clause
 	value := ""
@@ -746,12 +750,16 @@ func (m *Manager) flushEvents(ctx context.Context, force bool) {
 	}
 }
 
+// cloneEvents copies the slice to avoid sharing backing arrays when batches
+// are chunked for transport or retried.
 func cloneEvents(events []types.HostEvent) []types.HostEvent {
 	out := make([]types.HostEvent, len(events))
 	copy(out, events)
 	return out
 }
 
+// buildEventBatches groups events by host id, applies size limits, and stamps
+// common metadata such as organization and collection time.
 func buildEventBatches(events []types.HostEvent, agentVersion string, maxSize int, organization string, site string) []types.HostEventBatch {
 	if len(events) == 0 {
 		return nil
