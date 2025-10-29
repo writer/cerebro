@@ -149,6 +149,35 @@ def test_chunk_events_respects_batch_size() -> None:
     assert [len(chunk) for chunk in chunks] == [2, 2, 1]
 
 
+def test_sentinelone_build_host_telemetry_enriches_health_and_tags() -> None:
+    ingestion = SentinelOneIngestion(_DummyClient(SentinelOneConfig(
+        base_url="https://example.sentinelone.net",
+        api_token="token",
+        organization="acme",
+    )))
+    agent = {
+        "id": "agent-1",
+        "uuid": "agent-uuid",
+        "computerName": "Acme-Mac",
+        "osType": "macos",
+        "osVersion": "14.5",
+        "siteName": "HQ",
+        "groupName": "Production",
+        "accountName": "Acme",
+        "threatCount": 0,
+        "mitigationMode": "protect",
+        "networkInterfaces": [{"ipAddress": "10.0.0.1"}],
+    }
+    policy = {"name": "Corp Default", "policyType": "protect"}
+    applications = [{"name": "Chrome", "version": "125", "publisher": "Google"}]
+
+    telemetry = ingestion._build_host_telemetry(agent, policy, applications, datetime.now(timezone.utc))
+    assert telemetry is not None
+    assert telemetry.tags is not None and telemetry.tags["policy_name"] == "Corp Default"
+    assert telemetry.installed_packages is not None and telemetry.installed_packages[0].name == "Chrome"
+    assert telemetry.health is not None and telemetry.health.status == "healthy"
+
+
 def test_kandji_normalize_audit_event() -> None:
     ingestion = KandjiIngestion(client=_DummyClient(None), organization="acme")
     record = {

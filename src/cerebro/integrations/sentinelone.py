@@ -15,7 +15,7 @@ import httpx
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.telemetry.schemas import HostEvent, HostEventBatch
+from cerebro.telemetry.schemas import AgentHealth, HostEvent, HostEventBatch, HostTelemetry, SoftwarePackage
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.integrations.state import IntegrationStateRepository
 from cerebro.metrics.integration_metrics import record_integration_sync
@@ -147,6 +147,48 @@ class SentinelOneClient:
             return next_cursor
         return None
 
+    async def iter_agents(self, *, limit: int = 200) -> AsyncIterator[Dict[str, Any]]:
+        params: Dict[str, Any] = {"limit": limit}
+        cursor: Optional[str] = None
+
+        while True:
+            if cursor:
+                params = {"limit": limit, "cursor": cursor}
+            payload = await self._request_json("/web/api/v2.1/agents", params=params)
+            agents = payload.get("data") if isinstance(payload, dict) else None
+            if isinstance(agents, list):
+                for agent in agents:
+                    if isinstance(agent, dict):
+                        yield agent
+            pagination = payload.get("pagination") if isinstance(payload, dict) else None
+            cursor = pagination.get("nextCursor") if isinstance(pagination, dict) else None
+            if not cursor:
+                break
+
+    async def get_policy(self, policy_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not policy_id:
+            return None
+        try:
+            return await self._request_json(f"/web/api/v2.1/policies/{policy_id}")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+
+    async def get_agent_applications(self, agent_id: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+        if not agent_id:
+            return None
+        try:
+            payload = await self._request_json(f"/web/api/v2.1/agents/{agent_id}/applications")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {403, 404}:
+                return None
+            raise
+        apps = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(apps, list):
+            return [app for app in apps if isinstance(app, dict)]
+        return None
+
     async def _request_json(self, url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute a GET request with retry/backoff semantics."""
 
@@ -181,6 +223,7 @@ class SentinelOneIngestion:
     def __init__(self, client: SentinelOneClient) -> None:
         self._client = client
         self._config = client._config
+        self._policy_cache: Dict[str, Dict[str, Any]] = {}
 
     async def ingest(
         self,
@@ -242,8 +285,154 @@ class SentinelOneIngestion:
                 last_sync_unix=ts.timestamp(),
                 events_ingested=ingested,
             )
+        agent_count = await self._ingest_agents(service)
 
-        return {"events_ingested": ingested, "hosts": len(grouped)}
+        return {"events_ingested": ingested, "hosts": agent_count, "event_hosts": len(grouped)}
+
+    async def _ingest_agents(self, service: TelemetryIngestionService) -> int:
+        collected_at = datetime.now(timezone.utc)
+        count = 0
+        async for agent in self._client.iter_agents():
+            policy = await self._get_policy(agent.get("policyId"))
+            applications = await self._client.get_agent_applications(agent.get("id"))
+            telemetry = self._build_host_telemetry(agent, policy, applications, collected_at)
+            if telemetry is None:
+                continue
+            await service.process_host(telemetry)
+            count += 1
+        return count
+
+    async def _get_policy(self, policy_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not policy_id:
+            return None
+        cached = self._policy_cache.get(policy_id)
+        if cached is not None:
+            return cached
+        policy = await self._client.get_policy(policy_id)
+        if policy is not None:
+            self._policy_cache[policy_id] = policy
+        return policy
+
+    def _build_host_telemetry(
+        self,
+        agent: Dict[str, Any],
+        policy: Optional[Dict[str, Any]],
+        applications: Optional[List[Dict[str, Any]]],
+        collected_at: datetime,
+    ) -> Optional[HostTelemetry]:
+        agent_id = str(agent.get("id") or agent.get("agentId") or "").strip()
+        if not agent_id:
+            return None
+
+        uuid = str(agent.get("uuid") or agent_id).strip()
+        hostname = (
+            agent.get("computerName")
+            or agent.get("machineName")
+            or agent.get("agentName")
+            or uuid
+        )
+        os_family = (agent.get("osType") or agent.get("operatingSystem") or "unknown").lower()
+
+        tags: Dict[str, str] = {}
+        if agent.get("siteName"):
+            tags["site"] = str(agent["siteName"])
+        if agent.get("groupName"):
+            tags["group"] = str(agent["groupName"])
+        if agent.get("accountName"):
+            tags["account"] = str(agent["accountName"])
+        if agent.get("isEligibleForMitigation") is not None:
+            tags["eligible_for_mitigation"] = str(agent.get("isEligibleForMitigation")).lower()
+        if policy:
+            if policy.get("name"):
+                tags["policy_name"] = str(policy["name"])
+            if policy.get("policyType"):
+                tags["policy_type"] = str(policy["policyType"])
+
+        installed_packages = self._build_packages(applications)
+        health = self._build_health(agent, collected_at)
+
+        return HostTelemetry(
+            organization=self._config.organization,
+            site=self._config.site,
+            host_id=uuid,
+            hostname=str(hostname),
+            serial_number=uuid,
+            agent_version=self._config.agent_version,
+            os_family=os_family,
+            os_version=agent.get("osVersion") or agent.get("agentVersion"),
+            kernel_version=None,
+            architecture=agent.get("cpuType"),
+            collected_at=collected_at,
+            ip_addresses=self._collect_ips(agent),
+            mac_addresses=None,
+            logged_in_users=None,
+            tags=tags or None,
+            installed_packages=installed_packages,
+            health=health,
+        )
+
+    @staticmethod
+    def _collect_ips(agent: Dict[str, Any]) -> List[str]:
+        ips: List[str] = []
+        interfaces = agent.get("networkInterfaces")
+        if isinstance(interfaces, list):
+            for iface in interfaces:
+                if isinstance(iface, dict):
+                    for key in ("ipAddress", "ipV4", "ipV6"):
+                        value = iface.get(key)
+                        if value:
+                            ips.append(str(value))
+        else:
+            for key in ("externalIp", "lastExternalIp"):
+                if agent.get(key):
+                    ips.append(str(agent[key]))
+        return ips
+
+    @staticmethod
+    def _build_packages(applications: Optional[List[Dict[str, Any]]]) -> Optional[List[SoftwarePackage]]:
+        if not applications:
+            return None
+        packages: List[SoftwarePackage] = []
+        for app in applications:
+            name = app.get("name") or app.get("productName")
+            if not name:
+                continue
+            packages.append(
+                SoftwarePackage(
+                    name=str(name),
+                    version=str(app.get("version") or app.get("productVersion") or "unknown"),
+                    source=app.get("publisher"),
+                    install_time=None,
+                    vendor=app.get("publisher"),
+                    signature=None,
+                )
+            )
+        return packages or None
+
+    @staticmethod
+    def _build_health(agent: Dict[str, Any], collected_at: datetime) -> AgentHealth:
+        threat_count = int(agent.get("threatCount") or agent.get("activeThreats") or 0)
+        mitigation_mode = str(agent.get("mitigationMode", "")).lower()
+        status = "healthy"
+        issues: List[str] = []
+        if threat_count > 0:
+            status = "degraded"
+            issues.append(f"active_threats:{threat_count}")
+        if mitigation_mode not in {"protect", "detect"}:
+            issues.append("mitigation_inactive")
+            status = "degraded"
+        last_seen = agent.get("lastActiveDate") or agent.get("lastSeen")
+        parsed = None
+        if isinstance(last_seen, str):
+            try:
+                parsed = date_parser.isoparse(last_seen)
+            except (ValueError, TypeError):
+                parsed = None
+        if parsed is None:
+            parsed = collected_at
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return AgentHealth(status=status, last_heartbeat=parsed, issues=issues or None)
 
     def _normalize_activity(self, activity: Dict[str, Any]) -> Optional[HostEvent]:
         """Translate raw SentinelOne activity JSON into a ``HostEvent`` model.
