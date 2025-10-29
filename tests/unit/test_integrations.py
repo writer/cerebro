@@ -145,4 +145,8 @@ async def test_integration_state_repository_roundtrip() -> None:
         assert updated.last_cursor == "cursor-1"
         assert updated.state_metadata == {"count": 20}
 
+        states = await repo.list_states()
+        assert len(states) == 1
+        assert states[0].integration == "sentinelone.activities"
+
     await engine.dispose()

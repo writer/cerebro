@@ -22,7 +22,8 @@ celery_kwargs = {
         'cerebro.tasks.maintenance_tasks',
         'cerebro.tasks.notification_digest',
         'cerebro.tasks.self_play_tasks',
-        'cerebro.tasks.analytics_tasks'
+        'cerebro.tasks.analytics_tasks',
+        'cerebro.tasks.integration_tasks',
     ],
 }
 
@@ -34,6 +35,7 @@ task_routes = {
     'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
     'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
     'cerebro.tasks.analytics_tasks.*': {'queue': 'analytics'},
+    'cerebro.tasks.integration.*': {'queue': 'integrations'},
     'process_email_digests': {'queue': 'notifications'},
 }
 
@@ -42,6 +44,7 @@ task_queues = [
     Queue('findings', routing_key='findings'),
     Queue('maintenance', routing_key='maintenance'),
     Queue('analytics', routing_key='analytics'),
+    Queue('integrations', routing_key='integrations'),
     Queue('notifications', routing_key='notifications'),
     Queue('default', routing_key='default'),
 ]
@@ -63,6 +66,16 @@ beat_schedule = {
     'collect-security-metrics-hourly': {
         'task': 'cerebro.tasks.analytics_tasks.collect_security_metrics_all_orgs',
         'schedule': 3600.0,
+    },
+    'sync-sentinelone-activities': {
+        'task': 'cerebro.tasks.integration.sync_sentinelone',
+        'schedule': 600.0,
+        'options': {'queue': 'integrations'},
+    },
+    'sync-kandji-inventory': {
+        'task': 'cerebro.tasks.integration.sync_kandji',
+        'schedule': 3600.0,
+        'options': {'queue': 'integrations'},
     },
 }
 

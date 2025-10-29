@@ -24,6 +24,18 @@ class IntegrationStateRepository:
         )
         return await self._session.scalar(stmt)
 
+    async def list_states(
+        self,
+        *,
+        integration: Optional[str] = None,
+    ) -> list[IntegrationSyncState]:
+        stmt = select(IntegrationSyncState)
+        if integration is not None:
+            stmt = stmt.where(IntegrationSyncState.integration == integration)
+        stmt = stmt.order_by(IntegrationSyncState.integration, IntegrationSyncState.scope)
+        result = await self._session.scalars(stmt)
+        return list(result)
+
     async def upsert_state(
         self,
         *,

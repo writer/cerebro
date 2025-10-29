@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.telemetry.schemas import HostEvent, HostEventBatch, HostTelemetry
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.metrics.integration_metrics import record_integration_sync
 
 logger = logging.getLogger(__name__)
 
@@ -198,11 +199,18 @@ class KandjiIngestion:
                 total_events += len(chunk)
 
         if latest_detection:
+            ts = latest_detection if latest_detection.tzinfo else latest_detection.replace(tzinfo=timezone.utc)
             await state_repo.upsert_state(
                 integration=_DETECTIONS_SCOPE,
                 scope=self._organization,
-                last_timestamp=latest_detection,
+                last_timestamp=ts,
                 metadata={"last_event_count": total_events},
+            )
+            record_integration_sync(
+                integration=_DETECTIONS_SCOPE,
+                scope=self._organization,
+                last_sync_unix=ts.timestamp(),
+                events_ingested=total_events,
             )
 
         return {"devices": device_count, "events_ingested": total_events, "hosts": len(grouped_events)}

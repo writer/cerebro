@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.telemetry.schemas import HostEvent, HostEventBatch
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.metrics.integration_metrics import record_integration_sync
 
 logger = logging.getLogger(__name__)
 
@@ -228,11 +229,18 @@ class SentinelOneIngestion:
                 ingested += len(chunk)
 
         if latest_timestamp:
+            ts = latest_timestamp if latest_timestamp.tzinfo else latest_timestamp.replace(tzinfo=timezone.utc)
             await state_repo.upsert_state(
                 integration="sentinelone.activities",
                 scope=self._config.organization,
-                last_timestamp=latest_timestamp,
+                last_timestamp=ts,
                 metadata={"last_ingested_count": ingested},
+            )
+            record_integration_sync(
+                integration="sentinelone.activities",
+                scope=self._config.organization,
+                last_sync_unix=ts.timestamp(),
+                events_ingested=ingested,
             )
 
         return {"events_ingested": ingested, "hosts": len(grouped)}
