@@ -33,6 +33,7 @@ class LogEntryType(Enum):
     POLICY_CHANGE = "policy_change"
     ACCESS_GRANTED = "access_granted"
     ACCESS_REVOKED = "access_revoked"
+    INTEGRATION_SYNC = "integration_sync"
 
 
 @dataclass

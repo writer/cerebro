@@ -13,7 +13,7 @@ import httpx
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.telemetry.schemas import HostEvent, HostEventBatch, HostTelemetry
+from cerebro.telemetry.schemas import HostEvent, HostEventBatch, HostTelemetry, SoftwarePackage
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.integrations.state import IntegrationStateRepository
 from cerebro.metrics.integration_metrics import record_integration_sync
@@ -250,6 +250,12 @@ class KandjiIngestion:
         if device.get("color"):
             tags["hardware_color"] = str(device["color"])
 
+        compliance_tags = self._extract_compliance_tags(device)
+        if compliance_tags:
+            tags.update(compliance_tags)
+
+        installed_packages = self._extract_installed_packages(device)
+
         return HostTelemetry(
             organization=self._organization,
             site=self._site or self._derive_site(device),
@@ -266,6 +272,7 @@ class KandjiIngestion:
             mac_addresses=None,
             logged_in_users=None,
             tags=tags or None,
+            installed_packages=installed_packages,
         )
 
     def _normalize_detection(self, detection: Dict[str, Any]) -> Optional[HostEvent]:
@@ -321,3 +328,59 @@ class KandjiIngestion:
     def _chunk_events(events: List[HostEvent], size: int) -> Iterable[List[HostEvent]]:
         for idx in range(0, len(events), size):
             yield events[idx : idx + size]
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> Optional[datetime]:
+        if isinstance(value, str):
+            try:
+                parsed = date_parser.isoparse(value)
+            except (ValueError, TypeError):
+                return None
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        return None
+
+    def _extract_compliance_tags(self, device: Dict[str, Any]) -> Dict[str, str]:
+        tags: Dict[str, str] = {}
+        compliance_status = device.get("compliance_status") or device.get("device_status")
+        if compliance_status not in (None, ""):
+            tags["compliance_status"] = str(compliance_status).lower()
+
+        compliance_score = device.get("compliance_score")
+        if compliance_score not in (None, ""):
+            tags["compliance_score"] = str(compliance_score)
+
+        missing_patches = device.get("missing_patch_count") or device.get("pending_updates")
+        if missing_patches not in (None, ""):
+            tags["missing_patch_count"] = str(missing_patches)
+
+        return tags
+
+    def _extract_installed_packages(self, device: Dict[str, Any]) -> Optional[List[SoftwarePackage]]:
+        candidates = [
+            device.get("applications"),
+            device.get("installed_applications"),
+            device.get("apps"),
+        ]
+        packages: List[SoftwarePackage] = []
+        for apps in candidates:
+            if not isinstance(apps, list):
+                continue
+            for entry in apps:
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("name") or entry.get("app_name") or entry.get("bundle_name")
+                if not name:
+                    continue
+                version = entry.get("version") or entry.get("app_version") or entry.get("bundle_version")
+                package = SoftwarePackage(
+                    name=str(name),
+                    version=str(version) if version else "unknown",
+                    source=entry.get("source") or entry.get("bundle_id"),
+                    install_time=self._parse_datetime(entry.get("installed_at") or entry.get("install_date")),
+                    vendor=entry.get("vendor") or entry.get("developer"),
+                    signature=entry.get("signature"),
+                )
+                packages.append(package)
+        return packages or None

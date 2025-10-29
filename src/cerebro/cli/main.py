@@ -1,6 +1,7 @@
 """CLI interface for Cerebro."""
 
 import asyncio
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 import typer
@@ -19,6 +20,7 @@ from cerebro.providers.tables import register_all_provider_tables
 from cerebro.auditability.evidence_bundles import get_evidence_manager
 from cerebro.auditability.transparency_log import get_transparency_log
 from cerebro.cli.agents import app as agents_app
+from cerebro.integrations.state import IntegrationStateRepository
 
 app = typer.Typer(name="cerebro", help="Cerebro Security System of Record CLI")
 console = Console()
@@ -513,6 +515,69 @@ def evidence(
                 rprint(f"[red]Failed to list evidence: {e}[/red]")
     
     asyncio.run(_evidence())
+
+
+@app.command()
+def integrations(
+    integration: Optional[str] = typer.Option(None, help="Filter by integration identifier"),
+    scope: Optional[str] = typer.Option(None, help="Filter by integration scope"),
+    stale_after: int = typer.Option(3600, help="Mark syncs older than this many seconds as stale (0 to disable)"),
+):
+    """Display integration synchronization freshness."""
+
+    async def _integrations():
+        async with async_session_factory() as db:
+            repo = IntegrationStateRepository(db)
+            states = await repo.list_states(integration=integration)
+
+            if scope:
+                states = [state for state in states if state.scope == scope]
+
+            if not states:
+                rprint("[yellow]No integration sync state found[/yellow]")
+                return
+
+            table = Table(title="Integration Sync Freshness")
+            table.add_column("Integration", style="cyan")
+            table.add_column("Scope", style="blue")
+            table.add_column("Last Sync", style="green")
+            table.add_column("Age", style="magenta")
+            table.add_column("Metadata", style="dim")
+
+            now = datetime.now(timezone.utc)
+            stale_threshold = stale_after if stale_after and stale_after > 0 else None
+
+            for state in states:
+                last_ts = state.last_timestamp
+                if last_ts and last_ts.tzinfo is None:
+                    last_ts = last_ts.replace(tzinfo=timezone.utc)
+
+                if last_ts is None:
+                    last_sync_text = "[italic]never[/italic]"
+                    age_text = "n/a"
+                    is_stale = True if stale_threshold is not None else False
+                else:
+                    age_seconds = max((now - last_ts).total_seconds(), 0)
+                    minutes, seconds = divmod(int(age_seconds), 60)
+                    age_text = f"{minutes}m {seconds}s"
+                    last_sync_text = last_ts.isoformat()
+                    is_stale = stale_threshold is not None and age_seconds > stale_threshold
+
+                if is_stale:
+                    last_sync_display = f"[red]{last_sync_text}[/red]"
+                    age_display = f"[red]{age_text}[/red]"
+                else:
+                    last_sync_display = last_sync_text
+                    age_display = age_text
+
+                metadata = state.state_metadata or {}
+                metadata_display = ", ".join(f"{k}={v}" for k, v in metadata.items()) or "-"
+
+                table.add_row(state.integration, state.scope or "default", last_sync_display, age_display, metadata_display)
+
+            console.print(table)
+
+    asyncio.run(_integrations())
 
 
 if __name__ == "__main__":

@@ -58,6 +58,8 @@ def test_kandji_build_host_telemetry_includes_serial_metadata() -> None:
         "blueprint_id": "blue-1",
         "color": "Silver",
         "device_os_version": "14.5",
+        "compliance_status": "Compliant",
+        "missing_patch_count": 0,
     }
 
     telemetry = ingestion._build_host_telemetry(device, collected_at=datetime.now(timezone.utc))
@@ -66,6 +68,29 @@ def test_kandji_build_host_telemetry_includes_serial_metadata() -> None:
     assert telemetry.hostname == "Acme-Mac"
     assert telemetry.tags is not None and telemetry.tags["asset_tag"] == "Asset-7"
     assert telemetry.os_family == "mac"
+    assert telemetry.tags["compliance_status"] == "compliant"
+
+
+def test_kandji_installed_packages_extracted() -> None:
+    ingestion = KandjiIngestion(client=_DummyClient(None), organization="acme")
+    device = {
+        "serial_number": "C02XYZ789",
+        "mdm_device": {"name": "Acme-TST"},
+        "applications": [
+            {
+                "name": "Safari",
+                "version": "17.1",
+                "installed_at": "2024-05-02T12:00:00Z",
+                "source": "mac_app_store",
+            }
+        ],
+    }
+
+    telemetry = ingestion._build_host_telemetry(device, collected_at=datetime.now(timezone.utc))
+    assert telemetry is not None
+    assert telemetry.installed_packages is not None
+    assert telemetry.installed_packages[0].name == "Safari"
+    assert telemetry.installed_packages[0].version == "17.1"
 
 
 @pytest.mark.parametrize(
