@@ -21,16 +21,24 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
+// Snapshot implements the default snapshot collector. It produces baseline host
+// inventory (OS metadata, network state, users, processes) that seeds the
+// Cerebro control plane when agents check in.
 type Snapshot struct{}
 
+// NewSnapshotCollector returns the default snapshot collector implementation.
 func NewSnapshotCollector() Snapshot {
 	return Snapshot{}
 }
 
+// Name identifies the collector for registration and artifact pack references.
 func (Snapshot) Name() string {
 	return "snapshot.basic"
 }
 
+// Collect gathers point-in-time host telemetry. The params map is currently
+// unused but allows future packs to override collection behaviour (for
+// example, constraining process counts).
 func (Snapshot) Collect(_ context.Context, cfg config.Config, _ map[string]any) (*types.HostTelemetry, error) {
 	now := time.Now().UTC()
 
@@ -77,6 +85,8 @@ func (Snapshot) Collect(_ context.Context, cfg config.Config, _ map[string]any) 
 	return telemetry, nil
 }
 
+// resolveMachineID attempts to find a stable identifier for the host, falling
+// back to a random UUID when no platform-specific id is available.
 func resolveMachineID(info *host.InfoStat) string {
 	if info != nil && info.HostID != "" {
 		return info.HostID
@@ -87,6 +97,8 @@ func resolveMachineID(info *host.InfoStat) string {
 	return uuid.NewString()
 }
 
+// detectOSFamily normalises the platform family and falls back to runtime.GOOS
+// when gopsutil returns an empty string.
 func detectOSFamily(info *host.InfoStat) string {
 	if info == nil {
 		return runtime.GOOS
@@ -97,6 +109,8 @@ func detectOSFamily(info *host.InfoStat) string {
 	return info.Platform
 }
 
+// collectUsers returns a sorted list of unique user accounts currently logged
+// into the machine. Errors are ignored to keep collection best-effort.
 func collectUsers() []string {
 	users, err := host.Users()
 	if err != nil {
@@ -117,6 +131,8 @@ func collectUsers() []string {
 	return result
 }
 
+// collectIPAddresses returns global unicast addresses across all interfaces.
+// Duplicates and non-routable addresses are filtered out.
 func collectIPAddresses() []string {
 	addrs := []string{}
 	interfaces, err := stdnet.Interfaces()
@@ -146,6 +162,8 @@ func collectIPAddresses() []string {
 	return addrs
 }
 
+// collectMACAddresses returns the hardware addresses for each interface.
+// Interfaces without a MAC address are ignored.
 func collectMACAddresses() []string {
 	interfaces, err := stdnet.Interfaces()
 	if err != nil {
@@ -166,6 +184,8 @@ func collectMACAddresses() []string {
 	return macs
 }
 
+// collectProcesses enumerates processes up to an optional limit and captures
+// lightweight metadata needed for investigations.
 func collectProcesses(limit int) ([]types.ProcessSnapshot, error) {
 	pids, err := process.Pids()
 	if err != nil {
@@ -216,6 +236,8 @@ func collectProcesses(limit int) ([]types.ProcessSnapshot, error) {
 	return snapshots, nil
 }
 
+// hashExecutable computes a SHA-256 digest of the process binary (up to 5 MB).
+// The hash helps the backend cluster identical binaries seen across hosts.
 func hashExecutable(proc *process.Process) string {
 	exe, err := proc.Exe()
 	if err != nil || exe == "" {
@@ -234,6 +256,7 @@ func hashExecutable(proc *process.Process) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
+// millisToTime converts millisecond timestamps to UTC time values.
 func millisToTime(ms int64) *time.Time {
 	if ms <= 0 {
 		return nil
@@ -242,6 +265,8 @@ func millisToTime(ms int64) *time.Time {
 	return &t
 }
 
+// collectConnections enumerates active TCP sockets for visibility into network
+// activity. Additional protocols can be added without changing caller logic.
 func collectConnections() ([]types.NetworkConnection, error) {
 	conns, err := gopsnet.Connections("tcp")
 	if err != nil {
@@ -268,6 +293,7 @@ func collectConnections() ([]types.NetworkConnection, error) {
 	return result, nil
 }
 
+// safeString normalises gopsutil responses that may return placeholder values.
 func safeString(value string) string {
 	if value == "" {
 		return ""

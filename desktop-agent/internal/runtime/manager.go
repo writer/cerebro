@@ -25,6 +25,9 @@ const (
 	taskSourceRemote = "remote"
 )
 
+// Manager coordinates snapshot and event collectors, batching telemetry and
+// handling pack scheduling. It is the central runtime orchestrator for the
+// desktop agent.
 type Manager struct {
 	cfg                config.Config
 	httpClient         *client.Service
@@ -41,6 +44,7 @@ type Manager struct {
 	hostname           string
 }
 
+// scheduledTask tracks when a pack-defined task should execute next.
 type scheduledTask struct {
 	source   string
 	packName string
@@ -48,6 +52,7 @@ type scheduledTask struct {
 	nextRun  time.Time
 }
 
+// NewManager constructs a runtime manager with empty collector registries.
 func NewManager(cfg config.Config, httpClient *client.Service, logger *log.Logger) *Manager {
 	rand.Seed(time.Now().UnixNano())
 	return &Manager{
@@ -62,6 +67,8 @@ func NewManager(cfg config.Config, httpClient *client.Service, logger *log.Logge
 	}
 }
 
+// RegisterSnapshot makes a snapshot collector available for fan-out when the
+// manager executes its collection loop.
 func (m *Manager) RegisterSnapshot(c collector.SnapshotCollector) {
 	if c == nil {
 		return
@@ -69,6 +76,8 @@ func (m *Manager) RegisterSnapshot(c collector.SnapshotCollector) {
 	m.snapshotCollectors[c.Name()] = c
 }
 
+// RegisterEvent appends an event collector whose deltas will be buffered and
+// flushed to the backend.
 func (m *Manager) RegisterEvent(c collector.EventCollector) {
 	if c == nil {
 		return
@@ -76,6 +85,8 @@ func (m *Manager) RegisterEvent(c collector.EventCollector) {
 	m.eventCollectors = append(m.eventCollectors, c)
 }
 
+// Run launches the continuous collection loop, driving snapshots, events, and
+// scheduled artifact pack tasks until the context is cancelled.
 func (m *Manager) Run(ctx context.Context) error {
 	if len(m.snapshotCollectors) == 0 && len(m.eventCollectors) == 0 {
 		return errors.New("no collectors registered")
@@ -148,6 +159,8 @@ func (m *Manager) Run(ctx context.Context) error {
 	}
 }
 
+// RunOnce executes a single iteration of the collection loop. It is primarily
+// used by tests or one-shot diagnostics.
 func (m *Manager) RunOnce(ctx context.Context) error {
 	if len(m.snapshotCollectors) == 0 && len(m.eventCollectors) == 0 {
 		return errors.New("no collectors registered")
@@ -173,6 +186,8 @@ func (m *Manager) RunOnce(ctx context.Context) error {
 	return nil
 }
 
+// collectSnapshots invokes each registered snapshot collector and forwards the
+// resulting payloads to the Cerebro API.
 func (m *Manager) collectSnapshots(ctx context.Context) error {
 	for _, collector := range m.snapshotCollectors {
 		telemetry, err := collector.Collect(ctx, m.cfg, nil)
@@ -194,6 +209,8 @@ func (m *Manager) collectSnapshots(ctx context.Context) error {
 	return nil
 }
 
+// initializeScheduledTasks loads pack definitions from disk so the scheduler
+// can execute local artifact tasks.
 func (m *Manager) initializeScheduledTasks() {
 	if m.cfg.PackDirectory == "" {
 		return
@@ -206,6 +223,8 @@ func (m *Manager) initializeScheduledTasks() {
 	m.syncSourceTasks(taskSourceLocal, packList)
 }
 
+// runScheduledTasks executes any pack tasks that are due and refreshes their
+// next run interval.
 func (m *Manager) runScheduledTasks(ctx context.Context) {
 	m.schedMu.Lock()
 	if len(m.scheduledTasks) == 0 {
@@ -507,6 +526,8 @@ func cloneSelectorMap(input map[string]any) map[string]any {
 	return out
 }
 
+// buildTaskParameters merges static collector config, supplied parameter
+// values, and defaults to produce the map handed to snapshot collectors.
 func buildTaskParameters(task pack.Task) map[string]any {
 	if len(task.Config) == 0 && len(task.ParameterValues) == 0 && len(task.Parameters) == 0 {
 		return nil
@@ -529,6 +550,8 @@ func buildTaskParameters(task pack.Task) map[string]any {
 	return merged
 }
 
+// taskEligible evaluates discovery clauses to decide whether the task should
+// execute on the current host.
 func (m *Manager) taskEligible(_ context.Context, sched scheduledTask) bool {
 	if len(sched.task.Discovery) == 0 {
 		return true
@@ -557,6 +580,8 @@ func (m *Manager) taskEligible(_ context.Context, sched scheduledTask) bool {
 	return true
 }
 
+// evaluateDiscoveryClause checks a single discovery expression (e.g.,
+// "tag:env=prod" or "hostname~^corp") against the current host metadata.
 func (m *Manager) evaluateDiscoveryClause(
 	clause string,
 	tags map[string]string,
@@ -611,6 +636,7 @@ func (m *Manager) evaluateDiscoveryClause(
 	return matched
 }
 
+// matchTagClause resolves tag equality expressions used in discovery clauses.
 func matchTagClause(clause string, tags map[string]string) bool {
 	key := clause
 	value := ""
@@ -634,12 +660,15 @@ func matchTagClause(clause string, tags map[string]string) bool {
 	return actual == value
 }
 
+// currentIdentity returns the last snapshot's host identifier and hostname.
 func (m *Manager) currentIdentity() (string, string) {
 	m.identityMu.RLock()
 	defer m.identityMu.RUnlock()
 	return m.hostID, m.hostname
 }
 
+// collectEvents polls each registered event collector and enqueues results for
+// later flushing.
 func (m *Manager) collectEvents(ctx context.Context) error {
 	for _, collector := range m.eventCollectors {
 		events, err := collector.Collect(ctx, m.cfg)
