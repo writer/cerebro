@@ -183,6 +183,180 @@ class HostTelemetry(BaseModel):
         description="Detected configuration drift items",
     )
 
+
+class HostEvent(BaseModel):
+    """Discrete host event emitted by the desktop agent."""
+
+    event_id: Optional[UUID] = Field(None, description="Unique identifier for the event")
+    host_id: str = Field(..., description="Host identifier associated with the event")
+    hostname: Optional[str] = Field(None, description="Host name associated with the event")
+    category: str = Field(..., description="Logical category for the event (process, network, etc.)")
+    event_type: str = Field(..., description="Specific event type name")
+    severity: Optional[str] = Field(None, description="Severity label (info, high, etc.)")
+    timestamp: datetime = Field(..., description="Timestamp recorded by the agent")
+    process_id: Optional[int] = Field(None, description="Process identifier if relevant")
+    parent_pid: Optional[int] = Field(None, description="Parent process identifier")
+    user: Optional[str] = Field(None, description="User associated with the event")
+    command_line: Optional[str] = Field(None, description="Command line for process events")
+    source: str = Field(..., description="Collector source that produced the event")
+    payload: Optional[Dict[str, Any]] = Field(None, description="Arbitrary event metadata")
+
+
+class HostEventBatch(BaseModel):
+    """Batch transport envelope for host events."""
+
+    host_id: str = Field(..., description="Host identifier")
+    hostname: Optional[str] = Field(None, description="Host name")
+    organization: Optional[str] = Field(None, description="Organization identifier")
+    site: Optional[str] = Field(None, description="Optional site/location tag")
+    agent_version: str = Field(..., description="Agent version transmitting the batch")
+    collected_at: datetime = Field(..., description="Batch collection timestamp")
+    events: List[HostEvent] = Field(..., description="List of events included in the batch")
+
+
+class ArtifactTaskDefinition(BaseModel):
+    """Task specification delivered to an endpoint agent via artifact packs."""
+
+    task_id: UUID = Field(..., description="Unique identifier for the artifact task")
+    name: str = Field(..., description="Human readable task name")
+    collector: str = Field(..., description="Registered collector name the agent should execute")
+    interval_seconds: Optional[int] = Field(
+        None,
+        description="Execution interval expressed in seconds; falls back to agent defaults when omitted",
+    )
+    tags: Optional[Dict[str, str]] = Field(
+        None,
+        description="Additional telemetry tags to annotate results emitted by this task",
+    )
+    config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Collector-specific configuration payload",
+    )
+    discovery: Optional[List[str]] = Field(
+        None,
+        description="Discovery predicates evaluated by the agent before executing the task",
+    )
+    parameters: Optional[List["ArtifactTaskParameter"]] = Field(
+        None,
+        description="Parameter definitions expected by the collector",
+    )
+    parameter_values: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Resolved parameter values provided by the control plane",
+    )
+    resources: Optional["ArtifactTaskResources"] = Field(
+        None,
+        description="Resource hints including timeouts and thresholds",
+    )
+    tools: Optional[List["ArtifactTool"]] = Field(
+        None,
+        description="Tool bundle metadata required by this task",
+    )
+
+
+class ArtifactTaskParameter(BaseModel):
+    """Parameter metadata describing allowed values and defaults."""
+
+    name: str = Field(..., description="Parameter name")
+    type: Optional[str] = Field(None, description="Parameter type hint")
+    description: Optional[str] = Field(None, description="Description of the parameter")
+    default: Optional[Any] = Field(None, description="Default value applied when not supplied")
+    required: Optional[bool] = Field(None, description="Whether the parameter is required")
+    choices: Optional[List[str]] = Field(None, description="Enumerated set of allowed values")
+
+
+class ArtifactTaskResources(BaseModel):
+    """Resource limits and execution hints for a pack task."""
+
+    timeout_seconds: Optional[int] = Field(None, description="Max execution time for the task")
+    max_rows: Optional[int] = Field(None, description="Maximum rows to collect before truncation")
+    max_upload_bytes: Optional[int] = Field(None, description="Maximum bytes to upload")
+    ops_per_second: Optional[int] = Field(None, description="Suggested ops/second throttle")
+
+
+class ArtifactTool(BaseModel):
+    """External tool dependency required by a pack task."""
+
+    name: str = Field(..., description="Tool identifier")
+    url: Optional[str] = Field(None, description="Download URL for the tool")
+    expected_hash: Optional[str] = Field(None, description="Expected SHA256 hash of the tool")
+    serve_url: Optional[str] = Field(None, description="Server-hosted URL when distributed centrally")
+    version: Optional[str] = Field(None, description="Tool version identifier")
+
+
+class ArtifactPackTrigger(BaseModel):
+    trigger_id: UUID
+    trigger_type: str
+    match_value: str
+    minimum_severity: Optional[str] = None
+    expires_after_seconds: Optional[int] = None
+
+
+class ArtifactPackTriggerCreate(BaseModel):
+    trigger_type: str
+    match_value: str
+    minimum_severity: Optional[str] = None
+    expires_after_seconds: Optional[int] = None
+
+
+class ArtifactPackTaskCreate(BaseModel):
+    name: str
+    collector: str
+    interval_seconds: Optional[int] = None
+    tags: Optional[Dict[str, str]] = None
+    config: Optional[Dict[str, Any]] = None
+    discovery: Optional[List[str]] = None
+    parameters: Optional[List[ArtifactTaskParameter]] = None
+    parameter_values: Optional[Dict[str, Any]] = None
+    resources: Optional[ArtifactTaskResources] = None
+    tools: Optional[List[ArtifactTool]] = None
+
+
+class ArtifactPackCreate(BaseModel):
+    name: str
+    version: Optional[str] = None
+    description: Optional[str] = None
+    selectors: Optional[Dict[str, Any]] = None
+    enabled: bool = True
+    approval_state: Optional[str] = None
+    approval_notes: Optional[str] = None
+    schedule_interval_seconds: Optional[int] = None
+    tasks: List[ArtifactPackTaskCreate]
+    triggers: Optional[List[ArtifactPackTriggerCreate]] = None
+
+
+class ArtifactPackUpdate(BaseModel):
+    name: Optional[str] = None
+    version: Optional[str] = None
+    description: Optional[str] = None
+    selectors: Optional[Dict[str, Any]] = None
+    enabled: Optional[bool] = None
+    approval_state: Optional[str] = None
+    approval_notes: Optional[str] = None
+    schedule_interval_seconds: Optional[int] = None
+    tasks: Optional[List[ArtifactPackTaskCreate]] = None
+    triggers: Optional[List[ArtifactPackTriggerCreate]] = None
+
+
+class ArtifactPackDefinition(BaseModel):
+    """Pack definition returned to agents based on eligibility selectors."""
+
+    pack_id: UUID = Field(..., description="Identifier for the artifact pack")
+    name: str = Field(..., description="Pack name")
+    version: Optional[str] = Field(None, description="Semantic version of the pack contents")
+    description: Optional[str] = Field(None, description="Short description of the pack purpose")
+    selectors: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Selector criteria (tags, sites, OS families) used to target eligible agents",
+    )
+    tasks: List[ArtifactTaskDefinition] = Field(..., description="Task definitions included in the pack")
+    enabled: bool = Field(True, description="Whether the pack is active for distribution")
+    approval_state: str = Field("draft", description="Approval workflow state for the pack")
+    approval_notes: Optional[str] = Field(None, description="Reviewer notes attached to the pack")
+    schedule_interval_seconds: Optional[int] = Field(None, description="Optional recurring schedule for the pack")
+    last_deployed_at: Optional[datetime] = Field(None, description="Timestamp of the most recent deployment")
+    triggers: Optional[List[ArtifactPackTrigger]] = Field(None, description="Automation triggers associated with the pack")
+
 class RuntimeTelemetry(BaseModel):
     """Runtime telemetry from application."""
 

@@ -6,12 +6,13 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Optional
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, Iterable, Optional, List
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from cerebro.core.models import (
     Account,
@@ -22,13 +23,28 @@ from cerebro.core.models import (
     Resource,
     Rule,
 )
-from cerebro.telemetry.models import HostContext, RepositoryContext, RuntimeContext, TelemetryResult
+from cerebro.telemetry.models import (
+    ArtifactPack,
+    ArtifactPackTask,
+    ArtifactPackTrigger,
+    ArtifactPackTarget,
+    HostContext,
+    HostTelemetryEvent,
+    RepositoryContext,
+    RuntimeContext,
+    TelemetryResult,
+)
 from cerebro.telemetry.schemas import (
+    ArtifactPackDefinition,
+    ArtifactPackTrigger as ArtifactPackTriggerSchema,
+    ArtifactTaskDefinition,
     ComplianceEvidence,
     DependencyGraph,
     DependencyScan,
     DependencyVulnerability,
     FrontendObservationTelemetry,
+    HostEvent,
+    HostEventBatch,
     RepositoryTelemetry,
     RuntimeTelemetry,
     SecretsScanResult,
@@ -242,6 +258,184 @@ class TelemetryIngestionService:
             logger.exception("Host telemetry processing failed", exc_info=exc)
             raise TelemetryProcessingError(str(exc)) from exc
 
+    async def process_host_events(self, payload: HostEventBatch) -> Dict[str, Any]:
+        """Ingest incremental host events emitted by the desktop agent."""
+
+        logger.info(
+            "Received host events",
+            extra={
+                "host_id": payload.host_id,
+                "hostname": payload.hostname,
+                "org": payload.organization,
+                "count": len(payload.events),
+            },
+        )
+
+        if not payload.events:
+            return {
+                "status": "processed",
+                "host_id": payload.host_id,
+                "events_ingested": 0,
+            }
+
+        try:
+            context = await self._ensure_host_context_from_values(
+                host_id=payload.host_id,
+                hostname=payload.hostname,
+                organization=payload.organization,
+                site=payload.site,
+            )
+
+            ingested = 0
+
+            for event in payload.events:
+                observed_at = event.timestamp
+                if observed_at.tzinfo is None:
+                    observed_at = observed_at.replace(tzinfo=timezone.utc)
+
+                record = HostTelemetryEvent(
+                    org_id=context.org_id,
+                    account_id=context.account_id,
+                    resource_id=context.resource_id,
+                    host_id=context.host_id,
+                    hostname=event.hostname or context.hostname,
+                    category=event.category,
+                    event_type=event.event_type,
+                    severity=event.severity,
+                    process_id=event.process_id,
+                    parent_pid=event.parent_pid,
+                    user=event.user,
+                    command_line=event.command_line,
+                    source=event.source,
+                    agent_version=payload.agent_version,
+                    payload=event.payload,
+                    observed_at=observed_at,
+                )
+
+                if event.event_id:
+                    record.event_id = event.event_id
+
+                self.db.add(record)
+                ingested += 1
+
+            # Evaluate automation triggers before committing so the target
+            # creation participates in the same transaction.
+            await self._apply_pack_triggers(context, payload.events)
+            await self.db.commit()
+
+            return {
+                "status": "processed",
+                "host_id": payload.host_id,
+                "events_ingested": ingested,
+            }
+        except Exception as exc:  # pragma: no cover
+            await self.db.rollback()
+            logger.exception("Host events processing failed", exc_info=exc)
+            raise TelemetryProcessingError(str(exc)) from exc
+
+    async def list_host_packs(
+        self,
+        *,
+        host_id: str,
+        hostname: Optional[str],
+        organization: Optional[str],
+        site: Optional[str],
+        tags: Dict[str, str],
+    ) -> List[ArtifactPackDefinition]:
+        """Return artifact packs applicable to the specified host.
+
+        This endpoint acts as the agent's control-plane feed.  We merge three
+        sources of truth:
+
+        * statically-approved packs that match the host selectors;
+        * host-specific targets created by automation triggers; and
+        * fulfilment bookkeeping so we only deliver each target once.
+        """
+
+        logger.info(
+            "Listing host packs",
+            extra={
+                "host_id": host_id,
+                "hostname": hostname,
+                "organization": organization,
+                "site": site,
+            },
+        )
+
+        context = await self._ensure_host_context_from_values(
+            host_id=host_id,
+            hostname=hostname,
+            organization=organization,
+            site=site,
+        )
+
+        stmt = (
+            select(ArtifactPack)
+            .where(
+                ArtifactPack.org_id == context.org_id,
+                ArtifactPack.enabled.is_(True),
+                ArtifactPack.approval_state == "approved",
+            )
+            .options(
+                selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPack.triggers),
+            )
+        )
+
+        result = await self.db.execute(stmt)
+        packs = result.scalars().unique().all()
+
+        now = datetime.now(timezone.utc)
+        eligible: List[ArtifactPackDefinition] = []
+        delivered_ids: set[UUID] = set()
+
+        # Statically approved packs that match selectors are delivered first.
+        for pack in packs:
+            if not self._pack_matches(pack, context, tags):
+                continue
+            eligible.append(self._serialize_pack(pack))
+            delivered_ids.add(pack.pack_id)
+
+        targets_stmt = (
+            select(ArtifactPackTarget)
+            .options(
+                selectinload(ArtifactPackTarget.pack).selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPackTarget.pack).selectinload(ArtifactPack.triggers),
+            )
+            .join(ArtifactPack, ArtifactPack.pack_id == ArtifactPackTarget.pack_id)
+            .where(
+                ArtifactPackTarget.host_id == context.host_id,
+                ArtifactPackTarget.fulfilled_at.is_(None),
+                or_(
+                    ArtifactPackTarget.expires_at.is_(None),
+                    ArtifactPackTarget.expires_at > now,
+                ),
+                ArtifactPack.org_id == context.org_id,
+                ArtifactPack.enabled.is_(True),
+                ArtifactPack.approval_state == "approved",
+            )
+        )
+
+        target_result = await self.db.execute(targets_stmt)
+        targets = target_result.scalars().unique().all()
+
+        if targets:
+            # Mark follow-on targets as fulfilled once the pack is queued so we
+            # do not continually deliver the same automation instruction.
+            for target in targets:
+                pack = target.pack
+                if pack is None:
+                    continue
+                if pack.pack_id not in delivered_ids:
+                    eligible.append(self._serialize_pack(pack))
+                    delivered_ids.add(pack.pack_id)
+                target.fulfilled_at = now
+                pack.last_deployed_at = now
+
+            await self.db.commit()
+
+        return eligible
+
     async def process_compliance_evidence(self, payload: ComplianceEvidence) -> Dict[str, Any]:
         """Persist compliance evidence metadata."""
 
@@ -366,28 +560,230 @@ class TelemetryIngestionService:
         )
 
     async def _ensure_host_context(self, payload: HostTelemetry) -> HostContext:
-        org_name = payload.organization or "endpoint-devices"
+        context = await self._ensure_host_context_from_values(
+            host_id=payload.host_id,
+            hostname=payload.hostname,
+            organization=payload.organization,
+            site=payload.site,
+        )
+        return context
+
+    async def _ensure_host_context_from_values(
+        self,
+        *,
+        host_id: str,
+        hostname: Optional[str],
+        organization: Optional[str],
+        site: Optional[str],
+    ) -> HostContext:
+        org_name = organization or "endpoint-devices"
         org = await self._get_or_create_org(org_name)
         account = await self._get_or_create_account(org.org_id, "endpoint", org_name)
         resource = await self._get_or_create_resource(
             account.account_id,
             "endpoint.device",
-            payload.host_id,
-            payload.hostname,
+            host_id,
+            hostname or host_id,
         )
 
         metadata: Dict[str, Any] = {}
-        if payload.site:
-            metadata["site"] = payload.site
+        if site:
+            metadata["site"] = site
 
         return HostContext(
             org_id=org.org_id,
             account_id=account.account_id,
             resource_id=resource.resource_id,
-            host_id=payload.host_id,
-            hostname=payload.hostname,
+            host_id=host_id,
+            hostname=hostname or host_id,
             received_at=datetime.utcnow(),
             metadata=metadata,
+        )
+
+    def _pack_matches(
+        self,
+        pack: ArtifactPack,
+        context: HostContext,
+        tags: Dict[str, str],
+    ) -> bool:
+        """Check whether the host satisfies the pack's selector filters."""
+        if not pack.enabled:
+            return False
+        if pack.approval_state != "approved":
+            return False
+        selectors = pack.selectors or {}
+
+        if not selectors:
+            return True
+
+        site_selector = selectors.get("site")
+        if site_selector:
+            host_site = context.metadata.get("site")
+            if isinstance(site_selector, (list, tuple, set)):
+                if host_site not in site_selector:
+                    return False
+            elif host_site != site_selector:
+                return False
+
+        tag_selector = selectors.get("tags")
+        if isinstance(tag_selector, dict):
+            for key, expected in tag_selector.items():
+                if tags.get(key) != expected:
+                    return False
+
+        return True
+
+    async def _apply_pack_triggers(self, context: HostContext, events: List[HostEvent]) -> None:
+        """Evaluate automation triggers against a batch of events.
+
+        Any trigger that matches will create (or refresh) a host-specific target
+        so the next call to :meth:`list_host_packs` delivers the follow-on pack.
+        """
+        if not events:
+            return
+
+        event_types: Dict[str, List[HostEvent]] = {}
+        event_categories: Dict[str, List[HostEvent]] = {}
+        for event in events:
+            event_types.setdefault(event.event_type, []).append(event)
+            event_categories.setdefault(event.category, []).append(event)
+
+        stmt = (
+            select(ArtifactPackTrigger)
+            .options(
+                selectinload(ArtifactPackTrigger.pack).selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPackTrigger.pack).selectinload(ArtifactPack.triggers),
+            )
+            .join(ArtifactPack, ArtifactPackTrigger.pack_id == ArtifactPack.pack_id)
+            .where(
+                ArtifactPack.org_id == context.org_id,
+                ArtifactPack.enabled.is_(True),
+                ArtifactPack.approval_state == "approved",
+            )
+        )
+
+        result = await self.db.execute(stmt)
+        triggers = result.scalars().unique().all()
+
+        for trigger in triggers:
+            pack = trigger.pack
+            if pack is None:
+                continue
+
+            if trigger.trigger_type == "event_type":
+                matched_events = event_types.get(trigger.match_value, [])
+            elif trigger.trigger_type == "event_category":
+                matched_events = event_categories.get(trigger.match_value, [])
+            else:
+                continue
+
+            if not matched_events:
+                continue
+
+            if trigger.minimum_severity:
+                min_rank = self._severity_rank(trigger.minimum_severity)
+                if not any(self._severity_rank(event.severity) >= min_rank for event in matched_events):
+                    continue
+
+            await self._assign_pack_target(pack, context, trigger)
+
+    async def _assign_pack_target(
+        self,
+        pack: ArtifactPack,
+        context: HostContext,
+        trigger: ArtifactPackTrigger,
+    ) -> None:
+        """Create or refresh a target instructing the host to run ``pack``."""
+        stmt = (
+            select(ArtifactPackTarget)
+            .where(
+                ArtifactPackTarget.pack_id == pack.pack_id,
+                ArtifactPackTarget.host_id == context.host_id,
+                ArtifactPackTarget.fulfilled_at.is_(None),
+            )
+        )
+        existing = await self.db.scalar(stmt)
+        if existing:
+            if trigger.expires_after_seconds and existing.expires_at is None:
+                # Backfill an expiry when we promote a previously open-ended target.
+                existing.expires_at = datetime.now(timezone.utc) + timedelta(seconds=trigger.expires_after_seconds)
+            return
+
+        expires_at = None
+        if trigger.expires_after_seconds:
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=trigger.expires_after_seconds)
+
+        target = ArtifactPackTarget(
+            pack_id=pack.pack_id,
+            host_id=context.host_id,
+            hostname=context.hostname,
+            expires_at=expires_at,
+        )
+        self.db.add(target)
+
+    @staticmethod
+    def _severity_rank(value: Optional[str]) -> int:
+        """Map textual severities to a comparable numeric scale."""
+        if not value:
+            return 0
+        mapping = {
+            "info": 0,
+            "informational": 0,
+            "low": 1,
+            "medium": 2,
+            "moderate": 2,
+            "high": 3,
+            "critical": 4,
+            "severe": 4,
+        }
+        return mapping.get(value.lower(), 0)
+
+    def _serialize_pack(self, pack: ArtifactPack) -> ArtifactPackDefinition:
+        tasks = []
+        for task in sorted(pack.tasks, key=lambda item: item.name):
+            tasks.append(
+                ArtifactTaskDefinition(
+                    task_id=task.task_id,
+                    name=task.name,
+                    collector=task.collector,
+                    interval_seconds=task.interval_seconds,
+                    tags=task.tags or None,
+                    config=task.config or None,
+                    discovery=task.discovery or None,
+                    parameters=task.parameters or None,
+                    parameter_values=task.parameter_values or None,
+                    resources=task.resources or None,
+                    tools=task.tools or None,
+                )
+            )
+
+        selectors = pack.selectors or None
+        triggers = None
+        if pack.triggers:
+            triggers = [
+                ArtifactPackTriggerSchema(
+                    trigger_id=trigger.trigger_id,
+                    trigger_type=trigger.trigger_type,
+                    match_value=trigger.match_value,
+                    minimum_severity=trigger.minimum_severity,
+                    expires_after_seconds=trigger.expires_after_seconds,
+                )
+                for trigger in sorted(pack.triggers, key=lambda item: item.match_value)
+            ]
+
+        return ArtifactPackDefinition(
+            pack_id=pack.pack_id,
+            name=pack.name,
+            version=pack.version,
+            description=pack.description,
+            selectors=selectors,
+            tasks=tasks,
+            enabled=pack.enabled,
+            approval_state=pack.approval_state,
+            approval_notes=pack.approval_notes,
+            schedule_interval_seconds=pack.schedule_interval_seconds,
+            last_deployed_at=pack.last_deployed_at,
+            triggers=triggers,
         )
 
     async def _get_or_create_org(self, name: str) -> Organization:
