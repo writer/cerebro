@@ -14,7 +14,10 @@ from cerebro.automation.integration_sync import (
 )
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
-from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.integrations.state import (
+    IntegrationIssueEventRepository,
+    IntegrationStateRepository,
+)
 from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
 
 from .celery_app import celery_app
@@ -95,6 +98,7 @@ def monitor_sync_health(self):
 
         async with async_session_factory() as db:
             repo = IntegrationStateRepository(db)
+            issue_repo = IntegrationIssueEventRepository(db)
             states = await repo.list_states()
 
             for state in states:
@@ -123,6 +127,8 @@ def monitor_sync_health(self):
                             issue.integration,
                             issue.scope,
                         )
+
+                await issue_repo.record_issue_event(issue)
 
                 metadata_update = {
                     "last_alert_issue_type": issue.issue_type,

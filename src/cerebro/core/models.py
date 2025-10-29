@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    String, Text, Boolean, DateTime, LargeBinary, Integer,
+    String, Text, Boolean, DateTime, LargeBinary, Integer, Float,
     ForeignKey, UniqueConstraint, CheckConstraint, Index
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -463,6 +463,34 @@ class IntegrationSyncState(Base):
     __table_args__ = (
         UniqueConstraint("integration", "scope"),
         Index("ix_integration_sync_state_scope", "scope"),
+    )
+
+
+class IntegrationSyncIssueEvent(Base):
+    """Append-only history of integration sync issues for observability."""
+
+    __tablename__ = "integration_sync_issue_events"
+
+    issue_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    integration: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(128), nullable=False, default="default")
+    issue_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[str] = mapped_column(String(32), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    age_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    issue_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    __table_args__ = (
+        Index("ix_integration_issue_events_scope", "scope"),
+        Index("ix_integration_issue_events_observed", "observed_at"),
     )
 
 

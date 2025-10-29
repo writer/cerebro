@@ -205,6 +205,37 @@ export type IntegrationSyncJob = {
   queued_at: string;
 };
 
+export type IntegrationIssueHistoryEvent = {
+  integration: string;
+  scope: string;
+  issue_type: string;
+  severity: string;
+  message: string;
+  observed_at: string;
+  last_timestamp: string | null;
+  age_seconds: number | null;
+  metadata: Record<string, unknown>;
+};
+
+export type IntegrationIssueTrendBucket = {
+  bucket_start: string;
+  bucket_end: string;
+  counts: Record<string, number>;
+};
+
+export type IntegrationIssueHistory = {
+  events: IntegrationIssueHistoryEvent[];
+  buckets: IntegrationIssueTrendBucket[];
+};
+
+export type IntegrationSyncStatus = {
+  task_id: string;
+  status: string;
+  finished: boolean;
+  date_done: string | null;
+  result: unknown;
+};
+
 export type ExecutiveSummaryProgress = {
   findings_burned_down_30d: number;
   new_controls_implemented: number;

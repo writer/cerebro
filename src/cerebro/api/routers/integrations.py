@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, List, Optional, Literal
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import require_scopes
 from cerebro.core.database import get_db
-from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.integrations.state import IntegrationIssueEventRepository, IntegrationStateRepository
 from cerebro.automation.integration_sync import analyze_state
 from cerebro.core.config import settings
 from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
+from cerebro.tasks.celery_app import celery_app
 
 
 class IntegrationStatus(BaseModel):
@@ -38,6 +39,29 @@ class IntegrationIssueResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Raw metadata associated with the scope")
 
 
+class IntegrationIssueHistoryEvent(BaseModel):
+    integration: str
+    scope: str
+    issue_type: str
+    severity: str
+    message: str
+    observed_at: datetime
+    last_timestamp: Optional[datetime]
+    age_seconds: Optional[float]
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class IntegrationIssueTrendBucket(BaseModel):
+    bucket_start: datetime
+    bucket_end: datetime
+    counts: Dict[str, int] = Field(default_factory=dict)
+
+
+class IntegrationIssueHistoryResponse(BaseModel):
+    events: List[IntegrationIssueHistoryEvent] = Field(default_factory=list)
+    buckets: List[IntegrationIssueTrendBucket] = Field(default_factory=list)
+
+
 class IntegrationSyncRequest(BaseModel):
     integration: Literal["kandji", "sentinelone"] = Field(..., description="Integration to synchronize")
     lookback_minutes: Optional[int] = Field(
@@ -53,6 +77,14 @@ class IntegrationSyncJobResponse(BaseModel):
     integration: str = Field(..., description="Integration that was queued")
     scope: str = Field(..., description="Scope associated with the integration")
     queued_at: datetime = Field(..., description="Timestamp when the task was enqueued")
+
+
+class IntegrationSyncStatusResponse(BaseModel):
+    task_id: str = Field(..., description="Celery task identifier")
+    status: str = Field(..., description="Celery task status value")
+    finished: bool = Field(..., description="True when the task has reached a terminal state")
+    date_done: Optional[datetime] = Field(None, description="Completion timestamp if available")
+    result: Optional[Any] = Field(None, description="Serialized task result when available")
 
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -109,6 +141,37 @@ async def trigger_integration_sync(
     )
 
 
+@router.get("/sync/{task_id}", response_model=IntegrationSyncStatusResponse)
+async def get_integration_sync_status(
+    task_id: str,
+    _: Any = Depends(require_scopes("view:integrations")),
+) -> IntegrationSyncStatusResponse:
+    result = celery_app.AsyncResult(task_id)
+    finished = result.ready()
+    status = result.status
+    date_done = result.date_done
+
+    payload: Optional[Any] = None
+    if finished:
+        value = result.result
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            payload = value
+        elif isinstance(value, dict):
+            payload = value
+        elif isinstance(value, list):
+            payload = value
+        else:
+            payload = str(value)
+
+    return IntegrationSyncStatusResponse(
+        task_id=task_id,
+        status=status,
+        finished=finished,
+        date_done=date_done,
+        result=payload,
+    )
+
+
 @router.get("/status/issues", response_model=List[IntegrationIssueResponse])
 async def list_integration_issues(
     integration: Optional[str] = Query(None, description="Filter by integration identifier"),
@@ -150,6 +213,63 @@ async def list_integration_issues(
         )
 
     return issues
+
+
+@router.get("/status/issues/history", response_model=IntegrationIssueHistoryResponse)
+async def list_integration_issue_history(
+    integration: Optional[str] = Query(None, description="Filter by integration identifier"),
+    scope: Optional[str] = Query(None, description="Filter by scope"),
+    hours: int = Query(24, ge=1, le=168, description="Lookback window in hours"),
+    bucket_minutes: int = Query(60, ge=5, le=720, description="Aggregation bucket size in minutes"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of recent events to return"),
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("view:integrations")),
+) -> IntegrationIssueHistoryResponse:
+    issue_repo = IntegrationIssueEventRepository(db)
+    now = datetime.now(timezone.utc)
+    window = timedelta(hours=hours)
+    since = now - window
+
+    events = await issue_repo.list_events(
+        integration=integration,
+        scope=scope,
+        since=since,
+        limit=limit,
+    )
+
+    bucket = timedelta(minutes=bucket_minutes)
+    buckets = await issue_repo.summarize_events(
+        integration=integration,
+        scope=scope,
+        window=window,
+        bucket=bucket,
+    )
+
+    history_events = [
+        IntegrationIssueHistoryEvent(
+            integration=event.integration,
+            scope=event.scope,
+            issue_type=event.issue_type,
+            severity=event.severity,
+            message=event.message,
+            observed_at=event.observed_at,
+            last_timestamp=event.last_timestamp,
+            age_seconds=event.age_seconds,
+            metadata=dict(event.issue_metadata or {}),
+        )
+        for event in reversed(events)
+    ]
+
+    history_buckets = [
+        IntegrationIssueTrendBucket(
+            bucket_start=item["bucket_start"],
+            bucket_end=item["bucket_end"],
+            counts=item["counts"],
+        )
+        for item in buckets
+    ]
+
+    return IntegrationIssueHistoryResponse(events=history_events, buckets=history_buckets)
 
 
 @router.get("/status/{integration}", response_model=List[IntegrationStatus])

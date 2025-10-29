@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { apiGet, apiPost } from "@/lib/api";
-import { IntegrationIssue, IntegrationStatus, IntegrationSyncJob } from "@/lib/types";
+import {
+  IntegrationIssue,
+  IntegrationIssueHistory,
+  IntegrationStatus,
+  IntegrationSyncJob,
+  IntegrationSyncStatus,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
 
@@ -43,6 +49,12 @@ const LOOKBACK_OPTIONS: Array<{ label: string; value: number | null }> = [
   { label: "6h", value: 360 },
 ];
 
+const TREND_WINDOWS: Array<{ label: string; value: number }> = [
+  { label: "6h", value: 6 },
+  { label: "24h", value: 24 },
+  { label: "7d", value: 168 },
+];
+
 const severityStyles: Record<"ok" | "warning" | "critical", string> = {
   ok: "bg-emerald-500/10 text-emerald-300 border-emerald-500/40",
   warning: "bg-amber-500/10 text-amber-300 border-amber-500/40",
@@ -53,6 +65,12 @@ const severityOrder: Record<string, number> = {
   critical: 3,
   warning: 2,
   ok: 1,
+};
+
+const severityLabels: Record<string, string> = {
+  critical: "Critical",
+  warning: "Warning",
+  ok: "Healthy",
 };
 
 function parseTimestamp(value: unknown): Date | null {
@@ -87,6 +105,19 @@ function formatAge(seconds: number | null): string {
   return `${hours}h ${mins}m`;
 }
 
+function formatRange(startStr: string, endStr: string): string {
+  const start = parseTimestamp(startStr);
+  const end = parseTimestamp(endStr);
+  if (!start || !end) {
+    return startStr;
+  }
+  const sameDay = start.toDateString() === end.toDateString();
+  if (sameDay) {
+    return `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  }
+  return `${start.toLocaleString()} → ${end.toLocaleString()}`;
+}
+
 function mapSeverity(statusLabel: string, isStale: boolean): "ok" | "warning" | "critical" {
   if (statusLabel === "error") {
     return "critical";
@@ -112,6 +143,8 @@ export function IntegrationSyncDashboard() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [retryLookback, setRetryLookback] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [trendWindowHours, setTrendWindowHours] = useState<number>(24);
+  const [pollingTaskId, setPollingTaskId] = useState<string | null>(null);
 
   const {
     data: statuses = [],
@@ -130,6 +163,7 @@ export function IntegrationSyncDashboard() {
   const {
     data: issues = [],
     isFetching: isFetchingIssues,
+    refetch: refetchIssues,
   } = useQuery({
     queryKey: ["integrationSyncIssues", staleThreshold],
     queryFn: () => {
@@ -217,6 +251,69 @@ export function IntegrationSyncDashboard() {
     [filteredEntries, selectedKey],
   );
 
+  const historyData = useMemo<IntegrationIssueHistory>(() => history ?? { events: [], buckets: [] }, [history]);
+
+  const historyTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const event of historyData.events) {
+      const key = event.severity.toLowerCase();
+      totals[key] = (totals[key] ?? 0) + 1;
+    }
+    return totals;
+  }, [historyData.events]);
+
+  const recentEvents = useMemo(() => {
+    return [...historyData.events].reverse().slice(0, 20);
+  }, [historyData.events]);
+
+  const trendBuckets = historyData.buckets;
+
+  useEffect(() => {
+    if (!pollingTaskId || !taskStatus?.finished) {
+      return;
+    }
+    const resultText =
+      taskStatus.result && typeof taskStatus.result === "object"
+        ? JSON.stringify(taskStatus.result)
+        : String(taskStatus.result ?? "");
+    const completionMessage = resultText ? `Sync ${taskStatus.status.toLowerCase()}: ${resultText}` : `Sync ${taskStatus.status.toLowerCase()}`;
+    setFeedback(completionMessage);
+    setPollingTaskId(null);
+    refetch();
+    refetchIssues();
+  }, [pollingTaskId, taskStatus, refetch, refetchIssues]);
+
+  const {
+    data: history,
+    isFetching: isFetchingHistory,
+  } = useQuery({
+    queryKey: ["integrationSyncHistory", selectedEntry?.key, trendWindowHours],
+    queryFn: async () => {
+      if (!selectedEntry) {
+        return { events: [], buckets: [] } satisfies IntegrationIssueHistory;
+      }
+      const params = new URLSearchParams({
+        integration: selectedEntry.integration,
+        scope: selectedEntry.scope,
+        hours: String(trendWindowHours),
+        bucket_minutes: "60",
+        limit: "200",
+      });
+      return apiGet<IntegrationIssueHistory>(`/integrations/status/issues/history?${params.toString()}`);
+    },
+    enabled: Boolean(selectedEntry),
+    refetchInterval: selectedEntry ? 60_000 : false,
+  });
+
+  const {
+    data: taskStatus,
+  } = useQuery({
+    queryKey: ["integrationSyncTaskStatus", pollingTaskId],
+    queryFn: () => apiGet<IntegrationSyncStatus>(`/integrations/sync/${pollingTaskId}`),
+    enabled: Boolean(pollingTaskId),
+    refetchInterval: pollingTaskId ? 5_000 : false,
+  });
+
   const lastUpdated = useMemo(() => {
     if (!dataUpdatedAt) {
       return "—";
@@ -233,6 +330,7 @@ export function IntegrationSyncDashboard() {
       }),
     onSuccess: (job) => {
       setFeedback(`Queued ${job.integration} sync (task ${job.task_id})`);
+      setPollingTaskId(job.task_id);
     },
     onError: (err: unknown) => {
       const message = err instanceof Error ? err.message : "Failed to queue sync";
@@ -243,6 +341,7 @@ export function IntegrationSyncDashboard() {
   const handleRowSelect = (entry: DashboardEntry) => {
     setSelectedKey(entry.key === selectedKey ? null : entry.key);
     setFeedback(null);
+    setPollingTaskId(null);
   };
 
   const handleRetry = () => {
@@ -472,30 +571,111 @@ export function IntegrationSyncDashboard() {
                   <p className="mt-3 text-xs text-emerald-300">{feedback}</p>
                 ) : null}
 
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Issues</h4>
-                    <ul className="mt-2 space-y-2 text-xs">
-                      {selectedEntry.issues.length ? (
-                        selectedEntry.issues.map((issue) => (
-                          <li key={`${issue.issue_type}-${issue.observed_at}`} className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2">
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium capitalize">{issue.issue_type}</span>
-                              <span className="text-[10px] text-zinc-500">{formatTimestamp(parseTimestamp(issue.observed_at))}</span>
-                            </div>
-                            <p className="mt-1 text-zinc-300">{issue.message}</p>
-                          </li>
-                        ))
-                      ) : (
-                        <li className="text-zinc-500">No issues recorded.</li>
-                      )}
-                    </ul>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  <span>Trend window:</span>
+                  <div className="flex gap-1">
+                    {TREND_WINDOWS.map((option) => {
+                      const active = trendWindowHours === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setTrendWindowHours(option.value)}
+                          className={cn(
+                            "rounded-md border px-2 py-1 text-xs transition",
+                            active
+                              ? "border-zinc-100 bg-zinc-800 text-zinc-100"
+                              : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Metadata</h4>
-                    <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-zinc-800 bg-zinc-950/80 p-2 text-[11px] text-zinc-300">
-                      {JSON.stringify(selectedEntry.metadata, null, 2)}
-                    </pre>
+                  {isFetchingHistory ? <span className="text-[11px] text-zinc-400">Loading trends…</span> : null}
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <div className="lg:col-span-2 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Active issues</h4>
+                      <ul className="mt-2 space-y-2 text-xs">
+                        {selectedEntry.issues.length ? (
+                          selectedEntry.issues.map((issue) => (
+                            <li key={`${issue.issue_type}-${issue.observed_at}`} className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium capitalize">{issue.issue_type}</span>
+                                <span className="text-[10px] text-zinc-500">{formatTimestamp(parseTimestamp(issue.observed_at))}</span>
+                              </div>
+                              <p className="mt-1 text-zinc-300">{issue.message}</p>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-zinc-500">No active issues recorded.</li>
+                        )}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Recent history</h4>
+                      {recentEvents.length ? (
+                        <ul className="mt-2 space-y-2 text-xs">
+                          {recentEvents.map((event) => (
+                            <li key={`${event.issue_type}-${event.observed_at}`} className="rounded-md border border-zinc-800 bg-zinc-950/80 p-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium capitalize text-zinc-100">{event.issue_type}</span>
+                                <span className="text-[10px] text-zinc-500">{formatTimestamp(parseTimestamp(event.observed_at))}</span>
+                              </div>
+                              <p className="mt-1 text-zinc-300">{event.message}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs text-zinc-500">No recent issue history in the selected window.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Trend summary</h4>
+                      {Object.keys(historyTotals).length ? (
+                        <ul className="mt-2 space-y-1 text-xs text-zinc-300">
+                          {Object.entries(historyTotals).map(([severity, count]) => (
+                            <li key={severity} className="flex items-center justify-between">
+                              <span className="capitalize text-zinc-400">{severityLabels[severity] ?? severity}</span>
+                              <span>{count}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs text-zinc-500">No issues observed in this window.</p>
+                      )}
+                      {trendBuckets.length ? (
+                        <table className="mt-3 w-full table-fixed border-separate border-spacing-y-1 text-[11px]">
+                          <tbody>
+                            {trendBuckets.map((bucket) => (
+                              <tr key={bucket.bucket_start} className="rounded border border-zinc-800 bg-zinc-950/70">
+                                <td className="px-2 py-1 text-zinc-400">{formatRange(bucket.bucket_start, bucket.bucket_end)}</td>
+                                <td className="px-2 py-1 text-right text-zinc-200">
+                                  {Object.entries(bucket.counts)
+                                    .map(([sev, count]) => `${sev}:${count}`)
+                                    .join("  ")}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Metadata</h4>
+                      <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-zinc-800 bg-zinc-950/80 p-2 text-[11px] text-zinc-300">
+                        {JSON.stringify(selectedEntry.metadata, null, 2)}
+                      </pre>
+                    </div>
                   </div>
                 </div>
               </div>
