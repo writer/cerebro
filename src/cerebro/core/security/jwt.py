@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from jose import jwt, JWTError
@@ -28,6 +28,7 @@ class JWTService:
         self.key_store = key_store
         self._redis_client: Optional[redis.Redis] = None
         self.metrics = metrics
+        self._public_key_cache: Dict[str, Tuple[str, float]] = {}
         
     async def _get_redis(self) -> redis.Redis:
         """Get Redis client for token revocation."""
@@ -142,12 +143,33 @@ class JWTService:
             if not signing_key:
                 raise JWTError(f"Unknown signing key: {kid}")
 
-            private_key_bytes = await self.key_store.get_private_key(signing_key)
-            private_key = serialization.load_pem_private_key(private_key_bytes, password=None)
-            public_key_pem = private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo,
-            ).decode()
+            cache_entry = self._public_key_cache.get(signing_key.kid)
+            now_ts = time.time()
+            public_key_pem: Optional[str] = None
+
+            if cache_entry:
+                cached_key, expires_at = cache_entry
+                if expires_at > now_ts:
+                    public_key_pem = cached_key
+                    if self.metrics:
+                        self.metrics.record_public_key_cache("hit")
+                else:
+                    if self.metrics:
+                        self.metrics.record_public_key_cache("expired")
+                    self._public_key_cache.pop(signing_key.kid, None)
+
+            if public_key_pem is None:
+                private_key_bytes = await self.key_store.get_private_key(signing_key)
+                private_key = serialization.load_pem_private_key(private_key_bytes, password=None)
+                public_key_pem = private_key.public_key().public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                ).decode()
+                ttl = max(settings.jwt_public_key_cache_ttl_seconds, 0)
+                if ttl:
+                    self._public_key_cache[signing_key.kid] = (public_key_pem, now_ts + ttl)
+                if self.metrics:
+                    self.metrics.record_public_key_cache("miss")
 
             # Verify and decode token
             payload = jwt.decode(
@@ -185,6 +207,12 @@ class JWTService:
             # Check if token is revoked
             if await self._is_token_revoked(jti):
                 raise JWTError("Token has been revoked")
+
+            username = payload.get("sub")
+            if isinstance(username, str) and await self._is_user_blocked(username):
+                if self.metrics:
+                    self.metrics.record_token_verified("revoked", algorithm, kid)
+                raise JWTError("Token revoked due to user block")
 
             # Update verification metrics
             if self.metrics:

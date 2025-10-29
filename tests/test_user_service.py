@@ -91,14 +91,15 @@ class TestUserService:
         user_service = UserService(test_db)
         await user_service.create_default_scopes()
         
-        admin = await user_service.create_admin_user(
+        result = await user_service.create_admin_user(
             username="testadmin",
             email="admin@example.com",
             password="admin123"
         )
-        
+        admin = result.user
+
         assert admin.is_admin
-        
+
         scopes = await user_service.get_user_scopes(admin.user_id)
         assert "admin" in scopes
         assert "read:findings" in scopes

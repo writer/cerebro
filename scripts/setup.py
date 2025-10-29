@@ -27,12 +27,14 @@ async def create_sample_data():
         
         # Create admin user with generated password
         try:
-            admin_user = await user_service.create_admin_user(
+            admin_result = await user_service.create_admin_user(
                 username="admin",
                 email="admin@cerebro.local"
                 # password will be auto-generated and logged
             )
-            print(f"Created admin user: {admin_user.username}")
+            print(f"Created admin user: {admin_result.user.username}")
+            if admin_result.generated_password:
+                print("Admin password (store securely):", admin_result.generated_password)
         except ValueError as e:
             print(f"Admin user already exists: {e}")
         
@@ -91,7 +93,7 @@ async def create_sample_data():
         
         print("\n🎉 Sample data created successfully!")
         print(f"Organization ID: {org.org_id}")
-        print(f"Admin user: admin / admin123!")
+        print("Admin user: admin (password generated during setup)")
         print(f"Analyst user: analyst / analyst123!")
         print(f"Total rules: {len(rule_mapping) + producer_sync_result['created']}")
 

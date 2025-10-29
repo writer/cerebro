@@ -1,5 +1,8 @@
 """Main FastAPI application."""
 
+import asyncio
+from contextlib import suppress
+
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
@@ -7,22 +10,23 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
+import structlog
 from fastapi.responses import Response
 
 from cerebro.core.config import settings
+from cerebro.core.logging import configure_structlog
 from cerebro.core.observability import configure_agent_observability
+from cerebro.core.database import async_session_factory
+from cerebro.core.security.key_store import JWTKeyStore
+from cerebro.metrics.jwt_metrics import jwt_metrics
 from cerebro.agents.metrics import get_registry
 from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks, telemetry, automation, packs, integrations
 from .routers import jwks
 from .auth import User, get_current_user
 
 # Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-
-logger = logging.getLogger(__name__)
+configure_structlog()
+logger = structlog.get_logger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -36,25 +40,28 @@ app = FastAPI(
 configure_agent_observability()
 
 # Configure rate limiter
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+default_limits = [limit for limit in settings.get_default_rate_limits() if limit]
+if default_limits:
+    limiter = Limiter(key_func=get_remote_address, default_limits=default_limits)
+else:
+    limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-logger.info("Rate limiting enabled: 100 requests/minute default")
+if default_limits:
+    logger.info("Rate limiting enabled", default_limits=default_limits)
+else:
+    logger.info("Rate limiting configured without default limits")
 
 # Add CORS middleware (restricted for production)
-allowed_origins = [
-    "http://localhost:3000",  # React dev server
-    "http://localhost:8080",  # Vue dev server  
-    "https://cerebro.yourdomain.com",  # Production UI
-]
+allowed_origins = settings.get_allowed_origins()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_credentials=settings.api_cors_allow_credentials,
+    allow_methods=settings.api_cors_allow_methods,
+    allow_headers=settings.api_cors_allow_headers,
 )
 
 # Include routers
@@ -253,6 +260,48 @@ app.include_router(
     prefix=f"{settings.api_v1_prefix}",
     tags=["automation", "telemetry"]
 )
+
+
+_rotation_task: asyncio.Task | None = None
+
+
+async def _jwt_rotation_worker(interval: int) -> None:
+    while True:
+        try:
+            async with async_session_factory() as session:
+                key_store = JWTKeyStore(session, metrics=jwt_metrics)
+                rotated = await key_store.rotate_keys_if_needed()
+                cleaned = await key_store.cleanup_expired_keys()
+                if rotated:
+                    logger.info("Background JWT rotation executed")
+                if cleaned:
+                    logger.info("Background JWT key cleanup executed", cleaned=cleaned)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("JWT rotation worker iteration failed", error=str(exc))
+
+        await asyncio.sleep(interval)
+
+
+@app.on_event("startup")
+async def _start_background_tasks() -> None:
+    global _rotation_task
+    interval = max(settings.jwt_rotation_check_interval_seconds, 0)
+    if interval <= 0:
+        return
+    if _rotation_task is None or _rotation_task.done():
+        loop = asyncio.get_running_loop()
+        _rotation_task = loop.create_task(_jwt_rotation_worker(interval))
+
+
+@app.on_event("shutdown")
+async def _stop_background_tasks() -> None:
+    if _rotation_task is None:
+        return
+    _rotation_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await _rotation_task
 
 
 @app.get("/")

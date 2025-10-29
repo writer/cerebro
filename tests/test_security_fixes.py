@@ -80,13 +80,15 @@ class TestUserServiceSecurity:
         await user_service.create_default_scopes()
         
         # Should generate password if not provided
-        admin = await user_service.create_admin_user(
+        result = await user_service.create_admin_user(
             username="admin",
             email="admin@test.com"
         )
-        
+        admin = result.user
+
         assert admin.username == "admin"
         assert admin.is_admin is True
+        assert result.generated_password is not None
         assert "admin" in [scope for scope in await user_service.get_user_scopes(admin.user_id)]
 
 

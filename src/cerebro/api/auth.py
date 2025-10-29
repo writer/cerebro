@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.dependencies import get_jwt_service
+from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.core.security.jwt import JWTService
@@ -24,6 +25,9 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     refresh_token: Optional[str] = None
+    access_token_expires_in: Optional[int] = None
+    refresh_token_expires_in: Optional[int] = None
+    csrf_token: Optional[str] = None
 
 
 class TokenData(BaseModel):
@@ -44,9 +48,6 @@ class User(BaseModel):
     is_admin: bool = False
     scopes: List[str] = Field(default_factory=list)
     org_id: Optional[UUID] = None
-
-
-security = HTTPBearer()
 
 
 async def _resolve_default_org_id(db: AsyncSession) -> Optional[UUID]:
@@ -77,15 +78,55 @@ def _build_token_data(payload: Dict[str, object]) -> TokenData:
     )
 
 
+def generate_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def validate_csrf(request: Request) -> None:
+    cookie_token = request.cookies.get(settings.csrf_cookie_name)
+    header_token = request.headers.get(settings.csrf_header_name)
+
+    if not cookie_token or not header_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token missing",
+        )
+
+    if not secrets.compare_digest(cookie_token, header_token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token mismatch",
+        )
+
+
+def _extract_token_from_request(request: Request) -> str:
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+
+    cookie_token = request.cookies.get(settings.access_token_cookie_name)
+    if cookie_token:
+        validate_csrf(request)
+        return cookie_token
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
     db: AsyncSession = Depends(get_db),
     jwt_service: JWTService = Depends(get_jwt_service),
 ) -> User:
     """Return the authenticated user context for the current request."""
 
+    credentials_token = _extract_token_from_request(request)
+
     try:
-        payload = await jwt_service.verify_token(credentials.credentials, expected_type="access")
+        payload = await jwt_service.verify_token(credentials_token, expected_type="access")
     except Exception as exc:  # JWTService raises JWTError internally
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

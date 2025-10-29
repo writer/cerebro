@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import Column, String, DateTime, LargeBinary, Boolean, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 from sqlalchemy import select, and_, or_
@@ -225,7 +226,14 @@ class JWTKeyStore:
     
     async def rotate_keys_if_needed(self) -> bool:
         """Check if key rotation is needed and perform it."""
-        current_key = await self.get_current_signing_key()
+        try:
+            current_key = await self.get_current_signing_key()
+        except (OperationalError, ProgrammingError) as exc:
+            logger.warning(
+                "JWT signing key table unavailable; skipping rotation (%s)",
+                exc,
+            )
+            return False
         
         if not current_key:
             logger.info("No current signing key found, creating initial key")
@@ -249,13 +257,20 @@ class JWTKeyStore:
         cleanup_cutoff = now - timedelta(hours=settings.jwt_key_overlap_hours * 2)
         
         # Find expired keys
-        stmt = select(JWTSigningKey).where(
-            and_(
-                JWTSigningKey.expires_at < cleanup_cutoff,
-                JWTSigningKey.is_active == True
+        try:
+            stmt = select(JWTSigningKey).where(
+                and_(
+                    JWTSigningKey.expires_at < cleanup_cutoff,
+                    JWTSigningKey.is_active == True
+                )
             )
-        )
-        expired_keys = list(await self.db.scalars(stmt))
+            expired_keys = list(await self.db.scalars(stmt))
+        except (OperationalError, ProgrammingError) as exc:
+            logger.warning(
+                "JWT signing key table unavailable for cleanup (%s)",
+                exc,
+            )
+            return 0
         
         # Deactivate expired keys
         for key in expired_keys:

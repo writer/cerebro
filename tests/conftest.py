@@ -22,6 +22,7 @@ from cerebro.api.main import app
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.core.security.jwt import JWTService
 from cerebro.metrics.jwt_metrics import jwt_metrics
+from cerebro.core.config import settings
 
 
 class _TestPwdContext:
@@ -92,32 +93,65 @@ def client(test_db: AsyncSession):
 
     transport = httpx.ASGITransport(app=app)
 
-    async def _request(method: str, url: str, **kwargs):
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            response = await client.request(method, url, **kwargs)
-            return response
-
     class _ClientProxy:
         def __init__(self):
             self._transport = transport
+            self._client = httpx.AsyncClient(transport=self._transport, base_url="http://testserver")
+            self._csrf_token: Optional[str] = None
+
+        def _prepare_request(self, method: str, kwargs):
+            if method.upper() in {"GET", "HEAD", "OPTIONS"}:
+                return
+            if not self._csrf_token:
+                cookie_token = self._client.cookies.get(settings.csrf_cookie_name)
+                if cookie_token:
+                    self._csrf_token = cookie_token
+            if self._csrf_token:
+                headers = kwargs.setdefault("headers", {})
+                headers.setdefault(settings.csrf_header_name, self._csrf_token)
+
+        def _capture_csrf(self, response):
+            try:
+                data = response.json()
+            except ValueError:
+                return
+            if isinstance(data, dict) and data.get("csrf_token"):
+                self._csrf_token = data["csrf_token"]
 
         def request(self, method: str, url: str, **kwargs):
-            return asyncio.get_event_loop().run_until_complete(_request(method, url, **kwargs))
+            self._prepare_request(method, kwargs)
+            response = asyncio.get_event_loop().run_until_complete(
+                self._client.request(method, url, **kwargs)
+            )
+            self._capture_csrf(response)
+            return response
 
         def get(self, url: str, **kwargs):
-            return self.request("GET", url, **kwargs)
+            response = self.request("GET", url, **kwargs)
+            self._capture_csrf(response)
+            return response
 
         def post(self, url: str, **kwargs):
-            return self.request("POST", url, **kwargs)
+            response = self.request("POST", url, **kwargs)
+            self._capture_csrf(response)
+            return response
 
         def put(self, url: str, **kwargs):
-            return self.request("PUT", url, **kwargs)
+            response = self.request("PUT", url, **kwargs)
+            self._capture_csrf(response)
+            return response
 
         def delete(self, url: str, **kwargs):
-            return self.request("DELETE", url, **kwargs)
+            response = self.request("DELETE", url, **kwargs)
+            self._capture_csrf(response)
+            return response
 
     try:
-        yield _ClientProxy()
+        proxy = _ClientProxy()
+        try:
+            yield proxy
+        finally:
+            asyncio.get_event_loop().run_until_complete(proxy._client.aclose())
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -204,11 +238,12 @@ async def test_admin_user(test_db: AsyncSession) -> User:
     user_service = UserService(test_db)
     await user_service.create_default_scopes()
     
-    admin = await user_service.create_admin_user(
+    admin_result = await user_service.create_admin_user(
         username="testadmin",
         email="admin@example.com",
         password="admin-test-pass"
     )
+    admin = admin_result.user
     admin.org_id = await test_db.scalar(select(Organization.org_id).limit(1))
     await test_db.commit()
     return admin

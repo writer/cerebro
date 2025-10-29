@@ -410,6 +410,39 @@ class Settings(BaseSettings):
         description="API version prefix for all v1 endpoints"
     )
 
+    api_allowed_origins: List[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "https://cerebro.yourdomain.com",
+        ],
+        description="Allowed CORS origins for the public API",
+    )
+    api_allowed_origins_overrides: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Environment-specific overrides for allowed CORS origins",
+    )
+    api_cors_allow_credentials: bool = Field(
+        default=True,
+        description="Allow credentials (cookies, auth headers) in CORS responses",
+    )
+    api_cors_allow_methods: List[str] = Field(
+        default_factory=lambda: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        description="HTTP methods permitted by CORS",
+    )
+    api_cors_allow_headers: List[str] = Field(
+        default_factory=lambda: ["Authorization", "Content-Type", "X-Requested-With"],
+        description="HTTP headers permitted by CORS",
+    )
+    api_default_rate_limits: List[str] = Field(
+        default_factory=lambda: ["100/minute"],
+        description="Default rate limit configuration passed to SlowAPI",
+    )
+    api_default_rate_limits_overrides: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Environment-specific overrides for rate limits",
+    )
+
     # JWT Security (Phase 2)
     jwt_algorithm: str = Field(
         default="RS256", description="JWT signing algorithm (RS256 recommended for production)"
@@ -425,6 +458,55 @@ class Settings(BaseSettings):
     )
     jwks_cache_ttl_seconds: int = Field(
         default=300, description="JWKS endpoint cache TTL"
+    )
+    jwt_public_key_cache_ttl_seconds: int = Field(
+        default=600,
+        description="TTL in seconds for cached JWT verification public keys",
+    )
+    jwt_rotation_check_interval_seconds: int = Field(
+        default=300,
+        description="Interval in seconds for background JWT rotation checks",
+    )
+
+    access_token_cookie_name: str = Field(
+        default="cerebro_access_token",
+        description="HTTP cookie name storing the access token",
+    )
+    refresh_token_cookie_name: str = Field(
+        default="cerebro_refresh_token",
+        description="HTTP cookie name storing the refresh token",
+    )
+    auth_cookie_domain: Optional[str] = Field(
+        default=None,
+        description="Optional cookie domain override for authentication cookies",
+    )
+    auth_cookie_path: str = Field(
+        default="/",
+        description="Cookie path applied to authentication cookies",
+    )
+    auth_cookie_secure: bool = Field(
+        default=True,
+        description="Mark authentication cookies as Secure (HTTPS only)",
+    )
+    auth_cookie_same_site: str = Field(
+        default="lax",
+        description="SameSite mode for authentication cookies (lax, strict, none)",
+    )
+    csrf_cookie_name: str = Field(
+        default="cerebro_csrf_token",
+        description="Cookie storing CSRF token for double-submit defense",
+    )
+    csrf_cookie_secure: bool = Field(
+        default=True,
+        description="Mark CSRF cookie as Secure (HTTPS only)",
+    )
+    csrf_cookie_same_site: str = Field(
+        default="lax",
+        description="SameSite policy for CSRF cookie",
+    )
+    csrf_header_name: str = Field(
+        default="X-CSRF-Token",
+        description="Header expected to mirror the CSRF token",
     )
 
     # Environment and Debug Settings
@@ -508,6 +590,14 @@ class Settings(BaseSettings):
         """Return result backend URL falling back to Redis when unset."""
 
         return self.celery_result_backend or self.redis_url
+
+    def get_allowed_origins(self) -> List[str]:
+        env = self.environment.lower()
+        return self.api_allowed_origins_overrides.get(env, self.api_allowed_origins)
+
+    def get_default_rate_limits(self) -> List[str]:
+        env = self.environment.lower()
+        return self.api_default_rate_limits_overrides.get(env, self.api_default_rate_limits)
     
     # Key Management Service Configuration
     kms_provider: str = Field(
@@ -655,6 +745,26 @@ class Settings(BaseSettings):
                 "Set ENABLE_DEBUG_ENDPOINTS=false in production environments."
             )
         return v
+
+    @field_validator('auth_cookie_same_site')
+    @classmethod
+    def validate_same_site(cls, v: str) -> str:
+        allowed = {'lax', 'strict', 'none'}
+        normalized = v.lower()
+        if normalized not in allowed:
+            allowed_list = ', '.join(sorted(allowed))
+            raise ValueError(f"auth_cookie_same_site must be one of: {allowed_list}")
+        return normalized
+
+    @field_validator('csrf_cookie_same_site')
+    @classmethod
+    def validate_csrf_same_site(cls, v: str) -> str:
+        allowed = {'lax', 'strict', 'none'}
+        normalized = v.lower()
+        if normalized not in allowed:
+            allowed_list = ', '.join(sorted(allowed))
+            raise ValueError(f"csrf_cookie_same_site must be one of: {allowed_list}")
+        return normalized
 
     model_config = SettingsConfigDict(
         env_file=".env",

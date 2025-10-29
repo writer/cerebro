@@ -78,6 +78,13 @@ jwks_response_time = Histogram(
     registry=cerebro_registry
 )
 
+jwt_public_key_cache_hits = Counter(
+    'cerebro_jwt_public_key_cache_total',
+    'JWT public key cache hits and misses',
+    ['result'],  # hit, miss, expired
+    registry=cerebro_registry
+)
+
 
 class JwtMetrics:
     """Helper class for JWT metrics."""
@@ -153,6 +160,11 @@ class JwtMetrics:
         """Record cleanup of expired revoked tokens."""
         jwt_revocation_list_size.dec(removed_count)
     
+    @staticmethod
+    def record_public_key_cache(result: str):
+        """Record public key cache usage result (hit/miss/expired)."""
+        jwt_public_key_cache_hits.labels(result=result).inc()
+
     @staticmethod
     @contextmanager
     def time_jwks_request():

@@ -1,5 +1,6 @@
 """User management service for authentication and authorization."""
 
+from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -15,6 +16,12 @@ logger = logging.getLogger(__name__)
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+@dataclass
+class AdminUserCreationResult:
+    user: User
+    generated_password: Optional[str] = None
 
 
 class UserService:
@@ -298,30 +305,32 @@ class UserService:
         username: str = "admin",
         email: str = "admin@cerebro.local",
         password: Optional[str] = None,
-    ) -> User:
+    ) -> AdminUserCreationResult:
         """Create admin user with provided or generated credentials.
-        
-        In production, validates password strength and logs generated passwords.
+
+        Generates a secure password when one is not provided and returns it to the
+        caller without logging the secret.
         """
+        import os
         import secrets
         import string
-        import os
-        
-        # Generate secure random password if not provided
+
+        generated_password: Optional[str] = None
+
         if not password:
             alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-            password = ''.join(secrets.choice(alphabet) for _ in range(16))
-            logger.warning(f"Generated admin password for {username}: {password}")
-        
-        # Validate password strength in production
+            generated_password = ''.join(secrets.choice(alphabet) for _ in range(16))
+            password = generated_password
+            logger.info("Generated admin password for %s", username)
+
         environment = os.getenv('ENVIRONMENT', 'production').lower()
         if environment not in ['dev', 'development', 'test', 'testing']:
-            if len(password) < 12:
+            if password is None or len(password) < 12:
                 raise ValueError(
                     "Admin password must be at least 12 characters in production. "
-                    f"Generate a secure password with: python -c 'import secrets; print(secrets.token_urlsafe(16))'"
+                    "Generate a secure password with: python -c 'import secrets; print(secrets.token_urlsafe(16))'"
                 )
-        # Create admin user
+
         admin_user = await self.create_user(
             username=username,
             email=email,
@@ -330,14 +339,14 @@ class UserService:
             scopes=[
                 "admin",
                 "read:organizations", "write:organizations",
-                "read:accounts", "write:accounts", 
+                "read:accounts", "write:accounts",
                 "read:resources", "read:principals",
                 "read:rules", "write:rules",
                 "read:findings", "write:findings",
                 "collect:data", "read:audit", "query:execute", "ingest:telemetry",
                 "view:integrations",
-            ]
+            ],
         )
-        
-        logger.info(f"Created admin user: {username}")
-        return admin_user
+
+        logger.info("Created admin user: %s", username)
+        return AdminUserCreationResult(user=admin_user, generated_password=generated_password)

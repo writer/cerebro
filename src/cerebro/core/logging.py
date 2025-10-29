@@ -27,17 +27,32 @@ def configure_structlog(level: Optional[int] = None) -> None:
     from cerebro.core.config import settings
 
     level_value = level if level is not None else getattr(logging, settings.log_level.upper(), logging.INFO)
+    log_format = (settings.log_format or "json").lower()
 
-    logging.basicConfig(level=level_value)
-
-    structlog.configure(
-        processors=[
+    if log_format == "json":
+        logging.basicConfig(level=level_value)
+        processors = [
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.add_log_level,
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
-        ],
+        ]
+    else:
+        logging.basicConfig(
+            level=level_value,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+        processors = [
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.dev.ConsoleRenderer(colors=False),
+        ]
+
+    structlog.configure(
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(level_value),
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
