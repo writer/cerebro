@@ -4,9 +4,13 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from cerebro.integrations.kandji import KandjiIngestion
 from cerebro.integrations.sentinelone import SentinelOneConfig, SentinelOneIngestion
+from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.core.models import IntegrationSyncState
+from cerebro.telemetry.schemas import HostEvent
 
 
 class _DummyClient:
@@ -77,3 +81,68 @@ def test_kandji_detection_normalization_uses_serial_and_cve(detection, expected_
     assert event is not None
     assert event.event_id == UUID(expected_uuid)
     assert event.event_type == "cve:CVE-2024-0001"
+
+
+def test_chunk_events_respects_batch_size() -> None:
+    timestamp = datetime.now(timezone.utc)
+    events = [
+        HostEvent(
+            event_id=None,
+            host_id="host",
+            hostname="host",
+            category="test",
+            event_type="evt",
+            severity="info",
+            timestamp=timestamp,
+            process_id=None,
+            parent_pid=None,
+            user=None,
+            command_line=None,
+            source="unit",
+            payload=None,
+        )
+        for _ in range(5)
+    ]
+
+    chunks = list(SentinelOneIngestion._chunk_events(events, 2))
+    assert [len(chunk) for chunk in chunks] == [2, 2, 1]
+
+
+@pytest.mark.asyncio
+async def test_integration_state_repository_roundtrip() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(IntegrationSyncState.__table__.create)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    timestamp = datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+    async with session_factory() as session:
+        repo = IntegrationStateRepository(session)
+        await repo.upsert_state(
+            integration="sentinelone.activities",
+            scope="acme",
+            last_timestamp=timestamp,
+            metadata={"count": 10},
+        )
+        state = await repo.get_state("sentinelone.activities", "acme")
+        assert state is not None
+        state_ts = state.last_timestamp
+        assert state_ts is not None
+        if state_ts.tzinfo is None:
+            state_ts = state_ts.replace(tzinfo=timezone.utc)
+        assert state_ts == timestamp
+        assert state.state_metadata == {"count": 10}
+
+        await repo.upsert_state(
+            integration="sentinelone.activities",
+            scope="acme",
+            last_cursor="cursor-1",
+            metadata={"count": 20},
+        )
+        updated = await repo.get_state("sentinelone.activities", "acme")
+        assert updated is not None
+        assert updated.last_cursor == "cursor-1"
+        assert updated.state_metadata == {"count": 20}
+
+    await engine.dispose()

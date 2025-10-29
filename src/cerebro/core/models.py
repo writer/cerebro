@@ -402,6 +402,7 @@ class SlackWebhook(Base):
         service = get_encryption_service()
         return await service.decrypt_secret(self.webhook_url, self.webhook_url_dek)
 
+
     async def set_webhook_url(self, url: str) -> None:
         """Encrypt and set webhook URL.
 
@@ -433,6 +434,36 @@ class SlackNotification(Base):
 
     # Relationships
     webhook: Mapped["SlackWebhook"] = relationship(back_populates="notifications")
+
+
+class IntegrationSyncState(Base):
+    """Checkpoint tracking for incremental third-party integrations."""
+
+    __tablename__ = "integration_sync_state"
+
+    state_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    integration: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(128), nullable=False, default="default")
+    last_cursor: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    last_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    state_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("integration", "scope"),
+        Index("ix_integration_sync_state_scope", "scope"),
+    )
 
 
 class EmailConfig(Base):

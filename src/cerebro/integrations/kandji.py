@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+import asyncio
+import random
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, Dict, Iterable, List, Optional
 from uuid import UUID, uuid5
 
@@ -13,10 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.telemetry.schemas import HostEvent, HostEventBatch, HostTelemetry
 from cerebro.telemetry.services import TelemetryIngestionService
+from cerebro.integrations.state import IntegrationStateRepository
 
 logger = logging.getLogger(__name__)
 
 _KANDJI_EVENT_NAMESPACE = UUID("c7070277-9e5c-431d-9487-59ac266c3a54")
+_DETECTIONS_SCOPE = "kandji.vulnerabilities"
+_DETECTIONS_DRIFT = timedelta(minutes=5)
+_EVENT_BATCH_SIZE = 200
+_MAX_RETRIES = 5
+_RETRY_BASE_SECONDS = 1.0
 
 
 class KandjiError(RuntimeError):
@@ -59,9 +67,7 @@ class KandjiClient:
         params: Optional[Dict[str, Any]] = {"limit": page_size}
 
         while url:
-            response = await self._client.get(url, params=params)
-            response.raise_for_status()
-            payload = response.json()
+            payload = await self._request_json(url, params=params)
             results = payload.get("results") if isinstance(payload, dict) else None
             if isinstance(results, list):
                 for item in results:
@@ -81,9 +87,7 @@ class KandjiClient:
         params: Optional[Dict[str, Any]] = {"size": page_size}
 
         while url:
-            response = await self._client.get(url, params=params)
-            response.raise_for_status()
-            payload = response.json()
+            payload = await self._request_json(url, params=params)
             results = payload.get("results") if isinstance(payload, dict) else None
             if isinstance(results, list):
                 for item in results:
@@ -91,6 +95,34 @@ class KandjiClient:
                         yield item
             url = payload.get("next") if isinstance(payload, dict) else None
             params = None
+
+    async def _request_json(self, url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Execute Kandji API calls with retry/backoff handling."""
+
+        attempt = 0
+        backoff = _RETRY_BASE_SECONDS
+        while True:
+            attempt += 1
+            try:
+                response = await self._client.get(url, params=params)
+            except httpx.TransportError:
+                if attempt >= _MAX_RETRIES:
+                    raise
+            else:
+                if response.status_code in {429, 500, 502, 503, 504}:
+                    if attempt >= _MAX_RETRIES:
+                        response.raise_for_status()
+                else:
+                    response.raise_for_status()
+                    return response.json()
+
+                retry_after = response.headers.get("Retry-After")
+                if retry_after and retry_after.isdigit():
+                    backoff = max(float(retry_after), backoff)
+
+            jitter = random.uniform(0.0, 0.25 * backoff)
+            await asyncio.sleep(backoff + jitter)
+            backoff = min(backoff * 2, 30.0)
 
 
 class KandjiIngestion:
@@ -120,6 +152,12 @@ class KandjiIngestion:
         """
 
         service = TelemetryIngestionService(db)
+        state_repo = IntegrationStateRepository(db)
+        state = await state_repo.get_state(_DETECTIONS_SCOPE, self._organization)
+        detection_cutoff: Optional[datetime] = None
+        if state and state.last_timestamp:
+            detection_cutoff = state.last_timestamp - _DETECTIONS_DRIFT
+
         now = datetime.now(timezone.utc)
 
         device_count = 0
@@ -131,26 +169,41 @@ class KandjiIngestion:
             device_count += 1
 
         grouped_events: Dict[str, List[HostEvent]] = {}
+        latest_detection: Optional[datetime] = None
         async for detection in self._client.iter_vulnerability_detections():
             event = self._normalize_detection(detection)
             if event is None:
                 continue
+            if detection_cutoff and event.timestamp <= detection_cutoff:
+                continue
+            if latest_detection is None or event.timestamp > latest_detection:
+                latest_detection = event.timestamp
             grouped_events.setdefault(event.host_id, []).append(event)
 
         total_events = 0
         for host_id, events in grouped_events.items():
             hostname = next((e.hostname for e in events if e.hostname), None)
-            batch = HostEventBatch(
-                host_id=host_id,
-                hostname=hostname,
-                organization=self._organization,
-                site=self._site,
-                agent_version=self._agent_version,
-                collected_at=now,
-                events=events,
+            for chunk in self._chunk_events(events, _EVENT_BATCH_SIZE):
+                chunk_hostname = next((e.hostname for e in chunk if e.hostname), hostname)
+                batch = HostEventBatch(
+                    host_id=host_id,
+                    hostname=chunk_hostname,
+                    organization=self._organization,
+                    site=self._site,
+                    agent_version=self._agent_version,
+                    collected_at=now,
+                    events=chunk,
+                )
+                await service.process_host_events(batch)
+                total_events += len(chunk)
+
+        if latest_detection:
+            await state_repo.upsert_state(
+                integration=_DETECTIONS_SCOPE,
+                scope=self._organization,
+                last_timestamp=latest_detection,
+                metadata={"last_event_count": total_events},
             )
-            await service.process_host_events(batch)
-            total_events += len(events)
 
         return {"devices": device_count, "events_ingested": total_events, "hosts": len(grouped_events)}
 
@@ -255,3 +308,8 @@ class KandjiIngestion:
             if isinstance(name, str) and name:
                 return name
         return self._site
+
+    @staticmethod
+    def _chunk_events(events: List[HostEvent], size: int) -> Iterable[List[HostEvent]]:
+        for idx in range(0, len(events), size):
+            yield events[idx : idx + size]

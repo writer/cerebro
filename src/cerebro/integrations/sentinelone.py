@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+import asyncio
+import random
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, Dict, Iterable, List, Optional
 from uuid import UUID, uuid5
 
@@ -15,10 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.telemetry.schemas import HostEvent, HostEventBatch
 from cerebro.telemetry.services import TelemetryIngestionService
+from cerebro.integrations.state import IntegrationStateRepository
 
 logger = logging.getLogger(__name__)
 
 _S1_NAMESPACE = UUID("0cbd0ef1-7d3b-4d46-b3f8-7934b85ad16f")
+_EVENT_BATCH_SIZE = 200
+_MAX_RETRIES = 5
+_RETRY_BASE_SECONDS = 1.0
+_STATE_DRIFT = timedelta(minutes=1)
 
 
 def _isoformat(dt: datetime) -> str:
@@ -100,9 +107,7 @@ class SentinelOneClient:
             # The activities endpoint returns a heterogeneous payload depending on
             # account tier.  We rely on helper extractors to normalize the shape
             # before yielding individual rows to callers.
-            response = await self._client.get("/web/api/v2.1/activities", params=params)
-            response.raise_for_status()
-            payload = response.json()
+            payload = await self._request_json("/web/api/v2.1/activities", params=params)
 
             records = self._extract_records(payload)
             for record in records:
@@ -141,6 +146,33 @@ class SentinelOneClient:
             return next_cursor
         return None
 
+    async def _request_json(self, url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Execute a GET request with retry/backoff semantics."""
+
+        attempt = 0
+        backoff = _RETRY_BASE_SECONDS
+        while True:
+            attempt += 1
+            try:
+                response = await self._client.get(url, params=params)
+            except httpx.TransportError:
+                if attempt >= _MAX_RETRIES:
+                    raise
+            else:
+                if response.status_code in {429, 500, 502, 503, 504}:
+                    if attempt >= _MAX_RETRIES:
+                        response.raise_for_status()
+                else:
+                    response.raise_for_status()
+                    return response.json()
+
+                retry_after = response.headers.get("Retry-After")
+                if retry_after and retry_after.isdigit():
+                    backoff = max(float(retry_after), backoff)
+            jitter = random.uniform(0.0, 0.25 * backoff)
+            await asyncio.sleep(backoff + jitter)
+            backoff = min(backoff * 2, 30.0)
+
 
 class SentinelOneIngestion:
     """Normalizes SentinelOne activities into Cerebro host events."""
@@ -159,28 +191,49 @@ class SentinelOneIngestion:
         """Load activities, normalize them, and persist via the telemetry service."""
 
         service = TelemetryIngestionService(db)
+        state_repo = IntegrationStateRepository(db)
+        state = await state_repo.get_state("sentinelone.activities", self._config.organization)
+
+        effective_since = since
+        if state and state.last_timestamp:
+            candidate = state.last_timestamp - _STATE_DRIFT
+            if effective_since is None or candidate > effective_since:
+                effective_since = candidate
+
         grouped: Dict[str, List[HostEvent]] = defaultdict(list)
         now = datetime.now(timezone.utc)
+        latest_timestamp: Optional[datetime] = None
 
-        async for activity in self._client.iter_activities(since=since, until=until):
+        async for activity in self._client.iter_activities(since=effective_since, until=until):
             event = self._normalize_activity(activity)
             if event is None:
                 continue
             grouped[event.host_id].append(event)
+            if latest_timestamp is None or event.timestamp > latest_timestamp:
+                latest_timestamp = event.timestamp
 
         ingested = 0
         for host_id, events in grouped.items():
-            batch = HostEventBatch(
-                host_id=host_id,
-                hostname=events[0].hostname,
-                organization=self._config.organization,
-                site=self._config.site,
-                agent_version=self._config.agent_version,
-                collected_at=now,
-                events=events,
+            for chunk in self._chunk_events(events, _EVENT_BATCH_SIZE):
+                batch = HostEventBatch(
+                    host_id=host_id,
+                    hostname=chunk[0].hostname,
+                    organization=self._config.organization,
+                    site=self._config.site,
+                    agent_version=self._config.agent_version,
+                    collected_at=now,
+                    events=chunk,
+                )
+                await service.process_host_events(batch)
+                ingested += len(chunk)
+
+        if latest_timestamp:
+            await state_repo.upsert_state(
+                integration="sentinelone.activities",
+                scope=self._config.organization,
+                last_timestamp=latest_timestamp,
+                metadata={"last_ingested_count": ingested},
             )
-            await service.process_host_events(batch)
-            ingested += len(events)
 
         return {"events_ingested": ingested, "hosts": len(grouped)}
 
@@ -276,3 +329,8 @@ class SentinelOneIngestion:
             "critical": "critical",
         }
         return mapping.get(level, "info")
+
+    @staticmethod
+    def _chunk_events(events: List[HostEvent], size: int) -> Iterable[List[HostEvent]]:
+        for idx in range(0, len(events), size):
+            yield events[idx : idx + size]
