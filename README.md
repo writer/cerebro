@@ -114,6 +114,44 @@ curl "http://localhost:8000/api/v1/agents/sessions/<session-id>/memory?limit=20"
 
 Set `include_content=true` to retrieve full text; otherwise summaries, decay metadata, and scope labels are returned.
 
+## Internal Cerebro SDK (Writer Only)
+
+Security and platform engineers can build automation on top of Cerebro without re-implementing core services by installing the internal `cerebro_sdk` package that ships with this repo.
+
+### Why It Matters
+
+- **Batteries included** – Async facades wrap authentication, user/scope management, organization inventory, findings workflows, integration sync tasks, and telemetry helpers.
+- **Guardrails by default** – Token issuance, scope checks, logging, and metrics mirror the main platform, so internal tools stay compliant with rotation, revocation, and observability policies.
+- **Faster delivery** – Teams focus on their automation logic (corpsec audits, detection responders, compliance reporting) while the SDK maintains stable primitives during platform upgrades.
+
+### Quick Example
+
+```python
+from datetime import timedelta
+from cerebro.core.database import async_session_factory
+from cerebro_sdk import AuthSession, FindingService, IntegrationService
+
+
+async def nightly_security_job(org_id: str, username: str, password: str) -> None:
+    async with async_session_factory() as db:
+        auth = AuthSession(db)
+        tokens = await auth.login(username, password)
+
+        findings = FindingService(db)
+        critical = await findings.list_findings(org_id, severity="critical")
+
+        integrations = IntegrationService(db)
+        stale_states = await integrations.list_states()
+        if any(state.last_timestamp is None for state in stale_states):
+            integrations.trigger_sync("sentinelone")
+
+        alert_team(critical, stale_states, tokens.access_token)
+```
+
+- **CorpSec** can enumerate privileged accounts and automatically remove expired admin scopes using `UserManager` and `OrganizationManager`.
+- **Detection & Response** can fetch new high-severity findings, trigger SentinelOne/Kandji catch-up runs, and record metrics without wiring Celery manually.
+- **GRC** can re-run rule evaluations on demand with `FindingService.generate_for_org` and push audit-ready summaries via the telemetry helpers.
+
 ## Development Workflow
 
 ```bash
