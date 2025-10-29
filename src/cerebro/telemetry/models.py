@@ -157,12 +157,14 @@ class ArtifactPack(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    # Automation rules that determine when this pack should execute.
     triggers: Mapped[list["ArtifactPackTrigger"]] = relationship(
         "ArtifactPackTrigger",
         back_populates="pack",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    # Host-specific assignments created by the control plane.
     targets: Mapped[list["ArtifactPackTarget"]] = relationship(
         "ArtifactPackTarget",
         back_populates="pack",
@@ -204,6 +206,8 @@ class ArtifactPackTask(Base):
 
 
 class ArtifactPackTrigger(Base):
+    """Automation rule that determines when an artifact pack should execute."""
+
     __tablename__ = "artifact_pack_triggers"
 
     trigger_id: Mapped[UUID] = mapped_column(
@@ -218,16 +222,34 @@ class ArtifactPackTrigger(Base):
         nullable=False,
         index=True,
     )
-    trigger_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    match_value: Mapped[str] = mapped_column(String(255), nullable=False)
-    minimum_severity: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    expires_after_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    trigger_type: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        doc="Classifier for the trigger (e.g., event_type, event_category)",
+    )
+    match_value: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        doc="Concrete value that must be matched by incoming telemetry",
+    )
+    minimum_severity: Mapped[Optional[str]] = mapped_column(
+        String(16),
+        nullable=True,
+        doc="Optional severity threshold that must be met or exceeded",
+    )
+    expires_after_seconds: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="How long the trigger assignment remains valid for a host",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="triggers")
 
 
 class ArtifactPackTarget(Base):
+    """Represents a host-specific assignment to run a particular artifact pack."""
+
     __tablename__ = "artifact_pack_targets"
 
     target_id: Mapped[UUID] = mapped_column(
@@ -242,11 +264,33 @@ class ArtifactPackTarget(Base):
         nullable=False,
         index=True,
     )
-    host_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    hostname: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    fulfilled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    host_id: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+        doc="Stable identifier for the endpoint that must run the pack",
+    )
+    hostname: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Friendly host name recorded when the target was issued",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        doc="When the target was generated",
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="Optional expiry timestamp after which the target is ignored",
+    )
+    fulfilled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="Moment the agent acknowledged or completed the pack execution",
+    )
 
     pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="targets")
 

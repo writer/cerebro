@@ -318,6 +318,8 @@ class TelemetryIngestionService:
                 self.db.add(record)
                 ingested += 1
 
+            # Evaluate automation triggers before committing so the target
+            # creation participates in the same transaction.
             await self._apply_pack_triggers(context, payload.events)
             await self.db.commit()
 
@@ -340,7 +342,15 @@ class TelemetryIngestionService:
         site: Optional[str],
         tags: Dict[str, str],
     ) -> List[ArtifactPackDefinition]:
-        """Return artifact packs applicable to the specified host."""
+        """Return artifact packs applicable to the specified host.
+
+        This endpoint acts as the agent's control-plane feed.  We merge three
+        sources of truth:
+
+        * statically-approved packs that match the host selectors;
+        * host-specific targets created by automation triggers; and
+        * fulfilment bookkeeping so we only deliver each target once.
+        """
 
         logger.info(
             "Listing host packs",
@@ -379,6 +389,7 @@ class TelemetryIngestionService:
         eligible: List[ArtifactPackDefinition] = []
         delivered_ids: set[UUID] = set()
 
+        # Statically approved packs that match selectors are delivered first.
         for pack in packs:
             if not self._pack_matches(pack, context, tags):
                 continue
@@ -409,6 +420,8 @@ class TelemetryIngestionService:
         targets = target_result.scalars().unique().all()
 
         if targets:
+            # Mark follow-on targets as fulfilled once the pack is queued so we
+            # do not continually deliver the same automation instruction.
             for target in targets:
                 pack = target.pack
                 if pack is None:
@@ -593,6 +606,7 @@ class TelemetryIngestionService:
         context: HostContext,
         tags: Dict[str, str],
     ) -> bool:
+        """Check whether the host satisfies the pack's selector filters."""
         if not pack.enabled:
             return False
         if pack.approval_state != "approved":
@@ -620,6 +634,11 @@ class TelemetryIngestionService:
         return True
 
     async def _apply_pack_triggers(self, context: HostContext, events: List[HostEvent]) -> None:
+        """Evaluate automation triggers against a batch of events.
+
+        Any trigger that matches will create (or refresh) a host-specific target
+        so the next call to :meth:`list_host_packs` delivers the follow-on pack.
+        """
         if not events:
             return
 
@@ -674,6 +693,7 @@ class TelemetryIngestionService:
         context: HostContext,
         trigger: ArtifactPackTrigger,
     ) -> None:
+        """Create or refresh a target instructing the host to run ``pack``."""
         stmt = (
             select(ArtifactPackTarget)
             .where(
@@ -685,6 +705,7 @@ class TelemetryIngestionService:
         existing = await self.db.scalar(stmt)
         if existing:
             if trigger.expires_after_seconds and existing.expires_at is None:
+                # Backfill an expiry when we promote a previously open-ended target.
                 existing.expires_at = datetime.now(timezone.utc) + timedelta(seconds=trigger.expires_after_seconds)
             return
 
@@ -702,6 +723,7 @@ class TelemetryIngestionService:
 
     @staticmethod
     def _severity_rank(value: Optional[str]) -> int:
+        """Map textual severities to a comparable numeric scale."""
         if not value:
             return 0
         mapping = {
