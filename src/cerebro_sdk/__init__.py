@@ -23,6 +23,7 @@ from .integrations import (
     IntegrationStateRecord,
     IntegrationIssueRecord,
 )
+from .tasks import TaskManager, TaskSubmission, TaskStatus
 
 __all__ = [
     "get_settings",
@@ -46,4 +47,7 @@ __all__ = [
     "IntegrationService",
     "IntegrationStateRecord",
     "IntegrationIssueRecord",
+    "TaskManager",
+    "TaskSubmission",
+    "TaskStatus",
 ]
