@@ -211,7 +211,8 @@ func (m *Manager) collectSnapshots(ctx context.Context) error {
 }
 
 // initializeScheduledTasks loads pack definitions from disk so the scheduler
-// can execute local artifact tasks.
+// can execute local artifact tasks. Missing directories are tolerated to make
+// local development workflows smoother.
 func (m *Manager) initializeScheduledTasks() {
 	if m.cfg.PackDirectory == "" {
 		return
@@ -224,8 +225,9 @@ func (m *Manager) initializeScheduledTasks() {
 	m.syncSourceTasks(taskSourceLocal, packList)
 }
 
-// runScheduledTasks executes any pack tasks that are due and refreshes their
-// next run interval.
+// runScheduledTasks executes any pack tasks that are due, clones their config
+// to avoid mutation, and pushes the next run forward with jitter to prevent
+// herd behaviour.
 func (m *Manager) runScheduledTasks(ctx context.Context) {
 	m.schedMu.Lock()
 	if len(m.scheduledTasks) == 0 {
@@ -695,8 +697,8 @@ func (m *Manager) currentIdentity() (string, string) {
 	return m.hostID, m.hostname
 }
 
-// collectEvents polls each registered event collector and enqueues results for
-// later flushing.
+// collectEvents polls each registered event collector, adds results to the
+// queue, and triggers an immediate flush if the batch size threshold is hit.
 func (m *Manager) collectEvents(ctx context.Context) error {
 	for _, collector := range m.eventCollectors {
 		events, err := collector.Collect(ctx, m.cfg)
