@@ -285,6 +285,8 @@ func (m *Manager) runScheduledTasks(ctx context.Context) {
 	}
 }
 
+// taskInterval resolves the execution cadence for a scheduled artifact task.
+// Pack-level overrides win, then agent config, followed by a safe default.
 func (m *Manager) taskInterval(task pack.Task) time.Duration {
 	interval := task.Interval.Duration
 	if interval <= 0 {
@@ -296,6 +298,8 @@ func (m *Manager) taskInterval(task pack.Task) time.Duration {
 	return interval
 }
 
+// cloneTask deep copies mutable fields on the task so scheduler mutations do
+// not bleed back into the original pack definition.
 func cloneTask(task pack.Task) pack.Task {
 	clone := task
 	if task.Tags != nil {
@@ -332,6 +336,8 @@ func cloneTask(task pack.Task) pack.Task {
 	return clone
 }
 
+// syncSourceTasks merges scheduled tasks for a particular source (local or
+// remote) and prunes missing entries so the scheduler stays in sync.
 func (m *Manager) syncSourceTasks(source string, packs []pack.Pack) {
 	now := time.Now().UTC()
 	active := make(map[string]struct{})
@@ -372,10 +378,13 @@ func (m *Manager) syncSourceTasks(source string, packs []pack.Pack) {
 	m.schedMu.Unlock()
 }
 
+// scheduleKey builds a stable map key for scheduled tasks.
 func scheduleKey(source, packName, taskName string) string {
 	return fmt.Sprintf("%s:%s:%s", source, packName, taskName)
 }
 
+// jitter applies up to 50% randomisation to avoid herd effects when many
+// agents execute the same schedule simultaneously.
 func (m *Manager) jitter(interval time.Duration) time.Duration {
 	if interval <= 0 {
 		return 0
@@ -387,6 +396,8 @@ func (m *Manager) jitter(interval time.Duration) time.Duration {
 	return time.Duration(rand.Int63n(int64(max) + 1))
 }
 
+// tagTelemetryWithTask annotates collected telemetry with pack/task metadata so
+// the backend can attribute results to their source.
 func tagTelemetryWithTask(telemetry *types.HostTelemetry, sched scheduledTask) {
 	if telemetry.Tags == nil {
 		telemetry.Tags = make(map[string]string)
@@ -413,6 +424,8 @@ func tagTelemetryWithTask(telemetry *types.HostTelemetry, sched scheduledTask) {
 	}
 }
 
+// pollRemotePacks periodically fetches remote artifact packs from the control
+// plane and merges them into the scheduler state.
 func (m *Manager) pollRemotePacks(ctx context.Context) {
 	if m.cfg.ArtifactPollInterval <= 0 {
 		return
@@ -435,6 +448,8 @@ func (m *Manager) pollRemotePacks(ctx context.Context) {
 	}
 }
 
+// refreshRemotePacks retrieves remote packs once and updates the in-memory
+// schedule. It is invoked both on startup and on each polling interval.
 func (m *Manager) refreshRemotePacks(ctx context.Context) error {
 	m.identityMu.RLock()
 	hostID := m.hostID
@@ -459,6 +474,8 @@ func (m *Manager) refreshRemotePacks(ctx context.Context) error {
 	return nil
 }
 
+// packFromDefinition converts an API artifact pack into the internal runtime
+// representation understood by the scheduler.
 func packFromDefinition(def types.ArtifactPackDefinition) pack.Pack {
 	tasks := make([]pack.Task, 0, len(def.Tasks))
 	for _, task := range def.Tasks {
@@ -496,6 +513,7 @@ func cloneStringMap(input map[string]string) map[string]string {
 	return out
 }
 
+// cloneAnyMap duplicates a map[string]any, handling nil inputs gracefully.
 func cloneAnyMap(input map[string]any) map[string]any {
 	if input == nil {
 		return nil
@@ -507,6 +525,7 @@ func cloneAnyMap(input map[string]any) map[string]any {
 	return out
 }
 
+// cloneResources copies the optional resources struct attached to a task.
 func cloneResources(input *types.ArtifactTaskResources) *types.ArtifactTaskResources {
 	if input == nil {
 		return nil
@@ -515,6 +534,7 @@ func cloneResources(input *types.ArtifactTaskResources) *types.ArtifactTaskResou
 	return &res
 }
 
+// cloneSelectorMap copies the selectors map associated with a pack.
 func cloneSelectorMap(input map[string]any) map[string]any {
 	if input == nil {
 		return nil
@@ -687,12 +707,18 @@ func (m *Manager) collectEvents(ctx context.Context) error {
 	return nil
 }
 
+// enqueueEvents appends events to the in-memory queue while respecting the
+// configured batch size. A mutex guards the queue so snapshot collection can
+// run concurrently without data races.
 func (m *Manager) enqueueEvents(events []types.HostEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.eventQueue = append(m.eventQueue, events...)
 }
 
+// flushEvents ships buffered events to the Cerebro API. When force is true
+// (e.g. during shutdown) the queue is drained even if it is below the batch
+// size threshold.
 func (m *Manager) flushEvents(ctx context.Context, force bool) {
 	m.mu.Lock()
 	if len(m.eventQueue) == 0 {
