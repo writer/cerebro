@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// Config captures runtime settings for the desktop agent. Most values can be
+// supplied via environment variables or CLI flags so operators can tune
+// collection behaviour without rebuilding.
 type Config struct {
 	APIBaseURL           string
 	APIToken             string
@@ -29,6 +32,9 @@ type Config struct {
 
 const defaultInterval = 5 * time.Minute
 
+// Load constructs a Config by merging environment variables with flag values
+// and sensible defaults. Flags override environment settings so operators can
+// tweak behaviour ad-hoc.
 func Load() Config {
 	cfg := Config{
 		APIBaseURL:           envOr("CEREBRO_API_BASE_URL", "http://localhost:8000/api/v1"),
@@ -92,6 +98,7 @@ func Load() Config {
 	return cfg
 }
 
+// envOr returns the environment variable if set, otherwise the fallback.
 func envOr(key, fallback string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
@@ -99,6 +106,8 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// parseDurationEnv parses a duration from the environment, falling back when
+// parsing fails.
 func parseDurationEnv(key string, fallback time.Duration) time.Duration {
 	if val := os.Getenv(key); val != "" {
 		if parsed, err := time.ParseDuration(val); err == nil {
@@ -108,6 +117,7 @@ func parseDurationEnv(key string, fallback time.Duration) time.Duration {
 	return fallback
 }
 
+// parseBoolEnv parses a boolean value from the environment with a default.
 func parseBoolEnv(key string, fallback bool) bool {
 	if val := os.Getenv(key); val != "" {
 		if parsed, err := strconv.ParseBool(val); err == nil {
@@ -117,6 +127,7 @@ func parseBoolEnv(key string, fallback bool) bool {
 	return fallback
 }
 
+// parseIntEnv parses an integer from the environment or returns fallback.
 func parseIntEnv(key string, fallback int) int {
 	if val := os.Getenv(key); val != "" {
 		if parsed, err := strconv.Atoi(val); err == nil {
