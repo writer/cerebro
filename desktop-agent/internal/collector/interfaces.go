@@ -9,7 +9,7 @@ import (
 
 type SnapshotCollector interface {
 	Name() string
-	Collect(context.Context, config.Config) (*types.HostTelemetry, error)
+	Collect(context.Context, config.Config, map[string]any) (*types.HostTelemetry, error)
 }
 
 type EventCollector interface {

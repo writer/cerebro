@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
+	"regexp"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,7 +175,7 @@ func (m *Manager) RunOnce(ctx context.Context) error {
 
 func (m *Manager) collectSnapshots(ctx context.Context) error {
 	for _, collector := range m.snapshotCollectors {
-		telemetry, err := collector.Collect(ctx, m.cfg)
+		telemetry, err := collector.Collect(ctx, m.cfg, nil)
 		if err != nil {
 			m.logger.Printf("collector %s error: %v", collector.Name(), err)
 			continue
@@ -226,6 +230,9 @@ func (m *Manager) runScheduledTasks(ctx context.Context) {
 	m.schedMu.Unlock()
 
 	for _, sched := range due {
+		if !m.taskEligible(ctx, sched) {
+			continue
+		}
 		collector := m.snapshotCollectors[sched.task.Collector]
 		if collector == nil {
 			m.logger.Printf(
@@ -235,7 +242,8 @@ func (m *Manager) runScheduledTasks(ctx context.Context) {
 			)
 			continue
 		}
-		telemetry, err := collector.Collect(ctx, m.cfg)
+		params := buildTaskParameters(sched.task)
+		telemetry, err := collector.Collect(ctx, m.cfg, params)
 		if err != nil {
 			m.logger.Printf(
 				"artifact task %s collector error: %v",
@@ -282,6 +290,25 @@ func cloneTask(task pack.Task) pack.Task {
 		for k, v := range task.Config {
 			clone.Config[k] = v
 		}
+	}
+	if task.ParameterValues != nil {
+		clone.ParameterValues = make(map[string]any, len(task.ParameterValues))
+		for k, v := range task.ParameterValues {
+			clone.ParameterValues[k] = v
+		}
+	}
+	if len(task.Discovery) > 0 {
+		clone.Discovery = append([]string(nil), task.Discovery...)
+	}
+	if len(task.Parameters) > 0 {
+		clone.Parameters = append([]types.ArtifactTaskParameter(nil), task.Parameters...)
+	}
+	if task.Resources != nil {
+		res := *task.Resources
+		clone.Resources = &res
+	}
+	if len(task.Tools) > 0 {
+		clone.Tools = append([]types.ArtifactTool(nil), task.Tools...)
 	}
 	return clone
 }
@@ -356,8 +383,14 @@ func tagTelemetryWithTask(telemetry *types.HostTelemetry, sched scheduledTask) {
 	if sched.task.Name != "" {
 		telemetry.Tags["task"] = sched.task.Name
 	}
-	if _, ok := telemetry.Tags["pack_source"]; !ok {
-		telemetry.Tags["pack_source"] = sched.source
+	telemetry.Tags["pack_source"] = sched.source
+	if sched.task.Resources != nil {
+		if sched.task.Resources.TimeoutSeconds > 0 {
+			telemetry.Tags["pack_timeout_seconds"] = fmt.Sprintf("%d", sched.task.Resources.TimeoutSeconds)
+		}
+		if sched.task.Resources.MaxRows > 0 {
+			telemetry.Tags["pack_max_rows"] = fmt.Sprintf("%d", sched.task.Resources.MaxRows)
+		}
 	}
 }
 
@@ -411,11 +444,16 @@ func packFromDefinition(def types.ArtifactPackDefinition) pack.Pack {
 	tasks := make([]pack.Task, 0, len(def.Tasks))
 	for _, task := range def.Tasks {
 		tasks = append(tasks, pack.Task{
-			Name:      task.Name,
-			Collector: task.Collector,
-			Interval:  pack.Duration{Duration: time.Duration(task.IntervalSeconds) * time.Second},
-			Tags:      cloneStringMap(task.Tags),
-			Config:    cloneAnyMap(task.Config),
+			Name:            task.Name,
+			Collector:       task.Collector,
+			Interval:        pack.Duration{Duration: time.Duration(task.IntervalSeconds) * time.Second},
+			Tags:            cloneStringMap(task.Tags),
+			Config:          cloneAnyMap(task.Config),
+			Discovery:       append([]string(nil), task.Discovery...),
+			Parameters:      append([]types.ArtifactTaskParameter(nil), task.Parameters...),
+			ParameterValues: cloneAnyMap(task.ParameterValues),
+			Resources:       cloneResources(task.Resources),
+			Tools:           append([]types.ArtifactTool(nil), task.Tools...),
 		})
 	}
 
@@ -423,7 +461,7 @@ func packFromDefinition(def types.ArtifactPackDefinition) pack.Pack {
 		Name:        def.Name,
 		Version:     def.Version,
 		Description: def.Description,
-		Selectors:   nil,
+		Selectors:   cloneSelectorMap(def.Selectors),
 		Tasks:       tasks,
 	}
 }
@@ -448,6 +486,158 @@ func cloneAnyMap(input map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+func cloneResources(input *types.ArtifactTaskResources) *types.ArtifactTaskResources {
+	if input == nil {
+		return nil
+	}
+	res := *input
+	return &res
+}
+
+func cloneSelectorMap(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for k, v := range input {
+		out[k] = v
+	}
+	return out
+}
+
+func buildTaskParameters(task pack.Task) map[string]any {
+	if len(task.Config) == 0 && len(task.ParameterValues) == 0 && len(task.Parameters) == 0 {
+		return nil
+	}
+	merged := make(map[string]any)
+	for k, v := range task.Config {
+		merged[k] = v
+	}
+	for k, v := range task.ParameterValues {
+		merged[k] = v
+	}
+	for _, param := range task.Parameters {
+		if param.Name == "" {
+			continue
+		}
+		if _, exists := merged[param.Name]; !exists && param.Default != nil {
+			merged[param.Name] = param.Default
+		}
+	}
+	return merged
+}
+
+func (m *Manager) taskEligible(_ context.Context, sched scheduledTask) bool {
+	if len(sched.task.Discovery) == 0 {
+		return true
+	}
+	tags := m.cfg.Tags
+	site := m.cfg.Site
+	org := m.cfg.Organization
+	_, hostname := m.currentIdentity()
+	if hostname == "" {
+		if override := m.cfg.HostnameOverride; override != "" {
+			hostname = override
+		} else if hn, err := os.Hostname(); err == nil {
+			hostname = hn
+		}
+	}
+
+	for _, clause := range sched.task.Discovery {
+		clause = strings.TrimSpace(clause)
+		if clause == "" {
+			continue
+		}
+		if !m.evaluateDiscoveryClause(clause, tags, site, org, hostname) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Manager) evaluateDiscoveryClause(
+	clause string,
+	tags map[string]string,
+	site string,
+	org string,
+	hostname string,
+) bool {
+	negate := false
+	if strings.HasPrefix(clause, "!") {
+		negate = true
+		clause = strings.TrimSpace(clause[1:])
+	}
+
+	if clause == "" {
+		return !negate
+	}
+
+	lower := strings.ToLower(clause)
+	var matched bool
+
+	switch {
+	case strings.HasPrefix(lower, "tag:"):
+		keyValue := clause[len("tag:"):]
+		matched = matchTagClause(keyValue, tags)
+	case strings.HasPrefix(lower, "os:"):
+		expected := strings.TrimSpace(clause[len("os:"):])
+		matched = expected == "" || strings.EqualFold(expected, runtime.GOOS)
+	case strings.HasPrefix(lower, "site:"):
+		expected := strings.TrimSpace(clause[len("site:"):])
+		matched = expected == "" || strings.EqualFold(expected, site)
+	case strings.HasPrefix(lower, "org:"):
+		expected := strings.TrimSpace(clause[len("org:"):])
+		matched = expected == "" || strings.EqualFold(expected, org)
+	case strings.HasPrefix(lower, "hostname~"):
+		pattern := clause[len("hostname~"):]
+		if re, err := regexp.Compile(pattern); err == nil {
+			matched = re.MatchString(hostname)
+		}
+	case strings.HasPrefix(lower, "hostname:"):
+		expected := strings.TrimSpace(clause[len("hostname:"):])
+		matched = expected == "" || strings.EqualFold(expected, hostname)
+	case strings.HasPrefix(lower, "collector:"):
+		collectorName := strings.TrimSpace(clause[len("collector:"):])
+		_, matched = m.snapshotCollectors[collectorName]
+	default:
+		matched = matchTagClause(clause, tags)
+	}
+
+	if negate {
+		return !matched
+	}
+	return matched
+}
+
+func matchTagClause(clause string, tags map[string]string) bool {
+	key := clause
+	value := ""
+	if parts := strings.SplitN(clause, "=", 2); len(parts) > 0 {
+		key = parts[0]
+		if len(parts) == 2 {
+			value = parts[1]
+		}
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+	}
+	actual := ""
+	if tags != nil {
+		actual = tags[key]
+	}
+	if value == "" {
+		return actual != ""
+	}
+	return actual == value
+}
+
+func (m *Manager) currentIdentity() (string, string) {
+	m.identityMu.RLock()
+	defer m.identityMu.RUnlock()
+	return m.hostID, m.hostname
 }
 
 func (m *Manager) collectEvents(ctx context.Context) error {

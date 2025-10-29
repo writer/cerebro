@@ -179,6 +179,11 @@ async def test_list_host_packs_filters_by_selectors(test_db):
             collector="snapshot.basic",
             interval_seconds=300,
             tags={"env": "prod"},
+            discovery=["tag:env=prod"],
+            parameters=[{"name": "limit", "type": "int", "default": 10}],
+            parameter_values={"limit": 25},
+            resources={"timeout_seconds": 60},
+            tools=[{"name": "ps", "url": "https://example.com/ps"}],
         )
     ]
 
@@ -212,3 +217,5 @@ async def test_list_host_packs_filters_by_selectors(test_db):
     assert pack.name == "baseline"
     assert len(pack.tasks) == 1
     assert pack.tasks[0].collector == "snapshot.basic"
+    assert pack.tasks[0].discovery == ["tag:env=prod"]
+    assert pack.tasks[0].parameter_values == {"limit": 25}

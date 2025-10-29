@@ -31,7 +31,7 @@ func (Snapshot) Name() string {
 	return "snapshot.basic"
 }
 
-func (Snapshot) Collect(_ context.Context, cfg config.Config) (*types.HostTelemetry, error) {
+func (Snapshot) Collect(_ context.Context, cfg config.Config, _ map[string]any) (*types.HostTelemetry, error) {
 	now := time.Now().UTC()
 
 	hostInfo, _ := host.Info()

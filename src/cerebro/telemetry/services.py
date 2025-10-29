@@ -574,6 +574,11 @@ class TelemetryIngestionService:
                     interval_seconds=task.interval_seconds,
                     tags=task.tags or None,
                     config=task.config or None,
+                    discovery=task.discovery or None,
+                    parameters=task.parameters or None,
+                    parameter_values=task.parameter_values or None,
+                    resources=task.resources or None,
+                    tools=task.tools or None,
                 )
             )
 

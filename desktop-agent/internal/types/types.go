@@ -103,12 +103,17 @@ type HostEventBatch struct {
 }
 
 type ArtifactTaskDefinition struct {
-	TaskID          string            `json:"task_id"`
-	Name            string            `json:"name"`
-	Collector       string            `json:"collector"`
-	IntervalSeconds int               `json:"interval_seconds,omitempty"`
-	Tags            map[string]string `json:"tags,omitempty"`
-	Config          map[string]any    `json:"config,omitempty"`
+	TaskID          string                  `json:"task_id"`
+	Name            string                  `json:"name"`
+	Collector       string                  `json:"collector"`
+	IntervalSeconds int                     `json:"interval_seconds,omitempty"`
+	Tags            map[string]string       `json:"tags,omitempty"`
+	Config          map[string]any          `json:"config,omitempty"`
+	Discovery       []string                `json:"discovery,omitempty"`
+	Parameters      []ArtifactTaskParameter `json:"parameters,omitempty"`
+	ParameterValues map[string]any          `json:"parameter_values,omitempty"`
+	Resources       *ArtifactTaskResources  `json:"resources,omitempty"`
+	Tools           []ArtifactTool          `json:"tools,omitempty"`
 }
 
 type ArtifactPackDefinition struct {
@@ -118,4 +123,28 @@ type ArtifactPackDefinition struct {
 	Description string                   `json:"description,omitempty"`
 	Selectors   map[string]any           `json:"selectors,omitempty"`
 	Tasks       []ArtifactTaskDefinition `json:"tasks"`
+}
+
+type ArtifactTaskParameter struct {
+	Name        string   `json:"name"`
+	Type        string   `json:"type,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Default     any      `json:"default,omitempty"`
+	Required    bool     `json:"required,omitempty"`
+	Choices     []string `json:"choices,omitempty"`
+}
+
+type ArtifactTaskResources struct {
+	TimeoutSeconds int   `json:"timeout_seconds,omitempty"`
+	MaxRows        int   `json:"max_rows,omitempty"`
+	MaxUploadBytes int64 `json:"max_upload_bytes,omitempty"`
+	OpsPerSecond   int   `json:"ops_per_second,omitempty"`
+}
+
+type ArtifactTool struct {
+	Name         string `json:"name"`
+	URL          string `json:"url,omitempty"`
+	ExpectedHash string `json:"expected_hash,omitempty"`
+	ServeURL     string `json:"serve_url,omitempty"`
+	Version      string `json:"version,omitempty"`
 }

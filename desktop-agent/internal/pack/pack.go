@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
 // Duration wraps time.Duration for YAML decoding support.
@@ -31,18 +33,23 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 
 // Task defines a scheduled action sourced from an artifact pack.
 type Task struct {
-	Name      string            `yaml:"name" json:"name"`
-	Collector string            `yaml:"collector" json:"collector"`
-	Interval  Duration          `yaml:"interval" json:"interval"`
-	Tags      map[string]string `yaml:"tags" json:"tags"`
-	Config    map[string]any    `yaml:"config" json:"config"`
+	Name            string                        `yaml:"name" json:"name"`
+	Collector       string                        `yaml:"collector" json:"collector"`
+	Interval        Duration                      `yaml:"interval" json:"interval"`
+	Tags            map[string]string             `yaml:"tags" json:"tags"`
+	Config          map[string]any                `yaml:"config" json:"config"`
+	Discovery       []string                      `yaml:"discovery" json:"discovery"`
+	Parameters      []types.ArtifactTaskParameter `yaml:"parameters" json:"parameters"`
+	ParameterValues map[string]any                `yaml:"parameter_values" json:"parameter_values"`
+	Resources       *types.ArtifactTaskResources  `yaml:"resources" json:"resources"`
+	Tools           []types.ArtifactTool          `yaml:"tools" json:"tools"`
 }
 
 // Pack represents a collection of scheduled tasks and metadata.
 type Pack struct {
-	Name        string            `yaml:"name" json:"name"`
-	Version     string            `yaml:"version" json:"version"`
-	Description string            `yaml:"description" json:"description"`
-	Selectors   map[string]string `yaml:"selectors" json:"selectors"`
-	Tasks       []Task            `yaml:"tasks" json:"tasks"`
+	Name        string         `yaml:"name" json:"name"`
+	Version     string         `yaml:"version" json:"version"`
+	Description string         `yaml:"description" json:"description"`
+	Selectors   map[string]any `yaml:"selectors" json:"selectors"`
+	Tasks       []Task         `yaml:"tasks" json:"tasks"`
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
@@ -175,6 +175,11 @@ class ArtifactPackTask(Base):
     interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     tags: Mapped[Optional[Dict[str, str]]] = mapped_column(JSONType, nullable=True, default=dict)
     config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
+    discovery: Mapped[Optional[List[str]]] = mapped_column(JSONType, nullable=True, default=list)
+    parameters: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONType, nullable=True, default=list)
+    parameter_values: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
+    resources: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
+    tools: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONType, nullable=True, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="tasks")

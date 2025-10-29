@@ -232,6 +232,56 @@ class ArtifactTaskDefinition(BaseModel):
         None,
         description="Collector-specific configuration payload",
     )
+    discovery: Optional[List[str]] = Field(
+        None,
+        description="Discovery predicates evaluated by the agent before executing the task",
+    )
+    parameters: Optional[List["ArtifactTaskParameter"]] = Field(
+        None,
+        description="Parameter definitions expected by the collector",
+    )
+    parameter_values: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Resolved parameter values provided by the control plane",
+    )
+    resources: Optional["ArtifactTaskResources"] = Field(
+        None,
+        description="Resource hints including timeouts and thresholds",
+    )
+    tools: Optional[List["ArtifactTool"]] = Field(
+        None,
+        description="Tool bundle metadata required by this task",
+    )
+
+
+class ArtifactTaskParameter(BaseModel):
+    """Parameter metadata describing allowed values and defaults."""
+
+    name: str = Field(..., description="Parameter name")
+    type: Optional[str] = Field(None, description="Parameter type hint")
+    description: Optional[str] = Field(None, description="Description of the parameter")
+    default: Optional[Any] = Field(None, description="Default value applied when not supplied")
+    required: Optional[bool] = Field(None, description="Whether the parameter is required")
+    choices: Optional[List[str]] = Field(None, description="Enumerated set of allowed values")
+
+
+class ArtifactTaskResources(BaseModel):
+    """Resource limits and execution hints for a pack task."""
+
+    timeout_seconds: Optional[int] = Field(None, description="Max execution time for the task")
+    max_rows: Optional[int] = Field(None, description="Maximum rows to collect before truncation")
+    max_upload_bytes: Optional[int] = Field(None, description="Maximum bytes to upload")
+    ops_per_second: Optional[int] = Field(None, description="Suggested ops/second throttle")
+
+
+class ArtifactTool(BaseModel):
+    """External tool dependency required by a pack task."""
+
+    name: str = Field(..., description="Tool identifier")
+    url: Optional[str] = Field(None, description="Download URL for the tool")
+    expected_hash: Optional[str] = Field(None, description="Expected SHA256 hash of the tool")
+    serve_url: Optional[str] = Field(None, description="Server-hosted URL when distributed centrally")
+    version: Optional[str] = Field(None, description="Tool version identifier")
 
 
 class ArtifactPackDefinition(BaseModel):
