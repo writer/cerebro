@@ -11,6 +11,13 @@ from .organizations import (
 )
 from .findings import FindingService, FindingRecord
 from cerebro.findings.manager import FindingResult
+from .telemetry import (
+    configure_logging,
+    get_logger,
+    create_counter,
+    create_histogram,
+    time_operation,
+)
 
 __all__ = [
     "get_settings",
@@ -26,4 +33,9 @@ __all__ = [
     "FindingService",
     "FindingRecord",
     "FindingResult",
+    "configure_logging",
+    "get_logger",
+    "create_counter",
+    "create_histogram",
+    "time_operation",
 ]
