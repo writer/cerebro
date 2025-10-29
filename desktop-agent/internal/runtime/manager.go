@@ -549,8 +549,9 @@ func cloneSelectorMap(input map[string]any) map[string]any {
 	return out
 }
 
-// buildTaskParameters merges static collector config, supplied parameter
-// values, and defaults to produce the map handed to snapshot collectors.
+// buildTaskParameters merges static collector config, explicit parameter
+// values, and defaults in that precedence order before handing them to the
+// snapshot collector.
 func buildTaskParameters(task pack.Task) map[string]any {
 	if len(task.Config) == 0 && len(task.ParameterValues) == 0 && len(task.Parameters) == 0 {
 		return nil
@@ -604,7 +605,8 @@ func (m *Manager) taskEligible(_ context.Context, sched scheduledTask) bool {
 }
 
 // evaluateDiscoveryClause checks a single discovery expression (e.g.,
-// "tag:env=prod" or "hostname~^corp") against the current host metadata.
+// "tag:env=prod", "hostname~^corp", "collector:snapshot.basic") against the
+// current host metadata.
 func (m *Manager) evaluateDiscoveryClause(
 	clause string,
 	tags map[string]string,
@@ -685,6 +687,8 @@ func matchTagClause(clause string, tags map[string]string) bool {
 }
 
 // currentIdentity returns the last snapshot's host identifier and hostname.
+// A read lock ensures collectors can query identity concurrently with updates
+// from fresh snapshots.
 func (m *Manager) currentIdentity() (string, string) {
 	m.identityMu.RLock()
 	defer m.identityMu.RUnlock()

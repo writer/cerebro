@@ -8,12 +8,14 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
-// Duration wraps time.Duration for YAML decoding support.
+// Duration wraps time.Duration for YAML decoding support, allowing pack authors
+// to provide human-readable values such as "30s" or "5m".
 type Duration struct {
 	time.Duration
 }
 
-// UnmarshalYAML implements yaml.v3 unmarshaling for a duration string, e.g. "5m".
+// UnmarshalYAML implements yaml.v3 unmarshaling for a duration string (e.g.
+// "5m"). Empty strings resolve to zero so collectors can fall back to defaults.
 func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	var raw string
 	if err := value.Decode(&raw); err != nil {
@@ -31,7 +33,9 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// Task defines a scheduled action sourced from an artifact pack.
+// Task defines a scheduled action sourced from an artifact pack. YAML fields map
+// directly onto runtime task configuration so operators can describe collectors,
+// intervals, discovery conditions, and parameters in one place.
 type Task struct {
 	Name            string                        `yaml:"name" json:"name"`
 	Collector       string                        `yaml:"collector" json:"collector"`
@@ -45,7 +49,9 @@ type Task struct {
 	Tools           []types.ArtifactTool          `yaml:"tools" json:"tools"`
 }
 
-// Pack represents a collection of scheduled tasks and metadata.
+// Pack represents a collection of scheduled tasks and metadata that can be
+// supplied locally or by the control plane. Selectors drive which hosts should
+// receive the pack.
 type Pack struct {
 	Name        string         `yaml:"name" json:"name"`
 	Version     string         `yaml:"version" json:"version"`
