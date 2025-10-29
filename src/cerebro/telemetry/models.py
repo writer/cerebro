@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
+import sqlalchemy as sa
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -136,6 +137,11 @@ class ArtifactPack(Base):
     version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     selectors: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
+    enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
+    approval_state: Mapped[str] = mapped_column(String(32), nullable=False, default="draft", server_default="draft")
+    approval_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    schedule_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    last_deployed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

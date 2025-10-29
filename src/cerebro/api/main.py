@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from cerebro.core.config import settings
 from cerebro.core.observability import configure_agent_observability
 from cerebro.agents.metrics import get_registry
-from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks, telemetry, automation
+from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks, telemetry, automation, packs
 from .routers import jwks
 from .auth import User, get_current_user
 
@@ -227,6 +227,12 @@ app.include_router(
     forklift_webhooks.router,
     prefix=f"{settings.api_v1_prefix}",
     tags=["forklift", "integrations"]
+)
+
+app.include_router(
+    packs.router,
+    prefix=f"{settings.api_v1_prefix}/packs",
+    tags=["packs"]
 )
 
 # Telemetry API (repository and runtime intelligence)

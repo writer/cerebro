@@ -284,6 +284,43 @@ class ArtifactTool(BaseModel):
     version: Optional[str] = Field(None, description="Tool version identifier")
 
 
+class ArtifactPackTaskCreate(BaseModel):
+    name: str
+    collector: str
+    interval_seconds: Optional[int] = None
+    tags: Optional[Dict[str, str]] = None
+    config: Optional[Dict[str, Any]] = None
+    discovery: Optional[List[str]] = None
+    parameters: Optional[List[ArtifactTaskParameter]] = None
+    parameter_values: Optional[Dict[str, Any]] = None
+    resources: Optional[ArtifactTaskResources] = None
+    tools: Optional[List[ArtifactTool]] = None
+
+
+class ArtifactPackCreate(BaseModel):
+    name: str
+    version: Optional[str] = None
+    description: Optional[str] = None
+    selectors: Optional[Dict[str, Any]] = None
+    enabled: bool = True
+    approval_state: Optional[str] = None
+    approval_notes: Optional[str] = None
+    schedule_interval_seconds: Optional[int] = None
+    tasks: List[ArtifactPackTaskCreate]
+
+
+class ArtifactPackUpdate(BaseModel):
+    name: Optional[str] = None
+    version: Optional[str] = None
+    description: Optional[str] = None
+    selectors: Optional[Dict[str, Any]] = None
+    enabled: Optional[bool] = None
+    approval_state: Optional[str] = None
+    approval_notes: Optional[str] = None
+    schedule_interval_seconds: Optional[int] = None
+    tasks: Optional[List[ArtifactPackTaskCreate]] = None
+
+
 class ArtifactPackDefinition(BaseModel):
     """Pack definition returned to agents based on eligibility selectors."""
 
@@ -296,6 +333,11 @@ class ArtifactPackDefinition(BaseModel):
         description="Selector criteria (tags, sites, OS families) used to target eligible agents",
     )
     tasks: List[ArtifactTaskDefinition] = Field(..., description="Task definitions included in the pack")
+    enabled: bool = Field(True, description="Whether the pack is active for distribution")
+    approval_state: str = Field("draft", description="Approval workflow state for the pack")
+    approval_notes: Optional[str] = Field(None, description="Reviewer notes attached to the pack")
+    schedule_interval_seconds: Optional[int] = Field(None, description="Optional recurring schedule for the pack")
+    last_deployed_at: Optional[datetime] = Field(None, description="Timestamp of the most recent deployment")
 
 class RuntimeTelemetry(BaseModel):
     """Runtime telemetry from application."""
