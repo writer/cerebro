@@ -53,6 +53,8 @@ class KandjiClient:
         await self._client.__aexit__(*exc)
 
     async def iter_devices(self, *, page_size: int = 300) -> AsyncIterator[Dict[str, Any]]:
+        """Stream device inventory using Kandji's cursor-based pagination."""
+
         url = "/api/v1/devices"
         params: Optional[Dict[str, Any]] = {"limit": page_size}
 
@@ -73,6 +75,8 @@ class KandjiClient:
         *,
         page_size: int = 300,
     ) -> AsyncIterator[Dict[str, Any]]:
+        """Yield vulnerability detections with pagination awareness."""
+
         url = "/api/v1/vulnerability-management/detections"
         params: Optional[Dict[str, Any]] = {"size": page_size}
 
@@ -106,7 +110,14 @@ class KandjiIngestion:
         self._agent_version = agent_version
 
     async def ingest(self, db: AsyncSession) -> Dict[str, Any]:
-        """Ingest devices and vulnerability detections."""
+        """Ingest devices and vulnerability detections.
+
+        Device snapshots are processed first to guarantee that we have an
+        up-to-date ``Resource`` row for every host.  Vulnerability detections are
+        then batched by serial number and shipped through the existing host event
+        ingestion pipeline.  Returning simple counters keeps the Celery task
+        result compact while still providing operational visibility.
+        """
 
         service = TelemetryIngestionService(db)
         now = datetime.now(timezone.utc)
@@ -149,6 +160,8 @@ class KandjiIngestion:
         *,
         collected_at: datetime,
     ) -> Optional[HostTelemetry]:
+        """Construct ``HostTelemetry`` snapshots from Kandji device payloads."""
+
         if not isinstance(device, dict):
             return None
 
@@ -195,6 +208,8 @@ class KandjiIngestion:
         )
 
     def _normalize_detection(self, detection: Dict[str, Any]) -> Optional[HostEvent]:
+        """Represent Kandji vulnerability detections as host events."""
+
         if not isinstance(detection, dict):
             return None
 
@@ -215,6 +230,8 @@ class KandjiIngestion:
         event_uuid = uuid5(_KANDJI_EVENT_NAMESPACE, f"vuln:{serial}:{cve}")
         severity = str(detection.get("cvss_severity") or detection.get("severity") or "").lower() or None
 
+        # Preserve Kandji's raw detection data so analysts can cross-reference
+        # affected software, remediation state, and ticket links.
         payload = {k: v for k, v in detection.items()}
 
         return HostEvent(
@@ -230,6 +247,8 @@ class KandjiIngestion:
         )
 
     def _derive_site(self, device: Dict[str, Any]) -> Optional[str]:
+        """Fallback to Kandji DEP server name when no site override is provided."""
+
         dep = device.get("dep_account")
         if isinstance(dep, dict):
             name = dep.get("server_name")

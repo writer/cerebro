@@ -30,6 +30,8 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
             logger.warning("SentinelOne credentials missing; skipping sync")
             return {"status": "skipped", "reason": "missing_credentials"}
 
+        # Apply a defensive default window so recurring schedules can omit an
+        # explicit lookback while still bounding the API request size.
         window = lookback_minutes if lookback_minutes and lookback_minutes > 0 else 30
         since = datetime.now(timezone.utc) - timedelta(minutes=window)
 
@@ -78,6 +80,8 @@ def sync_kandji(self) -> Any:
                     agent_version="kandji-sync/1.0",
                 )
                 result = await ingestion.ingest(db)
+        # ``ingest`` returns high-level counters which we bubble up so task
+        # monitoring dashboards can surface progress without parsing logs.
         result.update({"status": "ok"})
         return result
 

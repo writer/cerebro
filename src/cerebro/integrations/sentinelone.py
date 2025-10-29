@@ -22,6 +22,8 @@ _S1_NAMESPACE = UUID("0cbd0ef1-7d3b-4d46-b3f8-7934b85ad16f")
 
 
 def _isoformat(dt: datetime) -> str:
+    """Render datetimes in the canonical format expected by SentinelOne filters."""
+
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -72,7 +74,14 @@ class SentinelOneClient:
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Yield activity records using cursor pagination."""
+        """Yield activity records using cursor pagination.
+
+        SentinelOne exposes its timeline via a cursor-based API where every response
+        may include a ``pagination.nextCursor`` token.  We keep a stable set of
+        base filters (date bounds with ISO8601 formatting and page size) and
+        re-issue requests while a cursor is provided.  The generator structure
+        keeps memory usage low even when large backfills are requested.
+        """
 
         base_params: Dict[str, Any] = {"limit": self._config.page_size}
         if since:
@@ -88,6 +97,9 @@ class SentinelOneClient:
                 params = dict(base_params)
                 params["cursor"] = cursor
 
+            # The activities endpoint returns a heterogeneous payload depending on
+            # account tier.  We rely on helper extractors to normalize the shape
+            # before yielding individual rows to callers.
             response = await self._client.get("/web/api/v2.1/activities", params=params)
             response.raise_for_status()
             payload = response.json()
@@ -102,6 +114,8 @@ class SentinelOneClient:
 
     @staticmethod
     def _extract_records(payload: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+        """Return the list of activity records irrespective of platform version."""
+
         if not isinstance(payload, dict):
             raise SentinelOneError("Unexpected SentinelOne response payload")
 
@@ -114,6 +128,8 @@ class SentinelOneClient:
 
     @staticmethod
     def _extract_cursor(payload: Dict[str, Any]) -> Optional[str]:
+        """Read the continuation cursor from different response layouts."""
+
         pagination = payload.get("pagination")
         if isinstance(pagination, dict):
             for key in ("nextCursor", "next", "next_cursor"):
@@ -140,6 +156,8 @@ class SentinelOneIngestion:
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
     ) -> Dict[str, Any]:
+        """Load activities, normalize them, and persist via the telemetry service."""
+
         service = TelemetryIngestionService(db)
         grouped: Dict[str, List[HostEvent]] = defaultdict(list)
         now = datetime.now(timezone.utc)
@@ -167,6 +185,14 @@ class SentinelOneIngestion:
         return {"events_ingested": ingested, "hosts": len(grouped)}
 
     def _normalize_activity(self, activity: Dict[str, Any]) -> Optional[HostEvent]:
+        """Translate raw SentinelOne activity JSON into a ``HostEvent`` model.
+
+        The activity schema differs across environments and product tiers.  We
+        defensively look for identifiers under both top-level and nested ``data``
+        payloads.  When essential fields are missing (no activity ID or agent)
+        we drop the event to avoid inserting ambiguous host records.
+        """
+
         if not isinstance(activity, dict):
             return None
 
@@ -209,6 +235,7 @@ class SentinelOneIngestion:
         event_raw = activity.get("activityType") or activity.get("activity_name") or "activity"
         event_type = str(event_raw).lower()
         category = "sentinelone.activity"
+        # Persist the raw record for analysts while keeping the schema stable.
         payload = {k: v for k, v in activity.items() if k not in {"data"}}
         payload["data"] = data
 
@@ -227,6 +254,8 @@ class SentinelOneIngestion:
 
     @staticmethod
     def _map_severity(severity: Any) -> Optional[str]:
+        """Normalize SentinelOne severity levels into Cerebro's label set."""
+
         if severity is None:
             return None
         if isinstance(severity, (int, float)):
