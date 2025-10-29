@@ -94,6 +94,46 @@ class Settings(BaseSettings):
     m365_client_secret: Optional[str] = Field(
         default=None, description="Microsoft 365 application client secret"
     )
+
+    # SentinelOne Integration
+    sentinelone_enabled: bool = Field(
+        default=False, description="Enable SentinelOne activity ingestion"
+    )
+    sentinelone_api_base_url: Optional[str] = Field(
+        default=None, description="Base URL for the SentinelOne management API"
+    )
+    sentinelone_api_token: Optional[str] = Field(
+        default=None, description="SentinelOne API token"
+    )
+    sentinelone_org_name: Optional[str] = Field(
+        default=None, description="Organization label applied to SentinelOne events"
+    )
+    sentinelone_site: Optional[str] = Field(
+        default=None, description="Optional site tag applied to SentinelOne events"
+    )
+    sentinelone_verify_tls: bool = Field(
+        default=True, description="Verify TLS certificates for SentinelOne requests"
+    )
+
+    # Kandji Integration
+    kandji_enabled: bool = Field(
+        default=False, description="Enable Kandji device ingestion"
+    )
+    kandji_api_base_url: Optional[str] = Field(
+        default=None, description="Base URL for the Kandji tenant (https://subdomain.api.kandji.io)"
+    )
+    kandji_api_token: Optional[str] = Field(
+        default=None, description="Kandji API token"
+    )
+    kandji_org_name: Optional[str] = Field(
+        default=None, description="Organization label applied to Kandji devices"
+    )
+    kandji_site: Optional[str] = Field(
+        default=None, description="Optional site tag applied to Kandji telemetry"
+    )
+    kandji_verify_tls: bool = Field(
+        default=True, description="Verify TLS certificates for Kandji requests"
+    )
     
     # Logging
     log_level: str = Field(default="INFO", description="Log level")
