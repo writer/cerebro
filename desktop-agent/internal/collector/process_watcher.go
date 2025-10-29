@@ -11,12 +11,14 @@ import (
 )
 
 // ProcessWatcher is an event collector that emits process start/exit deltas by
-// diffing the current process list with the previous collection cycle.
+// diffing the current process list with the previous collection cycle. A simple
+// in-memory baseline is retained across runs to keep state local.
 type ProcessWatcher struct {
 	previous map[int]types.ProcessSnapshot
 }
 
-// NewProcessWatcher constructs a delta tracker with an empty baseline.
+// NewProcessWatcher constructs a delta tracker with an empty baseline ready to
+// learn the host state on first execution.
 func NewProcessWatcher() *ProcessWatcher {
 	return &ProcessWatcher{previous: make(map[int]types.ProcessSnapshot)}
 }
@@ -27,8 +29,8 @@ func (w *ProcessWatcher) Name() string {
 }
 
 // Collect lists processes, compares them to the prior snapshot, and emits
-// process_started/process_exited events for changes. It keeps the collector
-// lightweight by reusing the helper snapshot logic.
+// process_started/process_exited events for changes. It updates the retained
+// baseline at the end of each run so future comparisons stay accurate.
 func (w *ProcessWatcher) Collect(_ context.Context, cfg config.Config) ([]types.HostEvent, error) {
 	now := time.Now().UTC()
 

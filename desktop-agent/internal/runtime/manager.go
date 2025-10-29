@@ -607,8 +607,9 @@ func (m *Manager) taskEligible(_ context.Context, sched scheduledTask) bool {
 }
 
 // evaluateDiscoveryClause checks a single discovery expression (e.g.,
-// "tag:env=prod", "hostname~^corp", "collector:snapshot.basic") against the
-// current host metadata.
+// "tag:env=prod", "!site:corp", "hostname~^corp", "collector:snapshot.basic")
+// against the current host metadata. Clauses may be negated with a leading !
+// and support regex matches for hostnames.
 func (m *Manager) evaluateDiscoveryClause(
 	clause string,
 	tags map[string]string,
@@ -764,8 +765,9 @@ func cloneEvents(events []types.HostEvent) []types.HostEvent {
 	return out
 }
 
-// buildEventBatches groups events by host id, applies size limits, and stamps
-// common metadata such as organization and collection time.
+// buildEventBatches groups events by host id, chunks them according to the
+// configured batch size, and stamps common metadata (organization, site,
+// agent version, collection timestamp) so the backend can ingest them directly.
 func buildEventBatches(events []types.HostEvent, agentVersion string, maxSize int, organization string, site string) []types.HostEventBatch {
 	if len(events) == 0 {
 		return nil
