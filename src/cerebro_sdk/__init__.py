@@ -24,6 +24,7 @@ from .integrations import (
     IntegrationIssueRecord,
 )
 from .tasks import TaskManager, TaskSubmission, TaskStatus
+from .agents import AgentManager, AgentSessionRecord, AgentMessageRecord
 
 __all__ = [
     "get_settings",
@@ -50,4 +51,7 @@ __all__ = [
     "TaskManager",
     "TaskSubmission",
     "TaskStatus",
+    "AgentManager",
+    "AgentSessionRecord",
+    "AgentMessageRecord",
 ]
