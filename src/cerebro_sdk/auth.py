@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.core.config import settings
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.core.security.jwt import JWTService
 from cerebro.core.user_service import UserService
@@ -40,6 +42,7 @@ class AuthSession:
         refresh_token = await self._jwt_service.create_token(
             username=user.username,
             scopes=scopes,
+            expires_delta=timedelta(days=settings.refresh_token_expire_days),
             token_type="refresh",
         )
 
