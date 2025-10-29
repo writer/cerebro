@@ -11,13 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from cerebro.core.models import Organization
-from cerebro.telemetry.models import ArtifactPack, ArtifactPackTask
+from cerebro.telemetry.models import ArtifactPack, ArtifactPackTask, ArtifactPackTrigger
 from cerebro.telemetry.schemas import (
     ArtifactPackCreate,
     ArtifactPackDefinition,
     ArtifactPackTaskCreate,
+    ArtifactPackTriggerCreate,
     ArtifactPackUpdate,
     ArtifactTaskDefinition,
+    ArtifactPackTrigger as ArtifactPackTriggerSchema,
 )
 
 
@@ -28,7 +30,14 @@ class PackManagementService:
         self.db = db
 
     async def list_packs(self, *, org_id: Optional[UUID] = None) -> List[ArtifactPackDefinition]:
-        stmt = select(ArtifactPack).options(selectinload(ArtifactPack.tasks)).order_by(ArtifactPack.created_at.desc())
+        stmt = (
+            select(ArtifactPack)
+            .options(
+                selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPack.triggers),
+            )
+            .order_by(ArtifactPack.created_at.desc())
+        )
         if org_id:
             stmt = stmt.where(ArtifactPack.org_id == org_id)
         result = await self.db.execute(stmt)
@@ -56,10 +65,11 @@ class PackManagementService:
         )
 
         pack.tasks = [self._build_task(task) for task in payload.tasks]
+        pack.triggers = [self._build_trigger(trigger) for trigger in payload.triggers or []]
 
         self.db.add(pack)
         await self.db.commit()
-        await self.db.refresh(pack, attribute_names=["tasks"])
+        await self.db.refresh(pack, attribute_names=["tasks", "triggers"])
 
         return self._serialize_pack(pack)
 
@@ -87,9 +97,11 @@ class PackManagementService:
 
         if payload.tasks is not None:
             await self._replace_tasks(pack, payload.tasks)
+        if payload.triggers is not None:
+            await self._replace_triggers(pack, payload.triggers)
 
         await self.db.commit()
-        await self.db.refresh(pack, attribute_names=["tasks"])
+        await self.db.refresh(pack, attribute_names=["tasks", "triggers"])
         return self._serialize_pack(pack)
 
     async def delete_pack(self, pack_id: UUID) -> None:
@@ -100,7 +112,10 @@ class PackManagementService:
     async def _load_pack(self, pack_id: UUID, *, for_update: bool = False) -> ArtifactPack:
         stmt = (
             select(ArtifactPack)
-            .options(selectinload(ArtifactPack.tasks))
+            .options(
+                selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPack.triggers),
+            )
             .where(ArtifactPack.pack_id == pack_id)
         )
         if for_update:
@@ -164,6 +179,7 @@ class PackManagementService:
             schedule_interval_seconds=pack.schedule_interval_seconds,
             last_deployed_at=pack.last_deployed_at,
             tasks=[self._serialize_task(task) for task in sorted(pack.tasks, key=lambda t: t.name)],
+            triggers=[self._serialize_trigger(trigger) for trigger in sorted(pack.triggers, key=lambda t: t.match_value)] or None,
         )
 
     def _serialize_task(self, task: ArtifactPackTask) -> ArtifactTaskDefinition:
@@ -179,4 +195,28 @@ class PackManagementService:
             parameter_values=task.parameter_values or None,
             resources=task.resources or None,
             tools=task.tools or None,
+        )
+
+    def _build_trigger(self, trigger: ArtifactPackTriggerCreate) -> ArtifactPackTrigger:
+        return ArtifactPackTrigger(
+            trigger_id=uuid4(),
+            trigger_type=trigger.trigger_type,
+            match_value=trigger.match_value,
+            minimum_severity=trigger.minimum_severity,
+            expires_after_seconds=trigger.expires_after_seconds,
+        )
+
+    async def _replace_triggers(self, pack: ArtifactPack, triggers: List[ArtifactPackTriggerCreate]) -> None:
+        await self.db.flush()
+        pack.triggers.clear()
+        for trigger in triggers:
+            pack.triggers.append(self._build_trigger(trigger))
+
+    def _serialize_trigger(self, trigger: ArtifactPackTrigger) -> ArtifactPackTriggerSchema:
+        return ArtifactPackTriggerSchema(
+            trigger_id=trigger.trigger_id,
+            trigger_type=trigger.trigger_type,
+            match_value=trigger.match_value,
+            minimum_severity=trigger.minimum_severity,
+            expires_after_seconds=trigger.expires_after_seconds,
         )

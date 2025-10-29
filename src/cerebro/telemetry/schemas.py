@@ -284,6 +284,21 @@ class ArtifactTool(BaseModel):
     version: Optional[str] = Field(None, description="Tool version identifier")
 
 
+class ArtifactPackTrigger(BaseModel):
+    trigger_id: UUID
+    trigger_type: str
+    match_value: str
+    minimum_severity: Optional[str] = None
+    expires_after_seconds: Optional[int] = None
+
+
+class ArtifactPackTriggerCreate(BaseModel):
+    trigger_type: str
+    match_value: str
+    minimum_severity: Optional[str] = None
+    expires_after_seconds: Optional[int] = None
+
+
 class ArtifactPackTaskCreate(BaseModel):
     name: str
     collector: str
@@ -307,6 +322,7 @@ class ArtifactPackCreate(BaseModel):
     approval_notes: Optional[str] = None
     schedule_interval_seconds: Optional[int] = None
     tasks: List[ArtifactPackTaskCreate]
+    triggers: Optional[List[ArtifactPackTriggerCreate]] = None
 
 
 class ArtifactPackUpdate(BaseModel):
@@ -319,6 +335,7 @@ class ArtifactPackUpdate(BaseModel):
     approval_notes: Optional[str] = None
     schedule_interval_seconds: Optional[int] = None
     tasks: Optional[List[ArtifactPackTaskCreate]] = None
+    triggers: Optional[List[ArtifactPackTriggerCreate]] = None
 
 
 class ArtifactPackDefinition(BaseModel):
@@ -338,6 +355,7 @@ class ArtifactPackDefinition(BaseModel):
     approval_notes: Optional[str] = Field(None, description="Reviewer notes attached to the pack")
     schedule_interval_seconds: Optional[int] = Field(None, description="Optional recurring schedule for the pack")
     last_deployed_at: Optional[datetime] = Field(None, description="Timestamp of the most recent deployment")
+    triggers: Optional[List[ArtifactPackTrigger]] = Field(None, description="Automation triggers associated with the pack")
 
 class RuntimeTelemetry(BaseModel):
     """Runtime telemetry from application."""

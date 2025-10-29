@@ -157,6 +157,18 @@ class ArtifactPack(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    triggers: Mapped[list["ArtifactPackTrigger"]] = relationship(
+        "ArtifactPackTrigger",
+        back_populates="pack",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    targets: Mapped[list["ArtifactPackTarget"]] = relationship(
+        "ArtifactPackTarget",
+        back_populates="pack",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class ArtifactPackTask(Base):
@@ -189,4 +201,52 @@ class ArtifactPackTask(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="tasks")
+
+
+class ArtifactPackTrigger(Base):
+    __tablename__ = "artifact_pack_triggers"
+
+    trigger_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    pack_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("artifact_packs.pack_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trigger_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    match_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    minimum_severity: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    expires_after_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="triggers")
+
+
+class ArtifactPackTarget(Base):
+    __tablename__ = "artifact_pack_targets"
+
+    target_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    pack_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("artifact_packs.pack_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    host_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    hostname: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    fulfilled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="targets")
 

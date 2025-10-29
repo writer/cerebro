@@ -6,11 +6,11 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Iterable, Optional, List
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,6 +26,8 @@ from cerebro.core.models import (
 from cerebro.telemetry.models import (
     ArtifactPack,
     ArtifactPackTask,
+    ArtifactPackTrigger,
+    ArtifactPackTarget,
     HostContext,
     HostTelemetryEvent,
     RepositoryContext,
@@ -34,12 +36,14 @@ from cerebro.telemetry.models import (
 )
 from cerebro.telemetry.schemas import (
     ArtifactPackDefinition,
+    ArtifactPackTrigger as ArtifactPackTriggerSchema,
     ArtifactTaskDefinition,
     ComplianceEvidence,
     DependencyGraph,
     DependencyScan,
     DependencyVulnerability,
     FrontendObservationTelemetry,
+    HostEvent,
     HostEventBatch,
     RepositoryTelemetry,
     RuntimeTelemetry,
@@ -314,6 +318,7 @@ class TelemetryIngestionService:
                 self.db.add(record)
                 ingested += 1
 
+            await self._apply_pack_triggers(context, payload.events)
             await self.db.commit()
 
             return {
@@ -356,18 +361,65 @@ class TelemetryIngestionService:
 
         stmt = (
             select(ArtifactPack)
-            .where(ArtifactPack.org_id == context.org_id)
-            .options(selectinload(ArtifactPack.tasks))
+            .where(
+                ArtifactPack.org_id == context.org_id,
+                ArtifactPack.enabled.is_(True),
+                ArtifactPack.approval_state == "approved",
+            )
+            .options(
+                selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPack.triggers),
+            )
         )
 
         result = await self.db.execute(stmt)
         packs = result.scalars().unique().all()
 
+        now = datetime.now(timezone.utc)
         eligible: List[ArtifactPackDefinition] = []
+        delivered_ids: set[UUID] = set()
+
         for pack in packs:
             if not self._pack_matches(pack, context, tags):
                 continue
             eligible.append(self._serialize_pack(pack))
+            delivered_ids.add(pack.pack_id)
+
+        targets_stmt = (
+            select(ArtifactPackTarget)
+            .options(
+                selectinload(ArtifactPackTarget.pack).selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPackTarget.pack).selectinload(ArtifactPack.triggers),
+            )
+            .join(ArtifactPack, ArtifactPack.pack_id == ArtifactPackTarget.pack_id)
+            .where(
+                ArtifactPackTarget.host_id == context.host_id,
+                ArtifactPackTarget.fulfilled_at.is_(None),
+                or_(
+                    ArtifactPackTarget.expires_at.is_(None),
+                    ArtifactPackTarget.expires_at > now,
+                ),
+                ArtifactPack.org_id == context.org_id,
+                ArtifactPack.enabled.is_(True),
+                ArtifactPack.approval_state == "approved",
+            )
+        )
+
+        target_result = await self.db.execute(targets_stmt)
+        targets = target_result.scalars().unique().all()
+
+        if targets:
+            for target in targets:
+                pack = target.pack
+                if pack is None:
+                    continue
+                if pack.pack_id not in delivered_ids:
+                    eligible.append(self._serialize_pack(pack))
+                    delivered_ids.add(pack.pack_id)
+                target.fulfilled_at = now
+                pack.last_deployed_at = now
+
+            await self.db.commit()
 
         return eligible
 
@@ -541,6 +593,10 @@ class TelemetryIngestionService:
         context: HostContext,
         tags: Dict[str, str],
     ) -> bool:
+        if not pack.enabled:
+            return False
+        if pack.approval_state != "approved":
+            return False
         selectors = pack.selectors or {}
 
         if not selectors:
@@ -563,6 +619,103 @@ class TelemetryIngestionService:
 
         return True
 
+    async def _apply_pack_triggers(self, context: HostContext, events: List[HostEvent]) -> None:
+        if not events:
+            return
+
+        event_types: Dict[str, List[HostEvent]] = {}
+        event_categories: Dict[str, List[HostEvent]] = {}
+        for event in events:
+            event_types.setdefault(event.event_type, []).append(event)
+            event_categories.setdefault(event.category, []).append(event)
+
+        stmt = (
+            select(ArtifactPackTrigger)
+            .options(
+                selectinload(ArtifactPackTrigger.pack).selectinload(ArtifactPack.tasks),
+                selectinload(ArtifactPackTrigger.pack).selectinload(ArtifactPack.triggers),
+            )
+            .join(ArtifactPack, ArtifactPackTrigger.pack_id == ArtifactPack.pack_id)
+            .where(
+                ArtifactPack.org_id == context.org_id,
+                ArtifactPack.enabled.is_(True),
+                ArtifactPack.approval_state == "approved",
+            )
+        )
+
+        result = await self.db.execute(stmt)
+        triggers = result.scalars().unique().all()
+
+        for trigger in triggers:
+            pack = trigger.pack
+            if pack is None:
+                continue
+
+            if trigger.trigger_type == "event_type":
+                matched_events = event_types.get(trigger.match_value, [])
+            elif trigger.trigger_type == "event_category":
+                matched_events = event_categories.get(trigger.match_value, [])
+            else:
+                continue
+
+            if not matched_events:
+                continue
+
+            if trigger.minimum_severity:
+                min_rank = self._severity_rank(trigger.minimum_severity)
+                if not any(self._severity_rank(event.severity) >= min_rank for event in matched_events):
+                    continue
+
+            await self._assign_pack_target(pack, context, trigger)
+
+    async def _assign_pack_target(
+        self,
+        pack: ArtifactPack,
+        context: HostContext,
+        trigger: ArtifactPackTrigger,
+    ) -> None:
+        stmt = (
+            select(ArtifactPackTarget)
+            .where(
+                ArtifactPackTarget.pack_id == pack.pack_id,
+                ArtifactPackTarget.host_id == context.host_id,
+                ArtifactPackTarget.fulfilled_at.is_(None),
+            )
+        )
+        existing = await self.db.scalar(stmt)
+        if existing:
+            if trigger.expires_after_seconds and existing.expires_at is None:
+                existing.expires_at = datetime.now(timezone.utc) + timedelta(seconds=trigger.expires_after_seconds)
+            return
+
+        expires_at = None
+        if trigger.expires_after_seconds:
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=trigger.expires_after_seconds)
+
+        target = ArtifactPackTarget(
+            pack_id=pack.pack_id,
+            host_id=context.host_id,
+            hostname=context.hostname,
+            expires_at=expires_at,
+        )
+        self.db.add(target)
+
+    @staticmethod
+    def _severity_rank(value: Optional[str]) -> int:
+        if not value:
+            return 0
+        mapping = {
+            "info": 0,
+            "informational": 0,
+            "low": 1,
+            "medium": 2,
+            "moderate": 2,
+            "high": 3,
+            "critical": 4,
+            "severe": 4,
+        }
+        return mapping.get(value.lower(), 0)
+
     def _serialize_pack(self, pack: ArtifactPack) -> ArtifactPackDefinition:
         tasks = []
         for task in sorted(pack.tasks, key=lambda item: item.name):
@@ -583,6 +736,18 @@ class TelemetryIngestionService:
             )
 
         selectors = pack.selectors or None
+        triggers = None
+        if pack.triggers:
+            triggers = [
+                ArtifactPackTriggerSchema(
+                    trigger_id=trigger.trigger_id,
+                    trigger_type=trigger.trigger_type,
+                    match_value=trigger.match_value,
+                    minimum_severity=trigger.minimum_severity,
+                    expires_after_seconds=trigger.expires_after_seconds,
+                )
+                for trigger in sorted(pack.triggers, key=lambda item: item.match_value)
+            ]
 
         return ArtifactPackDefinition(
             pack_id=pack.pack_id,
@@ -591,6 +756,12 @@ class TelemetryIngestionService:
             description=pack.description,
             selectors=selectors,
             tasks=tasks,
+            enabled=pack.enabled,
+            approval_state=pack.approval_state,
+            approval_notes=pack.approval_notes,
+            schedule_interval_seconds=pack.schedule_interval_seconds,
+            last_deployed_at=pack.last_deployed_at,
+            triggers=triggers,
         )
 
     async def _get_or_create_org(self, name: str) -> Organization:

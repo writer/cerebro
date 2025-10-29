@@ -2,7 +2,12 @@ import pytest
 from uuid import UUID
 
 from cerebro.telemetry.pack_service import PackManagementService
-from cerebro.telemetry.schemas import ArtifactPackCreate, ArtifactPackTaskCreate, ArtifactPackUpdate
+from cerebro.telemetry.schemas import (
+    ArtifactPackCreate,
+    ArtifactPackTaskCreate,
+    ArtifactPackTriggerCreate,
+    ArtifactPackUpdate,
+)
 
 
 @pytest.mark.asyncio
@@ -24,6 +29,14 @@ async def test_pack_management_crud(test_db):
                 parameter_values={"limit": 25},
             )
         ],
+        triggers=[
+            ArtifactPackTriggerCreate(
+                trigger_type="event_type",
+                match_value="process.suspicious",
+                minimum_severity="high",
+                expires_after_seconds=600,
+            )
+        ],
     )
 
     created = await service.create_pack(create_payload, org_name="Acme")
@@ -32,6 +45,7 @@ async def test_pack_management_crud(test_db):
     assert created.approval_state == "draft"
     assert len(created.tasks) == 1
     assert created.tasks[0].parameter_values == {"limit": 25}
+    assert created.triggers and created.triggers[0].match_value == "process.suspicious"
 
     listed = await service.list_packs()
     assert len(listed) == 1
@@ -52,6 +66,13 @@ async def test_pack_management_crud(test_db):
                 collector="events.process.delta",
             ),
         ],
+        triggers=[
+            ArtifactPackTriggerCreate(
+                trigger_type="event_category",
+                match_value="process",
+                minimum_severity="medium",
+            )
+        ],
     )
 
     updated = await service.update_pack(pack_id, update_payload)
@@ -59,6 +80,7 @@ async def test_pack_management_crud(test_db):
     assert updated.approval_notes == "Reviewed by SOC lead"
     assert len(updated.tasks) == 2
     assert any(task.collector == "events.process.delta" for task in updated.tasks)
+    assert updated.triggers and updated.triggers[0].trigger_type == "event_category"
 
     await service.delete_pack(pack_id)
     listed_after_delete = await service.list_packs()

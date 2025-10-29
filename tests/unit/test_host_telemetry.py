@@ -13,7 +13,13 @@ from cerebro.telemetry.schemas import (
 )
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.core.models import ConfigSnapshot, Finding
-from cerebro.telemetry.models import ArtifactPack, ArtifactPackTask, HostTelemetryEvent
+from cerebro.telemetry.models import (
+    ArtifactPack,
+    ArtifactPackTask,
+    ArtifactPackTrigger,
+    ArtifactPackTarget,
+    HostTelemetryEvent,
+)
 
 
 @pytest.mark.asyncio
@@ -172,6 +178,8 @@ async def test_list_host_packs_filters_by_selectors(test_db):
         name="baseline",
         version="1.0.0",
         selectors={"site": ["HQ"], "tags": {"env": "prod"}},
+        approval_state="approved",
+        enabled=True,
     )
     eligible_pack.tasks = [
         ArtifactPackTask(
@@ -192,6 +200,8 @@ async def test_list_host_packs_filters_by_selectors(test_db):
         name="ops",
         version="1.0.0",
         selectors={"site": ["NYC"], "tags": {"env": "ops"}},
+        approval_state="approved",
+        enabled=True,
     )
     excluded_pack.tasks = [
         ArtifactPackTask(
@@ -219,3 +229,93 @@ async def test_list_host_packs_filters_by_selectors(test_db):
     assert pack.tasks[0].collector == "snapshot.basic"
     assert pack.tasks[0].discovery == ["tag:env=prod"]
     assert pack.tasks[0].parameter_values == {"limit": 25}
+
+
+@pytest.mark.asyncio
+async def test_host_event_trigger_assigns_follow_on_pack(test_db):
+    service = TelemetryIngestionService(test_db)
+
+    context = await service._ensure_host_context_from_values(
+        host_id="host-999",
+        hostname="acme-dc",
+        organization="Acme",
+        site="HQ",
+    )
+
+    follow_on_pack = ArtifactPack(
+        org_id=context.org_id,
+        name="suspicious-process-response",
+        version="1.0.0",
+        approval_state="approved",
+        enabled=True,
+    )
+    follow_on_pack.tasks = [
+        ArtifactPackTask(
+            name="collect-process-tree",
+            collector="snapshot.basic",
+            interval_seconds=0,
+        )
+    ]
+    follow_on_pack.triggers = [
+        ArtifactPackTrigger(
+            trigger_type="event_type",
+            match_value="process.suspicious",
+            minimum_severity="high",
+            expires_after_seconds=600,
+        )
+    ]
+
+    test_db.add(follow_on_pack)
+    await test_db.commit()
+    await test_db.refresh(follow_on_pack)
+
+    now = datetime.now(timezone.utc)
+    batch = HostEventBatch(
+        host_id="host-999",
+        hostname="acme-dc",
+        organization="Acme",
+        site="HQ",
+        agent_version="1.2.3",
+        collected_at=now,
+        events=[
+            HostEvent(
+                host_id="host-999",
+                hostname="acme-dc",
+                category="process",
+                event_type="process.suspicious",
+                severity="critical",
+                timestamp=now,
+                process_id=9001,
+                parent_pid=42,
+                user="svc",
+                command_line="/tmp/evil",
+                source="process_watcher",
+                payload={"reason": "rapid encryption"},
+            )
+        ],
+    )
+
+    await service.process_host_events(batch)
+
+    targets = (await test_db.execute(select(ArtifactPackTarget))).scalars().all()
+    assert len(targets) == 1
+    target = targets[0]
+    assert target.pack_id == follow_on_pack.pack_id
+    assert target.fulfilled_at is None
+
+    packs = await service.list_host_packs(
+        host_id="host-999",
+        hostname="acme-dc",
+        organization="Acme",
+        site="HQ",
+        tags={},
+    )
+
+    assert packs, "Expected follow-on pack to be distributed"
+    assert any(pack.name == "suspicious-process-response" for pack in packs)
+
+    await test_db.refresh(target)
+    assert target.fulfilled_at is not None
+    await test_db.refresh(follow_on_pack)
+    assert follow_on_pack.last_deployed_at is not None
+
