@@ -147,6 +147,18 @@ class Settings(BaseSettings):
         default=None,
         description="Slack webhook URL used for integration sync health alerts",
     )
+    integration_sync_retry_enabled: bool = Field(
+        default=True,
+        description="Enable automatic retry attempts when sync health issues are detected",
+    )
+    integration_sync_retry_cooldown_seconds: int = Field(
+        default=3600,
+        description="Cooldown window in seconds between automated sync retries per scope",
+    )
+    integration_sync_retry_lookback_minutes: Optional[int] = Field(
+        default=60,
+        description="Optional lookback window to apply when retrying SentinelOne syncs",
+    )
     
     # Logging
     log_level: str = Field(default="INFO", description="Log level")

@@ -278,6 +278,7 @@ class UserService:
             ("read:audit", "Read audit logs"),
             ("query:execute", "Execute SQL queries"),
             ("ingest:telemetry", "Submit telemetry ingestion events"),
+            ("view:integrations", "View integration synchronization status"),
         ]
         
         for scope_name, description in default_scopes:
@@ -333,7 +334,8 @@ class UserService:
                 "read:resources", "read:principals",
                 "read:rules", "write:rules",
                 "read:findings", "write:findings",
-                "collect:data", "read:audit", "query:execute", "ingest:telemetry"
+                "collect:data", "read:audit", "query:execute", "ingest:telemetry",
+                "view:integrations",
             ]
         )
         

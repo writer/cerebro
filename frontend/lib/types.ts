@@ -185,6 +185,26 @@ export type IntegrationStatus = {
   metadata: Record<string, unknown>;
 };
 
+export type IntegrationIssue = {
+  integration: string;
+  scope: string;
+  status: string;
+  issue_type: string;
+  severity: "ok" | "warning" | "critical" | string;
+  message: string;
+  observed_at: string;
+  last_timestamp: string | null;
+  age_seconds: number | null;
+  metadata: Record<string, unknown>;
+};
+
+export type IntegrationSyncJob = {
+  task_id: string;
+  integration: string;
+  scope: string;
+  queued_at: string;
+};
+
 export type ExecutiveSummaryProgress = {
   findings_burned_down_30d: number;
   new_controls_implemented: number;

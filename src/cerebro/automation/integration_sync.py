@@ -119,6 +119,24 @@ def should_suppress_issue(
     return (now - sent_at).total_seconds() < max(cooldown_seconds, 0)
 
 
+def _format_metadata_summary(metadata: Dict[str, Any]) -> str:
+    summary_parts: list[str] = []
+    for key in ("last_status_at", "last_error", "last_event_count", "last_ingested_count"):
+        if key in metadata and metadata[key] not in (None, ""):
+            summary_parts.append(f"*{key.replace('_', ' ').title()}:* {metadata[key]}")
+
+    if "last_payload" in metadata and isinstance(metadata["last_payload"], dict):
+        payload = metadata["last_payload"]
+        if payload:
+            keys = list(payload.keys())[:5]
+            summary_parts.append("*Payload keys:* " + ", ".join(keys))
+
+    if "last_auto_retry_at" in metadata:
+        summary_parts.append(f"*Last retry:* {metadata['last_auto_retry_at']}")
+
+    return "\n".join(summary_parts) if summary_parts else "No additional metadata recorded."
+
+
 def _format_slack_payload(issue: IntegrationIssue) -> Dict[str, Any]:
     age_text = "unknown"
     if issue.age_seconds is not None:
@@ -133,6 +151,8 @@ def _format_slack_payload(issue: IntegrationIssue) -> Dict[str, Any]:
         "warning": "#f57c00",
         "info": "#1976d2",
     }.get(issue.severity, "#9e9e9e")
+
+    metadata_summary = _format_metadata_summary(issue.metadata)
 
     return {
         "attachments": [
@@ -159,6 +179,13 @@ def _format_slack_payload(issue: IntegrationIssue) -> Dict[str, Any]:
                     {
                         "type": "section",
                         "text": {"type": "mrkdwn", "text": issue.message},
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": metadata_summary,
+                        },
                     },
                 ],
             }
