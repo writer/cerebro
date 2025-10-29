@@ -213,6 +213,40 @@ class HostEventBatch(BaseModel):
     collected_at: datetime = Field(..., description="Batch collection timestamp")
     events: List[HostEvent] = Field(..., description="List of events included in the batch")
 
+
+class ArtifactTaskDefinition(BaseModel):
+    """Task specification delivered to an endpoint agent via artifact packs."""
+
+    task_id: UUID = Field(..., description="Unique identifier for the artifact task")
+    name: str = Field(..., description="Human readable task name")
+    collector: str = Field(..., description="Registered collector name the agent should execute")
+    interval_seconds: Optional[int] = Field(
+        None,
+        description="Execution interval expressed in seconds; falls back to agent defaults when omitted",
+    )
+    tags: Optional[Dict[str, str]] = Field(
+        None,
+        description="Additional telemetry tags to annotate results emitted by this task",
+    )
+    config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Collector-specific configuration payload",
+    )
+
+
+class ArtifactPackDefinition(BaseModel):
+    """Pack definition returned to agents based on eligibility selectors."""
+
+    pack_id: UUID = Field(..., description="Identifier for the artifact pack")
+    name: str = Field(..., description="Pack name")
+    version: Optional[str] = Field(None, description="Semantic version of the pack contents")
+    description: Optional[str] = Field(None, description="Short description of the pack purpose")
+    selectors: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Selector criteria (tags, sites, OS families) used to target eligible agents",
+    )
+    tasks: List[ArtifactTaskDefinition] = Field(..., description="Task definitions included in the pack")
+
 class RuntimeTelemetry(BaseModel):
     """Runtime telemetry from application."""
 

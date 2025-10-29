@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import User, get_current_user, require_scopes
@@ -11,6 +11,7 @@ from cerebro.telemetry.schemas import (
     ComplianceEvidence,
     DependencyGraph,
     FrontendObservationTelemetry,
+    ArtifactPackDefinition,
     HostEventBatch,
     HostTelemetry,
     RepositoryTelemetry,
@@ -68,6 +69,42 @@ async def receive_host_telemetry(
 
     try:
         return await TelemetryIngestionService(db).process_host(telemetry)
+    except TelemetryProcessingError as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/host/packs", response_model=list[ArtifactPackDefinition])
+async def list_host_packs(
+    host_id: str = Query(..., description="Stable host identifier"),
+    hostname: Optional[str] = Query(None, description="Hostname override"),
+    organization: Optional[str] = Query(None, description="Organization name"),
+    site: Optional[str] = Query(None, description="Site or location tag"),
+    tags: Optional[list[str]] = Query(None, alias="tag", description="Tag filters in key=value form"),
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("ingest:telemetry")),
+):
+    """Return artifact packs applicable to the requesting host."""
+
+    tag_map: dict[str, str] = {}
+    if tags:
+        for entry in tags:
+            if not entry:
+                continue
+            if "=" not in entry:
+                tag_map[entry] = "true"
+                continue
+            key, value = entry.split("=", 1)
+            tag_map[key] = value
+
+    service = TelemetryIngestionService(db)
+    try:
+        return await service.list_host_packs(
+            host_id=host_id,
+            hostname=hostname,
+            organization=organization,
+            site=site,
+            tags=tag_map,
+        )
     except TelemetryProcessingError as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

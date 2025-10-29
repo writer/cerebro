@@ -13,7 +13,7 @@ from cerebro.telemetry.schemas import (
 )
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.core.models import ConfigSnapshot, Finding
-from cerebro.telemetry.models import HostTelemetryEvent
+from cerebro.telemetry.models import ArtifactPack, ArtifactPackTask, HostTelemetryEvent
 
 
 @pytest.mark.asyncio
@@ -154,3 +154,61 @@ async def test_process_host_events_persists_records(test_db):
     assert stored.category == "process"
     assert stored.event_type == "process_started"
     assert stored.process_id == 4242
+
+
+@pytest.mark.asyncio
+async def test_list_host_packs_filters_by_selectors(test_db):
+    service = TelemetryIngestionService(test_db)
+
+    context = await service._ensure_host_context_from_values(
+        host_id="host-123",
+        hostname="acme-mbp",
+        organization="Acme",
+        site="HQ",
+    )
+
+    eligible_pack = ArtifactPack(
+        org_id=context.org_id,
+        name="baseline",
+        version="1.0.0",
+        selectors={"site": ["HQ"], "tags": {"env": "prod"}},
+    )
+    eligible_pack.tasks = [
+        ArtifactPackTask(
+            name="snapshot",
+            collector="snapshot.basic",
+            interval_seconds=300,
+            tags={"env": "prod"},
+        )
+    ]
+
+    excluded_pack = ArtifactPack(
+        org_id=context.org_id,
+        name="ops",
+        version="1.0.0",
+        selectors={"site": ["NYC"], "tags": {"env": "ops"}},
+    )
+    excluded_pack.tasks = [
+        ArtifactPackTask(
+            name="process-diff",
+            collector="events.process.delta",
+            interval_seconds=120,
+        )
+    ]
+
+    test_db.add_all([eligible_pack, excluded_pack])
+    await test_db.commit()
+
+    packs = await service.list_host_packs(
+        host_id="host-123",
+        hostname="acme-mbp",
+        organization="Acme",
+        site="HQ",
+        tags={"env": "prod"},
+    )
+
+    assert len(packs) == 1
+    pack = packs[0]
+    assert pack.name == "baseline"
+    assert len(pack.tasks) == 1
+    assert pack.tasks[0].collector == "snapshot.basic"

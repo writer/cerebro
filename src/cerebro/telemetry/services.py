@@ -7,11 +7,12 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, List
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from cerebro.core.models import (
     Account,
@@ -23,6 +24,8 @@ from cerebro.core.models import (
     Rule,
 )
 from cerebro.telemetry.models import (
+    ArtifactPack,
+    ArtifactPackTask,
     HostContext,
     HostTelemetryEvent,
     RepositoryContext,
@@ -30,6 +33,8 @@ from cerebro.telemetry.models import (
     TelemetryResult,
 )
 from cerebro.telemetry.schemas import (
+    ArtifactPackDefinition,
+    ArtifactTaskDefinition,
     ComplianceEvidence,
     DependencyGraph,
     DependencyScan,
@@ -321,6 +326,51 @@ class TelemetryIngestionService:
             logger.exception("Host events processing failed", exc_info=exc)
             raise TelemetryProcessingError(str(exc)) from exc
 
+    async def list_host_packs(
+        self,
+        *,
+        host_id: str,
+        hostname: Optional[str],
+        organization: Optional[str],
+        site: Optional[str],
+        tags: Dict[str, str],
+    ) -> List[ArtifactPackDefinition]:
+        """Return artifact packs applicable to the specified host."""
+
+        logger.info(
+            "Listing host packs",
+            extra={
+                "host_id": host_id,
+                "hostname": hostname,
+                "organization": organization,
+                "site": site,
+            },
+        )
+
+        context = await self._ensure_host_context_from_values(
+            host_id=host_id,
+            hostname=hostname,
+            organization=organization,
+            site=site,
+        )
+
+        stmt = (
+            select(ArtifactPack)
+            .where(ArtifactPack.org_id == context.org_id)
+            .options(selectinload(ArtifactPack.tasks))
+        )
+
+        result = await self.db.execute(stmt)
+        packs = result.scalars().unique().all()
+
+        eligible: List[ArtifactPackDefinition] = []
+        for pack in packs:
+            if not self._pack_matches(pack, context, tags):
+                continue
+            eligible.append(self._serialize_pack(pack))
+
+        return eligible
+
     async def process_compliance_evidence(self, payload: ComplianceEvidence) -> Dict[str, Any]:
         """Persist compliance evidence metadata."""
 
@@ -483,6 +533,59 @@ class TelemetryIngestionService:
             hostname=hostname or host_id,
             received_at=datetime.utcnow(),
             metadata=metadata,
+        )
+
+    def _pack_matches(
+        self,
+        pack: ArtifactPack,
+        context: HostContext,
+        tags: Dict[str, str],
+    ) -> bool:
+        selectors = pack.selectors or {}
+
+        if not selectors:
+            return True
+
+        site_selector = selectors.get("site")
+        if site_selector:
+            host_site = context.metadata.get("site")
+            if isinstance(site_selector, (list, tuple, set)):
+                if host_site not in site_selector:
+                    return False
+            elif host_site != site_selector:
+                return False
+
+        tag_selector = selectors.get("tags")
+        if isinstance(tag_selector, dict):
+            for key, expected in tag_selector.items():
+                if tags.get(key) != expected:
+                    return False
+
+        return True
+
+    def _serialize_pack(self, pack: ArtifactPack) -> ArtifactPackDefinition:
+        tasks = []
+        for task in sorted(pack.tasks, key=lambda item: item.name):
+            tasks.append(
+                ArtifactTaskDefinition(
+                    task_id=task.task_id,
+                    name=task.name,
+                    collector=task.collector,
+                    interval_seconds=task.interval_seconds,
+                    tags=task.tags or None,
+                    config=task.config or None,
+                )
+            )
+
+        selectors = pack.selectors or None
+
+        return ArtifactPackDefinition(
+            pack_id=pack.pack_id,
+            name=pack.name,
+            version=pack.version,
+            description=pack.description,
+            selectors=selectors,
+            tasks=tasks,
         )
 
     async def _get_or_create_org(self, name: str) -> Organization:

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -15,6 +16,11 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
+const (
+	taskSourceLocal  = "local"
+	taskSourceRemote = "remote"
+)
+
 type Manager struct {
 	cfg                config.Config
 	httpClient         *client.Service
@@ -24,16 +30,22 @@ type Manager struct {
 	mu                 sync.Mutex
 	eventQueue         []types.HostEvent
 	packLoader         pack.Loader
-	scheduledTasks     []scheduledTask
+	schedMu            sync.Mutex
+	scheduledTasks     map[string]*scheduledTask
+	identityMu         sync.RWMutex
+	hostID             string
+	hostname           string
 }
 
 type scheduledTask struct {
+	source   string
 	packName string
 	task     pack.Task
 	nextRun  time.Time
 }
 
 func NewManager(cfg config.Config, httpClient *client.Service, logger *log.Logger) *Manager {
+	rand.Seed(time.Now().UnixNano())
 	return &Manager{
 		cfg:                cfg,
 		httpClient:         httpClient,
@@ -41,6 +53,8 @@ func NewManager(cfg config.Config, httpClient *client.Service, logger *log.Logge
 		snapshotCollectors: make(map[string]collector.SnapshotCollector),
 		eventCollectors:    make([]collector.EventCollector, 0),
 		mu:                 sync.Mutex{},
+		schedMu:            sync.Mutex{},
+		scheduledTasks:     make(map[string]*scheduledTask),
 	}
 }
 
@@ -84,6 +98,10 @@ func (m *Manager) Run(ctx context.Context) error {
 		m.flushEvents(ctx, true)
 	}
 
+	if m.cfg.ArtifactPollInterval > 0 {
+		go m.pollRemotePacks(ctx)
+	}
+
 	snapshotTicker := time.NewTicker(m.cfg.Interval)
 	defer snapshotTicker.Stop()
 
@@ -97,7 +115,7 @@ func (m *Manager) Run(ctx context.Context) error {
 
 	var packTicker *time.Ticker
 	var packC <-chan time.Time
-	if len(m.scheduledTasks) > 0 {
+	if m.cfg.PackDirectory != "" || m.cfg.ArtifactPollInterval > 0 {
 		packTicker = time.NewTicker(5 * time.Second)
 		packC = packTicker.C
 		defer packTicker.Stop()
@@ -142,9 +160,12 @@ func (m *Manager) RunOnce(ctx context.Context) error {
 		}
 		m.flushEvents(ctx, true)
 	}
-	if len(m.scheduledTasks) > 0 {
-		m.runScheduledTasks(ctx)
+	if m.cfg.ArtifactPollInterval > 0 {
+		if err := m.refreshRemotePacks(ctx); err != nil {
+			m.logger.Printf("artifact pack refresh failed: %v", err)
+		}
 	}
+	m.runScheduledTasks(ctx)
 	return nil
 }
 
@@ -158,6 +179,10 @@ func (m *Manager) collectSnapshots(ctx context.Context) error {
 		if telemetry == nil {
 			continue
 		}
+		m.identityMu.Lock()
+		m.hostID = telemetry.HostID
+		m.hostname = telemetry.Hostname
+		m.identityMu.Unlock()
 		if err := m.httpClient.SendSnapshot(ctx, telemetry); err != nil {
 			m.logger.Printf("failed to send snapshot: %v", err)
 		}
@@ -174,46 +199,40 @@ func (m *Manager) initializeScheduledTasks() {
 		m.logger.Printf("failed to load packs: %v", err)
 		return
 	}
-	if len(packList) == 0 {
-		return
-	}
-	now := time.Now().UTC()
-	for _, p := range packList {
-		for _, task := range p.Tasks {
-			interval := m.taskInterval(task)
-			var jitter time.Duration
-			if interval > 0 {
-				jitter = time.Duration(rand.Int63n(int64(interval/2 + 1)))
-			}
-			scheduled := scheduledTask{
-				packName: p.Name,
-				task:     cloneTask(task),
-				nextRun:  now.Add(jitter),
-			}
-			m.scheduledTasks = append(m.scheduledTasks, scheduled)
-		}
-	}
+	m.syncSourceTasks(taskSourceLocal, packList)
 }
 
 func (m *Manager) runScheduledTasks(ctx context.Context) {
+	m.schedMu.Lock()
 	if len(m.scheduledTasks) == 0 {
+		m.schedMu.Unlock()
 		return
 	}
 	now := time.Now().UTC()
-	for idx := range m.scheduledTasks {
-		sched := &m.scheduledTasks[idx]
+	due := make([]scheduledTask, 0)
+	for _, sched := range m.scheduledTasks {
 		if now.Before(sched.nextRun) {
 			continue
 		}
-		collector := m.snapshotCollectors[sched.task.Collector]
 		interval := m.taskInterval(sched.task)
+		sched.nextRun = now.Add(interval)
+		due = append(due, scheduledTask{
+			source:   sched.source,
+			packName: sched.packName,
+			task:     cloneTask(sched.task),
+			nextRun:  sched.nextRun,
+		})
+	}
+	m.schedMu.Unlock()
+
+	for _, sched := range due {
+		collector := m.snapshotCollectors[sched.task.Collector]
 		if collector == nil {
 			m.logger.Printf(
 				"artifact task %s skipped: collector %s not registered",
 				sched.task.Name,
 				sched.task.Collector,
 			)
-			sched.nextRun = now.Add(interval)
 			continue
 		}
 		telemetry, err := collector.Collect(ctx, m.cfg)
@@ -223,27 +242,12 @@ func (m *Manager) runScheduledTasks(ctx context.Context) {
 				sched.task.Name,
 				err,
 			)
-			sched.nextRun = now.Add(interval)
 			continue
 		}
 		if telemetry == nil {
-			sched.nextRun = now.Add(interval)
 			continue
 		}
-		if telemetry.Tags == nil {
-			telemetry.Tags = make(map[string]string)
-		}
-		for k, v := range sched.task.Tags {
-			telemetry.Tags[k] = v
-		}
-		if sched.packName != "" {
-			if _, exists := telemetry.Tags["pack"]; !exists {
-				telemetry.Tags["pack"] = sched.packName
-			}
-		}
-		if sched.task.Name != "" {
-			telemetry.Tags["task"] = sched.task.Name
-		}
+		tagTelemetryWithTask(telemetry, sched)
 		if err := m.httpClient.SendSnapshot(ctx, telemetry); err != nil {
 			m.logger.Printf(
 				"artifact task %s send failed: %v",
@@ -251,7 +255,6 @@ func (m *Manager) runScheduledTasks(ctx context.Context) {
 				err,
 			)
 		}
-		sched.nextRun = now.Add(interval)
 	}
 }
 
@@ -274,7 +277,177 @@ func cloneTask(task pack.Task) pack.Task {
 			clone.Tags[k] = v
 		}
 	}
+	if task.Config != nil {
+		clone.Config = make(map[string]any, len(task.Config))
+		for k, v := range task.Config {
+			clone.Config[k] = v
+		}
+	}
 	return clone
+}
+
+func (m *Manager) syncSourceTasks(source string, packs []pack.Pack) {
+	now := time.Now().UTC()
+	active := make(map[string]struct{})
+
+	m.schedMu.Lock()
+	for _, p := range packs {
+		packName := p.Name
+		if packName == "" {
+			packName = "unnamed"
+		}
+		for _, task := range p.Tasks {
+			key := scheduleKey(source, packName, task.Name)
+			active[key] = struct{}{}
+			interval := m.taskInterval(task)
+			if existing, ok := m.scheduledTasks[key]; ok {
+				existing.task = cloneTask(task)
+				if existing.nextRun.IsZero() {
+					existing.nextRun = now.Add(m.jitter(interval))
+				}
+				continue
+			}
+			m.scheduledTasks[key] = &scheduledTask{
+				source:   source,
+				packName: packName,
+				task:     cloneTask(task),
+				nextRun:  now.Add(m.jitter(interval)),
+			}
+		}
+	}
+	for key, sched := range m.scheduledTasks {
+		if sched.source != source {
+			continue
+		}
+		if _, ok := active[key]; !ok {
+			delete(m.scheduledTasks, key)
+		}
+	}
+	m.schedMu.Unlock()
+}
+
+func scheduleKey(source, packName, taskName string) string {
+	return fmt.Sprintf("%s:%s:%s", source, packName, taskName)
+}
+
+func (m *Manager) jitter(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		return 0
+	}
+	max := interval / 2
+	if max <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int63n(int64(max) + 1))
+}
+
+func tagTelemetryWithTask(telemetry *types.HostTelemetry, sched scheduledTask) {
+	if telemetry.Tags == nil {
+		telemetry.Tags = make(map[string]string)
+	}
+	for k, v := range sched.task.Tags {
+		telemetry.Tags[k] = v
+	}
+	if sched.packName != "" {
+		if _, exists := telemetry.Tags["pack"]; !exists {
+			telemetry.Tags["pack"] = sched.packName
+		}
+	}
+	if sched.task.Name != "" {
+		telemetry.Tags["task"] = sched.task.Name
+	}
+	if _, ok := telemetry.Tags["pack_source"]; !ok {
+		telemetry.Tags["pack_source"] = sched.source
+	}
+}
+
+func (m *Manager) pollRemotePacks(ctx context.Context) {
+	if m.cfg.ArtifactPollInterval <= 0 {
+		return
+	}
+	if err := m.refreshRemotePacks(ctx); err != nil {
+		m.logger.Printf("artifact pack refresh failed: %v", err)
+	}
+	ticker := time.NewTicker(m.cfg.ArtifactPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := m.refreshRemotePacks(ctx); err != nil {
+				m.logger.Printf("artifact pack refresh failed: %v", err)
+			}
+		}
+	}
+}
+
+func (m *Manager) refreshRemotePacks(ctx context.Context) error {
+	m.identityMu.RLock()
+	hostID := m.hostID
+	hostname := m.hostname
+	m.identityMu.RUnlock()
+
+	if hostID == "" {
+		return nil
+	}
+
+	packs, err := m.httpClient.FetchArtifactPacks(ctx, hostID, hostname, m.cfg.Tags)
+	if err != nil {
+		return err
+	}
+
+	converted := make([]pack.Pack, 0, len(packs))
+	for _, definition := range packs {
+		converted = append(converted, packFromDefinition(definition))
+	}
+
+	m.syncSourceTasks(taskSourceRemote, converted)
+	return nil
+}
+
+func packFromDefinition(def types.ArtifactPackDefinition) pack.Pack {
+	tasks := make([]pack.Task, 0, len(def.Tasks))
+	for _, task := range def.Tasks {
+		tasks = append(tasks, pack.Task{
+			Name:      task.Name,
+			Collector: task.Collector,
+			Interval:  pack.Duration{Duration: time.Duration(task.IntervalSeconds) * time.Second},
+			Tags:      cloneStringMap(task.Tags),
+			Config:    cloneAnyMap(task.Config),
+		})
+	}
+
+	return pack.Pack{
+		Name:        def.Name,
+		Version:     def.Version,
+		Description: def.Description,
+		Selectors:   nil,
+		Tasks:       tasks,
+	}
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]string, len(input))
+	for k, v := range input {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneAnyMap(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for k, v := range input {
+		out[k] = v
+	}
+	return out
 }
 
 func (m *Manager) collectEvents(ctx context.Context) error {

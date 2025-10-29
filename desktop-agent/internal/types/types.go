@@ -101,3 +101,21 @@ type HostEventBatch struct {
 	CollectedAt  time.Time   `json:"collected_at"`
 	Events       []HostEvent `json:"events"`
 }
+
+type ArtifactTaskDefinition struct {
+	TaskID          string            `json:"task_id"`
+	Name            string            `json:"name"`
+	Collector       string            `json:"collector"`
+	IntervalSeconds int               `json:"interval_seconds,omitempty"`
+	Tags            map[string]string `json:"tags,omitempty"`
+	Config          map[string]any    `json:"config,omitempty"`
+}
+
+type ArtifactPackDefinition struct {
+	PackID      string                   `json:"pack_id"`
+	Name        string                   `json:"name"`
+	Version     string                   `json:"version,omitempty"`
+	Description string                   `json:"description,omitempty"`
+	Selectors   map[string]any           `json:"selectors,omitempty"`
+	Tasks       []ArtifactTaskDefinition `json:"tasks"`
+}
