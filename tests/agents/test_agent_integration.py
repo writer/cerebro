@@ -5,11 +5,14 @@ Tests the complete flow from runtime through tools with real database interactio
 """
 
 import asyncio
+from typing import Any, List
+
 import pytest
 from datetime import datetime, timezone
 from uuid import uuid4, UUID
 
 from cerebro.agents.runtime import CerebroClaudeRuntime
+from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
 from cerebro.agents.models import AgentSession, AgentType, MessageRole, AgentRuntimeEvent
 from cerebro.agents.tools import AgentContext, ToolPermissionLevel
 from cerebro.agents.tools.findings_list import FindingsListTool
@@ -324,6 +327,79 @@ class TestAgentRuntime:
         assert any(
             (event.payload or {}).get("reason") == "claude_cli_missing"
             for event in warning_events
+        )
+
+    async def test_openai_runtime_records_metadata(self, monkeypatch, test_session):
+        """OpenAI runtime should persist usage metadata and emit analytics events."""
+
+        import cerebro.agents.openai_runtime as openai_runtime_module
+        from agents.run_context import RunContextWrapper
+        from agents.usage import Usage
+
+        runtime = CerebroOpenAIRuntime(model="gpt-4o-mini")
+
+        async def fake_build_function_tools(_prioritized):
+            return []
+
+        monkeypatch.setattr(runtime, "_build_function_tools", fake_build_function_tools)
+
+        def fake_run_streamed(agent, message, context, max_turns, run_config, session):
+            class StubRunResult:
+                def __init__(self):
+                    self.raw_responses: List[Any] = []
+                    self.final_output = "Stub OpenAI output"
+                    self.context_wrapper = RunContextWrapper(context=context)
+                    usage = Usage(requests=1, input_tokens=12, output_tokens=18, total_tokens=30)
+                    self.context_wrapper.usage = usage
+
+                async def stream_events(self):
+                    if False:
+                        yield None
+                    return
+
+                @property
+                def last_response_id(self) -> str:
+                    return "resp-openai-123"
+
+            return StubRunResult()
+
+        monkeypatch.setattr(openai_runtime_module.Runner, "run_streamed", fake_run_streamed)
+
+        message_stream = runtime.send_message(
+            session=test_session,
+            message="Collect OpenAI metadata",
+            user_id="openai@example.com",
+            stream=False,
+        )
+
+        async for _ in message_stream:
+            pass
+
+        refreshed_session = await runtime.get_session(test_session.id)
+        assert refreshed_session is not None
+        metadata = refreshed_session.context.get("_openai_runtime")
+        assert metadata
+        assert metadata.get("last_response_id") == "resp-openai-123"
+        assert metadata.get("usage", {}).get("input_tokens") == 12
+        assert metadata.get("usage", {}).get("output_tokens") == 18
+
+        from cerebro.core.database import async_session_factory
+        from sqlalchemy import select
+
+        async with async_session_factory() as db_session:
+            result = await db_session.execute(
+                select(AgentRuntimeEvent).where(
+                    AgentRuntimeEvent.session_id == test_session.id,
+                    AgentRuntimeEvent.event_type == "runtime_metadata",
+                )
+            )
+            runtime_events = result.scalars().all()
+
+        assert runtime_events
+        assert any(
+            (event.payload or {}).get("runtime") == "openai"
+            and (event.payload or {}).get("usage", {}).get("total_tokens") == 30
+            for event in runtime_events
         )
 
 

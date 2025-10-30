@@ -286,6 +286,47 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 run_result.raw_responses
             )
 
+            usage_snapshot = run_result.context_wrapper.usage
+            usage_payload = {
+                "requests": usage_snapshot.requests,
+                "input_tokens": usage_snapshot.input_tokens,
+                "cached_input_tokens": getattr(
+                    getattr(usage_snapshot, "input_tokens_details", None),
+                    "cached_tokens",
+                    None,
+                ),
+                "output_tokens": usage_snapshot.output_tokens,
+                "reasoning_tokens": getattr(
+                    getattr(usage_snapshot, "output_tokens_details", None),
+                    "reasoning_tokens",
+                    None,
+                ),
+                "total_tokens": usage_snapshot.total_tokens,
+            }
+
+            runtime_metadata = {
+                "model": self.model,
+                "conversation_session_id": conversation_session.session_id,
+                "last_response_id": getattr(run_result, "last_response_id", None),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "usage": usage_payload,
+            }
+
+            await self._update_session_context(
+                session,
+                {"_openai_runtime": runtime_metadata},
+            )
+
+            await AgentAnalyticsService.record_event(
+                org_id=session.org_id,
+                session_id=session.id,
+                event_type="runtime_metadata",
+                payload={
+                    "runtime": self.backend_name,
+                    **runtime_metadata,
+                },
+            )
+
             if not assistant_blocks:
                 if isinstance(run_result.final_output, str):
                     assistant_blocks.append({"type": "text", "text": run_result.final_output})
