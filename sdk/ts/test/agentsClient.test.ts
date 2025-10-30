@@ -367,4 +367,243 @@ describe("AgentsClient", () => {
     expect(atRisk[0].isAtRisk).toBe(true);
     expect(atRisk[0].taskId).toBe("task-2");
   });
+
+  it("lists review notifications", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          id: "notif-1",
+          task_id: "task-1",
+          org_id: "org-1",
+          channel: "slack",
+          status: "delivered",
+          payload: { channel: "#alerts" },
+          created_at: now,
+          delivered_at: now,
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const notifications = await client.listReviewNotifications({ status: "delivered", limit: 10 });
+
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].channel).toBe("slack");
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("status=delivered");
+    expect(url).toContain("limit=10");
+  });
+
+  it("lists session analytics events", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          id: "event-1",
+          event_type: "tool_invocation",
+          payload: { tool: "ticket" },
+          created_at: now,
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const events = await client.listSessionAnalytics("session-1", {
+      eventType: "tool_invocation",
+      cursor: now,
+      cursorId: "event-0",
+      limit: 25,
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe("tool_invocation");
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("event_type=tool_invocation");
+    expect(url).toContain(`cursor=${encodeURIComponent(now)}`);
+    expect(url).toContain("cursor_id=event-0");
+    expect(url).toContain("limit=25");
+  });
+
+  it("summarises session analytics", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          event_type: "tool_invocation",
+          event_count: 5,
+          first_seen: "2024-01-01T00:00:00Z",
+          last_seen: "2024-01-01T01:00:00Z",
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const summary = await client.getSessionAnalyticsSummary("session-1", { eventType: "tool_invocation" });
+
+    expect(summary).toHaveLength(1);
+    expect(summary[0].eventCount).toBe(5);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("event_type=tool_invocation");
+  });
+
+  it("lists workflow templates", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          id: "template-1",
+          name: "Template",
+          description: "Desc",
+          trigger: "on_create",
+          conditions: {},
+          steps: [
+            {
+              name: "Step",
+              description: "Do",
+              action: "assign",
+              conditions: {},
+              parameters: { assigned_to: "user" },
+              order: 1,
+            },
+          ],
+          metadata: { category: "automation" },
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const templates = await client.listWorkflowTemplates({ trigger: "on_create" });
+
+    expect(templates).toHaveLength(1);
+    expect(templates[0].steps[0].action).toBe("assign");
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("trigger=on_create");
+  });
+
+  it("fetches a workflow template", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        id: "template-1",
+        name: "Template",
+        description: "Desc",
+        trigger: "on_create",
+        conditions: {},
+        steps: [],
+        metadata: {},
+      }),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const template = await client.getWorkflowTemplate("template-1");
+
+    expect(template.templateId).toBe("template-1");
+  });
+
+  it("evaluates workflows", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          id: "template-1",
+          name: "Template",
+          description: "Desc",
+          trigger: "on_create",
+          conditions: {},
+          steps: [],
+          metadata: {},
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const templates = await client.evaluateWorkflows({ trigger: "on_create", context: { priority: "high" } });
+
+    expect(templates).toHaveLength(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ trigger: "on_create", context: { priority: "high" } });
+  });
+
+  it("lists policy suggestions", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          id: "suggestion-1",
+          tool_name: "ticket",
+          cel_expression: "input.priority == 'high'",
+          support_count: 5,
+          reject_count: 1,
+          confidence: 0.8,
+          metadata: { scope: "security" },
+          last_seen: now,
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const suggestions = await client.listPolicySuggestions({ limit: 5 });
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].celExpression).toContain("priority");
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("limit=5");
+  });
+
+  it("simulates policy expressions", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        evaluated_count: 3,
+        matched_count: 2,
+        mismatched_count: 1,
+        error_count: 0,
+        examples: [
+          {
+            invocation_id: "inv-1",
+            session_id: "session-1",
+            tool_name: "ticket",
+            matched: true,
+            status: "completed",
+            started_at: now,
+            completed_at: now,
+            input_data: { priority: "high" },
+            output_data: null,
+            cel_context: { priority: "high" },
+            error: null,
+            latency_ms: 120,
+          },
+        ],
+      }),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const result = await client.simulatePolicyExpression({ expression: "true", toolName: "ticket", limit: 3 });
+
+    expect(result.evaluatedCount).toBe(3);
+    expect(result.examples[0].matched).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ expression: "true", tool_name: "ticket", limit: 3 });
+  });
 });

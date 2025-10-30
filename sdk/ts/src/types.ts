@@ -158,6 +158,84 @@ export interface ReviewTaskSlaStatus {
   dueAt: Date | null;
 }
 
+export interface ReviewNotificationRecord {
+  notificationId: string;
+  taskId: string;
+  orgId: string;
+  channel: string;
+  status: string;
+  payload: Record<string, unknown>;
+  createdAt: Date;
+  deliveredAt: Date | null;
+}
+
+export interface RuntimeEventRecord {
+  eventId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface RuntimeEventSummaryRecord {
+  eventType: string;
+  eventCount: number;
+  firstSeen: Date | null;
+  lastSeen: Date | null;
+}
+
+export interface WorkflowTemplateStepRecord {
+  name: string;
+  description: string;
+  action: string;
+  conditions: Record<string, unknown>;
+  parameters: Record<string, unknown>;
+  order: number;
+}
+
+export interface WorkflowTemplateRecord {
+  templateId: string;
+  name: string;
+  description: string;
+  trigger: string;
+  conditions: Record<string, unknown>;
+  steps: WorkflowTemplateStepRecord[];
+  metadata: Record<string, unknown>;
+}
+
+export interface PolicySuggestionRecord {
+  suggestionId: string;
+  toolName: string;
+  celExpression: string;
+  supportCount: number;
+  rejectCount: number;
+  confidence: number;
+  metadata: Record<string, unknown>;
+  lastSeen: Date;
+}
+
+export interface PolicySimulationExampleRecord {
+  invocationId: string;
+  sessionId: string;
+  toolName: string;
+  matched: boolean;
+  status: string;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  inputData: Record<string, unknown>;
+  outputData: Record<string, unknown> | null;
+  celContext: Record<string, unknown>;
+  error: string | null;
+  latencyMs: number | null;
+}
+
+export interface PolicySimulationResultRecord {
+  evaluatedCount: number;
+  matchedCount: number;
+  mismatchedCount: number;
+  errorCount: number;
+  examples: PolicySimulationExampleRecord[];
+}
+
 export interface IntegrationScopeBreakdown {
   total: number;
   healthy: number;

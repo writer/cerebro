@@ -9,6 +9,14 @@ import {
   ReviewTaskHistoryRecord,
   ReviewTaskSlaStatus,
   ReviewTaskSlaSummary,
+  ReviewNotificationRecord,
+  RuntimeEventRecord,
+  RuntimeEventSummaryRecord,
+  WorkflowTemplateRecord,
+  WorkflowTemplateStepRecord,
+  PolicySuggestionRecord,
+  PolicySimulationResultRecord,
+  PolicySimulationExampleRecord,
   ReviewTaskRecord,
 } from "../types";
 
@@ -127,6 +135,84 @@ interface SlaStatusPayload {
   is_at_risk: boolean;
   created_at: string;
   due_at: string | null;
+}
+
+interface ReviewNotificationPayload {
+  id: string;
+  task_id: string;
+  org_id: string;
+  channel: string;
+  status: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+  delivered_at: string | null;
+}
+
+interface RuntimeEventPayload {
+  id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+interface RuntimeEventSummaryPayload {
+  event_type: string;
+  event_count: number;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+interface WorkflowStepPayload {
+  name: string;
+  description: string;
+  action: string;
+  conditions: Record<string, unknown>;
+  parameters: Record<string, unknown>;
+  order: number;
+}
+
+interface WorkflowTemplatePayload {
+  id: string;
+  name: string;
+  description: string;
+  trigger: string;
+  conditions: Record<string, unknown>;
+  steps: WorkflowStepPayload[];
+  metadata: Record<string, unknown>;
+}
+
+interface PolicySuggestionPayload {
+  id: string;
+  tool_name: string;
+  cel_expression: string;
+  support_count: number;
+  reject_count: number;
+  confidence: number;
+  metadata: Record<string, unknown>;
+  last_seen: string;
+}
+
+interface PolicySimulationExamplePayload {
+  invocation_id: string;
+  session_id: string;
+  tool_name: string;
+  matched: boolean;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  input_data: Record<string, unknown>;
+  output_data: Record<string, unknown> | null;
+  cel_context: Record<string, unknown>;
+  error: string | null;
+  latency_ms: number | null;
+}
+
+interface PolicySimulationResponsePayload {
+  evaluated_count: number;
+  matched_count: number;
+  mismatched_count: number;
+  error_count: number;
+  examples: PolicySimulationExamplePayload[];
 }
 
 export class AgentsClient {
@@ -263,6 +349,106 @@ export class AgentsClient {
     const payload = await this.http.get<SlaStatusPayload[]>("/api/v1/agents/review-tasks/sla/at-risk");
     return payload.map(mapSlaStatus);
   }
+
+  async listReviewNotifications(options: { status?: string; limit?: number } = {}): Promise<ReviewNotificationRecord[]> {
+    const params: Record<string, string | number> = {};
+    if (options.status) params.status = options.status;
+    if (options.limit !== undefined) params.limit = options.limit;
+
+    const payload = await this.http.get<ReviewNotificationPayload[]>(
+      "/api/v1/agents/review-tasks/notifications",
+      { searchParams: Object.keys(params).length ? params : undefined },
+    );
+
+    return payload.map(mapNotification);
+  }
+
+  async listSessionAnalytics(
+    sessionId: string,
+    options: { limit?: number; eventType?: string; cursor?: string; cursorId?: string } = {},
+  ): Promise<RuntimeEventRecord[]> {
+    const params: Record<string, string | number> = {};
+    if (options.limit !== undefined) params.limit = options.limit;
+    if (options.eventType) params.event_type = options.eventType;
+    if (options.cursor) params.cursor = options.cursor;
+    if (options.cursorId) params.cursor_id = options.cursorId;
+
+    const payload = await this.http.get<RuntimeEventPayload[]>(
+      `/api/v1/agents/sessions/${sessionId}/analytics`,
+      { searchParams: Object.keys(params).length ? params : undefined },
+    );
+
+    return payload.map(mapRuntimeEvent);
+  }
+
+  async getSessionAnalyticsSummary(
+    sessionId: string,
+    options: { eventType?: string } = {},
+  ): Promise<RuntimeEventSummaryRecord[]> {
+    const params = options.eventType ? { event_type: options.eventType } : undefined;
+    const payload = await this.http.get<RuntimeEventSummaryPayload[]>(
+      `/api/v1/agents/sessions/${sessionId}/analytics/summary`,
+      { searchParams: params },
+    );
+
+    return payload.map(mapRuntimeSummary);
+  }
+
+  async listWorkflowTemplates(options: { trigger?: string } = {}): Promise<WorkflowTemplateRecord[]> {
+    const params = options.trigger ? { trigger: options.trigger } : undefined;
+    const payload = await this.http.get<WorkflowTemplatePayload[]>(
+      "/api/v1/agents/workflows/templates",
+      { searchParams: params },
+    );
+
+    return payload.map(mapWorkflowTemplate);
+  }
+
+  async getWorkflowTemplate(templateId: string): Promise<WorkflowTemplateRecord> {
+    const payload = await this.http.get<WorkflowTemplatePayload>(
+      `/api/v1/agents/workflows/templates/${templateId}`,
+    );
+    return mapWorkflowTemplate(payload);
+  }
+
+  async evaluateWorkflows(request: { trigger: string; context: Record<string, unknown> }): Promise<WorkflowTemplateRecord[]> {
+    const payload = await this.http.post<WorkflowTemplatePayload[]>(
+      "/api/v1/agents/workflows/evaluate",
+      {
+        body: {
+          trigger: request.trigger,
+          context: request.context,
+        },
+      },
+    );
+
+    return payload.map(mapWorkflowTemplate);
+  }
+
+  async listPolicySuggestions(options: { limit?: number } = {}): Promise<PolicySuggestionRecord[]> {
+    const params = options.limit !== undefined ? { limit: options.limit } : undefined;
+    const payload = await this.http.get<PolicySuggestionPayload[]>(
+      "/api/v1/agents/policy-suggestions",
+      { searchParams: params },
+    );
+
+    return payload.map(mapPolicySuggestion);
+  }
+
+  async simulatePolicyExpression(
+    request: { expression: string; toolName?: string; limit?: number },
+  ): Promise<PolicySimulationResultRecord> {
+    const body: Record<string, unknown> = { expression: request.expression };
+    if (request.toolName !== undefined) body.tool_name = request.toolName;
+    if (request.limit !== undefined) body.limit = request.limit;
+
+    const payload = await this.http.post<PolicySimulationResponsePayload>(
+      "/api/v1/agents/policy-suggestions/simulate",
+      { body },
+    );
+
+    return mapPolicySimulation(payload);
+  }
 }
 
 function mapStatusAggregate(entry: ReviewQueueStatusPayload): ReviewQueueStatusAggregate {
@@ -342,6 +528,37 @@ function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
   };
 }
 
+function mapNotification(payload: ReviewNotificationPayload): ReviewNotificationRecord {
+  return {
+    notificationId: payload.id,
+    taskId: payload.task_id,
+    orgId: payload.org_id,
+    channel: payload.channel,
+    status: payload.status,
+    payload: payload.payload ?? {},
+    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    deliveredAt: parseDate(payload.delivered_at),
+  };
+}
+
+function mapRuntimeEvent(payload: RuntimeEventPayload): RuntimeEventRecord {
+  return {
+    eventId: payload.id,
+    eventType: payload.event_type,
+    payload: payload.payload ?? {},
+    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+  };
+}
+
+function mapRuntimeSummary(payload: RuntimeEventSummaryPayload): RuntimeEventSummaryRecord {
+  return {
+    eventType: payload.event_type,
+    eventCount: payload.event_count,
+    firstSeen: parseDate(payload.first_seen),
+    lastSeen: parseDate(payload.last_seen),
+  };
+}
+
 function mapSlaSummary(payload: SlaSummaryPayload): ReviewTaskSlaSummary {
   return {
     totalPending: payload.total_pending,
@@ -363,6 +580,69 @@ function mapSlaStatus(payload: SlaStatusPayload): ReviewTaskSlaStatus {
     isAtRisk: payload.is_at_risk,
     createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
     dueAt: parseDate(payload.due_at),
+  };
+}
+
+function mapWorkflowTemplate(payload: WorkflowTemplatePayload): WorkflowTemplateRecord {
+  return {
+    templateId: payload.id,
+    name: payload.name,
+    description: payload.description,
+    trigger: payload.trigger,
+    conditions: payload.conditions ?? {},
+    steps: payload.steps?.map(mapWorkflowStep) ?? [],
+    metadata: payload.metadata ?? {},
+  };
+}
+
+function mapWorkflowStep(payload: WorkflowStepPayload): WorkflowTemplateStepRecord {
+  return {
+    name: payload.name,
+    description: payload.description,
+    action: payload.action,
+    conditions: payload.conditions ?? {},
+    parameters: payload.parameters ?? {},
+    order: payload.order,
+  };
+}
+
+function mapPolicySuggestion(payload: PolicySuggestionPayload): PolicySuggestionRecord {
+  return {
+    suggestionId: payload.id,
+    toolName: payload.tool_name,
+    celExpression: payload.cel_expression,
+    supportCount: payload.support_count,
+    rejectCount: payload.reject_count,
+    confidence: payload.confidence,
+    metadata: payload.metadata ?? {},
+    lastSeen: parseDate(payload.last_seen) ?? new Date(payload.last_seen),
+  };
+}
+
+function mapPolicySimulation(payload: PolicySimulationResponsePayload): PolicySimulationResultRecord {
+  return {
+    evaluatedCount: payload.evaluated_count,
+    matchedCount: payload.matched_count,
+    mismatchedCount: payload.mismatched_count,
+    errorCount: payload.error_count,
+    examples: payload.examples.map(mapPolicySimulationExample),
+  };
+}
+
+function mapPolicySimulationExample(payload: PolicySimulationExamplePayload): PolicySimulationExampleRecord {
+  return {
+    invocationId: payload.invocation_id,
+    sessionId: payload.session_id,
+    toolName: payload.tool_name,
+    matched: payload.matched,
+    status: payload.status,
+    startedAt: parseDate(payload.started_at),
+    completedAt: parseDate(payload.completed_at),
+    inputData: payload.input_data ?? {},
+    outputData: payload.output_data ?? null,
+    celContext: payload.cel_context ?? {},
+    error: payload.error,
+    latencyMs: payload.latency_ms ?? null,
   };
 }
 
