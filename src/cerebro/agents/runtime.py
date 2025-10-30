@@ -36,6 +36,7 @@ from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
 from cerebro.agents.tools import tool_registry, ToolExecutor
 from cerebro.agents.tool_stats import performance_tracker
 from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
+from cerebro.agents.metrics import record_runtime_metadata_event
 
 try:
     CLAUDE_OPTIONS_METADATA_SUPPORTED = (
@@ -407,6 +408,11 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                         metadata={"tool_calls": tool_calls_count},
                     )
 
+                record_runtime_metadata_event(
+                    backend=self.backend_name,
+                    status="recorded",
+                )
+
                 self._complete_runtime_operation(
                     session=session,
                     start_time=start_time,
@@ -494,6 +500,11 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                 },
             )
 
+            record_runtime_metadata_event(
+                backend=self.backend_name,
+                status="warning",
+            )
+
             self._complete_runtime_operation(
                 session=session,
                 start_time=start_time,
@@ -528,6 +539,11 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                     "error": str(e),
                     "type": "system_error",
                 }
+            )
+
+            record_runtime_metadata_event(
+                backend=self.backend_name,
+                status="error",
             )
 
             self._complete_runtime_operation(

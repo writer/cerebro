@@ -53,6 +53,12 @@ if _registry is not None:  # pragma: no branch
         ["backend", "agent_type"],
         registry=_registry,
     )
+    runtime_metadata_events = Counter(
+        "cerebro_agent_runtime_metadata_total",
+        "Runtime metadata events emitted by agent runtimes",
+        ["backend", "status"],
+        registry=_registry,
+    )
     runtime_errors = Counter(
         "cerebro_agent_runtime_errors_total",
         "Errors encountered when executing agent messages",
@@ -101,6 +107,7 @@ else:  # pragma: no cover - fallback no-op placeholders
     runtime_duration = None  # type: ignore
     runtime_tokens = None  # type: ignore
     runtime_tool_calls = None  # type: ignore
+    runtime_metadata_events = None  # type: ignore
     runtime_errors = None  # type: ignore
     memory_events = None  # type: ignore
     tool_success = None  # type: ignore
@@ -163,6 +170,18 @@ def record_memory_event(event: str, count: int = 1) -> None:
         return
 
     memory_events.labels(event=event).inc(count)
+
+
+def record_runtime_metadata_event(*, backend: str, status: str) -> None:
+    """Increment counter for runtime metadata emission events."""
+
+    if not settings.enable_agent_metrics:
+        return
+
+    if runtime_metadata_events is None:
+        return
+
+    runtime_metadata_events.labels(backend=backend, status=status).inc()
 
 
 def record_tool_metrics(

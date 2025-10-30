@@ -31,6 +31,7 @@ from cerebro.agents.prompts import build_security_agent_prompt
 from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
 from cerebro.agents.tools import AgentContext, ToolExecutor, tool_registry, Tool
 from cerebro.agents.tool_stats import performance_tracker
+from cerebro.agents.metrics import record_runtime_metadata_event
 from cerebro.core.config import settings
 from cerebro.agents.analytics_service import AgentAnalyticsService
 
@@ -327,6 +328,8 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 },
             )
 
+            record_runtime_metadata_event(backend=self.backend_name, status="recorded")
+
             if not assistant_blocks:
                 if isinstance(run_result.final_output, str):
                     assistant_blocks.append({"type": "text", "text": run_result.final_output})
@@ -403,6 +406,8 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                     "type": "system_error",
                 },
             )
+
+            record_runtime_metadata_event(backend=self.backend_name, status="error")
 
             self._complete_runtime_operation(
                 session=session,

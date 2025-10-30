@@ -292,9 +292,22 @@ class TestAgentRuntime:
         assert messages[0]["role"] == "user"
         assert "Show me critical findings" in messages[0]["content"]["text"]
 
-    async def test_runtime_persists_claude_session_id(self, test_session):
+    async def test_runtime_persists_claude_session_id(self, monkeypatch, test_session):
         """Ensure Claude session identifiers are stored for reuse."""
         runtime = CerebroClaudeRuntime()
+
+        import cerebro.agents.runtime as claude_runtime_module
+
+        calls: List[tuple[str, str]] = []
+
+        def fake_record_runtime_metadata_event(*, backend: str, status: str) -> None:
+            calls.append((backend, status))
+
+        monkeypatch.setattr(
+            claude_runtime_module,
+            "record_runtime_metadata_event",
+            fake_record_runtime_metadata_event,
+        )
 
         message_stream = runtime.send_message(
             session=test_session,
@@ -329,6 +342,8 @@ class TestAgentRuntime:
             for event in warning_events
         )
 
+        assert any(status == "warning" for _, status in calls)
+
     async def test_openai_runtime_records_metadata(self, monkeypatch, test_session):
         """OpenAI runtime should persist usage metadata and emit analytics events."""
 
@@ -337,6 +352,17 @@ class TestAgentRuntime:
         from agents.usage import Usage
 
         runtime = CerebroOpenAIRuntime(model="gpt-4o-mini")
+
+        metadata_statuses: List[str] = []
+
+        def fake_record_runtime_metadata_event(*, backend: str, status: str) -> None:
+            metadata_statuses.append(status)
+
+        monkeypatch.setattr(
+            openai_runtime_module,
+            "record_runtime_metadata_event",
+            fake_record_runtime_metadata_event,
+        )
 
         async def fake_build_function_tools(_prioritized):
             return []
@@ -401,6 +427,8 @@ class TestAgentRuntime:
             and (event.payload or {}).get("usage", {}).get("total_tokens") == 30
             for event in runtime_events
         )
+
+        assert "recorded" in metadata_statuses
 
 
 @pytest.mark.asyncio
