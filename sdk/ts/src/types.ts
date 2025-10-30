@@ -23,6 +23,49 @@ export interface RuntimeHealthSummary {
   runtimes: RuntimeHealthRecord[];
 }
 
+export interface TokenResponse {
+  accessToken: string;
+  refreshToken?: string;
+  tokenType: string;
+  accessTokenExpiresIn: number;
+  refreshTokenExpiresIn?: number;
+  csrfToken: string;
+}
+
+export interface UserProfile {
+  userId: string;
+  username: string;
+  email: string | null;
+  isAdmin: boolean;
+  orgId: string | null;
+  scopes: string[];
+}
+
+export interface OrganizationSummary {
+  orgId: string;
+  name: string;
+  createdAt: Date;
+}
+
+export interface FindingRecord {
+  findingId: string;
+  orgId: string;
+  accountId: string;
+  provider: string;
+  ruleId: string;
+  ruleVersion: number;
+  resourceId: string | null;
+  principalId: string | null;
+  firstSeen: Date;
+  lastSeen: Date;
+  status: string;
+  severity: string;
+  fingerprint: string;
+  title: string;
+  summary: string | null;
+  evidence: Record<string, unknown> | null;
+}
+
 export interface ReviewQueueStatusAggregate {
   status: string;
   count: number;

@@ -18,7 +18,8 @@
     "build": "tsc -p tsconfig.json",
     "clean": "rimraf dist",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:types": "node ./scripts/generate-types.mjs"
   },
   "keywords": [
     "cerebro",
@@ -28,6 +29,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.10.6",
+    "openapi-typescript": "^7.4.2",
     "rimraf": "^5.0.5",
     "typescript": "^5.3.3",
     "vitest": "^1.1.3"

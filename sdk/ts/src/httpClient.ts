@@ -9,9 +9,10 @@ export interface HttpClientOptions {
   fetch?: typeof fetch;
 }
 
-export interface RequestOptions extends RequestInit {
+export type RequestOptions = Omit<RequestInit, "body"> & {
+  body?: RequestInit["body"] | Record<string, unknown>;
   searchParams?: Record<string, string | number | boolean | undefined>;
-}
+};
 
 export class HttpError extends Error {
   constructor(
@@ -57,19 +58,17 @@ export class HttpClient {
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const url = this.buildUrl(path, options.searchParams);
-    const headers = await this.buildHeaders(options.headers);
+    const { searchParams, body, ...rest } = options;
+    const url = this.buildUrl(path, searchParams);
+    const headers = await this.buildHeaders(rest.headers);
 
     const init: RequestInit = {
-      ...options,
+      ...rest,
       headers,
     };
 
-    if (options.body && typeof options.body === "object" && !(options.body instanceof FormData)) {
-      if (!headers.has("content-type")) {
-        headers.set("content-type", "application/json");
-      }
-      init.body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
+    if (body !== undefined) {
+      init.body = this.resolveBody(body, headers);
     }
 
     const response = await this.fetchImpl(url, init);
@@ -134,6 +133,37 @@ export class HttpClient {
 
     return merged;
   }
+
+  private resolveBody(body: RequestOptions["body"], headers: Headers): BodyInit | null | undefined {
+    if (body === null || typeof body === "string" || isBodyInit(body)) {
+      return body as BodyInit | null | undefined;
+    }
+
+    if (isPlainObject(body)) {
+      if (!headers.has("content-type")) {
+        headers.set("content-type", "application/json");
+      }
+      return JSON.stringify(body);
+    }
+
+    return body as BodyInit | null | undefined;
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function isBodyInit(value: unknown): value is BodyInit {
+  if (value === null) return true;
+  if (typeof Blob !== "undefined" && value instanceof Blob) return true;
+  if (typeof ArrayBuffer !== "undefined" && value instanceof ArrayBuffer) return true;
+  if (typeof FormData !== "undefined" && value instanceof FormData) return true;
+  if (typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams) return true;
+  if (ArrayBuffer.isView(value)) return true;
+  return false;
 }
 
 export default HttpClient;

@@ -3,5 +3,8 @@ export type { AccessTokenProvider, HttpClientOptions, RequestOptions } from "./h
 export { HttpError } from "./httpClient";
 export { AnalyticsClient } from "./clients/analytics";
 export { AgentsClient } from "./clients/agents";
+export { AuthClient } from "./clients/auth";
+export { FindingsClient, type ListFindingsOptions } from "./clients/findings";
 export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations";
+export { OrganizationsClient, type ListOrganizationsOptions } from "./clients/organizations";
 export * from "./types";
