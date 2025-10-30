@@ -15,6 +15,7 @@ from cerebro.agents.models import (
     AgentReviewTask,
     ReviewTaskStatus,
 )
+from cerebro.agents.review_service import AgentReviewService
 
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.types import (
@@ -22,7 +23,11 @@ from cerebro_sdk.agents.types import (
     AgentReviewCommentRecord,
     AgentReviewExportRecord,
     AgentReviewHistoryRecord,
+    AgentReviewPendingSummary,
+    AgentReviewPriorityBucket,
+    AgentReviewQueueSummary,
     AgentReviewTaskRecord,
+    AgentReviewStatusAggregate,
 )
 
 
@@ -184,6 +189,58 @@ class AgentReviewManager(AsyncManagerBase):
                 )
             )
         return exports
+
+    async def summarize_queue(
+        self,
+        *,
+        org_id: UUID,
+        now: Optional[datetime] = None,
+    ) -> AgentReviewQueueSummary:
+        summary = await AgentReviewService.summarize_queue(
+            org_id=org_id,
+            now=now,
+            db_session=self._db,
+        )
+
+        summary = summary or {}
+
+        status_counts = [
+            AgentReviewStatusAggregate(
+                status=item.get("status", "unknown"),
+                count=int(item.get("count", 0) or 0),
+                unassigned=int(item.get("unassigned", 0) or 0),
+                overdue=int(item.get("overdue", 0) or 0),
+                oldest_created=item.get("oldest_created"),
+                newest_created=item.get("newest_created"),
+            )
+            for item in summary.get("status_counts", [])
+        ]
+
+        pending_payload = summary.get("pending", {}) or {}
+        pending = AgentReviewPendingSummary(
+            total=int(pending_payload.get("total", 0) or 0),
+            unassigned=int(pending_payload.get("unassigned", 0) or 0),
+            overdue=int(pending_payload.get("overdue", 0) or 0),
+            next_due=pending_payload.get("next_due"),
+            oldest_created=pending_payload.get("oldest_created"),
+        )
+
+        priority_breakdown = [
+            AgentReviewPriorityBucket(
+                priority=item.get("priority"),
+                count=int(item.get("count", 0) or 0),
+            )
+            for item in summary.get("priority_breakdown", [])
+        ]
+
+        generated_at = summary.get("generated_at") or datetime.now(timezone.utc)
+
+        return AgentReviewQueueSummary(
+            generated_at=generated_at,
+            status_counts=status_counts,
+            pending=pending,
+            priority_breakdown=priority_breakdown,
+        )
 
     async def assign_task(
         self,

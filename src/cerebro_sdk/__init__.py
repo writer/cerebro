@@ -31,10 +31,14 @@ from .agents import (
     AgentMemoryRecord,
     AgentMemoryStats,
     AgentReviewManager,
+    AgentReviewQueueSummary,
     AgentReviewTaskRecord,
     AgentReviewCommentRecord,
     AgentReviewExportRecord,
     AgentReviewHistoryRecord,
+    AgentReviewPendingSummary,
+    AgentReviewPriorityBucket,
+    AgentReviewStatusAggregate,
     AgentAnalyticsClient,
     AgentEventRecord,
     AgentEventSummary,
@@ -52,6 +56,12 @@ from .agents import (
     AgentInvalidStatusError,
     AgentNotFoundError,
     AgentValidationError,
+)
+from .analytics import (
+    RuntimeHealthClient,
+    RuntimeHealthRecord,
+    RuntimeEventAggregate,
+    RuntimeMetadataSnapshot,
 )
 from cerebro.agents.models import NotificationStatus, TicketStatus
 
@@ -86,10 +96,14 @@ __all__ = [
     "AgentMemoryRecord",
     "AgentMemoryStats",
     "AgentReviewManager",
+    "AgentReviewQueueSummary",
     "AgentReviewTaskRecord",
     "AgentReviewCommentRecord",
     "AgentReviewExportRecord",
     "AgentReviewHistoryRecord",
+    "AgentReviewPendingSummary",
+    "AgentReviewPriorityBucket",
+    "AgentReviewStatusAggregate",
     "AgentAnalyticsClient",
     "AgentEventRecord",
     "AgentEventSummary",
@@ -107,6 +121,10 @@ __all__ = [
     "AgentInvalidStatusError",
     "AgentNotFoundError",
     "AgentValidationError",
+    "RuntimeHealthClient",
+    "RuntimeHealthRecord",
+    "RuntimeEventAggregate",
+    "RuntimeMetadataSnapshot",
     "NotificationStatus",
     "TicketStatus",
 ]

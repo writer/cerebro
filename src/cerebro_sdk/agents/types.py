@@ -209,6 +209,39 @@ class AgentReviewExportRecord:
 
 
 @dataclass(slots=True)
+class AgentReviewStatusAggregate:
+    status: str
+    count: int
+    unassigned: int
+    overdue: int
+    oldest_created: Optional[datetime]
+    newest_created: Optional[datetime]
+
+
+@dataclass(slots=True)
+class AgentReviewPendingSummary:
+    total: int
+    unassigned: int
+    overdue: int
+    next_due: Optional[datetime]
+    oldest_created: Optional[datetime]
+
+
+@dataclass(slots=True)
+class AgentReviewPriorityBucket:
+    priority: Optional[str]
+    count: int
+
+
+@dataclass(slots=True)
+class AgentReviewQueueSummary:
+    generated_at: datetime
+    status_counts: list[AgentReviewStatusAggregate]
+    pending: AgentReviewPendingSummary
+    priority_breakdown: list[AgentReviewPriorityBucket]
+
+
+@dataclass(slots=True)
 class AgentNotificationRecord:
     notification_id: UUID
     task_id: UUID
