@@ -69,6 +69,11 @@ export interface ListReviewTasksPageOptions {
   cursor?: string | null;
 }
 
+export interface ListReviewTasksOptions {
+  status?: string;
+  limit?: number;
+}
+
 export class AgentsClient {
   constructor(private readonly http: HttpClient) {}
 
@@ -83,6 +88,18 @@ export class AgentsClient {
       pending: mapPendingSummary(payload.pending),
       priorityBreakdown: payload.priority_breakdown.map(mapPrioritySummary),
     };
+  }
+
+  async listReviewTasks(options: ListReviewTasksOptions = {}): Promise<ReviewTaskRecord[]> {
+    const params: Record<string, string | number> = {};
+    if (options.status) params.status = options.status;
+    if (options.limit !== undefined) params.limit = options.limit;
+
+    const payload = await this.http.get<ReviewTaskPayload[]>("/api/v1/agents/review-tasks", {
+      searchParams: Object.keys(params).length ? params : undefined,
+    });
+
+    return payload.map(mapReviewTask);
   }
 
   async listReviewTasksPage(options: ListReviewTasksPageOptions = {}): Promise<CursorPage<ReviewTaskRecord>> {
