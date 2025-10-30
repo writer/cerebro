@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Iterable, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
@@ -29,6 +29,7 @@ from cerebro_sdk.agents.types import (
     AgentReviewTaskRecord,
     AgentReviewStatusAggregate,
 )
+from cerebro_sdk.pagination import CursorPage, PageRequest, decode_cursor, encode_cursor
 
 
 class AgentReviewManager(AsyncManagerBase):
@@ -58,6 +59,81 @@ class AgentReviewManager(AsyncManagerBase):
         stmt = stmt.order_by(AgentReviewTask.created_at.desc()).limit(limit)
         tasks = list(await self._db.scalars(stmt))
         return [self._to_record(task) for task in tasks]
+
+    async def list_tasks_page(
+        self,
+        *,
+        org_id: UUID,
+        status: ReviewTaskStatus | str | None = None,
+        page: Optional[PageRequest] = None,
+    ) -> CursorPage[AgentReviewTaskRecord]:
+        request = page or PageRequest()
+        limit = max(1, min(request.limit, 200))
+
+        stmt = (
+            select(AgentReviewTask)
+            .where(AgentReviewTask.org_id == org_id)
+            .order_by(AgentReviewTask.created_at.desc(), AgentReviewTask.id.desc())
+        )
+
+        status_enum: Optional[ReviewTaskStatus] = None
+        if status:
+            status_enum = self._require_enum(
+                status,
+                ReviewTaskStatus,
+                message=f"Invalid review task status '{status}'",
+            )
+            stmt = stmt.where(AgentReviewTask.status == status_enum)
+
+        if request.cursor:
+            cursor = decode_cursor(request.cursor)
+            cursor_created_raw = cursor.payload.get("created_at")
+            cursor_task_id = cursor.payload.get("task_id")
+
+            created_at = None
+            if isinstance(cursor_created_raw, str):
+                try:
+                    created_at = datetime.fromisoformat(cursor_created_raw)
+                except ValueError:
+                    created_at = None
+
+            task_uuid = None
+            if isinstance(cursor_task_id, str):
+                try:
+                    task_uuid = UUID(cursor_task_id)
+                except (ValueError, TypeError):
+                    task_uuid = None
+
+            if created_at is not None and task_uuid is not None:
+                stmt = stmt.where(
+                    or_(
+                        AgentReviewTask.created_at < created_at,
+                        and_(
+                            AgentReviewTask.created_at == created_at,
+                            AgentReviewTask.id < task_uuid,
+                        ),
+                    )
+                )
+
+        stmt = stmt.limit(limit + 1)
+        rows = list(await self._db.scalars(stmt))
+
+        has_more = len(rows) > limit
+        page_rows = rows[:limit]
+
+        items = [self._to_record(task) for task in page_rows]
+
+        next_cursor: Optional[str] = None
+        if has_more and page_rows:
+            last = page_rows[-1]
+            next_cursor = encode_cursor(
+                {
+                    "created_at": last.created_at.isoformat() if last.created_at else None,
+                    "task_id": str(last.id),
+                }
+            )
+
+        return CursorPage(items=items, next_cursor=next_cursor)
 
     async def update_task_status(
         self,
