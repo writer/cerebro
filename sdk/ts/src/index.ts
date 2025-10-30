@@ -7,4 +7,5 @@ export { AuthClient } from "./clients/auth";
 export { FindingsClient, type ListFindingsOptions } from "./clients/findings";
 export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations";
 export { OrganizationsClient, type ListOrganizationsOptions } from "./clients/organizations";
+export * from "./pagination";
 export * from "./types";

@@ -1,4 +1,5 @@
 import HttpClient, { RequestOptions } from "../httpClient";
+import { CursorPage, PageRequest } from "../pagination";
 import { FindingRecord } from "../types";
 
 interface FindingPayload {
@@ -29,6 +30,20 @@ export interface ListFindingsOptions {
   limit?: number;
 }
 
+export interface ListFindingsPageOptions {
+  orgId?: string;
+  status?: string;
+  severity?: string;
+  provider?: string;
+  cursor?: string | null;
+  limit?: number;
+}
+
+interface FindingPageResponse {
+  items: FindingPayload[];
+  next_cursor: string | null;
+}
+
 export class FindingsClient {
   constructor(private readonly http: HttpClient) {}
 
@@ -46,6 +61,23 @@ export class FindingsClient {
     return mapFinding(payload);
   }
 
+  async listPage(options: ListFindingsPageOptions = {}): Promise<CursorPage<FindingRecord>> {
+    const pageRequest: PageRequest = {
+      cursor: options.cursor ?? undefined,
+      limit: options.limit,
+    };
+
+    const params = this.buildPageSearchParams(options, pageRequest);
+    const payload = await this.http.get<FindingPageResponse>("/api/v1/findings/page", {
+      searchParams: params,
+    });
+
+    return {
+      items: payload.items.map(mapFinding),
+      nextCursor: payload.next_cursor,
+    };
+  }
+
   private buildSearchParams(options: ListFindingsOptions): Record<string, string | number> | undefined {
     const params: Record<string, string | number> = {};
     if (options.orgId) params.org_id = options.orgId;
@@ -54,6 +86,20 @@ export class FindingsClient {
     if (options.provider) params.provider = options.provider;
     if (options.skip !== undefined) params.skip = options.skip;
     if (options.limit !== undefined) params.limit = options.limit;
+    return Object.keys(params).length ? params : undefined;
+  }
+
+  private buildPageSearchParams(
+    filters: ListFindingsPageOptions,
+    page: PageRequest,
+  ): Record<string, string | number> | undefined {
+    const params: Record<string, string | number> = {};
+    if (filters.orgId) params.org_id = filters.orgId;
+    if (filters.status) params.status = filters.status;
+    if (filters.severity) params.severity = filters.severity;
+    if (filters.provider) params.provider = filters.provider;
+    if (page.limit !== undefined) params.limit = page.limit;
+    if (page.cursor) params.cursor = page.cursor;
     return Object.keys(params).length ? params : undefined;
   }
 }

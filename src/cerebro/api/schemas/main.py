@@ -122,6 +122,11 @@ class FindingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FindingPageResponse(BaseModel):
+    items: List[FindingResponse]
+    next_cursor: Optional[str] = None
+
+
 class FindingUpdate(BaseModel):
     status: Optional[str] = None
     

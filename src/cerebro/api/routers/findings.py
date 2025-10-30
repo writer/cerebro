@@ -1,17 +1,20 @@
 """Finding management endpoints."""
 
+from dataclasses import asdict
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Finding, Organization
-from cerebro.api.schemas import FindingResponse, FindingUpdate, FindingStats
+from cerebro.api.schemas import FindingResponse, FindingUpdate, FindingStats, FindingPageResponse
 from cerebro.api.dependencies import get_finding_manager
 from cerebro.findings.manager import FindingManager
 from cerebro.api.auth import get_current_user, require_read_findings, require_write_findings, User
+from cerebro_sdk.findings import FindingService
+from cerebro_sdk.pagination import PageRequest
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -41,6 +44,36 @@ async def list_findings(
     stmt = stmt.order_by(Finding.last_seen.desc()).offset(skip).limit(limit)
     findings = await db.scalars(stmt)
     return list(findings)
+
+
+@router.get("/page", response_model=FindingPageResponse)
+async def list_findings_page(
+    org_id: Optional[UUID] = None,
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    provider: Optional[str] = None,
+    cursor: Optional[str] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_read_findings),
+):
+    target_org = org_id or current_user.org_id
+    if not target_org:
+        raise HTTPException(status_code=400, detail="Organization context required")
+
+    service = FindingService(db)
+    page = await service.list_findings_page(
+        target_org,
+        status=status,
+        severity=severity,
+        provider=provider,
+        page=PageRequest(limit=limit, cursor=cursor),
+    )
+
+    return FindingPageResponse(
+        items=[FindingResponse.model_validate(asdict(item)) for item in page.items],
+        next_cursor=page.next_cursor,
+    )
 
 
 @router.get("/{finding_id}", response_model=FindingResponse)
