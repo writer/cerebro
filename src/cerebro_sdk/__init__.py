@@ -46,6 +46,10 @@ from .agents import (
     AgentNotificationRecord,
     AgentTicketRecord,
     AgentPlaybook,
+    AgentSDKError,
+    AgentInvalidStatusError,
+    AgentNotFoundError,
+    AgentValidationError,
 )
 from cerebro.agents.models import NotificationStatus, TicketStatus
 
@@ -95,6 +99,10 @@ __all__ = [
     "AgentNotificationRecord",
     "AgentTicketRecord",
     "AgentPlaybook",
+    "AgentSDKError",
+    "AgentInvalidStatusError",
+    "AgentNotFoundError",
+    "AgentValidationError",
     "NotificationStatus",
     "TicketStatus",
 ]

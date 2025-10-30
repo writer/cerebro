@@ -20,6 +20,7 @@ from cerebro.agents.models import (
 )
 from cerebro_sdk.agents import (
     AgentAnalyticsClient,
+    AgentInvalidStatusError,
     AgentManager,
     AgentNotificationManager,
     AgentPlaybook,
@@ -478,7 +479,7 @@ async def test_agent_notification_manager(test_db: AsyncSession, test_org):
     delivered = await notification_manager.mark_delivered(notification.notification_id)
     assert delivered is not None and delivered.status == NotificationStatus.DELIVERED.value
 
-    with pytest.raises(ValueError):
+    with pytest.raises(AgentInvalidStatusError):
         await notification_manager.mark_delivered(notification.notification_id)
 
     ticket = await notification_manager.create_ticket(
@@ -496,7 +497,7 @@ async def test_agent_notification_manager(test_db: AsyncSession, test_org):
     closed = await notification_manager.close_ticket(ticket_id=ticket.ticket_id, external_id="JIRA-123")
     assert closed is not None and closed.status == TicketStatus.CLOSED.value
 
-    with pytest.raises(ValueError):
+    with pytest.raises(AgentInvalidStatusError):
         await notification_manager.close_ticket(ticket_id=ticket.ticket_id)
 
 
