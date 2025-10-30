@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
@@ -51,6 +51,7 @@ class ToolingRepository:
         session_id: Optional[UUID],
         org_id: Optional[UUID],
         status: Optional[ToolInvocationStatus],
+        tool_name: Optional[str],
         since: Optional[datetime],
         until: Optional[datetime],
         cursor: Optional[datetime],
@@ -65,6 +66,8 @@ class ToolingRepository:
             stmt = stmt.where(ToolInvocation.session_id == session_id)
         if status:
             stmt = stmt.where(ToolInvocation.status == status)
+        if tool_name:
+            stmt = stmt.where(ToolInvocation.tool_name == tool_name)
         if since:
             stmt = stmt.where(ToolInvocation.started_at >= since)
         if until:
@@ -81,6 +84,7 @@ class ToolingRepository:
             session_id=str(session_id) if session_id else None,
             org_id=str(org_id) if org_id else None,
             status=status.value if status else None,
+            tool_name=tool_name,
         )
         return results
 
@@ -123,6 +127,76 @@ class ToolingRepository:
     async def get_approval(self, approval_id: UUID) -> Optional[ToolApproval]:
         self._approval_counter.labels("get").inc()
         return await self._db.get(ToolApproval, approval_id)
+
+    async def create_invocation(
+        self,
+        *,
+        session_id: UUID,
+        tool_name: str,
+        tool_version: str,
+        input_data: dict[str, Any],
+        status: ToolInvocationStatus,
+        started_at: datetime,
+        cel_policy_key: Optional[str],
+        cel_expression: Optional[str],
+        cel_context: Optional[dict[str, Any]],
+    ) -> ToolInvocation:
+        self._invocation_counter.labels("create").inc()
+        invocation = ToolInvocation(
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_version=tool_version,
+            input_data=input_data,
+            status=status,
+            started_at=started_at,
+            cel_policy_key=cel_policy_key,
+            cel_expression=cel_expression,
+            cel_context=cel_context,
+        )
+        self._db.add(invocation)
+        await self._db.flush()
+        self._logger.debug(
+            "tooling.create_invocation",
+            session_id=str(session_id),
+            tool_name=tool_name,
+            status=status.value,
+        )
+        return invocation
+
+    async def update_invocation(
+        self,
+        invocation: ToolInvocation,
+        *,
+        status: Optional[ToolInvocationStatus] = None,
+        output_data: Optional[dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+        error_code: Optional[str] = None,
+        completed_at: Optional[datetime] = None,
+        cel_result: Optional[bool] = None,
+        cel_context: Optional[dict[str, Any]] = None,
+    ) -> ToolInvocation:
+        self._invocation_counter.labels("update").inc()
+        if status is not None:
+            invocation.status = status
+        if output_data is not None:
+            invocation.output_data = output_data
+        if error_message is not None:
+            invocation.error_message = error_message
+        if error_code is not None:
+            invocation.error_code = error_code
+        if completed_at is not None:
+            invocation.completed_at = completed_at
+        if cel_result is not None:
+            invocation.cel_result = cel_result
+        if cel_context is not None:
+            invocation.cel_context = cel_context
+        self._logger.debug(
+            "tooling.update_invocation",
+            invocation_id=str(invocation.id),
+            status=invocation.status.value,
+            completed_at=completed_at.isoformat() if completed_at else None,
+        )
+        return invocation
 
 
 class NotificationRepository:

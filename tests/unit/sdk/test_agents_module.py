@@ -22,6 +22,7 @@ from cerebro.agents.models import (
 from cerebro_sdk.agents import (
     AgentAnalyticsClient,
     AgentInvalidStatusError,
+    AgentNotFoundError,
     AgentManager,
     AgentNotificationManager,
     AgentPlaybook,
@@ -437,6 +438,37 @@ async def test_agent_tooling_manager_rejection_updates_invocation(test_db: Async
     await test_db.refresh(invocation)
     assert invocation.status == ToolInvocationStatus.ERROR
     assert invocation.error_message == "Not safe"
+
+
+@pytest.mark.asyncio
+async def test_agent_tooling_manager_create_and_update(test_db: AsyncSession, test_org):
+    session_record = await AgentManager(test_db).create_session(
+        org_id=test_org.org_id,
+        agent_type="security_analyst",
+        created_by="creator@example.com",
+        context={},
+    )
+
+    tooling = AgentToolingManager(test_db)
+    created = await tooling.create_invocation(
+        session_id=session_record.session_id,
+        tool_name="timeline.generate",
+        input_data={"scope": "finding"},
+        status=ToolInvocationStatus.RUNNING,
+    )
+    assert created.status == ToolInvocationStatus.RUNNING.value
+
+    updated = await tooling.update_invocation_result(
+        invocation_id=created.invocation_id,
+        status=ToolInvocationStatus.SUCCESS,
+        output_data={"summary": "ok"},
+        cel_result=True,
+    )
+    assert updated.status == ToolInvocationStatus.SUCCESS.value
+    assert updated.output_data == {"summary": "ok"}
+
+    with pytest.raises(AgentNotFoundError):
+        await tooling.update_invocation_result(invocation_id=uuid4())
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
@@ -38,6 +38,7 @@ class AgentToolingManager(AsyncManagerBase):
         session_id: Optional[UUID] = None,
         org_id: Optional[UUID] = None,
         status: ToolInvocationStatus | str | None = None,
+        tool_name: Optional[str] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
         cursor: Optional[datetime] = None,
@@ -61,6 +62,7 @@ class AgentToolingManager(AsyncManagerBase):
             session_id=session_id,
             org_id=org_id,
             status=status_enum,
+            tool_name=tool_name,
             since=since,
             until=until,
             cursor=cursor,
@@ -73,6 +75,40 @@ class AgentToolingManager(AsyncManagerBase):
         invocation = await self._repo.get_invocation(invocation_id)
         if not invocation:
             return None
+        return self._invocation_to_record(invocation)
+
+    async def create_invocation(
+        self,
+        *,
+        session_id: UUID,
+        tool_name: str,
+        tool_version: str = "1.0",
+        input_data: dict[str, Any],
+        status: ToolInvocationStatus | str = ToolInvocationStatus.PENDING,
+        started_at: Optional[datetime] = None,
+        cel_policy_key: Optional[str] = None,
+        cel_expression: Optional[str] = None,
+        cel_context: Optional[dict[str, Any]] = None,
+    ) -> ToolInvocationRecord:
+        status_enum = self._require_enum(
+            status,
+            ToolInvocationStatus,
+            message=f"Invalid tool invocation status '{status}'",
+        )
+        started_at_value = started_at or datetime.now(timezone.utc)
+        async with self._transaction():
+            invocation = await self._repo.create_invocation(
+                session_id=session_id,
+                tool_name=tool_name,
+                tool_version=tool_version,
+                input_data=input_data,
+                status=status_enum,
+                started_at=started_at_value,
+                cel_policy_key=cel_policy_key,
+                cel_expression=cel_expression,
+                cel_context=cel_context,
+            )
+        await self._db.refresh(invocation)
         return self._invocation_to_record(invocation)
 
     async def list_approvals(
@@ -149,6 +185,53 @@ class AgentToolingManager(AsyncManagerBase):
         if invocation:
             await self._db.refresh(invocation)
         return self._approval_to_record(approval)
+
+    async def update_invocation_result(
+        self,
+        *,
+        invocation_id: UUID,
+        status: ToolInvocationStatus | str | None = None,
+        output_data: Optional[dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+        error_code: Optional[str] = None,
+        cel_result: Optional[bool] = None,
+        cel_context: Optional[dict[str, Any]] = None,
+        completed_at: Optional[datetime] = None,
+    ) -> ToolInvocationRecord:
+        invocation = await self._repo.get_invocation(invocation_id)
+        if not invocation:
+            raise AgentNotFoundError(f"Tool invocation {invocation_id} not found")
+
+        status_enum: Optional[ToolInvocationStatus] = None
+        if status is not None:
+            status_enum = self._require_enum(
+                status,
+                ToolInvocationStatus,
+                message=f"Invalid tool invocation status '{status}'",
+            )
+
+        completed_value: Optional[datetime] = completed_at
+        if completed_value is None and status_enum in {
+            ToolInvocationStatus.SUCCESS,
+            ToolInvocationStatus.ERROR,
+            ToolInvocationStatus.DRY_RUN,
+        }:
+            completed_value = datetime.now(timezone.utc)
+
+        async with self._transaction():
+            await self._repo.update_invocation(
+                invocation,
+                status=status_enum,
+                output_data=output_data,
+                error_message=error_message,
+                error_code=error_code,
+                completed_at=completed_value,
+                cel_result=cel_result,
+                cel_context=cel_context,
+            )
+
+        await self._db.refresh(invocation)
+        return self._invocation_to_record(invocation)
 
     async def list_policy_suggestions(
         self,

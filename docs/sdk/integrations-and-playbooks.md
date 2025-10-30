@@ -101,7 +101,48 @@ ticket = await notifications.create_ticket(
 
 ### Tooling and Approvals
 
-`AgentToolingManager` surfaces tool invocation history and approval decisions. All updates run inside nested-aware transactions to avoid partial writes when callers already manage transactions.
+`AgentToolingManager` surfaces tool invocation history and approval decisions. Filters support status, tool name, and time windows while keeping pagination stable.
+
+```python
+from cerebro_sdk import AgentToolingManager
+from cerebro.agents.models import ToolInvocationStatus
+
+tooling = AgentToolingManager(db)
+
+record = await tooling.create_invocation(
+    session_id=session_id,
+    tool_name="timeline.generate",
+    input_data={"scope": "incident"},
+    status=ToolInvocationStatus.RUNNING,
+)
+
+updated = await tooling.update_invocation_result(
+    invocation_id=record.invocation_id,
+    status=ToolInvocationStatus.SUCCESS,
+    output_data={"summary": "complete"},
+    cel_result=True,
+)
+```
+
+Both listing and mutation helpers accept an optional Prometheus `CollectorRegistry`, allowing services to route metrics into their own registries:
+
+```python
+from prometheus_client import CollectorRegistry
+from cerebro_sdk import AgentToolingManager
+
+registry = CollectorRegistry()
+tooling = AgentToolingManager(db, registry=registry)
+await tooling.list_invocations(org_id=org_id, tool_name="timeline.generate")
+```
+
+Counters exported:
+
+| Metric | Description |
+| --- | --- |
+| `cerebro_sdk_tool_invocation_queries_total` | Tool invocation repository operations (labels: `operation`). |
+| `cerebro_sdk_tool_approval_queries_total` | Tool approval repository operations (labels: `operation`). |
+| `cerebro_sdk_notifications_total` | Notification repository operations (labels: `operation`). |
+| `cerebro_sdk_tickets_total` | Ticket repository operations (labels: `operation`). |
 
 ### Error Handling Cheat Sheet
 
