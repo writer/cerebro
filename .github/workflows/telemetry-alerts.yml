@@ -49,7 +49,20 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra dev
 
+      - name: Evaluate telemetry prerequisites
+        id: telemetry-check
+        env:
+          DATABASE_URL: ${{ secrets.CEREBRO_DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "Telemetry alerts skipping: DATABASE_URL secret not configured." >&2
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run telemetry alerts orchestrator
+        if: steps.telemetry-check.outputs.run == 'true'
         env:
           DATABASE_URL: ${{ secrets.CEREBRO_DATABASE_URL }}
           REDIS_URL: ${{ secrets.CEREBRO_REDIS_URL }}
@@ -110,3 +123,7 @@ jobs:
           fi
 
           uv run python "${args[@]}"
+
+      - name: Telemetry alerts skipped (missing secrets)
+        if: steps.telemetry-check.outputs.run != 'true'
+        run: echo "Telemetry alerts workflow completed without execution because required secrets are not configured."
