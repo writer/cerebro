@@ -62,6 +62,10 @@ from .analytics import (
     RuntimeHealthRecord,
     RuntimeEventAggregate,
     RuntimeMetadataSnapshot,
+    IntegrationCoverageClient,
+    IntegrationCoverageRecord,
+    IntegrationScopeBreakdown,
+    IntegrationAccountSummary,
 )
 from cerebro.agents.models import NotificationStatus, TicketStatus
 
@@ -125,6 +129,10 @@ __all__ = [
     "RuntimeHealthRecord",
     "RuntimeEventAggregate",
     "RuntimeMetadataSnapshot",
+    "IntegrationCoverageClient",
+    "IntegrationCoverageRecord",
+    "IntegrationScopeBreakdown",
+    "IntegrationAccountSummary",
     "NotificationStatus",
     "TicketStatus",
 ]

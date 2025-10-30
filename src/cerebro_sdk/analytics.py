@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.analytics.runtime_health import summarize_runtime_health
+from cerebro.integrations.coverage import summarize_integration_coverage
 
 
 @dataclass(slots=True)
@@ -94,9 +95,96 @@ class RuntimeHealthClient:
         return summary
 
 
+@dataclass(slots=True)
+class IntegrationScopeBreakdown:
+    total: int
+    healthy: int
+    warning: int
+    critical: int
+
+
+@dataclass(slots=True)
+class IntegrationAccountSummary:
+    total: int
+
+
+@dataclass(slots=True)
+class IntegrationCoverageRecord:
+    integration: str
+    providers: list[str]
+    status: str
+    scopes: IntegrationScopeBreakdown
+    accounts: IntegrationAccountSummary
+    coverage_ratio: Optional[float]
+    last_success: Optional[datetime]
+    evaluated_at: datetime
+
+
+class IntegrationCoverageClient:
+    """Summarize integration sync coverage for connected accounts."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def summarize(
+        self,
+        *,
+        provider_mapping: Mapping[str, Iterable[str]] | None = None,
+        stale_seconds: Optional[int] = None,
+    ) -> list[IntegrationCoverageRecord]:
+        raw_records = await summarize_integration_coverage(
+            self._db,
+            provider_mapping=provider_mapping,
+            stale_seconds=stale_seconds,
+        )
+
+        summary: list[IntegrationCoverageRecord] = []
+        for payload in raw_records:
+            scopes = payload.get("scopes") or {}
+            accounts = payload.get("accounts") or {}
+
+            breakdown = IntegrationScopeBreakdown(
+                total=int(scopes.get("total", 0) or 0),
+                healthy=int(scopes.get("healthy", 0) or 0),
+                warning=int(scopes.get("warning", 0) or 0),
+                critical=int(scopes.get("critical", 0) or 0),
+            )
+
+            account_summary = IntegrationAccountSummary(
+                total=int(accounts.get("total", 0) or 0),
+            )
+
+            evaluated_at = payload.get("evaluated_at")
+            if not isinstance(evaluated_at, datetime):
+                continue
+
+            summary.append(
+                IntegrationCoverageRecord(
+                    integration=str(payload.get("integration")) if payload.get("integration") else "unknown",
+                    providers=list(payload.get("providers") or []),
+                    status=str(payload.get("status") or "unknown"),
+                    scopes=breakdown,
+                    accounts=account_summary,
+                    coverage_ratio=(
+                        float(payload.get("coverage_ratio"))
+                        if payload.get("coverage_ratio") is not None
+                        else None
+                    ),
+                    last_success=payload.get("last_success"),
+                    evaluated_at=evaluated_at,
+                )
+            )
+
+        return summary
+
+
 __all__ = [
     "RuntimeHealthClient",
     "RuntimeHealthRecord",
     "RuntimeEventAggregate",
     "RuntimeMetadataSnapshot",
+    "IntegrationCoverageClient",
+    "IntegrationCoverageRecord",
+    "IntegrationScopeBreakdown",
+    "IntegrationAccountSummary",
 ]
