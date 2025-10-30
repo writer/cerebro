@@ -361,6 +361,32 @@ class AgentSessionService:
         )
         return [self._serialize_review_task(task) for task in tasks]
 
+    async def list_review_tasks_page(
+        self,
+        org_id: UUID,
+        *,
+        status: Optional[str] = None,
+        limit: int = 50,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        status_enum: Optional[ReviewTaskStatus] = None
+        if status:
+            try:
+                status_enum = ReviewTaskStatus(status)
+            except ValueError:
+                status_enum = None
+
+        tasks, next_cursor = await AgentReviewService.list_tasks_page(
+            org_id=org_id,
+            status=status_enum,
+            limit=limit,
+            cursor=cursor,
+        )
+        return {
+            "items": [self._serialize_review_task(task) for task in tasks],
+            "next_cursor": next_cursor,
+        }
+
     async def resolve_review_task(
         self,
         *,

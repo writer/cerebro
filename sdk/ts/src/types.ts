@@ -95,6 +95,27 @@ export interface ReviewQueueSummary {
   priorityBreakdown: ReviewQueuePrioritySummary[];
 }
 
+export interface ReviewTaskRecord {
+  taskId: string;
+  sessionId: string;
+  orgId: string;
+  status: string;
+  title: string;
+  summary: string | null;
+  payload: Record<string, unknown>;
+  promotionTarget: string | null;
+  priority: string | null;
+  dueAt: Date | null;
+  escalatedTo: string | null;
+  notificationChannel: string | null;
+  ticketReference: string | null;
+  createdBy: string;
+  createdAt: Date;
+  resolvedBy: string | null;
+  resolvedAt: Date | null;
+  resolutionNotes: string | null;
+}
+
 export interface IntegrationScopeBreakdown {
   total: number;
   healthy: number;

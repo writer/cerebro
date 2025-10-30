@@ -2,7 +2,7 @@ export { CerebroSDK, type CerebroSDKOptions } from "./sdk";
 export type { AccessTokenProvider, HttpClientOptions, RequestOptions } from "./httpClient";
 export { HttpError } from "./httpClient";
 export { AnalyticsClient } from "./clients/analytics";
-export { AgentsClient } from "./clients/agents";
+export { AgentsClient, type ListReviewTasksPageOptions } from "./clients/agents";
 export { AuthClient } from "./clients/auth";
 export { FindingsClient, type ListFindingsOptions } from "./clients/findings";
 export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations";

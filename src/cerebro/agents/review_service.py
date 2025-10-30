@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
@@ -79,6 +81,73 @@ class AgentReviewService:
             stmt = stmt.order_by(AgentReviewTask.created_at.desc()).limit(limit)
             result = await db_session.execute(stmt)
             return list(result.scalars())
+
+    @staticmethod
+    async def list_tasks_page(
+        *,
+        org_id: UUID,
+        status: Optional[ReviewTaskStatus] = None,
+        limit: int = 50,
+        cursor: Optional[str] = None,
+    ) -> Tuple[List[AgentReviewTask], Optional[str]]:
+        normalized_limit = max(1, min(limit, 200))
+
+        async with async_session_factory() as db_session:
+            stmt = (
+                select(AgentReviewTask)
+                .where(AgentReviewTask.org_id == org_id)
+                .order_by(AgentReviewTask.created_at.desc(), AgentReviewTask.id.desc())
+            )
+            if status:
+                stmt = stmt.where(AgentReviewTask.status == status)
+
+            if cursor:
+                payload = AgentReviewService._decode_cursor(cursor)
+                created_raw = payload.get("created_at")
+                task_id_raw = payload.get("task_id")
+
+                created_at: Optional[datetime] = None
+                if isinstance(created_raw, str):
+                    try:
+                        created_at = datetime.fromisoformat(created_raw)
+                    except ValueError:
+                        created_at = None
+
+                task_uuid: Optional[UUID] = None
+                if isinstance(task_id_raw, str):
+                    try:
+                        task_uuid = UUID(task_id_raw)
+                    except (ValueError, TypeError):
+                        task_uuid = None
+
+                if created_at is not None and task_uuid is not None:
+                    stmt = stmt.where(
+                        or_(
+                            AgentReviewTask.created_at < created_at,
+                            and_(
+                                AgentReviewTask.created_at == created_at,
+                                AgentReviewTask.id < task_uuid,
+                            ),
+                        )
+                    )
+
+            stmt = stmt.limit(normalized_limit + 1)
+            result = await db_session.execute(stmt)
+            tasks = list(result.scalars())
+
+        has_more = len(tasks) > normalized_limit
+        page_items = tasks[:normalized_limit]
+
+        next_cursor: Optional[str] = None
+        if has_more and page_items:
+            last = page_items[-1]
+            payload = {
+                "created_at": last.created_at.isoformat(),
+                "task_id": str(last.id),
+            }
+            next_cursor = AgentReviewService._encode_cursor(payload)
+
+        return page_items, next_cursor
 
     @staticmethod
     async def resolve_task(
@@ -603,4 +672,24 @@ class AgentReviewService:
             extra_metadata=metadata or {},
         )
         db_session.add(history)
+
+    @staticmethod
+    def _encode_cursor(payload: Dict[str, Any]) -> str:
+        serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        token = base64.urlsafe_b64encode(serialized.encode("utf-8")).decode("ascii")
+        return token.rstrip("=")
+
+    @staticmethod
+    def _decode_cursor(token: str) -> Dict[str, Any]:
+        padding = "=" * (-len(token) % 4)
+        raw = token + padding
+        try:
+            decoded = base64.urlsafe_b64decode(raw.encode("ascii")).decode("utf-8")
+            payload = json.loads(decoded)
+        except (ValueError, json.JSONDecodeError):
+            return {}
+
+        if not isinstance(payload, dict):
+            return {}
+        return payload
 

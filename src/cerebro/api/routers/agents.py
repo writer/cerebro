@@ -247,6 +247,11 @@ class ReviewQueueSummary(BaseModel):
     priority_breakdown: List[ReviewQueuePrioritySummary]
 
 
+class ReviewTaskPageResponse(BaseModel):
+    items: List[ReviewTaskResponse]
+    next_cursor: Optional[str] = None
+
+
 class RuntimeEventResponse(BaseModel):
     id: UUID
     event_type: str
@@ -759,6 +764,29 @@ async def list_review_tasks(
         limit=limit,
     )
     return [_review_task_to_response(task) for task in tasks]
+
+
+@router.get("/review-tasks/page", response_model=ReviewTaskPageResponse)
+async def list_review_tasks_page(
+    status: Optional[str] = Query(None, description="Filter by review status"),
+    limit: int = Query(50, ge=1, le=200, description="Number of tasks to fetch per page"),
+    cursor: Optional[str] = Query(None, description="Opaque cursor for pagination"),
+    current_user: User = Depends(get_current_user),
+):
+    """Return review tasks using cursor-based pagination."""
+
+    service = AgentSessionService()
+    page = await service.list_review_tasks_page(
+        org_id=current_user.org_id,
+        status=status,
+        limit=limit,
+        cursor=cursor,
+    )
+
+    return ReviewTaskPageResponse(
+        items=[_review_task_to_response(task) for task in page["items"]],
+        next_cursor=page["next_cursor"],
+    )
 
 
 @router.get("/review-tasks/summary", response_model=ReviewQueueSummary)
