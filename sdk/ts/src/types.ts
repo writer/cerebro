@@ -259,3 +259,84 @@ export interface IntegrationCoverageRecord {
 }
 
 export type IntegrationCoverageSummary = IntegrationCoverageRecord;
+
+export interface AgentSessionRecord {
+  sessionId: string;
+  orgId: string;
+  agentType: string;
+  status: string;
+  title: string | null;
+  createdBy: string;
+  createdAt: Date;
+  context: Record<string, unknown>;
+}
+
+export interface AgentSessionList {
+  limit: number;
+  offset: number;
+  total: number;
+  sessions: AgentSessionRecord[];
+}
+
+export interface ToolInvocationRecord {
+  invocationId: string;
+  toolName: string;
+  status: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  errorMessage: string | null;
+}
+
+export interface AgentMessageRecord {
+  messageId: string;
+  role: string;
+  content: string;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface AgentSessionDetail {
+  session: AgentSessionRecord;
+  messageCount: number;
+  messages: AgentMessageRecord[];
+  toolInvocations: ToolInvocationRecord[];
+  metrics?: Record<string, unknown>;
+}
+
+export interface AgentMemoryRecord {
+  entryId: string;
+  summary: string | null;
+  role: string | null;
+  decayScore: number;
+  tokenCount: number;
+  createdAt: Date;
+  lastAccessedAt: Date;
+  scopes: Record<string, unknown>[];
+  scopeLabels: string[];
+  metadata: Record<string, unknown>;
+  content: string | null;
+  annSelected?: boolean | null;
+  lexicalSimilarity?: number | null;
+  embeddingSimilarity?: number | null;
+  combinedSimilarity?: number | null;
+}
+
+export interface AgentMemoryHighlight {
+  entryId: string;
+  summary: string | null;
+  role: string | null;
+  decayScore: number;
+  lastAccessedAt: Date;
+  scopeLabels: string[];
+}
+
+export interface AgentMemoryStats {
+  totalEntries: number;
+  recentEntries: number;
+  presentedEntries: number;
+  averageDecay: number;
+  tokenTotal: number;
+  roleDistribution: Record<string, number>;
+  scopeDistribution: Record<string, number>;
+  topMemories: AgentMemoryHighlight[];
+}

@@ -142,6 +142,59 @@ describe("AgentsClient", () => {
     expect(url).toContain("limit=10");
   });
 
+  it("bulk updates review tasks with optional fields", async () => {
+    const now = new Date();
+    const iso = now.toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          id: "task-1",
+          session_id: "session-1",
+          org_id: "org-1",
+          status: "resolved",
+          title: "Review",
+          summary: null,
+          payload: {},
+          promotion_target: null,
+          priority: null,
+          due_at: iso,
+          escalated_to: null,
+          notification_channel: null,
+          ticket_reference: null,
+          created_by: "user",
+          created_at: iso,
+          resolved_by: "resolver",
+          resolved_at: iso,
+          resolution_notes: "done",
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const result = await client.bulkUpdateReviewTasks({
+      taskIds: ["task-1"],
+      status: "resolved",
+      notes: "done",
+      dueAt: now,
+      notificationChannel: "slack:#alerts",
+      ticketMetadata: { external: true },
+    });
+
+    expect(result).toHaveLength(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      task_ids: ["task-1"],
+      status: "resolved",
+      notes: "done",
+      due_at: iso,
+      notification_channel: "slack:#alerts",
+      ticket_metadata: { external: true },
+    });
+  });
+
   it("resolves review tasks with notes", async () => {
     const now = new Date().toISOString();
     fetchMock.mockResolvedValueOnce({
@@ -396,6 +449,241 @@ describe("AgentsClient", () => {
     const [url] = fetchMock.mock.calls[0];
     expect(url).toContain("status=delivered");
     expect(url).toContain("limit=10");
+  });
+
+  it("lists agent sessions with pagination", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        limit: 25,
+        offset: 0,
+        total: 1,
+        sessions: [
+          {
+            session_id: "session-1",
+            org_id: "org-1",
+            agent_type: "security_analyst",
+            status: "active",
+            title: "Investigation",
+            created_by: "user",
+            created_at: now,
+            context: { finding_ids: ["finding-1"] },
+          },
+        ],
+      }),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const sessions = await client.listSessions({ agentType: "security_analyst", limit: 25, offset: 0 });
+
+    expect(sessions.sessions).toHaveLength(1);
+    expect(sessions.sessions[0].agentType).toBe("security_analyst");
+    expect(sessions.sessions[0].createdAt).toBeInstanceOf(Date);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("agent_type=security_analyst");
+    expect(url).toContain("limit=25");
+  });
+
+  it("creates an agent session", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        session_id: "session-2",
+        org_id: "org-1",
+        agent_type: "incident_responder",
+        status: "active",
+        title: "Incident",
+        created_by: "user",
+        created_at: now,
+        context: { incident_id: "inc-1" },
+      }),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const session = await client.createSession({
+      agentType: "incident_responder",
+      context: { incident_id: "inc-1" },
+      title: "Incident",
+    });
+
+    expect(session.sessionId).toBe("session-2");
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      agent_type: "incident_responder",
+      context: { incident_id: "inc-1" },
+      title: "Incident",
+    });
+  });
+
+  it("gets an agent session with messages", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        session: {
+          session_id: "session-1",
+          org_id: "org-1",
+          agent_type: "security_analyst",
+          status: "active",
+          title: "Investigation",
+          created_by: "user",
+          created_at: now,
+          context: {},
+        },
+        message_count: 1,
+        messages: [
+          {
+            message_id: "msg-1",
+            role: "user",
+            content: "hello",
+            timestamp: now,
+            metadata: null,
+          },
+        ],
+        metrics: { tokens: 42 },
+        tool_invocations: [
+          {
+            id: "tool-1",
+            tool_name: "ticket",
+            status: "success",
+            started_at: now,
+            completed_at: now,
+            error_message: null,
+          },
+        ],
+      }),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const detail = await client.getSession("session-1", { messageLimit: 10 });
+
+    expect(detail.messageCount).toBe(1);
+    expect(detail.messages[0].createdAt).toBeInstanceOf(Date);
+    expect(detail.toolInvocations[0].toolName).toBe("ticket");
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("message_limit=10");
+  });
+
+  it("lists session messages", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          message_id: "msg-1",
+          role: "assistant",
+          content: "response",
+          timestamp: now,
+          metadata: { source: "agent" },
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const messages = await client.listSessionMessages("session-1", { limit: 20, offset: 0 });
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].metadata).toEqual({ source: "agent" });
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("limit=20");
+    expect(url).toContain("offset=0");
+  });
+
+  it("sends a session message without streaming override", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({}),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    await client.sendSessionMessage("session-1", { message: "hello" });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ message: "hello" });
+  });
+
+  it("lists session memory entries", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          id: "mem-1",
+          summary: "summary",
+          role: "system",
+          decay_score: 0.9,
+          token_count: 120,
+          created_at: now,
+          last_accessed_at: now,
+          scopes: [{ type: "org", value: "org-1" }],
+          scope_labels: ["org:org-1"],
+          metadata: { highlighted: true },
+          content: "full content",
+          ann_selected: true,
+          lexical_similarity: 0.8,
+          embedding_similarity: 0.85,
+          combined_similarity: 0.82,
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const memories = await client.listSessionMemoryEntries("session-1", { includeContent: true, limit: 5 });
+
+    expect(memories).toHaveLength(1);
+    expect(memories[0].content).toBe("full content");
+    expect(memories[0].annSelected).toBe(true);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("include_content=true");
+    expect(url).toContain("limit=5");
+  });
+
+  it("fetches session memory stats", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        total_entries: 10,
+        recent_entries: 3,
+        presented_entries: 2,
+        average_decay: 0.75,
+        token_total: 4096,
+        role_distribution: { system: 5 },
+        scope_distribution: { incident: 2 },
+        top_memories: [
+          {
+            id: "mem-1",
+            summary: "summary",
+            role: "system",
+            decay_score: 0.9,
+            last_accessed_at: now,
+            scope_labels: ["incident:inc-1"],
+          },
+        ],
+      }),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const stats = await client.getSessionMemoryStats("session-1");
+
+    expect(stats.totalEntries).toBe(10);
+    expect(stats.topMemories[0].lastAccessedAt).toBeInstanceOf(Date);
   });
 
   it("lists session analytics events", async () => {

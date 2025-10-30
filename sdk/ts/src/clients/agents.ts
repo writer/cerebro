@@ -1,6 +1,13 @@
 import HttpClient from "../httpClient";
 import { CursorPage, PageRequest } from "../pagination";
 import {
+  AgentMemoryHighlight,
+  AgentMemoryRecord,
+  AgentMemoryStats,
+  AgentMessageRecord,
+  AgentSessionDetail,
+  AgentSessionList,
+  AgentSessionRecord,
   ReviewQueuePendingSummary,
   ReviewQueuePrioritySummary,
   ReviewQueueStatusAggregate,
@@ -10,14 +17,15 @@ import {
   ReviewTaskSlaStatus,
   ReviewTaskSlaSummary,
   ReviewNotificationRecord,
+  ReviewTaskRecord,
   RuntimeEventRecord,
   RuntimeEventSummaryRecord,
+  ToolInvocationRecord,
   WorkflowTemplateRecord,
   WorkflowTemplateStepRecord,
   PolicySuggestionRecord,
   PolicySimulationResultRecord,
   PolicySimulationExampleRecord,
-  ReviewTaskRecord,
 } from "../types";
 
 interface ReviewQueueStatusPayload {
@@ -75,6 +83,87 @@ interface ReviewTaskPageResponse {
   next_cursor: string | null;
 }
 
+interface SessionPayload {
+  session_id: string;
+  org_id: string;
+  agent_type: string;
+  status: string;
+  title: string | null;
+  created_by: string;
+  created_at: string;
+  context: Record<string, unknown>;
+}
+
+interface SessionListResponsePayload {
+  limit: number;
+  offset: number;
+  total: number;
+  sessions: SessionPayload[];
+}
+
+interface MessagePayload {
+  message_id: string;
+  role: string;
+  content: string;
+  metadata?: Record<string, unknown> | null;
+  timestamp: string;
+}
+
+interface ToolInvocationPayload {
+  id: string;
+  tool_name: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+interface SessionWithMessagesPayload {
+  session: SessionPayload;
+  message_count: number;
+  messages: MessagePayload[];
+  metrics?: Record<string, unknown>;
+  tool_invocations?: ToolInvocationPayload[];
+}
+
+interface MemoryEntryPayload {
+  id: string;
+  summary: string | null;
+  role: string | null;
+  decay_score: number;
+  token_count: number;
+  created_at: string;
+  last_accessed_at: string;
+  scopes: Record<string, unknown>[];
+  scope_labels: string[];
+  metadata: Record<string, unknown>;
+  content?: string | null;
+  ann_selected?: boolean | null;
+  lexical_similarity?: number | null;
+  embedding_similarity?: number | null;
+  combined_similarity?: number | null;
+}
+
+interface MemoryHighlightPayload {
+  id: string;
+  summary: string | null;
+  role: string | null;
+  decay_score: number;
+  last_accessed_at: string;
+  scope_labels: string[];
+}
+
+interface MemoryStatsPayload {
+  total_entries: number;
+  recent_entries: number;
+  presented_entries: number;
+  average_decay: number;
+  token_total: number;
+  role_distribution: Record<string, number>;
+  scope_distribution: Record<string, number>;
+  top_memories: MemoryHighlightPayload[];
+}
+
 export interface ListReviewTasksPageOptions {
   status?: string;
   limit?: number;
@@ -84,6 +173,50 @@ export interface ListReviewTasksPageOptions {
 export interface ListReviewTasksOptions {
   status?: string;
   limit?: number;
+}
+
+export interface ReviewTaskBulkUpdateRequest {
+  taskIds: string[];
+  status?: string | null;
+  notes?: string | null;
+  priority?: string | null;
+  notificationChannel?: string | null;
+  escalatedTo?: string | null;
+  dueAt?: string | Date | null;
+  ticketSummary?: string | null;
+  ticketSystem?: string | null;
+  ticketMetadata?: Record<string, unknown> | null;
+}
+
+export interface ListAgentSessionsOptions {
+  agentType?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CreateAgentSessionRequest {
+  agentType: string;
+  context?: Record<string, unknown>;
+  title?: string | null;
+}
+
+export interface GetAgentSessionOptions {
+  messageLimit?: number;
+}
+
+export interface ListSessionMessagesOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export interface SendAgentMessageRequest {
+  message: string;
+  stream?: boolean;
+}
+
+export interface ListSessionMemoryOptions {
+  limit?: number;
+  includeContent?: boolean;
 }
 
 interface ResolveReviewTaskPayload {
@@ -264,6 +397,42 @@ export class AgentsClient {
     };
   }
 
+  async bulkUpdateReviewTasks(request: ReviewTaskBulkUpdateRequest): Promise<ReviewTaskRecord[]> {
+    if (!request.taskIds || request.taskIds.length === 0) {
+      return [];
+    }
+
+    const body: Record<string, unknown> = {
+      task_ids: request.taskIds,
+    };
+
+    if (request.status !== undefined) body.status = request.status;
+    if (request.notes !== undefined) body.notes = request.notes;
+    if (request.priority !== undefined) body.priority = request.priority;
+    if (request.notificationChannel !== undefined) body.notification_channel = request.notificationChannel;
+    if (request.escalatedTo !== undefined) body.escalated_to = request.escalatedTo;
+    if (request.ticketSummary !== undefined) body.ticket_summary = request.ticketSummary;
+    if (request.ticketSystem !== undefined) body.ticket_system = request.ticketSystem;
+    if (request.ticketMetadata !== undefined) body.ticket_metadata = request.ticketMetadata ?? null;
+
+    if (request.dueAt !== undefined) {
+      if (request.dueAt === null) {
+        body.due_at = null;
+      } else if (request.dueAt instanceof Date) {
+        body.due_at = request.dueAt.toISOString();
+      } else {
+        body.due_at = request.dueAt;
+      }
+    }
+
+    const payload = await this.http.post<ReviewTaskPayload[]>(
+      "/api/v1/agents/review-tasks/bulk-update",
+      { body },
+    );
+
+    return payload.map(mapReviewTask);
+  }
+
   async resolveReviewTask(taskId: string, payload: ResolveReviewTaskPayload): Promise<ReviewTaskRecord> {
     const body = {
       status: payload.status,
@@ -361,6 +530,103 @@ export class AgentsClient {
     );
 
     return payload.map(mapNotification);
+  }
+
+  async listSessions(options: ListAgentSessionsOptions = {}): Promise<AgentSessionList> {
+    const params: Record<string, string | number> = {};
+    if (options.agentType) params.agent_type = options.agentType;
+    if (options.limit !== undefined) params.limit = options.limit;
+    if (options.offset !== undefined) params.offset = options.offset;
+
+    const payload = await this.http.get<SessionListResponsePayload>(
+      "/api/v1/agents/sessions",
+      { searchParams: Object.keys(params).length ? params : undefined },
+    );
+
+    return {
+      limit: payload.limit,
+      offset: payload.offset,
+      total: payload.total,
+      sessions: payload.sessions.map(mapSession),
+    };
+  }
+
+  async createSession(request: CreateAgentSessionRequest): Promise<AgentSessionRecord> {
+    const body: Record<string, unknown> = {
+      agent_type: request.agentType,
+    };
+
+    if (request.context !== undefined) body.context = request.context;
+    if (request.title !== undefined) body.title = request.title;
+
+    const payload = await this.http.post<SessionPayload>("/api/v1/agents/sessions", { body });
+    return mapSession(payload);
+  }
+
+  async getSession(sessionId: string, options: GetAgentSessionOptions = {}): Promise<AgentSessionDetail> {
+    const params = options.messageLimit !== undefined ? { message_limit: options.messageLimit } : undefined;
+
+    const payload = await this.http.get<SessionWithMessagesPayload>(
+      `/api/v1/agents/sessions/${sessionId}`,
+      { searchParams: params },
+    );
+
+    return {
+      session: mapSession(payload.session),
+      messageCount: payload.message_count,
+      messages: payload.messages.map(mapMessage),
+      toolInvocations: (payload.tool_invocations ?? []).map(mapToolInvocation),
+      metrics: payload.metrics ? { ...payload.metrics } : undefined,
+    };
+  }
+
+  async listSessionMessages(sessionId: string, options: ListSessionMessagesOptions = {}): Promise<AgentMessageRecord[]> {
+    const params: Record<string, string | number> = {};
+    if (options.limit !== undefined) params.limit = options.limit;
+    if (options.offset !== undefined) params.offset = options.offset;
+
+    const payload = await this.http.get<MessagePayload[]>(
+      `/api/v1/agents/sessions/${sessionId}/messages`,
+      { searchParams: Object.keys(params).length ? params : undefined },
+    );
+
+    return payload.map(mapMessage);
+  }
+
+  async sendSessionMessage(sessionId: string, request: SendAgentMessageRequest): Promise<unknown> {
+    const body: Record<string, unknown> = { message: request.message };
+    if (request.stream !== undefined) {
+      body.stream = request.stream;
+    }
+
+    return this.http.post<unknown>(
+      `/api/v1/agents/sessions/${sessionId}/messages`,
+      { body },
+    );
+  }
+
+  async listSessionMemoryEntries(
+    sessionId: string,
+    options: ListSessionMemoryOptions = {},
+  ): Promise<AgentMemoryRecord[]> {
+    const params: Record<string, string | number | boolean> = {};
+    if (options.limit !== undefined) params.limit = options.limit;
+    if (options.includeContent !== undefined) params.include_content = options.includeContent;
+
+    const payload = await this.http.get<MemoryEntryPayload[]>(
+      `/api/v1/agents/sessions/${sessionId}/memory`,
+      { searchParams: Object.keys(params).length ? params : undefined },
+    );
+
+    return payload.map(mapMemoryEntry);
+  }
+
+  async getSessionMemoryStats(sessionId: string): Promise<AgentMemoryStats> {
+    const payload = await this.http.get<MemoryStatsPayload>(
+      `/api/v1/agents/sessions/${sessionId}/memory/stats`,
+    );
+
+    return mapMemoryStats(payload);
   }
 
   async listSessionAnalytics(
@@ -603,6 +869,84 @@ function mapWorkflowStep(payload: WorkflowStepPayload): WorkflowTemplateStepReco
     conditions: payload.conditions ?? {},
     parameters: payload.parameters ?? {},
     order: payload.order,
+  };
+}
+
+function mapSession(payload: SessionPayload): AgentSessionRecord {
+  return {
+    sessionId: payload.session_id,
+    orgId: payload.org_id,
+    agentType: payload.agent_type,
+    status: payload.status,
+    title: payload.title,
+    createdBy: payload.created_by,
+    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    context: payload.context ?? {},
+  };
+}
+
+function mapMessage(payload: MessagePayload): AgentMessageRecord {
+  return {
+    messageId: payload.message_id,
+    role: payload.role,
+    content: payload.content,
+    metadata: payload.metadata ?? {},
+    createdAt: parseDate(payload.timestamp) ?? new Date(payload.timestamp),
+  };
+}
+
+function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord {
+  return {
+    invocationId: payload.id,
+    toolName: payload.tool_name,
+    status: payload.status,
+    startedAt: parseDate(payload.started_at) ?? new Date(payload.started_at),
+    completedAt: parseDate(payload.completed_at),
+    errorMessage: payload.error_message ?? null,
+  };
+}
+
+function mapMemoryEntry(payload: MemoryEntryPayload): AgentMemoryRecord {
+  return {
+    entryId: payload.id,
+    summary: payload.summary,
+    role: payload.role,
+    decayScore: payload.decay_score,
+    tokenCount: payload.token_count,
+    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    lastAccessedAt: parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    scopes: payload.scopes ?? [],
+    scopeLabels: payload.scope_labels ?? [],
+    metadata: payload.metadata ?? {},
+    content: payload.content ?? null,
+    annSelected: payload.ann_selected ?? null,
+    lexicalSimilarity: payload.lexical_similarity ?? null,
+    embeddingSimilarity: payload.embedding_similarity ?? null,
+    combinedSimilarity: payload.combined_similarity ?? null,
+  };
+}
+
+function mapMemoryHighlight(payload: MemoryHighlightPayload): AgentMemoryHighlight {
+  return {
+    entryId: payload.id,
+    summary: payload.summary,
+    role: payload.role,
+    decayScore: payload.decay_score,
+    lastAccessedAt: parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    scopeLabels: payload.scope_labels ?? [],
+  };
+}
+
+function mapMemoryStats(payload: MemoryStatsPayload): AgentMemoryStats {
+  return {
+    totalEntries: payload.total_entries,
+    recentEntries: payload.recent_entries,
+    presentedEntries: payload.presented_entries,
+    averageDecay: payload.average_decay,
+    tokenTotal: payload.token_total,
+    roleDistribution: payload.role_distribution ?? {},
+    scopeDistribution: payload.scope_distribution ?? {},
+    topMemories: payload.top_memories?.map(mapMemoryHighlight) ?? [],
   };
 }
 
