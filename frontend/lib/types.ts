@@ -26,6 +26,35 @@ export type ReviewTask = {
   resolution_notes?: string | null;
 };
 
+export type ReviewQueueStatusSummary = {
+  status: string;
+  count: number;
+  unassigned: number;
+  overdue: number;
+  oldest_created?: string | null;
+  newest_created?: string | null;
+};
+
+export type ReviewQueuePendingSummary = {
+  total: number;
+  unassigned: number;
+  overdue: number;
+  next_due?: string | null;
+  oldest_created?: string | null;
+};
+
+export type ReviewQueuePrioritySummary = {
+  priority?: string | null;
+  count: number;
+};
+
+export type ReviewQueueSummary = {
+  generated_at: string;
+  status_counts: ReviewQueueStatusSummary[];
+  pending: ReviewQueuePendingSummary;
+  priority_breakdown: ReviewQueuePrioritySummary[];
+};
+
 export type ReviewNotification = {
   id: string;
   task_id: string;
