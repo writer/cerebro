@@ -5,6 +5,8 @@ import {
   ReviewQueuePrioritySummary,
   ReviewQueueStatusAggregate,
   ReviewQueueSummary,
+  ReviewTaskCommentRecord,
+  ReviewTaskHistoryRecord,
   ReviewTaskRecord,
 } from "../types";
 
@@ -74,6 +76,37 @@ export interface ListReviewTasksOptions {
   limit?: number;
 }
 
+interface ResolveReviewTaskPayload {
+  status: string;
+  notes?: string | null;
+}
+
+interface AssignReviewTaskPayload {
+  assigned_to: string;
+}
+
+interface CommentPayload {
+  id: string;
+  task_id: string;
+  author: string;
+  content: string;
+  created_at: string;
+  updated_at: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface HistoryPayload {
+  id: string;
+  task_id: string;
+  changed_by: string;
+  change_type: string;
+  field_name: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
 export class AgentsClient {
   constructor(private readonly http: HttpClient) {}
 
@@ -121,6 +154,77 @@ export class AgentsClient {
       items: payload.items.map(mapReviewTask),
       nextCursor: payload.next_cursor,
     };
+  }
+
+  async resolveReviewTask(taskId: string, payload: ResolveReviewTaskPayload): Promise<ReviewTaskRecord> {
+    const body = {
+      status: payload.status,
+      notes: payload.notes ?? null,
+    };
+
+    const response = await this.http.post<ReviewTaskPayload>(
+      `/api/v1/agents/review-tasks/${taskId}/resolve`,
+      { body },
+    );
+
+    return mapReviewTask(response);
+  }
+
+  async assignReviewTask(taskId: string, assignedTo: string): Promise<ReviewTaskRecord> {
+    const response = await this.http.post<ReviewTaskPayload>(
+      `/api/v1/agents/review-tasks/${taskId}/assign`,
+      {
+        body: {
+          assigned_to: assignedTo,
+        } satisfies AssignReviewTaskPayload,
+      },
+    );
+
+    return mapReviewTask(response);
+  }
+
+  async addReviewTaskComment(
+    taskId: string,
+    content: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<ReviewTaskCommentRecord> {
+    const response = await this.http.post<CommentPayload>(
+      `/api/v1/agents/review-tasks/${taskId}/comments`,
+      {
+        body: {
+          content,
+          metadata: metadata ?? null,
+        },
+      },
+    );
+
+    return mapComment(response);
+  }
+
+  async listReviewTaskComments(
+    taskId: string,
+    options: { limit?: number } = {},
+  ): Promise<ReviewTaskCommentRecord[]> {
+    const params = options.limit !== undefined ? { limit: options.limit } : undefined;
+    const payload = await this.http.get<CommentPayload[]>(
+      `/api/v1/agents/review-tasks/${taskId}/comments`,
+      { searchParams: params },
+    );
+
+    return payload.map(mapComment);
+  }
+
+  async listReviewTaskHistory(
+    taskId: string,
+    options: { limit?: number } = {},
+  ): Promise<ReviewTaskHistoryRecord[]> {
+    const params = options.limit !== undefined ? { limit: options.limit } : undefined;
+    const payload = await this.http.get<HistoryPayload[]>(
+      `/api/v1/agents/review-tasks/${taskId}/history`,
+      { searchParams: params },
+    );
+
+    return payload.map(mapHistory);
   }
 }
 
@@ -172,6 +276,32 @@ function mapReviewTask(payload: ReviewTaskPayload): ReviewTaskRecord {
     resolvedBy: payload.resolved_by,
     resolvedAt: parseDate(payload.resolved_at),
     resolutionNotes: payload.resolution_notes,
+  };
+}
+
+function mapComment(payload: CommentPayload): ReviewTaskCommentRecord {
+    return {
+      commentId: payload.id,
+      taskId: payload.task_id,
+      author: payload.author,
+      content: payload.content,
+      createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+      updatedAt: parseDate(payload.updated_at),
+      metadata: payload.metadata ?? {},
+    };
+}
+
+function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
+  return {
+    historyId: payload.id,
+    taskId: payload.task_id,
+    changedBy: payload.changed_by,
+    changeType: payload.change_type,
+    fieldName: payload.field_name,
+    oldValue: payload.old_value,
+    newValue: payload.new_value,
+    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    metadata: payload.metadata,
   };
 }
 

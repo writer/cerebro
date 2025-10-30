@@ -116,6 +116,28 @@ export interface ReviewTaskRecord {
   resolutionNotes: string | null;
 }
 
+export interface ReviewTaskCommentRecord {
+  commentId: string;
+  taskId: string;
+  author: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface ReviewTaskHistoryRecord {
+  historyId: string;
+  taskId: string;
+  changedBy: string;
+  changeType: string;
+  fieldName: string | null;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  createdAt: Date;
+  metadata: Record<string, unknown> | null;
+}
+
 export interface IntegrationScopeBreakdown {
   total: number;
   healthy: number;
