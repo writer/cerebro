@@ -1,49 +1,52 @@
-# Cerebro – Security System of Record
+git clone https://github.com/WriterInternal/cerebro.git
+# Cerebro
 
-Cerebro is a self-hosted security data plane that continuously captures cloud and SaaS configuration state, producing forensic-ready audit trails and powering AI-assisted investigations.
+Cerebro is an open-source security data platform that tracks cloud and SaaS configuration state, exposes a consistent API surface, and supports automated or human-in-the-loop investigations.
 
-## Highlights
+## Key Capabilities
 
-- **Unified access** – CLI, REST API, and agent interfaces share the same append-only store
-- **Graph + SQL analytics** – run fleet-wide queries and attack-path analysis without ETL pipelines
-- **Pluggable agents** – Claude and OpenAI runtimes with skill-based routing, telemetry, and audited execution
-- **Adaptive memory** – scoped, decay-aware recall with dedupe, pruning, and observability controls
-- **Human-in-loop guardrails** – review queue, approval workflows, and runtime-level controls for risky changes
-- **Compliance automation** – continuously test controls against SOC2, ISO27001, CIS, and NIST frameworks
+- Unified access across CLI, REST, and agent interfaces backed by an append-only store
+- SQL and graph-style analytics without intermediate ETL pipelines
+- Agent runtimes with approval workflows, telemetry, and scoped memory
+- Rule evaluation and findings pipelines driven by CEL policies
+- Integration sync helpers for common SaaS and endpoint providers
 
-## Architecture Overview
+## Architecture at a Glance
 
 | Layer | Components |
 | --- | --- |
 | Interfaces | Typer CLI, FastAPI REST service, conversational agents |
-| Core services | Rule engine (CEL), findings pipeline, graph/SQL engine, observability hooks |
-| Data tier | PostgreSQL with immutable audit tables and cryptographic integrity |
+| Core services | Rule engine (CEL), findings pipeline, analytics engine, observability hooks |
+| Data tier | PostgreSQL (immutable audit tables) and Redis for coordination |
 
-## Getting Started
+## Quickstart
 
 ### Prerequisites
 
 - Python 3.11+
 - PostgreSQL 14+
 - Redis 6+
-- Claude and/or OpenAI API keys (for agent runtimes)
+- Optional: Anthropic and/or OpenAI API keys for agent runtimes
 
-### Install & Run
+### Local Setup
 
 ```bash
 # Install uv package manager
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone and bootstrap
 git clone https://github.com/WriterInternal/cerebro.git
 cd cerebro
 
-# Development workflow
-make dev            # start API + background workers
-make db-migrate     # apply migrations
-make dev-data       # seed sample data (optional)
+# Start API, workers, and supporting services
+make dev
 
-# Docker alternative
+# Apply database migrations
+make db-migrate
+
+# Seed sample data (optional)
+make dev-data
+
+# Containerised alternative
 make docker-up
 ```
 
@@ -65,7 +68,7 @@ OPENAI_API_KEY=sk-openai-...
 
 Place additional settings in `.env` or export them before launching the API.
 
-## Working with Cerebro
+## Interacting with Cerebro
 
 ### CLI
 
@@ -73,7 +76,7 @@ Place additional settings in `.env` or export them before launching the API.
 # List critical findings
 cerebro findings list --severity critical
 
-# Run ad-hoc SQL
+# Execute ad-hoc SQL
 cerebro query "SELECT * FROM aws_iam_user WHERE mfa_enabled = false"
 
 # Start an agent session
@@ -87,75 +90,41 @@ curl "http://localhost:8000/api/v1/findings?severity=critical" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### Agents
+### Agent Workflows
 
-```bash
-cerebro agents create "Acme Corp" --type security_analyst
-cerebro agents chat <session-id>
-```
+- Create sessions using the CLI or REST endpoints under `/api/v1/agents`
+- Tool execution is governed by CEL policies and optional approval tasks
+- Review tasks appear in the queue when destructive actions require promotion
 
-- Tool execution is guarded by CEL policies, adaptive ordering, telemetry, and optional approval workflows
-- Memory snippets are injected into prompts, tool contexts, and persisted alongside conversation history
-- Skill-based routing picks the right runtime (`AGENT_RUNTIME_PREFERENCES`) while tracking decisions in session context
-- Destructive actions automatically surface to the review queue for human promotion via REST (`/api/v1/agents/review-tasks`)
+### Memory and Observability
 
-### Memory Controls
+- Memory entries support decay, dedupe, and configurable pruning thresholds
+- Telemetry is exported through Prometheus metrics such as `cerebro_agent_memory_events_total`
+- Agent tool execution metrics (`cerebro_agent_tool_*`) track success, failure, and latency
 
-- Embeddings (OpenAI or hashing fallback) with decay, dedupe, and Max Marginal Relevance diversification
-- Configurable pruning thresholds (`AGENT_MEMORY_MAX_ENTRIES_PER_ORG`, `AGENT_MEMORY_PRUNE_PROBABILITY`, etc.)
-- Observability via Prometheus counter `cerebro_agent_memory_events_total` and OTLP spans when telemetry is enabled
-- Tool observability via `cerebro_agent_tool_*` metrics (success, failure, duration) and adaptive ordering from live stats
-- Inspect session memory:
+## Internal SDK (Writer teams)
 
-```bash
-curl "http://localhost:8000/api/v1/agents/sessions/<session-id>/memory?limit=20" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Set `include_content=true` to retrieve full text; otherwise summaries, decay metadata, and scope labels are returned.
-
-## Internal Cerebro SDK (Writer Only)
-
-Security and platform engineers can build automation on top of Cerebro without re-implementing core services by installing the internal `cerebro_sdk` package that ships with this repo.
-
-### Why It Matters
-
-- **Batteries included** – Async facades wrap authentication, user/scope management, organization inventory, findings workflows, integration sync tasks, and telemetry helpers.
-- **Guardrails by default** – Token issuance, scope checks, logging, and metrics mirror the main platform, so internal tools stay compliant with rotation, revocation, and observability policies.
-- **Faster delivery** – Teams focus on their automation logic (corpsec audits, detection responders, compliance reporting) while the SDK maintains stable primitives during platform upgrades.
-
-### Quick Example
+The repository ships with `cerebro_sdk`, an async facade layer consumed by internal automation. Facets include authentication, user and organization management, findings workflows, integration orchestration, telemetry utilities, and modular agent helpers.
 
 ```python
-from datetime import timedelta
 from cerebro.core.database import async_session_factory
-from cerebro_sdk import AuthSession, FindingService, IntegrationService
+from cerebro_sdk import AuthSession, FindingService
 
 
-async def nightly_security_job(org_id: str, username: str, password: str) -> None:
+async def list_high_risk_findings(org_id: str, username: str, password: str) -> None:
     async with async_session_factory() as db:
-        auth = AuthSession(db)
-        tokens = await auth.login(username, password)
-
-        findings = FindingService(db)
-        critical = await findings.list_findings(org_id, severity="critical")
-
-        integrations = IntegrationService(db)
-        stale_states = await integrations.list_states()
-        if any(state.last_timestamp is None for state in stale_states):
-            integrations.trigger_sync("sentinelone")
-
-        alert_team(critical, stale_states, tokens.access_token)
+        tokens = await AuthSession(db).login(username, password)
+        findings = await FindingService(db).list_findings(org_id, severity="critical")
+        for item in findings:
+            print(item.finding_id, item.severity)
 ```
 
-- **CorpSec** can enumerate privileged accounts and automatically remove expired admin scopes using `UserManager` and `OrganizationManager`.
-- **Detection & Response** can fetch new high-severity findings, trigger SentinelOne/Kandji catch-up runs, and record metrics without wiring Celery manually.
-- **GRC** can re-run rule evaluations on demand with `FindingService.generate_for_org` and push audit-ready summaries via the telemetry helpers.
+Additional modules cover agent tooling analytics, review queue exports, integration sync triggers, and telemetry wiring.
 
 ## Development Workflow
 
 ```bash
-# Linting / typing / tests
+# Linting, typing, and tests
 make lint
 make test
 
@@ -168,17 +137,15 @@ make docker-up
 make docker-down
 ```
 
-### Repository Layout
+## Repository Layout
 
 ```
 cerebro/
 ├── src/cerebro/
-│   ├── agents/         # Agent runtimes, tools, memory, observability
-│   │   ├── review_service.py   # Human-in-loop review queue helpers
-│   │   └── tool_stats.py       # Adaptive tool ordering based on success/duration
+│   ├── agents/         # Agent runtimes, tooling, review queue, memory
 │   ├── api/            # FastAPI routers and dependencies
 │   ├── cli/            # Typer-based command line interface
-│   ├── collectors/     # Cloud & SaaS configuration ingestion
+│   ├── collectors/     # Cloud & SaaS ingestion pipelines
 │   ├── core/           # Config, database utilities, shared models
 │   ├── findings/       # Finding normalization and workflows
 │   ├── providers/      # Provider-specific integrations
