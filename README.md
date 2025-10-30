@@ -1,4 +1,3 @@
-git clone https://github.com/WriterInternal/cerebro.git
 # Cerebro
 
 Cerebro is an open-source security data platform that tracks cloud and SaaS configuration state, exposes a consistent API surface, and supports automated or human-in-the-loop investigations.
@@ -33,9 +32,6 @@ Cerebro is an open-source security data platform that tracks cloud and SaaS conf
 ```bash
 # Install uv package manager
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-git clone https://github.com/WriterInternal/cerebro.git
-cd cerebro
 
 # Start API, workers, and supporting services
 make dev
