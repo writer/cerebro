@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from uuid import uuid4, UUID
 
 from cerebro.agents.runtime import CerebroClaudeRuntime
-from cerebro.agents.models import AgentSession, AgentType, MessageRole
+from cerebro.agents.models import AgentSession, AgentType, MessageRole, AgentRuntimeEvent
 from cerebro.agents.tools import AgentContext, ToolPermissionLevel
 from cerebro.agents.tools.findings_list import FindingsListTool
 from cerebro.agents.tools.query import QueryTool
@@ -288,6 +288,43 @@ class TestAgentRuntime:
         assert len(messages) >= 1
         assert messages[0]["role"] == "user"
         assert "Show me critical findings" in messages[0]["content"]["text"]
+
+    async def test_runtime_persists_claude_session_id(self, test_session):
+        """Ensure Claude session identifiers are stored for reuse."""
+        runtime = CerebroClaudeRuntime()
+
+        message_stream = runtime.send_message(
+            session=test_session,
+            message="Summarize latest incidents",
+            user_id="test_user@example.com",
+            stream=False,
+        )
+
+        async for _ in message_stream:
+            pass
+
+        refreshed_session = await runtime.get_session(test_session.id)
+        assert refreshed_session is not None
+        context_snapshot = refreshed_session.context or {}
+        assert context_snapshot.get("_claude_session_id") or context_snapshot.get("_claude_cli_unavailable")
+
+        from cerebro.core.database import async_session_factory
+        from sqlalchemy import select
+
+        async with async_session_factory() as db_session:
+            result = await db_session.execute(
+                select(AgentRuntimeEvent).where(
+                    AgentRuntimeEvent.session_id == refreshed_session.id,
+                    AgentRuntimeEvent.event_type == "runtime_warning",
+                )
+            )
+            warning_events = result.scalars().all()
+
+        assert warning_events
+        assert any(
+            (event.payload or {}).get("reason") == "claude_cli_missing"
+            for event in warning_events
+        )
 
 
 @pytest.mark.asyncio

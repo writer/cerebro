@@ -6,6 +6,7 @@ streaming agent capabilities with tool calling, audit logging, and safety guardr
 """
 
 import asyncio
+import inspect
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
@@ -35,6 +36,14 @@ from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
 from cerebro.agents.tools import tool_registry, ToolExecutor
 from cerebro.agents.tool_stats import performance_tracker
 from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
+
+try:
+    CLAUDE_OPTIONS_METADATA_SUPPORTED = (
+        "metadata" in inspect.signature(ClaudeAgentOptions).parameters
+    )
+except (TypeError, ValueError):  # pragma: no cover - defensive reflection
+    CLAUDE_OPTIONS_METADATA_SUPPORTED = hasattr(ClaudeAgentOptions, "metadata")
+
 
 logger = structlog.get_logger(__name__)
 
@@ -218,25 +227,72 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         # Build allowed tools list (mcp__servername__toolname format)
         allowed_tools = [f"mcp__cerebro__{tool.name}" for tool in available_tools]
 
+        claude_session_id: Optional[str] = session.context.get("_claude_session_id")
+
+        options_metadata = {
+            "cerebro_session_id": str(session.id),
+            "org_id": str(session.org_id),
+            "user_id": user_id,
+            "agent_type": session.agent_type.value,
+            "permission_level": agent_context.permission_level.value,
+            "provider_scope": agent_context.provider_scope,
+            "memory_entry_count": len(memory_context.entries),
+        }
+        if claude_session_id:
+            options_metadata["claude_session_id"] = claude_session_id
+
         # Configure Claude options with MCP server and session context
-        options = ClaudeAgentOptions(
-            model=self.model,
-            system_prompt=build_security_agent_prompt(
+        options_kwargs = {
+            "model": self.model,
+            "system_prompt": build_security_agent_prompt(
                 session.agent_type,
                 session=session,
                 memory_snippets=memory_context.prompt_snippets,
             ),
-            mcp_servers={"cerebro": mcp_server},
-            allowed_tools=allowed_tools,
-        )
+            "mcp_servers": {"cerebro": mcp_server},
+            "allowed_tools": allowed_tools,
+        }
+
+        if CLAUDE_OPTIONS_METADATA_SUPPORTED:
+            options_kwargs["metadata"] = options_metadata
+
+        options = ClaudeAgentOptions(**options_kwargs)
 
         try:
             # Create Claude client and send query
             async with ClaudeSDKClient(options=options) as client:
                 await client.connect()
 
+                if not claude_session_id and hasattr(client, "create_session"):
+                    try:
+                        create_response = await client.create_session(
+                            options=options,
+                            metadata=options_metadata,
+                            session_id=str(session.id),
+                        )
+                        claude_session_id = (
+                            create_response.get("session_id")
+                            if isinstance(create_response, dict)
+                            else None
+                        )
+                        if claude_session_id:
+                            await self._update_session_context(
+                                session,
+                                {"_claude_session_id": claude_session_id},
+                            )
+                            options_metadata["claude_session_id"] = claude_session_id
+                    except Exception as create_error:  # pragma: no cover - defensive logging
+                        logger.debug(
+                            "Failed to establish Claude SDK session",
+                            session_id=session.id,
+                            error=str(create_error),
+                        )
+
                 # Send the user message
-                await client.query(message, session_id=str(session.id))
+                await client.query(
+                    message,
+                    session_id=claude_session_id or str(session.id),
+                )
 
                 # Process streaming responses
                 async for response_msg in client.receive_messages():
@@ -421,6 +477,21 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                 role=MessageRole.ASSISTANT,
                 content=fallback_text,
                 metadata={"fallback": True},
+            )
+
+            await self._update_session_context(
+                session,
+                {"_claude_cli_unavailable": True},
+            )
+
+            await AgentAnalyticsService.record_event(
+                org_id=session.org_id,
+                session_id=session.id,
+                event_type="runtime_warning",
+                payload={
+                    "runtime": self.backend_name,
+                    "reason": "claude_cli_missing",
+                },
             )
 
             self._complete_runtime_operation(
