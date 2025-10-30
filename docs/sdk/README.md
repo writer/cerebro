@@ -13,7 +13,12 @@ The Cerebro SDK exposes a typed, async-first interface for automating common pla
 | `cerebro_sdk.telemetry` | Logging/metrics utilities for structured instrumentation. |
 | `cerebro_sdk.integrations` | Integration state management and sync orchestration. |
 | `cerebro_sdk.tasks` | Celery task introspection and orchestration. |
-| `cerebro_sdk.agents` | Agent session tooling, review queue access, memory analytics, and playbooks. |
+| `cerebro_sdk.agents.sessions` | Session creation, messaging, and SQL-backed memory analytics. |
+| `cerebro_sdk.agents.review` | Human-in-loop review queue management and comment/history helpers. |
+| `cerebro_sdk.agents.analytics` | Runtime event summaries and organization-level dashboards. |
+| `cerebro_sdk.agents.tooling` | Tool invocation listings, approval flows, and policy suggestions. |
+| `cerebro_sdk.agents.notifications` | Notification enqueueing, delivery tracking, and ticket lifecycle. |
+| `cerebro_sdk.agents.playbooks` | High-level orchestrations stitching sessions, notifications, and tooling. |
 
 All modules require an `AsyncSession` from `sqlalchemy.ext.asyncio`. For scripts, prefer the existing factory in `cerebro.core.database.async_session_factory()` to inherit connection settings.
 
@@ -27,4 +32,4 @@ async with Session() as db:
     ...
 ```
 
-Sub-pages cover deeper usage patterns and code samples for major domains.
+Sub-pages cover deeper usage patterns and code samples for major domains. Error handling is standardized via exceptions exported from `cerebro_sdk.agents` (e.g., `AgentNotFoundError`, `AgentInvalidStatusError`, `AgentValidationError`).

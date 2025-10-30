@@ -102,3 +102,13 @@ ticket = await notifications.create_ticket(
 ### Tooling and Approvals
 
 `AgentToolingManager` surfaces tool invocation history and approval decisions. All updates run inside nested-aware transactions to avoid partial writes when callers already manage transactions.
+
+### Error Handling Cheat Sheet
+
+| Operation | Possible Exceptions |
+| --- | --- |
+| Playbook scheduling notifications | `AgentNotFoundError` if review task missing. |
+| Notification delivery/ticket close | `AgentInvalidStatusError` for invalid state transitions. |
+| Tool invocation listings | `AgentInvalidStatusError` when filters can't be coerced to enums. |
+
+All errors inherit from `AgentSDKError`; catch the base class to handle generically.

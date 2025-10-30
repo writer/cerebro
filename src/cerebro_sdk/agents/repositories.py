@@ -28,6 +28,19 @@ from cerebro.agents.models import (
 class ToolingRepository:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+        from cerebro_sdk.telemetry import get_logger, create_counter
+
+        self._logger = get_logger(__name__ + ".tooling")
+        self._invocation_counter = create_counter(
+            "cerebro_sdk_tool_invocation_queries_total",
+            "Total tool invocation queries issued via SDK",
+            labelnames=("operation",),
+        )
+        self._approval_counter = create_counter(
+            "cerebro_sdk_tool_approval_queries_total",
+            "Total tool approval queries issued via SDK",
+            labelnames=("operation",),
+        )
 
     async def list_invocations(
         self,
@@ -41,6 +54,7 @@ class ToolingRepository:
         effective_limit: int,
         offset: int,
     ) -> list[ToolInvocation]:
+        self._invocation_counter.labels("list").inc()
         stmt = select(ToolInvocation)
         if org_id:
             stmt = stmt.join(AgentSession).where(AgentSession.org_id == org_id)
@@ -57,7 +71,15 @@ class ToolingRepository:
         if offset:
             stmt = stmt.offset(offset)
         stmt = stmt.order_by(ToolInvocation.started_at.desc(), ToolInvocation.id.desc()).limit(effective_limit)
-        return list(await self._db.scalars(stmt))
+        results = list(await self._db.scalars(stmt))
+        self._logger.debug(
+            "tooling.list_invocations",
+            count=len(results),
+            session_id=str(session_id) if session_id else None,
+            org_id=str(org_id) if org_id else None,
+            status=status.value if status else None,
+        )
+        return results
 
     async def list_approvals(
         self,
@@ -70,6 +92,7 @@ class ToolingRepository:
         effective_limit: int,
         offset: int,
     ) -> list[ToolApproval]:
+        self._approval_counter.labels("list").inc()
         stmt = select(ToolApproval).where(ToolApproval.org_id == org_id)
         if status:
             stmt = stmt.where(ToolApproval.status == status)
@@ -82,18 +105,34 @@ class ToolingRepository:
         if offset:
             stmt = stmt.offset(offset)
         stmt = stmt.order_by(ToolApproval.requested_at.desc(), ToolApproval.id.desc()).limit(effective_limit)
-        return list(await self._db.scalars(stmt))
+        results = list(await self._db.scalars(stmt))
+        self._logger.debug(
+            "tooling.list_approvals",
+            count=len(results),
+            org_id=str(org_id),
+            status=status.value if status else None,
+        )
+        return results
 
     async def get_invocation(self, invocation_id: UUID) -> Optional[ToolInvocation]:
         return await self._db.get(ToolInvocation, invocation_id)
 
     async def get_approval(self, approval_id: UUID) -> Optional[ToolApproval]:
+        self._approval_counter.labels("get").inc()
         return await self._db.get(ToolApproval, approval_id)
 
 
 class NotificationRepository:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+        from cerebro_sdk.telemetry import get_logger, create_counter
+
+        self._logger = get_logger(__name__ + ".notifications")
+        self._counter = create_counter(
+            "cerebro_sdk_notifications_total",
+            "Notification repository operations",
+            labelnames=("operation",),
+        )
 
     async def create(
         self,
@@ -103,6 +142,7 @@ class NotificationRepository:
         channel: str,
         payload: dict[str, object],
     ) -> AgentReviewNotification:
+        self._counter.labels("create").inc()
         notification = AgentReviewNotification(
             org_id=org_id,
             task_id=task_id,
@@ -121,19 +161,36 @@ class NotificationRepository:
         status: Optional[NotificationStatus],
         limit: int,
     ) -> list[AgentReviewNotification]:
+        self._counter.labels("list").inc()
         stmt = select(AgentReviewNotification).where(AgentReviewNotification.org_id == org_id)
         if status:
             stmt = stmt.where(AgentReviewNotification.status == status)
         stmt = stmt.order_by(AgentReviewNotification.created_at.desc()).limit(limit)
-        return list(await self._db.scalars(stmt))
+        results = list(await self._db.scalars(stmt))
+        self._logger.debug(
+            "notifications.list",
+            count=len(results),
+            org_id=str(org_id),
+            status=status.value if status else None,
+        )
+        return results
 
     async def get(self, notification_id: UUID) -> Optional[AgentReviewNotification]:
+        self._counter.labels("get").inc()
         return await self._db.get(AgentReviewNotification, notification_id)
 
 
 class TicketRepository:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+        from cerebro_sdk.telemetry import get_logger, create_counter
+
+        self._logger = get_logger(__name__ + ".tickets")
+        self._counter = create_counter(
+            "cerebro_sdk_tickets_total",
+            "Ticket repository operations",
+            labelnames=("operation",),
+        )
 
     async def create(
         self,
@@ -143,6 +200,7 @@ class TicketRepository:
         system: str,
         details: dict[str, object],
     ) -> AgentReviewTicket:
+        self._counter.labels("create").inc()
         ticket = AgentReviewTicket(
             org_id=org_id,
             task_id=task_id,
@@ -155,11 +213,15 @@ class TicketRepository:
         return ticket
 
     async def get(self, ticket_id: UUID) -> Optional[AgentReviewTicket]:
+        self._counter.labels("get").inc()
         return await self._db.get(AgentReviewTicket, ticket_id)
 
     async def list_for_task(self, task_id: UUID) -> list[AgentReviewTicket]:
+        self._counter.labels("list").inc()
         stmt = select(AgentReviewTicket).where(AgentReviewTicket.task_id == task_id)
-        return list(await self._db.scalars(stmt))
+        results = list(await self._db.scalars(stmt))
+        self._logger.debug("tickets.list", count=len(results), task_id=str(task_id))
+        return results
 
 
 def memory_scope_distribution(

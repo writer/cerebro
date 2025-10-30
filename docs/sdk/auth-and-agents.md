@@ -50,6 +50,21 @@ resources = await orgs.list_resources(account_id=orgs_list[0].org_id)
 
 The managers return typed dataclasses (`UserRecord`, `OrganizationRecord`, etc.) for easier IntelliSense and validation downstream.
 
+## Agent Modules Overview
+
+The SDK exposes granular facades under `cerebro_sdk.agents`:
+
+| Module | Responsibilities |
+| --- | --- |
+| `sessions.AgentManager` | Session creation, messaging, memory analytics. |
+| `review.AgentReviewManager` | Human review workflows: status updates, comments, history. |
+| `analytics.AgentAnalyticsClient` | Event listings and aggregated summaries. |
+| `tooling.AgentToolingManager` | Tool invocations, approval decisions, policy suggestions. |
+| `notifications.AgentNotificationManager` | Notifications, ticket creation/closure. |
+| `playbooks.AgentPlaybook` | Opinionated flows combining the above. |
+
+Shared dataclasses and error types live in `cerebro_sdk.agents.types`. Import from `cerebro_sdk.agents` to access them directly (the package re-exports its public surface).
+
 ## AgentManager Highlights
 
 ```python
@@ -93,6 +108,14 @@ The response contains role/scope histograms and the top five memories by decay s
 
 `sessions_for_finding` and `sessions_for_incident` now use PostgreSQL JSON containment operators to avoid loading every session in Python. Both accept `limit`/`offset` for pagination.
 
-## Transactions and Concurrency
+## Transactions, Errors, and Concurrency
 
-Agent review, tooling, and notification helpers now wrap writes in transaction contexts that automatically downgrade to nested savepoints when callers already hold a session transaction. This guarantees atomic history logging without forcing upstream consumers to manage commit order.
+All managers inherit a shared base that automatically chooses between `begin()` and `begin_nested()` depending on existing transactions. Exceptions surface as typed subclasses:
+
+| Error | When raised |
+| --- | --- |
+| `AgentNotFoundError` | Referenced sessions/tasks/records do not exist. |
+| `AgentInvalidStatusError` | Invalid status transition (e.g., re-delivering delivered notifications). |
+| `AgentValidationError` | Provided enum/string cannot be coerced into the expected type. |
+
+Catch these from `cerebro_sdk.agents` when integrating to provide user-facing messaging.
