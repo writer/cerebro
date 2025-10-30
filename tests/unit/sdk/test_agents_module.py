@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
 import pytest
+from prometheus_client import CollectorRegistry
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
@@ -499,6 +500,37 @@ async def test_agent_notification_manager(test_db: AsyncSession, test_org):
 
     with pytest.raises(AgentInvalidStatusError):
         await notification_manager.close_ticket(ticket_id=ticket.ticket_id)
+
+
+@pytest.mark.asyncio
+async def test_agent_tooling_and_notification_metrics(test_db: AsyncSession, test_org):
+    registry = CollectorRegistry()
+
+    tooling = AgentToolingManager(test_db, registry=registry)
+    await tooling.list_invocations(org_id=test_org.org_id)
+    await tooling.list_approvals(org_id=test_org.org_id)
+
+    tooling_list = registry.get_sample_value(
+        "cerebro_sdk_tool_invocation_queries_total",
+        labels={"operation": "list"},
+    )
+    approvals_list = registry.get_sample_value(
+        "cerebro_sdk_tool_approval_queries_total",
+        labels={"operation": "list"},
+    )
+
+    assert tooling_list == 1
+    assert approvals_list == 1
+
+    notifications = AgentNotificationManager(test_db, registry=registry)
+    records = await notifications.list_notifications(org_id=test_org.org_id)
+    assert records == []
+
+    notif_list = registry.get_sample_value(
+        "cerebro_sdk_notifications_total",
+        labels={"operation": "list"},
+    )
+    assert notif_list == 1
 
 
 @pytest.mark.asyncio

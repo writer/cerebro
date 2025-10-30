@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Iterable, Optional
 from uuid import UUID
 
+from prometheus_client import CollectorRegistry
 from sqlalchemy import Select, and_, func, literal, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +27,7 @@ from cerebro.agents.models import (
 
 
 class ToolingRepository:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
         self._db = db
         from cerebro_sdk.telemetry import get_logger, create_counter
 
@@ -35,11 +36,13 @@ class ToolingRepository:
             "cerebro_sdk_tool_invocation_queries_total",
             "Total tool invocation queries issued via SDK",
             labelnames=("operation",),
+            registry=registry,
         )
         self._approval_counter = create_counter(
             "cerebro_sdk_tool_approval_queries_total",
             "Total tool approval queries issued via SDK",
             labelnames=("operation",),
+            registry=registry,
         )
 
     async def list_invocations(
@@ -123,7 +126,7 @@ class ToolingRepository:
 
 
 class NotificationRepository:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
         self._db = db
         from cerebro_sdk.telemetry import get_logger, create_counter
 
@@ -132,6 +135,7 @@ class NotificationRepository:
             "cerebro_sdk_notifications_total",
             "Notification repository operations",
             labelnames=("operation",),
+            registry=registry,
         )
 
     async def create(
@@ -181,7 +185,7 @@ class NotificationRepository:
 
 
 class TicketRepository:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
         self._db = db
         from cerebro_sdk.telemetry import get_logger, create_counter
 
@@ -190,6 +194,7 @@ class TicketRepository:
             "cerebro_sdk_tickets_total",
             "Ticket repository operations",
             labelnames=("operation",),
+            registry=registry,
         )
 
     async def create(

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from prometheus_client import CollectorRegistry
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,9 +28,9 @@ from cerebro.agents.models import ApprovalStatus, ToolInvocationStatus
 class AgentToolingManager(AsyncManagerBase):
     """Inspect and manage tool invocations and approvals."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
         super().__init__(db)
-        self._repo = ToolingRepository(db)
+        self._repo = ToolingRepository(db, registry=registry)
 
     async def list_invocations(
         self,

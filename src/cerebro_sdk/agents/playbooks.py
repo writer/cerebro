@@ -7,6 +7,7 @@ from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy import select
+from prometheus_client import CollectorRegistry
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import AgentPolicySuggestion, AgentReviewTask
@@ -25,8 +26,9 @@ from cerebro_sdk.agents.types import (
 class AgentPlaybook(AsyncManagerBase):
     """High-level helpers orchestrating common agent playbooks."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
         super().__init__(db)
+        self._registry = registry
 
     async def start_incident_playbook(
         self,
@@ -80,7 +82,7 @@ class AgentPlaybook(AsyncManagerBase):
         task = await self._db.get(AgentReviewTask, task_id)
         if not task:
             return []
-        notification_manager = AgentNotificationManager(self._db)
+        notification_manager = AgentNotificationManager(self._db, registry=self._registry)
         results: list[AgentNotificationRecord] = []
         for channel in channels:
             record = await notification_manager.enqueue_notification(
@@ -102,7 +104,7 @@ class AgentPlaybook(AsyncManagerBase):
         task = await self._db.get(AgentReviewTask, task_id)
         if not task:
             return None
-        notification_manager = AgentNotificationManager(self._db)
+        notification_manager = AgentNotificationManager(self._db, registry=self._registry)
         return await notification_manager.create_ticket(
             org_id=task.org_id,
             task_id=task_id,

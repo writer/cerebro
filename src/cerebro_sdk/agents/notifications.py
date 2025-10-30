@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from prometheus_client import CollectorRegistry
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import AgentReviewNotification, AgentReviewTicket, NotificationStatus, TicketStatus
@@ -22,10 +23,10 @@ from cerebro_sdk.agents.types import (
 class AgentNotificationManager(AsyncManagerBase):
     """Manage notification and ticket records for agent workflows."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
         super().__init__(db)
-        self._notifications = NotificationRepository(db)
-        self._tickets = TicketRepository(db)
+        self._notifications = NotificationRepository(db, registry=registry)
+        self._tickets = TicketRepository(db, registry=registry)
 
     async def enqueue_notification(
         self,
