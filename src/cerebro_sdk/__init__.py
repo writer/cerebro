@@ -67,6 +67,20 @@ from .analytics import (
     IntegrationScopeBreakdown,
     IntegrationAccountSummary,
 )
+from .client import UnifiedCerebroSDK, UnifiedCerebroSDKContext, AgentFacades, AnalyticsFacades
+from .pagination import (
+    PageRequest,
+    CursorPage,
+    Cursor,
+    encode_cursor,
+    decode_cursor,
+)
+from .testing import (
+    StubRuntimeHealthClient,
+    StubIntegrationCoverageClient,
+    build_runtime_health_record,
+    build_integration_coverage_record,
+)
 from cerebro.agents.models import NotificationStatus, TicketStatus
 
 __all__ = [
@@ -133,6 +147,19 @@ __all__ = [
     "IntegrationCoverageRecord",
     "IntegrationScopeBreakdown",
     "IntegrationAccountSummary",
+    "UnifiedCerebroSDK",
+    "UnifiedCerebroSDKContext",
+    "AgentFacades",
+    "AnalyticsFacades",
+    "PageRequest",
+    "CursorPage",
+    "Cursor",
+    "encode_cursor",
+    "decode_cursor",
+    "StubRuntimeHealthClient",
+    "StubIntegrationCoverageClient",
+    "build_runtime_health_record",
+    "build_integration_coverage_record",
     "NotificationStatus",
     "TicketStatus",
 ]
