@@ -1,27 +1,18 @@
 # Cerebro AI Agents
 
-**AI Agents are a PRIMARY INTERFACE to Cerebro, not a bolt-on feature.**
+This document explains how the Cerebro agent runtime works, how it maps to the existing CLI and REST interfaces, and the controls that govern conversational access to the platform.
 
-Cerebro provides three first-class interfaces to the same security engine:
-- **CLI** - Command-line operations (`cerebro findings list`)
-- **REST API** - Programmatic access (`GET /api/v1/findings`)
-- **AI Agents** - Conversational interface (`"Show me critical findings"`)
+| Interface | Entry Points | Shared Components |
+| --- | --- | --- |
+| CLI | `cerebro findings list`, `cerebro query …` | Tool registry, CEL policy engine, audit log |
+| REST API | `/api/v1/findings`, `/api/v1/query/execute` | Same services and database models |
+| Agents | Conversational session (`runtime.send_message`) | Tool executor, transaction layer, audit trail |
 
-All three interfaces access the **same audited toolchain**, query the **same PostgreSQL database**, write to the **same audit trail**, and execute through the **same security engine**.
-
-## What Makes This Deep Integration?
-
-When an agent executes `findings_list` tool, it's not calling a separate agent-specific API. It's using the **exact same** findings engine that powers `cerebro findings list` and `GET /api/v1/findings`. The agent system is a **natural language wrapper** around Cerebro's core security capabilities.
-
-**Same Platform, Different Interface:**
-- Agent uses `query` tool → Same Zero-ETL SQL engine as CLI/API
-- Agent uses `security_analysis` tool → Same analysis engine across all interfaces
-- Agent updates finding status → Same audit log as API/CLI writes
-- Agent builds timeline → Same incident response data as other interfaces
+Each interface calls the same toolchain and persists to the same PostgreSQL-backed audit tables. Agents add a natural language layer on top of these primitives.
 
 ## Overview
 
-The agent system enables natural language interaction with all of Cerebro's capabilities: security findings, audit logs, compliance frameworks, incident response workflows, SQL queries, CEL rules, and security analysis. All agent operations are audited, policy-controlled, and designed with security-first principles.
+Agents provide natural language access to findings, audit data, compliance frameworks, incident workflows, SQL queries, CEL-based rules, and other security automation. All invocations pass through audited tooling, CEL policies, and permission checks before touching data.
 
 ## Architecture
 
@@ -72,131 +63,65 @@ The agent system enables natural language interaction with all of Cerebro's capa
 └──────────────────────────────────────────────────────────────┘
 ```
 
-## Key Components
+# Key Components
 
-### 1. CerebroClaudeRuntime (`runtime.py`)
+### CerebroClaudeRuntime (`runtime.py`)
 
-The main runtime that orchestrates Claude interactions:
+Coordinates model interactions and tool execution.
 
-- **Session Management**: Creates and manages agent sessions with context
-- **Message Streaming**: Streams Claude responses with real-time tool execution
-- **MCP Integration**: Uses Claude SDK's MCP server pattern for tool calling
-- **Token Tracking**: Monitors input/output tokens for cost management
-- **Database Persistence**: Stores all messages in append-only log
+- Session lifecycle management (`create_session`, `close_session`)
+- Streaming responses with interleaved tool execution (`send_message`)
+- Metrics helpers (token usage, execution times)
+- Persistent storage of messages in append-only tables
 
-**Key Methods**:
-```python
-async def create_session(org_id, agent_type, created_by, context) -> AgentSession
-async def send_message(session, message, user_id, stream=False) -> AsyncIterator
-async def get_session_messages(session_id, limit, offset) -> List[Dict]
-async def get_session_metrics(session_id) -> Dict
-```
+### MCP Bridge (`mcp_bridge.py`)
 
-### 2. MCP Bridge (`mcp_bridge.py`)
+Adapts Cerebro tools to Claude's Model Context Protocol.
 
-Converts Cerebro's Tool abstraction to Claude SDK's MCP tool format:
+- Wraps tool callables with SDK metadata
+- Translates input/output schemas
+- Normalizes exceptions and validation errors
 
-- **Tool Conversion**: Wraps Cerebro tools with SDK `@tool` decorator
-- **Input Schema Translation**: Converts Pydantic schemas to SDK format
-- **Result Formatting**: Formats ToolResult as SDK-compatible content blocks
-- **Error Handling**: Translates exceptions to SDK error format
+### Tool System (`tools/`)
 
-**Key Functions**:
-```python
-def cerebro_tool_to_mcp(cerebro_tool, context, executor) -> Callable
-def create_cerebro_mcp_server(tools, context, executor) -> MCPServer
-```
+The CLI, REST API, and agents all rely on the same tool registry. Every tool exposes:
 
-### 3. Tool System (`tools/`)
+- Pydantic-based request/response schemas
+- Permission level metadata (`READ_ONLY`, `WRITE_SAFE`, `WRITE_DESTRUCTIVE`, `ADMIN`)
+- CEL policy hooks and dry-run enforcement
+- Structured audit logging via `AgentAuditEvent`
 
-**Shared Security Tooling** across CLI, API, and Agents:
+Representative categories include findings management, analysis, timeline construction, SQL queries, and remediation actions.
 
-| Category | Representative tools |
-| --- | --- |
-| **Findings & Status** | `findings_list`, `finding_update_status`, `smart_finding_summarizer` |
-| **Analysis & Rules** | `security_analysis`, `rules`, `compliance_tester`, `evidence_bundle_builder` |
-| **Investigations** | `timeline`, `forensic_replay`, `change_replay`, `attack_path_simulator`, `blast_radius` |
-| **Queries & Context** | `query`, `natural_language_query`, `get_system_context`, `get_org_context` |
-| **Memory & Knowledge** | `remember_context`, `get_session_history`, `smart_summarizer` |
-| **Remediation & Actions** | `remediation_suggestions`, `identity_anomaly_hunter` |
+### Audit System (`audit.py`)
 
-Every tool is accessible via:
-- **CLI**: `cerebro [tool-name] [args]`
-- **REST API**: `POST /api/v1/[tool-endpoint]`
-- **AI Agents**: Agent invokes tool by name
+Maintains an org-scoped record of every tool invocation:
 
-All tools inherit from `Tool` base class with:
-- Input/output schema validation (Pydantic)
-- Permission level requirements
-- CEL policy enforcement
-- Dry-run mode support
-- Comprehensive audit logging
-- Shared audited toolchain used by CLI/API/agents
-
-### 4. Audit System (`audit.py`)
-
-Org-scoped audit logging for agent operations:
-
-- **AgentAuditEvent Model**: Separate from provider audit events
-- **Event Logging**: Tracks all tool invocations with full context
-- **Query Helpers**: Session and org-level audit trail queries
-- **Performance Tracking**: Execution time monitoring
+- Distinct audit model for agent activity
+- Helpers to query by session, organization, or timeframe
+- Execution time metrics captured alongside payloads
 
 ## Agent Types
 
-Cerebro supports specialized agent types with tailored system prompts:
+Agents use predefined prompts tailored to common workflows.
 
-| Agent Type | Focus | Expertise |
-|-----------|-------|-----------|
-| **SECURITY_ANALYST** | Triage, risk assessment, remediation | Vulnerability assessment, compliance mapping |
-| **INCIDENT_RESPONDER** | Timeline building, containment, evidence | Digital forensics, incident coordination |
-| **IDENTITY_ADVISOR** | IAM analysis, privilege escalation | Identity governance, access controls |
-| **COMPLIANCE_ADVISOR** | Framework mapping, compliance reports | CIS Controls, NIST, SOC 2 |
-| **ATTACK_PATH_ANALYST** | Attack modeling, choke points | Threat modeling, defensive architecture |
+| Agent Type | Typical Use |
+| --- | --- |
+| `SECURITY_ANALYST` | Finding triage, risk summaries, remediation recommendations |
+| `INCIDENT_RESPONDER` | Timeline creation, containment steps, evidence capture |
+| `IDENTITY_ADVISOR` | Privilege analysis, escalation tracing, identity hygiene |
+| `COMPLIANCE_ADVISOR` | Framework mapping, control validation, evidence prep |
+| `ATTACK_PATH_ANALYST` | Attack path modelling, choke point discovery |
 
-Agents run on the same Pulumi-managed ECS services as the API/worker fleet; task definitions inherit shared secrets and `KMS_PROVIDER=aws`, keeping CLI, API, and agent behavior aligned after each deployment.
+Agent tasks run on the same infrastructure as the API and workers, inheriting shared secrets, KMS configuration, and deployment lifecycle.
 
-## Security Features
+## Controls and Guardrails
 
-### 1. Dry-Run Mode (Default)
-
-All destructive operations default to dry-run:
-- Returns preview of what would be changed
-- Requires explicit approval to execute
-- Enforced at ToolExecutor level
-
-### 2. Permission Levels
-
-Hierarchical permission model:
-- `READ_ONLY`: Query data only
-- `WRITE_SAFE`: Non-destructive updates
-- `WRITE_DESTRUCTIVE`: Can modify/delete data (requires approval)
-- `ADMIN`: Full system access
-
-### 3. CEL Policy Enforcement
-
-Dynamic policy evaluation using Common Expression Language:
-- Org-level policies
-- Input validation rules
-- Context-aware authorization
-- Integration with Cerebro's rule engine
-
-### 4. Provider Scope
-
-Restrict tools to specific cloud providers:
-- Configured per session context
-- Filters all query results
-- Prevents cross-provider access violations
-
-### 5. Audit Trail
-
-Complete append-only audit log:
-- Every tool invocation logged
-- Session-level traceability
-- Org-wide audit queries
-- Performance metrics
-
-## Usage Example
+- **Dry-run first** – mutating tools default to preview mode and require explicit confirmation.
+- **Permission levels** – each session includes a permission tier; tools enforce minimums before executing.
+- **CEL policies** – inputs pass through org-defined expressions for contextual authorization and validation.
+- **Provider scoping** – session contexts restrict queries and tool lookups to allowed providers.
+- **Comprehensive audit trail** – every invocation records arguments, caller, execution time, and result.
 
 ```python
 from cerebro.agents.runtime import CerebroClaudeRuntime
@@ -315,7 +240,7 @@ CREATE TABLE agent_audit_events (
 
 ## Testing
 
-See `tests/agents/test_agent_integration.py` for comprehensive integration tests:
+See `tests/agents/test_agent_integration.py` for integration coverage.
 
 ```bash
 # Run all agent tests
@@ -330,21 +255,9 @@ pytest tests/agents/ --cov=src/cerebro/agents --cov-report=html
 
 ## Performance Considerations
 
-### Token Usage
-
-- Average query: 500-2000 input tokens
-- Tool-heavy responses: 3000-8000 total tokens
-- Monitor via `get_session_metrics()`
-
-### Response Times
-
-- Simple queries: 2-5 seconds
-- Complex multi-tool operations: 10-30 seconds
-- Timeline building: 15-45 seconds
-
-### Database Optimization
-
-Recommended indexes:
+- **Token usage** – typical requests range from 500–2000 input tokens; multi-tool workflows can reach 8000 tokens. Use `get_session_metrics()` to monitor usage.
+- **Response time** – simple queries complete in 2–5 seconds; complex multi-tool timelines may take 10–30 seconds.
+- **Indexes** – ensure the following indexes exist in production deployments:
 ```sql
 CREATE INDEX idx_agent_messages_session_created
     ON agent_messages(session_id, created_at);
@@ -358,45 +271,22 @@ CREATE INDEX idx_findings_org_status_severity
 
 ## Troubleshooting
 
-### Common Issues
-
-**1. "MCP server not found"**
-- Ensure tools are registered in `tools/__init__.py`
-- Check `tool_registry.list_tools()` returns expected tools
-
-**2. "Permission denied"**
-- Verify `AgentContext.permission_level` is sufficient
-- Check tool's `permission_level` property
-
-**3. "CEL policy evaluation failed"**
-- Review CEL expression syntax
-- Validate context variables are available
-- Check logs for detailed CEL error
-
-**4. "Tool execution timeout"**
-- Increase Claude SDK timeout
-- Check database query performance
-- Review audit logs for slow operations
-
-## Future Enhancements
-
-- [ ] Multi-session context sharing
-- [ ] Tool approval workflow UI
-- [ ] Custom tool plugins via MCP
-- [ ] Agent performance analytics dashboard
-- [ ] Automated incident response workflows
-- [ ] Integration with ticketing systems
+| Symptom | Checks |
+| --- | --- |
+| "MCP server not found" | Verify tools are registered in `tools/__init__.py`; inspect `tool_registry.list_tools()` output. |
+| "Permission denied" | Confirm the session `permission_level` meets the tool requirement. |
+| "CEL policy evaluation failed" | Review policy syntax and ensure required context fields are supplied. |
+| Tool execution timeout | Increase the Claude SDK timeout and inspect database performance metrics. |
 
 ## Related Documentation
 
-- [Agent Fixes Summary](./fixes-summary.md) - Detailed implementation history
-- [Architecture Overview](../architecture/agents.md) - System design
-- [Tool Development Guide](./tools.md) - Creating custom tools
-- [Security Model](../architecture/security.md) - Security architecture
+- [Agent fixes summary](./fixes-summary.md)
+- [Agent architecture](../architecture/agents.md)
+- [Tool development guide](./tools.md)
+- [Security model](../architecture/security.md)
 
 ## Support
 
-For issues or questions:
-- GitHub Issues: https://github.com/haasonsaas/cerebro/issues
+File issues or feature requests at <https://github.com/WriterInternal/cerebro/issues>.
 - Internal Wiki: (link to internal docs)
 - Team Chat: #cerebro-agents

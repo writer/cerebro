@@ -158,7 +158,7 @@ cerebro/
 
 ## Documentation
 
-- [Quickstart](docs/QUICKSTART.md)
+- [Quickstart](docs/getting-started/QUICKSTART.md)
 - [API Reference](docs/user-guide/API.md)
 - [Agents Guide](docs/agents/README.md)
 - [Query Engine](docs/QUERY_ENGINE.md)
