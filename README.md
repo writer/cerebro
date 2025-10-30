@@ -100,7 +100,7 @@ curl "http://localhost:8000/api/v1/findings?severity=critical" \
 
 ## Internal SDK (Writer teams)
 
-The repository ships with `cerebro_sdk`, an async facade layer consumed by internal automation. Facets include authentication, user and organization management, findings workflows, integration orchestration, telemetry utilities, and modular agent helpers.
+The repository ships with `cerebro_sdk`, an async facade layer consumed by internal automation. Facets include authentication, user and organization management, findings workflows, integration orchestration, telemetry utilities, and modular agent helpers. Documentation lives under [`docs/sdk/`](docs/sdk/README.md) with domain-specific guides.
 
 ```python
 from cerebro.core.database import async_session_factory

@@ -1,5 +1,7 @@
 # Integrations, Tasks, and Playbooks
 
+See the [SDK overview](README.md) for module mapping and installation details.
+
 ## Integration Service
 
 ```python

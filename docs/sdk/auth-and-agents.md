@@ -1,6 +1,6 @@
 # Configuration, Authentication, and Agents
 
-This page walks through the high-level flows supported by `cerebro_sdk.config`, `auth`, `users`, `organizations`, and the agent facades. All samples assume an `AsyncSession` named `db`.
+This page walks through the high-level flows supported by `cerebro_sdk.config`, `auth`, `users`, `organizations`, and the agent facades. All samples assume an `AsyncSession` named `db`. For an index of other SDK modules, see the [SDK overview](README.md).
 
 ## Settings Access
 
