@@ -3,4 +3,3 @@ dist
 .vitest
 coverage
 *.log
-src/generated
