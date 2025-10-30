@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
@@ -234,7 +234,7 @@ class AgentManager:
         self,
         *,
         org_id: UUID,
-        agent_type: str,
+        agent_type: AgentType | str,
         created_by: str,
         context: Optional[dict[str, Any]] = None,
         title: Optional[str] = None,
@@ -257,7 +257,7 @@ class AgentManager:
         org_id: UUID,
         created_by: str,
         finding_ids: Iterable[UUID | str],
-        agent_type: str = "security_analyst",
+        agent_type: AgentType | str = AgentType.SECURITY_ANALYST,
         title: Optional[str] = None,
         context: Optional[dict[str, Any]] = None,
     ) -> AgentSessionRecord:
@@ -280,7 +280,7 @@ class AgentManager:
         org_id: UUID,
         created_by: str,
         incident_id: UUID | str,
-        agent_type: str = "incident_responder",
+        agent_type: AgentType | str = AgentType.INCIDENT_RESPONDER,
         title: Optional[str] = None,
         context: Optional[dict[str, Any]] = None,
     ) -> AgentSessionRecord:
@@ -306,7 +306,7 @@ class AgentManager:
         self,
         *,
         org_id: UUID,
-        agent_type: Optional[str] = None,
+        agent_type: AgentType | str | None = None,
         created_by: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -427,15 +427,51 @@ class AgentManager:
             )
         return records
 
-    async def get_memory_stats(self, *, session_id: UUID) -> Optional[AgentMemoryStats]:
+    async def get_memory_stats(
+        self,
+        *,
+        session_id: UUID,
+        role: MessageRole | str | None = None,
+        scope_type: Optional[str] = None,
+        since_hours: Optional[int] = None,
+    ) -> Optional[AgentMemoryStats]:
         session = await self._db.get(AgentSession, session_id)
         if not session:
             return None
 
-        entries = list(
-            await self._db.scalars(select(AgentMemoryEntry).where(AgentMemoryEntry.session_id == session_id))
+        filters: list[Any] = [AgentMemoryEntry.session_id == session_id]
+        if role:
+            role_enum = role if isinstance(role, MessageRole) else self._parse_message_role(role)
+            filters.append(AgentMemoryEntry.role == role_enum)
+
+        if scope_type:
+            filters.append(AgentMemoryEntry.scopes.contains([{"type": scope_type}]))
+
+        cutoff = None
+        if since_hours is not None and since_hours > 0:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+            filters.append(AgentMemoryEntry.created_at >= cutoff)
+
+        where_clause = filters[0] if len(filters) == 1 else and_(*filters)
+
+        recent_reference = cutoff or (datetime.now(timezone.utc) - timedelta(hours=24))
+        presented_expr = func.coalesce(AgentMemoryEntry.extra_metadata["presented_count"].as_integer(), 0)
+
+        aggregate_stmt = (
+            select(
+                func.count(AgentMemoryEntry.id).label("total"),
+                func.sum(
+                    case((AgentMemoryEntry.created_at >= recent_reference, 1), else_=0)
+                ).label("recent"),
+                func.sum(case((presented_expr > 0, 1), else_=0)).label("presented"),
+                func.coalesce(func.sum(AgentMemoryEntry.token_count), 0).label("token_total"),
+                func.coalesce(func.avg(AgentMemoryEntry.decay_score), 0.0).label("avg_decay"),
+            )
+            .where(where_clause)
         )
-        if not entries:
+
+        aggregate = (await self._db.execute(aggregate_stmt)).first()
+        if not aggregate or not aggregate.total:
             return AgentMemoryStats(
                 total_entries=0,
                 recent_entries=0,
@@ -447,70 +483,74 @@ class AgentManager:
                 top_memories=[],
             )
 
-        role_distribution: dict[str, int] = {}
-        scope_distribution: dict[str, int] = {}
-        token_total = 0
-        decay_sum = 0.0
-        recent_entries = 0
-        presented_entries = 0
-        highlights: list[dict[str, Any]] = []
-        recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        role_stmt = (
+            select(AgentMemoryEntry.role, func.count())
+            .where(where_clause)
+            .group_by(AgentMemoryEntry.role)
+        )
+        role_rows = await self._db.execute(role_stmt)
+        role_distribution = {
+            (row[0].value if row[0] else "unknown").lower(): row[1]
+            for row in role_rows
+        }
 
-        for entry in entries:
-            created_at = entry.created_at
-            if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
-            last_accessed = entry.last_accessed_at
+        scopes_to_process = await self._db.scalars(
+            select(AgentMemoryEntry.scopes)
+            .where(where_clause)
+            .limit(200)
+        )
+        scope_distribution: dict[str, int] = {}
+        for scopes in scopes_to_process:
+            for scope in scopes or []:
+                scope_name = (scope.get("type") or "unknown").lower()
+                scope_distribution[scope_name] = scope_distribution.get(scope_name, 0) + 1
+
+        highlight_stmt = (
+            select(
+                AgentMemoryEntry.id,
+                AgentMemoryEntry.summary,
+                AgentMemoryEntry.decay_score,
+                AgentMemoryEntry.last_accessed_at,
+                AgentMemoryEntry.role,
+                AgentMemoryEntry.scopes,
+            )
+            .where(where_clause)
+            .order_by(AgentMemoryEntry.decay_score.desc())
+            .limit(5)
+        )
+        highlight_rows = await self._db.execute(highlight_stmt)
+        highlights: list[dict[str, Any]] = []
+        for row in highlight_rows:
+            _, summary, decay_score, last_accessed, role_value, scopes = row
+            last_accessed = last_accessed or datetime.now(timezone.utc)
             if last_accessed.tzinfo is None:
                 last_accessed = last_accessed.replace(tzinfo=timezone.utc)
-
-            role_key = (entry.role.value if entry.role else "unknown").lower()
-            role_distribution[role_key] = role_distribution.get(role_key, 0) + 1
-
-            for scope in entry.scopes or []:
-                scope_type = (scope.get("type") or "unknown").lower()
-                scope_distribution[scope_type] = scope_distribution.get(scope_type, 0) + 1
-
-            metadata = entry.extra_metadata or {}
-            if int(metadata.get("presented_count", 0) or 0) > 0:
-                presented_entries += 1
-
-            if created_at >= recent_cutoff:
-                recent_entries += 1
-
-            token_total += entry.token_count or 0
-            decay_sum += entry.decay_score
-
             scope_labels: list[str] = []
-            for scope in entry.scopes or []:
+            for scope in scopes or []:
                 scope_type = scope.get("type")
                 value = scope.get("value")
                 if scope_type and scope_type != "session":
                     scope_labels.append(f"{scope_type}:{value}" if value else scope_type)
-
             highlights.append(
                 {
-                    "id": str(entry.id),
-                    "summary": entry.summary,
-                    "decay_score": entry.decay_score,
+                    "id": str(row[0]),
+                    "summary": summary,
+                    "decay_score": decay_score,
                     "last_accessed_at": last_accessed.isoformat(),
-                    "role": entry.role.value if entry.role else None,
+                    "role": role_value.value if role_value else None,
                     "scope_labels": scope_labels,
                 }
             )
 
-        highlights.sort(key=lambda item: item["decay_score"], reverse=True)
-        average_decay = decay_sum / len(entries)
-
         return AgentMemoryStats(
-            total_entries=len(entries),
-            recent_entries=recent_entries,
-            presented_entries=presented_entries,
-            average_decay=round(average_decay, 3),
-            token_total=token_total,
+            total_entries=int(aggregate.total or 0),
+            recent_entries=int(aggregate.recent or 0),
+            presented_entries=int(aggregate.presented or 0),
+            average_decay=round(float(aggregate.avg_decay or 0.0), 3),
+            token_total=int(aggregate.token_total or 0),
             role_distribution=role_distribution,
             scope_distribution=scope_distribution,
-            top_memories=highlights[:5],
+            top_memories=highlights,
         )
 
     async def link_findings(
@@ -561,40 +601,55 @@ class AgentManager:
         *,
         org_id: UUID,
         finding_id: UUID | str,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[AgentSessionRecord]:
-        sessions = list(await self._db.scalars(select(AgentSession).where(AgentSession.org_id == org_id)))
         target = str(finding_id)
-        matched: list[AgentSessionRecord] = []
-        for session in sessions:
-            context = session.context or {}
-            ids = [str(value) for value in context.get("finding_ids", [])]
-            if target in ids:
-                matched.append(self._session_to_record(session))
-        return matched
+        stmt = (
+            select(AgentSession)
+            .where(AgentSession.org_id == org_id)
+            .where(AgentSession.context.contains({"finding_ids": [target]}))
+            .order_by(AgentSession.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        sessions = list(await self._db.scalars(stmt))
+        return [self._session_to_record(session) for session in sessions]
 
     async def sessions_for_incident(
         self,
         *,
         org_id: UUID,
         incident_id: UUID | str,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[AgentSessionRecord]:
-        sessions = list(await self._db.scalars(select(AgentSession).where(AgentSession.org_id == org_id)))
         target = str(incident_id)
-        return [
-            self._session_to_record(session)
-            for session in sessions
-            if str((session.context or {}).get("incident_id")) == target
-        ]
+        incident_field = AgentSession.context["incident_id"].as_string()
+        stmt = (
+            select(AgentSession)
+            .where(AgentSession.org_id == org_id)
+            .where(incident_field == target)
+            .order_by(AgentSession.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        sessions = list(await self._db.scalars(stmt))
+        return [self._session_to_record(session) for session in sessions]
 
     @staticmethod
-    def _parse_agent_type(agent_type: str) -> AgentType:
+    def _parse_agent_type(agent_type: AgentType | str) -> AgentType:
+        if isinstance(agent_type, AgentType):
+            return agent_type
         try:
             return AgentType(agent_type)
         except ValueError as exc:
             raise ValueError(f"Invalid agent type '{agent_type}'") from exc
 
     @staticmethod
-    def _parse_message_role(role: str) -> MessageRole:
+    def _parse_message_role(role: MessageRole | str) -> MessageRole:
+        if isinstance(role, MessageRole):
+            return role
         try:
             return MessageRole(role)
         except ValueError as exc:
@@ -630,17 +685,20 @@ class AgentReviewManager:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    def _transaction(self):
+        return self._db.begin_nested() if self._db.in_transaction() else self._db.begin()
+
     async def list_tasks(
         self,
         *,
         org_id: UUID,
-        status: Optional[str] = None,
+        status: ReviewTaskStatus | str | None = None,
         limit: int = 50,
     ) -> list[AgentReviewTaskRecord]:
         stmt = select(AgentReviewTask).where(AgentReviewTask.org_id == org_id)
         if status:
             try:
-                status_enum = ReviewTaskStatus(status)
+                status_enum = status if isinstance(status, ReviewTaskStatus) else ReviewTaskStatus(status)
             except ValueError:
                 return []
             stmt = stmt.where(AgentReviewTask.status == status_enum)
@@ -652,7 +710,7 @@ class AgentReviewManager:
         self,
         *,
         task_id: UUID,
-        status: str,
+        status: ReviewTaskStatus | str,
         resolved_by: str,
         notes: Optional[str] = None,
     ) -> Optional[AgentReviewTaskRecord]:
@@ -660,28 +718,28 @@ class AgentReviewManager:
         if not task:
             return None
         try:
-            status_enum = ReviewTaskStatus(status)
+            status_enum = status if isinstance(status, ReviewTaskStatus) else ReviewTaskStatus(status)
         except ValueError as exc:
             raise ValueError("Invalid review task status") from exc
 
-        old_status = task.status
-        task.status = status_enum
-        task.resolved_by = resolved_by
-        task.resolved_at = datetime.now(timezone.utc)
-        task.resolution_notes = notes
-        await self._db.flush()
+        async with self._transaction():
+            old_status = task.status
+            task.status = status_enum
+            task.resolved_by = resolved_by
+            task.resolved_at = datetime.now(timezone.utc)
+            task.resolution_notes = notes
+            await self._db.flush()
 
-        await self._record_history(
-            task_id=task.id,
-            changed_by=resolved_by,
-            change_type="status_change",
-            field_name="status",
-            old_value={"status": old_status.value},
-            new_value={"status": status_enum.value},
-            metadata={"notes": notes} if notes else {},
-        )
+            await self._record_history(
+                task_id=task.id,
+                changed_by=resolved_by,
+                change_type="status_change",
+                field_name="status",
+                old_value={"status": old_status.value},
+                new_value={"status": status_enum.value},
+                metadata={"notes": notes} if notes else {},
+            )
 
-        await self._db.commit()
         await self._db.refresh(task)
         return self._to_record(task)
 
@@ -690,7 +748,7 @@ class AgentReviewManager:
         *,
         org_id: UUID,
         task_ids: Iterable[UUID],
-        status: Optional[str] = None,
+        status: ReviewTaskStatus | str | None = None,
         resolved_by: Optional[str] = None,
         notes: Optional[str] = None,
         escalated_to: Optional[str] = None,
@@ -714,36 +772,39 @@ class AgentReviewManager:
         status_enum: Optional[ReviewTaskStatus] = None
         if status:
             try:
-                status_enum = ReviewTaskStatus(status)
+                status_enum = status if isinstance(status, ReviewTaskStatus) else ReviewTaskStatus(status)
             except ValueError as exc:
                 raise ValueError("Invalid review task status") from exc
 
-        for task in tasks:
-            if priority:
-                task.priority = priority
-            if due_at:
-                task.due_at = due_at
-            if notification_channel:
-                task.notification_channel = notification_channel
-            if escalated_to:
-                task.escalated_to = escalated_to
-            if status_enum:
-                old_status = task.status
-                task.status = status_enum
-                task.resolved_by = resolved_by
-                task.resolved_at = datetime.now(timezone.utc)
-                task.resolution_notes = notes
-                await self._record_history(
-                    task_id=task.id,
-                    changed_by=resolved_by or "system",
-                    change_type="status_change",
-                    field_name="status",
-                    old_value={"status": old_status.value},
-                    new_value={"status": status_enum.value},
-                    metadata={"notes": notes} if notes else {},
-                )
+        async with self._transaction():
+            for task in tasks:
+                if priority:
+                    task.priority = priority
+                if due_at:
+                    task.due_at = due_at
+                if notification_channel:
+                    task.notification_channel = notification_channel
+                if escalated_to:
+                    task.escalated_to = escalated_to
+                if status_enum:
+                    old_status = task.status
+                    task.status = status_enum
+                    task.resolved_by = resolved_by
+                    task.resolved_at = datetime.now(timezone.utc)
+                    task.resolution_notes = notes
+                    await self._db.flush()
+                    await self._record_history(
+                        task_id=task.id,
+                        changed_by=resolved_by or "system",
+                        change_type="status_change",
+                        field_name="status",
+                        old_value={"status": old_status.value},
+                        new_value={"status": status_enum.value},
+                        metadata={"notes": notes} if notes else {},
+                    )
 
-        await self._db.commit()
+        for task in tasks:
+            await self._db.refresh(task)
         return [self._to_record(task) for task in tasks]
 
     async def assign_task(
@@ -757,19 +818,20 @@ class AgentReviewManager:
         if not task:
             return None
         now = datetime.now(timezone.utc)
-        task.assigned_to = assigned_to
-        task.assigned_by = assigned_by
-        task.assigned_at = now
-        await self._record_history(
-            task_id=task.id,
-            changed_by=assigned_by,
-            change_type="assignment",
-            field_name="assigned_to",
-            old_value=None,
-            new_value={"assigned_to": assigned_to},
-            metadata={},
-        )
-        await self._db.commit()
+        async with self._transaction():
+            task.assigned_to = assigned_to
+            task.assigned_by = assigned_by
+            task.assigned_at = now
+            await self._db.flush()
+            await self._record_history(
+                task_id=task.id,
+                changed_by=assigned_by,
+                change_type="assignment",
+                field_name="assigned_to",
+                old_value=None,
+                new_value={"assigned_to": assigned_to},
+                metadata={},
+            )
         await self._db.refresh(task)
         return self._to_record(task)
 
@@ -781,25 +843,26 @@ class AgentReviewManager:
         content: str,
         metadata: Optional[dict[str, Any]] = None,
     ) -> AgentReviewCommentRecord:
-        comment = AgentReviewComment(
-            task_id=task_id,
-            author=author,
-            content=content,
-            extra_metadata=dict(metadata or {}),
-        )
-        self._db.add(comment)
-        await self._db.commit()
+        async with self._transaction():
+            comment = AgentReviewComment(
+                task_id=task_id,
+                author=author,
+                content=content,
+                extra_metadata=dict(metadata or {}),
+            )
+            self._db.add(comment)
+            await self._db.flush()
+            await self._record_history(
+                task_id=task_id,
+                changed_by=author,
+                change_type="comment",
+                field_name="comments",
+                old_value=None,
+                new_value={"comment_id": str(comment.id)},
+                metadata=dict(metadata or {}),
+            )
+
         await self._db.refresh(comment)
-        await self._record_history(
-            task_id=task_id,
-            changed_by=author,
-            change_type="comment",
-            field_name="comments",
-            old_value=None,
-            new_value={"comment_id": str(comment.id)},
-            metadata=dict(metadata or {}),
-        )
-        await self._db.commit()
         return self._comment_to_record(comment)
 
     async def list_comments(self, *, task_id: UUID) -> list[AgentReviewCommentRecord]:
@@ -842,7 +905,6 @@ class AgentReviewManager:
             extra_metadata=metadata,
         )
         self._db.add(history)
-        await self._db.flush()
 
     @staticmethod
     def _to_record(task: AgentReviewTask) -> AgentReviewTaskRecord:
@@ -1021,6 +1083,9 @@ class AgentToolingManager:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    def _transaction(self):
+        return self._db.begin_nested() if self._db.in_transaction() else self._db.begin()
+
     async def list_invocations(
         self,
         *,
@@ -1086,23 +1151,24 @@ class AgentToolingManager:
         except ValueError as exc:
             raise ValueError("Invalid approval status") from exc
 
-        now = datetime.now(timezone.utc)
-        approval.status = status_enum
-        approval.decided_by = decided_by
-        approval.decided_at = now
-        approval.decision_reason = decision_reason
-
         invocation = approval.tool_invocation
-        if invocation:
-            if status_enum == ApprovalStatus.APPROVED:
-                invocation.status = ToolInvocationStatus.SUCCESS
-                invocation.completed_at = now
-            elif status_enum == ApprovalStatus.REJECTED:
-                invocation.status = ToolInvocationStatus.ERROR
-                invocation.error_message = decision_reason or "Rejected by reviewer"
-                invocation.completed_at = now
+        now = datetime.now(timezone.utc)
 
-        await self._db.commit()
+        async with self._transaction():
+            approval.status = status_enum
+            approval.decided_by = decided_by
+            approval.decided_at = now
+            approval.decision_reason = decision_reason
+
+            if invocation:
+                if status_enum == ApprovalStatus.APPROVED:
+                    invocation.status = ToolInvocationStatus.SUCCESS
+                    invocation.completed_at = now
+                elif status_enum == ApprovalStatus.REJECTED:
+                    invocation.status = ToolInvocationStatus.ERROR
+                    invocation.error_message = decision_reason or "Rejected by reviewer"
+                    invocation.completed_at = now
+
         await self._db.refresh(approval)
         if invocation:
             await self._db.refresh(invocation)
@@ -1181,6 +1247,9 @@ class AgentNotificationManager:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    def _transaction(self):
+        return self._db.begin_nested() if self._db.in_transaction() else self._db.begin()
+
     async def enqueue_notification(
         self,
         *,
@@ -1189,15 +1258,15 @@ class AgentNotificationManager:
         channel: str,
         payload: Optional[dict[str, Any]] = None,
     ) -> AgentNotificationRecord:
-        notification = AgentReviewNotification(
-            org_id=org_id,
-            task_id=task_id,
-            channel=channel,
-            payload=dict(payload or {}),
-            status="pending",
-        )
-        self._db.add(notification)
-        await self._db.commit()
+        async with self._transaction():
+            notification = AgentReviewNotification(
+                org_id=org_id,
+                task_id=task_id,
+                channel=channel,
+                payload=dict(payload or {}),
+                status="pending",
+            )
+            self._db.add(notification)
         await self._db.refresh(notification)
         return self._notification_to_record(notification)
 
@@ -1219,9 +1288,9 @@ class AgentNotificationManager:
         notification = await self._db.get(AgentReviewNotification, notification_id)
         if not notification:
             return None
-        notification.status = "delivered"
-        notification.delivered_at = datetime.now(timezone.utc)
-        await self._db.commit()
+        async with self._transaction():
+            notification.status = "delivered"
+            notification.delivered_at = datetime.now(timezone.utc)
         await self._db.refresh(notification)
         return self._notification_to_record(notification)
 
@@ -1236,15 +1305,15 @@ class AgentNotificationManager:
     ) -> AgentTicketRecord:
         details = dict(metadata or {})
         details.setdefault("summary", summary)
-        ticket = AgentReviewTicket(
-            org_id=org_id,
-            task_id=task_id,
-            system=system,
-            details=details,
-            status="open",
-        )
-        self._db.add(ticket)
-        await self._db.commit()
+        async with self._transaction():
+            ticket = AgentReviewTicket(
+                org_id=org_id,
+                task_id=task_id,
+                system=system,
+                details=details,
+                status="open",
+            )
+            self._db.add(ticket)
         await self._db.refresh(ticket)
         return self._ticket_to_record(ticket)
 
@@ -1257,11 +1326,11 @@ class AgentNotificationManager:
         ticket = await self._db.get(AgentReviewTicket, ticket_id)
         if not ticket:
             return None
-        ticket.status = "closed"
-        ticket.updated_at = datetime.now(timezone.utc)
-        if external_id:
-            ticket.external_id = external_id
-        await self._db.commit()
+        async with self._transaction():
+            ticket.status = "closed"
+            ticket.updated_at = datetime.now(timezone.utc)
+            if external_id:
+                ticket.external_id = external_id
         await self._db.refresh(ticket)
         return self._ticket_to_record(ticket)
 
@@ -1303,6 +1372,9 @@ class AgentPlaybook:
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+
+    def _transaction(self):
+        return self._db.begin_nested() if self._db.in_transaction() else self._db.begin()
 
     async def start_incident_playbook(
         self,
@@ -1405,25 +1477,25 @@ class AgentPlaybook:
         )
         existing = await self._db.scalar(stmt)
         if existing:
-            existing.support_count += support_delta
-            existing.reject_count += reject_delta
-            existing.details.update(details or {})
-            existing.last_seen = now
-            await self._db.commit()
+            async with self._transaction():
+                existing.support_count += support_delta
+                existing.reject_count += reject_delta
+                existing.details.update(details or {})
+                existing.last_seen = now
             await self._db.refresh(existing)
             return AgentToolingManager._policy_to_record(existing)
 
-        suggestion = AgentPolicySuggestion(
-            org_id=org_id,
-            tool_name=tool_name,
-            cel_expression=cel_expression,
-            support_count=support_delta,
-            reject_count=reject_delta,
-            details=dict(details or {}),
-            last_seen=now,
-            created_at=now,
-        )
-        self._db.add(suggestion)
-        await self._db.commit()
+        async with self._transaction():
+            suggestion = AgentPolicySuggestion(
+                org_id=org_id,
+                tool_name=tool_name,
+                cel_expression=cel_expression,
+                support_count=support_delta,
+                reject_count=reject_delta,
+                details=dict(details or {}),
+                last_seen=now,
+                created_at=now,
+            )
+            self._db.add(suggestion)
         await self._db.refresh(suggestion)
         return AgentToolingManager._policy_to_record(suggestion)

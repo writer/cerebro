@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import IntegrationSyncIssueEvent
-from cerebro_sdk.integrations import IntegrationService
+from cerebro_sdk.integrations import IntegrationService, IntegrationTaskRegistry
 from cerebro.tasks import integration_tasks
 
 
@@ -63,3 +63,18 @@ def test_integration_service_trigger_sync(monkeypatch: pytest.MonkeyPatch):
 
     assert task_id == "task-123"
     apply_mock.assert_called_once()
+
+
+def test_integration_task_registry_registration(monkeypatch: pytest.MonkeyPatch):
+    mock_result = MagicMock(id="task-789")
+    mock_task = MagicMock()
+    mock_task.apply_async.return_value = mock_result
+
+    IntegrationTaskRegistry.register("custom", mock_task)
+    try:
+        service = IntegrationService(MagicMock())
+        task_id = service.trigger_sync("custom", foo="bar")
+        assert task_id == "task-789"
+        mock_task.apply_async.assert_called_once_with(kwargs={"foo": "bar"})
+    finally:
+        IntegrationTaskRegistry.unregister("custom")

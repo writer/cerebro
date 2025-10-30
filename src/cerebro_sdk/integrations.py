@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Callable, ClassVar, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,18 +33,36 @@ class IntegrationIssueRecord:
     metadata: dict[str, Any]
 
 
+class IntegrationTaskRegistry:
+    """Pluggable registry for integration task entrypoints."""
+
+    _tasks: ClassVar[dict[str, Callable[..., Any]]] = {}
+
+    @classmethod
+    def register(cls, name: str, task: Callable[..., Any]) -> None:
+        cls._tasks[name.lower()] = task
+
+    @classmethod
+    def unregister(cls, name: str) -> None:
+        cls._tasks.pop(name.lower(), None)
+
+    @classmethod
+    def get(cls, name: str) -> Optional[Callable[..., Any]]:
+        return cls._tasks.get(name.lower())
+
+    @classmethod
+    def available(cls) -> dict[str, Callable[..., Any]]:
+        return dict(cls._tasks)
+
+
 class IntegrationService:
     """Facade for integration sync state and task orchestration."""
 
-    _TASKS = {
-        "kandji": sync_kandji,
-        "sentinelone": sync_sentinelone,
-    }
-
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, registry: type[IntegrationTaskRegistry] | None = None) -> None:
         self._state_repo = IntegrationStateRepository(db)
         self._issue_repo = IntegrationIssueEventRepository(db)
         self._db = db
+        self._registry = registry or IntegrationTaskRegistry
 
     async def list_states(self, *, integration: Optional[str] = None) -> list[IntegrationStateRecord]:
         states = await self._state_repo.list_states(integration=integration)
@@ -59,14 +77,14 @@ class IntegrationService:
         last_timestamp: Optional[datetime] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> IntegrationStateRecord:
-        state = await self._state_repo.upsert_state(
-            integration=integration,
-            scope=scope,
-            last_cursor=last_cursor,
-            last_timestamp=last_timestamp,
-            metadata=metadata,
-        )
-        await self._db.commit()
+        async with self._db.begin():
+            state = await self._state_repo.upsert_state(
+                integration=integration,
+                scope=scope,
+                last_cursor=last_cursor,
+                last_timestamp=last_timestamp,
+                metadata=metadata,
+            )
         return self._state_to_record(state)
 
     async def list_issue_events(
@@ -101,7 +119,7 @@ class IntegrationService:
         )
 
     def trigger_sync(self, integration: str, **kwargs) -> Optional[str]:
-        task = self._TASKS.get(integration.lower())
+        task = self._registry.get(integration)
         if task is None:
             raise ValueError(f"Unknown integration '{integration}'")
         result = task.apply_async(kwargs=kwargs)
@@ -128,3 +146,8 @@ class IntegrationService:
             observed_at=event.observed_at,
             metadata=dict(event.issue_metadata or {}),
         )
+
+
+# Register default integration tasks
+IntegrationTaskRegistry.register("kandji", sync_kandji)
+IntegrationTaskRegistry.register("sentinelone", sync_sentinelone)
