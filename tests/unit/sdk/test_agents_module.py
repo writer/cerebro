@@ -343,6 +343,8 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
             input_data={"idx": idx},
             status=status,
             started_at=started_at,
+            cel_policy_key="policy.allow" if idx != 2 else "policy.deny",
+            cel_result=(idx != 2),
         )
         invocation.completed_at = started_at + timedelta(minutes=5)
         test_db.add(invocation)
@@ -371,6 +373,13 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
     success = await tooling.list_invocations(org_id=test_org.org_id, status=ToolInvocationStatus.SUCCESS)
     assert len(success) == 1 and success[0].status == ToolInvocationStatus.SUCCESS.value
 
+    allow_only = await tooling.list_invocations(
+        org_id=test_org.org_id,
+        cel_policy_key="policy.allow",
+        cel_result=True,
+    )
+    assert len(allow_only) == 2
+
     recent = await tooling.list_invocations(org_id=test_org.org_id, since=now - timedelta(hours=2))
     assert len(recent) == 2
 
@@ -388,6 +397,11 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
         page_size=10,
     )
     assert all(record.requested_at < approval_cursor for record in older_approvals)
+
+    summaries = await tooling.summarize_invocations(org_id=test_org.org_id)
+    summary_map = {(item.tool_name, item.status): item.count for item in summaries}
+    assert summary_map[("tool-0", ToolInvocationStatus.PENDING.value)] == 1
+    assert summary_map[("tool-1", ToolInvocationStatus.SUCCESS.value)] == 1
 
 
 @pytest.mark.asyncio
@@ -463,9 +477,12 @@ async def test_agent_tooling_manager_create_and_update(test_db: AsyncSession, te
         status=ToolInvocationStatus.SUCCESS,
         output_data={"summary": "ok"},
         cel_result=True,
+        cel_context={"decision": "allow"},
+        error_code="",
     )
     assert updated.status == ToolInvocationStatus.SUCCESS.value
     assert updated.output_data == {"summary": "ok"}
+    assert updated.cel_context == {"decision": "allow"}
 
     with pytest.raises(AgentNotFoundError):
         await tooling.update_invocation_result(invocation_id=uuid4())

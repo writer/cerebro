@@ -52,6 +52,8 @@ class ToolingRepository:
         org_id: Optional[UUID],
         status: Optional[ToolInvocationStatus],
         tool_name: Optional[str],
+        cel_policy_key: Optional[str],
+        cel_result: Optional[bool],
         since: Optional[datetime],
         until: Optional[datetime],
         cursor: Optional[datetime],
@@ -68,6 +70,10 @@ class ToolingRepository:
             stmt = stmt.where(ToolInvocation.status == status)
         if tool_name:
             stmt = stmt.where(ToolInvocation.tool_name == tool_name)
+        if cel_policy_key:
+            stmt = stmt.where(ToolInvocation.cel_policy_key == cel_policy_key)
+        if cel_result is not None:
+            stmt = stmt.where(ToolInvocation.cel_result == cel_result)
         if since:
             stmt = stmt.where(ToolInvocation.started_at >= since)
         if until:
@@ -85,6 +91,8 @@ class ToolingRepository:
             org_id=str(org_id) if org_id else None,
             status=status.value if status else None,
             tool_name=tool_name,
+            cel_policy_key=cel_policy_key,
+            cel_result=cel_result,
         )
         return results
 
@@ -197,6 +205,33 @@ class ToolingRepository:
             completed_at=completed_at.isoformat() if completed_at else None,
         )
         return invocation
+
+    async def summarize_invocations(
+        self,
+        *,
+        org_id: UUID,
+        since: Optional[datetime],
+        until: Optional[datetime],
+        tool_name: Optional[str],
+    ) -> list[tuple[str, ToolInvocationStatus, int]]:
+        stmt = (
+            select(
+                ToolInvocation.tool_name,
+                ToolInvocation.status,
+                func.count().label("count"),
+            )
+            .join(AgentSession)
+            .where(AgentSession.org_id == org_id)
+        )
+        if since:
+            stmt = stmt.where(ToolInvocation.started_at >= since)
+        if until:
+            stmt = stmt.where(ToolInvocation.started_at <= until)
+        if tool_name:
+            stmt = stmt.where(ToolInvocation.tool_name == tool_name)
+        stmt = stmt.group_by(ToolInvocation.tool_name, ToolInvocation.status)
+        rows = await self._db.execute(stmt)
+        return [(row.tool_name, row.status, row.count) for row in rows]
 
 
 class NotificationRepository:

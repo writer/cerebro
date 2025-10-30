@@ -158,9 +158,11 @@ class ToolInvocationRecord:
     input_data: dict[str, Any]
     output_data: Optional[dict[str, Any]]
     error_message: Optional[str]
+    error_code: Optional[str]
     cel_policy_key: Optional[str]
     cel_expression: Optional[str]
     cel_result: Optional[bool]
+    cel_context: Optional[dict[str, Any]]
 
 
 @dataclass(slots=True)
@@ -190,6 +192,13 @@ class AgentPolicySuggestionRecord:
     details: dict[str, Any]
     last_seen: datetime
     created_at: datetime
+
+
+@dataclass(slots=True)
+class ToolInvocationSummary:
+    tool_name: str
+    status: str
+    count: int
 
 
 @dataclass(slots=True)

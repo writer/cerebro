@@ -20,6 +20,7 @@ from cerebro_sdk.agents.types import (
     AgentPolicySuggestionRecord,
     ToolApprovalRecord,
     ToolInvocationRecord,
+    ToolInvocationSummary,
 )
 
 from cerebro.agents.models import ApprovalStatus, ToolInvocationStatus
@@ -39,6 +40,8 @@ class AgentToolingManager(AsyncManagerBase):
         org_id: Optional[UUID] = None,
         status: ToolInvocationStatus | str | None = None,
         tool_name: Optional[str] = None,
+        cel_policy_key: Optional[str] = None,
+        cel_result: Optional[bool] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
         cursor: Optional[datetime] = None,
@@ -63,6 +66,8 @@ class AgentToolingManager(AsyncManagerBase):
             org_id=org_id,
             status=status_enum,
             tool_name=tool_name,
+            cel_policy_key=cel_policy_key,
+            cel_result=cel_result,
             since=since,
             until=until,
             cursor=cursor,
@@ -233,6 +238,25 @@ class AgentToolingManager(AsyncManagerBase):
         await self._db.refresh(invocation)
         return self._invocation_to_record(invocation)
 
+    async def summarize_invocations(
+        self,
+        *,
+        org_id: UUID,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        tool_name: Optional[str] = None,
+    ) -> list[ToolInvocationSummary]:
+        rows = await self._repo.summarize_invocations(
+            org_id=org_id,
+            since=since,
+            until=until,
+            tool_name=tool_name,
+        )
+        return [
+            ToolInvocationSummary(tool_name=row[0], status=row[1].value, count=row[2])
+            for row in rows
+        ]
+
     async def list_policy_suggestions(
         self,
         *,
@@ -263,9 +287,11 @@ class AgentToolingManager(AsyncManagerBase):
             input_data=input_payload,
             output_data=output_payload,
             error_message=invocation.error_message,
+            error_code=invocation.error_code,
             cel_policy_key=invocation.cel_policy_key,
             cel_expression=invocation.cel_expression,
             cel_result=invocation.cel_result,
+            cel_context=invocation.cel_context if isinstance(invocation.cel_context, dict) else None,
         )
 
     @staticmethod

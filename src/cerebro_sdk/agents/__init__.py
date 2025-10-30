@@ -20,6 +20,7 @@ from .types import (  # noqa: F401
     AgentValidationError,
     ToolApprovalRecord,
     ToolInvocationRecord,
+    ToolInvocationSummary,
 )
 from .analytics import AgentAnalyticsClient  # noqa: F401
 from .notifications import AgentNotificationManager  # noqa: F401
@@ -46,6 +47,7 @@ __all__ = [
     "AgentEventSummary",
     "AgentAnalyticsSummary",
     "ToolInvocationRecord",
+    "ToolInvocationSummary",
     "ToolApprovalRecord",
     "AgentPolicySuggestionRecord",
     "AgentNotificationRecord",
