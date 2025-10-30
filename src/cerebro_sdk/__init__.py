@@ -47,6 +47,7 @@ from .agents import (
     AgentTicketRecord,
     AgentPlaybook,
 )
+from cerebro.agents.models import NotificationStatus, TicketStatus
 
 __all__ = [
     "get_settings",
@@ -94,4 +95,6 @@ __all__ = [
     "AgentNotificationRecord",
     "AgentTicketRecord",
     "AgentPlaybook",
+    "NotificationStatus",
+    "TicketStatus",
 ]

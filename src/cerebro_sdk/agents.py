@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 from uuid import UUID
 
-from sqlalchemy import Select, and_, case, func, select
+from sqlalchemy import Select, and_, case, func, literal, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
@@ -27,7 +27,9 @@ from cerebro.agents.models import (
     ToolInvocationStatus,
     ApprovalStatus,
     MessageRole,
+    NotificationStatus,
     ReviewTaskStatus,
+    TicketStatus,
 )
 
 
@@ -494,16 +496,35 @@ class AgentManager:
             for row in role_rows
         }
 
-        scopes_to_process = await self._db.scalars(
-            select(AgentMemoryEntry.scopes)
-            .where(where_clause)
-            .limit(200)
-        )
         scope_distribution: dict[str, int] = {}
-        for scopes in scopes_to_process:
-            for scope in scopes or []:
-                scope_name = (scope.get("type") or "unknown").lower()
-                scope_distribution[scope_name] = scope_distribution.get(scope_name, 0) + 1
+        dialect_name = getattr(getattr(self._db, "bind", None), "dialect", None)
+        dialect_name = getattr(dialect_name, "name", None)
+        if dialect_name == "postgresql":
+            scope_elements = func.jsonb_array_elements(AgentMemoryEntry.scopes).table_valued("scope").lateral()
+            scope_json = scope_elements.column("scope")
+            scope_type_col = scope_json["type"].astext
+            scope_counts_stmt = (
+                select(
+                    func.coalesce(scope_type_col, literal("unknown")).label("scope_type"),
+                    func.count().label("scope_count"),
+                )
+                .select_from(AgentMemoryEntry)
+                .join(scope_elements, true())
+                .where(where_clause)
+                .group_by(func.coalesce(scope_type_col, literal("unknown")))
+            )
+            scope_rows = await self._db.execute(scope_counts_stmt)
+            scope_distribution = {
+                row.scope_type.lower(): row.scope_count for row in scope_rows
+            }
+        else:
+            scopes_to_process = await self._db.scalars(
+                select(AgentMemoryEntry.scopes).where(where_clause)
+            )
+            for scopes in scopes_to_process:
+                for scope in scopes or []:
+                    scope_name = (scope.get("type") or "unknown").lower()
+                    scope_distribution[scope_name] = scope_distribution.get(scope_name, 0) + 1
 
         highlight_stmt = (
             select(
@@ -1091,7 +1112,11 @@ class AgentToolingManager:
         *,
         session_id: Optional[UUID] = None,
         org_id: Optional[UUID] = None,
-        status: Optional[str] = None,
+        status: ToolInvocationStatus | str | None = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        cursor: Optional[datetime] = None,
+        page_size: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[ToolInvocationRecord]:
@@ -1102,11 +1127,21 @@ class AgentToolingManager:
             stmt = stmt.where(ToolInvocation.session_id == session_id)
         if status:
             try:
-                status_enum = ToolInvocationStatus(status)
+                status_enum = status if isinstance(status, ToolInvocationStatus) else ToolInvocationStatus(status)
             except ValueError:
                 return []
             stmt = stmt.where(ToolInvocation.status == status_enum)
-        stmt = stmt.order_by(ToolInvocation.started_at.desc()).offset(offset).limit(limit)
+        if since:
+            stmt = stmt.where(ToolInvocation.started_at >= since)
+        if until:
+            stmt = stmt.where(ToolInvocation.started_at <= until)
+        if cursor:
+            stmt = stmt.where(ToolInvocation.started_at < cursor)
+
+        effective_limit = page_size if page_size is not None else limit
+        if offset:
+            stmt = stmt.offset(offset)
+        stmt = stmt.order_by(ToolInvocation.started_at.desc(), ToolInvocation.id.desc()).limit(effective_limit)
         invocations = list(await self._db.scalars(stmt))
         return [self._invocation_to_record(invocation) for invocation in invocations]
 
@@ -1120,18 +1155,32 @@ class AgentToolingManager:
         self,
         *,
         org_id: UUID,
-        status: Optional[str] = None,
+        status: ApprovalStatus | str | None = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        cursor: Optional[datetime] = None,
+        page_size: Optional[int] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ToolApprovalRecord]:
         stmt = select(ToolApproval).where(ToolApproval.org_id == org_id)
         if status:
             try:
-                status_enum = ApprovalStatus(status)
+                status_enum = status if isinstance(status, ApprovalStatus) else ApprovalStatus(status)
             except ValueError:
                 return []
             stmt = stmt.where(ToolApproval.status == status_enum)
-        stmt = stmt.order_by(ToolApproval.requested_at.desc()).offset(offset).limit(limit)
+        if since:
+            stmt = stmt.where(ToolApproval.requested_at >= since)
+        if until:
+            stmt = stmt.where(ToolApproval.requested_at <= until)
+        if cursor:
+            stmt = stmt.where(ToolApproval.requested_at < cursor)
+
+        effective_limit = page_size if page_size is not None else limit
+        if offset:
+            stmt = stmt.offset(offset)
+        stmt = stmt.order_by(ToolApproval.requested_at.desc(), ToolApproval.id.desc()).limit(effective_limit)
         approvals = list(await self._db.scalars(stmt))
         return [self._approval_to_record(approval) for approval in approvals]
 
@@ -1264,7 +1313,7 @@ class AgentNotificationManager:
                 task_id=task_id,
                 channel=channel,
                 payload=dict(payload or {}),
-                status="pending",
+                status=NotificationStatus.PENDING,
             )
             self._db.add(notification)
         await self._db.refresh(notification)
@@ -1274,12 +1323,16 @@ class AgentNotificationManager:
         self,
         *,
         org_id: UUID,
-        status: Optional[str] = None,
+        status: NotificationStatus | str | None = None,
         limit: int = 100,
     ) -> list[AgentNotificationRecord]:
         stmt = select(AgentReviewNotification).where(AgentReviewNotification.org_id == org_id)
         if status:
-            stmt = stmt.where(AgentReviewNotification.status == status)
+            try:
+                status_enum = status if isinstance(status, NotificationStatus) else NotificationStatus(status)
+            except ValueError:
+                return []
+            stmt = stmt.where(AgentReviewNotification.status == status_enum)
         stmt = stmt.order_by(AgentReviewNotification.created_at.desc()).limit(limit)
         notifications = list(await self._db.scalars(stmt))
         return [self._notification_to_record(notification) for notification in notifications]
@@ -1289,7 +1342,9 @@ class AgentNotificationManager:
         if not notification:
             return None
         async with self._transaction():
-            notification.status = "delivered"
+            if notification.status != NotificationStatus.PENDING:
+                raise ValueError("Notification is not pending")
+            notification.status = NotificationStatus.DELIVERED
             notification.delivered_at = datetime.now(timezone.utc)
         await self._db.refresh(notification)
         return self._notification_to_record(notification)
@@ -1311,7 +1366,7 @@ class AgentNotificationManager:
                 task_id=task_id,
                 system=system,
                 details=details,
-                status="open",
+                status=TicketStatus.OPEN,
             )
             self._db.add(ticket)
         await self._db.refresh(ticket)
@@ -1327,7 +1382,9 @@ class AgentNotificationManager:
         if not ticket:
             return None
         async with self._transaction():
-            ticket.status = "closed"
+            if ticket.status != TicketStatus.OPEN:
+                raise ValueError("Ticket is not open")
+            ticket.status = TicketStatus.CLOSED
             ticket.updated_at = datetime.now(timezone.utc)
             if external_id:
                 ticket.external_id = external_id
@@ -1346,7 +1403,7 @@ class AgentNotificationManager:
             task_id=notification.task_id,
             org_id=notification.org_id,
             channel=notification.channel,
-            status=notification.status,
+            status=notification.status.value,
             payload=dict(notification.payload or {}),
             created_at=notification.created_at,
             delivered_at=notification.delivered_at,
@@ -1359,7 +1416,7 @@ class AgentNotificationManager:
             task_id=ticket.task_id,
             org_id=ticket.org_id,
             system=ticket.system,
-            status=ticket.status,
+            status=ticket.status.value,
             details=dict(ticket.details or {}),
             external_id=ticket.external_id,
             created_at=ticket.created_at,

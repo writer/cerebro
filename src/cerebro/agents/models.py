@@ -77,6 +77,21 @@ class ReviewTaskStatus(str, Enum):
     PROMOTED = "promoted"
 
 
+class NotificationStatus(str, Enum):
+    """Delivery states for review notifications."""
+
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+class TicketStatus(str, Enum):
+    """Lifecycle states for review tickets."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+
+
 class MemoryScope(str, Enum):
     """Scope levels for long-term agent memory."""
 
@@ -580,7 +595,11 @@ class AgentReviewNotification(Base):
         index=True,
     )
     channel: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
+    status: Mapped[NotificationStatus] = mapped_column(
+        SqlEnum(NotificationStatus, name="agent_notification_status"),
+        nullable=False,
+        default=NotificationStatus.PENDING,
+    )
     payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -617,7 +636,11 @@ class AgentReviewTicket(Base):
     )
     system: Mapped[str] = mapped_column(String(100), nullable=False)
     external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
+    status: Mapped[TicketStatus] = mapped_column(
+        SqlEnum(TicketStatus, name="agent_ticket_status"),
+        nullable=False,
+        default=TicketStatus.OPEN,
+    )
     details: Mapped[Dict[str, Any]] = mapped_column(
         "metadata",
         JSONType,
