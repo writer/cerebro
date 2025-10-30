@@ -147,6 +147,18 @@ class Settings(BaseSettings):
         default=None,
         description="Slack webhook URL used for integration sync health alerts",
     )
+    integration_coverage_alert_webhook: Optional[str] = Field(
+        default=None,
+        description="Slack webhook URL used for integration coverage alerts",
+    )
+    integration_coverage_warning_threshold: float = Field(
+        default=0.7,
+        description="Coverage ratio threshold below which a warning alert is sent",
+    )
+    integration_coverage_critical_threshold: float = Field(
+        default=0.4,
+        description="Coverage ratio threshold below which a critical alert is sent",
+    )
     integration_sync_retry_enabled: bool = Field(
         default=True,
         description="Enable automatic retry attempts when sync health issues are detected",
@@ -332,6 +344,22 @@ class Settings(BaseSettings):
     agent_runtime_event_retention_days: int = Field(
         default=30,
         description="Number of days to retain agent runtime analytics events",
+    )
+    runtime_health_alert_webhook: Optional[str] = Field(
+        default=None,
+        description="Slack webhook URL for runtime health alerts",
+    )
+    runtime_health_alert_window_hours: int = Field(
+        default=1,
+        description="Lookback window in hours when evaluating runtime health alerts",
+    )
+    runtime_health_warning_threshold: int = Field(
+        default=3,
+        description="Runtime warning count threshold that triggers an alert",
+    )
+    runtime_health_error_threshold: int = Field(
+        default=1,
+        description="Runtime error count threshold that triggers a critical alert",
     )
     self_play_enabled: bool = Field(
         default=False,

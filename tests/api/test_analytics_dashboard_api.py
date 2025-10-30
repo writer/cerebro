@@ -42,6 +42,8 @@ def test_dashboard_endpoint_includes_identity_and_heatmap(
     heatmap = payload["risk_heatmap"]
     metadata = payload["metadata"]
     provider_breakdown = payload["security_metrics"].get("provider_breakdown")
+    runtime_health = payload.get("runtime_health")
+    integration_coverage = payload.get("integration_coverage")
 
     assert identity["summary"]["total_identities"] >= 1
     assert "drilldown_identities" in identity
@@ -59,6 +61,8 @@ def test_dashboard_endpoint_includes_identity_and_heatmap(
     assert metadata.get("cache_ttl_seconds") is not None
     assert "supports_streaming_updates" in metadata
     assert provider_breakdown, "Provider breakdown should be populated"
+    assert isinstance(runtime_health, list)
+    assert isinstance(integration_coverage, list)
 
 
 def test_provider_findings_endpoint_returns_details(

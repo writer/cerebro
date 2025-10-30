@@ -25,6 +25,7 @@ celery_kwargs = {
         'cerebro.tasks.analytics_tasks',
         'cerebro.tasks.integration_tasks',
         'cerebro.tasks.integration_monitor',
+        'cerebro.tasks.runtime_monitor',
     ],
 }
 
@@ -36,6 +37,7 @@ task_routes = {
     'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
     'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
     'cerebro.tasks.analytics_tasks.*': {'queue': 'analytics'},
+    'cerebro.tasks.runtime_monitor.*': {'queue': 'analytics'},
     'cerebro.tasks.integration.*': {'queue': 'integrations'},
     'process_email_digests': {'queue': 'notifications'},
 }
@@ -82,6 +84,11 @@ beat_schedule = {
         'task': 'cerebro.tasks.integration.monitor_sync_health',
         'schedule': 900.0,
         'options': {'queue': 'integrations'},
+    },
+    'monitor-runtime-health': {
+        'task': 'cerebro.tasks.runtime.monitor_health',
+        'schedule': 300.0,
+        'options': {'queue': 'analytics'},
     },
 }
 

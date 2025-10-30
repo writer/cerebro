@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+import httpx
 
 from cerebro.automation.integration_sync import (
     analyze_state,
@@ -14,6 +16,7 @@ from cerebro.automation.integration_sync import (
 )
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
+from cerebro.integrations.coverage import summarize_integration_coverage
 from cerebro.integrations.state import (
     IntegrationIssueEventRepository,
     IntegrationStateRepository,
@@ -90,6 +93,118 @@ def _maybe_queue_auto_retry(state, issue, now: datetime, metadata: dict[str, Any
         return {}
 
 
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except Exception:
+        return None
+
+
+def _determine_coverage_severity(summary: dict[str, Any]) -> str | None:
+    ratio = summary.get("coverage_ratio")
+    status = summary.get("status")
+
+    warning_threshold = getattr(settings, "integration_coverage_warning_threshold", 0.7)
+    critical_threshold = getattr(settings, "integration_coverage_critical_threshold", 0.4)
+
+    if status in {"critical", "missing"}:
+        return "critical"
+    if status == "warning":
+        return "warning"
+    if ratio is None:
+        return None
+    if ratio < critical_threshold:
+        return "critical"
+    if ratio < warning_threshold:
+        return "warning"
+    return None
+
+
+async def _send_coverage_alert(webhook_url: str, summary: dict[str, Any], severity: str) -> None:
+    integration = summary.get("integration", "unknown")
+    scopes = summary.get("scopes", {})
+    healthy = scopes.get("healthy", 0)
+    total = scopes.get("total", 0)
+    ratio = summary.get("coverage_ratio")
+    ratio_pct = f"{ratio * 100:.1f}%" if isinstance(ratio, (int, float)) else "N/A"
+    providers = ", ".join(summary.get("providers", [])) or "n/a"
+    evaluated_at = summary.get("evaluated_at")
+    evaluated_str = evaluated_at.isoformat() if isinstance(evaluated_at, datetime) else str(evaluated_at)
+
+    color = "#d32f2f" if severity == "critical" else "#f57c00"
+
+    payload = {
+        "text": (
+            f"Integration coverage {severity.upper()} for {integration}: "
+            f"{healthy}/{total} scopes healthy ({ratio_pct})."
+        ),
+        "attachments": [
+            {
+                "color": color,
+                "blocks": [
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": f"{integration} coverage {severity.upper()}",
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Healthy scopes:* {healthy}/{total}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Coverage ratio:* {ratio_pct}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Providers:* {providers}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Status:* {summary.get('status')}",
+                            },
+                        ],
+                    },
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": (
+                                    f"Last success: {summary.get('last_success') or 'n/a'} • "
+                                    f"Evaluated: {evaluated_str}"
+                                ),
+                            }
+                        ],
+                    },
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": "View /api/v1/integrations/coverage for complete details.",
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(webhook_url, json=payload)
+        response.raise_for_status()
+
 @celery_app.task(bind=True, name="cerebro.tasks.integration.monitor_sync_health")
 def monitor_sync_health(self):
     async def _run():
@@ -145,11 +260,78 @@ def monitor_sync_health(self):
                 )
                 issues_handled += 1
 
-            if issues_handled:
+            coverage_alerts = 0
+
+            webhook_url = (
+                settings.integration_coverage_alert_webhook
+                or settings.integration_sync_alert_webhook
+            )
+
+            if webhook_url:
+                coverage_summaries = await summarize_integration_coverage(
+                    db,
+                    stale_seconds=settings.integration_sync_stale_seconds,
+                )
+
+                for summary in coverage_summaries:
+                    severity = _determine_coverage_severity(summary)
+                    if not severity:
+                        continue
+
+                    integration = summary.get("integration")
+                    if not integration:
+                        continue
+
+                    coverage_state = await repo.get_state(integration, "__coverage__")
+                    metadata = coverage_state.state_metadata if coverage_state else {}
+                    last_status = (metadata or {}).get("last_coverage_status")
+                    last_alert_severity = (metadata or {}).get("last_coverage_alert_status")
+                    last_alert_at = _parse_iso_datetime((metadata or {}).get("last_coverage_alert_at"))
+
+                    cooldown_seconds = getattr(
+                        settings,
+                        "integration_sync_alert_cooldown_seconds",
+                        1800,
+                    )
+
+                    if (
+                        last_status == summary.get("status")
+                        and last_alert_severity == severity
+                        and last_alert_at
+                        and (now - last_alert_at) < timedelta(seconds=cooldown_seconds)
+                    ):
+                        continue
+
+                    try:
+                        await _send_coverage_alert(webhook_url, summary, severity)
+                        coverage_alerts += 1
+                    except httpx.HTTPError:
+                        logger.exception(
+                            "integration_coverage_alert_failed",
+                            integration=integration,
+                            severity=severity,
+                        )
+
+                    metadata_update = {
+                        "last_coverage_status": summary.get("status"),
+                        "last_coverage_ratio": summary.get("coverage_ratio"),
+                        "last_coverage_alert_status": severity,
+                        "last_coverage_alert_at": now.isoformat(),
+                    }
+
+                    await repo.upsert_state(
+                        integration=integration,
+                        scope="__coverage__",
+                        metadata=metadata_update,
+                    )
+
+            if issues_handled or coverage_alerts:
                 await db.commit()
 
         if issues_handled:
             logger.warning("Integration sync health check surfaced %s issue(s)", issues_handled)
-        return {"issues": issues_handled}
+        if webhook_url and coverage_alerts:
+            logger.warning("Integration coverage alerts dispatched: %s", coverage_alerts)
+        return {"issues": issues_handled, "coverage_alerts": coverage_alerts}
 
     return asyncio.run(_run())

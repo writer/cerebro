@@ -234,6 +234,43 @@ def build_sample_dashboard_response() -> dict:
                 "frameworks": {"CIS": 1.0},
             },
         },
+        "runtime_health": [
+            {
+                "runtime": "claude",
+                "window_start": previous,
+                "window_end": now,
+                "events": {
+                    "runtime_warning": {"count": 2, "last_seen": now},
+                    "runtime_error": {"count": 0, "last_seen": None},
+                },
+                "warnings": {
+                    "claude_cli_missing": {"count": 2, "last_seen": now}
+                },
+                "latest_metadata": {
+                    "payload": {"session_id": "sess-123", "response_id": "resp-456"},
+                    "captured_at": now,
+                },
+                "severity": "warning",
+            }
+        ],
+        "integration_coverage": [
+            {
+                "integration": "kandji",
+                "providers": ["endpoint"],
+                "status": "warning",
+                "scopes": {
+                    "total": 2,
+                    "healthy": 1,
+                    "warning": 1,
+                    "critical": 0,
+                },
+                "accounts": {"total": 3},
+                "coverage_ratio": 0.5,
+                "last_success": now,
+                "evaluated_at": now,
+                "severity": "warning",
+            }
+        ],
         "metadata": {
             "generated_at": now,
             "component_timings": {
@@ -255,6 +292,9 @@ def build_sample_dashboard_response() -> dict:
                 "critical_findings": {"warning": 5, "critical": 10},
                 "mttr_hours": {"warning": 24, "critical": 48},
                 "sla_breaches": {"warning": 5, "critical": 10},
+                "runtime_warnings": {"warning": 3, "critical": 1},
+                "runtime_errors": {"warning": 1, "critical": 1},
+                "integration_coverage": {"warning": 0.7, "critical": 0.4},
             },
         },
     }

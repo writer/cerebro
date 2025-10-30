@@ -38,6 +38,8 @@ async def summarize_integration_coverage(
 
     grouped_states: Dict[str, List[Any]] = defaultdict(list)
     for state in states:
+        if state.scope and state.scope.startswith("__"):
+            continue
         grouped_states[state.integration].append(state)
 
     account_stmt: Select = (

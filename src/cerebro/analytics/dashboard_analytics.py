@@ -15,6 +15,9 @@ from .time_series import TimeSeriesCollector, TrendAnalyzer, MetricType
 from .risk_scoring import RiskScoringEngine
 from .identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector
 from .dashboard_repository import DashboardRepository
+from .runtime_health import summarize_runtime_health
+from cerebro.integrations.coverage import summarize_integration_coverage
+from cerebro.core.config import settings
 from prometheus_client import Histogram
 
 logger = logging.getLogger(__name__)
@@ -452,6 +455,51 @@ class DashboardAnalytics:
             self._get_compliance_trends(org_id, compliance_status),
         )
 
+        runtime_window = getattr(settings, "runtime_health_alert_window_hours", 24) if settings else 24
+        runtime_warning_threshold = getattr(settings, "runtime_health_warning_threshold", 3) if settings else 3
+        runtime_error_threshold = getattr(settings, "runtime_health_error_threshold", 1) if settings else 1
+
+        runtime_health_raw = await self._track_component(
+            "runtime_health",
+            summarize_runtime_health(self.db, hours=runtime_window),
+        )
+
+        runtime_health: List[Dict[str, Any]] = []
+        for entry in runtime_health_raw:
+            events = entry.get("events", {})
+            warning_count = events.get("runtime_warning", {}).get("count", 0)
+            error_count = events.get("runtime_error", {}).get("count", 0)
+            severity = "normal"
+            if error_count >= runtime_error_threshold:
+                severity = "critical"
+            elif warning_count >= runtime_warning_threshold:
+                severity = "warning"
+
+            runtime_health.append({**entry, "severity": severity})
+
+        coverage_warning_threshold = getattr(settings, "integration_coverage_warning_threshold", 0.7) if settings else 0.7
+        coverage_critical_threshold = getattr(settings, "integration_coverage_critical_threshold", 0.4) if settings else 0.4
+
+        integration_coverage_raw = await self._track_component(
+            "integration_coverage",
+            summarize_integration_coverage(self.db),
+        )
+
+        integration_coverage: List[Dict[str, Any]] = []
+        for entry in integration_coverage_raw:
+            ratio = entry.get("coverage_ratio")
+            status = entry.get("status")
+            severity = "normal"
+            if status in {"critical", "missing"}:
+                severity = "critical"
+            elif ratio is not None:
+                if ratio < coverage_critical_threshold:
+                    severity = "critical"
+                elif ratio < coverage_warning_threshold:
+                    severity = "warning"
+
+            integration_coverage.append({**entry, "severity": severity})
+
         total_duration = perf_counter() - total_start
         self._last_generation_timings["total"] = total_duration
         try:
@@ -479,6 +527,18 @@ class DashboardAnalytics:
                 "critical_findings": {"warning": 5, "critical": 10},
                 "mttr_hours": {"warning": 24, "critical": 48},
                 "sla_breaches": {"warning": 5, "critical": 10},
+                "runtime_warnings": {
+                    "warning": runtime_warning_threshold,
+                    "critical": runtime_error_threshold,
+                },
+                "runtime_errors": {
+                    "warning": runtime_error_threshold,
+                    "critical": runtime_error_threshold,
+                },
+                "integration_coverage": {
+                    "warning": coverage_warning_threshold,
+                    "critical": coverage_critical_threshold,
+                },
             },
         }
 
@@ -528,6 +588,8 @@ class DashboardAnalytics:
             "compliance_status": compliance_status,
             "compliance_trends": compliance_trends,
             "investment_recommendations": executive_summary.recommended_investments,
+            "runtime_health": runtime_health,
+            "integration_coverage": integration_coverage,
             "metadata": metadata,
         }
     
