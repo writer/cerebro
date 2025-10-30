@@ -7,7 +7,8 @@ from typing import Any, Iterable, Optional
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
-from sqlalchemy import Select, and_, func, literal, select, true
+from sqlalchemy import Select, and_, cast, func, literal, select, true
+from sqlalchemy.sql.sqltypes import String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
@@ -54,6 +55,8 @@ class ToolingRepository:
         tool_name: Optional[str],
         cel_policy_key: Optional[str],
         cel_result: Optional[bool],
+        text_query: Optional[str],
+        error_code: Optional[str],
         since: Optional[datetime],
         until: Optional[datetime],
         cursor: Optional[datetime],
@@ -74,6 +77,17 @@ class ToolingRepository:
             stmt = stmt.where(ToolInvocation.cel_policy_key == cel_policy_key)
         if cel_result is not None:
             stmt = stmt.where(ToolInvocation.cel_result == cel_result)
+        if error_code:
+            stmt = stmt.where(ToolInvocation.error_code == error_code)
+        if text_query:
+            pattern = f"%{text_query}%"
+            input_expr = cast(ToolInvocation.input_data, String)
+            output_expr = cast(ToolInvocation.output_data, String)
+            dialect = self._db.bind.dialect.name if self._db.bind else "postgresql"
+            if dialect == "sqlite":
+                stmt = stmt.where((input_expr.like(pattern)) | (output_expr.like(pattern)))
+            else:
+                stmt = stmt.where((input_expr.ilike(pattern)) | (output_expr.ilike(pattern)))
         if since:
             stmt = stmt.where(ToolInvocation.started_at >= since)
         if until:
@@ -93,6 +107,8 @@ class ToolingRepository:
             tool_name=tool_name,
             cel_policy_key=cel_policy_key,
             cel_result=cel_result,
+            error_code=error_code,
+            text_query=text_query,
         )
         return results
 
@@ -213,6 +229,7 @@ class ToolingRepository:
         since: Optional[datetime],
         until: Optional[datetime],
         tool_name: Optional[str],
+        status: Optional[ToolInvocationStatus],
     ) -> list[tuple[str, ToolInvocationStatus, int]]:
         stmt = (
             select(
@@ -229,6 +246,8 @@ class ToolingRepository:
             stmt = stmt.where(ToolInvocation.started_at <= until)
         if tool_name:
             stmt = stmt.where(ToolInvocation.tool_name == tool_name)
+        if status:
+            stmt = stmt.where(ToolInvocation.status == status)
         stmt = stmt.group_by(ToolInvocation.tool_name, ToolInvocation.status)
         rows = await self._db.execute(stmt)
         return [(row.tool_name, row.status, row.count) for row in rows]

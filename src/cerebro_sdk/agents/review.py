@@ -20,6 +20,7 @@ from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.types import (
     AgentInvalidStatusError,
     AgentReviewCommentRecord,
+    AgentReviewExportRecord,
     AgentReviewHistoryRecord,
     AgentReviewTaskRecord,
 )
@@ -155,6 +156,34 @@ class AgentReviewManager(AsyncManagerBase):
         for task in tasks:
             await self._db.refresh(task)
         return [self._to_record(task) for task in tasks]
+
+    async def export_tasks(
+        self,
+        *,
+        org_id: UUID,
+        status: ReviewTaskStatus | str | None = None,
+        include_comments: bool = True,
+        include_history: bool = True,
+        history_limit: int = 200,
+        limit: int = 100,
+    ) -> list[AgentReviewExportRecord]:
+        tasks = await self.list_tasks(org_id=org_id, status=status, limit=limit)
+        exports: list[AgentReviewExportRecord] = []
+        for task in tasks:
+            comments: list[AgentReviewCommentRecord] = []
+            history: list[AgentReviewHistoryRecord] = []
+            if include_comments:
+                comments = await self.list_comments(task_id=task.task_id)
+            if include_history:
+                history = await self.list_history(task_id=task.task_id, limit=history_limit)
+            exports.append(
+                AgentReviewExportRecord(
+                    task=task,
+                    comments=comments,
+                    history=history,
+                )
+            )
+        return exports
 
     async def assign_task(
         self,

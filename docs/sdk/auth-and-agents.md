@@ -108,6 +108,25 @@ The response contains role/scope histograms and the top five memories by decay s
 
 `sessions_for_finding` and `sessions_for_incident` now use PostgreSQL JSON containment operators to avoid loading every session in Python. Both accept `limit`/`offset` for pagination.
 
+### Review Exports
+
+```python
+from cerebro_sdk import AgentReviewManager
+
+review = AgentReviewManager(db)
+exports = await review.export_tasks(
+    org_id=org_id,
+    status="pending",
+    include_comments=True,
+    include_history=False,
+)
+
+for bundle in exports:
+    print(bundle.task.title, len(bundle.comments))
+```
+
+Each export entry bundles the task record with optional comments and history, making it simple to sync the review queue into external ticketing systems.
+
 ## Transactions, Errors, and Concurrency
 
 All managers inherit a shared base that automatically chooses between `begin()` and `begin_nested()` depending on existing transactions. Exceptions surface as typed subclasses:

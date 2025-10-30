@@ -202,6 +202,13 @@ class ToolInvocationSummary:
 
 
 @dataclass(slots=True)
+class AgentReviewExportRecord:
+    task: AgentReviewTaskRecord
+    comments: list[AgentReviewCommentRecord]
+    history: list[AgentReviewHistoryRecord]
+
+
+@dataclass(slots=True)
 class AgentNotificationRecord:
     notification_id: UUID
     task_id: UUID

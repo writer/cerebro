@@ -215,6 +215,21 @@ async def test_agent_review_manager_workflow(test_db: AsyncSession, test_org):
     history = await review_manager.list_history(task_id=task.id)
     assert history and history[0].change_type in {"status_change", "assignment", "comment"}
 
+    exports = await review_manager.export_tasks(org_id=test_org.org_id)
+    assert len(exports) == 1
+    export_entry = exports[0]
+    assert export_entry.task.task_id == task.id
+    assert export_entry.comments and export_entry.comments[0].content == "Ship it"
+    assert export_entry.history
+
+    exports_no_history = await review_manager.export_tasks(
+        org_id=test_org.org_id,
+        include_history=False,
+        include_comments=False,
+    )
+    assert exports_no_history[0].comments == []
+    assert exports_no_history[0].history == []
+
 
 @pytest.mark.asyncio
 async def test_agent_analytics_client_summary(test_db: AsyncSession, test_org):
@@ -340,13 +355,17 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
             session_id=session.session_id,
             tool_name=f"tool-{idx}",
             tool_version="1.0",
-            input_data={"idx": idx},
+            input_data={"idx": idx, "text": "critical" if idx == 2 else "normal"},
             status=status,
             started_at=started_at,
             cel_policy_key="policy.allow" if idx != 2 else "policy.deny",
             cel_result=(idx != 2),
         )
         invocation.completed_at = started_at + timedelta(minutes=5)
+        if status == ToolInvocationStatus.ERROR:
+            invocation.output_data = {"detail": "critical failure"}
+            invocation.error_message = "Unhandled exception"
+            invocation.error_code = "ERR_CRITICAL"
         test_db.add(invocation)
         invocations.append(invocation)
     await test_db.commit()
@@ -380,6 +399,12 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
     )
     assert len(allow_only) == 2
 
+    text_matches = await tooling.list_invocations(org_id=test_org.org_id, text_query="critical")
+    assert len(text_matches) == 1 and text_matches[0].error_code == "ERR_CRITICAL"
+
+    error_filtered = await tooling.list_invocations(org_id=test_org.org_id, error_code="ERR_CRITICAL")
+    assert len(error_filtered) == 1 and error_filtered[0].tool_name == "tool-2"
+
     recent = await tooling.list_invocations(org_id=test_org.org_id, since=now - timedelta(hours=2))
     assert len(recent) == 2
 
@@ -402,6 +427,9 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
     summary_map = {(item.tool_name, item.status): item.count for item in summaries}
     assert summary_map[("tool-0", ToolInvocationStatus.PENDING.value)] == 1
     assert summary_map[("tool-1", ToolInvocationStatus.SUCCESS.value)] == 1
+
+    success_summary = await tooling.summarize_invocations(org_id=test_org.org_id, status=ToolInvocationStatus.SUCCESS)
+    assert len(success_summary) == 1 and success_summary[0].status == ToolInvocationStatus.SUCCESS.value
 
 
 @pytest.mark.asyncio
@@ -486,6 +514,46 @@ async def test_agent_tooling_manager_create_and_update(test_db: AsyncSession, te
 
     with pytest.raises(AgentNotFoundError):
         await tooling.update_invocation_result(invocation_id=uuid4())
+
+
+@pytest.mark.asyncio
+async def test_agent_tooling_manager_listener_hooks(test_db: AsyncSession, test_org):
+    session_record = await AgentManager(test_db).create_session(
+        org_id=test_org.org_id,
+        agent_type="security_analyst",
+        created_by="listener@example.com",
+        context={},
+    )
+
+    tooling = AgentToolingManager(test_db)
+    events: list[str] = []
+
+    async def listener(record):
+        events.append(record.status)
+
+    tooling.register_listener(listener)
+
+    created = await tooling.create_invocation(
+        session_id=session_record.session_id,
+        tool_name="listener.tool",
+        input_data={"message": "start"},
+    )
+    assert events[-1] == created.status
+
+    updated = await tooling.update_invocation_result(
+        invocation_id=created.invocation_id,
+        status=ToolInvocationStatus.SUCCESS,
+        output_data={"message": "done"},
+    )
+    assert events[-1] == updated.status
+
+    tooling.unregister_listener(listener)
+
+    await tooling.update_invocation_result(
+        invocation_id=created.invocation_id,
+        status=ToolInvocationStatus.DRY_RUN,
+    )
+    assert events[-1] == ToolInvocationStatus.SUCCESS.value
 
 
 @pytest.mark.asyncio

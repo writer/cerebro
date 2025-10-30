@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, List, Optional
+import inspect
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
@@ -22,6 +23,7 @@ from cerebro_sdk.agents.types import (
     ToolInvocationRecord,
     ToolInvocationSummary,
 )
+from cerebro_sdk.telemetry import get_logger
 
 from cerebro.agents.models import ApprovalStatus, ToolInvocationStatus
 
@@ -32,6 +34,29 @@ class AgentToolingManager(AsyncManagerBase):
     def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
         super().__init__(db)
         self._repo = ToolingRepository(db, registry=registry)
+        self._logger = get_logger(__name__ + ".manager")
+        self._listeners: List[Callable[[ToolInvocationRecord], Awaitable[None] | None]] = []
+
+    def register_listener(self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]) -> None:
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def unregister_listener(self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]) -> None:
+        if listener in self._listeners:
+            self._listeners.remove(listener)
+
+    async def _notify_listeners(self, record: ToolInvocationRecord) -> None:
+        for listener in list(self._listeners):
+            try:
+                result = listener(record)
+                if inspect.isawaitable(result):
+                    await result  # type: ignore[func-returns-value]
+            except Exception as exc:  # pragma: no cover
+                self._logger.warning(
+                    "tooling.listener_error",
+                    listener=repr(listener),
+                    error=str(exc),
+                )
 
     async def list_invocations(
         self,
@@ -42,6 +67,8 @@ class AgentToolingManager(AsyncManagerBase):
         tool_name: Optional[str] = None,
         cel_policy_key: Optional[str] = None,
         cel_result: Optional[bool] = None,
+        error_code: Optional[str] = None,
+        text_query: Optional[str] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
         cursor: Optional[datetime] = None,
@@ -68,6 +95,8 @@ class AgentToolingManager(AsyncManagerBase):
             tool_name=tool_name,
             cel_policy_key=cel_policy_key,
             cel_result=cel_result,
+            error_code=error_code,
+            text_query=text_query,
             since=since,
             until=until,
             cursor=cursor,
@@ -114,7 +143,9 @@ class AgentToolingManager(AsyncManagerBase):
                 cel_context=cel_context,
             )
         await self._db.refresh(invocation)
-        return self._invocation_to_record(invocation)
+        record = self._invocation_to_record(invocation)
+        await self._notify_listeners(record)
+        return record
 
     async def list_approvals(
         self,
@@ -189,6 +220,7 @@ class AgentToolingManager(AsyncManagerBase):
         await self._db.refresh(approval)
         if invocation:
             await self._db.refresh(invocation)
+            await self._notify_listeners(self._invocation_to_record(invocation))
         return self._approval_to_record(approval)
 
     async def update_invocation_result(
@@ -236,21 +268,36 @@ class AgentToolingManager(AsyncManagerBase):
             )
 
         await self._db.refresh(invocation)
-        return self._invocation_to_record(invocation)
+        record = self._invocation_to_record(invocation)
+        await self._notify_listeners(record)
+        return record
 
     async def summarize_invocations(
         self,
         *,
         org_id: UUID,
+        status: ToolInvocationStatus | str | None = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
         tool_name: Optional[str] = None,
     ) -> list[ToolInvocationSummary]:
+        status_enum: Optional[ToolInvocationStatus] = None
+        if status:
+            try:
+                status_enum = self._require_enum(
+                    status,
+                    ToolInvocationStatus,
+                    message=f"Invalid tool invocation status '{status}'",
+                )
+            except AgentInvalidStatusError:
+                return []
+
         rows = await self._repo.summarize_invocations(
             org_id=org_id,
             since=since,
             until=until,
             tool_name=tool_name,
+            status=status_enum,
         )
         return [
             ToolInvocationSummary(tool_name=row[0], status=row[1].value, count=row[2])

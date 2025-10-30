@@ -101,7 +101,7 @@ ticket = await notifications.create_ticket(
 
 ### Tooling and Approvals
 
-`AgentToolingManager` surfaces tool invocation history and approval decisions. Filters support status, tool name, and time windows while keeping pagination stable.
+`AgentToolingManager` surfaces tool invocation history and approval decisions. Filters support status, tool name, CEL policy keys, text search across inputs/outputs, error codes, and time windows while keeping pagination stable.
 
 ```python
 from cerebro_sdk import AgentToolingManager
@@ -122,6 +122,22 @@ updated = await tooling.update_invocation_result(
     output_data={"summary": "complete"},
     cel_result=True,
 )
+
+matches = await tooling.list_invocations(
+    org_id=org_id,
+    text_query="critical",
+    error_code="ERR_POLICY",
+)
+
+summaries = await tooling.summarize_invocations(
+    org_id=org_id,
+    status=ToolInvocationStatus.SUCCESS,
+)
+
+async def capture(record):
+    print("tool", record.tool_name, record.status)
+
+tooling.register_listener(capture)
 ```
 
 Both listing and mutation helpers accept an optional Prometheus `CollectorRegistry`, allowing services to route metrics into their own registries:
