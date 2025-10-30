@@ -7,6 +7,8 @@ import {
   ReviewQueueSummary,
   ReviewTaskCommentRecord,
   ReviewTaskHistoryRecord,
+  ReviewTaskSlaStatus,
+  ReviewTaskSlaSummary,
   ReviewTaskRecord,
 } from "../types";
 
@@ -105,6 +107,26 @@ interface HistoryPayload {
   new_value: Record<string, unknown> | null;
   created_at: string;
   metadata: Record<string, unknown> | null;
+}
+
+interface SlaSummaryPayload {
+  total_pending: number;
+  breached: number;
+  at_risk: number;
+  on_track: number;
+  compliance_rate: number;
+}
+
+interface SlaStatusPayload {
+  task_id: string;
+  sla_hours: number;
+  elapsed_hours: number;
+  remaining_hours: number;
+  percentage_elapsed: number;
+  is_breached: boolean;
+  is_at_risk: boolean;
+  created_at: string;
+  due_at: string | null;
 }
 
 export class AgentsClient {
@@ -226,6 +248,21 @@ export class AgentsClient {
 
     return payload.map(mapHistory);
   }
+
+  async getReviewTaskSlaSummary(): Promise<ReviewTaskSlaSummary> {
+    const payload = await this.http.get<SlaSummaryPayload>("/api/v1/agents/review-tasks/sla/summary");
+    return mapSlaSummary(payload);
+  }
+
+  async listReviewTasksSlaBreached(): Promise<ReviewTaskSlaStatus[]> {
+    const payload = await this.http.get<SlaStatusPayload[]>("/api/v1/agents/review-tasks/sla/breached");
+    return payload.map(mapSlaStatus);
+  }
+
+  async listReviewTasksSlaAtRisk(): Promise<ReviewTaskSlaStatus[]> {
+    const payload = await this.http.get<SlaStatusPayload[]>("/api/v1/agents/review-tasks/sla/at-risk");
+    return payload.map(mapSlaStatus);
+  }
 }
 
 function mapStatusAggregate(entry: ReviewQueueStatusPayload): ReviewQueueStatusAggregate {
@@ -280,15 +317,15 @@ function mapReviewTask(payload: ReviewTaskPayload): ReviewTaskRecord {
 }
 
 function mapComment(payload: CommentPayload): ReviewTaskCommentRecord {
-    return {
-      commentId: payload.id,
-      taskId: payload.task_id,
-      author: payload.author,
-      content: payload.content,
-      createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
-      updatedAt: parseDate(payload.updated_at),
-      metadata: payload.metadata ?? {},
-    };
+  return {
+    commentId: payload.id,
+    taskId: payload.task_id,
+    author: payload.author,
+    content: payload.content,
+    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    updatedAt: parseDate(payload.updated_at),
+    metadata: payload.metadata ?? {},
+  };
 }
 
 function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
@@ -302,6 +339,30 @@ function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
     newValue: payload.new_value,
     createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
     metadata: payload.metadata,
+  };
+}
+
+function mapSlaSummary(payload: SlaSummaryPayload): ReviewTaskSlaSummary {
+  return {
+    totalPending: payload.total_pending,
+    breached: payload.breached,
+    atRisk: payload.at_risk,
+    onTrack: payload.on_track,
+    complianceRate: payload.compliance_rate,
+  };
+}
+
+function mapSlaStatus(payload: SlaStatusPayload): ReviewTaskSlaStatus {
+  return {
+    taskId: payload.task_id,
+    slaHours: payload.sla_hours,
+    elapsedHours: payload.elapsed_hours,
+    remainingHours: payload.remaining_hours,
+    percentageElapsed: payload.percentage_elapsed,
+    isBreached: payload.is_breached,
+    isAtRisk: payload.is_at_risk,
+    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    dueAt: parseDate(payload.due_at),
   };
 }
 

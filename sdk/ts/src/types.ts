@@ -138,6 +138,26 @@ export interface ReviewTaskHistoryRecord {
   metadata: Record<string, unknown> | null;
 }
 
+export interface ReviewTaskSlaSummary {
+  totalPending: number;
+  breached: number;
+  atRisk: number;
+  onTrack: number;
+  complianceRate: number;
+}
+
+export interface ReviewTaskSlaStatus {
+  taskId: string;
+  slaHours: number;
+  elapsedHours: number;
+  remainingHours: number;
+  percentageElapsed: number;
+  isBreached: boolean;
+  isAtRisk: boolean;
+  createdAt: Date;
+  dueAt: Date | null;
+}
+
 export interface IntegrationScopeBreakdown {
   total: number;
   healthy: number;

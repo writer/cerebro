@@ -287,4 +287,84 @@ describe("AgentsClient", () => {
     expect(history[0].historyId).toBe("hist-1");
     expect(history[0].oldValue?.status).toBe("pending");
   });
+
+  it("fetches SLA summary", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        total_pending: 10,
+        breached: 2,
+        at_risk: 3,
+        on_track: 5,
+        compliance_rate: 50.0,
+      }),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const summary = await client.getReviewTaskSlaSummary();
+
+    expect(summary.totalPending).toBe(10);
+    expect(summary.atRisk).toBe(3);
+    expect(summary.complianceRate).toBe(50);
+  });
+
+  it("lists SLA breached tasks", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          task_id: "task-1",
+          sla_hours: 8,
+          elapsed_hours: 9.5,
+          remaining_hours: -1.5,
+          percentage_elapsed: 1.2,
+          is_breached: true,
+          is_at_risk: false,
+          created_at: now,
+          due_at: now,
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const breached = await client.listReviewTasksSlaBreached();
+
+    expect(breached).toHaveLength(1);
+    expect(breached[0].isBreached).toBe(true);
+    expect(breached[0].percentageElapsed).toBe(1.2);
+  });
+
+  it("lists SLA at-risk tasks", async () => {
+    const now = new Date().toISOString();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          task_id: "task-2",
+          sla_hours: 8,
+          elapsed_hours: 6,
+          remaining_hours: 2,
+          percentage_elapsed: 0.75,
+          is_breached: false,
+          is_at_risk: true,
+          created_at: now,
+          due_at: now,
+        },
+      ]),
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const atRisk = await client.listReviewTasksSlaAtRisk();
+
+    expect(atRisk).toHaveLength(1);
+    expect(atRisk[0].isAtRisk).toBe(true);
+    expect(atRisk[0].taskId).toBe("task-2");
+  });
 });
