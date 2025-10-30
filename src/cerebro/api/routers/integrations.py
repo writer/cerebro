@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import require_scopes
 from cerebro.core.database import get_db
+from cerebro.integrations.coverage import summarize_integration_coverage
 from cerebro.integrations.state import IntegrationIssueEventRepository, IntegrationStateRepository
 from cerebro.automation.integration_sync import analyze_state
 from cerebro.core.config import settings
@@ -87,6 +88,28 @@ class IntegrationSyncStatusResponse(BaseModel):
     result: Optional[Any] = Field(None, description="Serialized task result when available")
 
 
+class IntegrationCoverageScopes(BaseModel):
+    total: int
+    healthy: int
+    warning: int
+    critical: int
+
+
+class IntegrationCoverageAccounts(BaseModel):
+    total: int
+
+
+class IntegrationCoverageSummary(BaseModel):
+    integration: str
+    providers: List[str]
+    status: str
+    scopes: IntegrationCoverageScopes
+    accounts: IntegrationCoverageAccounts
+    coverage_ratio: Optional[float]
+    last_success: Optional[datetime]
+    evaluated_at: datetime
+
+
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 
@@ -94,7 +117,7 @@ router = APIRouter(prefix="/integrations", tags=["integrations"])
 async def list_integration_status(
     integration: Optional[str] = Query(None, description="Filter by integration identifier"),
     db: AsyncSession = Depends(get_db),
-    _: Any = Depends(require_scopes("view:integrations")),
+    _: Any = Depends(require_scopes("read:findings")),
 ) -> List[IntegrationStatus]:
     repo = IntegrationStateRepository(db)
     states = await repo.list_states(integration=integration)
@@ -107,6 +130,32 @@ async def list_integration_status(
             metadata=state.state_metadata or {},
         )
         for state in states
+    ]
+
+
+@router.get("/coverage", response_model=List[IntegrationCoverageSummary])
+async def get_integration_coverage(
+    stale_seconds: Optional[int] = Query(None, description="Override default staleness threshold in seconds"),
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("view:integrations")),
+) -> List[IntegrationCoverageSummary]:
+    summaries = await summarize_integration_coverage(
+        db,
+        stale_seconds=stale_seconds,
+    )
+
+    return [
+        IntegrationCoverageSummary(
+            integration=item["integration"],
+            providers=item["providers"],
+            status=item["status"],
+            scopes=IntegrationCoverageScopes(**item["scopes"]),
+            accounts=IntegrationCoverageAccounts(**item["accounts"]),
+            coverage_ratio=item["coverage_ratio"],
+            last_success=item["last_success"],
+            evaluated_at=item["evaluated_at"],
+        )
+        for item in summaries
     ]
 
 

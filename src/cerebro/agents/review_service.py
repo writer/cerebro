@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
     AgentPolicySuggestion,
@@ -423,6 +424,161 @@ class AgentReviewService:
             )
             result = await db_session.execute(stmt)
             return list(result.scalars())
+
+    @staticmethod
+    async def summarize_queue(
+        *,
+        org_id: UUID,
+        now: Optional[datetime] = None,
+        db_session: Optional[AsyncSession] = None,
+    ) -> Dict[str, Any]:
+        """Summarize review queue backlog for operator dashboards."""
+
+        reference_time = now or datetime.now(timezone.utc)
+
+        if db_session is None:
+            async with async_session_factory() as session:
+                return await AgentReviewService._summarize_queue_internal(
+                    session,
+                    org_id=org_id,
+                    reference_time=reference_time,
+                )
+
+        return await AgentReviewService._summarize_queue_internal(
+            db_session,
+            org_id=org_id,
+            reference_time=reference_time,
+        )
+
+    @staticmethod
+    async def _summarize_queue_internal(
+        db_session: AsyncSession,
+        *,
+        org_id: UUID,
+        reference_time: datetime,
+    ) -> Dict[str, Any]:
+        status_stmt = (
+            select(
+                AgentReviewTask.status.label("status"),
+                func.count().label("count"),
+                func.sum(
+                    case(
+                        (AgentReviewTask.assigned_to.is_(None), 1),
+                        else_=0,
+                    )
+                ).label("unassigned"),
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                AgentReviewTask.due_at.isnot(None),
+                                AgentReviewTask.due_at <= reference_time,
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("overdue"),
+                func.min(AgentReviewTask.created_at).label("oldest_created"),
+                func.max(AgentReviewTask.created_at).label("newest_created"),
+            )
+            .where(AgentReviewTask.org_id == org_id)
+            .group_by(AgentReviewTask.status)
+        )
+
+        status_rows = (await db_session.execute(status_stmt)).all()
+
+        pending_stmt = (
+            select(
+                func.count().label("total"),
+                func.sum(
+                    case(
+                        (AgentReviewTask.assigned_to.is_(None), 1),
+                        else_=0,
+                    )
+                ).label("unassigned"),
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                AgentReviewTask.due_at.isnot(None),
+                                AgentReviewTask.due_at <= reference_time,
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("overdue"),
+                func.min(AgentReviewTask.due_at).label("next_due"),
+                func.min(AgentReviewTask.created_at).label("oldest_created"),
+            )
+            .where(
+                AgentReviewTask.org_id == org_id,
+                AgentReviewTask.status == ReviewTaskStatus.PENDING,
+            )
+        )
+
+        pending_row = await db_session.execute(pending_stmt)
+        pending_summary = pending_row.one_or_none()
+
+        priority_stmt = (
+            select(
+                AgentReviewTask.priority.label("priority"),
+                func.count().label("count"),
+            )
+            .where(
+                AgentReviewTask.org_id == org_id,
+                AgentReviewTask.status == ReviewTaskStatus.PENDING,
+                AgentReviewTask.priority.isnot(None),
+            )
+            .group_by(AgentReviewTask.priority)
+        )
+
+        priority_rows = (await db_session.execute(priority_stmt)).all()
+
+        status_summary = [
+            {
+                "status": row.status.value if hasattr(row.status, "value") else str(row.status),
+                "count": int(row.count or 0),
+                "unassigned": int(row.unassigned or 0),
+                "overdue": int(row.overdue or 0),
+                "oldest_created": row.oldest_created,
+                "newest_created": row.newest_created,
+            }
+            for row in status_rows
+        ]
+
+        priority_summary = [
+            {
+                "priority": row.priority,
+                "count": int(row.count or 0),
+            }
+            for row in priority_rows
+        ]
+
+        if pending_summary is None:
+            pending_data = {
+                "total": 0,
+                "unassigned": 0,
+                "overdue": 0,
+                "next_due": None,
+                "oldest_created": None,
+            }
+        else:
+            pending_data = {
+                "total": int(pending_summary.total or 0),
+                "unassigned": int(pending_summary.unassigned or 0),
+                "overdue": int(pending_summary.overdue or 0),
+                "next_due": pending_summary.next_due,
+                "oldest_created": pending_summary.oldest_created,
+            }
+
+        return {
+            "generated_at": reference_time,
+            "status_counts": status_summary,
+            "pending": pending_data,
+            "priority_breakdown": priority_summary,
+        }
 
     @staticmethod
     async def _record_history(

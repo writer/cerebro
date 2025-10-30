@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from cerebro.core.config import settings
+from cerebro.core.models import Account
 from cerebro.automation.integration_sync import IntegrationIssue
 from cerebro.integrations.state import IntegrationIssueEventRepository, IntegrationStateRepository
 from cerebro.api.routers import integrations as integrations_router
@@ -161,3 +162,65 @@ def test_get_integration_sync_status_endpoint(client, admin_token, monkeypatch):
     assert body["status"] == "SUCCESS"
     assert body["finished"] is True
     assert body["result"] == {"status": "ok"}
+
+
+def test_integration_coverage_endpoint(client, test_db, test_org, admin_token, monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def _seed_data():
+        account = Account(
+            org_id=test_org.org_id,
+            provider="endpoint",
+            external_id="endpoint-1",
+            display_name="Endpoint Tenant",
+        )
+        test_db.add(account)
+
+        repo = IntegrationStateRepository(test_db)
+        await repo.upsert_state(
+            integration="kandji",
+            scope="tenant-a",
+            last_timestamp=now,
+            metadata={"last_status": "success"},
+        )
+        await repo.upsert_state(
+            integration="kandji",
+            scope="tenant-b",
+            last_timestamp=now - timedelta(hours=4),
+            metadata={"last_status": "error", "last_error": "token expired"},
+        )
+
+        await test_db.commit()
+
+    _run_async(_seed_data())
+
+    from cerebro.integrations import coverage as coverage_module
+
+    monkeypatch.setattr(
+        coverage_module,
+        "INTEGRATION_PROVIDER_MAPPING",
+        {"kandji": ["endpoint"], "sentinelone": ["endpoint"]},
+    )
+
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    response = client.get(
+        "/api/v1/integrations/coverage",
+        headers=headers,
+        params={"stale_seconds": 3600},
+    )
+
+    assert response.status_code == 200, response.text
+
+    payload = response.json()
+    assert len(payload) >= 2
+
+    kandji_summary = next(item for item in payload if item["integration"] == "kandji")
+    assert kandji_summary["status"] == "critical"
+    assert kandji_summary["scopes"]["total"] == 2
+    assert kandji_summary["scopes"]["healthy"] == 1
+    assert kandji_summary["scopes"]["critical"] == 1
+    assert pytest.approx(kandji_summary["coverage_ratio"], rel=1e-3) == 0.5
+
+    sentinelone_summary = next(item for item in payload if item["integration"] == "sentinelone")
+    assert sentinelone_summary["status"] == "missing"
+    assert sentinelone_summary["scopes"]["total"] == 0

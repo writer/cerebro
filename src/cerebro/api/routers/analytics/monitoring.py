@@ -3,7 +3,7 @@
 from typing import Dict, Any
 from uuid import UUID
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 import asyncio
@@ -11,6 +11,7 @@ import asyncio
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.analytics.runtime_health import summarize_runtime_health
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -261,4 +262,20 @@ async def get_heartbeat_chips(
         },
         "worker_details": celery_status["workers"],
         "error": celery_status.get("error")
+    }
+
+
+@router.get("/runtime-health")
+async def get_runtime_health_summary(
+    hours: int = Query(24, ge=1, le=168, description="Lookback window in hours"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("read:findings")),
+) -> Dict[str, Any]:
+    """Summarize agent runtime health for operational dashboards."""
+
+    summaries = await summarize_runtime_health(db, hours=hours)
+    return {
+        "window_hours": hours,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "runtimes": summaries,
     }

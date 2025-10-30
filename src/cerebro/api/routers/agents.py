@@ -16,8 +16,10 @@ from pydantic import BaseModel, Field, ConfigDict
 from sse_starlette.sse import EventSourceResponse
 import structlog
 import json
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import User, get_current_user
+from cerebro.core.database import get_db
 from cerebro.agents.service import AgentSessionService
 from cerebro.agents.models import AgentType
 
@@ -214,6 +216,35 @@ class ReviewNotificationResponse(BaseModel):
     payload: Dict[str, Any]
     created_at: datetime
     delivered_at: Optional[datetime]
+
+
+class ReviewQueueStatusSummary(BaseModel):
+    status: str
+    count: int
+    unassigned: int
+    overdue: int
+    oldest_created: Optional[datetime]
+    newest_created: Optional[datetime]
+
+
+class ReviewQueuePendingSummary(BaseModel):
+    total: int
+    unassigned: int
+    overdue: int
+    next_due: Optional[datetime]
+    oldest_created: Optional[datetime]
+
+
+class ReviewQueuePrioritySummary(BaseModel):
+    priority: Optional[str]
+    count: int
+
+
+class ReviewQueueSummary(BaseModel):
+    generated_at: datetime
+    status_counts: List[ReviewQueueStatusSummary]
+    pending: ReviewQueuePendingSummary
+    priority_breakdown: List[ReviewQueuePrioritySummary]
 
 
 class RuntimeEventResponse(BaseModel):
@@ -728,6 +759,30 @@ async def list_review_tasks(
         limit=limit,
     )
     return [_review_task_to_response(task) for task in tasks]
+
+
+@router.get("/review-tasks/summary", response_model=ReviewQueueSummary)
+async def get_review_queue_summary(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return aggregated review queue backlog metrics for dashboards."""
+
+    from cerebro.agents.review_service import AgentReviewService
+
+    summary = await AgentReviewService.summarize_queue(
+        org_id=current_user.org_id,
+        db_session=db,
+    )
+
+    return ReviewQueueSummary(
+        generated_at=summary["generated_at"],
+        status_counts=[ReviewQueueStatusSummary(**item) for item in summary["status_counts"]],
+        pending=ReviewQueuePendingSummary(**summary["pending"]),
+        priority_breakdown=[
+            ReviewQueuePrioritySummary(**item) for item in summary["priority_breakdown"]
+        ],
+    )
 
 
 @router.post("/review-tasks/{task_id}/resolve", response_model=ReviewTaskResponse)

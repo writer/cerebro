@@ -407,6 +407,17 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 },
             )
 
+            await AgentAnalyticsService.record_event(
+                org_id=session.org_id,
+                session_id=session.id,
+                event_type="runtime_error",
+                payload={
+                    "runtime": self.backend_name,
+                    "message": str(exc),
+                    "reason": "exception",
+                },
+            )
+
             record_runtime_metadata_event(backend=self.backend_name, status="error")
 
             self._complete_runtime_operation(
