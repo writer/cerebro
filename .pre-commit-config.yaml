@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ts-sdk-openapi-types
+        name: Ensure TypeScript SDK OpenAPI types are current
+        entry: scripts/check_ts_sdk_openapi.sh
+        language: system
+        pass_filenames: false
+        stages: [commit]
