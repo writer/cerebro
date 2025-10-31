@@ -27,6 +27,7 @@ type HostTelemetry struct {
 	InstalledPackages  []SoftwarePackage    `json:"installed_packages,omitempty"`
 	SecurityEvents     []SecurityEvent      `json:"security_events,omitempty"`
 	ConfigurationDrift []ConfigurationDrift `json:"configuration_drift,omitempty"`
+	SecuritySoftware   []SecuritySoftware   `json:"security_software,omitempty"`
 }
 
 // AgentHealth summarises the agent's liveness at collection time.
@@ -78,6 +79,16 @@ type SecurityEvent struct {
 	SourceIP  string         `json:"source_ip,omitempty"`
 	UserID    string         `json:"user_id,omitempty"`
 	Details   map[string]any `json:"details"`
+}
+
+// SecuritySoftware describes third-party security agents discovered on the host.
+type SecuritySoftware struct {
+	Vendor      string            `json:"vendor"`
+	Product     string            `json:"product"`
+	Installed   bool              `json:"installed"`
+	Running     bool              `json:"running"`
+	InstallPath string            `json:"install_path,omitempty"`
+	Notes       map[string]string `json:"notes,omitempty"`
 }
 
 // ConfigurationDrift captures deviations between expected and observed host

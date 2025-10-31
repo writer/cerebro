@@ -76,6 +76,7 @@ func (Snapshot) Collect(_ context.Context, cfg config.Config, _ map[string]any) 
 	processes, err := collectProcesses(cfg.MaxProcesses)
 	if err == nil {
 		telemetry.Processes = processes
+		telemetry.SecuritySoftware = detectSecurityAgents(processes)
 	}
 
 	if conns, err := collectConnections(); err == nil {
