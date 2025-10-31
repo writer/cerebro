@@ -52,6 +52,12 @@ export {
   type TicketsAdapter,
   type EnqueueNotificationRequest,
 } from "./clients/agentNotifications";
+export {
+  AgentAnalyticsService,
+  AgentReviewExporter,
+  type SummarizeOrgOptions,
+  type ExportReviewTasksOptions,
+} from "./agents";
 export * from "./pagination";
 export * from "./types";
 export * from "./config";

@@ -312,6 +312,15 @@ export interface AgentSessionDetail {
   metrics?: Record<string, unknown>;
 }
 
+export interface AgentAnalyticsSummary {
+  totalSessions: number;
+  activeSessions: number;
+  messageCount: number;
+  eventCount: number;
+  skillTagCounts: Record<string, number>;
+  agentTypeCounts: Record<string, number>;
+}
+
 export interface AgentMemoryRecord {
   entryId: string;
   summary: string | null;
@@ -392,4 +401,10 @@ export interface ToolInvocationSummary {
   toolName: string;
   status: string;
   count: number;
+}
+
+export interface AgentReviewExportRecord {
+  task: ReviewTaskRecord;
+  comments: ReviewTaskCommentRecord[];
+  history: ReviewTaskHistoryRecord[];
 }
