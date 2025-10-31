@@ -29,19 +29,23 @@ var securityVendors = []vendorSignature{
 	{
 		vendor:       "SentinelOne",
 		product:      "SentinelOne Agent",
-		processHints: []string{"sentinelone", "sentinelagent", "sentinel agent"},
+		processHints: []string{"sentinelone", "sentinelagent", "sentinel agent", "com.sentinelone.sentineld"},
 		paths: []string{
 			"/Library/SentinelOne",
+			"/Library/LaunchDaemons/com.sentinelone.sentineld.plist",
 			"/Applications/SentinelAgent.app",
+			"/usr/local/bin/sentinelctl",
 		},
 	},
 	{
 		vendor:       "Kandji",
 		product:      "Kandji Agent",
-		processHints: []string{"kandji"},
+		processHints: []string{"kandji", "com.kandji.agent"},
 		paths: []string{
 			"/Library/Kandji",
 			"/usr/local/bin/kandji",
+			"/Library/LaunchDaemons/com.kandji.agent.plist",
+			"/Applications/Kandji Self Service.app",
 		},
 	},
 }

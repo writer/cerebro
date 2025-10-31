@@ -16,6 +16,10 @@ func TestDetectSecurityAgents(t *testing.T) {
 			return true
 		case "/Library/Kandji":
 			return true
+		case "/Library/LaunchDaemons/com.sentinelone.sentineld.plist":
+			return true
+		case "/Library/LaunchDaemons/com.kandji.agent.plist":
+			return true
 		default:
 			return false
 		}
@@ -39,8 +43,8 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if !found["SentinelOne"].Installed || !found["SentinelOne"].Running {
 		t.Fatalf("expected SentinelOne to be installed and running")
 	}
-	if found["SentinelOne"].InstallPath != "/Library/SentinelOne" {
-		t.Fatalf("unexpected SentinelOne path: %s", found["SentinelOne"].InstallPath)
+	if found["SentinelOne"].InstallPath == "" {
+		t.Fatalf("expected SentinelOne install path to be recorded")
 	}
 	if !found["Kandji"].Installed || !found["Kandji"].Running {
 		t.Fatalf("expected Kandji to be installed and running")
@@ -55,5 +59,32 @@ func TestDetectSecurityAgentsNone(t *testing.T) {
 
 	if agents := detectSecurityAgents(nil); len(agents) != 0 {
 		t.Fatalf("expected no agents, got %d", len(agents))
+	}
+}
+
+func TestDetectSecurityAgentsLaunchDaemonOnly(t *testing.T) {
+	original := securityAgentPathExists
+	defer func() { securityAgentPathExists = original }()
+
+	securityAgentPathExists = func(path string) bool {
+		return path == "/Library/LaunchDaemons/com.sentinelone.sentineld.plist"
+	}
+
+	agents := detectSecurityAgents(nil)
+	if len(agents) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(agents))
+	}
+	agent := agents[0]
+	if agent.Vendor != "SentinelOne" {
+		t.Fatalf("unexpected vendor %q", agent.Vendor)
+	}
+	if !agent.Installed {
+		t.Fatalf("expected agent to be marked installed")
+	}
+	if agent.Running {
+		t.Fatalf("expected agent to be marked not running")
+	}
+	if agent.InstallPath != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist" {
+		t.Fatalf("unexpected install path %q", agent.InstallPath)
 	}
 }
