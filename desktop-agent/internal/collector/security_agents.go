@@ -1,8 +1,11 @@
 package collector
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -31,6 +34,7 @@ type vendorSignature struct {
 	daemonPaths     []string
 	cliPaths        []string
 	versionAppPaths []string
+	statusCommands  [][]string
 }
 
 var defaultSecurityVendors = []vendorSignature{
@@ -50,6 +54,9 @@ var defaultSecurityVendors = []vendorSignature{
 		versionAppPaths: []string{
 			"/Applications/SentinelAgent.app",
 		},
+		statusCommands: [][]string{
+			{"/usr/local/bin/sentinelctl", "stats", "agent_info"},
+		},
 	},
 	{
 		vendor:       "Kandji",
@@ -66,6 +73,9 @@ var defaultSecurityVendors = []vendorSignature{
 		},
 		versionAppPaths: []string{
 			"/Applications/Kandji Self Service.app",
+		},
+		statusCommands: [][]string{
+			{"/usr/local/bin/kandji", "status"},
 		},
 	},
 	{
@@ -85,6 +95,9 @@ var defaultSecurityVendors = []vendorSignature{
 		versionAppPaths: []string{
 			"/Applications/Falcon.app",
 		},
+		statusCommands: [][]string{
+			{"/Applications/Falcon.app/Contents/Resources/falconctl", "stats"},
+		},
 	},
 }
 
@@ -93,6 +106,12 @@ var daemonProgramReader = readDaemonProgram
 var customSignatureLoader = loadCustomSignatures
 var signatureMerger = mergeSignatures
 var customSignatureCache = newSignatureCache()
+var commandExecutor = runCommand
+
+const (
+	cliStatusTimeout = 5 * time.Second
+	maxCLIStatusLen  = 1024
+)
 
 func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) []types.SecuritySoftware {
 	vendors := signatureMerger(defaultSecurityVendors, customSignatureLoader(cfg.SecuritySignatures))
@@ -122,6 +141,16 @@ func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) 
 		}
 		if version != "" {
 			notes["version"] = version
+		}
+		if cliPresent && len(vendor.statusCommands) > 0 {
+			if status, statusErr := collectCLIStatus(vendor); status != "" {
+				notes["cli_status"] = status
+				if statusErr != "" {
+					notes["cli_status_error"] = statusErr
+				}
+			} else if statusErr != "" {
+				notes["cli_status_error"] = statusErr
+			}
 		}
 		resolvedInstallPath := installPath
 		if resolvedInstallPath == "" {
@@ -236,6 +265,47 @@ func readDaemonProgram(daemonPath string) string {
 	return ""
 }
 
+func collectCLIStatus(vendor vendorSignature) (string, string) {
+	var lastErr error
+	for _, cmd := range vendor.statusCommands {
+		if len(cmd) == 0 {
+			continue
+		}
+		if !securityAgentPathExists(cmd[0]) {
+			continue
+		}
+		output, err := commandExecutor(cmd, cliStatusTimeout)
+		trimmed := strings.TrimSpace(output)
+		if err == nil && trimmed != "" {
+			return truncate(trimmed, maxCLIStatusLen), ""
+		}
+		if err != nil {
+			if trimmed != "" {
+				return truncate(trimmed, maxCLIStatusLen), err.Error()
+			}
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return "", lastErr.Error()
+	}
+	return "", ""
+}
+
+func runCommand(args []string, timeout time.Duration) (string, error) {
+	if len(args) == 0 {
+		return "", errors.New("no command provided")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return string(output), ctx.Err()
+	}
+	return string(output), err
+}
+
 type signatureCache struct {
 	mu         sync.Mutex
 	path       string
@@ -272,13 +342,14 @@ func (c *signatureCache) get(path string, loader func(string, time.Time) ([]vend
 }
 
 type vendorSignatureSpec struct {
-	Vendor          string   `json:"vendor"`
-	Product         string   `json:"product"`
-	ProcessHints    []string `json:"process_hints"`
-	InstallPaths    []string `json:"install_paths"`
-	DaemonPaths     []string `json:"daemon_paths"`
-	CLIPaths        []string `json:"cli_paths"`
-	VersionAppPaths []string `json:"version_paths"`
+	Vendor          string     `json:"vendor"`
+	Product         string     `json:"product"`
+	ProcessHints    []string   `json:"process_hints"`
+	InstallPaths    []string   `json:"install_paths"`
+	DaemonPaths     []string   `json:"daemon_paths"`
+	CLIPaths        []string   `json:"cli_paths"`
+	VersionAppPaths []string   `json:"version_paths"`
+	StatusCommands  [][]string `json:"status_commands"`
 }
 
 func loadCustomSignatures(path string) []vendorSignature {
@@ -304,6 +375,7 @@ func loadCustomSignatures(path string) []vendorSignature {
 				daemonPaths:     cloneStrings(spec.DaemonPaths),
 				cliPaths:        cloneStrings(spec.CLIPaths),
 				versionAppPaths: cloneStrings(spec.VersionAppPaths),
+				statusCommands:  cloneCommands(spec.StatusCommands),
 			})
 		}
 		return signatures, nil
@@ -319,6 +391,13 @@ func mergeSignatures(defaults, extras []vendorSignature) []vendorSignature {
 		result = append(result, cloneSignature(sig))
 	}
 	return result
+}
+
+func truncate(input string, max int) string {
+	if len(input) <= max {
+		return input
+	}
+	return input[:max]
 }
 
 func cloneStrings(in []string) []string {
@@ -339,5 +418,17 @@ func cloneSignature(sig vendorSignature) vendorSignature {
 		daemonPaths:     cloneStrings(sig.daemonPaths),
 		cliPaths:        cloneStrings(sig.cliPaths),
 		versionAppPaths: cloneStrings(sig.versionAppPaths),
+		statusCommands:  cloneCommands(sig.statusCommands),
 	}
+}
+
+func cloneCommands(in [][]string) [][]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([][]string, len(in))
+	for i, cmd := range in {
+		out[i] = cloneStrings(cmd)
+	}
+	return out
 }
