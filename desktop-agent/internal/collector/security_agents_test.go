@@ -11,6 +11,8 @@ func TestDetectSecurityAgents(t *testing.T) {
 	defer func() { securityAgentPathExists = original }()
 	originalVersion := appVersionReader
 	defer func() { appVersionReader = originalVersion }()
+	originalDaemon := daemonProgramReader
+	defer func() { daemonProgramReader = originalDaemon }()
 
 	securityAgentPathExists = func(path string) bool {
 		switch path {
@@ -41,6 +43,9 @@ func TestDetectSecurityAgents(t *testing.T) {
 			return ""
 		}
 	}
+	daemonProgramReader = func(path string) string {
+		return path + ":exec"
+	}
 
 	processes := []types.ProcessSnapshot{
 		{Name: "SentinelAgent"},
@@ -69,6 +74,9 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].Notes["daemon"] != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist" {
 		t.Fatalf("expected SentinelOne daemon note")
 	}
+	if found["SentinelOne"].Notes["daemon_program"] != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist:exec" {
+		t.Fatalf("expected SentinelOne daemon program note")
+	}
 	if !found["Kandji"].Installed || !found["Kandji"].Running {
 		t.Fatalf("expected Kandji to be installed and running")
 	}
@@ -82,9 +90,12 @@ func TestDetectSecurityAgentsNone(t *testing.T) {
 	defer func() { securityAgentPathExists = original }()
 	originalVersion := appVersionReader
 	defer func() { appVersionReader = originalVersion }()
+	originalDaemon := daemonProgramReader
+	defer func() { daemonProgramReader = originalDaemon }()
 
 	securityAgentPathExists = func(string) bool { return false }
 	appVersionReader = func(string) string { return "" }
+	daemonProgramReader = func(string) string { return "" }
 
 	if agents := detectSecurityAgents(nil); len(agents) != 0 {
 		t.Fatalf("expected no agents, got %d", len(agents))
@@ -96,11 +107,14 @@ func TestDetectSecurityAgentsLaunchDaemonOnly(t *testing.T) {
 	defer func() { securityAgentPathExists = original }()
 	originalVersion := appVersionReader
 	defer func() { appVersionReader = originalVersion }()
+	originalDaemon := daemonProgramReader
+	defer func() { daemonProgramReader = originalDaemon }()
 
 	securityAgentPathExists = func(path string) bool {
 		return path == "/Library/LaunchDaemons/com.sentinelone.sentineld.plist"
 	}
 	appVersionReader = func(string) string { return "" }
+	daemonProgramReader = func(path string) string { return path + ":exec" }
 
 	agents := detectSecurityAgents(nil)
 	if len(agents) != 1 {
@@ -118,5 +132,8 @@ func TestDetectSecurityAgentsLaunchDaemonOnly(t *testing.T) {
 	}
 	if agent.InstallPath != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist" {
 		t.Fatalf("unexpected install path %q", agent.InstallPath)
+	}
+	if agent.Notes["daemon_program"] != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist:exec" {
+		t.Fatalf("expected daemon program note")
 	}
 }

@@ -67,6 +67,7 @@ var securityVendors = []vendorSignature{
 }
 
 var appVersionReader = readAppVersion
+var daemonProgramReader = readDaemonProgram
 
 func detectSecurityAgents(processes []types.ProcessSnapshot) []types.SecuritySoftware {
 	results := make([]types.SecuritySoftware, 0, len(securityVendors))
@@ -86,6 +87,9 @@ func detectSecurityAgents(processes []types.ProcessSnapshot) []types.SecuritySof
 		}
 		if daemonPresent {
 			notes["daemon"] = daemonPath
+			if program := daemonProgramReader(daemonPath); program != "" {
+				notes["daemon_program"] = program
+			}
 		}
 		if cliPresent {
 			notes["cli"] = cliPath
@@ -177,6 +181,31 @@ func readAppVersion(appPath string) string {
 	}
 	if v, ok := parsed["CFBundleVersion"].(string); ok {
 		return v
+	}
+	return ""
+}
+
+func readDaemonProgram(daemonPath string) string {
+	if daemonPath == "" {
+		return ""
+	}
+	data, err := os.ReadFile(daemonPath)
+	if err != nil {
+		return ""
+	}
+	var parsed map[string]any
+	if _, err := plist.Unmarshal(data, &parsed); err != nil {
+		return ""
+	}
+	if program, ok := parsed["Program"].(string); ok && program != "" {
+		return program
+	}
+	if args, ok := parsed["ProgramArguments"].([]any); ok {
+		if len(args) > 0 {
+			if first, ok := args[0].(string); ok {
+				return first
+			}
+		}
 	}
 	return ""
 }
