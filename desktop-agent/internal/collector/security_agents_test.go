@@ -203,6 +203,9 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].Notes["registration_token_path"] == "" {
 		t.Fatalf("expected SentinelOne registration token path")
 	}
+	if found["SentinelOne"].Notes["registration_token_present"] != "true" {
+		t.Fatalf("expected SentinelOne registration token present flag")
+	}
 	if found["SentinelOne"].Notes["connectivity_ok"] != "true" {
 		t.Fatalf("expected SentinelOne connectivity ok flag")
 	}
@@ -251,6 +254,15 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].Notes["package_version_mismatch"] != "false" {
 		t.Fatalf("expected SentinelOne package version mismatch flag")
 	}
+	if found["SentinelOne"].Notes["management_url_host"] != "sentinelone.example" {
+		t.Fatalf("expected SentinelOne management url host")
+	}
+	if found["SentinelOne"].Notes["health_ok"] != "true" {
+		t.Fatalf("expected SentinelOne health ok")
+	}
+	if found["SentinelOne"].Notes["health_issues"] != "" {
+		t.Fatalf("expected SentinelOne health issues empty")
+	}
 	if !found["Kandji"].Installed || !found["Kandji"].Running {
 		t.Fatalf("expected Kandji to be installed and running")
 	}
@@ -289,6 +301,12 @@ func TestDetectSecurityAgents(t *testing.T) {
 	}
 	if found["Kandji"].Notes["kandji_has_pending"] != "false" {
 		t.Fatalf("expected Kandji has pending flag")
+	}
+	if found["Kandji"].Notes["kandji_health_ok"] != "true" {
+		t.Fatalf("expected Kandji health ok")
+	}
+	if found["Kandji"].Notes["kandji_health_issues"] != "" {
+		t.Fatalf("expected Kandji health issues empty")
 	}
 }
 

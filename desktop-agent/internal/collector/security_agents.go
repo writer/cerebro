@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -170,12 +171,19 @@ func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) 
 			}
 		}
 		if present, tokenPath := existsAny(vendor.tokenPaths); present {
+			notes["registration_token_present"] = "true"
 			notes["registration_token_path"] = tokenPath
 			annotateFileMetadata(notes, tokenPath, "registration_token")
+		} else {
+			notes["registration_token_present"] = "false"
 		}
-		if present, profilePath := existsAny(vendor.mobileConfig); present {
-			notes["management_profile_present"] = "true"
-			notes["management_profile_path"] = profilePath
+		if len(vendor.mobileConfig) > 0 {
+			if present, profilePath := existsAny(vendor.mobileConfig); present {
+				notes["management_profile_present"] = "true"
+				notes["management_profile_path"] = profilePath
+			} else {
+				notes["management_profile_present"] = "false"
+			}
 		}
 		applyDerivedNotes(vendor.vendor, notes)
 
@@ -577,6 +585,11 @@ func deriveSentinelOneNotes(notes map[string]string) {
 	if version, ok := notes["sentinelctl_management_status_version"]; ok && version != "" {
 		notes["management_version"] = version
 	}
+	if rawURL, ok := notes["sentinelctl_management_status_management_url"]; ok && rawURL != "" {
+		if parsed, err := url.Parse(rawURL); err == nil {
+			notes["management_url_host"] = parsed.Hostname()
+		}
+	}
 	if pkg := parsePackageVersion(notes); pkg != "" {
 		notes["package_version"] = pkg
 	}
@@ -600,13 +613,44 @@ func deriveSentinelOneNotes(notes map[string]string) {
 			notes["service_active"] = boolToString(isTruthy(value))
 		}
 	}
-	if _, ok := notes["management_profile_present"]; !ok {
-		notes["management_profile_present"] = "false"
-	}
 	if pkg, ok := notes["package_version"]; ok && pkg != "" {
 		if version, ok := notes["version"]; ok && version != "" {
 			notes["package_version_mismatch"] = boolToString(!strings.HasPrefix(pkg, version))
 		}
+	}
+	healthIssues := make([]string, 0)
+	if notes["connectivity_ok"] != "true" {
+		healthIssues = append(healthIssues, "connectivity")
+	}
+	if notes["anti_tamper_enabled"] != "true" {
+		healthIssues = append(healthIssues, "anti_tamper")
+	}
+	if notes["agent_enabled"] != "true" {
+		healthIssues = append(healthIssues, "agent_disabled")
+	}
+	if notes["service_active"] == "false" {
+		healthIssues = append(healthIssues, "service_inactive")
+	}
+	if notes["registration_token_present"] != "true" {
+		healthIssues = append(healthIssues, "token_missing")
+	} else if notes["registration_token_stale"] == "true" {
+		healthIssues = append(healthIssues, "token_stale")
+	}
+	if notes["management_profile_present"] != "true" {
+		healthIssues = append(healthIssues, "profile_missing")
+	}
+	if notes["package_version_mismatch"] == "true" {
+		healthIssues = append(healthIssues, "package_mismatch")
+	}
+	if notes["scan_recent"] == "false" {
+		healthIssues = append(healthIssues, "scan_stale")
+	}
+	if len(healthIssues) == 0 {
+		notes["health_ok"] = "true"
+		notes["health_issues"] = ""
+	} else {
+		notes["health_ok"] = "false"
+		notes["health_issues"] = strings.Join(healthIssues, ",")
 	}
 }
 
@@ -644,6 +688,29 @@ func deriveKandjiNotes(notes map[string]string) {
 			notes["kandji_pending_items"] = strconv.Itoa(val)
 			notes["kandji_has_pending"] = boolToString(val > 0)
 		}
+	}
+	healthIssues := make([]string, 0)
+	if notes["kandji_library_state_ok"] != "true" {
+		healthIssues = append(healthIssues, "library_state")
+	}
+	if notes["kandji_last_run_recent"] != "true" {
+		healthIssues = append(healthIssues, "last_run_stale")
+	}
+	if notes["kandji_last_check_in_recent"] != "true" {
+		healthIssues = append(healthIssues, "check_in_stale")
+	}
+	if notes["kandji_enforced"] != "true" {
+		healthIssues = append(healthIssues, "not_enforced")
+	}
+	if notes["kandji_has_pending"] == "true" {
+		healthIssues = append(healthIssues, "pending_items")
+	}
+	if len(healthIssues) == 0 {
+		notes["kandji_health_ok"] = "true"
+		notes["kandji_health_issues"] = ""
+	} else {
+		notes["kandji_health_ok"] = "false"
+		notes["kandji_health_issues"] = strings.Join(healthIssues, ",")
 	}
 }
 
