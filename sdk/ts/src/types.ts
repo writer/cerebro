@@ -158,6 +158,86 @@ export interface ReviewTaskSlaStatus {
   dueAt: Date | null;
 }
 
+export interface SecuritySoftwareRecord {
+  vendor: string;
+  product: string;
+  installed: boolean;
+  running: boolean;
+  installPath?: string;
+  notes?: Record<string, string | undefined | null>;
+}
+
+export interface GenericSecurityMetadata {
+  healthOk: boolean | null;
+  healthIssues: string[];
+  rawNotes: Record<string, string>;
+}
+
+export interface SentinelOneMetadata extends GenericSecurityMetadata {
+  connectivityOk: boolean | null;
+  antiTamperEnabled: boolean | null;
+  agentEnabled: boolean | null;
+  serviceActive: boolean | null;
+  tokenPresent: boolean | null;
+  tokenStale: boolean | null;
+  managementProfilePresent: boolean | null;
+  packageVersionMismatch: boolean | null;
+  scanRecent: boolean | null;
+  managementUrlHost: string | null;
+  siteName: string | null;
+  policyName: string | null;
+  packageVersion: string | null;
+  registrationTokenAgeHours: number | null;
+  registrationTokenSizeBytes: number | null;
+  scanLastSeenHours: number | null;
+}
+
+export interface KandjiMetadata extends GenericSecurityMetadata {
+  libraryStateOk: boolean | null;
+  lastRunRecent: boolean | null;
+  lastRunHours: number | null;
+  lastCheckInRecent: boolean | null;
+  lastCheckInHours: number | null;
+  enforced: boolean | null;
+  hasPending: boolean | null;
+  pendingItems: number | null;
+}
+
+export type SecuritySoftwareInsight =
+  | {
+      vendor: "SentinelOne";
+      product: string;
+      record: SecuritySoftwareRecord;
+      metadata: SentinelOneMetadata;
+    }
+  | {
+      vendor: "Kandji";
+      product: string;
+      record: SecuritySoftwareRecord;
+      metadata: KandjiMetadata;
+    }
+  | {
+      vendor: string;
+      product: string;
+      record: SecuritySoftwareRecord;
+      metadata: GenericSecurityMetadata;
+    };
+
+export interface SecurityHealthVendorSummary {
+  total: number;
+  healthy: number;
+  degraded: number;
+  unknown: number;
+}
+
+export interface SecurityHealthSummary {
+  total: number;
+  healthy: number;
+  degraded: number;
+  unknown: number;
+  vendors: Record<string, SecurityHealthVendorSummary>;
+}
+
 export interface ReviewNotificationRecord {
   notificationId: string;
   taskId: string;

@@ -55,6 +55,8 @@ export {
 export {
   AgentAnalyticsService,
   AgentReviewExporter,
+  deriveSecurityInsights,
+  summarizeSecurityHealth,
   type SummarizeOrgOptions,
   type ExportReviewTasksOptions,
 } from "./agents";
