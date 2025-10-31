@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
+	plist "howett.net/plist"
 )
 
 var securityAgentPathExists = func(path string) bool {
@@ -19,10 +20,13 @@ var securityAgentPathExists = func(path string) bool {
 }
 
 type vendorSignature struct {
-	vendor       string
-	product      string
-	processHints []string
-	paths        []string
+	vendor          string
+	product         string
+	processHints    []string
+	installPaths    []string
+	daemonPaths     []string
+	cliPaths        []string
+	versionAppPaths []string
 }
 
 var securityVendors = []vendorSignature{
@@ -30,51 +34,85 @@ var securityVendors = []vendorSignature{
 		vendor:       "SentinelOne",
 		product:      "SentinelOne Agent",
 		processHints: []string{"sentinelone", "sentinelagent", "sentinel agent", "com.sentinelone.sentineld"},
-		paths: []string{
+		installPaths: []string{
 			"/Library/SentinelOne",
+		},
+		daemonPaths: []string{
 			"/Library/LaunchDaemons/com.sentinelone.sentineld.plist",
-			"/Applications/SentinelAgent.app",
+		},
+		cliPaths: []string{
 			"/usr/local/bin/sentinelctl",
+		},
+		versionAppPaths: []string{
+			"/Applications/SentinelAgent.app",
 		},
 	},
 	{
 		vendor:       "Kandji",
 		product:      "Kandji Agent",
 		processHints: []string{"kandji", "com.kandji.agent"},
-		paths: []string{
+		installPaths: []string{
 			"/Library/Kandji",
-			"/usr/local/bin/kandji",
+		},
+		daemonPaths: []string{
 			"/Library/LaunchDaemons/com.kandji.agent.plist",
+		},
+		cliPaths: []string{
+			"/usr/local/bin/kandji",
+		},
+		versionAppPaths: []string{
 			"/Applications/Kandji Self Service.app",
 		},
 	},
 }
 
+var appVersionReader = readAppVersion
+
 func detectSecurityAgents(processes []types.ProcessSnapshot) []types.SecuritySoftware {
 	results := make([]types.SecuritySoftware, 0, len(securityVendors))
 	for _, vendor := range securityVendors {
-		installed, installPath := checkInstallPaths(vendor.paths)
+		installed, installPath := existsAny(vendor.installPaths)
+		daemonPresent, daemonPath := existsAny(vendor.daemonPaths)
+		cliPresent, cliPath := existsAny(vendor.cliPaths)
 		running := matchProcesses(processes, vendor.processHints)
-		if !installed && !running {
+		version := resolveVersion(vendor.versionAppPaths)
+		if !(installed || daemonPresent || cliPresent || running || version != "") {
 			continue
 		}
+		logicalInstalled := installed || daemonPresent || cliPresent
 		notes := map[string]string{}
 		if installPath != "" {
-			notes["path"] = installPath
+			notes["install_path"] = installPath
+		}
+		if daemonPresent {
+			notes["daemon"] = daemonPath
+		}
+		if cliPresent {
+			notes["cli"] = cliPath
+		}
+		if version != "" {
+			notes["version"] = version
+		}
+		resolvedInstallPath := installPath
+		if resolvedInstallPath == "" {
+			resolvedInstallPath = daemonPath
+			if resolvedInstallPath == "" {
+				resolvedInstallPath = cliPath
+			}
 		}
 		results = append(results, types.SecuritySoftware{
 			Vendor:      vendor.vendor,
 			Product:     vendor.product,
-			Installed:   installed,
+			Installed:   logicalInstalled,
 			Running:     running,
-			InstallPath: installPath,
+			InstallPath: resolvedInstallPath,
 			Notes:       notes,
 		})
 	}
 	return results
 }
 
-func checkInstallPaths(paths []string) (bool, string) {
+func existsAny(paths []string) (bool, string) {
 	for _, path := range paths {
 		if strings.Contains(path, "*") {
 			matches, _ := filepath.Glob(path)
@@ -107,4 +145,38 @@ func matchProcesses(processes []types.ProcessSnapshot, hints []string) bool {
 		}
 	}
 	return false
+}
+
+func resolveVersion(appPaths []string) string {
+	for _, app := range appPaths {
+		if !securityAgentPathExists(app) {
+			continue
+		}
+		if version := appVersionReader(app); version != "" {
+			return version
+		}
+	}
+	return ""
+}
+
+func readAppVersion(appPath string) string {
+	if appPath == "" {
+		return ""
+	}
+	infoPath := filepath.Join(appPath, "Contents", "Info.plist")
+	data, err := os.ReadFile(infoPath)
+	if err != nil {
+		return ""
+	}
+	var parsed map[string]any
+	if _, err := plist.Unmarshal(data, &parsed); err != nil {
+		return ""
+	}
+	if v, ok := parsed["CFBundleShortVersionString"].(string); ok {
+		return v
+	}
+	if v, ok := parsed["CFBundleVersion"].(string); ok {
+		return v
+	}
+	return ""
 }

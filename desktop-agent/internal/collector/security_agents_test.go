@@ -9,6 +9,8 @@ import (
 func TestDetectSecurityAgents(t *testing.T) {
 	original := securityAgentPathExists
 	defer func() { securityAgentPathExists = original }()
+	originalVersion := appVersionReader
+	defer func() { appVersionReader = originalVersion }()
 
 	securityAgentPathExists = func(path string) bool {
 		switch path {
@@ -20,8 +22,23 @@ func TestDetectSecurityAgents(t *testing.T) {
 			return true
 		case "/Library/LaunchDaemons/com.kandji.agent.plist":
 			return true
+		case "/Applications/SentinelAgent.app":
+			return true
+		case "/Applications/Kandji Self Service.app":
+			return true
 		default:
 			return false
+		}
+	}
+
+	appVersionReader = func(path string) string {
+		switch path {
+		case "/Applications/SentinelAgent.app":
+			return "23.2.1"
+		case "/Applications/Kandji Self Service.app":
+			return "5.8.0"
+		default:
+			return ""
 		}
 	}
 
@@ -46,16 +63,28 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].InstallPath == "" {
 		t.Fatalf("expected SentinelOne install path to be recorded")
 	}
+	if found["SentinelOne"].Notes["version"] != "23.2.1" {
+		t.Fatalf("expected SentinelOne version note")
+	}
+	if found["SentinelOne"].Notes["daemon"] != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist" {
+		t.Fatalf("expected SentinelOne daemon note")
+	}
 	if !found["Kandji"].Installed || !found["Kandji"].Running {
 		t.Fatalf("expected Kandji to be installed and running")
+	}
+	if found["Kandji"].Notes["version"] != "5.8.0" {
+		t.Fatalf("expected Kandji version note")
 	}
 }
 
 func TestDetectSecurityAgentsNone(t *testing.T) {
 	original := securityAgentPathExists
 	defer func() { securityAgentPathExists = original }()
+	originalVersion := appVersionReader
+	defer func() { appVersionReader = originalVersion }()
 
 	securityAgentPathExists = func(string) bool { return false }
+	appVersionReader = func(string) string { return "" }
 
 	if agents := detectSecurityAgents(nil); len(agents) != 0 {
 		t.Fatalf("expected no agents, got %d", len(agents))
@@ -65,10 +94,13 @@ func TestDetectSecurityAgentsNone(t *testing.T) {
 func TestDetectSecurityAgentsLaunchDaemonOnly(t *testing.T) {
 	original := securityAgentPathExists
 	defer func() { securityAgentPathExists = original }()
+	originalVersion := appVersionReader
+	defer func() { appVersionReader = originalVersion }()
 
 	securityAgentPathExists = func(path string) bool {
 		return path == "/Library/LaunchDaemons/com.sentinelone.sentineld.plist"
 	}
+	appVersionReader = func(string) string { return "" }
 
 	agents := detectSecurityAgents(nil)
 	if len(agents) != 1 {
