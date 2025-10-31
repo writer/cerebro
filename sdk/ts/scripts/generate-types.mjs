@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -21,7 +22,18 @@ try {
   let ast;
 
   if (specPath) {
-    const resolved = path.resolve(process.cwd(), specPath);
+    const packageRoot = path.resolve(__dirname, "..");
+    const repoRoot = path.resolve(packageRoot, "..", "..");
+    const candidates = [
+      path.resolve(packageRoot, specPath),
+      path.resolve(repoRoot, specPath),
+    ];
+
+    const resolved = candidates.find((candidate) => existsSync(candidate));
+    if (!resolved) {
+      throw new Error(`OpenAPI spec not found: ${specPath}`);
+    }
+
     const raw = await readFile(resolved, "utf8");
     const schema = JSON.parse(raw);
     ast = await openapiTS(schema);

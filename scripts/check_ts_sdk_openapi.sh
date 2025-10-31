@@ -17,7 +17,7 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-CEREBRO_OPENAPI_SPEC_PATH="tmp/openapi.json" npm run generate:types --prefix sdk/ts >/dev/null
+CEREBRO_OPENAPI_SPEC_PATH="sdk/ts/tmp/openapi.json" npm run generate:types --prefix sdk/ts >/dev/null
 
 if ! git diff --quiet -- sdk/ts/src/generated/openapi.ts; then
   echo "The generated OpenAPI types have changed. Stage sdk/ts/src/generated/openapi.ts after reviewing the updates." >&2
