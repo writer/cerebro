@@ -1,12 +1,14 @@
 package collector
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +58,8 @@ var defaultSecurityVendors = []vendorSignature{
 		},
 		statusCommands: [][]string{
 			{"/usr/local/bin/sentinelctl", "stats", "agent_info"},
+			{"/usr/local/bin/sentinelctl", "status"},
+			{"/usr/local/bin/sentinelctl", "version"},
 		},
 	},
 	{
@@ -76,6 +80,7 @@ var defaultSecurityVendors = []vendorSignature{
 		},
 		statusCommands: [][]string{
 			{"/usr/local/bin/kandji", "library", "--state"},
+			{"/usr/local/bin/kandji", "version"},
 		},
 	},
 }
@@ -122,13 +127,8 @@ func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) 
 			notes["version"] = version
 		}
 		if cliPresent && len(vendor.statusCommands) > 0 {
-			if status, statusErr := collectCLIStatus(vendor); status != "" {
-				notes["cli_status"] = status
-				if statusErr != "" {
-					notes["cli_status_error"] = statusErr
-				}
-			} else if statusErr != "" {
-				notes["cli_status_error"] = statusErr
+			for key, value := range collectCLIData(vendor) {
+				notes[key] = value
 			}
 		}
 		resolvedInstallPath := installPath
@@ -244,8 +244,8 @@ func readDaemonProgram(daemonPath string) string {
 	return ""
 }
 
-func collectCLIStatus(vendor vendorSignature) (string, string) {
-	var lastErr error
+func collectCLIData(vendor vendorSignature) map[string]string {
+	results := map[string]string{}
 	for _, cmd := range vendor.statusCommands {
 		if len(cmd) == 0 {
 			continue
@@ -255,20 +255,25 @@ func collectCLIStatus(vendor vendorSignature) (string, string) {
 		}
 		output, err := commandExecutor(cmd, cliStatusTimeout)
 		trimmed := strings.TrimSpace(output)
-		if err == nil && trimmed != "" {
-			return truncate(trimmed, maxCLIStatusLen), ""
+		if trimmed == "" && err == nil {
+			continue
+		}
+		baseKey := commandKey(cmd)
+		if trimmed != "" {
+			if existing, ok := results[baseKey+"_raw"]; ok {
+				results[baseKey+"_raw"] = truncate(existing+"\n"+trimmed, maxCLIStatusLen)
+			} else {
+				results[baseKey+"_raw"] = truncate(trimmed, maxCLIStatusLen)
+			}
+			for k, v := range parseKeyValueOutput(trimmed) {
+				results[baseKey+"_"+k] = v
+			}
 		}
 		if err != nil {
-			if trimmed != "" {
-				return truncate(trimmed, maxCLIStatusLen), err.Error()
-			}
-			lastErr = err
+			results[baseKey+"_error"] = err.Error()
 		}
 	}
-	if lastErr != nil {
-		return "", lastErr.Error()
-	}
-	return "", ""
+	return results
 }
 
 func runCommand(args []string, timeout time.Duration) (string, error) {
@@ -410,4 +415,56 @@ func cloneCommands(in [][]string) [][]string {
 		out[i] = cloneStrings(cmd)
 	}
 	return out
+}
+
+var nonAlphaNumeric = regexp.MustCompile(`[^a-z0-9]+`)
+
+func commandKey(cmd []string) string {
+	if len(cmd) == 0 {
+		return "cli"
+	}
+	parts := make([]string, 0, len(cmd))
+	base := sanitizeKey(filepath.Base(cmd[0]))
+	if base != "" {
+		parts = append(parts, base)
+	}
+	for _, arg := range cmd[1:] {
+		sanitized := sanitizeKey(arg)
+		if sanitized != "" {
+			parts = append(parts, sanitized)
+		}
+	}
+	if len(parts) == 0 {
+		return "cli"
+	}
+	return strings.Join(parts, "_")
+}
+
+func sanitizeKey(input string) string {
+	s := strings.ToLower(strings.TrimSpace(input))
+	s = nonAlphaNumeric.ReplaceAllString(s, "_")
+	s = strings.Trim(s, "_")
+	return s
+}
+
+func parseKeyValueOutput(output string) map[string]string {
+	result := map[string]string{}
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		sep := strings.Index(line, ":")
+		if sep <= 0 {
+			continue
+		}
+		key := sanitizeKey(line[:sep])
+		value := strings.TrimSpace(line[sep+1:])
+		if key == "" || value == "" {
+			continue
+		}
+		result[key] = value
+	}
+	return result
 }

@@ -2,6 +2,7 @@ package collector
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,7 +61,20 @@ func TestDetectSecurityAgents(t *testing.T) {
 		return path + ":exec"
 	}
 	commandExecutor = func(args []string, _ time.Duration) (string, error) {
-		return args[0] + " status ok", nil
+		switch strings.Join(args, " ") {
+		case "/usr/local/bin/sentinelctl stats agent_info":
+			return "Connected: on\nSite Token: example-token", nil
+		case "/usr/local/bin/sentinelctl status":
+			return "Connected: on\nManagement URL: https://sentinelone.example", nil
+		case "/usr/local/bin/sentinelctl version":
+			return "Version: 23.2.1", nil
+		case "/usr/local/bin/kandji library --state":
+			return "State: idle\nLast Run: 2025-10-31T12:00:00Z", nil
+		case "/usr/local/bin/kandji version":
+			return "Version: 5.8.0", nil
+		default:
+			return "", nil
+		}
 	}
 
 	processes := []types.ProcessSnapshot{
@@ -95,8 +109,17 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].Notes["daemon_program"] != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist:exec" {
 		t.Fatalf("expected SentinelOne daemon program note")
 	}
-	if found["SentinelOne"].Notes["cli_status"] == "" {
-		t.Fatalf("expected SentinelOne CLI status note")
+	if found["SentinelOne"].Notes["sentinelctl_status_connected"] != "on" {
+		t.Fatalf("expected SentinelOne connected note")
+	}
+	if found["SentinelOne"].Notes["sentinelctl_status_management_url"] != "https://sentinelone.example" {
+		t.Fatalf("expected SentinelOne management URL note")
+	}
+	if found["SentinelOne"].Notes["sentinelctl_version_version"] != "23.2.1" {
+		t.Fatalf("expected SentinelOne version note from CLI")
+	}
+	if found["SentinelOne"].Notes["sentinelctl_stats_agent_info_site_token"] != "example-token" {
+		t.Fatalf("expected sentinelctl stats site token note")
 	}
 	if !found["Kandji"].Installed || !found["Kandji"].Running {
 		t.Fatalf("expected Kandji to be installed and running")
@@ -104,8 +127,11 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["Kandji"].Notes["version"] != "5.8.0" {
 		t.Fatalf("expected Kandji version note")
 	}
-	if found["Kandji"].Notes["cli_status"] == "" {
-		t.Fatalf("expected Kandji CLI status note")
+	if found["Kandji"].Notes["kandji_library_state_state"] != "idle" {
+		t.Fatalf("expected Kandji library state note")
+	}
+	if found["Kandji"].Notes["kandji_version_version"] != "5.8.0" {
+		t.Fatalf("expected Kandji CLI version note")
 	}
 }
 
@@ -224,7 +250,7 @@ func TestDetectSecurityAgentsCustomSignatures(t *testing.T) {
 	daemonProgramReader = func(path string) string { return path + ":exec" }
 	customSignatureLoader = loadCustomSignatures
 	commandExecutor = func(args []string, _ time.Duration) (string, error) {
-		return "status ok", nil
+		return "Status: ok", nil
 	}
 
 	agents := detectSecurityAgents([]types.ProcessSnapshot{{Name: "JamfProtect"}}, config.Config{SecuritySignatures: customFile.Name()})
@@ -241,7 +267,7 @@ func TestDetectSecurityAgentsCustomSignatures(t *testing.T) {
 	if agent.Notes["daemon_program"] != "/Library/LaunchDaemons/com.jamf.protect.daemon.plist:exec" {
 		t.Fatalf("expected daemon program")
 	}
-	if agent.Notes["cli_status"] != "status ok" {
+	if agent.Notes["jamfprotect_status_status"] != "ok" {
 		t.Fatalf("expected CLI status note")
 	}
 
