@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ type vendorSignature struct {
 	versionAppPaths []string
 	statusCommands  [][]string
 	tokenPaths      []string
+	mobileConfig    []string
 }
 
 var defaultSecurityVendors = []vendorSignature{
@@ -50,12 +52,14 @@ var defaultSecurityVendors = []vendorSignature{
 			"/Library/SentinelOne",
 			"/opt/sentinelone",
 			"/Library/Application Support/SentinelOne",
+			"/etc/sentinelone",
 		},
 		daemonPaths: []string{
 			"/Library/LaunchDaemons/com.sentinelone.sentineld.plist",
 		},
 		cliPaths: []string{
 			"/usr/local/bin/sentinelctl",
+			"/opt/sentinelone/bin/sentinelctl",
 		},
 		versionAppPaths: []string{
 			"/Applications/SentinelAgent.app",
@@ -66,11 +70,28 @@ var defaultSecurityVendors = []vendorSignature{
 			{"/usr/local/bin/sentinelctl", "status"},
 			{"/usr/local/bin/sentinelctl", "scan", "status"},
 			{"/usr/local/bin/sentinelctl", "version"},
+			{"/opt/sentinelone/bin/sentinelctl", "stats", "agent_info"},
+			{"/opt/sentinelone/bin/sentinelctl", "management", "status"},
+			{"/opt/sentinelone/bin/sentinelctl", "status"},
+			{"/opt/sentinelone/bin/sentinelctl", "scan", "status"},
+			{"/opt/sentinelone/bin/sentinelctl", "version"},
+			{"/bin/systemctl", "status", "sentinelone-agent", "--no-pager"},
+			{"/usr/bin/systemctl", "status", "sentinelone-agent", "--no-pager"},
+			{"/usr/bin/rpm", "-q", "sentinelone"},
+			{"/usr/bin/dpkg-query", "-W", "sentinelone"},
 		},
 		tokenPaths: []string{
 			"/Library/SentinelOne/data/com.sentinelone.registration-token",
 			"/Library/Application Support/JAMF/Waiting Room/com.sentinelone.registration-token",
 			"/Library/Application Support/SentinelOne/com.sentinelone.registration-token",
+			"/etc/sentinelone/com.sentinelone.registration-token",
+		},
+		mobileConfig: []string{
+			"/Library/Application Support/JAMF/Waiting Room/com.sentinelone.install.mobileconfig",
+			"/Library/Application Support/JAMF/Waiting Room/com.sentinelone.network-extension.mobileconfig",
+			"/Library/Application Support/JAMF/Waiting Room/com.sentinelone.privacy.mobileconfig",
+			"/Library/Application Support/JAMF/Waiting Room/com.sentinelone.system-extension.mobileconfig",
+			"/Library/Managed Preferences/com.sentinelone.agent.plist",
 		},
 	},
 	{
@@ -94,6 +115,9 @@ var defaultSecurityVendors = []vendorSignature{
 			{"/usr/local/bin/kandji", "library", "--state"},
 			{"/usr/local/bin/kandji", "version"},
 		},
+		mobileConfig: []string{
+			"/Library/Managed Preferences/com.kandji.agent.plist",
+		},
 	},
 }
 
@@ -103,6 +127,8 @@ var customSignatureLoader = loadCustomSignatures
 var signatureMerger = mergeSignatures
 var customSignatureCache = newSignatureCache()
 var commandExecutor = runCommand
+var fileInfoFunc = func(path string) (os.FileInfo, error) { return os.Stat(path) }
+var fileReaderFunc = os.ReadFile
 
 const (
 	cliStatusTimeout = 5 * time.Second
@@ -143,10 +169,15 @@ func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) 
 				notes[key] = value
 			}
 		}
-		applyDerivedNotes(vendor.vendor, notes)
 		if present, tokenPath := existsAny(vendor.tokenPaths); present {
 			notes["registration_token_path"] = tokenPath
+			annotateFileMetadata(notes, tokenPath, "registration_token")
 		}
+		if present, profilePath := existsAny(vendor.mobileConfig); present {
+			notes["management_profile_present"] = "true"
+			notes["management_profile_path"] = profilePath
+		}
+		applyDerivedNotes(vendor.vendor, notes)
 
 		if version != "" {
 			switch vendor.vendor {
@@ -367,6 +398,8 @@ type vendorSignatureSpec struct {
 	CLIPaths        []string   `json:"cli_paths"`
 	VersionAppPaths []string   `json:"version_paths"`
 	StatusCommands  [][]string `json:"status_commands"`
+	TokenPaths      []string   `json:"token_paths"`
+	MobileConfig    []string   `json:"mobile_config_paths"`
 }
 
 func loadCustomSignatures(path string) []vendorSignature {
@@ -393,6 +426,8 @@ func loadCustomSignatures(path string) []vendorSignature {
 				cliPaths:        cloneStrings(spec.CLIPaths),
 				versionAppPaths: cloneStrings(spec.VersionAppPaths),
 				statusCommands:  cloneCommands(spec.StatusCommands),
+				tokenPaths:      cloneStrings(spec.TokenPaths),
+				mobileConfig:    cloneStrings(spec.MobileConfig),
 			})
 		}
 		return signatures, nil
@@ -437,6 +472,7 @@ func cloneSignature(sig vendorSignature) vendorSignature {
 		versionAppPaths: cloneStrings(sig.versionAppPaths),
 		statusCommands:  cloneCommands(sig.statusCommands),
 		tokenPaths:      cloneStrings(sig.tokenPaths),
+		mobileConfig:    cloneStrings(sig.mobileConfig),
 	}
 }
 
@@ -504,10 +540,12 @@ func parseKeyValueOutput(output string) map[string]string {
 }
 
 func applyDerivedNotes(vendor string, notes map[string]string) {
+	applyCommonDerivedNotes(notes)
 	switch vendor {
 	case "SentinelOne":
 		deriveSentinelOneNotes(notes)
 	case "Kandji":
+		augmentKandjiPreferences(notes)
 		deriveKandjiNotes(notes)
 	}
 }
@@ -530,6 +568,15 @@ func deriveSentinelOneNotes(notes map[string]string) {
 	} else if token, ok := notes["sentinelctl_stats_agent_info_site_token"]; ok && token != "" {
 		notes["site_token"] = token
 	}
+	if name, ok := notes["sentinelctl_management_status_site_name"]; ok && name != "" {
+		notes["site_name"] = name
+	}
+	if policy, ok := notes["sentinelctl_management_status_policy"]; ok && policy != "" {
+		notes["policy_name"] = policy
+	}
+	if version, ok := notes["sentinelctl_management_status_version"]; ok && version != "" {
+		notes["management_version"] = version
+	}
 	if status, ok := notes["sentinelctl_scan_status_status"]; ok && status != "" {
 		inProgress := !strings.EqualFold(status, "idle") && !strings.EqualFold(status, "not running") && !strings.EqualFold(status, "completed")
 		notes["scan_in_progress"] = boolToString(inProgress)
@@ -543,6 +590,11 @@ func deriveSentinelOneNotes(notes map[string]string) {
 			}
 			notes["scan_last_seen_hours"] = fmt.Sprintf("%.1f", hours)
 			notes["scan_recent"] = boolToString(hours <= 168)
+		}
+	}
+	for key, value := range notes {
+		if strings.Contains(key, "systemctl") && strings.HasSuffix(key, "_active") {
+			notes["service_active"] = boolToString(isTruthy(value))
 		}
 	}
 }
@@ -560,6 +612,17 @@ func deriveKandjiNotes(notes map[string]string) {
 			}
 			notes["kandji_last_run_hours"] = fmt.Sprintf("%.1f", hours)
 			notes["kandji_last_run_recent"] = boolToString(hours <= 24)
+		}
+	}
+	if raw, ok := notes["kandji_prefs_last_check_in"]; ok && raw != "" {
+		if ts, parsed := parseFlexibleTime(raw); parsed {
+			notes["kandji_last_check_in_at"] = ts.UTC().Format(time.RFC3339)
+			hours := time.Since(ts).Hours()
+			if hours < 0 {
+				hours = -hours
+			}
+			notes["kandji_last_check_in_hours"] = fmt.Sprintf("%.1f", hours)
+			notes["kandji_last_check_in_recent"] = boolToString(hours <= 24)
 		}
 	}
 }
@@ -603,7 +666,7 @@ func isTruthy(value string) bool {
 	case "1", "on", "true", "enabled", "yes", "running", "connected", "active":
 		return true
 	default:
-		return false
+		return strings.HasPrefix(s, "active") || strings.HasPrefix(s, "running") || strings.HasPrefix(s, "enabled") || strings.HasPrefix(s, "connected") || strings.HasPrefix(s, "true") || strings.HasPrefix(s, "yes")
 	}
 }
 
@@ -612,4 +675,90 @@ func boolToString(v bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+func annotateFileMetadata(notes map[string]string, path, prefix string) {
+	info, err := fileInfoFunc(path)
+	if err != nil {
+		notes[prefix+"_error"] = err.Error()
+		return
+	}
+	notes[prefix+"_mtime"] = info.ModTime().UTC().Format(time.RFC3339)
+	hours := time.Since(info.ModTime()).Hours()
+	if hours < 0 {
+		hours = -hours
+	}
+	notes[prefix+"_age_hours"] = fmt.Sprintf("%.1f", hours)
+	notes[prefix+"_size_bytes"] = strconv.FormatInt(info.Size(), 10)
+	notes[prefix+"_stale"] = boolToString(hours > 48)
+}
+
+func augmentKandjiPreferences(notes map[string]string) {
+	paths := []string{
+		"/Library/Managed Preferences/com.kandji.agent.plist",
+		"/Library/Preferences/com.kandji.agent.plist",
+	}
+	for _, path := range paths {
+		data, err := fileReaderFunc(path)
+		if err != nil {
+			continue
+		}
+		var parsed map[string]any
+		if _, err := plist.Unmarshal(data, &parsed); err != nil {
+			continue
+		}
+		notes["kandji_prefs_present"] = "true"
+		notes["kandji_prefs_path"] = path
+		assignIfPresent(notes, "kandji_prefs_last_check_in", parsed, "last_check_in")
+		assignIfPresent(notes, "kandji_prefs_enforcement", parsed, "enforcement_state")
+		assignIfPresent(notes, "kandji_prefs_blueprint", parsed, "blueprint_name")
+		assignIfPresent(notes, "kandji_prefs_device_uuid", parsed, "device_uuid")
+		assignIfPresent(notes, "kandji_prefs_pending_items", parsed, "pending_items")
+		return
+	}
+}
+
+func assignIfPresent(notes map[string]string, key string, source map[string]any, field string) {
+	if value, ok := source[field]; ok {
+		if str := stringFromAny(value); str != "" {
+			notes[key] = str
+		}
+	}
+}
+
+func stringFromAny(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case fmt.Stringer:
+		return v.String()
+	case []byte:
+		return string(v)
+	case bool:
+		return strconv.FormatBool(v)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	default:
+		return ""
+	}
+}
+
+func applyCommonDerivedNotes(notes map[string]string) {
+	if count := countCLIErrorNotes(notes); count > 0 {
+		notes["cli_error_count"] = strconv.Itoa(count)
+	}
+}
+
+func countCLIErrorNotes(notes map[string]string) int {
+	count := 0
+	for key := range notes {
+		if strings.HasSuffix(key, "_error") {
+			count++
+		}
+	}
+	return count
 }

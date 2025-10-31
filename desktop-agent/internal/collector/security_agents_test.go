@@ -3,6 +3,7 @@ package collector
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,19 @@ import (
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/config"
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
+
+type mockFileInfo struct {
+	name    string
+	size    int64
+	modTime time.Time
+}
+
+func (m mockFileInfo) Name() string       { return m.name }
+func (m mockFileInfo) Size() int64        { return m.size }
+func (m mockFileInfo) Mode() os.FileMode  { return 0 }
+func (m mockFileInfo) ModTime() time.Time { return m.modTime }
+func (m mockFileInfo) IsDir() bool        { return false }
+func (m mockFileInfo) Sys() any           { return nil }
 
 func TestDetectSecurityAgents(t *testing.T) {
 	original := securityAgentPathExists
@@ -24,12 +38,18 @@ func TestDetectSecurityAgents(t *testing.T) {
 	defer func() { customSignatureCache = originalCache }()
 	originalExecutor := commandExecutor
 	defer func() { commandExecutor = originalExecutor }()
+	originalStat := fileInfoFunc
+	defer func() { fileInfoFunc = originalStat }()
+	originalReader := fileReaderFunc
+	defer func() { fileReaderFunc = originalReader }()
 
 	securityAgentPathExists = func(path string) bool {
 		switch path {
 		case "/Library/SentinelOne":
 			return true
 		case "/Library/SentinelOne/data/com.sentinelone.registration-token":
+			return true
+		case "/Library/Application Support/SentinelOne/com.sentinelone.registration-token":
 			return true
 		case "/Library/Kandji":
 			return true
@@ -41,13 +61,23 @@ func TestDetectSecurityAgents(t *testing.T) {
 			return true
 		case "/Library/Application Support/Kandji":
 			return true
+		case "/Library/Application Support/JAMF/Waiting Room/com.sentinelone.install.mobileconfig":
+			return true
+		case "/Library/Managed Preferences/com.sentinelone.agent.plist":
+			return true
 		case "/Applications/SentinelAgent.app":
 			return true
 		case "/Applications/Kandji Self Service.app":
 			return true
 		case "/usr/local/bin/sentinelctl":
 			return true
+		case "/opt/sentinelone/bin/sentinelctl":
+			return true
 		case "/usr/local/bin/kandji":
+			return true
+		case "/bin/systemctl":
+			return true
+		case "/usr/bin/rpm":
 			return true
 		default:
 			return false
@@ -69,18 +99,25 @@ func TestDetectSecurityAgents(t *testing.T) {
 	}
 	lastScan := time.Now().UTC().Add(-time.Hour)
 	kandjiLastRun := time.Now().UTC().Add(-2 * time.Hour)
+	kandjiLastCheck := time.Now().UTC().Add(-3 * time.Hour)
 	commandExecutor = func(args []string, _ time.Duration) (string, error) {
 		switch strings.Join(args, " ") {
 		case "/usr/local/bin/sentinelctl stats agent_info":
 			return "Connected: on\nSite Token: example-token\nAgent UUID: 1234-uuid", nil
 		case "/usr/local/bin/sentinelctl management status":
-			return "Connectivity: on\nAnti Tamper: Enabled\nAgent Enabled: true\nManagement URL: https://sentinelone.example", nil
+			return "Connectivity: on\nAnti Tamper: Enabled\nAgent Enabled: true\nSite Name: Example Org\nPolicy: Example Policy\nVersion: 23.2.1\nManagement URL: https://sentinelone.example", nil
 		case "/usr/local/bin/sentinelctl status":
 			return "Status: running", nil
 		case "/usr/local/bin/sentinelctl scan status":
 			return fmt.Sprintf("Status: idle\nLast Scan: %s", lastScan.Format(time.RFC3339)), nil
 		case "/usr/local/bin/sentinelctl version":
 			return "Version: 23.2.1", nil
+		case "/opt/sentinelone/bin/sentinelctl stats agent_info":
+			return "Connected: on", nil
+		case "/bin/systemctl status sentinelone-agent --no-pager":
+			return "Active: active (running)", nil
+		case "/usr/bin/rpm -q sentinelone":
+			return "sentinelone-23.2.1-1.x86_64", nil
 		case "/usr/local/bin/kandji library --state":
 			return fmt.Sprintf("State: idle\nLast Run: %s", kandjiLastRun.Format(time.RFC3339)), nil
 		case "/usr/local/bin/kandji version":
@@ -88,6 +125,35 @@ func TestDetectSecurityAgents(t *testing.T) {
 		default:
 			return "", nil
 		}
+	}
+	fileInfoFunc = func(path string) (os.FileInfo, error) {
+		return mockFileInfo{
+			name:    filepath.Base(path),
+			size:    128,
+			modTime: time.Now().Add(-time.Hour),
+		}, nil
+	}
+	kandjiPlist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>last_check_in</key>
+    <string>%s</string>
+    <key>enforcement_state</key>
+    <string>enforced</string>
+    <key>blueprint_name</key>
+    <string>Corp Blueprint</string>
+    <key>device_uuid</key>
+    <string>device-uuid-123</string>
+    <key>pending_items</key>
+    <string>0</string>
+</dict>
+</plist>`, kandjiLastCheck.Format(time.RFC3339))
+	fileReaderFunc = func(path string) ([]byte, error) {
+		if path == "/Library/Managed Preferences/com.kandji.agent.plist" {
+			return []byte(kandjiPlist), nil
+		}
+		return nil, os.ErrNotExist
 	}
 
 	processes := []types.ProcessSnapshot{
@@ -158,6 +224,27 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].Notes["agent_uuid"] != "1234-uuid" {
 		t.Fatalf("expected SentinelOne agent uuid note")
 	}
+	if found["SentinelOne"].Notes["site_name"] != "Example Org" {
+		t.Fatalf("expected SentinelOne site name note")
+	}
+	if found["SentinelOne"].Notes["policy_name"] != "Example Policy" {
+		t.Fatalf("expected SentinelOne policy name note")
+	}
+	if found["SentinelOne"].Notes["management_version"] != "23.2.1" {
+		t.Fatalf("expected SentinelOne management version note")
+	}
+	if found["SentinelOne"].Notes["service_active"] != "true" {
+		t.Fatalf("expected SentinelOne service active flag")
+	}
+	if found["SentinelOne"].Notes["management_profile_present"] != "true" {
+		t.Fatalf("expected SentinelOne management profile flag")
+	}
+	if found["SentinelOne"].Notes["management_profile_path"] != "/Library/Application Support/JAMF/Waiting Room/com.sentinelone.install.mobileconfig" {
+		t.Fatalf("expected SentinelOne management profile path")
+	}
+	if found["SentinelOne"].Notes["registration_token_stale"] != "false" {
+		t.Fatalf("expected SentinelOne registration token stale flag")
+	}
 	if !found["Kandji"].Installed || !found["Kandji"].Running {
 		t.Fatalf("expected Kandji to be installed and running")
 	}
@@ -178,6 +265,15 @@ func TestDetectSecurityAgents(t *testing.T) {
 	}
 	if found["Kandji"].Notes["kandji_last_run_hours"] == "" {
 		t.Fatalf("expected Kandji last run hours note")
+	}
+	if found["Kandji"].Notes["kandji_prefs_present"] != "true" {
+		t.Fatalf("expected Kandji prefs presence flag")
+	}
+	if found["Kandji"].Notes["kandji_prefs_last_check_in"] == "" {
+		t.Fatalf("expected Kandji prefs last check-in note")
+	}
+	if found["Kandji"].Notes["kandji_last_check_in_recent"] != "true" {
+		t.Fatalf("expected Kandji last check-in recent flag")
 	}
 }
 
