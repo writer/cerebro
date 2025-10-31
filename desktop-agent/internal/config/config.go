@@ -28,6 +28,7 @@ type Config struct {
 	EventBatchSize       int
 	PackDirectory        string
 	ArtifactPollInterval time.Duration
+	SecuritySignatures   string
 }
 
 const defaultInterval = 5 * time.Minute
@@ -53,6 +54,7 @@ func Load() Config {
 		EventBatchSize:       parseIntEnv("CEREBRO_EVENT_BATCH_SIZE", 256),
 		PackDirectory:        envOr("CEREBRO_PACK_DIRECTORY", ""),
 		ArtifactPollInterval: parseDurationEnv("CEREBRO_ARTIFACT_POLL_INTERVAL", 5*time.Minute),
+		SecuritySignatures:   envOr("CEREBRO_SECURITY_SIGNATURES", ""),
 	}
 
 	minTLS := os.Getenv("CEREBRO_AGENT_TLS_MIN_VERSION")
@@ -78,6 +80,7 @@ func Load() Config {
 	eventBatch := flag.Int("event-batch", cfg.EventBatchSize, "Maximum queued events per batch")
 	packDir := flag.String("pack-dir", cfg.PackDirectory, "Directory containing artifact packs")
 	artifactPoll := flag.Duration("artifact-poll", cfg.ArtifactPollInterval, "Interval to poll for artifact jobs")
+	securitySignatures := flag.String("security-signatures", cfg.SecuritySignatures, "Path to custom security agent signature definitions")
 
 	flag.Parse()
 
@@ -94,6 +97,7 @@ func Load() Config {
 	cfg.EventBatchSize = *eventBatch
 	cfg.PackDirectory = *packDir
 	cfg.ArtifactPollInterval = *artifactPoll
+	cfg.SecuritySignatures = *securitySignatures
 
 	return cfg
 }

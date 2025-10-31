@@ -1,8 +1,10 @@
 package collector
 
 import (
+	"os"
 	"testing"
 
+	"github.com/WriterInternal/cerebro/desktop-agent/internal/config"
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 )
 
@@ -13,6 +15,10 @@ func TestDetectSecurityAgents(t *testing.T) {
 	defer func() { appVersionReader = originalVersion }()
 	originalDaemon := daemonProgramReader
 	defer func() { daemonProgramReader = originalDaemon }()
+	originalLoader := customSignatureLoader
+	defer func() { customSignatureLoader = originalLoader }()
+	originalCache := customSignatureCache
+	defer func() { customSignatureCache = originalCache }()
 
 	securityAgentPathExists = func(path string) bool {
 		switch path {
@@ -63,7 +69,9 @@ func TestDetectSecurityAgents(t *testing.T) {
 		{Name: "falcon"},
 	}
 
-	agents := detectSecurityAgents(processes)
+	customSignatureLoader = func(string) []vendorSignature { return nil }
+	customSignatureCache = newSignatureCache()
+	agents := detectSecurityAgents(processes, config.Config{})
 	if len(agents) != 3 {
 		t.Fatalf("expected 3 agents, got %d", len(agents))
 	}
@@ -115,12 +123,18 @@ func TestDetectSecurityAgentsNone(t *testing.T) {
 	defer func() { appVersionReader = originalVersion }()
 	originalDaemon := daemonProgramReader
 	defer func() { daemonProgramReader = originalDaemon }()
+	originalLoader := customSignatureLoader
+	defer func() { customSignatureLoader = originalLoader }()
+	originalCache := customSignatureCache
+	defer func() { customSignatureCache = originalCache }()
 
 	securityAgentPathExists = func(string) bool { return false }
 	appVersionReader = func(string) string { return "" }
+	customSignatureLoader = func(string) []vendorSignature { return nil }
+	customSignatureCache = newSignatureCache()
 	daemonProgramReader = func(string) string { return "" }
-
-	if agents := detectSecurityAgents(nil); len(agents) != 0 {
+	customSignatureCache = newSignatureCache()
+	if agents := detectSecurityAgents(nil, config.Config{}); len(agents) != 0 {
 		t.Fatalf("expected no agents, got %d", len(agents))
 	}
 }
@@ -132,14 +146,20 @@ func TestDetectSecurityAgentsLaunchDaemonOnly(t *testing.T) {
 	defer func() { appVersionReader = originalVersion }()
 	originalDaemon := daemonProgramReader
 	defer func() { daemonProgramReader = originalDaemon }()
+	originalLoader := customSignatureLoader
+	defer func() { customSignatureLoader = originalLoader }()
+	originalCache := customSignatureCache
+	defer func() { customSignatureCache = originalCache }()
 
 	securityAgentPathExists = func(path string) bool {
 		return path == "/Library/LaunchDaemons/com.sentinelone.sentineld.plist"
 	}
 	appVersionReader = func(string) string { return "" }
+	customSignatureLoader = func(string) []vendorSignature { return nil }
+	customSignatureCache = newSignatureCache()
 	daemonProgramReader = func(path string) string { return path + ":exec" }
-
-	agents := detectSecurityAgents(nil)
+	customSignatureCache = newSignatureCache()
+	agents := detectSecurityAgents(nil, config.Config{})
 	if len(agents) != 1 {
 		t.Fatalf("expected 1 agent, got %d", len(agents))
 	}
@@ -158,5 +178,70 @@ func TestDetectSecurityAgentsLaunchDaemonOnly(t *testing.T) {
 	}
 	if agent.Notes["daemon_program"] != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist:exec" {
 		t.Fatalf("expected daemon program note")
+	}
+}
+
+func TestDetectSecurityAgentsCustomSignatures(t *testing.T) {
+	originalPathExists := securityAgentPathExists
+	defer func() { securityAgentPathExists = originalPathExists }()
+	originalLoader := customSignatureLoader
+	defer func() { customSignatureLoader = originalLoader }()
+	originalCache := customSignatureCache
+	customSignatureCache = newSignatureCache()
+	defer func() { customSignatureCache = originalCache }()
+	originalVersion := appVersionReader
+	defer func() { appVersionReader = originalVersion }()
+	originalDaemon := daemonProgramReader
+	defer func() { daemonProgramReader = originalDaemon }()
+
+	customFile, err := os.CreateTemp(t.TempDir(), "signatures-*.json")
+	if err != nil {
+		t.Fatalf("failed creating temp file: %v", err)
+	}
+	defer customFile.Close()
+
+	if _, err := customFile.WriteString(`[
+		{
+			"vendor": "Jamf",
+			"product": "Jamf Protect",
+			"process_hints": ["jamf", "protect"],
+			"install_paths": ["/Applications/JamfProtect.app"],
+			"daemon_paths": ["/Library/LaunchDaemons/com.jamf.protect.daemon.plist"],
+			"cli_paths": ["/usr/local/bin/jamfprotect"],
+			"version_paths": ["/Applications/JamfProtect.app"]
+		}
+	]`); err != nil {
+		t.Fatalf("failed writing signatures: %v", err)
+	}
+	if err := customFile.Close(); err != nil {
+		t.Fatalf("failed closing file: %v", err)
+	}
+
+	securityAgentPathExists = func(path string) bool {
+		return path == "/Applications/JamfProtect.app" || path == "/Library/LaunchDaemons/com.jamf.protect.daemon.plist" || path == "/usr/local/bin/jamfprotect"
+	}
+	appVersionReader = func(string) string { return "1.2.3" }
+	daemonProgramReader = func(path string) string { return path + ":exec" }
+	customSignatureLoader = loadCustomSignatures
+
+	agents := detectSecurityAgents([]types.ProcessSnapshot{{Name: "JamfProtect"}}, config.Config{SecuritySignatures: customFile.Name()})
+	if len(agents) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(agents))
+	}
+	agent := agents[0]
+	if agent.Vendor != "Jamf" {
+		t.Fatalf("unexpected vendor %q", agent.Vendor)
+	}
+	if agent.Notes["version"] != "1.2.3" {
+		t.Fatalf("expected version note")
+	}
+	if agent.Notes["daemon_program"] != "/Library/LaunchDaemons/com.jamf.protect.daemon.plist:exec" {
+		t.Fatalf("expected daemon program")
+	}
+
+	// Ensure cache reuses without re-read after file mtime.
+	agents = detectSecurityAgents(nil, config.Config{SecuritySignatures: customFile.Name()})
+	if len(agents) != 1 {
+		t.Fatalf("expected cached agent, got %d", len(agents))
 	}
 }

@@ -1,10 +1,14 @@
 package collector
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/WriterInternal/cerebro/desktop-agent/internal/config"
 	"github.com/WriterInternal/cerebro/desktop-agent/internal/types"
 	plist "howett.net/plist"
 )
@@ -29,7 +33,7 @@ type vendorSignature struct {
 	versionAppPaths []string
 }
 
-var securityVendors = []vendorSignature{
+var defaultSecurityVendors = []vendorSignature{
 	{
 		vendor:       "SentinelOne",
 		product:      "SentinelOne Agent",
@@ -86,10 +90,14 @@ var securityVendors = []vendorSignature{
 
 var appVersionReader = readAppVersion
 var daemonProgramReader = readDaemonProgram
+var customSignatureLoader = loadCustomSignatures
+var signatureMerger = mergeSignatures
+var customSignatureCache = newSignatureCache()
 
-func detectSecurityAgents(processes []types.ProcessSnapshot) []types.SecuritySoftware {
-	results := make([]types.SecuritySoftware, 0, len(securityVendors))
-	for _, vendor := range securityVendors {
+func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) []types.SecuritySoftware {
+	vendors := signatureMerger(defaultSecurityVendors, customSignatureLoader(cfg.SecuritySignatures))
+	results := make([]types.SecuritySoftware, 0, len(vendors))
+	for _, vendor := range vendors {
 		installed, installPath := existsAny(vendor.installPaths)
 		daemonPresent, daemonPath := existsAny(vendor.daemonPaths)
 		cliPresent, cliPath := existsAny(vendor.cliPaths)
@@ -226,4 +234,110 @@ func readDaemonProgram(daemonPath string) string {
 		}
 	}
 	return ""
+}
+
+type signatureCache struct {
+	mu         sync.Mutex
+	path       string
+	modTime    time.Time
+	signatures []vendorSignature
+}
+
+func newSignatureCache() *signatureCache {
+	return &signatureCache{}
+}
+
+func (c *signatureCache) get(path string, loader func(string, time.Time) ([]vendorSignature, error)) []vendorSignature {
+	if path == "" {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	modTime := info.ModTime()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.path == path && modTime.Equal(c.modTime) {
+		return c.signatures
+	}
+	signatures, err := loader(path, modTime)
+	if err != nil {
+		return nil
+	}
+	c.path = path
+	c.modTime = modTime
+	c.signatures = signatures
+	return signatures
+}
+
+type vendorSignatureSpec struct {
+	Vendor          string   `json:"vendor"`
+	Product         string   `json:"product"`
+	ProcessHints    []string `json:"process_hints"`
+	InstallPaths    []string `json:"install_paths"`
+	DaemonPaths     []string `json:"daemon_paths"`
+	CLIPaths        []string `json:"cli_paths"`
+	VersionAppPaths []string `json:"version_paths"`
+}
+
+func loadCustomSignatures(path string) []vendorSignature {
+	return customSignatureCache.get(path, func(p string, _ time.Time) ([]vendorSignature, error) {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		var specs []vendorSignatureSpec
+		if err := json.Unmarshal(data, &specs); err != nil {
+			return nil, err
+		}
+		signatures := make([]vendorSignature, 0, len(specs))
+		for _, spec := range specs {
+			if spec.Vendor == "" || spec.Product == "" {
+				continue
+			}
+			signatures = append(signatures, vendorSignature{
+				vendor:          spec.Vendor,
+				product:         spec.Product,
+				processHints:    cloneStrings(spec.ProcessHints),
+				installPaths:    cloneStrings(spec.InstallPaths),
+				daemonPaths:     cloneStrings(spec.DaemonPaths),
+				cliPaths:        cloneStrings(spec.CLIPaths),
+				versionAppPaths: cloneStrings(spec.VersionAppPaths),
+			})
+		}
+		return signatures, nil
+	})
+}
+
+func mergeSignatures(defaults, extras []vendorSignature) []vendorSignature {
+	result := make([]vendorSignature, 0, len(defaults)+len(extras))
+	for _, sig := range defaults {
+		result = append(result, cloneSignature(sig))
+	}
+	for _, sig := range extras {
+		result = append(result, cloneSignature(sig))
+	}
+	return result
+}
+
+func cloneStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneSignature(sig vendorSignature) vendorSignature {
+	return vendorSignature{
+		vendor:          sig.vendor,
+		product:         sig.product,
+		processHints:    cloneStrings(sig.processHints),
+		installPaths:    cloneStrings(sig.installPaths),
+		daemonPaths:     cloneStrings(sig.daemonPaths),
+		cliPaths:        cloneStrings(sig.cliPaths),
+		versionAppPaths: cloneStrings(sig.versionAppPaths),
+	}
 }
