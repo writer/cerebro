@@ -7,6 +7,9 @@ import {
   type HostSecurityRecord,
   type HostSecurityScoreSummary,
   type FleetSecuritySummary,
+  type SecurityIssueDefinition,
+  type SecurityIssueOccurrenceSummary,
+  type FleetIssueSummary,
   type SecurityInsightScore,
   type SecuritySoftwareInsight,
   type SecuritySoftwareRecord,
@@ -37,46 +40,130 @@ const FALSE_VALUES = new Set([
 
 const TRUTHY_PREFIXES = ["active", "running", "enabled", "connected", "true", "yes", "enforc", "present"];
 
-const SENTINELONE_ISSUE_LABELS: Record<string, string> = {
-  connectivity: "Connectivity issue",
-  anti_tamper: "Anti-tamper disabled",
-  agent_disabled: "Agent disabled",
-  service_inactive: "Service inactive",
-  token_missing: "Registration token missing",
-  token_stale: "Registration token stale",
-  profile_missing: "Management profile missing",
-  package_mismatch: "Package version mismatch",
-  scan_stale: "Scan stale",
+const ISSUE_DEFINITIONS: Record<string, SecurityIssueDefinition> = {
+  connectivity: {
+    code: "connectivity",
+    label: "Connectivity issue",
+    severity: "critical",
+    weight: 25,
+    vendor: "SentinelOne",
+    remediation: "Verify network connectivity between the agent and management console",
+  },
+  anti_tamper: {
+    code: "anti_tamper",
+    label: "Anti-tamper disabled",
+    severity: "high",
+    weight: 20,
+    vendor: "SentinelOne",
+  },
+  agent_disabled: {
+    code: "agent_disabled",
+    label: "Agent disabled",
+    severity: "critical",
+    weight: 20,
+    vendor: "SentinelOne",
+  },
+  service_inactive: {
+    code: "service_inactive",
+    label: "Service inactive",
+    severity: "high",
+    weight: 15,
+    vendor: "SentinelOne",
+  },
+  token_missing: {
+    code: "token_missing",
+    label: "Registration token missing",
+    severity: "medium",
+    weight: 15,
+    vendor: "SentinelOne",
+  },
+  token_stale: {
+    code: "token_stale",
+    label: "Registration token stale",
+    severity: "medium",
+    weight: 10,
+    vendor: "SentinelOne",
+  },
+  profile_missing: {
+    code: "profile_missing",
+    label: "Management profile missing",
+    severity: "medium",
+    weight: 10,
+    vendor: "SentinelOne",
+  },
+  package_mismatch: {
+    code: "package_mismatch",
+    label: "Package version mismatch",
+    severity: "medium",
+    weight: 10,
+    vendor: "SentinelOne",
+  },
+  scan_stale: {
+    code: "scan_stale",
+    label: "Scan stale",
+    severity: "medium",
+    weight: 10,
+    vendor: "SentinelOne",
+  },
+  library_state: {
+    code: "library_state",
+    label: "Library state unhealthy",
+    severity: "high",
+    weight: 20,
+    vendor: "Kandji",
+  },
+  last_run_stale: {
+    code: "last_run_stale",
+    label: "Library last run stale",
+    severity: "medium",
+    weight: 10,
+    vendor: "Kandji",
+  },
+  check_in_stale: {
+    code: "check_in_stale",
+    label: "Check-in stale",
+    severity: "high",
+    weight: 15,
+    vendor: "Kandji",
+  },
+  not_enforced: {
+    code: "not_enforced",
+    label: "Blueprint not enforced",
+    severity: "medium",
+    weight: 10,
+    vendor: "Kandji",
+  },
+  pending_items: {
+    code: "pending_items",
+    label: "Pending items outstanding",
+    severity: "medium",
+    weight: 10,
+    vendor: "Kandji",
+  },
+  sensor_disabled: {
+    code: "sensor_disabled",
+    label: "Sensor disabled",
+    severity: "high",
+    weight: 15,
+  },
 };
 
-const KANDJI_ISSUE_LABELS: Record<string, string> = {
-  library_state: "Library state unhealthy",
-  last_run_stale: "Library last run stale",
-  check_in_stale: "Check-in stale",
-  not_enforced: "Blueprint not enforced",
-  pending_items: "Pending items outstanding",
-};
-
-const DEFAULT_ISSUE_LABEL = "Issue";
-
-const ISSUE_WEIGHTS: Record<string, number> = {
-  connectivity: 25,
-  anti_tamper: 20,
-  agent_disabled: 20,
-  service_inactive: 15,
-  token_missing: 15,
-  token_stale: 10,
-  profile_missing: 10,
-  package_mismatch: 10,
-  scan_stale: 10,
-  library_state: 20,
-  last_run_stale: 10,
-  check_in_stale: 15,
-  not_enforced: 10,
-  pending_items: 10,
+const DEFAULT_ISSUE_DEFINITION: SecurityIssueDefinition = {
+  code: "unknown_issue",
+  label: "Issue",
+  severity: "info",
+  weight: 5,
 };
 
 const MAX_SCORE = 100;
+
+const SEVERITY_RANK: Record<SecurityIssueDefinition["severity"], number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
 
 function normaliseNotes(notes?: SecuritySoftwareRecord["notes"]): Record<string, string> {
   if (!notes) {
@@ -136,6 +223,23 @@ function parseIssues(value?: string): string[] {
     .split(",")
     .map((issue) => issue.trim())
     .filter((issue) => issue.length > 0);
+}
+
+function getIssueDefinition(code: string): SecurityIssueDefinition {
+  const definition = ISSUE_DEFINITIONS[code];
+  if (definition) {
+    return definition;
+  }
+  return {
+    ...DEFAULT_ISSUE_DEFINITION,
+    code,
+    label: code.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
+  };
+}
+
+function filterIssueDefinitions(definitions: SecurityIssueDefinition[], vendor: string): SecurityIssueDefinition[] {
+  const lowerVendor = vendor.toLowerCase();
+  return definitions.filter((definition) => !definition.vendor || definition.vendor.toLowerCase() === lowerVendor);
 }
 
 function buildGenericMetadata(notes: Record<string, string>): GenericSecurityMetadata {
@@ -258,8 +362,10 @@ export function summarizeSecurityHealth(insights: SecuritySoftwareInsight[]): Se
 }
 
 function resolveIssueLabels(vendor: SecuritySoftwareInsight["vendor"], issues: string[]): string[] {
-  const labelMap = vendor === "SentinelOne" ? SENTINELONE_ISSUE_LABELS : vendor === "Kandji" ? KANDJI_ISSUE_LABELS : {};
-  return issues.map((issue) => labelMap[issue] ?? DEFAULT_ISSUE_LABEL);
+  const definitions = issues.map((issue) => getIssueDefinition(issue));
+  const filtered = filterIssueDefinitions(definitions, vendor);
+  const lookup = new Map(filtered.map((definition) => [definition.code, definition.label] as const));
+  return issues.map((issue) => lookup.get(issue) ?? getIssueDefinition(issue).label);
 }
 
 export function scoreSecurityInsight(insight: SecuritySoftwareInsight): SecurityInsightScore {
@@ -271,7 +377,7 @@ export function scoreSecurityInsight(insight: SecuritySoftwareInsight): Security
       continue;
     }
     seen.add(issue);
-    penalty += ISSUE_WEIGHTS[issue] ?? 5;
+    penalty += getIssueDefinition(issue).weight;
   }
   const score = Math.max(0, MAX_SCORE - penalty);
   const normalized = Math.round((score / MAX_SCORE) * 1000) / 10;
@@ -307,6 +413,80 @@ function summarizeScores(scores: SecurityInsightScore[]): HostSecurityScoreSumma
   };
 }
 
+type IssueAccumulator = Map<
+  string,
+  {
+    definition: SecurityIssueDefinition;
+    occurrences: number;
+    vendors: Set<string>;
+    products: Set<string>;
+    hosts: Set<string>;
+  }
+>;
+
+function addIssue(
+  acc: IssueAccumulator,
+  definition: SecurityIssueDefinition,
+  vendor: string,
+  product: string,
+  hostId?: string,
+  hostname?: string,
+): void {
+  const key = definition.code;
+  if (!acc.has(key)) {
+    acc.set(key, {
+      definition,
+      occurrences: 0,
+      vendors: new Set<string>(),
+      products: new Set<string>(),
+      hosts: new Set<string>(),
+    });
+  }
+  const entry = acc.get(key)!;
+  entry.occurrences += 1;
+  entry.vendors.add(vendor);
+  entry.products.add(`${vendor} ${product}`.trim());
+  if (hostId || hostname) {
+    entry.hosts.add(hostId ?? hostname ?? "unknown");
+  }
+}
+
+function buildFleetIssueSummary(acc: IssueAccumulator): FleetIssueSummary {
+  const summaries: SecurityIssueOccurrenceSummary[] = [];
+  let totalOccurrences = 0;
+  for (const value of acc.values()) {
+    totalOccurrences += value.occurrences;
+    summaries.push({
+      definition: value.definition,
+      occurrences: value.occurrences,
+      affectedVendors: Array.from(value.vendors).sort(),
+      affectedProducts: Array.from(value.products).sort(),
+      affectedHosts: Array.from(value.hosts).sort(),
+    });
+  }
+  summaries.sort((a, b) => {
+    const severityDelta = SEVERITY_RANK[a.definition.severity] - SEVERITY_RANK[b.definition.severity];
+    if (severityDelta !== 0) {
+      return severityDelta;
+    }
+    if (b.occurrences !== a.occurrences) {
+      return b.occurrences - a.occurrences;
+    }
+    return a.definition.label.localeCompare(b.definition.label);
+  });
+  return { totalOccurrences, issues: summaries };
+}
+
+export function summarizeSecurityIssuesFromInsights(insights: SecuritySoftwareInsight[]): FleetIssueSummary {
+  const acc: IssueAccumulator = new Map();
+  for (const insight of insights) {
+    for (const issue of insight.metadata.healthIssues) {
+      addIssue(acc, getIssueDefinition(issue), insight.vendor, insight.product);
+    }
+  }
+  return buildFleetIssueSummary(acc);
+}
+
 export function deriveHostSecurityInsights(record: HostSecurityRecord): HostSecurityInsight {
   const insights = deriveSecurityInsights(record.securitySoftware);
   const scores = insights.map((insight) => scoreSecurityInsight(insight));
@@ -319,6 +499,18 @@ export function deriveHostSecurityInsights(record: HostSecurityRecord): HostSecu
     health,
     scorecard,
   };
+}
+
+export function summarizeSecurityIssuesFromHosts(hosts: HostSecurityInsight[]): FleetIssueSummary {
+  const acc: IssueAccumulator = new Map();
+  for (const host of hosts) {
+    for (const insight of host.insights) {
+      for (const issue of insight.metadata.healthIssues) {
+        addIssue(acc, getIssueDefinition(issue), insight.vendor, insight.product, host.hostId, host.hostname);
+      }
+    }
+  }
+  return buildFleetIssueSummary(acc);
 }
 
 export function summarizeFleetSecurity(hosts: HostSecurityRecord[]): FleetSecuritySummary {
@@ -338,6 +530,8 @@ export function summarizeFleetSecurity(hosts: HostSecurityRecord[]): FleetSecuri
     }
   }
 
+  const issues = summarizeSecurityIssuesFromHosts(hostInsights);
+
   return {
     totalHosts: hosts.length,
     hostsWithSecuritySoftware: hostInsights.filter((host) => host.insights.length > 0).length,
@@ -346,5 +540,6 @@ export function summarizeFleetSecurity(hosts: HostSecurityRecord[]): FleetSecuri
     averageNormalizedScore,
     worstInsight,
     worstScore,
+    issues,
   };
 }

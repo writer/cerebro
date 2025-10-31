@@ -7,4 +7,6 @@ export {
   formatSecurityInsight,
   deriveHostSecurityInsights,
   summarizeFleetSecurity,
+  summarizeSecurityIssuesFromInsights,
+  summarizeSecurityIssuesFromHosts,
 } from "./security";

@@ -7,6 +7,8 @@ import {
   formatSecurityInsight,
   deriveHostSecurityInsights,
   summarizeFleetSecurity,
+  summarizeSecurityIssuesFromInsights,
+  summarizeSecurityIssuesFromHosts,
 } from "../../src/agents/security";
 import type { HostSecurityRecord } from "../../src/types";
 import type { SecuritySoftwareRecord } from "../../src/types";
@@ -190,5 +192,30 @@ describe("summarizeFleetSecurity", () => {
     expect(summary.averageNormalizedScore).not.toBeNull();
     expect(summary.worstInsight).not.toBeNull();
     expect(summary.worstScore).not.toBeNull();
+    expect(summary.issues.totalOccurrences).toBeGreaterThan(0);
+  });
+});
+
+describe("summarizeSecurityIssues", () => {
+  it("aggregates issues from insights", () => {
+    const insights = deriveSecurityInsights([sentinelRecord, kandjiRecord, genericRecord]);
+    const summary = summarizeSecurityIssuesFromInsights(insights);
+
+    expect(summary.totalOccurrences).toBeGreaterThan(0);
+    const issueCodes = summary.issues.map((issue) => issue.definition.code);
+    expect(issueCodes).toContain("pending_items");
+  });
+
+  it("tracks affected hosts when summarizing host insights", () => {
+    const hosts: HostSecurityRecord[] = [
+      { hostId: "host-1", securitySoftware: [sentinelRecord] },
+      { hostId: "host-2", securitySoftware: [kandjiRecord] },
+    ];
+    const hostInsights = hosts.map((host) => deriveHostSecurityInsights(host));
+    const summary = summarizeSecurityIssuesFromHosts(hostInsights);
+
+    expect(summary.totalOccurrences).toBeGreaterThan(0);
+    const issue = summary.issues.find((item) => item.definition.code === "pending_items");
+    expect(issue?.affectedHosts).toContain("host-2");
   });
 });

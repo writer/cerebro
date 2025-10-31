@@ -246,6 +246,18 @@ export interface SecurityInsightScore {
   issueLabels: string[];
 }
 
+export type SecurityIssueSeverity = "critical" | "high" | "medium" | "low" | "info";
+
+export interface SecurityIssueDefinition {
+  code: string;
+  label: string;
+  severity: SecurityIssueSeverity;
+  weight: number;
+  vendor?: string;
+  remediation?: string;
+  documentationUrl?: string;
+}
+
 export interface HostSecurityRecord {
   hostId: string;
   hostname?: string;
@@ -275,6 +287,20 @@ export interface FleetSecuritySummary {
   averageNormalizedScore: number | null;
   worstInsight: SecuritySoftwareInsight | null;
   worstScore: SecurityInsightScore | null;
+  issues: FleetIssueSummary;
+}
+
+export interface SecurityIssueOccurrenceSummary {
+  definition: SecurityIssueDefinition;
+  occurrences: number;
+  affectedVendors: string[];
+  affectedProducts: string[];
+  affectedHosts: string[];
+}
+
+export interface FleetIssueSummary {
+  totalOccurrences: number;
+  issues: SecurityIssueOccurrenceSummary[];
 }
 
 export interface ReviewNotificationRecord {

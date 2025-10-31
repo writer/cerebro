@@ -59,6 +59,8 @@ export {
   formatSecurityInsight,
   deriveHostSecurityInsights,
   summarizeFleetSecurity,
+  summarizeSecurityIssuesFromInsights,
+  summarizeSecurityIssuesFromHosts,
   deriveSecurityInsights,
   summarizeSecurityHealth,
   type SummarizeOrgOptions,
