@@ -539,5 +539,39 @@ export type ExecutiveDashboardResponse = {
   identity_analytics: IdentityAnalyticsResponse;
   risk_heatmap: RiskHeatmapResponse;
   compliance_trends: ComplianceTrendResponse;
+  runtime_health?: RuntimeHealthDashboardEntry[];
+  integration_coverage?: IntegrationCoverageDashboardEntry[];
   metadata: DashboardMetadata;
+};
+
+export type RuntimeHealthDashboardEntry = {
+  runtime: string;
+  window_start: string;
+  window_end: string;
+  events: Record<string, { count: number; last_seen: string | null }>;
+  warnings: Record<string, { count: number; last_seen: string | null }>;
+  latest_metadata?: {
+    payload: Record<string, unknown>;
+    captured_at: string;
+  } | null;
+  severity?: string;
+};
+
+export type IntegrationCoverageDashboardEntry = {
+  integration: string;
+  providers: string[];
+  status: string;
+  scopes: {
+    total: number;
+    healthy: number;
+    warning: number;
+    critical: number;
+  };
+  accounts: {
+    total: number;
+  };
+  coverage_ratio?: number | null;
+  last_success?: string | null;
+  evaluated_at: string;
+  severity?: string;
 };

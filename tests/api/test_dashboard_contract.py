@@ -18,6 +18,8 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "investment_recommendations",
         "identity_analytics",
         "risk_heatmap",
+        "runtime_health",
+        "integration_coverage",
         "metadata",
     },
     "ExecutiveSummaryResponse": {
