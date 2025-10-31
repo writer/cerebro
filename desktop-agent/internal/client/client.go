@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -18,9 +19,15 @@ import (
 // configuration, headers, and request construction so collectors can focus on
 // payload generation.
 type Service struct {
-	client *http.Client
-	cfg    config.Config
+	client    *http.Client
+	cfg       config.Config
+	backoffFn func(context.Context, int) error
 }
+
+const (
+	maxRetryAttempts    = 3
+	initialRetryBackoff = 200 * time.Millisecond
+)
 
 // New constructs a Service with a hardened HTTP client. TLS settings are
 // derived from the agent configuration, including optional insecure mode for
@@ -38,7 +45,8 @@ func New(cfg config.Config) (*Service, error) {
 			Timeout:   30 * time.Second,
 			Transport: transport,
 		},
-		cfg: cfg,
+		cfg:       cfg,
+		backoffFn: defaultBackoff,
 	}, nil
 }
 
@@ -55,22 +63,13 @@ func (s *Service) SendSnapshot(ctx context.Context, telemetry *types.HostTelemet
 	}
 
 	url := fmt.Sprintf("%s/telemetry/host", s.cfg.APIBaseURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	resp, err := s.doWithRetry(ctx, http.MethodPost, url, payload, func(req *http.Request) {
+		s.decorate(req)
+	})
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-
-	s.decorate(req)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("send request: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("snapshot request failed: status %d", resp.StatusCode)
-	}
 	return nil
 }
 
@@ -86,22 +85,13 @@ func (s *Service) SendEvents(ctx context.Context, batch types.HostEventBatch) er
 	}
 
 	url := fmt.Sprintf("%s/telemetry/host/events", s.cfg.APIBaseURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	resp, err := s.doWithRetry(ctx, http.MethodPost, url, payload, func(req *http.Request) {
+		s.decorate(req)
+	})
 	if err != nil {
-		return fmt.Errorf("build events request: %w", err)
-	}
-
-	s.decorate(req)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("send events: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("events request failed: status %d", resp.StatusCode)
-	}
 	return nil
 }
 
@@ -146,15 +136,10 @@ func (s *Service) FetchArtifactPacks(ctx context.Context, hostID, hostname strin
 	}
 	parsed.RawQuery = query.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("build pack request: %w", err)
-	}
-
-	s.decorate(req)
-	req.Header.Del("Content-Type")
-
-	resp, err := s.client.Do(req)
+	resp, err := s.doWithRetry(ctx, http.MethodGet, parsed.String(), nil, func(req *http.Request) {
+		s.decorate(req)
+		req.Header.Del("Content-Type")
+	})
 	if err != nil {
 		return nil, fmt.Errorf("fetch packs: %w", err)
 	}
@@ -163,13 +148,115 @@ func (s *Service) FetchArtifactPacks(ctx context.Context, hostID, hostname strin
 	if resp.StatusCode == http.StatusNoContent {
 		return nil, nil
 	}
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("pack request failed: status %d", resp.StatusCode)
-	}
 
 	var payload []types.ArtifactPackDefinition
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, fmt.Errorf("decode pack response: %w", err)
 	}
 	return payload, nil
+}
+
+func (s *Service) doWithRetry(ctx context.Context, method, url string, body []byte, mutate func(*http.Request)) (*http.Response, error) {
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetryAttempts; attempt++ {
+		var reader io.Reader
+		if len(body) > 0 {
+			reader = bytes.NewReader(body)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, url, reader)
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
+
+		if mutate != nil {
+			mutate(req)
+		}
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			lastErr = fmt.Errorf("send request: %w", err)
+		} else {
+			status := resp.StatusCode
+			if status >= 400 {
+				if shouldRetryStatus(status) && attempt < maxRetryAttempts-1 {
+					drainAndClose(resp.Body)
+					lastErr = fmt.Errorf("request failed: status %d", status)
+					if err := s.backoff(ctx, attempt); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				bodyErr := readBodyMessage(resp.Body)
+				resp.Body.Close()
+				if bodyErr != "" {
+					return nil, fmt.Errorf("request failed: status %d: %s", status, bodyErr)
+				}
+				return nil, fmt.Errorf("request failed: status %d", status)
+			}
+			return resp, nil
+		}
+
+		if attempt == maxRetryAttempts-1 {
+			break
+		}
+		if err := s.backoff(ctx, attempt); err != nil {
+			return nil, err
+		}
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("request failed after %d attempts", maxRetryAttempts)
+}
+
+func (s *Service) backoff(ctx context.Context, attempt int) error {
+	if s.backoffFn != nil {
+		return s.backoffFn(ctx, attempt)
+	}
+	return defaultBackoff(ctx, attempt)
+}
+
+func defaultBackoff(ctx context.Context, attempt int) error {
+	delay := initialRetryBackoff * (1 << attempt)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func shouldRetryStatus(status int) bool {
+	if status == http.StatusTooManyRequests {
+		return true
+	}
+	return status >= http.StatusInternalServerError
+}
+
+func drainAndClose(body io.ReadCloser) {
+	if body == nil {
+		return
+	}
+	io.Copy(io.Discard, body)
+	body.Close()
+}
+
+func readBodyMessage(body io.ReadCloser) string {
+	if body == nil {
+		return ""
+	}
+	defer body.Close()
+	data, err := io.ReadAll(io.LimitReader(body, 4<<10))
+	if err != nil {
+		return ""
+	}
+	return string(bytes.TrimSpace(data))
 }
