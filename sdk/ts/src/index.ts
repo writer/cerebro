@@ -61,6 +61,8 @@ export {
   summarizeFleetSecurity,
   summarizeSecurityIssuesFromInsights,
   summarizeSecurityIssuesFromHosts,
+  listSecurityIssueDefinitions,
+  formatFleetIssueSummary,
   deriveSecurityInsights,
   summarizeSecurityHealth,
   type SummarizeOrgOptions,

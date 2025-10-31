@@ -258,6 +258,11 @@ export interface SecurityIssueDefinition {
   documentationUrl?: string;
 }
 
+export interface SecurityIssueFilterOptions {
+  vendor?: string;
+  severity?: SecurityIssueSeverity | SecurityIssueSeverity[];
+}
+
 export interface HostSecurityRecord {
   hostId: string;
   hostname?: string;
@@ -301,6 +306,7 @@ export interface SecurityIssueOccurrenceSummary {
 export interface FleetIssueSummary {
   totalOccurrences: number;
   issues: SecurityIssueOccurrenceSummary[];
+  severityBreakdown: Record<SecurityIssueSeverity, number>;
 }
 
 export interface ReviewNotificationRecord {

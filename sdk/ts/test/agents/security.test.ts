@@ -9,6 +9,8 @@ import {
   summarizeFleetSecurity,
   summarizeSecurityIssuesFromInsights,
   summarizeSecurityIssuesFromHosts,
+  listSecurityIssueDefinitions,
+  formatFleetIssueSummary,
 } from "../../src/agents/security";
 import type { HostSecurityRecord } from "../../src/types";
 import type { SecuritySoftwareRecord } from "../../src/types";
@@ -193,6 +195,7 @@ describe("summarizeFleetSecurity", () => {
     expect(summary.worstInsight).not.toBeNull();
     expect(summary.worstScore).not.toBeNull();
     expect(summary.issues.totalOccurrences).toBeGreaterThan(0);
+    expect(summary.issues.severityBreakdown.critical).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -204,6 +207,7 @@ describe("summarizeSecurityIssues", () => {
     expect(summary.totalOccurrences).toBeGreaterThan(0);
     const issueCodes = summary.issues.map((issue) => issue.definition.code);
     expect(issueCodes).toContain("pending_items");
+    expect(summary.severityBreakdown.medium).toBeGreaterThan(0);
   });
 
   it("tracks affected hosts when summarizing host insights", () => {
@@ -217,5 +221,27 @@ describe("summarizeSecurityIssues", () => {
     expect(summary.totalOccurrences).toBeGreaterThan(0);
     const issue = summary.issues.find((item) => item.definition.code === "pending_items");
     expect(issue?.affectedHosts).toContain("host-2");
+  });
+});
+
+describe("issue catalog utilities", () => {
+  it("filters issue definitions by vendor and severity", () => {
+    const sentinelIssues = listSecurityIssueDefinitions({ vendor: "SentinelOne", severity: ["critical", "high"] });
+    expect(sentinelIssues.length).toBeGreaterThan(0);
+    expect(sentinelIssues.every((issue) => issue.vendor === "SentinelOne" && (issue.severity === "critical" || issue.severity === "high"))).toBe(true);
+  });
+
+  it("formats fleet issue summaries", () => {
+    const hosts: HostSecurityRecord[] = [
+      { hostId: "host-1", securitySoftware: [sentinelRecord] },
+      { hostId: "host-2", securitySoftware: [kandjiRecord] },
+    ];
+    const fleetSummary = summarizeFleetSecurity(hosts);
+    const lines = formatFleetIssueSummary(fleetSummary.issues, { limit: 2 });
+
+    expect(Array.isArray(lines)).toBe(true);
+    if (lines.length > 0) {
+      expect(lines[0]).toMatch(/•/);
+    }
   });
 });

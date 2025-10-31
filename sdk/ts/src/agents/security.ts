@@ -10,6 +10,7 @@ import {
   type SecurityIssueDefinition,
   type SecurityIssueOccurrenceSummary,
   type FleetIssueSummary,
+  type SecurityIssueFilterOptions,
   type SecurityInsightScore,
   type SecuritySoftwareInsight,
   type SecuritySoftwareRecord,
@@ -165,6 +166,24 @@ const SEVERITY_RANK: Record<SecurityIssueDefinition["severity"], number> = {
   info: 4,
 };
 
+function matchesIssueFilter(definition: SecurityIssueDefinition, filter?: SecurityIssueFilterOptions): boolean {
+  if (!filter) {
+    return true;
+  }
+  if (filter.vendor) {
+    if (!definition.vendor || definition.vendor.toLowerCase() !== filter.vendor.toLowerCase()) {
+      return false;
+    }
+  }
+  if (filter.severity) {
+    const severities = Array.isArray(filter.severity) ? filter.severity : [filter.severity];
+    if (!severities.includes(definition.severity)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function normaliseNotes(notes?: SecuritySoftwareRecord["notes"]): Record<string, string> {
   if (!notes) {
     return {};
@@ -240,6 +259,18 @@ function getIssueDefinition(code: string): SecurityIssueDefinition {
 function filterIssueDefinitions(definitions: SecurityIssueDefinition[], vendor: string): SecurityIssueDefinition[] {
   const lowerVendor = vendor.toLowerCase();
   return definitions.filter((definition) => !definition.vendor || definition.vendor.toLowerCase() === lowerVendor);
+}
+
+export function listSecurityIssueDefinitions(filter?: SecurityIssueFilterOptions): SecurityIssueDefinition[] {
+  const definitions = Object.values(ISSUE_DEFINITIONS).filter((definition) => matchesIssueFilter(definition, filter));
+  definitions.sort((a, b) => {
+    const severityDelta = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+    if (severityDelta !== 0) {
+      return severityDelta;
+    }
+    return a.label.localeCompare(b.label);
+  });
+  return definitions;
 }
 
 function buildGenericMetadata(notes: Record<string, string>): GenericSecurityMetadata {
@@ -454,8 +485,16 @@ function addIssue(
 function buildFleetIssueSummary(acc: IssueAccumulator): FleetIssueSummary {
   const summaries: SecurityIssueOccurrenceSummary[] = [];
   let totalOccurrences = 0;
+  const severityBreakdown: Record<SecurityIssueDefinition["severity"], number> = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    info: 0,
+  };
   for (const value of acc.values()) {
     totalOccurrences += value.occurrences;
+    severityBreakdown[value.definition.severity] += value.occurrences;
     summaries.push({
       definition: value.definition,
       occurrences: value.occurrences,
@@ -474,7 +513,7 @@ function buildFleetIssueSummary(acc: IssueAccumulator): FleetIssueSummary {
     }
     return a.definition.label.localeCompare(b.definition.label);
   });
-  return { totalOccurrences, issues: summaries };
+  return { totalOccurrences, issues: summaries, severityBreakdown };
 }
 
 export function summarizeSecurityIssuesFromInsights(insights: SecuritySoftwareInsight[]): FleetIssueSummary {
@@ -511,6 +550,24 @@ export function summarizeSecurityIssuesFromHosts(hosts: HostSecurityInsight[]): 
     }
   }
   return buildFleetIssueSummary(acc);
+}
+
+function severityLabel(severity: SecurityIssueDefinition["severity"]): string {
+  return severity.charAt(0).toUpperCase() + severity.slice(1);
+}
+
+export function formatFleetIssueSummary(summary: FleetIssueSummary, options?: { limit?: number }): string[] {
+  if (summary.issues.length === 0) {
+    return [];
+  }
+  const limit = options?.limit ?? summary.issues.length;
+  return summary.issues.slice(0, limit).map((issue) => {
+    const severity = severityLabel(issue.definition.severity);
+    const occurrences = `${issue.occurrences} occurrence${issue.occurrences === 1 ? "" : "s"}`;
+    const hosts = issue.affectedHosts.length > 0 ? ` | Hosts: ${issue.affectedHosts.length}` : "";
+    const vendors = issue.affectedVendors.length > 0 ? ` | Vendors: ${issue.affectedVendors.join(", ")}` : "";
+    return `${severity} • ${issue.definition.label} (${occurrences}${hosts}${vendors})`;
+  });
 }
 
 export function summarizeFleetSecurity(hosts: HostSecurityRecord[]): FleetSecuritySummary {

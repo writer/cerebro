@@ -9,4 +9,6 @@ export {
   summarizeFleetSecurity,
   summarizeSecurityIssuesFromInsights,
   summarizeSecurityIssuesFromHosts,
+  listSecurityIssueDefinitions,
+  formatFleetIssueSummary,
 } from "./security";
