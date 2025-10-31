@@ -403,12 +403,19 @@ export function scoreSecurityInsight(insight: SecuritySoftwareInsight): Security
   const issues = insight.metadata.healthIssues;
   const seen = new Set<string>();
   let penalty = 0;
+  let highestSeverity: SecurityIssueDefinition["severity"] | null = null;
+  let topIssue: SecurityIssueDefinition | null = null;
   for (const issue of issues) {
     if (seen.has(issue)) {
       continue;
     }
     seen.add(issue);
-    penalty += getIssueDefinition(issue).weight;
+    const definition = getIssueDefinition(issue);
+    penalty += definition.weight;
+    if (!highestSeverity || SEVERITY_RANK[definition.severity] < SEVERITY_RANK[highestSeverity]) {
+      highestSeverity = definition.severity;
+      topIssue = definition;
+    }
   }
   const score = Math.max(0, MAX_SCORE - penalty);
   const normalized = Math.round((score / MAX_SCORE) * 1000) / 10;
@@ -418,6 +425,8 @@ export function scoreSecurityInsight(insight: SecuritySoftwareInsight): Security
     normalized,
     issues,
     issueLabels: resolveIssueLabels(insight.vendor, issues),
+    highestSeverity,
+    topIssue,
   };
 }
 
@@ -599,4 +608,14 @@ export function summarizeFleetSecurity(hosts: HostSecurityRecord[]): FleetSecuri
     worstScore,
     issues,
   };
+}
+
+export function getTopSecurityIssues(summary: FleetIssueSummary, options?: { limit?: number; minSeverity?: SecurityIssueDefinition["severity"] }): SecurityIssueOccurrenceSummary[] {
+  let issues = summary.issues;
+  if (options?.minSeverity) {
+    const threshold = SEVERITY_RANK[options.minSeverity];
+    issues = issues.filter((issue) => SEVERITY_RANK[issue.definition.severity] <= threshold);
+  }
+  const limit = options?.limit ?? issues.length;
+  return issues.slice(0, limit);
 }

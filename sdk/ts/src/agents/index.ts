@@ -11,4 +11,5 @@ export {
   summarizeSecurityIssuesFromHosts,
   listSecurityIssueDefinitions,
   formatFleetIssueSummary,
+  getTopSecurityIssues,
 } from "./security";

@@ -11,6 +11,7 @@ import {
   summarizeSecurityIssuesFromHosts,
   listSecurityIssueDefinitions,
   formatFleetIssueSummary,
+  getTopSecurityIssues,
 } from "../../src/agents/security";
 import type { HostSecurityRecord } from "../../src/types";
 import type { SecuritySoftwareRecord } from "../../src/types";
@@ -138,14 +139,27 @@ describe("scoreSecurityInsight", () => {
     expect(score.score).toBe(100);
     expect(score.normalized).toBe(100);
     expect(score.issueLabels).toEqual([]);
+    expect(score.highestSeverity).toBeNull();
+    expect(score.topIssue).toBeNull();
   });
 
   it("applies penalties when issues are present", () => {
-    const insights = deriveSecurityInsights([kandjiRecord]);
+    const degradedRecord: SecuritySoftwareRecord = {
+      ...kandjiRecord,
+      notes: {
+        ...kandjiRecord.notes,
+        kandji_library_state_ok: "false",
+        kandji_health_ok: "false",
+        kandji_health_issues: "library_state,pending_items,last_run_stale",
+      },
+    };
+    const insights = deriveSecurityInsights([degradedRecord]);
     const score = scoreSecurityInsight(insights[0]);
 
     expect(score.score).toBeLessThan(100);
     expect(score.issueLabels.length).toBeGreaterThan(0);
+    expect(score.highestSeverity).toBe("high");
+    expect(score.topIssue?.code).toBe("library_state");
   });
 });
 
@@ -181,7 +195,20 @@ describe("summarizeFleetSecurity", () => {
   it("aggregates across multiple hosts", () => {
     const hosts: HostSecurityRecord[] = [
       { hostId: "host-1", securitySoftware: [sentinelRecord] },
-      { hostId: "host-2", securitySoftware: [kandjiRecord] },
+      {
+        hostId: "host-2",
+        securitySoftware: [
+          {
+            ...kandjiRecord,
+            notes: {
+              ...kandjiRecord.notes,
+              kandji_library_state_ok: "false",
+              kandji_health_ok: "false",
+              kandji_health_issues: "library_state,pending_items,last_run_stale",
+            },
+          },
+        ],
+      },
       { hostId: "host-3", securitySoftware: [] },
     ];
 
@@ -243,5 +270,29 @@ describe("issue catalog utilities", () => {
     if (lines.length > 0) {
       expect(lines[0]).toMatch(/•/);
     }
+  });
+
+  it("filters top issues by severity threshold", () => {
+    const hosts: HostSecurityRecord[] = [
+      {
+        hostId: "host-1",
+        securitySoftware: [
+          {
+            ...kandjiRecord,
+            notes: {
+              ...kandjiRecord.notes,
+              kandji_library_state_ok: "false",
+              kandji_health_ok: "false",
+              kandji_health_issues: "library_state,pending_items,last_run_stale",
+            },
+          },
+        ],
+      },
+    ];
+    const fleetSummary = summarizeFleetSecurity(hosts);
+    const top = getTopSecurityIssues(fleetSummary.issues, { minSeverity: "high" });
+
+    expect(top.length).toBeGreaterThan(0);
+    expect(top.every((issue) => issue.definition.severity === "high" || issue.definition.severity === "critical")).toBe(true);
   });
 });

@@ -244,6 +244,8 @@ export interface SecurityInsightScore {
   normalized: number;
   issues: string[];
   issueLabels: string[];
+  highestSeverity: SecurityIssueSeverity | null;
+  topIssue: SecurityIssueDefinition | null;
 }
 
 export type SecurityIssueSeverity = "critical" | "high" | "medium" | "low" | "info";
