@@ -577,6 +577,9 @@ func deriveSentinelOneNotes(notes map[string]string) {
 	if version, ok := notes["sentinelctl_management_status_version"]; ok && version != "" {
 		notes["management_version"] = version
 	}
+	if pkg := parsePackageVersion(notes); pkg != "" {
+		notes["package_version"] = pkg
+	}
 	if status, ok := notes["sentinelctl_scan_status_status"]; ok && status != "" {
 		inProgress := !strings.EqualFold(status, "idle") && !strings.EqualFold(status, "not running") && !strings.EqualFold(status, "completed")
 		notes["scan_in_progress"] = boolToString(inProgress)
@@ -595,6 +598,14 @@ func deriveSentinelOneNotes(notes map[string]string) {
 	for key, value := range notes {
 		if strings.Contains(key, "systemctl") && strings.HasSuffix(key, "_active") {
 			notes["service_active"] = boolToString(isTruthy(value))
+		}
+	}
+	if _, ok := notes["management_profile_present"]; !ok {
+		notes["management_profile_present"] = "false"
+	}
+	if pkg, ok := notes["package_version"]; ok && pkg != "" {
+		if version, ok := notes["version"]; ok && version != "" {
+			notes["package_version_mismatch"] = boolToString(!strings.HasPrefix(pkg, version))
 		}
 	}
 }
@@ -623,6 +634,15 @@ func deriveKandjiNotes(notes map[string]string) {
 			}
 			notes["kandji_last_check_in_hours"] = fmt.Sprintf("%.1f", hours)
 			notes["kandji_last_check_in_recent"] = boolToString(hours <= 24)
+		}
+	}
+	if enforcement, ok := notes["kandji_prefs_enforcement"]; ok && enforcement != "" {
+		notes["kandji_enforced"] = boolToString(isTruthy(enforcement))
+	}
+	if pending, ok := notes["kandji_prefs_pending_items"]; ok && pending != "" {
+		if val, err := strconv.Atoi(pending); err == nil {
+			notes["kandji_pending_items"] = strconv.Itoa(val)
+			notes["kandji_has_pending"] = boolToString(val > 0)
 		}
 	}
 }
@@ -663,10 +683,10 @@ func parseFlexibleTime(value string) (time.Time, bool) {
 func isTruthy(value string) bool {
 	s := strings.ToLower(strings.TrimSpace(value))
 	switch s {
-	case "1", "on", "true", "enabled", "yes", "running", "connected", "active":
+	case "1", "on", "true", "enabled", "yes", "running", "connected", "active", "enforced":
 		return true
 	default:
-		return strings.HasPrefix(s, "active") || strings.HasPrefix(s, "running") || strings.HasPrefix(s, "enabled") || strings.HasPrefix(s, "connected") || strings.HasPrefix(s, "true") || strings.HasPrefix(s, "yes")
+		return strings.HasPrefix(s, "active") || strings.HasPrefix(s, "running") || strings.HasPrefix(s, "enabled") || strings.HasPrefix(s, "connected") || strings.HasPrefix(s, "true") || strings.HasPrefix(s, "yes") || strings.HasPrefix(s, "enforc")
 	}
 }
 
@@ -761,4 +781,52 @@ func countCLIErrorNotes(notes map[string]string) int {
 		}
 	}
 	return count
+}
+
+func parsePackageVersion(notes map[string]string) string {
+	if raw, ok := notes["rpm_q_sentinelone_raw"]; ok && raw != "" {
+		if v := parseRPMVersion(raw); v != "" {
+			return v
+		}
+	}
+	if raw, ok := notes["dpkg_query_w_sentinelone_raw"]; ok && raw != "" {
+		if v := parseDPKGVersion(raw); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func parseRPMVersion(raw string) string {
+	line := strings.TrimSpace(raw)
+	if line == "" {
+		return ""
+	}
+	parts := strings.SplitN(line, "-", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	rest := parts[1]
+	if idx := strings.LastIndex(rest, "."); idx != -1 {
+		rest = rest[:idx]
+	}
+	return strings.TrimSpace(rest)
+}
+
+func parseDPKGVersion(raw string) string {
+	line := strings.TrimSpace(raw)
+	if line == "" {
+		return ""
+	}
+	fields := strings.Fields(line)
+	if len(fields) >= 2 {
+		return strings.TrimSpace(fields[1])
+	}
+	if idx := strings.Index(line, "	"); idx != -1 {
+		return strings.TrimSpace(line[idx+1:])
+	}
+	if idx := strings.Index(line, ":"); idx != -1 {
+		return strings.TrimSpace(line[idx+1:])
+	}
+	return ""
 }
