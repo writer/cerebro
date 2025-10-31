@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -63,6 +64,7 @@ var defaultSecurityVendors = []vendorSignature{
 			{"/usr/local/bin/sentinelctl", "stats", "agent_info"},
 			{"/usr/local/bin/sentinelctl", "management", "status"},
 			{"/usr/local/bin/sentinelctl", "status"},
+			{"/usr/local/bin/sentinelctl", "scan", "status"},
 			{"/usr/local/bin/sentinelctl", "version"},
 		},
 		tokenPaths: []string{
@@ -141,6 +143,7 @@ func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) 
 				notes[key] = value
 			}
 		}
+		applyDerivedNotes(vendor.vendor, notes)
 		if present, tokenPath := existsAny(vendor.tokenPaths); present {
 			notes["registration_token_path"] = tokenPath
 		}
@@ -498,4 +501,115 @@ func parseKeyValueOutput(output string) map[string]string {
 		result[key] = value
 	}
 	return result
+}
+
+func applyDerivedNotes(vendor string, notes map[string]string) {
+	switch vendor {
+	case "SentinelOne":
+		deriveSentinelOneNotes(notes)
+	case "Kandji":
+		deriveKandjiNotes(notes)
+	}
+}
+
+func deriveSentinelOneNotes(notes map[string]string) {
+	if value, ok := notes["sentinelctl_management_status_connectivity"]; ok {
+		notes["connectivity_ok"] = boolToString(isTruthy(value))
+	}
+	if value, ok := notes["sentinelctl_management_status_anti_tamper"]; ok {
+		notes["anti_tamper_enabled"] = boolToString(isTruthy(value))
+	}
+	if value, ok := notes["sentinelctl_management_status_agent_enabled"]; ok {
+		notes["agent_enabled"] = boolToString(isTruthy(value))
+	}
+	if uuid, ok := notes["sentinelctl_stats_agent_info_agent_uuid"]; ok && uuid != "" {
+		notes["agent_uuid"] = uuid
+	}
+	if token, ok := notes["sentinelctl_management_status_site_token"]; ok && token != "" {
+		notes["site_token"] = token
+	} else if token, ok := notes["sentinelctl_stats_agent_info_site_token"]; ok && token != "" {
+		notes["site_token"] = token
+	}
+	if status, ok := notes["sentinelctl_scan_status_status"]; ok && status != "" {
+		inProgress := !strings.EqualFold(status, "idle") && !strings.EqualFold(status, "not running") && !strings.EqualFold(status, "completed")
+		notes["scan_in_progress"] = boolToString(inProgress)
+	}
+	if raw, ok := notes["sentinelctl_scan_status_last_scan"]; ok && raw != "" {
+		if ts, parsed := parseFlexibleTime(raw); parsed {
+			notes["sentinelctl_scan_status_last_scan_at"] = ts.UTC().Format(time.RFC3339)
+			hours := time.Since(ts).Hours()
+			if hours < 0 {
+				hours = -hours
+			}
+			notes["scan_last_seen_hours"] = fmt.Sprintf("%.1f", hours)
+			notes["scan_recent"] = boolToString(hours <= 168)
+		}
+	}
+}
+
+func deriveKandjiNotes(notes map[string]string) {
+	if state, ok := notes["kandji_library_state_state"]; ok && state != "" {
+		notes["kandji_library_state_ok"] = boolToString(isHealthyKandjiState(state))
+	}
+	if raw, ok := notes["kandji_library_state_last_run"]; ok && raw != "" {
+		if ts, parsed := parseFlexibleTime(raw); parsed {
+			notes["kandji_last_run_at"] = ts.UTC().Format(time.RFC3339)
+			hours := time.Since(ts).Hours()
+			if hours < 0 {
+				hours = -hours
+			}
+			notes["kandji_last_run_hours"] = fmt.Sprintf("%.1f", hours)
+			notes["kandji_last_run_recent"] = boolToString(hours <= 24)
+		}
+	}
+}
+
+func isHealthyKandjiState(state string) bool {
+	s := strings.ToLower(strings.TrimSpace(state))
+	switch s {
+	case "idle", "complete", "completed", "success", "succeeded", "ready", "ok":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseFlexibleTime(value string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05 MST",
+		time.RFC1123Z,
+		time.RFC1123,
+		time.RFC850,
+	}
+	for _, layout := range layouts {
+		if ts, err := time.Parse(layout, trimmed); err == nil {
+			return ts, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func isTruthy(value string) bool {
+	s := strings.ToLower(strings.TrimSpace(value))
+	switch s {
+	case "1", "on", "true", "enabled", "yes", "running", "connected", "active":
+		return true
+	default:
+		return false
+	}
+}
+
+func boolToString(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
 }

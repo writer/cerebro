@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -28,11 +29,17 @@ func TestDetectSecurityAgents(t *testing.T) {
 		switch path {
 		case "/Library/SentinelOne":
 			return true
+		case "/Library/SentinelOne/data/com.sentinelone.registration-token":
+			return true
 		case "/Library/Kandji":
 			return true
 		case "/Library/LaunchDaemons/com.sentinelone.sentineld.plist":
 			return true
 		case "/Library/LaunchDaemons/com.kandji.agent.plist":
+			return true
+		case "/Library/Application Support/SentinelOne":
+			return true
+		case "/Library/Application Support/Kandji":
 			return true
 		case "/Applications/SentinelAgent.app":
 			return true
@@ -60,18 +67,22 @@ func TestDetectSecurityAgents(t *testing.T) {
 	daemonProgramReader = func(path string) string {
 		return path + ":exec"
 	}
+	lastScan := time.Now().UTC().Add(-time.Hour)
+	kandjiLastRun := time.Now().UTC().Add(-2 * time.Hour)
 	commandExecutor = func(args []string, _ time.Duration) (string, error) {
 		switch strings.Join(args, " ") {
 		case "/usr/local/bin/sentinelctl stats agent_info":
-			return "Connected: on\nSite Token: example-token", nil
+			return "Connected: on\nSite Token: example-token\nAgent UUID: 1234-uuid", nil
 		case "/usr/local/bin/sentinelctl management status":
-			return "Connectivity: on\nManagement URL: https://sentinelone.example", nil
+			return "Connectivity: on\nAnti Tamper: Enabled\nAgent Enabled: true\nManagement URL: https://sentinelone.example", nil
 		case "/usr/local/bin/sentinelctl status":
 			return "Status: running", nil
+		case "/usr/local/bin/sentinelctl scan status":
+			return fmt.Sprintf("Status: idle\nLast Scan: %s", lastScan.Format(time.RFC3339)), nil
 		case "/usr/local/bin/sentinelctl version":
 			return "Version: 23.2.1", nil
 		case "/usr/local/bin/kandji library --state":
-			return "State: idle\nLast Run: 2025-10-31T12:00:00Z", nil
+			return fmt.Sprintf("State: idle\nLast Run: %s", kandjiLastRun.Format(time.RFC3339)), nil
 		case "/usr/local/bin/kandji version":
 			return "Version: 5.8.0", nil
 		default:
@@ -123,6 +134,30 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].Notes["sentinelctl_stats_agent_info_site_token"] != "example-token" {
 		t.Fatalf("expected sentinelctl stats site token note")
 	}
+	if found["SentinelOne"].Notes["registration_token_path"] == "" {
+		t.Fatalf("expected SentinelOne registration token path")
+	}
+	if found["SentinelOne"].Notes["connectivity_ok"] != "true" {
+		t.Fatalf("expected SentinelOne connectivity ok flag")
+	}
+	if found["SentinelOne"].Notes["anti_tamper_enabled"] != "true" {
+		t.Fatalf("expected SentinelOne anti tamper flag")
+	}
+	if found["SentinelOne"].Notes["agent_enabled"] != "true" {
+		t.Fatalf("expected SentinelOne agent enabled flag")
+	}
+	if found["SentinelOne"].Notes["scan_in_progress"] != "false" {
+		t.Fatalf("expected SentinelOne scan in progress flag")
+	}
+	if found["SentinelOne"].Notes["scan_recent"] != "true" {
+		t.Fatalf("expected SentinelOne scan recent flag")
+	}
+	if found["SentinelOne"].Notes["scan_last_seen_hours"] == "" {
+		t.Fatalf("expected SentinelOne scan last seen hours note")
+	}
+	if found["SentinelOne"].Notes["agent_uuid"] != "1234-uuid" {
+		t.Fatalf("expected SentinelOne agent uuid note")
+	}
 	if !found["Kandji"].Installed || !found["Kandji"].Running {
 		t.Fatalf("expected Kandji to be installed and running")
 	}
@@ -134,6 +169,15 @@ func TestDetectSecurityAgents(t *testing.T) {
 	}
 	if found["Kandji"].Notes["kandji_version_version"] != "5.8.0" {
 		t.Fatalf("expected Kandji CLI version note")
+	}
+	if found["Kandji"].Notes["kandji_library_state_ok"] != "true" {
+		t.Fatalf("expected Kandji library state ok flag")
+	}
+	if found["Kandji"].Notes["kandji_last_run_recent"] != "true" {
+		t.Fatalf("expected Kandji last run recent flag")
+	}
+	if found["Kandji"].Notes["kandji_last_run_hours"] == "" {
+		t.Fatalf("expected Kandji last run hours note")
 	}
 }
 
