@@ -18,5 +18,42 @@ export { AuthClient } from "./clients/auth";
 export { FindingsClient, type ListFindingsOptions } from "./clients/findings";
 export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations";
 export { OrganizationsClient, type ListOrganizationsOptions } from "./clients/organizations";
+export {
+  UsersClient,
+  InMemoryUsersAdapter,
+  type UsersAdapter,
+  type ListUsersOptions,
+  type CreateUserRequest,
+} from "./clients/users";
+export {
+  TasksClient,
+  InMemoryTasksAdapter,
+  type TasksAdapter,
+  type TaskSubmission,
+  type TaskStatusRecord,
+  type EnqueueTaskOptions,
+} from "./clients/tasks";
+export {
+  AgentToolingClient,
+  InMemoryToolingAdapter,
+  type ToolingAdapter,
+  type ListToolInvocationsOptions,
+  type CreateToolInvocationRequest,
+  type UpdateToolInvocationOptions,
+  type ListToolApprovalsOptions,
+  type UpdateApprovalStatusRequest,
+} from "./clients/tooling";
+export {
+  AgentNotificationsClient,
+  AgentTicketsClient,
+  InMemoryNotificationsAdapter,
+  InMemoryTicketsAdapter,
+  type NotificationsAdapter,
+  type TicketsAdapter,
+  type EnqueueNotificationRequest,
+} from "./clients/agentNotifications";
 export * from "./pagination";
 export * from "./types";
+export * from "./config";
+export * from "./telemetry";
+export * from "./testing";

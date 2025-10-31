@@ -111,11 +111,20 @@ interface MessagePayload {
 
 interface ToolInvocationPayload {
   id: string;
+  session_id?: string;
   tool_name: string;
+  tool_version?: string;
   status: string;
   started_at: string;
   completed_at: string | null;
   error_message: string | null;
+  error_code?: string | null;
+  input_data?: Record<string, unknown> | null;
+  output_data?: Record<string, unknown> | null;
+  cel_policy_key?: string | null;
+  cel_expression?: string | null;
+  cel_result?: boolean | null;
+  cel_context?: Record<string, unknown> | null;
 }
 
 interface SessionWithMessagesPayload {
@@ -898,11 +907,20 @@ function mapMessage(payload: MessagePayload): AgentMessageRecord {
 function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord {
   return {
     invocationId: payload.id,
+    sessionId: payload.session_id,
     toolName: payload.tool_name,
+    toolVersion: payload.tool_version,
     status: payload.status,
     startedAt: parseDate(payload.started_at) ?? new Date(payload.started_at),
     completedAt: parseDate(payload.completed_at),
     errorMessage: payload.error_message ?? null,
+    errorCode: payload.error_code ?? null,
+    inputData: payload.input_data ?? undefined,
+    outputData: payload.output_data ?? undefined,
+    celPolicyKey: payload.cel_policy_key ?? null,
+    celExpression: payload.cel_expression ?? null,
+    celResult: payload.cel_result ?? null,
+    celContext: payload.cel_context ?? null,
   };
 }
 

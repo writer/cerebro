@@ -280,17 +280,26 @@ export interface AgentSessionList {
 
 export interface ToolInvocationRecord {
   invocationId: string;
+  sessionId?: string;
   toolName: string;
+  toolVersion?: string;
   status: string;
   startedAt: Date;
   completedAt: Date | null;
   errorMessage: string | null;
+  errorCode?: string | null;
+  inputData?: Record<string, unknown>;
+  outputData?: Record<string, unknown> | null;
+  celPolicyKey?: string | null;
+  celExpression?: string | null;
+  celResult?: boolean | null;
+  celContext?: Record<string, unknown> | null;
 }
 
 export interface AgentMessageRecord {
   messageId: string;
   role: string;
-  content: string;
+  content: string | Record<string, unknown>;
   metadata: Record<string, unknown>;
   createdAt: Date;
 }
@@ -339,4 +348,48 @@ export interface AgentMemoryStats {
   roleDistribution: Record<string, number>;
   scopeDistribution: Record<string, number>;
   topMemories: AgentMemoryHighlight[];
+}
+
+export interface ToolApprovalRecord {
+  approvalId: string;
+  orgId: string;
+  toolInvocationId: string;
+  requestedBy: string;
+  requestedAt: Date;
+  reason: string;
+  status: string;
+  decidedBy: string | null;
+  decidedAt: Date | null;
+  decisionReason: string | null;
+  expiresAt: Date | null;
+  riskAssessment: Record<string, unknown>;
+}
+
+export interface AgentNotificationRecord {
+  notificationId: string;
+  taskId: string;
+  orgId: string;
+  channel: string;
+  status: string;
+  payload: Record<string, unknown>;
+  createdAt: Date;
+  deliveredAt: Date | null;
+}
+
+export interface AgentTicketRecord {
+  ticketId: string;
+  taskId: string;
+  orgId: string;
+  system: string;
+  status: string;
+  details: Record<string, unknown>;
+  externalId: string | null;
+  createdAt: Date;
+  updatedAt: Date | null;
+}
+
+export interface ToolInvocationSummary {
+  toolName: string;
+  status: string;
+  count: number;
 }
