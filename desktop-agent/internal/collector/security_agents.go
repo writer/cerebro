@@ -37,6 +37,7 @@ type vendorSignature struct {
 	cliPaths        []string
 	versionAppPaths []string
 	statusCommands  [][]string
+	tokenPaths      []string
 }
 
 var defaultSecurityVendors = []vendorSignature{
@@ -46,6 +47,8 @@ var defaultSecurityVendors = []vendorSignature{
 		processHints: []string{"sentinelone", "sentinelagent", "sentinel agent", "com.sentinelone.sentineld"},
 		installPaths: []string{
 			"/Library/SentinelOne",
+			"/opt/sentinelone",
+			"/Library/Application Support/SentinelOne",
 		},
 		daemonPaths: []string{
 			"/Library/LaunchDaemons/com.sentinelone.sentineld.plist",
@@ -58,8 +61,14 @@ var defaultSecurityVendors = []vendorSignature{
 		},
 		statusCommands: [][]string{
 			{"/usr/local/bin/sentinelctl", "stats", "agent_info"},
+			{"/usr/local/bin/sentinelctl", "management", "status"},
 			{"/usr/local/bin/sentinelctl", "status"},
 			{"/usr/local/bin/sentinelctl", "version"},
+		},
+		tokenPaths: []string{
+			"/Library/SentinelOne/data/com.sentinelone.registration-token",
+			"/Library/Application Support/JAMF/Waiting Room/com.sentinelone.registration-token",
+			"/Library/Application Support/SentinelOne/com.sentinelone.registration-token",
 		},
 	},
 	{
@@ -68,6 +77,7 @@ var defaultSecurityVendors = []vendorSignature{
 		processHints: []string{"kandji", "com.kandji.agent"},
 		installPaths: []string{
 			"/Library/Kandji",
+			"/Library/Application Support/Kandji",
 		},
 		daemonPaths: []string{
 			"/Library/LaunchDaemons/com.kandji.agent.plist",
@@ -129,6 +139,26 @@ func detectSecurityAgents(processes []types.ProcessSnapshot, cfg config.Config) 
 		if cliPresent && len(vendor.statusCommands) > 0 {
 			for key, value := range collectCLIData(vendor) {
 				notes[key] = value
+			}
+		}
+		if present, tokenPath := existsAny(vendor.tokenPaths); present {
+			notes["registration_token_path"] = tokenPath
+		}
+
+		if version != "" {
+			switch vendor.vendor {
+			case "SentinelOne":
+				if cliVersion, ok := notes["sentinelctl_version_version"]; ok && cliVersion != "" && cliVersion != version {
+					notes["version_mismatch"] = "true"
+					notes["version_cli"] = cliVersion
+					notes["version_app"] = version
+				}
+			case "Kandji":
+				if cliVersion, ok := notes["kandji_version_version"]; ok && cliVersion != "" && cliVersion != version {
+					notes["version_mismatch"] = "true"
+					notes["version_cli"] = cliVersion
+					notes["version_app"] = version
+				}
 			}
 		}
 		resolvedInstallPath := installPath
@@ -403,6 +433,7 @@ func cloneSignature(sig vendorSignature) vendorSignature {
 		cliPaths:        cloneStrings(sig.cliPaths),
 		versionAppPaths: cloneStrings(sig.versionAppPaths),
 		statusCommands:  cloneCommands(sig.statusCommands),
+		tokenPaths:      cloneStrings(sig.tokenPaths),
 	}
 }
 

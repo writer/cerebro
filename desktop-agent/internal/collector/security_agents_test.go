@@ -64,8 +64,10 @@ func TestDetectSecurityAgents(t *testing.T) {
 		switch strings.Join(args, " ") {
 		case "/usr/local/bin/sentinelctl stats agent_info":
 			return "Connected: on\nSite Token: example-token", nil
+		case "/usr/local/bin/sentinelctl management status":
+			return "Connectivity: on\nManagement URL: https://sentinelone.example", nil
 		case "/usr/local/bin/sentinelctl status":
-			return "Connected: on\nManagement URL: https://sentinelone.example", nil
+			return "Status: running", nil
 		case "/usr/local/bin/sentinelctl version":
 			return "Version: 23.2.1", nil
 		case "/usr/local/bin/kandji library --state":
@@ -109,10 +111,10 @@ func TestDetectSecurityAgents(t *testing.T) {
 	if found["SentinelOne"].Notes["daemon_program"] != "/Library/LaunchDaemons/com.sentinelone.sentineld.plist:exec" {
 		t.Fatalf("expected SentinelOne daemon program note")
 	}
-	if found["SentinelOne"].Notes["sentinelctl_status_connected"] != "on" {
+	if found["SentinelOne"].Notes["sentinelctl_stats_agent_info_connected"] != "on" {
 		t.Fatalf("expected SentinelOne connected note")
 	}
-	if found["SentinelOne"].Notes["sentinelctl_status_management_url"] != "https://sentinelone.example" {
+	if found["SentinelOne"].Notes["sentinelctl_management_status_management_url"] != "https://sentinelone.example" {
 		t.Fatalf("expected SentinelOne management URL note")
 	}
 	if found["SentinelOne"].Notes["sentinelctl_version_version"] != "23.2.1" {
