@@ -64,6 +64,24 @@ var securityVendors = []vendorSignature{
 			"/Applications/Kandji Self Service.app",
 		},
 	},
+	{
+		vendor:       "CrowdStrike",
+		product:      "Falcon Sensor",
+		processHints: []string{"crowdstrike", "falcon", "com.crowdstrike.falcon.agent"},
+		installPaths: []string{
+			"/Library/CS/falcon",
+			"/Applications/Falcon.app",
+		},
+		daemonPaths: []string{
+			"/Library/LaunchDaemons/com.crowdstrike.falcon.Agent.plist",
+		},
+		cliPaths: []string{
+			"/Applications/Falcon.app/Contents/Resources/falconctl",
+		},
+		versionAppPaths: []string{
+			"/Applications/Falcon.app",
+		},
+	},
 }
 
 var appVersionReader = readAppVersion

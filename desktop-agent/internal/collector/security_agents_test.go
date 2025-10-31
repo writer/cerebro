@@ -28,6 +28,14 @@ func TestDetectSecurityAgents(t *testing.T) {
 			return true
 		case "/Applications/Kandji Self Service.app":
 			return true
+		case "/Library/CS/falcon":
+			return true
+		case "/Applications/Falcon.app":
+			return true
+		case "/Library/LaunchDaemons/com.crowdstrike.falcon.Agent.plist":
+			return true
+		case "/Applications/Falcon.app/Contents/Resources/falconctl":
+			return true
 		default:
 			return false
 		}
@@ -39,6 +47,8 @@ func TestDetectSecurityAgents(t *testing.T) {
 			return "23.2.1"
 		case "/Applications/Kandji Self Service.app":
 			return "5.8.0"
+		case "/Applications/Falcon.app":
+			return "7.0.0"
 		default:
 			return ""
 		}
@@ -50,11 +60,12 @@ func TestDetectSecurityAgents(t *testing.T) {
 	processes := []types.ProcessSnapshot{
 		{Name: "SentinelAgent"},
 		{Name: "Kandji"},
+		{Name: "falcon"},
 	}
 
 	agents := detectSecurityAgents(processes)
-	if len(agents) != 2 {
-		t.Fatalf("expected 2 agents, got %d", len(agents))
+	if len(agents) != 3 {
+		t.Fatalf("expected 3 agents, got %d", len(agents))
 	}
 
 	found := map[string]types.SecuritySoftware{}
@@ -82,6 +93,18 @@ func TestDetectSecurityAgents(t *testing.T) {
 	}
 	if found["Kandji"].Notes["version"] != "5.8.0" {
 		t.Fatalf("expected Kandji version note")
+	}
+	if !found["CrowdStrike"].Installed || !found["CrowdStrike"].Running {
+		t.Fatalf("expected CrowdStrike to be installed and running")
+	}
+	if found["CrowdStrike"].Notes["version"] != "7.0.0" {
+		t.Fatalf("expected CrowdStrike version note")
+	}
+	if found["CrowdStrike"].Notes["cli"] != "/Applications/Falcon.app/Contents/Resources/falconctl" {
+		t.Fatalf("expected CrowdStrike CLI note")
+	}
+	if found["CrowdStrike"].Notes["daemon_program"] != "/Library/LaunchDaemons/com.crowdstrike.falcon.Agent.plist:exec" {
+		t.Fatalf("expected CrowdStrike daemon program note")
 	}
 }
 
