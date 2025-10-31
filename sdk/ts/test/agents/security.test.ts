@@ -5,7 +5,10 @@ import {
   summarizeSecurityHealth,
   scoreSecurityInsight,
   formatSecurityInsight,
+  deriveHostSecurityInsights,
+  summarizeFleetSecurity,
 } from "../../src/agents/security";
+import type { HostSecurityRecord } from "../../src/types";
 import type { SecuritySoftwareRecord } from "../../src/types";
 
 const sentinelRecord: SecuritySoftwareRecord = {
@@ -150,5 +153,42 @@ describe("formatSecurityInsight", () => {
     expect(summary).toContain("SentinelOne");
     expect(summary).toContain("Healthy");
     expect(summary).toContain("score 100.0%");
+  });
+});
+
+describe("deriveHostSecurityInsights", () => {
+  it("summarizes host-level insights and scores", () => {
+    const host: HostSecurityRecord = {
+      hostId: "host-1",
+      hostname: "example-host",
+      securitySoftware: [sentinelRecord, kandjiRecord],
+    };
+    const result = deriveHostSecurityInsights(host);
+
+    expect(result.hostId).toBe("host-1");
+    expect(result.insights.length).toBe(2);
+    expect(result.health.total).toBe(2);
+    expect(result.scorecard.averageNormalized).not.toBeNull();
+    expect(result.scorecard.worstScore).not.toBeNull();
+  });
+});
+
+describe("summarizeFleetSecurity", () => {
+  it("aggregates across multiple hosts", () => {
+    const hosts: HostSecurityRecord[] = [
+      { hostId: "host-1", securitySoftware: [sentinelRecord] },
+      { hostId: "host-2", securitySoftware: [kandjiRecord] },
+      { hostId: "host-3", securitySoftware: [] },
+    ];
+
+    const summary = summarizeFleetSecurity(hosts);
+
+    expect(summary.totalHosts).toBe(3);
+    expect(summary.hostsWithSecuritySoftware).toBe(2);
+    expect(summary.totalInsights).toBe(2);
+    expect(summary.health.total).toBe(2);
+    expect(summary.averageNormalizedScore).not.toBeNull();
+    expect(summary.worstInsight).not.toBeNull();
+    expect(summary.worstScore).not.toBeNull();
   });
 });

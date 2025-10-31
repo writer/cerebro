@@ -57,6 +57,8 @@ export {
   AgentReviewExporter,
   scoreSecurityInsight,
   formatSecurityInsight,
+  deriveHostSecurityInsights,
+  summarizeFleetSecurity,
   deriveSecurityInsights,
   summarizeSecurityHealth,
   type SummarizeOrgOptions,

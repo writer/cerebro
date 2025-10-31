@@ -5,4 +5,6 @@ export {
   summarizeSecurityHealth,
   scoreSecurityInsight,
   formatSecurityInsight,
+  deriveHostSecurityInsights,
+  summarizeFleetSecurity,
 } from "./security";

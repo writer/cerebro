@@ -3,6 +3,10 @@ import {
   type KandjiMetadata,
   type SecurityHealthSummary,
   type SecurityHealthVendorSummary,
+  type HostSecurityInsight,
+  type HostSecurityRecord,
+  type HostSecurityScoreSummary,
+  type FleetSecuritySummary,
   type SecurityInsightScore,
   type SecuritySoftwareInsight,
   type SecuritySoftwareRecord,
@@ -285,4 +289,62 @@ export function formatSecurityInsight(insight: SecuritySoftwareInsight): string 
   const status = insight.metadata.healthOk === true ? "Healthy" : insight.metadata.healthOk === false ? "Degraded" : "Unknown";
   const issueText = score.issueLabels.length > 0 ? ` — Issues: ${score.issueLabels.join(", ")}` : "";
   return `${insight.vendor} ${insight.product} — ${status} (score ${score.normalized.toFixed(1)}%)${issueText}`;
+}
+
+function summarizeScores(scores: SecurityInsightScore[]): HostSecurityScoreSummary {
+  if (scores.length === 0) {
+    return { averageScore: null, averageNormalized: null, bestScore: null, worstScore: null };
+  }
+  const totalScore = scores.reduce((acc, score) => acc + score.score, 0);
+  const totalNormalized = scores.reduce((acc, score) => acc + score.normalized, 0);
+  const bestScore = scores.reduce((best, current) => (best == null || current.normalized > best.normalized ? current : best), scores[0]);
+  const worstScore = scores.reduce((worst, current) => (worst == null || current.normalized < worst.normalized ? current : worst), scores[0]);
+  return {
+    averageScore: totalScore / scores.length,
+    averageNormalized: totalNormalized / scores.length,
+    bestScore,
+    worstScore,
+  };
+}
+
+export function deriveHostSecurityInsights(record: HostSecurityRecord): HostSecurityInsight {
+  const insights = deriveSecurityInsights(record.securitySoftware);
+  const scores = insights.map((insight) => scoreSecurityInsight(insight));
+  const health = summarizeSecurityHealth(insights);
+  const scorecard = summarizeScores(scores);
+  return {
+    hostId: record.hostId,
+    hostname: record.hostname,
+    insights,
+    health,
+    scorecard,
+  };
+}
+
+export function summarizeFleetSecurity(hosts: HostSecurityRecord[]): FleetSecuritySummary {
+  const hostInsights = hosts.map((host) => deriveHostSecurityInsights(host));
+  const allInsights = hostInsights.flatMap((host) => host.insights);
+  const health = summarizeSecurityHealth(allInsights);
+  const scores = allInsights.map((insight) => scoreSecurityInsight(insight));
+  const averageNormalizedScore = scores.length === 0 ? null : scores.reduce((acc, score) => acc + score.normalized, 0) / scores.length;
+  let worstScore: SecurityInsightScore | null = null;
+  let worstInsight: SecuritySoftwareInsight | null = null;
+  for (let i = 0; i < allInsights.length; i += 1) {
+    const insight = allInsights[i];
+    const score = scores[i];
+    if (!worstScore || score.normalized < worstScore.normalized) {
+      worstScore = score;
+      worstInsight = insight;
+    }
+  }
+
+  return {
+    totalHosts: hosts.length,
+    hostsWithSecuritySoftware: hostInsights.filter((host) => host.insights.length > 0).length,
+    totalInsights: allInsights.length,
+    health,
+    averageNormalizedScore,
+    worstInsight,
+    worstScore,
+  };
 }

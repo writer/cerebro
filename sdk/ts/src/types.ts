@@ -246,6 +246,37 @@ export interface SecurityInsightScore {
   issueLabels: string[];
 }
 
+export interface HostSecurityRecord {
+  hostId: string;
+  hostname?: string;
+  securitySoftware: SecuritySoftwareRecord[];
+}
+
+export interface HostSecurityScoreSummary {
+  averageScore: number | null;
+  averageNormalized: number | null;
+  bestScore: SecurityInsightScore | null;
+  worstScore: SecurityInsightScore | null;
+}
+
+export interface HostSecurityInsight {
+  hostId: string;
+  hostname?: string;
+  insights: SecuritySoftwareInsight[];
+  health: SecurityHealthSummary;
+  scorecard: HostSecurityScoreSummary;
+}
+
+export interface FleetSecuritySummary {
+  totalHosts: number;
+  hostsWithSecuritySoftware: number;
+  totalInsights: number;
+  health: SecurityHealthSummary;
+  averageNormalizedScore: number | null;
+  worstInsight: SecuritySoftwareInsight | null;
+  worstScore: SecurityInsightScore | null;
+}
+
 export interface ReviewNotificationRecord {
   notificationId: string;
   taskId: string;
