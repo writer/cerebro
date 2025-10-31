@@ -85,6 +85,23 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
+
+  desktop-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Run desktop agent unit tests
+        working-directory: desktop-agent
+        run: go test ./...
           python-version: "3.11"
 
       - name: Install uv
