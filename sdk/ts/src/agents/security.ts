@@ -3,6 +3,7 @@ import {
   type KandjiMetadata,
   type SecurityHealthSummary,
   type SecurityHealthVendorSummary,
+  type SecurityInsightScore,
   type SecuritySoftwareInsight,
   type SecuritySoftwareRecord,
   type SentinelOneMetadata,
@@ -31,6 +32,47 @@ const FALSE_VALUES = new Set([
 ]);
 
 const TRUTHY_PREFIXES = ["active", "running", "enabled", "connected", "true", "yes", "enforc", "present"];
+
+const SENTINELONE_ISSUE_LABELS: Record<string, string> = {
+  connectivity: "Connectivity issue",
+  anti_tamper: "Anti-tamper disabled",
+  agent_disabled: "Agent disabled",
+  service_inactive: "Service inactive",
+  token_missing: "Registration token missing",
+  token_stale: "Registration token stale",
+  profile_missing: "Management profile missing",
+  package_mismatch: "Package version mismatch",
+  scan_stale: "Scan stale",
+};
+
+const KANDJI_ISSUE_LABELS: Record<string, string> = {
+  library_state: "Library state unhealthy",
+  last_run_stale: "Library last run stale",
+  check_in_stale: "Check-in stale",
+  not_enforced: "Blueprint not enforced",
+  pending_items: "Pending items outstanding",
+};
+
+const DEFAULT_ISSUE_LABEL = "Issue";
+
+const ISSUE_WEIGHTS: Record<string, number> = {
+  connectivity: 25,
+  anti_tamper: 20,
+  agent_disabled: 20,
+  service_inactive: 15,
+  token_missing: 15,
+  token_stale: 10,
+  profile_missing: 10,
+  package_mismatch: 10,
+  scan_stale: 10,
+  library_state: 20,
+  last_run_stale: 10,
+  check_in_stale: 15,
+  not_enforced: 10,
+  pending_items: 10,
+};
+
+const MAX_SCORE = 100;
 
 function normaliseNotes(notes?: SecuritySoftwareRecord["notes"]): Record<string, string> {
   if (!notes) {
@@ -209,4 +251,38 @@ export function summarizeSecurityHealth(insights: SecuritySoftwareInsight[]): Se
   }
 
   return summary;
+}
+
+function resolveIssueLabels(vendor: SecuritySoftwareInsight["vendor"], issues: string[]): string[] {
+  const labelMap = vendor === "SentinelOne" ? SENTINELONE_ISSUE_LABELS : vendor === "Kandji" ? KANDJI_ISSUE_LABELS : {};
+  return issues.map((issue) => labelMap[issue] ?? DEFAULT_ISSUE_LABEL);
+}
+
+export function scoreSecurityInsight(insight: SecuritySoftwareInsight): SecurityInsightScore {
+  const issues = insight.metadata.healthIssues;
+  const seen = new Set<string>();
+  let penalty = 0;
+  for (const issue of issues) {
+    if (seen.has(issue)) {
+      continue;
+    }
+    seen.add(issue);
+    penalty += ISSUE_WEIGHTS[issue] ?? 5;
+  }
+  const score = Math.max(0, MAX_SCORE - penalty);
+  const normalized = Math.round((score / MAX_SCORE) * 1000) / 10;
+  return {
+    score,
+    maxScore: MAX_SCORE,
+    normalized,
+    issues,
+    issueLabels: resolveIssueLabels(insight.vendor, issues),
+  };
+}
+
+export function formatSecurityInsight(insight: SecuritySoftwareInsight): string {
+  const score = scoreSecurityInsight(insight);
+  const status = insight.metadata.healthOk === true ? "Healthy" : insight.metadata.healthOk === false ? "Degraded" : "Unknown";
+  const issueText = score.issueLabels.length > 0 ? ` — Issues: ${score.issueLabels.join(", ")}` : "";
+  return `${insight.vendor} ${insight.product} — ${status} (score ${score.normalized.toFixed(1)}%)${issueText}`;
 }

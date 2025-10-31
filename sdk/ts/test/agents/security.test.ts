@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveSecurityInsights, summarizeSecurityHealth } from "../../src/agents/security";
+import {
+  deriveSecurityInsights,
+  summarizeSecurityHealth,
+  scoreSecurityInsight,
+  formatSecurityInsight,
+} from "../../src/agents/security";
 import type { SecuritySoftwareRecord } from "../../src/types";
 
 const sentinelRecord: SecuritySoftwareRecord = {
@@ -115,5 +120,35 @@ describe("summarizeSecurityHealth", () => {
     expect(summary.vendors["SentinelOne"].healthy).toBe(1);
     expect(summary.vendors["Kandji"].degraded).toBe(1);
     expect(summary.vendors["CrowdStrike"].unknown).toBe(1);
+  });
+});
+
+describe("scoreSecurityInsight", () => {
+  it("awards full score for healthy SentinelOne insight", () => {
+    const [insight] = deriveSecurityInsights([sentinelRecord]);
+    const score = scoreSecurityInsight(insight);
+
+    expect(score.score).toBe(100);
+    expect(score.normalized).toBe(100);
+    expect(score.issueLabels).toEqual([]);
+  });
+
+  it("applies penalties when issues are present", () => {
+    const insights = deriveSecurityInsights([kandjiRecord]);
+    const score = scoreSecurityInsight(insights[0]);
+
+    expect(score.score).toBeLessThan(100);
+    expect(score.issueLabels.length).toBeGreaterThan(0);
+  });
+});
+
+describe("formatSecurityInsight", () => {
+  it("produces a readable summary", () => {
+    const [insight] = deriveSecurityInsights([sentinelRecord]);
+    const summary = formatSecurityInsight(insight);
+
+    expect(summary).toContain("SentinelOne");
+    expect(summary).toContain("Healthy");
+    expect(summary).toContain("score 100.0%");
   });
 });

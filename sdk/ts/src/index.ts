@@ -55,6 +55,8 @@ export {
 export {
   AgentAnalyticsService,
   AgentReviewExporter,
+  scoreSecurityInsight,
+  formatSecurityInsight,
   deriveSecurityInsights,
   summarizeSecurityHealth,
   type SummarizeOrgOptions,

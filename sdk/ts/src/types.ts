@@ -238,6 +238,14 @@ export interface SecurityHealthSummary {
   vendors: Record<string, SecurityHealthVendorSummary>;
 }
 
+export interface SecurityInsightScore {
+  score: number;
+  maxScore: number;
+  normalized: number;
+  issues: string[];
+  issueLabels: string[];
+}
+
 export interface ReviewNotificationRecord {
   notificationId: string;
   taskId: string;
