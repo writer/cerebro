@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID
@@ -10,6 +11,12 @@ from sqlalchemy import select
 
 from cerebro.agents.models import AgentReviewTicket, TicketStatus
 from cerebro.core.database import async_session_factory
+from cerebro.integrations.serval import ServalError
+from cerebro.integrations.serval_ticket_service import ServalTicketService
+
+logger = logging.getLogger(__name__)
+
+_SERVAL_SYSTEM = "serval"
 
 
 class TicketingService:
@@ -24,18 +31,54 @@ class TicketingService:
         summary: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> AgentReviewTicket:
-        payload = metadata or {}
+        payload = dict(metadata or {})
+        if isinstance(payload.get("serval"), dict):
+            payload["serval"] = dict(payload["serval"])
         payload.setdefault("summary", summary)
+
+        normalized_system = system.lower()
+
+        if normalized_system == _SERVAL_SYSTEM and "description" not in payload:
+            payload["description"] = summary
 
         async with async_session_factory() as db_session:
             ticket = AgentReviewTicket(
                 org_id=org_id,
                 task_id=task_id,
-                system=system,
+                system=normalized_system,
                 details=payload,
                 status=TicketStatus.OPEN,
             )
             db_session.add(ticket)
+
+            if normalized_system == _SERVAL_SYSTEM:
+                serval_overrides = dict(payload.get("serval") or {})
+                ticket_name = str(serval_overrides.get("name") or summary).strip()
+                description = str(
+                    serval_overrides.get("description")
+                    or payload.get("description")
+                    or summary
+                ).strip()
+
+                serval_service = ServalTicketService(db_session)
+                try:
+                    result = await serval_service.create_ticket(
+                        org_id=org_id,
+                        name=ticket_name,
+                        description=description,
+                        overrides=serval_overrides,
+                    )
+                except ServalError:
+                    logger.exception("Failed to create Serval ticket")
+                    raise
+
+                ticket.external_id = result.ticket_id
+                serval_details = payload.setdefault("serval", {})
+                serval_details.update(serval_overrides)
+                serval_details.setdefault("team_id", serval_overrides.get("team_id"))
+                serval_details.setdefault("friendly_identifier", result.payload.get("friendlyIdentifier"))
+                serval_details["ticket"] = result.payload
+                ticket.details = payload
             await db_session.commit()
             await db_session.refresh(ticket)
             return ticket
@@ -52,6 +95,18 @@ class TicketingService:
             if external_id:
                 ticket.external_id = external_id
             ticket.updated_at = datetime.now(timezone.utc)
+
+            if ticket.system == _SERVAL_SYSTEM and ticket.external_id:
+                serval_service = ServalTicketService(db_session)
+                try:
+                    await serval_service.update_ticket_status(
+                        org_id=ticket.org_id,
+                        ticket_id=ticket.external_id,
+                        status_key="closed",
+                    )
+                except (ServalError, ValueError):
+                    logger.exception("Failed to update Serval ticket status for %s", ticket.external_id)
+
             await db_session.commit()
             await db_session.refresh(ticket)
             return ticket

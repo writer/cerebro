@@ -44,6 +44,12 @@ class Organization(Base):
         back_populates="organization",
         cascade="all, delete-orphan",
     )
+    serval_integration: Mapped[Optional["ServalIntegration"]] = relationship(
+        "ServalIntegration",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class Account(Base):
@@ -189,6 +195,50 @@ class Policy(Base):
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="policies")
     rules: Mapped[List["Rule"]] = relationship(back_populates="policy")
+
+
+class ServalIntegration(Base):
+    """Configuration for Serval custom app integration per organization."""
+
+    __tablename__ = "serval_integrations"
+
+    integration_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("orgs.org_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    api_base_url: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default="https://public.api.serval.com",
+    )
+    team_id: Mapped[str] = mapped_column(String, nullable=False)
+    default_status_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    default_priority_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    default_created_by_user_id: Mapped[str] = mapped_column(String, nullable=False)
+    default_requester_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    default_assigned_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    settings: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
+    encrypted_client_id: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_client_id_dek: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_client_secret: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_client_secret_dek: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    organization: Mapped[Organization] = relationship("Organization", back_populates="serval_integration")
 
 
 class Rule(Base):

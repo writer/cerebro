@@ -26,6 +26,7 @@ celery_kwargs = {
         'cerebro.tasks.integration_tasks',
         'cerebro.tasks.integration_monitor',
         'cerebro.tasks.runtime_monitor',
+        'cerebro.tasks.serval_tasks',
     ],
 }
 
@@ -82,6 +83,11 @@ beat_schedule = {
     },
     'monitor-integration-sync': {
         'task': 'cerebro.tasks.integration.monitor_sync_health',
+        'schedule': 900.0,
+        'options': {'queue': 'integrations'},
+    },
+    'sync-serval-tickets': {
+        'task': 'cerebro.tasks.integration.sync_serval_tickets',
         'schedule': 900.0,
         'options': {'queue': 'integrations'},
     },

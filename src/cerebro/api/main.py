@@ -20,7 +20,7 @@ from cerebro.core.database import async_session_factory
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.metrics.jwt_metrics import jwt_metrics
 from cerebro.agents.metrics import get_registry
-from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks, telemetry, automation, packs, integrations
+from .routers import auth, organizations, accounts, resources, principals, rules, findings, collectors, analysis, query, identity_governance, oauth_risk, attack_path, vendors, tests, websockets, analytics, compliance, compliance_unified, agents, slack, email, webhooks, forklift_webhooks, telemetry, automation, packs, integrations, serval
 from .routers import jwks
 from .auth import User, get_current_user
 
@@ -244,6 +244,12 @@ app.include_router(
 
 app.include_router(
     integrations.router,
+    prefix=f"{settings.api_v1_prefix}",
+    tags=["integrations"]
+)
+
+app.include_router(
+    serval.router,
     prefix=f"{settings.api_v1_prefix}",
     tags=["integrations"]
 )
