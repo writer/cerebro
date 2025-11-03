@@ -11,6 +11,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_serval_integration_repository_roundtrip():
+    # Validate encryption, persistence, and retrieval via the repository.
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

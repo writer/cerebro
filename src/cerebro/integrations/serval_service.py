@@ -46,6 +46,7 @@ class ServalIntegrationRepository:
         self._encryption = encryption_service or SecretEncryptionService()
 
     async def get(self, org_id: UUID) -> Optional[ServalIntegrationSettings]:
+        """Load decrypted settings for the organization if present."""
         stmt = select(ServalIntegration).where(ServalIntegration.org_id == org_id)
         result = await self._db.execute(stmt)
         record = result.scalar_one_or_none()
@@ -54,6 +55,7 @@ class ServalIntegrationRepository:
         return await self._record_to_settings(record)
 
     async def list_all(self) -> list[ServalIntegrationSettings]:
+        """Return decrypted settings for every configured organization."""
         stmt = select(ServalIntegration)
         result = await self._db.scalars(stmt)
         records = list(result)
@@ -78,6 +80,7 @@ class ServalIntegrationRepository:
         status_map: Optional[Dict[str, str]] = None,
         priority_map: Optional[Dict[str, str]] = None,
     ) -> ServalIntegrationSettings:
+        """Create or update the configuration while rotating stored credentials."""
         encrypted_client_id, encrypted_client_id_dek = await self._encryption.encrypt_secret(client_id)
         encrypted_client_secret, encrypted_client_secret_dek = await self._encryption.encrypt_secret(client_secret)
 
@@ -125,6 +128,7 @@ class ServalIntegrationRepository:
         return await self.get(org_id)
 
     async def delete(self, org_id: UUID) -> None:
+        """Remove the integration record for the supplied organization."""
         stmt = select(ServalIntegration).where(ServalIntegration.org_id == org_id)
         result = await self._db.execute(stmt)
         record = result.scalar_one_or_none()
@@ -134,6 +138,7 @@ class ServalIntegrationRepository:
         await self._db.commit()
 
     async def _record_to_settings(self, record: ServalIntegration) -> ServalIntegrationSettings:
+        """Convert a SQLAlchemy row into the decrypted settings dataclass."""
         client_id = await self._encryption.decrypt_secret(
             record.encrypted_client_id,
             record.encrypted_client_id_dek,

@@ -32,6 +32,7 @@ class ServalConfig:
     token_grace_seconds: int = 30
 
     def __post_init__(self) -> None:
+        """Normalize the base URL so consumers can provide forms with or without trailing slash."""
         base = (self.base_url or "https://public.api.serval.com").strip()
         self.base_url = base.rstrip("/") or "https://public.api.serval.com"
 
@@ -97,6 +98,7 @@ class ServalClient:
         team_id: Optional[str] = None,
         since: Optional[datetime] = None,
     ) -> list[dict[str, Any]]:
+        """Return tickets filtered by team and updated timestamp for incremental sync."""
         params: Dict[str, Any] = {}
         if team_id:
             params["teamId"] = team_id
@@ -131,6 +133,7 @@ class ServalClient:
         channel_sync_targets: Optional[Sequence[Dict[str, Any]]] = None,
         created_at: Optional[Any] = None,
     ) -> dict[str, Any]:
+        """Create a Serval ticket and return the normalized response payload."""
         payload: Dict[str, Any] = {
             "teamId": team_id,
             "name": name,
@@ -169,6 +172,7 @@ class ServalClient:
         escalationLevel: Optional[str] = None,
         requesterUserId: Optional[str] = None,
     ) -> dict[str, Any]:
+        """Patch mutable ticket fields and return the updated ticket body."""
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
@@ -201,6 +205,7 @@ class ServalClient:
         raise ServalError("Serval update ticket response missing data")
 
     async def list_statuses(self, *, team_id: Optional[str] = None) -> list[dict[str, Any]]:
+        """Fetch available workflow statuses from Serval."""
         params: Dict[str, Any] = {}
         if team_id:
             params["teamId"] = team_id
@@ -211,6 +216,7 @@ class ServalClient:
         return []
 
     async def list_priorities(self, *, team_id: Optional[str] = None) -> list[dict[str, Any]]:
+        """Fetch available priority options for configuration surfaces."""
         params: Dict[str, Any] = {}
         if team_id:
             params["teamId"] = team_id
@@ -221,6 +227,7 @@ class ServalClient:
         return []
 
     async def _ensure_token(self) -> _Token:
+        """Return a cached token or refresh it when past the grace window."""
         if self._token and not self._token_expired(self._token):
             return self._token
         async with self._token_lock:
@@ -275,6 +282,7 @@ class ServalClient:
         return f"Basic {encoded}"
 
     async def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Make an authenticated request and parse the JSON response."""
         response = await self._request(method, path, **kwargs)
         try:
             return response.json()
@@ -282,6 +290,7 @@ class ServalClient:
             raise ServalError("Serval API response was not valid JSON") from exc
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Perform the low-level HTTP call with authorization headers injected."""
         token = await self._ensure_token()
         client = self._get_client()
         headers = kwargs.pop("headers", {}) or {}

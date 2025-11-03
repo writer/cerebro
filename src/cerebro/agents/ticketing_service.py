@@ -31,6 +31,7 @@ class TicketingService:
         summary: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> AgentReviewTicket:
+        # Copy metadata to avoid mutating caller-owned dictionaries.
         payload = dict(metadata or {})
         if isinstance(payload.get("serval"), dict):
             payload["serval"] = dict(payload["serval"])
@@ -38,6 +39,7 @@ class TicketingService:
 
         normalized_system = system.lower()
 
+        # Serval rejects requests without a description; reuse summary when omitted.
         if normalized_system == _SERVAL_SYSTEM and "description" not in payload:
             payload["description"] = summary
 
@@ -52,6 +54,7 @@ class TicketingService:
             db_session.add(ticket)
 
             if normalized_system == _SERVAL_SYSTEM:
+                # Leverage per-ticket overrides if present, falling back to configured defaults.
                 serval_overrides = dict(payload.get("serval") or {})
                 ticket_name = str(serval_overrides.get("name") or summary).strip()
                 description = str(
@@ -74,6 +77,7 @@ class TicketingService:
 
                 ticket.external_id = result.ticket_id
                 serval_details = payload.setdefault("serval", {})
+                # Preserve upstream payload and identifiers for agents and UI surfaces.
                 serval_details.update(serval_overrides)
                 serval_details.setdefault("team_id", serval_overrides.get("team_id"))
                 serval_details.setdefault("friendly_identifier", result.payload.get("friendlyIdentifier"))
@@ -97,6 +101,7 @@ class TicketingService:
             ticket.updated_at = datetime.now(timezone.utc)
 
             if ticket.system == _SERVAL_SYSTEM and ticket.external_id:
+                # Propagate local closure to Serval so analysts see consistent state.
                 serval_service = ServalTicketService(db_session)
                 try:
                     await serval_service.update_ticket_status(

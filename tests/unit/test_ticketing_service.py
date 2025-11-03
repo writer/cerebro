@@ -81,6 +81,7 @@ class DummyServalTicketService:
 
 
 async def test_ticketing_service_creates_serval_ticket(monkeypatch):
+    # Exercise Serval ticket creation path with override payload.
     session = DummySession()
 
     monkeypatch.setattr(ticketing_service, "async_session_factory", lambda: session)
@@ -114,6 +115,7 @@ async def test_ticketing_service_creates_serval_ticket(monkeypatch):
 
 
 async def test_ticketing_service_closes_serval_ticket(monkeypatch):
+    # Ensure local closure cascades to the Serval API client.
     session = DummySession()
     monkeypatch.setattr(ticketing_service, "async_session_factory", lambda: session)
     monkeypatch.setattr(ticketing_service, "ServalTicketService", DummyServalTicketService)

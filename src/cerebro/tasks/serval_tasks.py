@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_timestamp(payload: dict[str, object]) -> Optional[datetime]:
+    """Extract a timezone-aware timestamp from common Serval ticket fields."""
     for key in ("updatedAt", "completedAt", "escalatedAt", "createdAt"):
         value = payload.get(key)
         if isinstance(value, str) and value:
@@ -39,6 +40,7 @@ def sync_serval_tickets(self) -> dict[str, object]:
     """Synchronize Serval ticket changes back into Cerebro."""
 
     async def _run() -> dict[str, object]:
+        """Execute the sync in an async context so the Celery task stays synchronous."""
         processed = 0
         updated = 0
         async with async_session_factory() as db:
@@ -71,6 +73,7 @@ def sync_serval_tickets(self) -> dict[str, object]:
                     if ts is not None and (latest_timestamp is None or ts > latest_timestamp):
                         latest_timestamp = ts
 
+                # Persist cursor metadata so subsequent runs only fetch incremental changes.
                 await state_repo.upsert_state(
                     integration="serval.tickets",
                     scope=scope,

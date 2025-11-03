@@ -6,6 +6,7 @@ from cerebro.tasks import serval_tasks
 
 
 def test_sync_serval_tickets_updates_state(monkeypatch, test_db, test_org):
+    # Validate the polling task records processed tickets even with mocked services.
     org_id = test_org.org_id
 
     async def _list_all(self):  # type: ignore[override]

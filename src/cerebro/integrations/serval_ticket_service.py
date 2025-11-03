@@ -32,6 +32,7 @@ class ServalTicketService:
         self._repo = ServalIntegrationRepository(db)
 
     async def ensure_settings(self, org_id: UUID) -> ServalIntegrationSettings:
+        """Return decrypted settings or raise when the org is not configured."""
         settings = await self._repo.get(org_id)
         if settings is None:
             raise ValueError("Serval integration is not configured for this organization")
@@ -45,6 +46,7 @@ class ServalTicketService:
         description: str,
         overrides: Optional[Dict[str, Any]] = None,
     ) -> ServalTicketResult:
+        """Create a Serval ticket using saved defaults plus optional overrides."""
         settings = await self.ensure_settings(org_id)
         override = overrides or {}
 
@@ -96,6 +98,7 @@ class ServalTicketService:
         priority_key: Optional[str] = None,
         assigned_to_user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Translate local status/priority keys to Serval IDs and send the update."""
         settings = await self.ensure_settings(org_id)
         body: Dict[str, Any] = {}
 
@@ -117,6 +120,7 @@ class ServalTicketService:
             return await client.update_ticket(ticket_id, **body)
 
     async def list_recent_tickets(self, org_id: UUID, since: Optional[datetime]) -> list[dict[str, Any]]:
+        """Return tickets updated since the provided timestamp for polling syncs."""
         settings = await self.ensure_settings(org_id)
         async with self._build_client(settings) as client:
             return await client.list_tickets(team_id=settings.team_id, since=since)
@@ -127,6 +131,7 @@ class ServalTicketService:
         org_id: UUID,
         ticket_payload: dict[str, Any],
     ) -> Optional[TicketStatus]:
+        """Update the local ticket matching the Serval payload and return new status."""
         settings = await self.ensure_settings(org_id)
         external_id = ticket_payload.get("id")
         if not external_id:

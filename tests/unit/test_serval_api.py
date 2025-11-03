@@ -4,6 +4,7 @@ from cerebro.integrations import serval_ticket_service
 
 
 def test_upsert_and_get_serval_config(client, admin_token, test_db, test_org):
+    # Ensure configuration can be persisted and subsequently retrieved.
     org_id = str(test_org.org_id)
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -34,6 +35,7 @@ def test_upsert_and_get_serval_config(client, admin_token, test_db, test_org):
 
 
 def test_serval_metadata_endpoints(client, admin_token, monkeypatch, test_org):
+    # Surface metadata even when live client calls are mocked.
     org_id = str(test_org.org_id)
     headers = {"Authorization": f"Bearer {admin_token}"}
 

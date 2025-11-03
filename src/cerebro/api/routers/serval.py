@@ -70,6 +70,7 @@ async def upsert_serval_config(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("admin")),
 ) -> ServalConfigResponse:
+    """Create or update Serval credentials and defaults for an organization."""
     repo = ServalIntegrationRepository(db)
     settings = await repo.upsert(
         org_id=org_id,
@@ -94,6 +95,7 @@ async def get_serval_config(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("view:integrations")),
 ) -> ServalConfigResponse:
+    """Return the saved Serval integration settings or 404 if none exist."""
     repo = ServalIntegrationRepository(db)
     settings = await repo.get(org_id)
     if settings is None:
@@ -107,6 +109,7 @@ async def delete_serval_config(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("admin")),
 ) -> Response:
+    """Remove the Serval configuration row for the organization."""
     repo = ServalIntegrationRepository(db)
     await repo.delete(org_id)
     return Response(status_code=204)
@@ -118,6 +121,7 @@ async def list_serval_statuses(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("view:integrations")),
 ) -> list[dict[str, Any]]:
+    """Proxy Serval status catalogue to populate configuration UIs."""
     service = ServalTicketService(db)
     return await service.list_statuses(org_id)
 
@@ -128,5 +132,6 @@ async def list_serval_priorities(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("view:integrations")),
 ) -> list[dict[str, Any]]:
+    """Expose Serval priority values for downstream mapping."""
     service = ServalTicketService(db)
     return await service.list_priorities(org_id)

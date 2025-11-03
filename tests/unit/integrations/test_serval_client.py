@@ -10,6 +10,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_serval_client_caches_token() -> None:
+    # Token endpoint should be hit once across multiple data requests.
     requests = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -50,6 +51,7 @@ async def test_serval_client_caches_token() -> None:
 
 
 async def test_serval_client_create_ticket_payload() -> None:
+    # Verify payload normalization when creating a ticket.
     captured_payload = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -108,6 +110,7 @@ async def test_serval_client_create_ticket_payload() -> None:
 
 
 async def test_serval_client_update_ticket() -> None:
+    # Ensure update_ticket forwards only provided fields.
     captured_payload = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
