@@ -32,8 +32,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix sdk/ts
 
+      - name: Run SDK tests
+        run: npm test --prefix sdk/ts
+
       - name: Build SDK
         run: npm run build --prefix sdk/ts
+
+      - name: Enforce bundle size limit
+        run: npm run size-limit --prefix sdk/ts
 
       - name: Validate package contents
         run: npm run validate:package --prefix sdk/ts
