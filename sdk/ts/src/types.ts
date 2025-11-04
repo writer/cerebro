@@ -47,6 +47,155 @@ export interface OrganizationSummary {
   createdAt: Date;
 }
 
+export type EvidenceEntityType =
+  | "identity"
+  | "asset"
+  | "configuration"
+  | "activity"
+  | "document"
+  | "vulnerability"
+  | "access"
+  | "change"
+  | "process"
+  | "vendor"
+  | "customer";
+
+export interface EvidenceMetadataRecord {
+  id: string;
+  category: string;
+  contentType: string;
+  collectorId: string;
+  collectorType: string;
+  collectionMethod: string;
+  sourceSystem?: string | null;
+  contentSize: number;
+  contentHash?: string | null;
+  createdAt: Date;
+  collectedAt?: Date | null;
+  verifiedAt?: Date | null;
+  sealedAt?: Date | null;
+  status: string;
+  retentionClass: string;
+  expiresAt?: Date | null;
+  cryptoProof?: Record<string, unknown> | null;
+  chainOfCustody: Array<Record<string, unknown>>;
+  piiDetected: boolean;
+  sensitivityLevel: string;
+  encryptionRequired: boolean;
+  tags: Record<string, string>;
+  relatedEvidenceIds: string[];
+  parentBundleId?: string | null;
+}
+
+export interface VendorMetadataRecord extends EvidenceMetadataRecord {
+  vendorId: string;
+  vendorName: string;
+  riskLevel: string;
+  inherentRiskScore: number;
+  residualRiskScore: number;
+  businessCriticality: string;
+  vendorCategory?: string | null;
+  dataTypesProcessed: string[];
+  certifications: string[];
+  complianceFrameworks: string[];
+  lastAssessmentDate?: Date | null;
+  nextReviewDue?: Date | null;
+  contractEndDate?: Date | null;
+  lifecycleStage: string;
+  relationshipOwner?: string | null;
+  serviceRegions: string[];
+  primaryContacts: string[];
+  accessMonitoringEnabled: boolean;
+  securityAlertsConfigured: boolean;
+  incidentCountLastYear: number;
+}
+
+export interface VendorRiskSummary {
+  level: string;
+  inherentScore: number;
+  residualScore: number;
+  incidentCountLastYear: number;
+  monitoring: {
+    accessMonitoringEnabled: boolean;
+    securityAlertsConfigured: boolean;
+  };
+}
+
+export interface VendorComplianceSummary {
+  certifications: string[];
+  frameworks: string[];
+  dataProcessingAgreements: string[];
+  securityQuestionnaireCompleted: boolean;
+  vulnerabilityDisclosurePolicy: boolean;
+  penetrationTestResultsPresent: boolean;
+}
+
+export interface VendorRelationshipSummary {
+  businessCriticality: string;
+  annualSpend: number | null;
+  contract: {
+    startDate: Date;
+    endDate: Date | null;
+    nextReviewDue: Date;
+  };
+}
+
+export interface VendorIntegrationSummary {
+  integrationType: string;
+  networkAccess: string[];
+  authenticationMethods: string[];
+}
+
+export interface VendorMetadataEnvelope {
+  evidence: VendorMetadataRecord;
+  riskSummary: VendorRiskSummary;
+  complianceSummary: VendorComplianceSummary;
+  relationship: VendorRelationshipSummary;
+  integration: VendorIntegrationSummary;
+  lifecycleStage: string;
+}
+
+export interface CustomerMetadataRecord extends EvidenceMetadataRecord {
+  customerId: string;
+  customerName: string;
+  segment: string;
+  industry?: string | null;
+  region?: string | null;
+  lifecycleStage: string;
+  healthScore: number;
+  churnRiskScore: number;
+  accountManager?: string | null;
+  annualRecurringRevenue?: number | null;
+  seatsCommitted?: number | null;
+  adoptionMetrics: Record<string, number>;
+  lastEngagementAt?: Date | null;
+  nextQbrAt?: Date | null;
+  supportTicketsOpen: number;
+  advocacyLevel: string;
+  successPrograms: string[];
+}
+
+export interface CustomerMetadataEnvelope {
+  evidence: CustomerMetadataRecord;
+  health: {
+    score: number;
+    band: string;
+    churnRisk: number;
+    lifecycleStage: string;
+  };
+  adoption: {
+    productUsageScore: number;
+    metrics: Record<string, number>;
+    seatsCommitted: number;
+  };
+  engagement: {
+    lastEngagementAt: Date;
+    nextQbrAt: Date | null;
+    openSupportTickets: number;
+  };
+  successPrograms: string[];
+}
+
 export interface FindingRecord {
   findingId: string;
   orgId: string;

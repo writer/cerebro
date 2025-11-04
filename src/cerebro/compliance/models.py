@@ -7,7 +7,7 @@ a single, extensible model architecture for all compliance use cases.
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from enum import Enum
 from uuid import uuid4, UUID
@@ -41,6 +41,7 @@ class EvidenceCategory(Enum):
     TRAINING_RECORD = "training_record"
     BACKGROUND_CHECK = "background_check"
     VENDOR_ASSESSMENT = "vendor_assessment"
+    CUSTOMER_PROFILE = "customer_profile"
 
 
 class EvidenceCollectionMethod(Enum):
@@ -254,6 +255,55 @@ class AuditEvidenceMetadata(BaseEvidenceMetadata):
 
 
 @dataclass
+class VendorEvidenceMetadata(BaseEvidenceMetadata):
+    """Metadata describing third-party vendor posture and relationship."""
+
+    vendor_id: str = ""
+    vendor_name: str = ""
+    risk_level: str = "medium"
+    inherent_risk_score: float = 0.0
+    residual_risk_score: float = 0.0
+    business_criticality: str = "medium"
+    vendor_category: Optional[str] = None
+    data_types_processed: List[str] = field(default_factory=list)
+    certifications: List[str] = field(default_factory=list)
+    compliance_frameworks: List[str] = field(default_factory=list)
+    last_assessment_date: Optional[datetime] = None
+    next_review_due: Optional[datetime] = None
+    contract_end_date: Optional[datetime] = None
+    lifecycle_stage: str = "active"
+    relationship_owner: Optional[str] = None
+    service_regions: List[str] = field(default_factory=list)
+    primary_contacts: List[str] = field(default_factory=list)
+    access_monitoring_enabled: bool = False
+    security_alerts_configured: bool = False
+    incident_count_last_year: int = 0
+
+
+@dataclass
+class CustomerEvidenceMetadata(BaseEvidenceMetadata):
+    """Metadata summarizing customer account health and lifecycle."""
+
+    customer_id: str = ""
+    customer_name: str = ""
+    segment: str = "commercial"
+    industry: Optional[str] = None
+    region: Optional[str] = None
+    lifecycle_stage: str = "active"
+    health_score: float = 0.0
+    churn_risk_score: float = 0.0
+    account_manager: Optional[str] = None
+    annual_recurring_revenue: Optional[float] = None
+    seats_committed: Optional[int] = None
+    adoption_metrics: Dict[str, float] = field(default_factory=dict)
+    last_engagement_at: Optional[datetime] = None
+    next_qbr_at: Optional[datetime] = None
+    support_tickets_open: int = 0
+    advocacy_level: str = "neutral"
+    success_programs: List[str] = field(default_factory=list)
+
+
+@dataclass
 class EvidenceBundle:
     """Collection of related evidence items for delivery/audit."""
 
@@ -378,3 +428,153 @@ def create_audit_evidence(audit_firm: str, **kwargs) -> AuditEvidenceMetadata:
     )
     metadata.add_custody_entry("created", "system", "system")
     return metadata
+
+
+def create_vendor_evidence(
+    vendor_id: str,
+    vendor_name: str,
+    *,
+    created_by: str,
+    risk_level: str = "medium",
+    inherent_risk_score: float = 0.0,
+    residual_risk_score: float = 0.0,
+    business_criticality: str = "medium",
+    vendor_category: Optional[str] = None,
+    data_types_processed: Optional[List[str]] = None,
+    certifications: Optional[List[str]] = None,
+    compliance_frameworks: Optional[List[str]] = None,
+    last_assessment_date: Optional[datetime] = None,
+    next_review_due: Optional[datetime] = None,
+    contract_end_date: Optional[datetime] = None,
+    lifecycle_stage: str = "active",
+    relationship_owner: Optional[str] = None,
+    service_regions: Optional[List[str]] = None,
+    primary_contacts: Optional[List[str]] = None,
+    access_monitoring_enabled: bool = False,
+    security_alerts_configured: bool = False,
+    incident_count_last_year: int = 0,
+    source_system: Optional[str] = "vendor_registry",
+    collector_id: Optional[str] = None,
+    collector_type: Optional[str] = None,
+    collection_method: Optional[EvidenceCollectionMethod] = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> VendorEvidenceMetadata:
+    """Create vendor evidence metadata with rich risk and compliance context."""
+
+    tag_payload = {"vendor_id": vendor_id, "entity_type": "vendor"}
+    if vendor_category:
+        tag_payload["vendor_category"] = vendor_category
+    tag_payload["risk_level"] = risk_level
+    tag_payload["business_criticality"] = business_criticality
+    if tags:
+        tag_payload.update(tags)
+
+    metadata = VendorEvidenceMetadata(
+        vendor_id=vendor_id,
+        vendor_name=vendor_name,
+        risk_level=risk_level,
+        inherent_risk_score=inherent_risk_score,
+        residual_risk_score=residual_risk_score,
+        business_criticality=business_criticality,
+        vendor_category=vendor_category,
+        data_types_processed=data_types_processed or [],
+        certifications=certifications or [],
+        compliance_frameworks=compliance_frameworks or [],
+        last_assessment_date=last_assessment_date,
+        next_review_due=next_review_due,
+        contract_end_date=contract_end_date,
+        lifecycle_stage=lifecycle_stage,
+        relationship_owner=relationship_owner,
+        service_regions=service_regions or [],
+        primary_contacts=primary_contacts or [],
+        access_monitoring_enabled=access_monitoring_enabled,
+        security_alerts_configured=security_alerts_configured,
+        incident_count_last_year=incident_count_last_year,
+        category=EvidenceCategory.VENDOR_ASSESSMENT,
+        source_system=source_system,
+        collector_id=collector_id or "vendor_registry",
+        collector_type=collector_type or "automated",
+        collection_method=collection_method or EvidenceCollectionMethod.INTEGRATION,
+        tags=tag_payload,
+    )
+    metadata.add_custody_entry("created", created_by, "system")
+    return metadata
+
+
+def create_customer_evidence(
+    customer_id: str,
+    customer_name: str,
+    *,
+    created_by: str,
+    segment: str = "commercial",
+    industry: Optional[str] = None,
+    region: Optional[str] = None,
+    lifecycle_stage: str = "active",
+    health_score: float = 0.0,
+    churn_risk_score: float = 0.0,
+    account_manager: Optional[str] = None,
+    annual_recurring_revenue: Optional[float] = None,
+    seats_committed: Optional[int] = None,
+    adoption_metrics: Optional[Dict[str, float]] = None,
+    last_engagement_at: Optional[datetime] = None,
+    next_qbr_at: Optional[datetime] = None,
+    support_tickets_open: int = 0,
+    advocacy_level: str = "neutral",
+    success_programs: Optional[List[str]] = None,
+    source_system: Optional[str] = "customer_registry",
+    collector_id: Optional[str] = None,
+    collector_type: Optional[str] = None,
+    collection_method: Optional[EvidenceCollectionMethod] = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> CustomerEvidenceMetadata:
+    """Create customer evidence metadata capturing account health signals."""
+
+    tag_payload = {"customer_id": customer_id, "entity_type": "customer", "segment": segment}
+    if tags:
+        tag_payload.update(tags)
+
+    metadata = CustomerEvidenceMetadata(
+        customer_id=customer_id,
+        customer_name=customer_name,
+        segment=segment,
+        industry=industry,
+        region=region,
+        lifecycle_stage=lifecycle_stage,
+        health_score=health_score,
+        churn_risk_score=churn_risk_score,
+        account_manager=account_manager,
+        annual_recurring_revenue=annual_recurring_revenue,
+        seats_committed=seats_committed,
+        adoption_metrics=adoption_metrics or {},
+        last_engagement_at=last_engagement_at,
+        next_qbr_at=next_qbr_at,
+        support_tickets_open=support_tickets_open,
+        advocacy_level=advocacy_level,
+        success_programs=success_programs or [],
+        category=EvidenceCategory.CUSTOMER_PROFILE,
+        source_system=source_system,
+        collector_id=collector_id or "customer_registry",
+        collector_type=collector_type or "automated",
+        collection_method=collection_method or EvidenceCollectionMethod.INTEGRATION,
+        tags=tag_payload,
+    )
+    metadata.add_custody_entry("created", created_by, "system")
+    return metadata
+
+
+def metadata_to_dict(metadata: BaseEvidenceMetadata) -> Dict[str, Any]:
+    """Serialize evidence metadata into JSON-friendly dictionary."""
+
+    def _convert(value: Any) -> Any:
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, list):
+            return [_convert(item) for item in value]
+        if isinstance(value, dict):
+            return {key: _convert(val) for key, val in value.items()}
+        return value
+
+    raw = asdict(metadata)
+    return _convert(raw)

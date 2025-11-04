@@ -13,9 +13,21 @@ clean, well-architected system.
 
 # Core models and interfaces
 from .models import (
-    BaseEvidenceMetadata, ComplianceEvidenceMetadata, ForensicEvidenceMetadata,
-    EvidenceBundle, EvidenceRepository, EvidenceStatus, EvidenceCategory,
-    create_compliance_evidence, create_forensic_evidence, create_audit_evidence
+    BaseEvidenceMetadata,
+    ComplianceEvidenceMetadata,
+    ForensicEvidenceMetadata,
+    VendorEvidenceMetadata,
+    CustomerEvidenceMetadata,
+    EvidenceBundle,
+    EvidenceRepository,
+    EvidenceStatus,
+    EvidenceCategory,
+    create_compliance_evidence,
+    create_forensic_evidence,
+    create_audit_evidence,
+    create_vendor_evidence,
+    create_customer_evidence,
+    metadata_to_dict,
 )
 
 # Framework system
@@ -39,6 +51,8 @@ __all__ = [
     "BaseEvidenceMetadata",
     "ComplianceEvidenceMetadata",
     "ForensicEvidenceMetadata",
+    "VendorEvidenceMetadata",
+    "CustomerEvidenceMetadata",
     "EvidenceBundle",
     "EvidenceRepository",
     "EvidenceStatus",
@@ -46,6 +60,9 @@ __all__ = [
     "create_compliance_evidence",
     "create_forensic_evidence",
     "create_audit_evidence",
+    "create_vendor_evidence",
+    "create_customer_evidence",
+    "metadata_to_dict",
     "FrameworkRegistry",
     "FrameworkProvider",
     "FrameworkDefinition",

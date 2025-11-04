@@ -69,6 +69,12 @@ export {
   type SummarizeOrgOptions,
   type ExportReviewTasksOptions,
 } from "./agents";
+export {
+  toVendorMetadataEnvelope,
+  toVendorMetadataRecord,
+  toCustomerMetadataEnvelope,
+  toCustomerMetadataRecord,
+} from "./metadata";
 export * from "./pagination";
 export * from "./types";
 export * from "./config";

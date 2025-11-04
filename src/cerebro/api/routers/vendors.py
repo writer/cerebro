@@ -192,6 +192,8 @@ async def get_vendor_details(
         if not vendor:
             raise HTTPException(status_code=404, detail="Vendor not found")
         
+        metadata_envelope = vendor.metadata or {}
+
         vendor_details = {
             "vendor_id": vendor.vendor_id,
             "name": vendor.name,
@@ -235,7 +237,13 @@ async def get_vendor_details(
                 "created_at": vendor.created_at.isoformat(),
                 "updated_at": vendor.updated_at.isoformat(),
                 "created_by": vendor.created_by,
-                "tags": vendor.tags
+                "tags": vendor.tags,
+                "lifecycle_stage": metadata_envelope.get("lifecycle_stage"),
+                "risk_summary": metadata_envelope.get("risk_summary"),
+                "compliance_summary": metadata_envelope.get("compliance_summary"),
+                "integration": metadata_envelope.get("integration"),
+                "relationship": metadata_envelope.get("relationship"),
+                "evidence": metadata_envelope.get("evidence")
             }
         }
         
@@ -415,7 +423,11 @@ async def get_vendor_evidence(
         
         evidence_query = EvidenceQuery(
             entity_ids=[vendor_id],
-            entity_types=[EvidenceEntityType.DOCUMENT, EvidenceEntityType.CONFIGURATION],
+            entity_types=[
+                EvidenceEntityType.DOCUMENT,
+                EvidenceEntityType.CONFIGURATION,
+                EvidenceEntityType.VENDOR,
+            ],
             time_range=(datetime.now() - timedelta(days=since_days), datetime.now()),
             tags={"vendor_id": vendor_id},
             limit=100

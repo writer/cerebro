@@ -49,6 +49,8 @@ class EvidenceEntityType(Enum):
     ACCESS = "access"             # Permissions, group memberships
     CHANGE = "change"             # Modifications, deployments
     PROCESS = "process"           # Workflows, approvals, attestations
+    VENDOR = "vendor"             # Third-party vendors, suppliers, partners
+    CUSTOMER = "customer"         # Customer accounts, tenants, external clients
 
 
 class EvidenceSourceType(Enum):
@@ -517,6 +519,8 @@ class EvidenceDataFabric:
             EvidenceEntityType.IDENTITY: ["name", "displayName", "username", "email"],
             EvidenceEntityType.ASSET: ["name", "hostname", "instanceId", "resourceName"],
             EvidenceEntityType.CONFIGURATION: ["name", "policyName", "ruleName"],
+            EvidenceEntityType.VENDOR: ["name", "vendorName", "display_name", "companyName"],
+            EvidenceEntityType.CUSTOMER: ["name", "customerName", "companyName", "accountName"],
         }
         
         fields = name_fields.get(entity_type, ["name", "title", "id"])

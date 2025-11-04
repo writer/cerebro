@@ -4,12 +4,13 @@ Vendor registry for tracking third-party vendors and their security profiles.
 Manages vendor onboarding, risk assessment, and ongoing monitoring.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+
+from ..compliance.models import create_vendor_evidence, metadata_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class VendorRegistry:
         
         # Perform initial risk assessment
         await self._assess_vendor_risk(vendor)
+        self._update_vendor_metadata(vendor)
         
         self.vendors[vendor_id] = vendor
         
@@ -221,6 +223,107 @@ class VendorRegistry:
             vendor.risk_level = VendorRiskLevel.MEDIUM
         else:
             vendor.risk_level = VendorRiskLevel.LOW
+
+    def _update_vendor_metadata(self, vendor: Vendor):
+        """Generate rich metadata envelope for vendor consumers."""
+
+        lifecycle_stage = self._determine_lifecycle_stage(vendor)
+
+        evidence = create_vendor_evidence(
+            vendor_id=vendor.vendor_id,
+            vendor_name=vendor.name,
+            created_by=vendor.created_by,
+            risk_level=vendor.risk_level.value,
+            inherent_risk_score=vendor.inherent_risk_score,
+            residual_risk_score=vendor.residual_risk_score,
+            business_criticality=vendor.business_criticality,
+            vendor_category=vendor.category.value,
+            data_types_processed=vendor.data_types_processed,
+            certifications=vendor.certifications,
+            compliance_frameworks=vendor.compliance_frameworks,
+            last_assessment_date=vendor.last_assessment_date,
+            next_review_due=vendor.next_review_due,
+            contract_end_date=vendor.contract_end_date,
+            lifecycle_stage=lifecycle_stage,
+            relationship_owner=vendor.created_by,
+            service_regions=vendor.data_processing_locations,
+            primary_contacts=[vendor.primary_contact] if vendor.primary_contact else [],
+            access_monitoring_enabled=vendor.access_monitoring_enabled,
+            security_alerts_configured=vendor.security_alerts_configured,
+            incident_count_last_year=vendor.incident_count_last_year,
+        )
+
+        vendor.metadata = {
+            "evidence": metadata_to_dict(evidence),
+            "risk_summary": {
+                "level": vendor.risk_level.value,
+                "inherent_score": round(vendor.inherent_risk_score, 3),
+                "residual_score": round(vendor.residual_risk_score, 3),
+                "incident_count_last_year": vendor.incident_count_last_year,
+                "monitoring": {
+                    "access_monitoring_enabled": vendor.access_monitoring_enabled,
+                    "security_alerts_configured": vendor.security_alerts_configured,
+                },
+            },
+            "compliance_summary": {
+                "certifications": vendor.certifications,
+                "frameworks": vendor.compliance_frameworks,
+                "data_processing_agreements": vendor.data_processing_agreements,
+                "security_questionnaire_completed": vendor.security_questionnaire_completed,
+                "vulnerability_disclosure_policy": bool(vendor.vulnerability_disclosure_policy),
+                "penetration_test_results_present": bool(vendor.penetration_test_results),
+            },
+            "relationship": {
+                "business_criticality": vendor.business_criticality,
+                "annual_spend": vendor.annual_spend,
+                "contract": {
+                    "start_date": vendor.contract_start_date.isoformat(),
+                    "end_date": vendor.contract_end_date.isoformat() if vendor.contract_end_date else None,
+                    "next_review_due": vendor.next_review_due.isoformat(),
+                },
+            },
+            "integration": {
+                "integration_type": vendor.integration_type,
+                "network_access": vendor.network_access,
+                "authentication_methods": vendor.authentication_methods,
+            },
+            "lifecycle_stage": lifecycle_stage,
+        }
+
+        tag_updates = {
+            f"risk:{vendor.risk_level.value}",
+            f"criticality:{vendor.business_criticality}",
+            f"category:{vendor.category.value}",
+            f"stage:{lifecycle_stage}",
+        }
+        vendor.tags = sorted({*vendor.tags, *tag_updates})
+
+    def _determine_lifecycle_stage(self, vendor: Vendor) -> str:
+        """Derive vendor lifecycle stage from contract and review timelines."""
+
+        now = datetime.now()
+        if vendor.contract_end_date and vendor.contract_end_date < now:
+            return "offboarding"
+        days_until_review = (vendor.next_review_due - now).days
+        if days_until_review < 0:
+            return "review_overdue"
+        if vendor.contract_end_date and (vendor.contract_end_date - now).days <= 90:
+            return "renewal"
+        if days_until_review <= 30:
+            return "review_due_soon"
+        return "active"
+
+    async def refresh_vendor_profile(self, vendor_id: str) -> Optional[Vendor]:
+        """Recalculate risk and metadata for a vendor."""
+
+        vendor = self.vendors.get(vendor_id)
+        if not vendor:
+            return None
+
+        await self._assess_vendor_risk(vendor)
+        self._update_vendor_metadata(vendor)
+        vendor.updated_at = datetime.now()
+        return vendor
     
     async def get_vendors_by_risk_level(self, risk_level: VendorRiskLevel) -> List[Vendor]:
         """Get vendors filtered by risk level."""
