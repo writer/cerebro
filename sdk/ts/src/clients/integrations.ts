@@ -1,9 +1,9 @@
-import HttpClient, { RequestOptions } from "../httpClient";
+import HttpClient, { RequestOptions } from "../httpClient.js";
 import {
   IntegrationAccountSummary,
   IntegrationCoverageRecord,
   IntegrationScopeBreakdown,
-} from "../types";
+} from "../types.js";
 
 interface IntegrationCoverageScopesPayload {
   total: number;

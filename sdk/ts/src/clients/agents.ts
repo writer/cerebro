@@ -1,5 +1,5 @@
-import HttpClient from "../httpClient";
-import { CursorPage, PageRequest } from "../pagination";
+import HttpClient from "../httpClient.js";
+import { CursorPage, PageRequest } from "../pagination.js";
 import {
   AgentMemoryHighlight,
   AgentMemoryRecord,
@@ -26,7 +26,7 @@ import {
   PolicySuggestionRecord,
   PolicySimulationResultRecord,
   PolicySimulationExampleRecord,
-} from "../types";
+} from "../types.js";
 
 interface ReviewQueueStatusPayload {
   status: string;

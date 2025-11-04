@@ -15,7 +15,7 @@ import {
   type SecuritySoftwareInsight,
   type SecuritySoftwareRecord,
   type SentinelOneMetadata,
-} from "../types";
+} from "../types.js";
 
 const TRUE_VALUES = new Set([
   "true",

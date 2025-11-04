@@ -1,6 +1,6 @@
-import HttpClient from "../httpClient";
-import { toCustomerMetadataEnvelope, toVendorMetadataEnvelope } from "../metadata";
-import { CustomerMetadataEnvelope, VendorMetadataEnvelope } from "../types";
+import HttpClient from "../httpClient.js";
+import { toCustomerMetadataEnvelope, toVendorMetadataEnvelope } from "../metadata.js";
+import { CustomerMetadataEnvelope, VendorMetadataEnvelope } from "../types.js";
 
 const parseDate = (value: unknown): Date | null => {
   if (!value) {

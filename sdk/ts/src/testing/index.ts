@@ -3,4 +3,4 @@ export {
   StubIntegrationCoverageClient,
   buildRuntimeHealthRecord,
   buildIntegrationCoverageRecord,
-} from "./analytics";
+} from "./analytics.js";

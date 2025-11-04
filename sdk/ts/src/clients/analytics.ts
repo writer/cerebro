@@ -1,10 +1,10 @@
-import HttpClient, { RequestOptions } from "../httpClient";
+import HttpClient, { RequestOptions } from "../httpClient.js";
 import {
   RuntimeEventAggregate,
   RuntimeHealthRecord,
   RuntimeHealthSummary,
   RuntimeMetadataSnapshot,
-} from "../types";
+} from "../types.js";
 
 interface RuntimeEventAggregatePayload {
   count: number;

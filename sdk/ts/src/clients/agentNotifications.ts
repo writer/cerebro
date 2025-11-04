@@ -1,5 +1,5 @@
-import HttpClient from "../httpClient";
-import { AgentNotificationRecord, AgentTicketRecord } from "../types";
+import HttpClient from "../httpClient.js";
+import { AgentNotificationRecord, AgentTicketRecord } from "../types.js";
 
 export interface EnqueueNotificationRequest {
   orgId: string;

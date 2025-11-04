@@ -1,11 +1,11 @@
-import HttpClient, { HttpClientOptions } from "./httpClient";
-import { AnalyticsClient } from "./clients/analytics";
-import { AgentsClient } from "./clients/agents";
-import { AuthClient } from "./clients/auth";
-import { FindingsClient } from "./clients/findings";
-import { IntegrationsClient } from "./clients/integrations";
-import { OrganizationsClient } from "./clients/organizations";
-import { SecurityCenterClient } from "./clients/securityCenter";
+import HttpClient, { HttpClientOptions } from "./httpClient.js";
+import { AnalyticsClient } from "./clients/analytics.js";
+import { AgentsClient } from "./clients/agents.js";
+import { AuthClient } from "./clients/auth.js";
+import { FindingsClient } from "./clients/findings.js";
+import { IntegrationsClient } from "./clients/integrations.js";
+import { OrganizationsClient } from "./clients/organizations.js";
+import { SecurityCenterClient } from "./clients/securityCenter.js";
 
 export interface CerebroSDKOptions extends HttpClientOptions {}
 

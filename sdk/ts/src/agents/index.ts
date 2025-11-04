@@ -1,5 +1,5 @@
-export { AgentAnalyticsService, type SummarizeOrgOptions } from "./analytics";
-export { AgentReviewExporter, type ExportReviewTasksOptions } from "./reviewExporter";
+export { AgentAnalyticsService, type SummarizeOrgOptions } from "./analytics.js";
+export { AgentReviewExporter, type ExportReviewTasksOptions } from "./reviewExporter.js";
 export {
   deriveSecurityInsights,
   summarizeSecurityHealth,
@@ -12,4 +12,4 @@ export {
   listSecurityIssueDefinitions,
   formatFleetIssueSummary,
   getTopSecurityIssues,
-} from "./security";
+} from "./security.js";

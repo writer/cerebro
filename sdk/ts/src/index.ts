@@ -1,7 +1,7 @@
-export { CerebroSDK, type CerebroSDKOptions } from "./sdk";
-export type { AccessTokenProvider, HttpClientOptions, RequestOptions } from "./httpClient";
-export { HttpError } from "./httpClient";
-export { AnalyticsClient } from "./clients/analytics";
+export { CerebroSDK, type CerebroSDKOptions } from "./sdk.js";
+export type { AccessTokenProvider, HttpClientOptions, RequestOptions } from "./httpClient.js";
+export { HttpError } from "./httpClient.js";
+export { AnalyticsClient } from "./clients/analytics.js";
 export {
   AgentsClient,
   type ListReviewTasksOptions,
@@ -13,11 +13,11 @@ export {
   type ListSessionMessagesOptions,
   type SendAgentMessageRequest,
   type ListSessionMemoryOptions,
-} from "./clients/agents";
-export { AuthClient } from "./clients/auth";
-export { FindingsClient, type ListFindingsOptions } from "./clients/findings";
-export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations";
-export { OrganizationsClient, type ListOrganizationsOptions } from "./clients/organizations";
+} from "./clients/agents.js";
+export { AuthClient } from "./clients/auth.js";
+export { FindingsClient, type ListFindingsOptions } from "./clients/findings.js";
+export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations.js";
+export { OrganizationsClient, type ListOrganizationsOptions } from "./clients/organizations.js";
 export {
   SecurityCenterClient,
   type RegisterVendorRequest,
@@ -33,14 +33,14 @@ export {
   type SecurityCenterOverview,
   type SecurityCenterVendorList,
   type SecurityCenterCustomerList,
-} from "./clients/securityCenter";
+} from "./clients/securityCenter.js";
 export {
   UsersClient,
   InMemoryUsersAdapter,
   type UsersAdapter,
   type ListUsersOptions,
   type CreateUserRequest,
-} from "./clients/users";
+} from "./clients/users.js";
 export {
   TasksClient,
   InMemoryTasksAdapter,
@@ -48,7 +48,7 @@ export {
   type TaskSubmission,
   type TaskStatusRecord,
   type EnqueueTaskOptions,
-} from "./clients/tasks";
+} from "./clients/tasks.js";
 export {
   AgentToolingClient,
   InMemoryToolingAdapter,
@@ -58,7 +58,7 @@ export {
   type UpdateToolInvocationOptions,
   type ListToolApprovalsOptions,
   type UpdateApprovalStatusRequest,
-} from "./clients/tooling";
+} from "./clients/tooling.js";
 export {
   AgentNotificationsClient,
   AgentTicketsClient,
@@ -67,7 +67,7 @@ export {
   type NotificationsAdapter,
   type TicketsAdapter,
   type EnqueueNotificationRequest,
-} from "./clients/agentNotifications";
+} from "./clients/agentNotifications.js";
 export {
   AgentAnalyticsService,
   AgentReviewExporter,
@@ -84,15 +84,16 @@ export {
   summarizeSecurityHealth,
   type SummarizeOrgOptions,
   type ExportReviewTasksOptions,
-} from "./agents";
+} from "./agents/index.js";
 export {
   toVendorMetadataEnvelope,
   toVendorMetadataRecord,
   toCustomerMetadataEnvelope,
   toCustomerMetadataRecord,
-} from "./metadata";
-export * from "./pagination";
-export * from "./types";
-export * from "./config";
-export * from "./telemetry";
-export * from "./testing";
+} from "./metadata.js";
+export * from "./pagination.js";
+export * from "./types.js";
+export * from "./config.js";
+export * from "./telemetry.js";
+export * from "./testing/index.js";
+export { default as default } from "./sdk.js";

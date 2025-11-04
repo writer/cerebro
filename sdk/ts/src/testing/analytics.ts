@@ -6,7 +6,7 @@ import {
   RuntimeHealthRecord,
   RuntimeHealthSummary,
   RuntimeMetadataSnapshot,
-} from "../types";
+} from "../types.js";
 
 export function buildRuntimeHealthRecord(
   runtime: string,

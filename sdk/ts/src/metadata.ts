@@ -8,7 +8,7 @@ import {
   VendorMetadataRecord,
   VendorRelationshipSummary,
   VendorRiskSummary,
-} from "./types";
+} from "./types.js";
 
 const toDate = (value: unknown): Date | null => {
   if (!value) {

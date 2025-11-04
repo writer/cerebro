@@ -1,6 +1,6 @@
-import HttpClient, { RequestOptions } from "../httpClient";
-import { CursorPage, PageRequest } from "../pagination";
-import { FindingRecord } from "../types";
+import HttpClient, { RequestOptions } from "../httpClient.js";
+import { CursorPage, PageRequest } from "../pagination.js";
+import { FindingRecord } from "../types.js";
 
 interface FindingPayload {
   finding_id: string;

@@ -1,5 +1,5 @@
-import { AgentsClient } from "../clients/agents";
-import { AgentAnalyticsSummary, AgentSessionRecord } from "../types";
+import { AgentsClient } from "../clients/agents.js";
+import { AgentAnalyticsSummary, AgentSessionRecord } from "../types.js";
 
 export interface SummarizeOrgOptions {
   windowHours?: number;

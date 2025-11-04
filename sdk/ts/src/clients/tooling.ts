@@ -1,11 +1,11 @@
-import HttpClient from "../httpClient";
+import HttpClient from "../httpClient.js";
 import {
   PolicySuggestionRecord,
   ToolApprovalRecord,
   ToolInvocationRecord,
   ToolInvocationSummary,
-} from "../types";
-import { AgentsClient } from "./agents";
+} from "../types.js";
+import { AgentsClient } from "./agents.js";
 
 export interface ListToolInvocationsOptions {
   status?: string;

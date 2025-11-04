@@ -1,5 +1,5 @@
-import HttpClient from "../httpClient";
-import { TokenResponse, UserProfile } from "../types";
+import HttpClient from "../httpClient.js";
+import { TokenResponse, UserProfile } from "../types.js";
 
 interface LoginPayload {
   username: string;

@@ -1,5 +1,5 @@
-import HttpClient, { RequestOptions } from "../httpClient";
-import { OrganizationSummary } from "../types";
+import HttpClient, { RequestOptions } from "../httpClient.js";
+import { OrganizationSummary } from "../types.js";
 
 interface OrganizationPayload {
   org_id: string;

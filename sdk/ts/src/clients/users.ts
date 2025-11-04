@@ -1,5 +1,5 @@
-import HttpClient from "../httpClient";
-import { UserProfile } from "../types";
+import HttpClient from "../httpClient.js";
+import { UserProfile } from "../types.js";
 
 export interface ListUsersOptions {
   provider?: string;

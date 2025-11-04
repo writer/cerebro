@@ -1,4 +1,4 @@
-import HttpClient from "../httpClient";
+import HttpClient from "../httpClient.js";
 
 export interface TaskSubmission {
   taskId: string;

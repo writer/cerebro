@@ -1,10 +1,10 @@
-import { AgentsClient } from "../clients/agents";
+import { AgentsClient } from "../clients/agents.js";
 import {
   AgentReviewExportRecord,
   ReviewTaskCommentRecord,
   ReviewTaskHistoryRecord,
   ReviewTaskRecord,
-} from "../types";
+} from "../types.js";
 
 export interface ExportReviewTasksOptions {
   status?: string;
