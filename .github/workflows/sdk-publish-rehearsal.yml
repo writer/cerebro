@@ -40,7 +40,10 @@ jobs:
 
       - name: Pack SDK tarball
         working-directory: sdk/ts
-        run: npm pack --pack-destination ../tmp
+        run: |
+          set -euo pipefail
+          mkdir -p ../tmp
+          npm pack --pack-destination ../tmp
 
       - name: Upload packed artifact
         uses: actions/upload-artifact@v4
