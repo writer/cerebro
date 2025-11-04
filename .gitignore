@@ -159,6 +159,6 @@ logs/
 !sdk/ts/package.json
 !sdk/ts/package-lock.json
 !sdk/ts/tsconfig.json
-!.changeset/config.json
+!sdk/ts/.changeset/**
 !**/fixtures/**/*.json
 !benchmarks/**/*.json

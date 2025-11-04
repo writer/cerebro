@@ -40,4 +40,11 @@ jobs:
         run: npm run validate:package --prefix sdk/ts
 
       - name: Check for pending changesets
-        run: npx --yes changeset status --since="origin/main"
+        run: |
+          set -euo pipefail
+          cd sdk/ts
+          npx --yes changeset status --since="origin/main"
+          if ! compgen -G ".changeset/*.md" > /dev/null; then
+            echo "::error::Missing changeset. Run 'npm run changeset' to document the SDK release."
+            exit 1
+          fi
