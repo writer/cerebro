@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from testcontainers.postgres import PostgresContainer
 
 import cerebro.tasks.analytics_tasks as analytics_tasks
+
+# Ensure agent analytics tables are registered before creating the schema.
+from cerebro.agents import models as agent_models  # noqa: F401
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 from cerebro.analytics.time_series import (
     MetricType,
