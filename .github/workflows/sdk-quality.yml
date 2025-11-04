@@ -1,0 +1,43 @@
+name: sdk-quality
+
+on:
+  pull_request:
+    paths:
+      - "sdk/ts/**"
+      - ".github/workflows/sdk-quality.yml"
+      - ".changeset/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  enforce-sdk-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sdk/ts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix sdk/ts
+
+      - name: Build SDK
+        run: npm run build --prefix sdk/ts
+
+      - name: Enforce bundle size limit
+        run: npm run size-limit --prefix sdk/ts
+
+      - name: Validate package contents
+        run: npm run validate:package --prefix sdk/ts
+
+      - name: Check for pending changesets
+        run: npx --yes changeset status --since="origin/main"

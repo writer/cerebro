@@ -1,0 +1,58 @@
+name: sdk-publish-rehearsal
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "sdk/ts/**"
+      - ".github/workflows/sdk-publish-rehearsal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sdk/ts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix sdk/ts
+
+      - name: Build SDK
+        run: npm run build --prefix sdk/ts
+
+      - name: Validate package contents
+        run: npm run validate:package --prefix sdk/ts
+
+      - name: Pack SDK tarball
+        working-directory: sdk/ts
+        run: npm pack --pack-destination ../tmp
+
+      - name: Upload packed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cerebro-sdk-tarball
+          path: sdk/tmp/*.tgz
+
+      - name: Create rehearsal consumer
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          mkdir rehearsal && cd rehearsal
+          npm init -y >/dev/null
+          npm install ../tmp/*.tgz
+          node --input-type=module -e "import('@cerebro/sdk').then(mod => { if (typeof mod.CerebroSDK !== 'function') { throw new Error('CerebroSDK missing'); } return mod; }).then(mod => new mod.CerebroSDK({ baseUrl: 'https://example.com', token: 'reh:token' })).then(client => { if (!client.securityCenter) { throw new Error('SecurityCenter client missing'); } }).catch(err => { console.error(err); process.exit(1); });"
