@@ -16,6 +16,7 @@ async def test_vendor_registry_generates_metadata_envelope():
         website_url="https://acme.example.com",
         category=VendorCategory.SECURITY_VENDOR,
         created_by="security@app",
+        org_id="org-1",
         primary_contact="security@acme.example.com",
         data_processing_locations=["us-east-1"],
         certifications=["SOC2"],
@@ -42,6 +43,7 @@ async def test_vendor_lifecycle_updates_on_refresh():
         website_url="https://future.example.com",
         category=VendorCategory.CLOUD_PROVIDER,
         created_by="risk@app",
+        org_id="org-1",
     )
 
     vendor.next_review_due = datetime.now() - timedelta(days=2)

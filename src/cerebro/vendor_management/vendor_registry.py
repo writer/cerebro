@@ -39,6 +39,7 @@ class VendorCategory(Enum):
 class Vendor:
     """Vendor entity with security assessment data."""
     vendor_id: str
+    org_id: Optional[str]
     name: str
     website_url: str
     primary_contact: str
@@ -112,6 +113,7 @@ class VendorRegistry:
         website_url: str,
         category: VendorCategory,
         created_by: str,
+        org_id: Optional[str] = None,
         **vendor_data
     ) -> Vendor:
         """Register a new vendor in the system."""
@@ -119,6 +121,7 @@ class VendorRegistry:
         
         vendor = Vendor(
             vendor_id=vendor_id,
+            org_id=org_id,
             name=name,
             website_url=website_url,
             primary_contact=vendor_data.get("primary_contact", ""),
@@ -251,6 +254,7 @@ class VendorRegistry:
             access_monitoring_enabled=vendor.access_monitoring_enabled,
             security_alerts_configured=vendor.security_alerts_configured,
             incident_count_last_year=vendor.incident_count_last_year,
+            tags={"org_id": vendor.org_id} if vendor.org_id else None,
         )
 
         vendor.metadata = {
@@ -288,6 +292,7 @@ class VendorRegistry:
                 "authentication_methods": vendor.authentication_methods,
             },
             "lifecycle_stage": lifecycle_stage,
+            "org_id": vendor.org_id,
         }
 
         tag_updates = {
@@ -296,6 +301,8 @@ class VendorRegistry:
             f"category:{vendor.category.value}",
             f"stage:{lifecycle_stage}",
         }
+        if vendor.org_id:
+            tag_updates.add(f"org:{vendor.org_id}")
         vendor.tags = sorted({*vendor.tags, *tag_updates})
 
     def _determine_lifecycle_stage(self, vendor: Vendor) -> str:

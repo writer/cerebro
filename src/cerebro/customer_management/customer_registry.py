@@ -45,6 +45,7 @@ class Customer:
     """Customer entity enriched with success metrics."""
 
     customer_id: str
+    org_id: Optional[str]
     name: str
     primary_contact: str
     account_manager: str
@@ -80,6 +81,7 @@ class CustomerRegistry:
         account_manager: str,
         segment: CustomerSegment,
         created_by: str,
+        org_id: Optional[str] = None,
         **customer_data,
     ) -> Customer:
         """Register a new customer with baseline success signals."""
@@ -91,8 +93,17 @@ class CustomerRegistry:
         if isinstance(lifecycle_stage, str):
             lifecycle_stage = CustomerLifecycleStage(lifecycle_stage)
 
+        last_engagement = customer_data.get("last_engagement_at")
+        if not isinstance(last_engagement, datetime):
+            last_engagement = now
+
+        next_qbr = customer_data.get("next_qbr_at")
+        if next_qbr is None:
+            next_qbr = now + timedelta(days=90)
+
         customer = Customer(
             customer_id=customer_id,
+            org_id=org_id,
             name=name,
             primary_contact=customer_data.get("primary_contact", ""),
             account_manager=account_manager,
@@ -108,8 +119,8 @@ class CustomerRegistry:
             health_score=0.0,
             churn_risk_score=0.0,
             health_band=CustomerHealthBand.WATCHLIST,
-            last_engagement_at=customer_data.get("last_engagement_at", now),
-            next_qbr_at=customer_data.get("next_qbr_at", now + timedelta(days=90)),
+            last_engagement_at=last_engagement,
+            next_qbr_at=next_qbr,
             created_at=now,
             updated_at=now,
             tags=customer_data.get("tags", []),
@@ -181,6 +192,7 @@ class CustomerRegistry:
             support_tickets_open=customer.support_tickets_open,
             advocacy_level="champion" if customer.health_score > 0.8 else "neutral",
             success_programs=success_programs,
+            tags={"org_id": customer.org_id} if customer.org_id else None,
         )
 
         customer.metadata = {
@@ -202,6 +214,7 @@ class CustomerRegistry:
                 "open_support_tickets": customer.support_tickets_open,
             },
             "success_programs": success_programs,
+            "org_id": customer.org_id,
         }
 
         tag_updates = {
@@ -209,6 +222,8 @@ class CustomerRegistry:
             f"health:{customer.health_band.value}",
             f"lifecycle:{customer.lifecycle_stage.value}",
         }
+        if customer.org_id:
+            tag_updates.add(f"org:{customer.org_id}")
         customer.tags = sorted({*customer.tags, *tag_updates})
 
     async def refresh_customer_profile(self, customer_id: str, updated_by: str) -> Optional[Customer]:
