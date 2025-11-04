@@ -61,6 +61,7 @@ async def pg_engine(postgres_container):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(agent_models.Base.metadata.create_all)
 
     try:
         yield engine
