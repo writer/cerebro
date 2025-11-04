@@ -5,6 +5,7 @@ import { AuthClient } from "./clients/auth";
 import { FindingsClient } from "./clients/findings";
 import { IntegrationsClient } from "./clients/integrations";
 import { OrganizationsClient } from "./clients/organizations";
+import { SecurityCenterClient } from "./clients/securityCenter";
 
 export interface CerebroSDKOptions extends HttpClientOptions {}
 
@@ -16,6 +17,7 @@ export class CerebroSDK {
   private readonly findingsClient: FindingsClient;
   private readonly integrationsClient: IntegrationsClient;
   private readonly organizationsClient: OrganizationsClient;
+  private readonly securityCenterClient: SecurityCenterClient;
 
   constructor(options: CerebroSDKOptions) {
     this.http = new HttpClient(options);
@@ -25,6 +27,7 @@ export class CerebroSDK {
     this.findingsClient = new FindingsClient(this.http);
     this.integrationsClient = new IntegrationsClient(this.http);
     this.organizationsClient = new OrganizationsClient(this.http);
+    this.securityCenterClient = new SecurityCenterClient(this.http);
   }
 
   get analytics(): AnalyticsClient {
@@ -49,6 +52,10 @@ export class CerebroSDK {
 
   get organizations(): OrganizationsClient {
     return this.organizationsClient;
+  }
+
+  get securityCenter(): SecurityCenterClient {
+    return this.securityCenterClient;
   }
 
   get baseUrl(): string {

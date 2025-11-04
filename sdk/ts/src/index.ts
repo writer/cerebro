@@ -19,6 +19,22 @@ export { FindingsClient, type ListFindingsOptions } from "./clients/findings";
 export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations";
 export { OrganizationsClient, type ListOrganizationsOptions } from "./clients/organizations";
 export {
+  SecurityCenterClient,
+  type RegisterVendorRequest,
+  type VendorRegistrationSummary,
+  type RegisterCustomerRequest,
+  type CustomerRegistrationSummary,
+  type SecurityCenterMetric,
+  type SecurityCenterRecentActivity,
+  type SecurityCenterUpcomingExpiration,
+  type SecurityCenterSubmissionSummary,
+  type SecurityCenterVendorInsight,
+  type SecurityCenterCustomerInsight,
+  type SecurityCenterOverview,
+  type SecurityCenterVendorList,
+  type SecurityCenterCustomerList,
+} from "./clients/securityCenter";
+export {
   UsersClient,
   InMemoryUsersAdapter,
   type UsersAdapter,
