@@ -1,6 +1,6 @@
 {
   "name": "@cerebro/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TypeScript SDK for the Cerebro platform APIs",
   "type": "module",
   "main": "dist/index.js",
