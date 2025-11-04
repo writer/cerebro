@@ -120,6 +120,9 @@ jobs:
       - name: Ensure TypeScript SDK builds
         run: npm run build --prefix sdk/ts
 
+      - name: Enforce SDK bundle size limit
+        run: npm run size-limit --prefix sdk/ts
+
       - name: Validate TypeScript SDK packaging
         run: npm run validate:package --prefix sdk/ts
 

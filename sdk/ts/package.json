@@ -23,8 +23,16 @@
     "generate:types": "node ./scripts/generate-types.mjs",
     "validate:package": "node ./scripts/validate-package.mjs",
     "changeset": "changeset",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "size-limit": "size-limit"
   },
+  "size-limit": [
+    {
+      "name": "sdk",
+      "path": "dist/index.js",
+      "limit": "50 KB"
+    }
+  ],
   "keywords": [
     "cerebro",
     "sdk",
@@ -33,9 +41,11 @@
   "license": "MIT",
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
+    "@size-limit/preset-small-lib": "^10.0.1",
     "@types/node": "^20.10.6",
     "openapi-typescript": "^7.4.2",
     "rimraf": "^5.0.5",
+    "size-limit": "^10.0.1",
     "typescript": "^5.3.3",
     "vitest": "^1.1.3"
   }

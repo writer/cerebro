@@ -80,6 +80,23 @@ for (const required of requiredPaths) {
   }
 }
 
+const expectedArtifacts = [
+  "dist/sdk.js",
+  "dist/sdk.d.ts",
+  "dist/clients/analytics.js",
+  "dist/clients/analytics.d.ts",
+  "dist/clients/securityCenter.js",
+  "dist/clients/securityCenter.d.ts",
+  "dist/metadata.js",
+  "dist/metadata.d.ts",
+];
+
+for (const artifact of expectedArtifacts) {
+  if (!packagedPaths.includes(artifact)) {
+    fail(`Expected build artifact missing from package: ${artifact}`);
+  }
+}
+
 const disallowedPrefixes = ["src/", "test/", "scripts/", "tmp/", "node_modules/"];
 const strayFiles = packagedPaths.filter((item) =>
   disallowedPrefixes.some((prefix) => item.startsWith(prefix))
