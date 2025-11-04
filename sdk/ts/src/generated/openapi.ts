@@ -1999,6 +1999,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/organizations/{org_id}/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Customers
+         * @description List customers with health summaries.
+         */
+        get: operations["list_customers_api_v1_customers_organizations__org_id__customers_get"];
+        put?: never;
+        /**
+         * Register Customer
+         * @description Register a customer in the success registry.
+         */
+        post: operations["register_customer_api_v1_customers_organizations__org_id__customers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/organizations/{org_id}/customers/{customer_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Customer
+         * @description Retrieve a single customer record.
+         */
+        get: operations["get_customer_api_v1_customers_organizations__org_id__customers__customer_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/findings/": {
         parameters: {
             query?: never;
@@ -3504,6 +3548,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/security-center/organizations/{org_id}/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Security Center Customers */
+        get: operations["list_security_center_customers_api_v1_security_center_organizations__org_id__customers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security-center/organizations/{org_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Security Center Overview
+         * @description Return aggregated dashboard data for the Writer Security Center.
+         */
+        get: operations["get_security_center_overview_api_v1_security_center_organizations__org_id__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security-center/organizations/{org_id}/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Security Center Vendors */
+        get: operations["list_security_center_vendors_api_v1_security_center_organizations__org_id__vendors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/serval/{org_id}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Serval Config
+         * @description Return the saved Serval integration settings or 404 if none exist.
+         */
+        get: operations["get_serval_config_api_v1_serval__org_id__config_get"];
+        /**
+         * Upsert Serval Config
+         * @description Create or update Serval credentials and defaults for an organization.
+         */
+        put: operations["upsert_serval_config_api_v1_serval__org_id__config_put"];
+        post?: never;
+        /**
+         * Delete Serval Config
+         * @description Remove the Serval configuration row for the organization.
+         */
+        delete: operations["delete_serval_config_api_v1_serval__org_id__config_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/serval/{org_id}/priorities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Serval Priorities
+         * @description Expose Serval priority values for downstream mapping.
+         */
+        get: operations["list_serval_priorities_api_v1_serval__org_id__priorities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/serval/{org_id}/statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Serval Statuses
+         * @description Proxy Serval status catalogue to populate configuration UIs.
+         */
+        get: operations["list_serval_statuses_api_v1_serval__org_id__statuses_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/slack/slack/notifications": {
         parameters: {
             query?: never;
@@ -4902,6 +5068,64 @@ export interface components {
              * @description Optional title for the session
              */
             title?: string | null;
+        };
+        /**
+         * CustomerCreateRequest
+         * @description Request payload for registering a customer.
+         */
+        CustomerCreateRequest: {
+            /**
+             * Account Manager
+             * @description Primary account manager email
+             */
+            account_manager: string;
+            /** Adoption Metrics */
+            adoption_metrics?: {
+                [key: string]: number;
+            };
+            /** Annual Recurring Revenue */
+            annual_recurring_revenue?: number | null;
+            /** Industry */
+            industry?: string | null;
+            /** Last Engagement At */
+            last_engagement_at?: string | null;
+            /**
+             * Lifecycle Stage
+             * @description Lifecycle stage override
+             */
+            lifecycle_stage?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Name
+             * @description Customer name
+             */
+            name: string;
+            /** Next Qbr At */
+            next_qbr_at?: string | null;
+            /**
+             * Primary Contact
+             * @description Primary customer contact email
+             */
+            primary_contact?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Seats Committed */
+            seats_committed?: number | null;
+            /**
+             * Segment
+             * @description Customer segment identifier
+             */
+            segment: string;
+            /** Success Programs */
+            success_programs?: string[];
+            /**
+             * Support Tickets Open
+             * @default 0
+             */
+            support_tickets_open: number;
         };
         /**
          * DependencyGraph
@@ -6912,6 +7136,99 @@ export interface components {
              * @default true
              */
             stream: boolean;
+        };
+        /** ServalConfigRequest */
+        ServalConfigRequest: {
+            /**
+             * Api Base Url
+             * @description Serval API base URL
+             * @default https://public.api.serval.com
+             */
+            api_base_url: string | null;
+            /**
+             * Client Id
+             * @description Serval client identifier
+             */
+            client_id: string;
+            /**
+             * Client Secret
+             * @description Serval client secret
+             */
+            client_secret: string;
+            /**
+             * Default Assigned User Id
+             * @description Default Serval assignee user id
+             */
+            default_assigned_user_id?: string | null;
+            /**
+             * Default Created By User Id
+             * @description Default Serval user recorded as creator
+             */
+            default_created_by_user_id: string;
+            /**
+             * Default Priority Id
+             * @description Default Serval priority id
+             */
+            default_priority_id?: string | null;
+            /**
+             * Default Requester User Id
+             * @description Default Serval requester user id
+             */
+            default_requester_user_id?: string | null;
+            /**
+             * Default Status Id
+             * @description Default Serval status id for new tickets
+             */
+            default_status_id?: string | null;
+            /**
+             * Priority Map
+             * @description Mapping of Cerebro priorities to Serval priority ids
+             */
+            priority_map?: {
+                [key: string]: string;
+            };
+            /**
+             * Status Map
+             * @description Mapping of Cerebro statuses to Serval status ids
+             */
+            status_map?: {
+                [key: string]: string;
+            };
+            /**
+             * Team Id
+             * @description Serval team identifier
+             */
+            team_id: string;
+        };
+        /** ServalConfigResponse */
+        ServalConfigResponse: {
+            /** Api Base Url */
+            api_base_url: string;
+            /** Default Assigned User Id */
+            default_assigned_user_id: string | null;
+            /** Default Created By User Id */
+            default_created_by_user_id: string;
+            /** Default Priority Id */
+            default_priority_id: string | null;
+            /** Default Requester User Id */
+            default_requester_user_id: string | null;
+            /** Default Status Id */
+            default_status_id: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Priority Map */
+            priority_map: {
+                [key: string]: string;
+            };
+            /** Status Map */
+            status_map: {
+                [key: string]: string;
+            };
+            /** Team Id */
+            team_id: string;
         };
         /**
          * SessionListResponse
@@ -11136,6 +11453,104 @@ export interface operations {
             };
         };
     };
+    list_customers_api_v1_customers_organizations__org_id__customers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_customer_api_v1_customers_organizations__org_id__customers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_customer_api_v1_customers_organizations__org_id__customers__customer_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_findings_api_v1_findings__get: {
         parameters: {
             query?: {
@@ -13865,6 +14280,260 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_security_center_customers_api_v1_security_center_organizations__org_id__customers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_security_center_overview_api_v1_security_center_organizations__org_id__overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_security_center_vendors_api_v1_security_center_organizations__org_id__vendors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_serval_config_api_v1_serval__org_id__config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServalConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_serval_config_api_v1_serval__org_id__config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServalConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServalConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_serval_config_api_v1_serval__org_id__config_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_serval_priorities_api_v1_serval__org_id__priorities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_serval_statuses_api_v1_serval__org_id__statuses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */
