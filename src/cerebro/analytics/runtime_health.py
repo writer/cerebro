@@ -29,9 +29,13 @@ async def summarize_runtime_health(
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=max(hours, 1))
 
-    runtime_path = AgentRuntimeEvent.payload["runtime"]
-    runtime_expr = getattr(runtime_path, "astext", None)
-    if runtime_expr is None:
+    bind = db.get_bind()  # AsyncEngine
+    dialect_name = getattr(bind, "dialect", None)
+    dialect_name = getattr(dialect_name, "name", None)
+
+    if dialect_name == "postgresql":
+        runtime_expr = func.jsonb_extract_path_text(AgentRuntimeEvent.payload, "runtime")
+    else:
         runtime_expr = func.json_extract(AgentRuntimeEvent.payload, "$.runtime")
 
     base_stmt = (
@@ -70,9 +74,9 @@ async def summarize_runtime_health(
             "last_seen": last_seen,
         }
 
-    reason_path = AgentRuntimeEvent.payload["reason"]
-    reason_expr = getattr(reason_path, "astext", None)
-    if reason_expr is None:
+    if dialect_name == "postgresql":
+        reason_expr = func.jsonb_extract_path_text(AgentRuntimeEvent.payload, "reason")
+    else:
         reason_expr = func.json_extract(AgentRuntimeEvent.payload, "$.reason")
 
     warning_stmt = (
