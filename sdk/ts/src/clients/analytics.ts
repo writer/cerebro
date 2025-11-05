@@ -1,5 +1,5 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
-import { deserialize, parseDate } from "../serialization.js";
+import { parseDate, transformOpenApi } from "../serialization.js";
 import {
   RuntimeEventAggregate,
   RuntimeHealthRecord,
@@ -7,17 +7,17 @@ import {
   RuntimeMetadataSnapshot,
 } from "../types.js";
 
-interface RuntimeEventAggregatePayload {
+interface RuntimeEventAggregatePayload extends Record<string, unknown> {
   count: number;
   last_seen: string | null;
 }
 
-interface RuntimeMetadataPayload {
+interface RuntimeMetadataPayload extends Record<string, unknown> {
   payload: Record<string, unknown>;
   captured_at: string;
 }
 
-interface RuntimeHealthPayload {
+interface RuntimeHealthPayload extends Record<string, unknown> {
   runtime: string;
   window_start: string;
   window_end: string;
@@ -26,7 +26,7 @@ interface RuntimeHealthPayload {
   latest_metadata: RuntimeMetadataPayload | null;
 }
 
-interface RuntimeHealthResponse {
+interface RuntimeHealthResponse extends Record<string, unknown> {
   window_hours: number;
   generated_at: string;
   runtimes: RuntimeHealthPayload[];
@@ -51,36 +51,46 @@ export class AnalyticsClient {
 }
 
 function mapRuntimeHealthRecord(entry: RuntimeHealthPayload): RuntimeHealthRecord {
-  const normalized = deserialize(entry, { dateKeys: ["window_start", "window_end"] }) as RuntimeHealthPayload & {
-    window_start: Date | null;
-    window_end: Date | null;
-  };
-  return {
-    runtime: entry.runtime,
-    windowStart: normalized.window_start ?? new Date(entry.window_start),
-    windowEnd: normalized.window_end ?? new Date(entry.window_end),
+  return transformOpenApi(entry, (data) => ({
+    runtime: data.runtime,
+    windowStart: normalizeDate(data.windowStart, entry.window_start) ?? new Date(entry.window_start),
+    windowEnd: normalizeDate(data.windowEnd, entry.window_end) ?? new Date(entry.window_end),
     events: mapRuntimeEventCollection(entry.events),
     warnings: mapRuntimeEventCollection(entry.warnings),
     latestMetadata: entry.latest_metadata ? mapRuntimeMetadata(entry.latest_metadata) : null,
-  };
+  }), {
+    snakeCaseDateKeys: ["window_start", "window_end"],
+  });
 }
 
 function mapRuntimeEventCollection(source: Record<string, RuntimeEventAggregatePayload>): Record<string, RuntimeEventAggregate> {
   const target: Record<string, RuntimeEventAggregate> = {};
   for (const [key, value] of Object.entries(source)) {
-    target[key] = {
-      count: value.count,
-      lastSeen: parseDate(value.last_seen),
-    };
+    target[key] = transformOpenApi(value, (data) => ({
+      count: data.count,
+      lastSeen: normalizeDate(data.lastSeen, value.last_seen),
+    }), {
+      snakeCaseDateKeys: ["last_seen"],
+    });
   }
   return target;
 }
 
 function mapRuntimeMetadata(payload: RuntimeMetadataPayload): RuntimeMetadataSnapshot {
-  return {
-    payload: payload.payload,
-    capturedAt: parseDate(payload.captured_at) ?? new Date(payload.captured_at),
-  };
+  return transformOpenApi(payload, (data) => ({
+    payload: data.payload,
+    capturedAt: normalizeDate(data.capturedAt, payload.captured_at) ?? new Date(payload.captured_at),
+  }), {
+    snakeCaseDateKeys: ["captured_at"],
+    deep: true,
+  });
+}
+
+function normalizeDate(value: unknown, fallback?: string | null): Date | null {
+  const parsed = parseDate(value as string | Date | null);
+  if (parsed) return parsed;
+  if (!fallback) return null;
+  return parseDate(fallback) ?? new Date(fallback);
 }
 
 export default AnalyticsClient;

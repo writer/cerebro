@@ -5,7 +5,7 @@ import {
   IntegrationCoverageRecord,
   IntegrationScopeBreakdown,
 } from "../types.js";
-import { deserialize, parseDate } from "../serialization.js";
+import { transformOpenApi } from "../serialization.js";
 
 type IntegrationCoveragePayload = components["schemas"]["IntegrationCoverageSummary"];
 type IntegrationCoverageScopesPayload = components["schemas"]["IntegrationCoverageScopes"];
@@ -32,20 +32,19 @@ export class IntegrationsClient {
 }
 
 function mapCoverageRecord(entry: IntegrationCoveragePayload): IntegrationCoverageRecord {
-  const normalized = deserialize(entry, { dateKeys: ["last_success", "evaluated_at"] }) as IntegrationCoveragePayload & {
-    last_success: Date | null;
-    evaluated_at: Date | null;
-  };
-  return {
-    integration: entry.integration,
-    providers: entry.providers,
-    status: entry.status,
-    scopes: mapScopes(entry.scopes),
-    accounts: mapAccounts(entry.accounts),
-    coverageRatio: entry.coverage_ratio,
-    lastSuccess: normalized.last_success ?? parseDate(entry.last_success),
-    evaluatedAt: normalized.evaluated_at ?? parseDate(entry.evaluated_at) ?? new Date(entry.evaluated_at),
-  };
+  return transformOpenApi(entry, (data) => ({
+    integration: data.integration,
+    providers: Array.isArray(data.providers) ? [...data.providers] : [],
+    status: data.status,
+    scopes: mapScopes(data.scopes),
+    accounts: mapAccounts(data.accounts),
+    coverageRatio: data.coverageRatio,
+    lastSuccess: normalizeDate(data.lastSuccess, entry.last_success),
+    evaluatedAt: normalizeDate(data.evaluatedAt, entry.evaluated_at) ?? new Date(entry.evaluated_at),
+  }), {
+    snakeCaseDateKeys: ["last_success", "evaluated_at"],
+    deep: true,
+  });
 }
 
 function mapScopes(source: IntegrationCoverageScopesPayload): IntegrationScopeBreakdown {
@@ -61,6 +60,20 @@ function mapAccounts(source: IntegrationCoverageAccountsPayload): IntegrationAcc
   return {
     total: source.total,
   };
+}
+
+function normalizeDate(value: unknown, fallback?: string | null): Date | null {
+  if (!value && !fallback) return null;
+  const direct = typeof value === "string" || value instanceof Date ? parseDateValue(value) : null;
+  if (direct) return direct;
+  if (!fallback) return null;
+  return parseDateValue(fallback);
+}
+
+function parseDateValue(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export default IntegrationsClient;

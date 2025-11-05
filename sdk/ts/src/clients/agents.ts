@@ -1,6 +1,7 @@
 import HttpClient, { HttpStream } from "../httpClient.js";
+import type { components } from "../generated/openapi.js";
 import { CursorPage, PageRequest, iterateCursor } from "../pagination.js";
-import { deserialize, parseDate } from "../serialization.js";
+import { parseDate, transformOpenApi } from "../serialization.js";
 import {
   AgentMemoryHighlight,
   AgentMemoryRecord,
@@ -29,62 +30,18 @@ import {
   PolicySimulationExampleRecord,
 } from "../types.js";
 
-interface ReviewQueueStatusPayload {
-  status: string;
-  count: number;
-  unassigned: number;
-  overdue: number;
-  oldest_created: string | null;
-  newest_created: string | null;
-}
+type ReviewQueueStatusPayload = components["schemas"]["ReviewQueueStatusSummary"];
+type ReviewQueuePendingPayload = components["schemas"]["ReviewQueuePendingSummary"];
+type ReviewQueuePriorityPayload = components["schemas"]["ReviewQueuePrioritySummary"];
+type ReviewQueueSummaryPayload = components["schemas"]["ReviewQueueSummary"];
+type ReviewTaskPayload = components["schemas"]["ReviewTaskResponse"];
 
-interface ReviewQueuePendingPayload {
-  total: number;
-  unassigned: number;
-  overdue: number;
-  next_due: string | null;
-  oldest_created: string | null;
-}
-
-interface ReviewQueuePriorityPayload {
-  priority: string | null;
-  count: number;
-}
-
-interface ReviewQueueSummaryPayload {
-  generated_at: string;
-  status_counts: ReviewQueueStatusPayload[];
-  pending: ReviewQueuePendingPayload;
-  priority_breakdown: ReviewQueuePriorityPayload[];
-}
-
-interface ReviewTaskPayload {
-  id: string;
-  session_id: string;
-  org_id: string;
-  status: string;
-  title: string;
-  summary: string | null;
-  payload: Record<string, unknown>;
-  promotion_target: string | null;
-  priority: string | null;
-  due_at: string | null;
-  escalated_to: string | null;
-  notification_channel: string | null;
-  ticket_reference: string | null;
-  created_by: string;
-  created_at: string;
-  resolved_by: string | null;
-  resolved_at: string | null;
-  resolution_notes: string | null;
-}
-
-interface ReviewTaskPageResponse {
+interface ReviewTaskPageResponse extends Record<string, unknown> {
   items: ReviewTaskPayload[];
   next_cursor: string | null;
 }
 
-interface SessionPayload {
+interface SessionPayload extends Record<string, unknown> {
   session_id: string;
   org_id: string;
   agent_type: string;
@@ -95,14 +52,14 @@ interface SessionPayload {
   context: Record<string, unknown>;
 }
 
-interface SessionListResponsePayload {
+interface SessionListResponsePayload extends Record<string, unknown> {
   limit: number;
   offset: number;
   total: number;
   sessions: SessionPayload[];
 }
 
-interface MessagePayload {
+interface MessagePayload extends Record<string, unknown> {
   message_id: string;
   role: string;
   content: string;
@@ -110,7 +67,7 @@ interface MessagePayload {
   timestamp: string;
 }
 
-interface ToolInvocationPayload {
+interface ToolInvocationPayload extends Record<string, unknown> {
   id: string;
   session_id?: string;
   tool_name: string;
@@ -128,7 +85,7 @@ interface ToolInvocationPayload {
   cel_context?: Record<string, unknown> | null;
 }
 
-interface SessionWithMessagesPayload {
+interface SessionWithMessagesPayload extends Record<string, unknown> {
   session: SessionPayload;
   message_count: number;
   messages: MessagePayload[];
@@ -136,7 +93,7 @@ interface SessionWithMessagesPayload {
   tool_invocations?: ToolInvocationPayload[];
 }
 
-interface MemoryEntryPayload {
+interface MemoryEntryPayload extends Record<string, unknown> {
   id: string;
   summary: string | null;
   role: string | null;
@@ -154,7 +111,7 @@ interface MemoryEntryPayload {
   combined_similarity?: number | null;
 }
 
-interface MemoryHighlightPayload {
+interface MemoryHighlightPayload extends Record<string, unknown> {
   id: string;
   summary: string | null;
   role: string | null;
@@ -163,7 +120,7 @@ interface MemoryHighlightPayload {
   scope_labels: string[];
 }
 
-interface MemoryStatsPayload {
+interface MemoryStatsPayload extends Record<string, unknown> {
   total_entries: number;
   recent_entries: number;
   presented_entries: number;
@@ -250,7 +207,7 @@ interface AssignReviewTaskPayload {
   assigned_to: string;
 }
 
-interface CommentPayload {
+interface CommentPayload extends Record<string, unknown> {
   id: string;
   task_id: string;
   author: string;
@@ -260,7 +217,7 @@ interface CommentPayload {
   metadata: Record<string, unknown> | null;
 }
 
-interface HistoryPayload {
+interface HistoryPayload extends Record<string, unknown> {
   id: string;
   task_id: string;
   changed_by: string;
@@ -272,7 +229,7 @@ interface HistoryPayload {
   metadata: Record<string, unknown> | null;
 }
 
-interface SlaSummaryPayload {
+interface SlaSummaryPayload extends Record<string, unknown> {
   total_pending: number;
   breached: number;
   at_risk: number;
@@ -280,7 +237,7 @@ interface SlaSummaryPayload {
   compliance_rate: number;
 }
 
-interface SlaStatusPayload {
+interface SlaStatusPayload extends Record<string, unknown> {
   task_id: string;
   sla_hours: number;
   elapsed_hours: number;
@@ -292,7 +249,7 @@ interface SlaStatusPayload {
   due_at: string | null;
 }
 
-interface ReviewNotificationPayload {
+interface ReviewNotificationPayload extends Record<string, unknown> {
   id: string;
   task_id: string;
   org_id: string;
@@ -303,21 +260,21 @@ interface ReviewNotificationPayload {
   delivered_at: string | null;
 }
 
-interface RuntimeEventPayload {
+interface RuntimeEventPayload extends Record<string, unknown> {
   id: string;
   event_type: string;
   payload: Record<string, unknown>;
   created_at: string;
 }
 
-interface RuntimeEventSummaryPayload {
+interface RuntimeEventSummaryPayload extends Record<string, unknown> {
   event_type: string;
   event_count: number;
   first_seen: string | null;
   last_seen: string | null;
 }
 
-interface WorkflowStepPayload {
+interface WorkflowStepPayload extends Record<string, unknown> {
   name: string;
   description: string;
   action: string;
@@ -326,7 +283,7 @@ interface WorkflowStepPayload {
   order: number;
 }
 
-interface WorkflowTemplatePayload {
+interface WorkflowTemplatePayload extends Record<string, unknown> {
   id: string;
   name: string;
   description: string;
@@ -336,7 +293,7 @@ interface WorkflowTemplatePayload {
   metadata: Record<string, unknown>;
 }
 
-interface PolicySuggestionPayload {
+interface PolicySuggestionPayload extends Record<string, unknown> {
   id: string;
   tool_name: string;
   cel_expression: string;
@@ -347,22 +304,22 @@ interface PolicySuggestionPayload {
   last_seen: string;
 }
 
-interface PolicySimulationExamplePayload {
+interface PolicySimulationExamplePayload extends Record<string, unknown> {
   invocation_id: string;
   session_id: string;
   tool_name: string;
   matched: boolean;
   status: string;
-  started_at: string | null;
   completed_at: string | null;
   input_data: Record<string, unknown>;
   output_data: Record<string, unknown> | null;
   cel_context: Record<string, unknown>;
   error: string | null;
   latency_ms: number | null;
+  started_at: string | null;
 }
 
-interface PolicySimulationResponsePayload {
+interface PolicySimulationResponsePayload extends Record<string, unknown> {
   evaluated_count: number;
   matched_count: number;
   mismatched_count: number;
@@ -791,106 +748,106 @@ function mapPrioritySummary(entry: ReviewQueuePriorityPayload): ReviewQueuePrior
 }
 
 function mapReviewTask(payload: ReviewTaskPayload): ReviewTaskRecord {
-  const normalized = deserialize(payload, { dateKeys: ["due_at", "created_at", "resolved_at"] }) as ReviewTaskPayload & {
-    due_at: Date | null;
-    created_at: Date | null;
-    resolved_at: Date | null;
-  };
-  return {
-    taskId: payload.id,
-    sessionId: payload.session_id,
-    orgId: payload.org_id,
-    status: payload.status,
-    title: payload.title,
-    summary: payload.summary,
-    payload: payload.payload ?? {},
-    promotionTarget: payload.promotion_target,
-    priority: payload.priority,
-    dueAt: normalized.due_at ?? parseDate(payload.due_at),
-    escalatedTo: payload.escalated_to,
-    notificationChannel: payload.notification_channel,
-    ticketReference: payload.ticket_reference,
-    createdBy: payload.created_by,
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-    resolvedBy: payload.resolved_by,
-    resolvedAt: normalized.resolved_at ?? parseDate(payload.resolved_at),
-    resolutionNotes: payload.resolution_notes,
-  };
+  return transformOpenApi(payload, (data) => {
+    const createdAt = normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at);
+    const dueAt = normalizeDate(data.dueAt, payload.due_at);
+    const resolvedAt = normalizeDate(data.resolvedAt, payload.resolved_at);
+
+    return {
+      taskId: data.id,
+      sessionId: data.sessionId,
+      orgId: data.orgId,
+      status: data.status,
+      title: data.title,
+      summary: data.summary,
+      payload: data.payload ?? {},
+      promotionTarget: data.promotionTarget,
+      priority: data.priority,
+      dueAt,
+      escalatedTo: data.escalatedTo,
+      notificationChannel: data.notificationChannel,
+      ticketReference: data.ticketReference,
+      createdBy: data.createdBy,
+      createdAt,
+      resolvedBy: data.resolvedBy,
+      resolvedAt,
+      resolutionNotes: data.resolutionNotes,
+    } satisfies ReviewTaskRecord;
+  }, {
+    snakeCaseDateKeys: ["due_at", "created_at", "resolved_at"],
+    deep: true,
+  });
 }
 
 function mapComment(payload: CommentPayload): ReviewTaskCommentRecord {
-  const normalized = deserialize(payload, { dateKeys: ["created_at", "updated_at"] }) as CommentPayload & {
-    created_at: Date | null;
-    updated_at: Date | null;
-  };
-  return {
-    commentId: payload.id,
-    taskId: payload.task_id,
-    author: payload.author,
-    content: payload.content,
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-    updatedAt: normalized.updated_at ?? parseDate(payload.updated_at),
-    metadata: payload.metadata ?? {},
-  };
+  return transformOpenApi(payload, (data) => ({
+    commentId: data.id,
+    taskId: data.taskId,
+    author: data.author,
+    content: data.content,
+    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    updatedAt: normalizeDate(data.updatedAt, payload.updated_at),
+    metadata: data.metadata ?? {},
+  }), {
+    snakeCaseDateKeys: ["created_at", "updated_at"],
+    deep: true,
+  });
 }
 
 function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
-  const normalized = deserialize(payload, { dateKeys: ["created_at"] }) as HistoryPayload & {
-    created_at: Date | null;
-  };
-  return {
-    historyId: payload.id,
-    taskId: payload.task_id,
-    changedBy: payload.changed_by,
-    changeType: payload.change_type,
-    fieldName: payload.field_name,
-    oldValue: payload.old_value,
-    newValue: payload.new_value,
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-    metadata: payload.metadata,
-  };
+  return transformOpenApi(payload, (data) => ({
+    historyId: data.id,
+    taskId: data.taskId,
+    changedBy: data.changedBy,
+    changeType: data.changeType,
+    fieldName: data.fieldName,
+    oldValue: data.oldValue,
+    newValue: data.newValue,
+    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    metadata: data.metadata,
+  }), {
+    snakeCaseDateKeys: ["created_at"],
+    deep: true,
+  });
 }
 
 function mapNotification(payload: ReviewNotificationPayload): ReviewNotificationRecord {
-  const normalized = deserialize(payload, { dateKeys: ["created_at", "delivered_at"] }) as ReviewNotificationPayload & {
-    created_at: Date | null;
-    delivered_at: Date | null;
-  };
-  return {
-    notificationId: payload.id,
-    taskId: payload.task_id,
-    orgId: payload.org_id,
-    channel: payload.channel,
-    status: payload.status,
-    payload: payload.payload ?? {},
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-    deliveredAt: normalized.delivered_at ?? parseDate(payload.delivered_at),
-  };
+  return transformOpenApi(payload, (data) => ({
+    notificationId: data.id,
+    taskId: data.taskId,
+    orgId: data.orgId,
+    channel: data.channel,
+    status: data.status,
+    payload: data.payload ?? {},
+    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    deliveredAt: normalizeDate(data.deliveredAt, payload.delivered_at),
+  }), {
+    snakeCaseDateKeys: ["created_at", "delivered_at"],
+    deep: true,
+  });
 }
 
 function mapRuntimeEvent(payload: RuntimeEventPayload): RuntimeEventRecord {
-  const normalized = deserialize(payload, { dateKeys: ["created_at"] }) as RuntimeEventPayload & {
-    created_at: Date | null;
-  };
-  return {
-    eventId: payload.id,
-    eventType: payload.event_type,
-    payload: payload.payload ?? {},
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-  };
+  return transformOpenApi(payload, (data) => ({
+    eventId: data.id,
+    eventType: data.eventType,
+    payload: data.payload ?? {},
+    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+  }), {
+    snakeCaseDateKeys: ["created_at"],
+    deep: true,
+  });
 }
 
 function mapRuntimeSummary(payload: RuntimeEventSummaryPayload): RuntimeEventSummaryRecord {
-  const normalized = deserialize(payload, { dateKeys: ["first_seen", "last_seen"] }) as RuntimeEventSummaryPayload & {
-    first_seen: Date | null;
-    last_seen: Date | null;
-  };
-  return {
-    eventType: payload.event_type,
-    eventCount: payload.event_count,
-    firstSeen: normalized.first_seen ?? parseDate(payload.first_seen),
-    lastSeen: normalized.last_seen ?? parseDate(payload.last_seen),
-  };
+  return transformOpenApi(payload, (data) => ({
+    eventType: data.eventType,
+    eventCount: data.eventCount,
+    firstSeen: normalizeDate(data.firstSeen, payload.first_seen),
+    lastSeen: normalizeDate(data.lastSeen, payload.last_seen),
+  }), {
+    snakeCaseDateKeys: ["first_seen", "last_seen"],
+  });
 }
 
 function mapSlaSummary(payload: SlaSummaryPayload): ReviewTaskSlaSummary {
@@ -904,21 +861,19 @@ function mapSlaSummary(payload: SlaSummaryPayload): ReviewTaskSlaSummary {
 }
 
 function mapSlaStatus(payload: SlaStatusPayload): ReviewTaskSlaStatus {
-  const normalized = deserialize(payload, { dateKeys: ["created_at", "due_at"] }) as SlaStatusPayload & {
-    created_at: Date | null;
-    due_at: Date | null;
-  };
-  return {
-    taskId: payload.task_id,
-    slaHours: payload.sla_hours,
-    elapsedHours: payload.elapsed_hours,
-    remainingHours: payload.remaining_hours,
-    percentageElapsed: payload.percentage_elapsed,
-    isBreached: payload.is_breached,
-    isAtRisk: payload.is_at_risk,
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-    dueAt: normalized.due_at ?? parseDate(payload.due_at),
-  };
+  return transformOpenApi(payload, (data) => ({
+    taskId: data.taskId,
+    slaHours: data.slaHours,
+    elapsedHours: data.elapsedHours,
+    remainingHours: data.remainingHours,
+    percentageElapsed: data.percentageElapsed,
+    isBreached: data.isBreached,
+    isAtRisk: data.isAtRisk,
+    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    dueAt: normalizeDate(data.dueAt, payload.due_at),
+  }), {
+    snakeCaseDateKeys: ["created_at", "due_at"],
+  });
 }
 
 function mapWorkflowTemplate(payload: WorkflowTemplatePayload): WorkflowTemplateRecord {
@@ -945,94 +900,92 @@ function mapWorkflowStep(payload: WorkflowStepPayload): WorkflowTemplateStepReco
 }
 
 function mapSession(payload: SessionPayload): AgentSessionRecord {
-  const normalized = deserialize(payload, { dateKeys: ["created_at"] }) as SessionPayload & {
-    created_at: Date | null;
-  };
-  return {
-    sessionId: payload.session_id,
-    orgId: payload.org_id,
-    agentType: payload.agent_type,
-    status: payload.status,
-    title: payload.title,
-    createdBy: payload.created_by,
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-    context: payload.context ?? {},
-  };
+  return transformOpenApi(payload, (data) => ({
+    sessionId: data.sessionId,
+    orgId: data.orgId,
+    agentType: data.agentType,
+    status: data.status,
+    title: data.title,
+    createdBy: data.createdBy,
+    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    context: data.context ?? {},
+  }), {
+    snakeCaseDateKeys: ["created_at"],
+    deep: true,
+  });
 }
 
 function mapMessage(payload: MessagePayload): AgentMessageRecord {
-  const normalized = deserialize(payload, { dateKeys: ["timestamp"] }) as MessagePayload & {
-    timestamp: Date | null;
-  };
-  return {
-    messageId: payload.message_id,
-    role: payload.role,
-    content: payload.content,
-    metadata: payload.metadata ?? {},
-    createdAt: normalized.timestamp ?? parseDate(payload.timestamp) ?? new Date(payload.timestamp),
-  };
+  return transformOpenApi(payload, (data) => ({
+    messageId: data.messageId,
+    role: data.role,
+    content: data.content,
+    metadata: data.metadata ?? {},
+    createdAt: normalizeDate(data.timestamp, payload.timestamp) ?? new Date(payload.timestamp),
+  }), {
+    snakeCaseDateKeys: ["timestamp"],
+    deep: true,
+  });
 }
 
 function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord {
-  const normalized = deserialize(payload, { dateKeys: ["started_at", "completed_at"] }) as ToolInvocationPayload & {
-    started_at: Date | null;
-    completed_at: Date | null;
-  };
-  return {
-    invocationId: payload.id,
-    sessionId: payload.session_id,
-    toolName: payload.tool_name,
-    toolVersion: payload.tool_version,
-    status: payload.status,
-    startedAt: normalized.started_at ?? parseDate(payload.started_at) ?? new Date(payload.started_at),
-    completedAt: normalized.completed_at ?? parseDate(payload.completed_at),
-    errorMessage: payload.error_message ?? null,
-    errorCode: payload.error_code ?? null,
-    inputData: payload.input_data ?? undefined,
-    outputData: payload.output_data ?? undefined,
-    celPolicyKey: payload.cel_policy_key ?? null,
-    celExpression: payload.cel_expression ?? null,
-    celResult: payload.cel_result ?? null,
-    celContext: payload.cel_context ?? null,
-  };
+  return transformOpenApi(payload, (data) => ({
+    invocationId: data.id,
+    sessionId: data.sessionId,
+    toolName: data.toolName,
+    toolVersion: data.toolVersion,
+    status: data.status,
+    startedAt: normalizeDate(data.startedAt, payload.started_at) ?? new Date(payload.started_at),
+    completedAt: normalizeDate(data.completedAt, payload.completed_at),
+    errorMessage: data.errorMessage ?? null,
+    errorCode: data.errorCode ?? null,
+    inputData: data.inputData ?? undefined,
+    outputData: data.outputData ?? undefined,
+    celPolicyKey: data.celPolicyKey ?? null,
+    celExpression: data.celExpression ?? null,
+    celResult: data.celResult ?? null,
+    celContext: data.celContext ?? null,
+  }), {
+    snakeCaseDateKeys: ["started_at", "completed_at"],
+    deep: true,
+  });
 }
 
 function mapMemoryEntry(payload: MemoryEntryPayload): AgentMemoryRecord {
-  const normalized = deserialize(payload, { dateKeys: ["created_at", "last_accessed_at"] }) as MemoryEntryPayload & {
-    created_at: Date | null;
-    last_accessed_at: Date | null;
-  };
-  return {
-    entryId: payload.id,
-    summary: payload.summary,
-    role: payload.role,
-    decayScore: payload.decay_score,
-    tokenCount: payload.token_count,
-    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
-    lastAccessedAt: normalized.last_accessed_at ?? parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
-    scopes: payload.scopes ?? [],
-    scopeLabels: payload.scope_labels ?? [],
-    metadata: payload.metadata ?? {},
-    content: payload.content ?? null,
-    annSelected: payload.ann_selected ?? null,
-    lexicalSimilarity: payload.lexical_similarity ?? null,
-    embeddingSimilarity: payload.embedding_similarity ?? null,
-    combinedSimilarity: payload.combined_similarity ?? null,
-  };
+  return transformOpenApi(payload, (data) => ({
+    entryId: data.id,
+    summary: data.summary,
+    role: data.role,
+    decayScore: data.decayScore,
+    tokenCount: data.tokenCount,
+    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    lastAccessedAt: normalizeDate(data.lastAccessedAt, payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    scopes: Array.isArray(data.scopes) ? data.scopes.map((item) => ({ ...(item as Record<string, unknown>) })) : [],
+    scopeLabels: Array.isArray(data.scopeLabels) ? [...data.scopeLabels] : [],
+    metadata: data.metadata ?? {},
+    content: data.content ?? null,
+    annSelected: data.annSelected ?? null,
+    lexicalSimilarity: data.lexicalSimilarity ?? null,
+    embeddingSimilarity: data.embeddingSimilarity ?? null,
+    combinedSimilarity: data.combinedSimilarity ?? null,
+  }), {
+    snakeCaseDateKeys: ["created_at", "last_accessed_at"],
+    deep: true,
+  });
 }
 
 function mapMemoryHighlight(payload: MemoryHighlightPayload): AgentMemoryHighlight {
-  const normalized = deserialize(payload, { dateKeys: ["last_accessed_at"] }) as MemoryHighlightPayload & {
-    last_accessed_at: Date | null;
-  };
-  return {
-    entryId: payload.id,
-    summary: payload.summary,
-    role: payload.role,
-    decayScore: payload.decay_score,
-    lastAccessedAt: normalized.last_accessed_at ?? parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
-    scopeLabels: payload.scope_labels ?? [],
-  };
+  return transformOpenApi(payload, (data) => ({
+    entryId: data.id,
+    summary: data.summary,
+    role: data.role,
+    decayScore: data.decayScore,
+    lastAccessedAt: normalizeDate(data.lastAccessedAt, payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    scopeLabels: Array.isArray(data.scopeLabels) ? [...data.scopeLabels] : [],
+  }), {
+    snakeCaseDateKeys: ["last_accessed_at"],
+    deep: true,
+  });
 }
 
 function mapMemoryStats(payload: MemoryStatsPayload): AgentMemoryStats {
@@ -1069,6 +1022,13 @@ function mapPolicySimulation(payload: PolicySimulationResponsePayload): PolicySi
     errorCount: payload.error_count,
     examples: payload.examples.map(mapPolicySimulationExample),
   };
+}
+
+function normalizeDate(value: unknown, fallback?: string | null): Date | null {
+  const primary = parseDate(value as string | Date | null);
+  if (primary) return primary;
+  if (!fallback) return null;
+  return parseDate(fallback) ?? new Date(fallback);
 }
 
 function mapPolicySimulationExample(payload: PolicySimulationExamplePayload): PolicySimulationExampleRecord {

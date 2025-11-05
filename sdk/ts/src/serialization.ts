@@ -4,6 +4,39 @@ export interface DeserializeOptions {
   readonly dateKeys?: readonly string[];
 }
 
+export interface OpenApiTransformOptions {
+  readonly snakeCaseDateKeys?: readonly string[];
+  readonly deep?: boolean;
+}
+
+type SnakeToCamelCase<S extends string> = S extends `${infer Head}_${infer Tail}`
+  ? `${Head}${Capitalize<SnakeToCamelCase<Tail>>}`
+  : S extends `${infer Head}-${infer Tail}`
+    ? `${Head}${Capitalize<SnakeToCamelCase<Tail>>}`
+    : S;
+
+type CamelizeKey<K> = K extends string ? SnakeToCamelCase<K> : K;
+
+type CamelizeArray<T> = T extends ReadonlyArray<infer U>
+  ? ReadonlyArray<Camelize<U>>
+  : T extends Array<infer U>
+    ? Camelize<U>[]
+    : T;
+
+type CamelizeObject<T> = T extends Record<string, unknown>
+  ? { [K in keyof T as CamelizeKey<K>]: Camelize<T[K]> }
+  : T;
+
+export type Camelize<T> = T extends Date
+  ? T
+  : T extends Function
+    ? T
+    : T extends Array<unknown> | ReadonlyArray<unknown>
+      ? CamelizeArray<T>
+      : T extends Record<string, unknown>
+        ? CamelizeObject<T>
+        : T;
+
 /**
  * Parse an ISO-8601 timestamp into a {@link Date} instance while handling nullish values.
  */
@@ -85,4 +118,31 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
 function camelCase(input: string): string {
   return input.replace(/[_-](\w)/g, (_, char: string) => char.toUpperCase());
+}
+
+export function transformOpenApi<TPayload extends Record<string, unknown>, TResult>(
+  payload: TPayload,
+  projector: (record: Camelize<TPayload>) => TResult,
+  options: OpenApiTransformOptions = {},
+): TResult {
+  const base = { ...(payload as Record<string, unknown>) };
+  if (options.snakeCaseDateKeys?.length) {
+    for (const key of options.snakeCaseDateKeys) {
+      if (Object.prototype.hasOwnProperty.call(base, key)) {
+        const value = base[key];
+        base[key] = parseDate(value as string | Date | null | undefined);
+      }
+    }
+  }
+
+  const camel = camelizeKeys(base, { deep: options.deep }) as Camelize<TPayload>;
+  return projector(camel);
+}
+
+export function transformOpenApiArray<TPayload extends Record<string, unknown>, TResult>(
+  payload: readonly TPayload[],
+  projector: (record: Camelize<TPayload>) => TResult,
+  options: OpenApiTransformOptions = {},
+): TResult[] {
+  return payload.map((item) => transformOpenApi<TPayload, TResult>(item, projector, options));
 }

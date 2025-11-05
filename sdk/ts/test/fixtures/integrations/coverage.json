@@ -1,0 +1,20 @@
+[
+  {
+    "integration": "github",
+    "providers": ["github"],
+    "status": "ok",
+    "scopes": {
+      "repositories": {
+        "enabled": 120,
+        "total": 150
+      }
+    },
+    "accounts": {
+      "active": 90,
+      "inactive": 10
+    },
+    "coverage_ratio": 0.8,
+    "last_success": "2024-10-24T08:30:00Z",
+    "evaluated_at": "2024-10-24T09:00:00Z"
+  }
+]

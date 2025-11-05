@@ -11,6 +11,7 @@ const openapiUrl = process.env.CEREBRO_OPENAPI_URL ?? "http://localhost:8000/ope
 const specPath = process.env.CEREBRO_OPENAPI_SPEC_PATH;
 const outputDir = path.resolve(__dirname, "../src/generated");
 const outputFile = path.join(outputDir, "openapi.ts");
+const adaptersDir = path.join(outputDir, "adapters");
 
 if (specPath) {
   console.log(`Generating types from local spec ${specPath}`);
@@ -52,8 +53,69 @@ try {
   const contents = astToString(ast);
   await writeFile(outputFile, banner + contents, "utf8");
 
+  const adapterSource = generateAdapters(ast);
+  await mkdir(adaptersDir, { recursive: true });
+  await writeFile(path.join(adaptersDir, "schemaAdapters.ts"), adapterSource, "utf8");
+
   console.log(`✅ Wrote OpenAPI types to ${path.relative(process.cwd(), outputFile)}`);
 } catch (error) {
   console.error("❌ Failed to generate types:", error instanceof Error ? error.message : error);
   process.exitCode = 1;
+}
+
+function generateAdapters(ast) {
+  const lines = [
+    "/* eslint-disable */",
+    "// Auto-generated schema adapters",
+    "import type { components } from '../openapi.js';",
+    "import { transformOpenApi } from '../../serialization.js';",
+  ];
+
+  const seen = new Set();
+
+  for (const [name, schema] of Object.entries(ast.components?.schemas ?? {})) {
+    if (!isObjectSchema(schema)) continue;
+    const camelName = `${name}Camel`;
+    lines.push(`
+export interface ${camelName} extends Record<string, unknown> {`);
+    for (const [prop, def] of Object.entries(schema.properties ?? {})) {
+      const tsName = toCamel(prop);
+      const type = inferTsType(def);
+      lines.push(`  ${tsName}: ${type};`);
+      const snakeCaseKey = prop;
+      seen.add(`${name}|${snakeCaseKey}|${tsName}`);
+    }
+    lines.push("}");
+
+    lines.push(`
+export function map${name}<T>(payload: components['schemas']['${name}'], projector: (record: ${camelName}) => T, options = {}) {
+  return transformOpenApi(payload, projector, options);
+}`);
+  }
+
+  lines.push("export type SchemaMapping = {" + Array.from(seen).map((entry) => {
+    const [schemaName, snake, camel] = entry.split("|");
+    return `  '${schemaName}.${snake}': '${camel}'`;
+  }).join(",\n") + "\n};");
+
+  return lines.join("\n");
+}
+
+function isObjectSchema(schema) {
+  return schema && schema.type === "object" && schema.properties;
+}
+
+function toCamel(input) {
+  return input.replace(/[_-](\w)/g, (_, char) => char.toUpperCase());
+}
+
+function inferTsType(def) {
+  if (!def) return "unknown";
+  if (def.$ref) return "unknown";
+  if (def.type === "string") return "string | null";
+  if (def.type === "integer" || def.type === "number") return "number | null";
+  if (def.type === "boolean") return "boolean | null";
+  if (def.type === "array") return "unknown[] | null";
+  if (def.type === "object") return "Record<string, unknown> | null";
+  return "unknown";
 }

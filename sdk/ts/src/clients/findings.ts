@@ -1,26 +1,11 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
+import type { components } from "../generated/openapi.js";
 import { CursorPage, PageRequest } from "../pagination.js";
-import { deserialize, parseDate } from "../serialization.js";
+import { transformOpenApi } from "../serialization.js";
 import { FindingRecord } from "../types.js";
 
-interface FindingPayload {
-  finding_id: string;
-  org_id: string;
-  account_id: string;
-  provider: string;
-  rule_id: string;
-  rule_version: number;
-  resource_id: string | null;
-  principal_id: string | null;
-  first_seen: string;
-  last_seen: string;
-  status: string;
-  severity: string;
-  fingerprint: string;
-  title: string;
-  summary: string | null;
-  evidence: Record<string, unknown> | null;
-}
+type FindingPayload = components["schemas"]["FindingResponse"];
+type FindingPageResponse = components["schemas"]["FindingPageResponse"];
 
 export interface ListFindingsOptions {
   orgId?: string;
@@ -38,11 +23,6 @@ export interface ListFindingsPageOptions {
   provider?: string;
   cursor?: string | null;
   limit?: number;
-}
-
-interface FindingPageResponse {
-  items: FindingPayload[];
-  next_cursor: string | null;
 }
 
 export class FindingsClient {
@@ -75,7 +55,7 @@ export class FindingsClient {
 
     return {
       items: payload.items.map(mapFinding),
-      nextCursor: payload.next_cursor,
+      nextCursor: payload.next_cursor ?? null,
     };
   }
 
@@ -106,28 +86,33 @@ export class FindingsClient {
 }
 
 function mapFinding(payload: FindingPayload): FindingRecord {
-  const normalized = deserialize(payload, { dateKeys: ["first_seen", "last_seen"] }) as FindingPayload & {
-    first_seen: Date | null;
-    last_seen: Date | null;
-  };
-  return {
-    findingId: payload.finding_id,
-    orgId: payload.org_id,
-    accountId: payload.account_id,
-    provider: payload.provider,
-    ruleId: payload.rule_id,
-    ruleVersion: payload.rule_version,
-    resourceId: payload.resource_id,
-    principalId: payload.principal_id,
-    firstSeen: normalized.first_seen ?? parseDate(payload.first_seen) ?? new Date(payload.first_seen),
-    lastSeen: normalized.last_seen ?? parseDate(payload.last_seen) ?? new Date(payload.last_seen),
-    status: payload.status,
-    severity: payload.severity,
-    fingerprint: payload.fingerprint,
-    title: payload.title,
-    summary: payload.summary,
-    evidence: payload.evidence,
-  };
+  return transformOpenApi(payload, (data) => ({
+    findingId: data.findingId,
+    orgId: data.orgId,
+    accountId: data.accountId,
+    provider: data.provider,
+    ruleId: data.ruleId,
+    ruleVersion: data.ruleVersion,
+    resourceId: data.resourceId,
+    principalId: data.principalId,
+    firstSeen: parseDate(data.firstSeen) ?? new Date(payload.first_seen),
+    lastSeen: parseDate(data.lastSeen) ?? new Date(payload.last_seen),
+    status: data.status,
+    severity: data.severity,
+    fingerprint: data.fingerprint,
+    title: data.title,
+    summary: data.summary,
+    evidence: data.evidence,
+  }), {
+    snakeCaseDateKeys: ["first_seen", "last_seen"],
+    deep: true,
+  });
+}
+
+function parseDate(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export default FindingsClient;

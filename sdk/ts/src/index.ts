@@ -97,6 +97,8 @@ export {
   summarizeSecurityHealth,
   type SummarizeOrgOptions,
   type ExportReviewTasksOptions,
+  parseAgentEventStream,
+  type AgentStreamEvent,
 } from "./agents/index.js";
 export {
   toVendorMetadataEnvelope,
@@ -109,5 +111,6 @@ export * from "./types.js";
 export * from "./config.js";
 export * from "./telemetry.js";
 export * from "./serialization.js";
+export * from "./streaming.js";
 export * from "./testing/index.js";
 export { default as default } from "./sdk.js";
