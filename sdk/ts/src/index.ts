@@ -1,6 +1,16 @@
 export { CerebroSDK, type CerebroSDKOptions } from "./sdk.js";
-export type { AccessTokenProvider, HttpClientOptions, RequestOptions } from "./httpClient.js";
-export { HttpError } from "./httpClient.js";
+export type {
+  AccessTokenProvider,
+  HttpClientOptions,
+  RequestOptions,
+  RetryOptions,
+  HttpRequestContext,
+  HttpResponseContext,
+  HttpRequestMiddleware,
+  HttpResponseMiddleware,
+  HttpStream,
+} from "./httpClient.js";
+export { HttpError, HttpTimeoutError } from "./httpClient.js";
 export { AnalyticsClient } from "./clients/analytics.js";
 export {
   AgentsClient,
@@ -12,6 +22,9 @@ export {
   type GetAgentSessionOptions,
   type ListSessionMessagesOptions,
   type SendAgentMessageRequest,
+  type AgentMessageAck,
+  type AgentMessageStreamHandle,
+  type SendAgentMessageResult,
   type ListSessionMemoryOptions,
 } from "./clients/agents.js";
 export { AuthClient } from "./clients/auth.js";
@@ -95,5 +108,6 @@ export * from "./pagination.js";
 export * from "./types.js";
 export * from "./config.js";
 export * from "./telemetry.js";
+export * from "./serialization.js";
 export * from "./testing/index.js";
 export { default as default } from "./sdk.js";

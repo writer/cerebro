@@ -1,4 +1,5 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
+import { deserialize, parseDate } from "../serialization.js";
 import {
   RuntimeEventAggregate,
   RuntimeHealthRecord,
@@ -50,10 +51,14 @@ export class AnalyticsClient {
 }
 
 function mapRuntimeHealthRecord(entry: RuntimeHealthPayload): RuntimeHealthRecord {
+  const normalized = deserialize(entry, { dateKeys: ["window_start", "window_end"] }) as RuntimeHealthPayload & {
+    window_start: Date | null;
+    window_end: Date | null;
+  };
   return {
     runtime: entry.runtime,
-    windowStart: parseDate(entry.window_start) ?? new Date(entry.window_start),
-    windowEnd: parseDate(entry.window_end) ?? new Date(entry.window_end),
+    windowStart: normalized.window_start ?? new Date(entry.window_start),
+    windowEnd: normalized.window_end ?? new Date(entry.window_end),
     events: mapRuntimeEventCollection(entry.events),
     warnings: mapRuntimeEventCollection(entry.warnings),
     latestMetadata: entry.latest_metadata ? mapRuntimeMetadata(entry.latest_metadata) : null,
@@ -76,14 +81,6 @@ function mapRuntimeMetadata(payload: RuntimeMetadataPayload): RuntimeMetadataSna
     payload: payload.payload,
     capturedAt: parseDate(payload.captured_at) ?? new Date(payload.captured_at),
   };
-}
-
-function parseDate(value: string | null | undefined): Date | null {
-  if (!value) {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export default AnalyticsClient;

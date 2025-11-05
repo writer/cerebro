@@ -1,5 +1,6 @@
-import HttpClient from "../httpClient.js";
-import { CursorPage, PageRequest } from "../pagination.js";
+import HttpClient, { HttpStream } from "../httpClient.js";
+import { CursorPage, PageRequest, iterateCursor } from "../pagination.js";
+import { deserialize, parseDate } from "../serialization.js";
 import {
   AgentMemoryHighlight,
   AgentMemoryRecord,
@@ -222,6 +223,18 @@ export interface SendAgentMessageRequest {
   message: string;
   stream?: boolean;
 }
+
+export interface AgentMessageAck<T = unknown> {
+  kind: "ack";
+  data: T;
+}
+
+export interface AgentMessageStreamHandle {
+  kind: "stream";
+  stream: HttpStream;
+}
+
+export type SendAgentMessageResult<T = unknown> = AgentMessageAck<T> | AgentMessageStreamHandle;
 
 export interface ListSessionMemoryOptions {
   limit?: number;
@@ -602,16 +615,39 @@ export class AgentsClient {
     return payload.map(mapMessage);
   }
 
-  async sendSessionMessage(sessionId: string, request: SendAgentMessageRequest): Promise<unknown> {
+  iterateReviewTasks(options: ListReviewTasksPageOptions = {}): AsyncIterable<ReviewTaskRecord> {
+    const baseOptions = { ...options };
+    return iterateCursor(
+      (cursor?: string | null) => this.listReviewTasksPage({ ...baseOptions, cursor: cursor ?? undefined }),
+      baseOptions.cursor ?? null,
+    );
+  }
+
+  async sendSessionMessage<T = unknown>(
+    sessionId: string,
+    request: SendAgentMessageRequest,
+  ): Promise<SendAgentMessageResult<T>> {
     const body: Record<string, unknown> = { message: request.message };
+
+    if (request.stream === true) {
+      body.stream = true;
+      const stream = await this.http.stream(
+        `/api/v1/agents/sessions/${sessionId}/messages`,
+        { method: "POST", body },
+      );
+      return { kind: "stream", stream };
+    }
+
     if (request.stream !== undefined) {
       body.stream = request.stream;
     }
 
-    return this.http.post<unknown>(
+    const payload = await this.http.post<T>(
       `/api/v1/agents/sessions/${sessionId}/messages`,
       { body },
     );
+
+    return { kind: "ack", data: payload };
   }
 
   async listSessionMemoryEntries(
@@ -755,6 +791,11 @@ function mapPrioritySummary(entry: ReviewQueuePriorityPayload): ReviewQueuePrior
 }
 
 function mapReviewTask(payload: ReviewTaskPayload): ReviewTaskRecord {
+  const normalized = deserialize(payload, { dateKeys: ["due_at", "created_at", "resolved_at"] }) as ReviewTaskPayload & {
+    due_at: Date | null;
+    created_at: Date | null;
+    resolved_at: Date | null;
+  };
   return {
     taskId: payload.id,
     sessionId: payload.session_id,
@@ -765,31 +806,38 @@ function mapReviewTask(payload: ReviewTaskPayload): ReviewTaskRecord {
     payload: payload.payload ?? {},
     promotionTarget: payload.promotion_target,
     priority: payload.priority,
-    dueAt: parseDate(payload.due_at),
+    dueAt: normalized.due_at ?? parseDate(payload.due_at),
     escalatedTo: payload.escalated_to,
     notificationChannel: payload.notification_channel,
     ticketReference: payload.ticket_reference,
     createdBy: payload.created_by,
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
     resolvedBy: payload.resolved_by,
-    resolvedAt: parseDate(payload.resolved_at),
+    resolvedAt: normalized.resolved_at ?? parseDate(payload.resolved_at),
     resolutionNotes: payload.resolution_notes,
   };
 }
 
 function mapComment(payload: CommentPayload): ReviewTaskCommentRecord {
+  const normalized = deserialize(payload, { dateKeys: ["created_at", "updated_at"] }) as CommentPayload & {
+    created_at: Date | null;
+    updated_at: Date | null;
+  };
   return {
     commentId: payload.id,
     taskId: payload.task_id,
     author: payload.author,
     content: payload.content,
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
-    updatedAt: parseDate(payload.updated_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
+    updatedAt: normalized.updated_at ?? parseDate(payload.updated_at),
     metadata: payload.metadata ?? {},
   };
 }
 
 function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
+  const normalized = deserialize(payload, { dateKeys: ["created_at"] }) as HistoryPayload & {
+    created_at: Date | null;
+  };
   return {
     historyId: payload.id,
     taskId: payload.task_id,
@@ -798,12 +846,16 @@ function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
     fieldName: payload.field_name,
     oldValue: payload.old_value,
     newValue: payload.new_value,
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
     metadata: payload.metadata,
   };
 }
 
 function mapNotification(payload: ReviewNotificationPayload): ReviewNotificationRecord {
+  const normalized = deserialize(payload, { dateKeys: ["created_at", "delivered_at"] }) as ReviewNotificationPayload & {
+    created_at: Date | null;
+    delivered_at: Date | null;
+  };
   return {
     notificationId: payload.id,
     taskId: payload.task_id,
@@ -811,26 +863,33 @@ function mapNotification(payload: ReviewNotificationPayload): ReviewNotification
     channel: payload.channel,
     status: payload.status,
     payload: payload.payload ?? {},
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
-    deliveredAt: parseDate(payload.delivered_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
+    deliveredAt: normalized.delivered_at ?? parseDate(payload.delivered_at),
   };
 }
 
 function mapRuntimeEvent(payload: RuntimeEventPayload): RuntimeEventRecord {
+  const normalized = deserialize(payload, { dateKeys: ["created_at"] }) as RuntimeEventPayload & {
+    created_at: Date | null;
+  };
   return {
     eventId: payload.id,
     eventType: payload.event_type,
     payload: payload.payload ?? {},
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
   };
 }
 
 function mapRuntimeSummary(payload: RuntimeEventSummaryPayload): RuntimeEventSummaryRecord {
+  const normalized = deserialize(payload, { dateKeys: ["first_seen", "last_seen"] }) as RuntimeEventSummaryPayload & {
+    first_seen: Date | null;
+    last_seen: Date | null;
+  };
   return {
     eventType: payload.event_type,
     eventCount: payload.event_count,
-    firstSeen: parseDate(payload.first_seen),
-    lastSeen: parseDate(payload.last_seen),
+    firstSeen: normalized.first_seen ?? parseDate(payload.first_seen),
+    lastSeen: normalized.last_seen ?? parseDate(payload.last_seen),
   };
 }
 
@@ -845,6 +904,10 @@ function mapSlaSummary(payload: SlaSummaryPayload): ReviewTaskSlaSummary {
 }
 
 function mapSlaStatus(payload: SlaStatusPayload): ReviewTaskSlaStatus {
+  const normalized = deserialize(payload, { dateKeys: ["created_at", "due_at"] }) as SlaStatusPayload & {
+    created_at: Date | null;
+    due_at: Date | null;
+  };
   return {
     taskId: payload.task_id,
     slaHours: payload.sla_hours,
@@ -853,8 +916,8 @@ function mapSlaStatus(payload: SlaStatusPayload): ReviewTaskSlaStatus {
     percentageElapsed: payload.percentage_elapsed,
     isBreached: payload.is_breached,
     isAtRisk: payload.is_at_risk,
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
-    dueAt: parseDate(payload.due_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
+    dueAt: normalized.due_at ?? parseDate(payload.due_at),
   };
 }
 
@@ -882,6 +945,9 @@ function mapWorkflowStep(payload: WorkflowStepPayload): WorkflowTemplateStepReco
 }
 
 function mapSession(payload: SessionPayload): AgentSessionRecord {
+  const normalized = deserialize(payload, { dateKeys: ["created_at"] }) as SessionPayload & {
+    created_at: Date | null;
+  };
   return {
     sessionId: payload.session_id,
     orgId: payload.org_id,
@@ -889,30 +955,37 @@ function mapSession(payload: SessionPayload): AgentSessionRecord {
     status: payload.status,
     title: payload.title,
     createdBy: payload.created_by,
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
     context: payload.context ?? {},
   };
 }
 
 function mapMessage(payload: MessagePayload): AgentMessageRecord {
+  const normalized = deserialize(payload, { dateKeys: ["timestamp"] }) as MessagePayload & {
+    timestamp: Date | null;
+  };
   return {
     messageId: payload.message_id,
     role: payload.role,
     content: payload.content,
     metadata: payload.metadata ?? {},
-    createdAt: parseDate(payload.timestamp) ?? new Date(payload.timestamp),
+    createdAt: normalized.timestamp ?? parseDate(payload.timestamp) ?? new Date(payload.timestamp),
   };
 }
 
 function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord {
+  const normalized = deserialize(payload, { dateKeys: ["started_at", "completed_at"] }) as ToolInvocationPayload & {
+    started_at: Date | null;
+    completed_at: Date | null;
+  };
   return {
     invocationId: payload.id,
     sessionId: payload.session_id,
     toolName: payload.tool_name,
     toolVersion: payload.tool_version,
     status: payload.status,
-    startedAt: parseDate(payload.started_at) ?? new Date(payload.started_at),
-    completedAt: parseDate(payload.completed_at),
+    startedAt: normalized.started_at ?? parseDate(payload.started_at) ?? new Date(payload.started_at),
+    completedAt: normalized.completed_at ?? parseDate(payload.completed_at),
     errorMessage: payload.error_message ?? null,
     errorCode: payload.error_code ?? null,
     inputData: payload.input_data ?? undefined,
@@ -925,14 +998,18 @@ function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord
 }
 
 function mapMemoryEntry(payload: MemoryEntryPayload): AgentMemoryRecord {
+  const normalized = deserialize(payload, { dateKeys: ["created_at", "last_accessed_at"] }) as MemoryEntryPayload & {
+    created_at: Date | null;
+    last_accessed_at: Date | null;
+  };
   return {
     entryId: payload.id,
     summary: payload.summary,
     role: payload.role,
     decayScore: payload.decay_score,
     tokenCount: payload.token_count,
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
-    lastAccessedAt: parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    createdAt: normalized.created_at ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
+    lastAccessedAt: normalized.last_accessed_at ?? parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
     scopes: payload.scopes ?? [],
     scopeLabels: payload.scope_labels ?? [],
     metadata: payload.metadata ?? {},
@@ -945,12 +1022,15 @@ function mapMemoryEntry(payload: MemoryEntryPayload): AgentMemoryRecord {
 }
 
 function mapMemoryHighlight(payload: MemoryHighlightPayload): AgentMemoryHighlight {
+  const normalized = deserialize(payload, { dateKeys: ["last_accessed_at"] }) as MemoryHighlightPayload & {
+    last_accessed_at: Date | null;
+  };
   return {
     entryId: payload.id,
     summary: payload.summary,
     role: payload.role,
     decayScore: payload.decay_score,
-    lastAccessedAt: parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    lastAccessedAt: normalized.last_accessed_at ?? parseDate(payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
     scopeLabels: payload.scope_labels ?? [],
   };
 }
@@ -1006,12 +1086,6 @@ function mapPolicySimulationExample(payload: PolicySimulationExamplePayload): Po
     error: payload.error,
     latencyMs: payload.latency_ms ?? null,
   };
-}
-
-function parseDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export default AgentsClient;

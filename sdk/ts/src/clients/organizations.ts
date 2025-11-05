@@ -1,4 +1,5 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
+import { camelizeKeys, deserialize, parseDate } from "../serialization.js";
 import { OrganizationSummary } from "../types.js";
 
 interface OrganizationPayload {
@@ -35,17 +36,15 @@ export class OrganizationsClient {
 }
 
 function mapOrganization(payload: OrganizationPayload): OrganizationSummary {
-  return {
-    orgId: payload.org_id,
-    name: payload.name,
-    createdAt: parseDate(payload.created_at) ?? new Date(payload.created_at),
-  };
-}
+  const normalized = camelizeKeys(
+    deserialize(payload, { dateKeys: ["created_at"] }),
+  ) as { orgId: string; name: string; createdAt: Date | null };
 
-function parseDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return {
+    orgId: normalized.orgId,
+    name: normalized.name,
+    createdAt: normalized.createdAt ?? parseDate(payload.created_at) ?? new Date(payload.created_at),
+  };
 }
 
 export default OrganizationsClient;

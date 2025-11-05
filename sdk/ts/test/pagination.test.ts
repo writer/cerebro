@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decodeCursor, encodeCursor } from "../src/pagination";
+import { collectCursor, decodeCursor, encodeCursor, iterateCursor } from "../src/pagination";
 
 describe("pagination", () => {
   it("encodes and decodes cursor payloads", () => {
@@ -15,5 +15,31 @@ describe("pagination", () => {
 
   it("throws on invalid cursor", () => {
     expect(() => decodeCursor("invalid")).toThrowError();
+  });
+
+  it("iterates across cursor pages", async () => {
+    const pages = [
+      { items: [1, 2], nextCursor: "cursor-2" },
+      { items: [3], nextCursor: null },
+    ];
+    let index = 0;
+
+    const results: number[] = [];
+    for await (const value of iterateCursor(async () => pages[index++])) {
+      results.push(value);
+    }
+
+    expect(results).toEqual([1, 2, 3]);
+  });
+
+  it("collects cursor pages into an array", async () => {
+    const pages = [
+      { items: ["a"], nextCursor: "next" },
+      { items: ["b", "c"], nextCursor: null },
+    ];
+    let index = 0;
+
+    const values = await collectCursor(async () => pages[index++]);
+    expect(values).toEqual(["a", "b", "c"]);
   });
 });

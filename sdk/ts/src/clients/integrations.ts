@@ -1,31 +1,15 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
+import type { components } from "../generated/openapi.js";
 import {
   IntegrationAccountSummary,
   IntegrationCoverageRecord,
   IntegrationScopeBreakdown,
 } from "../types.js";
+import { deserialize, parseDate } from "../serialization.js";
 
-interface IntegrationCoverageScopesPayload {
-  total: number;
-  healthy: number;
-  warning: number;
-  critical: number;
-}
-
-interface IntegrationCoverageAccountsPayload {
-  total: number;
-}
-
-interface IntegrationCoveragePayload {
-  integration: string;
-  providers: string[];
-  status: string;
-  scopes: IntegrationCoverageScopesPayload;
-  accounts: IntegrationCoverageAccountsPayload;
-  coverage_ratio: number | null;
-  last_success: string | null;
-  evaluated_at: string;
-}
+type IntegrationCoveragePayload = components["schemas"]["IntegrationCoverageSummary"];
+type IntegrationCoverageScopesPayload = components["schemas"]["IntegrationCoverageScopes"];
+type IntegrationCoverageAccountsPayload = components["schemas"]["IntegrationCoverageAccounts"];
 
 export interface IntegrationCoverageOptions {
   staleSeconds?: number;
@@ -48,6 +32,10 @@ export class IntegrationsClient {
 }
 
 function mapCoverageRecord(entry: IntegrationCoveragePayload): IntegrationCoverageRecord {
+  const normalized = deserialize(entry, { dateKeys: ["last_success", "evaluated_at"] }) as IntegrationCoveragePayload & {
+    last_success: Date | null;
+    evaluated_at: Date | null;
+  };
   return {
     integration: entry.integration,
     providers: entry.providers,
@@ -55,8 +43,8 @@ function mapCoverageRecord(entry: IntegrationCoveragePayload): IntegrationCovera
     scopes: mapScopes(entry.scopes),
     accounts: mapAccounts(entry.accounts),
     coverageRatio: entry.coverage_ratio,
-    lastSuccess: parseDate(entry.last_success),
-    evaluatedAt: parseDate(entry.evaluated_at) ?? new Date(entry.evaluated_at),
+    lastSuccess: normalized.last_success ?? parseDate(entry.last_success),
+    evaluatedAt: normalized.evaluated_at ?? parseDate(entry.evaluated_at) ?? new Date(entry.evaluated_at),
   };
 }
 
@@ -73,12 +61,6 @@ function mapAccounts(source: IntegrationCoverageAccountsPayload): IntegrationAcc
   return {
     total: source.total,
   };
-}
-
-function parseDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export default IntegrationsClient;

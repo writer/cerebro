@@ -78,3 +78,34 @@ function fromBase64(value: string): string {
 
   throw new Error("Base64 decoding not supported in this environment");
 }
+
+export async function* iterateCursor<T>(
+  fetchPage: (cursor?: string | null) => Promise<CursorPage<T>>,
+  initialCursor: string | null = null,
+): AsyncGenerator<T, void, undefined> {
+  let cursor: string | null = initialCursor;
+
+  while (true) {
+    const page = await fetchPage(cursor ?? undefined);
+    for (const item of page.items) {
+      yield item;
+    }
+
+    if (!page.nextCursor) {
+      break;
+    }
+
+    cursor = page.nextCursor;
+  }
+}
+
+export async function collectCursor<T>(
+  fetchPage: (cursor?: string | null) => Promise<CursorPage<T>>,
+  initialCursor: string | null = null,
+): Promise<T[]> {
+  const results: T[] = [];
+  for await (const item of iterateCursor(fetchPage, initialCursor)) {
+    results.push(item);
+  }
+  return results;
+}

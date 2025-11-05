@@ -1,5 +1,6 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
 import { CursorPage, PageRequest } from "../pagination.js";
+import { deserialize, parseDate } from "../serialization.js";
 import { FindingRecord } from "../types.js";
 
 interface FindingPayload {
@@ -105,6 +106,10 @@ export class FindingsClient {
 }
 
 function mapFinding(payload: FindingPayload): FindingRecord {
+  const normalized = deserialize(payload, { dateKeys: ["first_seen", "last_seen"] }) as FindingPayload & {
+    first_seen: Date | null;
+    last_seen: Date | null;
+  };
   return {
     findingId: payload.finding_id,
     orgId: payload.org_id,
@@ -114,8 +119,8 @@ function mapFinding(payload: FindingPayload): FindingRecord {
     ruleVersion: payload.rule_version,
     resourceId: payload.resource_id,
     principalId: payload.principal_id,
-    firstSeen: parseDate(payload.first_seen) ?? new Date(payload.first_seen),
-    lastSeen: parseDate(payload.last_seen) ?? new Date(payload.last_seen),
+    firstSeen: normalized.first_seen ?? parseDate(payload.first_seen) ?? new Date(payload.first_seen),
+    lastSeen: normalized.last_seen ?? parseDate(payload.last_seen) ?? new Date(payload.last_seen),
     status: payload.status,
     severity: payload.severity,
     fingerprint: payload.fingerprint,
@@ -123,12 +128,6 @@ function mapFinding(payload: FindingPayload): FindingRecord {
     summary: payload.summary,
     evidence: payload.evidence,
   };
-}
-
-function parseDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export default FindingsClient;

@@ -142,6 +142,80 @@ describe("AgentsClient", () => {
     expect(url).toContain("limit=10");
   });
 
+  it("iterates review tasks using the helper paginator", async () => {
+    const now = new Date().toISOString();
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          items: [
+            {
+              id: "task-1",
+              session_id: "session-1",
+              org_id: "org-1",
+              status: "pending",
+              title: "Review",
+              summary: null,
+              payload: {},
+              promotion_target: null,
+              priority: null,
+              due_at: now,
+              escalated_to: null,
+              notification_channel: null,
+              ticket_reference: null,
+              created_by: "user",
+              created_at: now,
+              resolved_by: null,
+              resolved_at: null,
+              resolution_notes: null,
+            },
+          ],
+          next_cursor: "cursor-2",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          items: [
+            {
+              id: "task-2",
+              session_id: "session-2",
+              org_id: "org-1",
+              status: "pending",
+              title: "Review 2",
+              summary: null,
+              payload: {},
+              promotion_target: null,
+              priority: null,
+              due_at: now,
+              escalated_to: null,
+              notification_channel: null,
+              ticket_reference: null,
+              created_by: "user",
+              created_at: now,
+              resolved_by: null,
+              resolved_at: null,
+              resolution_notes: null,
+            },
+          ],
+          next_cursor: null,
+        }),
+      });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const records: string[] = [];
+    for await (const task of client.iterateReviewTasks({ limit: 1 })) {
+      records.push(task.taskId);
+    }
+
+    expect(records).toEqual(["task-1", "task-2"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("bulk updates review tasks with optional fields", async () => {
     const now = new Date();
     const iso = now.toISOString();
@@ -608,10 +682,41 @@ describe("AgentsClient", () => {
     });
 
     const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
-    await client.sendSessionMessage("session-1", { message: "hello" });
+    const result = await client.sendSessionMessage("session-1", { message: "hello" });
 
+    expect(result).toEqual({ kind: "ack", data: {} });
     const [, init] = fetchMock.mock.calls[0];
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ message: "hello" });
+  });
+
+  it("streams session messages when requested", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("hello"));
+        controller.close();
+      },
+    });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "text/event-stream" }),
+      body: stream,
+    });
+
+    const client = new AgentsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const result = await client.sendSessionMessage("session-1", { message: "hello", stream: true });
+
+    expect(result.kind).toBe("stream");
+    const chunks: string[] = [];
+    for await (const fragment of result.stream.text()) {
+      chunks.push(fragment);
+    }
+    expect(chunks.join(""))
+      .toBe("hello");
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ message: "hello", stream: true });
   });
 
   it("lists session memory entries", async () => {
