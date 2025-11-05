@@ -57,17 +57,17 @@
 
 \begin{frame}{Daily Operations}
   \begin{itemize}
-    \item Review queue overview: pull priorities, assignees, and overdue tasks each morning.
-    \item Integration coverage: spot connectors trending toward unhealthy before alerts fire.
-    \item Health snapshots: fetch runtime analytics to confirm agent services remain steady.
+    \item Review queue overview via \texttt{sdk.agents.listReviewTasks} and \texttt{getReviewQueueSummary}.
+    \item Integration coverage watch using \texttt{sdk.integrations.getCoverage} to flag stale connectors.
+    \item Health snapshots from \texttt{sdk.analytics.getRuntimeHealth} to confirm agent services remain steady.
   \end{itemize}
 \end{frame}
 
 \begin{frame}{Incident Response Support}
   \begin{itemize}
-    \item Retrieve session timelines to reconstruct decision paths during retros.
-    \item Export review history for responders without granting database access.
-    \item Trigger targeted notifications or ticket updates straight from incident channels.
+    \item Retrieve session timelines with \texttt{sdk.agents.getSession} and \texttt{listSessionMessages}.
+    \item Export review history via \texttt{AgentReviewExporter} for responders without database access.
+    \item Trigger targeted notifications or ticket updates using \texttt{AgentNotificationsClient} and \texttt{AgentTicketsClient}.
   \end{itemize}
 \end{frame}
 
@@ -99,9 +99,19 @@
 
 \begin{frame}{Monitoring Signals}
   \begin{itemize}
-    \item Runtime health metrics highlight noisy agents, error spikes, or warning trends.
-    \item Integration coverage ratios inform partnership outreach and customer comms.
-    \item Task status endpoints surface delayed jobs so Ops can intervene early.
+    \item Runtime health metrics highlight noisy agents and error spikes (\texttt{sdk.analytics.getRuntimeHealth}).
+    \item Integration coverage ratios inform partnership outreach and customer comms (\texttt{sdk.integrations.getCoverage}).
+    \item Task status endpoints surface delayed jobs so Ops can intervene early (\texttt{TasksClient.getStatus}).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{SDK Quick References}
+  \begin{itemize}
+    \item \textbf{AgentsClient}: review queue, sessions, workflow templates, policy simulations.
+    \item \textbf{AgentToolingClient}: manage tool runs, approvals, and policy suggestions.
+    \item \textbf{AgentNotificationsClient} / \textbf{AgentTicketsClient}: coordinate escalations and comms.
+    \item \textbf{FindingsClient}: filter posture gaps by org, severity, or provider for ops reporting.
+    \item \textbf{Telemetry helpers}: use \texttt{configureLogging} and \texttt{createCounter} for scripted runbooks.
   \end{itemize}
 \end{frame}
 
@@ -136,7 +146,7 @@
 
 \begin{frame}{Q\&A}
   \centering
-  Reach us at \texttt{sdk@writer.com}
+  Reach us at \texttt{cerebro-sdk@writer.com}
 \end{frame}
 
 \end{document}
