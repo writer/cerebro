@@ -1,0 +1,142 @@
+\documentclass[aspectratio=169]{beamer}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Cerebro SDK Ops Briefing}
+\subtitle{Operational Playbook for November 6, 2025}
+\author{Writer Security Operations}
+\date{Updated November 5, 2025}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Agenda}
+  \begin{itemize}
+    \item Why the Cerebro SDK matters for Security Ops
+    \item Where it fits in daily workflows and incident response
+    \item Key surfaces to monitor and the guardrails in place
+    \item Rollout plan, support channels, and next actions
+  \end{itemize}
+\end{frame}
+
+\section{Orientation}
+
+\begin{frame}{What the SDK Delivers}
+  \begin{itemize}
+    \item A unified way to interact with Cerebro agents, findings, tickets, and analytics.
+    \item Consistent models eliminate ad-hoc API calls and one-off scripts.
+    \item Enables faster playbook automation while keeping controls centralized.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Why Ops Should Care}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      \begin{itemize}
+        \item Shorter triage cycles: surface review queue status and SLA risk in one call.
+        \item Better handoffs: align tickets, notifications, and task tracking from a single toolkit.
+        \item Stronger audit posture: SDK enforces structured logging and error handling.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.4\textwidth}
+      \begin{block}{Ops Wins}
+        \begin{itemize}
+          \item Reliable runbook automation
+          \item Standardized reporting
+          \item Confidence in guardrails
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\section{Ops Workflows}
+
+\begin{frame}{Daily Operations}
+  \begin{itemize}
+    \item Review queue overview: pull priorities, assignees, and overdue tasks each morning.
+    \item Integration coverage: spot connectors trending toward unhealthy before alerts fire.
+    \item Health snapshots: fetch runtime analytics to confirm agent services remain steady.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Incident Response Support}
+  \begin{itemize}
+    \item Retrieve session timelines to reconstruct decision paths during retros.
+    \item Export review history for responders without granting database access.
+    \item Trigger targeted notifications or ticket updates straight from incident channels.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Cross-Team Collaboration}
+  \begin{itemize}
+    \item Share consistent status with SecEng, product, and compliance using the same interfaces.
+    \item Leverage in-memory adapters for tabletop exercises without touching production.
+    \item Use workflow evaluations to preview automation before requesting deployment.
+  \end{itemize}
+\end{frame}
+
+\section{Controls and Guardrails}
+
+\begin{frame}{Access \& Permissions}
+  \begin{itemize}
+    \item SDK honors existing roles: no elevated access beyond what tokens permit.
+    \item Encourage short-lived tokens sourced from the standard auth pipeline.
+    \item CSRF tokens and audit stamps are surfaced for logging into our SIEM.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Change Management}
+  \begin{itemize}
+    \item Changesets enforce review before SDK releases ship to teams.
+    \item Versioned exports mean automation can pin to a known behavior window.
+    \item Recommended: align SDK upgrades with weekly ops change window.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Monitoring Signals}
+  \begin{itemize}
+    \item Runtime health metrics highlight noisy agents, error spikes, or warning trends.
+    \item Integration coverage ratios inform partnership outreach and customer comms.
+    \item Task status endpoints surface delayed jobs so Ops can intervene early.
+  \end{itemize}
+\end{frame}
+
+\section{Adoption Plan}
+
+\begin{frame}{Rollout Checklist}
+  \begin{itemize}
+    \item Identify initial playbooks (review queue digest, ticket sync, incident export).
+    \item Pair Ops analysts with SecEng buddies for the first automation build.
+    \item Publish quick links in the Ops runbook to the SDK scripts and dashboards.
+    \item Schedule retro one week after launch to capture feedback and close gaps.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Support Channels}
+  \begin{itemize}
+    \item Slack: \texttt{\#cerebro-ops} for questions, runbook reviews, and status updates.
+    \item Office hours every Tuesday with the SDK maintainers for pairing and demos.
+    \item PagerDuty layer remains unchanged; SDK adds data, not another on-call rotation.
+  \end{itemize}
+\end{frame}
+
+\section{Next Steps}
+
+\begin{frame}{Action Items}
+  \begin{itemize}
+    \item Ops leads nominate two candidate workflows by end-of-week.
+    \item Request access tokens through the existing secrets process if not already provisioned.
+    \item Drop automation ideas or concerns in the shared backlog doc before Friday.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Q\&A}
+  \centering
+  Reach us at \texttt{sdk@writer.com}
+\end{frame}
+
+\end{document}
