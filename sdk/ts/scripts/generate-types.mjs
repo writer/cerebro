@@ -21,6 +21,7 @@ if (specPath) {
 
 try {
   let ast;
+  let schemaJson;
 
   if (specPath) {
     const packageRoot = path.resolve(__dirname, "..");
@@ -36,16 +37,18 @@ try {
     }
 
     const raw = await readFile(resolved, "utf8");
-    const schema = JSON.parse(raw);
-    ast = await openapiTS(schema);
+    schemaJson = JSON.parse(raw);
+    ast = await openapiTS(schemaJson);
   } else {
     const headers = process.env.CEREBRO_OPENAPI_AUTH_TOKEN
       ? { Authorization: `Bearer ${process.env.CEREBRO_OPENAPI_AUTH_TOKEN}` }
       : undefined;
-
-    ast = await openapiTS(openapiUrl, {
-      httpHeaders: headers,
-    });
+    const response = await fetch(openapiUrl, { headers });
+    if (!response.ok) {
+      throw new Error(`Failed to download OpenAPI schema: ${response.status} ${response.statusText}`);
+    }
+    schemaJson = await response.json();
+    ast = await openapiTS(schemaJson);
   }
 
   await mkdir(outputDir, { recursive: true });
@@ -53,7 +56,7 @@ try {
   const contents = astToString(ast);
   await writeFile(outputFile, banner + contents, "utf8");
 
-  const adapterSource = generateAdapters(ast);
+  const adapterSource = generateAdapters(schemaJson);
   await mkdir(adaptersDir, { recursive: true });
   await writeFile(path.join(adaptersDir, "schemaAdapters.ts"), adapterSource, "utf8");
 
@@ -63,59 +66,215 @@ try {
   process.exitCode = 1;
 }
 
-function generateAdapters(ast) {
+function generateAdapters(schemaJson) {
   const lines = [
     "/* eslint-disable */",
     "// Auto-generated schema adapters",
     "import type { components } from '../openapi.js';",
-    "import { transformOpenApi } from '../../serialization.js';",
+    "import { transformOpenApi, type OpenApiTransformOptions, type Camelize } from '../../serialization.js';",
   ];
 
-  const seen = new Set();
-
-  for (const [name, schema] of Object.entries(ast.components?.schemas ?? {})) {
-    if (!isObjectSchema(schema)) continue;
-    const camelName = `${name}Camel`;
-    lines.push(`
-export interface ${camelName} extends Record<string, unknown> {`);
-    for (const [prop, def] of Object.entries(schema.properties ?? {})) {
-      const tsName = toCamel(prop);
-      const type = inferTsType(def);
-      lines.push(`  ${tsName}: ${type};`);
-      const snakeCaseKey = prop;
-      seen.add(`${name}|${snakeCaseKey}|${tsName}`);
-    }
-    lines.push("}");
-
-    lines.push(`
-export function map${name}<T>(payload: components['schemas']['${name}'], projector: (record: ${camelName}) => T, options = {}) {
-  return transformOpenApi(payload, projector, options);
-}`);
+  const schemas = schemaJson?.components?.schemas;
+  if (!schemas) {
+    lines.push("export const schemaAdapterDefinitions = {} as const;\n");
+    lines.push("export type SchemaName = never;\n");
+    lines.push("export function adaptSchema() { throw new Error('No schema definitions available'); }\n");
+    lines.push("export function createSchemaAdapter() { throw new Error('No schema definitions available'); }\n");
+    return lines.join("\n");
   }
 
-  lines.push("export type SchemaMapping = {" + Array.from(seen).map((entry) => {
-    const [schemaName, snake, camel] = entry.split("|");
-    return `  '${schemaName}.${snake}': '${camel}'`;
-  }).join(",\n") + "\n};");
+  const definitions = [];
+  for (const [name, definition] of Object.entries(schemas)) {
+    const analysis = analyseSchemaDefinition(name, definition, schemas);
+    if (!analysis) continue;
+    definitions.push({ name, ...analysis });
+  }
+
+  definitions.sort((a, b) => a.name.localeCompare(b.name));
+
+  lines.push("export const schemaAdapterDefinitions = {");
+  for (const { name, snakeCaseDateKeys, deep } of definitions) {
+    lines.push(`  "${name}": {`);
+    lines.push(`    schema: "${name}",`);
+    if (snakeCaseDateKeys.length) {
+      lines.push(`    snakeCaseDateKeys: ${JSON.stringify(snakeCaseDateKeys)},`);
+    } else {
+      lines.push("    snakeCaseDateKeys: [],");
+    }
+    if (deep) {
+      lines.push("    deep: true,");
+    }
+    lines.push("  },");
+  }
+  lines.push("} as const;\n");
+
+  lines.push("export type SchemaName = keyof typeof schemaAdapterDefinitions;\n");
+  lines.push("type SchemaDefinition<Name extends SchemaName> = typeof schemaAdapterDefinitions[Name];");
+  lines.push("type SchemaPayload<Name extends SchemaName> = components['schemas'][SchemaDefinition<Name>['schema']];\n");
+
+  lines.push(`export function adaptSchema<Name extends SchemaName, TResult>(
+  schema: Name,
+  payload: SchemaPayload<Name>,
+  projector: (record: Camelize<SchemaPayload<Name>>) => TResult,
+  options: OpenApiTransformOptions = {},
+): TResult {
+  const definition = schemaAdapterDefinitions[schema];
+  const mergedSnakeCaseKeys = mergeDateKeys(definition?.snakeCaseDateKeys, options.snakeCaseDateKeys);
+  const definitionDeep = definition && Object.prototype.hasOwnProperty.call(definition, "deep")
+    ? (definition as { deep?: boolean }).deep
+    : undefined;
+  const mergedOptions: OpenApiTransformOptions = {
+    ...options,
+    snakeCaseDateKeys: mergedSnakeCaseKeys,
+    deep: options.deep ?? definitionDeep,
+  };
+  return transformOpenApi(
+    payload as Record<string, unknown>,
+    projector as (record: Camelize<Record<string, unknown>>) => TResult,
+    mergedOptions,
+  );
+}
+`);
+
+  lines.push(`export function createSchemaAdapter<Name extends SchemaName>(schema: Name) {
+  return function adapt<TResult>(
+    payload: SchemaPayload<Name>,
+    projector: (record: Camelize<SchemaPayload<Name>>) => TResult,
+    options: OpenApiTransformOptions = {},
+  ): TResult {
+    return adaptSchema(schema, payload, projector, options);
+  };
+}
+`);
+
+  lines.push(`function mergeDateKeys(
+  baseKeys: readonly string[] | undefined,
+  overrideKeys: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (!baseKeys?.length && !overrideKeys?.length) {
+    return overrideKeys ?? baseKeys;
+  }
+  const merged = new Set<string>([...(baseKeys ?? []), ...(overrideKeys ?? [])]);
+  return Array.from(merged);
+}
+`);
 
   return lines.join("\n");
 }
 
-function isObjectSchema(schema) {
-  return schema && schema.type === "object" && schema.properties;
+function analyseSchemaDefinition(name, schema, registry, stack = new Set()) {
+  if (!schema || typeof schema !== "object") return null;
+
+  if (schema.type === "object" || schema.properties || schema.allOf || schema.oneOf || schema.anyOf) {
+    const snakeCaseDateKeys = new Set();
+    let deep = false;
+
+    const visitProperties = (properties, depth) => {
+      if (!properties) return;
+      for (const [propName, propSchema] of Object.entries(properties)) {
+        if (!propSchema || typeof propSchema !== "object") continue;
+        const variants = expandSchemaVariants(propSchema);
+        if (variants.some((variant) => isDateLike(variant, propName)) && depth === 0) {
+          snakeCaseDateKeys.add(propName);
+        }
+
+        for (const variant of variants) {
+          if (!variant || typeof variant !== "object") continue;
+          if (variant.$ref) {
+            deep = true;
+            visitRefOrSchema(variant, depth + 1);
+            continue;
+          }
+          if (variant.type === "object" || variant.properties || variant.additionalProperties) {
+            deep = true;
+            visitSchema(variant, depth + 1);
+            continue;
+          }
+          if (variant.type === "array" && variant.items) {
+            deep = true;
+            if (isDateLike(variant.items, propName) && depth === 0) {
+              snakeCaseDateKeys.add(propName);
+            }
+            visitRefOrSchema(variant.items, depth + 1);
+          }
+        }
+      }
+    };
+
+    const visitRefOrSchema = (schemaLike, depth) => {
+      if (schemaLike.$ref) {
+        const refName = extractRefName(schemaLike.$ref);
+        if (!refName || stack.has(refName)) return;
+        stack.add(refName);
+        const refSchema = registry?.[refName];
+        if (refSchema) {
+          visitSchema(refSchema, depth);
+        }
+        stack.delete(refName);
+      } else {
+        visitSchema(schemaLike, depth);
+      }
+    };
+
+    const visitSchema = (schemaLike, depth) => {
+      if (!schemaLike || typeof schemaLike !== "object") return;
+      if (schemaLike.properties) {
+        visitProperties(schemaLike.properties, depth);
+      }
+      if (schemaLike.allOf) {
+        for (const entry of schemaLike.allOf) {
+          visitRefOrSchema(entry, depth);
+        }
+      }
+      if (schemaLike.oneOf) {
+        for (const entry of schemaLike.oneOf) {
+          visitRefOrSchema(entry, depth);
+        }
+      }
+      if (schemaLike.anyOf) {
+        for (const entry of schemaLike.anyOf) {
+          visitRefOrSchema(entry, depth);
+        }
+      }
+    };
+
+    visitSchema(schema, 0);
+
+    return {
+      snakeCaseDateKeys: Array.from(snakeCaseDateKeys).sort(),
+      deep,
+    };
+  }
+
+  return null;
 }
 
-function toCamel(input) {
-  return input.replace(/[_-](\w)/g, (_, char) => char.toUpperCase());
+function isDateLike(schema, propName = "") {
+  if (!schema || typeof schema !== "object") return false;
+  if (schema.format === "date-time" || schema.format === "date") {
+    return true;
+  }
+  if (schema.type === "string" && /(_at|_time|_date|_on)$/.test(propName)) {
+    return true;
+  }
+  return false;
 }
 
-function inferTsType(def) {
-  if (!def) return "unknown";
-  if (def.$ref) return "unknown";
-  if (def.type === "string") return "string | null";
-  if (def.type === "integer" || def.type === "number") return "number | null";
-  if (def.type === "boolean") return "boolean | null";
-  if (def.type === "array") return "unknown[] | null";
-  if (def.type === "object") return "Record<string, unknown> | null";
-  return "unknown";
+function extractRefName(ref) {
+  const match = /#\/components\/schemas\/(.+)$/.exec(ref ?? "");
+  return match ? match[1] : undefined;
+}
+
+function expandSchemaVariants(schemaLike) {
+  const variants = [schemaLike];
+  if (Array.isArray(schemaLike?.anyOf)) {
+    variants.push(...schemaLike.anyOf);
+  }
+  if (Array.isArray(schemaLike?.oneOf)) {
+    variants.push(...schemaLike.oneOf);
+  }
+  if (Array.isArray(schemaLike?.allOf)) {
+    variants.push(...schemaLike.allOf);
+  }
+  return variants;
 }

@@ -13,4 +13,15 @@ export {
   formatFleetIssueSummary,
   getTopSecurityIssues,
 } from "./security.js";
-export { parseAgentEventStream, type AgentStreamEvent } from "./streaming.js";
+export {
+  parseAgentEventStream,
+  consumeAgentStream,
+  collectAgentStream,
+  isMessageEvent,
+  isToolEvent,
+  isStatusEvent,
+  type AgentStreamEvent,
+  type AgentMessage,
+  type ToolCallDelta,
+  type CompletionUpdate,
+} from "./streaming.js";

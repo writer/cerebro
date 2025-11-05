@@ -31,6 +31,16 @@ export type AgentStreamEvent =
   | { type: "heartbeat"; raw: ServerSentEvent }
   | { type: "unknown"; raw: ServerSentEvent; data: unknown };
 
+export type AgentMessage = Camelize<MessageEventPayload>;
+export type ToolCallDelta = Camelize<ToolEventPayload>;
+
+export interface CompletionUpdate {
+  status: string;
+  detail?: string | null;
+  done: boolean;
+  raw: Camelize<StatusEventPayload>;
+}
+
 export async function* parseAgentEventStream(
   stream: HttpStream,
 ): AsyncGenerator<AgentStreamEvent, void, undefined> {
@@ -95,4 +105,100 @@ export async function* parseAgentEventStream(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+const TERMINAL_STATUSES = new Set([
+  "completed",
+  "complete",
+  "done",
+  "failed",
+  "error",
+  "errored",
+  "canceled",
+  "cancelled",
+]);
+
+function toCompletionUpdate(payload: Camelize<StatusEventPayload>): CompletionUpdate {
+  const status = `${payload.status ?? ""}`;
+  const normalized = status.toLowerCase();
+  return {
+    status,
+    detail: payload.detail ?? null,
+    done: TERMINAL_STATUSES.has(normalized),
+    raw: payload,
+  };
+}
+
+export function isMessageEvent(event: AgentStreamEvent): event is Extract<AgentStreamEvent, { type: "message" }> {
+  return event.type === "message";
+}
+
+export function isToolEvent(event: AgentStreamEvent): event is Extract<AgentStreamEvent, { type: "tool" }> {
+  return event.type === "tool";
+}
+
+export function isStatusEvent(event: AgentStreamEvent): event is Extract<AgentStreamEvent, { type: "status" }> {
+  return event.type === "status";
+}
+
+export interface AgentStreamConsumers {
+  onMessage?(message: AgentMessage, event: Extract<AgentStreamEvent, { type: "message" }>): Promise<void> | void;
+  onTool?(delta: ToolCallDelta, event: Extract<AgentStreamEvent, { type: "tool" }>): Promise<void> | void;
+  onStatus?(update: CompletionUpdate, event: Extract<AgentStreamEvent, { type: "status" }>): Promise<void> | void;
+  onHeartbeat?(event: Extract<AgentStreamEvent, { type: "heartbeat" }>): Promise<void> | void;
+  onUnknown?(event: Extract<AgentStreamEvent, { type: "unknown" }>): Promise<void> | void;
+}
+
+export async function consumeAgentStream(stream: HttpStream, consumers: AgentStreamConsumers = {}): Promise<void> {
+  for await (const event of parseAgentEventStream(stream)) {
+    switch (event.type) {
+      case "message":
+        await consumers.onMessage?.(event.payload, event);
+        break;
+      case "tool":
+        await consumers.onTool?.(event.payload, event);
+        break;
+      case "status":
+        await consumers.onStatus?.(toCompletionUpdate(event.payload), event);
+        break;
+      case "heartbeat":
+        await consumers.onHeartbeat?.(event);
+        break;
+      default:
+        await consumers.onUnknown?.(event);
+    }
+  }
+}
+
+export interface AgentStreamConsumption {
+  messages: AgentMessage[];
+  toolCalls: ToolCallDelta[];
+  completions: CompletionUpdate[];
+  unknown: AgentStreamEvent[];
+}
+
+export async function collectAgentStream(stream: HttpStream): Promise<AgentStreamConsumption> {
+  const result: AgentStreamConsumption = {
+    messages: [],
+    toolCalls: [],
+    completions: [],
+    unknown: [],
+  };
+
+  await consumeAgentStream(stream, {
+    onMessage: async (message) => {
+      result.messages.push(message);
+    },
+    onTool: async (delta) => {
+      result.toolCalls.push(delta);
+    },
+    onStatus: async (update) => {
+      result.completions.push(update);
+    },
+    onUnknown: async (event) => {
+      result.unknown.push(event);
+    },
+  });
+
+  return result;
 }

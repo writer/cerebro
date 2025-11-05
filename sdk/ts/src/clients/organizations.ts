@@ -1,9 +1,12 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
 import type { components } from "../generated/openapi.js";
-import { transformOpenApi } from "../serialization.js";
+import { createSchemaAdapter } from "../generated/adapters/schemaAdapters.js";
+import { parseDate } from "../serialization.js";
 import { OrganizationSummary } from "../types.js";
 
 type OrganizationPayload = components["schemas"]["OrganizationResponse"];
+
+const adaptOrganization = createSchemaAdapter("OrganizationResponse");
 
 export interface ListOrganizationsOptions {
   skip?: number;
@@ -33,24 +36,18 @@ export class OrganizationsClient {
 }
 
 function mapOrganization(payload: OrganizationPayload): OrganizationSummary {
-  return transformOpenApi(payload, (data) => ({
+  return adaptOrganization(payload, (data) => ({
     orgId: data.orgId,
     name: data.name,
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
-  }), {
-    snakeCaseDateKeys: ["created_at"],
-  });
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+  }));
 }
 
-function normalizeDate(value: unknown, fallback?: string | null): Date | null {
-  if (value instanceof Date) return value;
-  if (typeof value === "string") {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
+function coerceDate(value: unknown, fallback?: string | null): Date | null {
+  const parsed = parseDate(value as string | Date | null);
+  if (parsed) return parsed;
   if (!fallback) return null;
-  const parsed = new Date(fallback);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseDate(fallback) ?? new Date(fallback);
 }
 
 export default OrganizationsClient;

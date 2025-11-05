@@ -1,5 +1,6 @@
 import HttpClient, { HttpStream } from "../httpClient.js";
 import type { components } from "../generated/openapi.js";
+import { createSchemaAdapter } from "../generated/adapters/schemaAdapters.js";
 import { CursorPage, PageRequest, iterateCursor } from "../pagination.js";
 import { parseDate, transformOpenApi } from "../serialization.js";
 import {
@@ -35,47 +36,13 @@ type ReviewQueuePendingPayload = components["schemas"]["ReviewQueuePendingSummar
 type ReviewQueuePriorityPayload = components["schemas"]["ReviewQueuePrioritySummary"];
 type ReviewQueueSummaryPayload = components["schemas"]["ReviewQueueSummary"];
 type ReviewTaskPayload = components["schemas"]["ReviewTaskResponse"];
-
-interface ReviewTaskPageResponse extends Record<string, unknown> {
-  items: ReviewTaskPayload[];
-  next_cursor: string | null;
-}
-
-interface SessionPayload extends Record<string, unknown> {
-  session_id: string;
-  org_id: string;
-  agent_type: string;
-  status: string;
-  title: string | null;
-  created_by: string;
-  created_at: string;
-  context: Record<string, unknown>;
-}
-
-interface SessionListResponsePayload extends Record<string, unknown> {
-  limit: number;
-  offset: number;
-  total: number;
-  sessions: SessionPayload[];
-}
-
-interface MessagePayload extends Record<string, unknown> {
-  message_id: string;
-  role: string;
-  content: string;
-  metadata?: Record<string, unknown> | null;
-  timestamp: string;
-}
-
-interface ToolInvocationPayload extends Record<string, unknown> {
-  id: string;
-  session_id?: string;
-  tool_name: string;
-  tool_version?: string;
-  status: string;
-  started_at: string;
-  completed_at: string | null;
-  error_message: string | null;
+type ReviewTaskPageResponse = components["schemas"]["ReviewTaskPageResponse"];
+type SessionPayload = components["schemas"]["SessionResponse"];
+type SessionListResponsePayload = components["schemas"]["SessionListResponse"];
+type MessagePayload = components["schemas"]["MessageResponse"];
+type ToolInvocationPayload = components["schemas"]["ToolInvocationResponse"] & {
+  session_id?: string | null;
+  tool_version?: string | null;
   error_code?: string | null;
   input_data?: Record<string, unknown> | null;
   output_data?: Record<string, unknown> | null;
@@ -83,53 +50,24 @@ interface ToolInvocationPayload extends Record<string, unknown> {
   cel_expression?: string | null;
   cel_result?: boolean | null;
   cel_context?: Record<string, unknown> | null;
-}
+};
+type SessionWithMessagesPayload = components["schemas"]["SessionWithMessagesResponse"];
+type MemoryEntryPayload = components["schemas"]["MemoryEntryResponse"];
+type MemoryHighlightPayload = components["schemas"]["MemoryHighlightResponse"];
+type MemoryStatsPayload = components["schemas"]["MemoryStatsResponse"];
 
-interface SessionWithMessagesPayload extends Record<string, unknown> {
-  session: SessionPayload;
-  message_count: number;
-  messages: MessagePayload[];
-  metrics?: Record<string, unknown>;
-  tool_invocations?: ToolInvocationPayload[];
-}
-
-interface MemoryEntryPayload extends Record<string, unknown> {
-  id: string;
-  summary: string | null;
-  role: string | null;
-  decay_score: number;
-  token_count: number;
-  created_at: string;
-  last_accessed_at: string;
-  scopes: Record<string, unknown>[];
-  scope_labels: string[];
-  metadata: Record<string, unknown>;
-  content?: string | null;
-  ann_selected?: boolean | null;
-  lexical_similarity?: number | null;
-  embedding_similarity?: number | null;
-  combined_similarity?: number | null;
-}
-
-interface MemoryHighlightPayload extends Record<string, unknown> {
-  id: string;
-  summary: string | null;
-  role: string | null;
-  decay_score: number;
-  last_accessed_at: string;
-  scope_labels: string[];
-}
-
-interface MemoryStatsPayload extends Record<string, unknown> {
-  total_entries: number;
-  recent_entries: number;
-  presented_entries: number;
-  average_decay: number;
-  token_total: number;
-  role_distribution: Record<string, number>;
-  scope_distribution: Record<string, number>;
-  top_memories: MemoryHighlightPayload[];
-}
+const adaptReviewTask = createSchemaAdapter("ReviewTaskResponse");
+const adaptReviewNotification = createSchemaAdapter("ReviewNotificationResponse");
+const adaptRuntimeEvent = createSchemaAdapter("RuntimeEventResponse");
+const adaptRuntimeSummary = createSchemaAdapter("RuntimeEventSummaryResponse");
+const adaptSession = createSchemaAdapter("SessionResponse");
+const adaptMessage = createSchemaAdapter("MessageResponse");
+const adaptToolInvocation = createSchemaAdapter("ToolInvocationResponse");
+const adaptMemoryEntry = createSchemaAdapter("MemoryEntryResponse");
+const adaptMemoryHighlight = createSchemaAdapter("MemoryHighlightResponse");
+const adaptPolicySuggestion = createSchemaAdapter("PolicySuggestionResponse");
+const adaptPolicySimulation = createSchemaAdapter("PolicySimulationResponse");
+const adaptPolicySimulationExample = createSchemaAdapter("PolicySimulationExample");
 
 export interface ListReviewTasksPageOptions {
   status?: string;
@@ -293,39 +231,9 @@ interface WorkflowTemplatePayload extends Record<string, unknown> {
   metadata: Record<string, unknown>;
 }
 
-interface PolicySuggestionPayload extends Record<string, unknown> {
-  id: string;
-  tool_name: string;
-  cel_expression: string;
-  support_count: number;
-  reject_count: number;
-  confidence: number;
-  metadata: Record<string, unknown>;
-  last_seen: string;
-}
-
-interface PolicySimulationExamplePayload extends Record<string, unknown> {
-  invocation_id: string;
-  session_id: string;
-  tool_name: string;
-  matched: boolean;
-  status: string;
-  completed_at: string | null;
-  input_data: Record<string, unknown>;
-  output_data: Record<string, unknown> | null;
-  cel_context: Record<string, unknown>;
-  error: string | null;
-  latency_ms: number | null;
-  started_at: string | null;
-}
-
-interface PolicySimulationResponsePayload extends Record<string, unknown> {
-  evaluated_count: number;
-  matched_count: number;
-  mismatched_count: number;
-  error_count: number;
-  examples: PolicySimulationExamplePayload[];
-}
+type PolicySuggestionPayload = components["schemas"]["PolicySuggestionResponse"];
+type PolicySimulationExamplePayload = components["schemas"]["PolicySimulationExample"];
+type PolicySimulationResponsePayload = components["schemas"]["PolicySimulationResponse"];
 
 export class AgentsClient {
   constructor(private readonly http: HttpClient) {}
@@ -372,7 +280,7 @@ export class AgentsClient {
 
     return {
       items: payload.items.map(mapReviewTask),
-      nextCursor: payload.next_cursor,
+      nextCursor: payload.next_cursor ?? null,
     };
   }
 
@@ -748,35 +656,26 @@ function mapPrioritySummary(entry: ReviewQueuePriorityPayload): ReviewQueuePrior
 }
 
 function mapReviewTask(payload: ReviewTaskPayload): ReviewTaskRecord {
-  return transformOpenApi(payload, (data) => {
-    const createdAt = normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at);
-    const dueAt = normalizeDate(data.dueAt, payload.due_at);
-    const resolvedAt = normalizeDate(data.resolvedAt, payload.resolved_at);
-
-    return {
-      taskId: data.id,
-      sessionId: data.sessionId,
-      orgId: data.orgId,
-      status: data.status,
-      title: data.title,
-      summary: data.summary,
-      payload: data.payload ?? {},
-      promotionTarget: data.promotionTarget,
-      priority: data.priority,
-      dueAt,
-      escalatedTo: data.escalatedTo,
-      notificationChannel: data.notificationChannel,
-      ticketReference: data.ticketReference,
-      createdBy: data.createdBy,
-      createdAt,
-      resolvedBy: data.resolvedBy,
-      resolvedAt,
-      resolutionNotes: data.resolutionNotes,
-    } satisfies ReviewTaskRecord;
-  }, {
-    snakeCaseDateKeys: ["due_at", "created_at", "resolved_at"],
-    deep: true,
-  });
+  return adaptReviewTask(payload, (data) => ({
+    taskId: data.id,
+    sessionId: data.sessionId,
+    orgId: data.orgId,
+    status: data.status,
+    title: data.title,
+    summary: data.summary,
+    payload: data.payload ?? {},
+    promotionTarget: data.promotionTarget !== undefined ? data.promotionTarget : null,
+    priority: data.priority !== undefined ? data.priority : null,
+    dueAt: coerceDate(data.dueAt, payload.due_at),
+    escalatedTo: data.escalatedTo !== undefined ? data.escalatedTo : null,
+    notificationChannel: data.notificationChannel !== undefined ? data.notificationChannel : null,
+    ticketReference: data.ticketReference !== undefined ? data.ticketReference : null,
+    createdBy: data.createdBy,
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    resolvedBy: data.resolvedBy !== undefined ? data.resolvedBy : null,
+    resolvedAt: coerceDate(data.resolvedAt, payload.resolved_at),
+    resolutionNotes: data.resolutionNotes !== undefined ? data.resolutionNotes : null,
+  }));
 }
 
 function mapComment(payload: CommentPayload): ReviewTaskCommentRecord {
@@ -785,8 +684,8 @@ function mapComment(payload: CommentPayload): ReviewTaskCommentRecord {
     taskId: data.taskId,
     author: data.author,
     content: data.content,
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
-    updatedAt: normalizeDate(data.updatedAt, payload.updated_at),
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    updatedAt: coerceDate(data.updatedAt, payload.updated_at),
     metadata: data.metadata ?? {},
   }), {
     snakeCaseDateKeys: ["created_at", "updated_at"],
@@ -803,7 +702,7 @@ function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
     fieldName: data.fieldName,
     oldValue: data.oldValue,
     newValue: data.newValue,
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
     metadata: data.metadata,
   }), {
     snakeCaseDateKeys: ["created_at"],
@@ -812,42 +711,34 @@ function mapHistory(payload: HistoryPayload): ReviewTaskHistoryRecord {
 }
 
 function mapNotification(payload: ReviewNotificationPayload): ReviewNotificationRecord {
-  return transformOpenApi(payload, (data) => ({
+  return adaptReviewNotification(payload, (data) => ({
     notificationId: data.id,
     taskId: data.taskId,
     orgId: data.orgId,
     channel: data.channel,
     status: data.status,
     payload: data.payload ?? {},
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
-    deliveredAt: normalizeDate(data.deliveredAt, payload.delivered_at),
-  }), {
-    snakeCaseDateKeys: ["created_at", "delivered_at"],
-    deep: true,
-  });
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    deliveredAt: coerceDate(data.deliveredAt, payload.delivered_at),
+  }));
 }
 
 function mapRuntimeEvent(payload: RuntimeEventPayload): RuntimeEventRecord {
-  return transformOpenApi(payload, (data) => ({
+  return adaptRuntimeEvent(payload, (data) => ({
     eventId: data.id,
     eventType: data.eventType,
     payload: data.payload ?? {},
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
-  }), {
-    snakeCaseDateKeys: ["created_at"],
-    deep: true,
-  });
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+  }));
 }
 
 function mapRuntimeSummary(payload: RuntimeEventSummaryPayload): RuntimeEventSummaryRecord {
-  return transformOpenApi(payload, (data) => ({
+  return adaptRuntimeSummary(payload, (data) => ({
     eventType: data.eventType,
     eventCount: data.eventCount,
-    firstSeen: normalizeDate(data.firstSeen, payload.first_seen),
-    lastSeen: normalizeDate(data.lastSeen, payload.last_seen),
-  }), {
-    snakeCaseDateKeys: ["first_seen", "last_seen"],
-  });
+    firstSeen: coerceDate(data.firstSeen, payload.first_seen),
+    lastSeen: coerceDate(data.lastSeen, payload.last_seen),
+  }));
 }
 
 function mapSlaSummary(payload: SlaSummaryPayload): ReviewTaskSlaSummary {
@@ -869,8 +760,8 @@ function mapSlaStatus(payload: SlaStatusPayload): ReviewTaskSlaStatus {
     percentageElapsed: data.percentageElapsed,
     isBreached: data.isBreached,
     isAtRisk: data.isAtRisk,
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
-    dueAt: normalizeDate(data.dueAt, payload.due_at),
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    dueAt: coerceDate(data.dueAt, payload.due_at),
   }), {
     snakeCaseDateKeys: ["created_at", "due_at"],
   });
@@ -900,67 +791,70 @@ function mapWorkflowStep(payload: WorkflowStepPayload): WorkflowTemplateStepReco
 }
 
 function mapSession(payload: SessionPayload): AgentSessionRecord {
-  return transformOpenApi(payload, (data) => ({
+  return adaptSession(payload, (data) => ({
     sessionId: data.sessionId,
     orgId: data.orgId,
     agentType: data.agentType,
     status: data.status,
     title: data.title,
     createdBy: data.createdBy,
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
     context: data.context ?? {},
-  }), {
-    snakeCaseDateKeys: ["created_at"],
-    deep: true,
-  });
+  }));
 }
 
 function mapMessage(payload: MessagePayload): AgentMessageRecord {
-  return transformOpenApi(payload, (data) => ({
+  return adaptMessage(payload, (data) => ({
     messageId: data.messageId,
     role: data.role,
     content: data.content,
     metadata: data.metadata ?? {},
-    createdAt: normalizeDate(data.timestamp, payload.timestamp) ?? new Date(payload.timestamp),
-  }), {
-    snakeCaseDateKeys: ["timestamp"],
-    deep: true,
-  });
+    createdAt: coerceDate(data.timestamp, payload.timestamp) ?? new Date(payload.timestamp),
+  }));
 }
 
 function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord {
-  return transformOpenApi(payload, (data) => ({
+  const sessionId = typeof payload.session_id === "string" ? payload.session_id : undefined;
+  const toolVersion = typeof payload.tool_version === "string" ? payload.tool_version : undefined;
+  const errorCode = payload.error_code ?? null;
+  const inputData = payload.input_data ?? undefined;
+  const outputData = payload.output_data ?? undefined;
+  const celPolicyKey = payload.cel_policy_key ?? null;
+  const celExpression = payload.cel_expression ?? null;
+  const celResult = payload.cel_result ?? null;
+  const celContext = payload.cel_context ?? null;
+
+  return adaptToolInvocation(payload, (data) => ({
     invocationId: data.id,
-    sessionId: data.sessionId,
+    sessionId,
     toolName: data.toolName,
-    toolVersion: data.toolVersion,
+    toolVersion,
     status: data.status,
-    startedAt: normalizeDate(data.startedAt, payload.started_at) ?? new Date(payload.started_at),
-    completedAt: normalizeDate(data.completedAt, payload.completed_at),
-    errorMessage: data.errorMessage ?? null,
-    errorCode: data.errorCode ?? null,
-    inputData: data.inputData ?? undefined,
-    outputData: data.outputData ?? undefined,
-    celPolicyKey: data.celPolicyKey ?? null,
-    celExpression: data.celExpression ?? null,
-    celResult: data.celResult ?? null,
-    celContext: data.celContext ?? null,
-  }), {
-    snakeCaseDateKeys: ["started_at", "completed_at"],
-    deep: true,
-  });
+    startedAt: coerceDate(data.startedAt, payload.started_at) ?? new Date(payload.started_at),
+    completedAt: coerceDate(data.completedAt, payload.completed_at),
+    errorMessage: data.errorMessage ?? payload.error_message ?? null,
+    errorCode,
+    inputData,
+    outputData,
+    celPolicyKey,
+    celExpression,
+    celResult,
+    celContext,
+  }));
 }
 
 function mapMemoryEntry(payload: MemoryEntryPayload): AgentMemoryRecord {
-  return transformOpenApi(payload, (data) => ({
+  return adaptMemoryEntry(payload, (data) => ({
     entryId: data.id,
     summary: data.summary,
     role: data.role,
     decayScore: data.decayScore,
     tokenCount: data.tokenCount,
-    createdAt: normalizeDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
-    lastAccessedAt: normalizeDate(data.lastAccessedAt, payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
-    scopes: Array.isArray(data.scopes) ? data.scopes.map((item) => ({ ...(item as Record<string, unknown>) })) : [],
+    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+    lastAccessedAt: coerceDate(data.lastAccessedAt, payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    scopes: Array.isArray(data.scopes)
+      ? data.scopes.map((item) => ({ ...(item as Record<string, unknown>) }))
+      : [],
     scopeLabels: Array.isArray(data.scopeLabels) ? [...data.scopeLabels] : [],
     metadata: data.metadata ?? {},
     content: data.content ?? null,
@@ -968,24 +862,18 @@ function mapMemoryEntry(payload: MemoryEntryPayload): AgentMemoryRecord {
     lexicalSimilarity: data.lexicalSimilarity ?? null,
     embeddingSimilarity: data.embeddingSimilarity ?? null,
     combinedSimilarity: data.combinedSimilarity ?? null,
-  }), {
-    snakeCaseDateKeys: ["created_at", "last_accessed_at"],
-    deep: true,
-  });
+  }));
 }
 
 function mapMemoryHighlight(payload: MemoryHighlightPayload): AgentMemoryHighlight {
-  return transformOpenApi(payload, (data) => ({
+  return adaptMemoryHighlight(payload, (data) => ({
     entryId: data.id,
     summary: data.summary,
     role: data.role,
     decayScore: data.decayScore,
-    lastAccessedAt: normalizeDate(data.lastAccessedAt, payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
+    lastAccessedAt: coerceDate(data.lastAccessedAt, payload.last_accessed_at) ?? new Date(payload.last_accessed_at),
     scopeLabels: Array.isArray(data.scopeLabels) ? [...data.scopeLabels] : [],
-  }), {
-    snakeCaseDateKeys: ["last_accessed_at"],
-    deep: true,
-  });
+  }));
 }
 
 function mapMemoryStats(payload: MemoryStatsPayload): AgentMemoryStats {
@@ -1002,29 +890,29 @@ function mapMemoryStats(payload: MemoryStatsPayload): AgentMemoryStats {
 }
 
 function mapPolicySuggestion(payload: PolicySuggestionPayload): PolicySuggestionRecord {
-  return {
-    suggestionId: payload.id,
-    toolName: payload.tool_name,
-    celExpression: payload.cel_expression,
-    supportCount: payload.support_count,
-    rejectCount: payload.reject_count,
-    confidence: payload.confidence,
-    metadata: payload.metadata ?? {},
-    lastSeen: parseDate(payload.last_seen) ?? new Date(payload.last_seen),
-  };
+  return adaptPolicySuggestion(payload, (data) => ({
+    suggestionId: data.id,
+    toolName: data.toolName,
+    celExpression: data.celExpression,
+    supportCount: data.supportCount,
+    rejectCount: data.rejectCount,
+    confidence: data.confidence,
+    metadata: data.metadata ?? {},
+    lastSeen: coerceDate(data.lastSeen, payload.last_seen) ?? new Date(payload.last_seen),
+  }));
 }
 
 function mapPolicySimulation(payload: PolicySimulationResponsePayload): PolicySimulationResultRecord {
-  return {
-    evaluatedCount: payload.evaluated_count,
-    matchedCount: payload.matched_count,
-    mismatchedCount: payload.mismatched_count,
-    errorCount: payload.error_count,
+  return adaptPolicySimulation(payload, (data) => ({
+    evaluatedCount: data.evaluatedCount,
+    matchedCount: data.matchedCount,
+    mismatchedCount: data.mismatchedCount,
+    errorCount: data.errorCount,
     examples: payload.examples.map(mapPolicySimulationExample),
-  };
+  }));
 }
 
-function normalizeDate(value: unknown, fallback?: string | null): Date | null {
+function coerceDate(value: unknown, fallback?: string | null): Date | null {
   const primary = parseDate(value as string | Date | null);
   if (primary) return primary;
   if (!fallback) return null;
@@ -1032,20 +920,20 @@ function normalizeDate(value: unknown, fallback?: string | null): Date | null {
 }
 
 function mapPolicySimulationExample(payload: PolicySimulationExamplePayload): PolicySimulationExampleRecord {
-  return {
-    invocationId: payload.invocation_id,
-    sessionId: payload.session_id,
-    toolName: payload.tool_name,
-    matched: payload.matched,
-    status: payload.status,
-    startedAt: parseDate(payload.started_at),
-    completedAt: parseDate(payload.completed_at),
-    inputData: payload.input_data ?? {},
-    outputData: payload.output_data ?? null,
-    celContext: payload.cel_context ?? {},
-    error: payload.error,
-    latencyMs: payload.latency_ms ?? null,
-  };
+  return adaptPolicySimulationExample(payload, (data) => ({
+    invocationId: data.invocationId,
+    sessionId: data.sessionId,
+    toolName: data.toolName,
+    matched: data.matched,
+    status: data.status,
+    startedAt: coerceDate(data.startedAt, payload.started_at),
+    completedAt: coerceDate(data.completedAt, payload.completed_at),
+    inputData: data.inputData ?? {},
+    outputData: data.outputData ?? null,
+    celContext: data.celContext ?? {},
+    error: data.error,
+    latencyMs: data.latencyMs ?? null,
+  }));
 }
 
 export default AgentsClient;

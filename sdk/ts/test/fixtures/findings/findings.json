@@ -1,0 +1,22 @@
+[
+  {
+    "finding_id": "finding-1",
+    "org_id": "org-1",
+    "account_id": "acct-1",
+    "provider": "aws",
+    "rule_id": "RULE_001",
+    "rule_version": 3,
+    "resource_id": "res-123",
+    "principal_id": "user-42",
+    "first_seen": "2024-10-01T08:30:00Z",
+    "last_seen": "2024-10-26T09:45:00Z",
+    "status": "open",
+    "severity": "high",
+    "fingerprint": "abc123",
+    "title": "S3 bucket public",
+    "summary": "Bucket allows public read access",
+    "evidence": {
+      "bucket": "logs"
+    }
+  }
+]

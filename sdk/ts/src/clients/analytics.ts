@@ -53,8 +53,8 @@ export class AnalyticsClient {
 function mapRuntimeHealthRecord(entry: RuntimeHealthPayload): RuntimeHealthRecord {
   return transformOpenApi(entry, (data) => ({
     runtime: data.runtime,
-    windowStart: normalizeDate(data.windowStart, entry.window_start) ?? new Date(entry.window_start),
-    windowEnd: normalizeDate(data.windowEnd, entry.window_end) ?? new Date(entry.window_end),
+    windowStart: coerceDate(data.windowStart, entry.window_start) ?? new Date(entry.window_start),
+    windowEnd: coerceDate(data.windowEnd, entry.window_end) ?? new Date(entry.window_end),
     events: mapRuntimeEventCollection(entry.events),
     warnings: mapRuntimeEventCollection(entry.warnings),
     latestMetadata: entry.latest_metadata ? mapRuntimeMetadata(entry.latest_metadata) : null,
@@ -68,7 +68,7 @@ function mapRuntimeEventCollection(source: Record<string, RuntimeEventAggregateP
   for (const [key, value] of Object.entries(source)) {
     target[key] = transformOpenApi(value, (data) => ({
       count: data.count,
-      lastSeen: normalizeDate(data.lastSeen, value.last_seen),
+      lastSeen: coerceDate(data.lastSeen, value.last_seen),
     }), {
       snakeCaseDateKeys: ["last_seen"],
     });
@@ -79,14 +79,14 @@ function mapRuntimeEventCollection(source: Record<string, RuntimeEventAggregateP
 function mapRuntimeMetadata(payload: RuntimeMetadataPayload): RuntimeMetadataSnapshot {
   return transformOpenApi(payload, (data) => ({
     payload: data.payload,
-    capturedAt: normalizeDate(data.capturedAt, payload.captured_at) ?? new Date(payload.captured_at),
+    capturedAt: coerceDate(data.capturedAt, payload.captured_at) ?? new Date(payload.captured_at),
   }), {
     snakeCaseDateKeys: ["captured_at"],
     deep: true,
   });
 }
 
-function normalizeDate(value: unknown, fallback?: string | null): Date | null {
+function coerceDate(value: unknown, fallback?: string | null): Date | null {
   const parsed = parseDate(value as string | Date | null);
   if (parsed) return parsed;
   if (!fallback) return null;

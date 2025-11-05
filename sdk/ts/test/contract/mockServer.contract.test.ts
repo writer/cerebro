@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { CerebroSDK } from "../../src/sdk";
-import { parseAgentEventStream } from "../../src/agents/streaming";
+import { collectAgentStream } from "../../src/agents/streaming";
 
 const fixturesDir = path.resolve(__dirname, "../fixtures");
 
@@ -26,6 +26,16 @@ describe("mock server harness", () => {
         return;
       }
 
+      if (req.method === "GET" && requestUrl.pathname === "/api/v1/findings") {
+        await respondWithJson(res, "findings/findings.json");
+        return;
+      }
+
+      if (req.method === "GET" && requestUrl.pathname === "/api/v1/organizations") {
+        await respondWithJson(res, "organizations/organizations.json");
+        return;
+      }
+
       if (req.method === "POST" && requestUrl.pathname.startsWith("/api/v1/agents/sessions/")) {
         const body = await readBody(req);
         const wantsStream = body.stream === true;
@@ -38,6 +48,8 @@ describe("mock server harness", () => {
           });
           res.write("event: message\n");
           res.write("data: {\"message_id\":\"msg-1\",\"role\":\"assistant\",\"content\":\"Hello\"}\n\n");
+          res.write("event: tool\n");
+          res.write("data: {\"invocation_id\":\"tool-1\",\"status\":\"completed\"}\n\n");
           res.write("event: status\n");
           res.write("data: {\"status\":\"completed\"}\n\n");
           res.end();
@@ -90,6 +102,16 @@ describe("mock server harness", () => {
     expect(coverage?.integration).toBe("github");
     expect(coverage?.coverageRatio).toBeCloseTo(0.8);
 
+    const findings = await sdk.findings.list();
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.findingId).toBe("finding-1");
+    expect(findings[0]?.firstSeen?.toISOString()).toBe("2024-10-01T08:30:00.000Z");
+
+    const organizations = await sdk.organizations.list();
+    expect(organizations).toHaveLength(1);
+    expect(organizations[0]?.name).toBe("Acme Corp");
+    expect(organizations[0]?.createdAt?.toISOString()).toBe("2023-07-04T12:00:00.000Z");
+
     const streamResult = await sdk.agents.sendSessionMessage("session-123", {
       content: "Hi",
       stream: true,
@@ -99,15 +121,12 @@ describe("mock server harness", () => {
     const stream = streamResult.kind === "stream" ? streamResult.stream : undefined;
     if (!stream) throw new Error("Expected stream handle");
 
-    const events = [];
-    for await (const evt of parseAgentEventStream(stream)) {
-      events.push(evt);
-    }
-
-    expect(events).toHaveLength(2);
-    expect(events[0]).toMatchObject({ type: "message" });
-    expect(events[0].type === "message" && events[0].payload.content).toBe("Hello");
-    expect(events[1]).toMatchObject({ type: "status" });
+    const transcript = await collectAgentStream(stream);
+    expect(transcript.messages).toHaveLength(1);
+    expect(transcript.messages[0]?.content).toBe("Hello");
+    expect(transcript.toolCalls).toHaveLength(1);
+    expect(transcript.toolCalls[0]?.invocationId).toBe("tool-1");
+    expect(transcript.completions.some((entry) => entry.done)).toBe(true);
 
     await stream.cancel();
   });

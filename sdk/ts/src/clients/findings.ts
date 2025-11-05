@@ -1,11 +1,14 @@
 import HttpClient, { RequestOptions } from "../httpClient.js";
 import type { components } from "../generated/openapi.js";
+import { createSchemaAdapter } from "../generated/adapters/schemaAdapters.js";
 import { CursorPage, PageRequest } from "../pagination.js";
-import { transformOpenApi } from "../serialization.js";
+import { parseDate } from "../serialization.js";
 import { FindingRecord } from "../types.js";
 
 type FindingPayload = components["schemas"]["FindingResponse"];
 type FindingPageResponse = components["schemas"]["FindingPageResponse"];
+
+const adaptFinding = createSchemaAdapter("FindingResponse");
 
 export interface ListFindingsOptions {
   orgId?: string;
@@ -86,7 +89,7 @@ export class FindingsClient {
 }
 
 function mapFinding(payload: FindingPayload): FindingRecord {
-  return transformOpenApi(payload, (data) => ({
+  return adaptFinding(payload, (data) => ({
     findingId: data.findingId,
     orgId: data.orgId,
     accountId: data.accountId,
@@ -95,24 +98,22 @@ function mapFinding(payload: FindingPayload): FindingRecord {
     ruleVersion: data.ruleVersion,
     resourceId: data.resourceId,
     principalId: data.principalId,
-    firstSeen: parseDate(data.firstSeen) ?? new Date(payload.first_seen),
-    lastSeen: parseDate(data.lastSeen) ?? new Date(payload.last_seen),
+    firstSeen: coerceDate(data.firstSeen, payload.first_seen) ?? new Date(payload.first_seen),
+    lastSeen: coerceDate(data.lastSeen, payload.last_seen) ?? new Date(payload.last_seen),
     status: data.status,
     severity: data.severity,
     fingerprint: data.fingerprint,
     title: data.title,
     summary: data.summary,
     evidence: data.evidence,
-  }), {
-    snakeCaseDateKeys: ["first_seen", "last_seen"],
-    deep: true,
-  });
+  }));
 }
 
-function parseDate(value: unknown): Date | null {
-  if (typeof value !== "string") return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+function coerceDate(value: unknown, fallback?: string | null): Date | null {
+  const parsed = parseDate(value as string | Date | null);
+  if (parsed) return parsed;
+  if (!fallback) return null;
+  return parseDate(fallback) ?? new Date(fallback);
 }
 
 export default FindingsClient;
