@@ -22,7 +22,7 @@ Cerebro is Writer's internal security data platform. It tracks cloud and SaaS co
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11+ (repo pins 3.11.8 via `.python-version`)
 - PostgreSQL 14+
 - Redis 6+
 - Optional: Anthropic and/or OpenAI API keys for agent runtimes
@@ -30,17 +30,26 @@ Cerebro is Writer's internal security data platform. It tracks cloud and SaaS co
 ### Local Setup
 
 ```bash
-# Install uv package manager
+# Install uv package manager (required for all make targets)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Start API, workers, and supporting services
+# (Optional) Align your local interpreter with repo default
+pyenv install --skip-existing 3.11.8
+pyenv local 3.11.8
+
+# Bootstrap dependencies, copy .env, run migrations, and seed sample data
 make dev
 
-# Apply database migrations
-make db-migrate
+# Skip seed data if desired
+LOAD_DEV_DATA=0 make dev
 
-# Seed sample data (optional)
-make dev-data
+# Start Postgres + Redis locally
+make dev-infra
+
+# Launch API, Celery worker, and beat; add frontend/Flower via env flags
+make dev-stack
+DEV_STACK_INCLUDE_FRONTEND=1 make dev-stack
+DEV_STACK_INCLUDE_FLOWER=1 make dev-stack
 
 # Containerised alternative
 make docker-up

@@ -3,6 +3,34 @@ SHELL := /bin/bash
 # Environment
 PYTHON := python3
 UV := uv
+LOAD_DEV_DATA ?= 1
+DEV_STACK_INCLUDE_FRONTEND ?= 0
+DEV_STACK_INCLUDE_FLOWER ?= 0
+
+DEV_STACK_ARGS :=
+ifeq ($(DEV_STACK_INCLUDE_FRONTEND),1)
+DEV_STACK_ARGS += --frontend
+endif
+ifeq ($(DEV_STACK_INCLUDE_FLOWER),1)
+DEV_STACK_ARGS += --flower
+endif
+
+.PHONY: ensure-uv
+ensure-uv:
+	@command -v $(UV) >/dev/null 2>&1 || { \
+		echo "❌ uv command not found"; \
+		echo "Install uv with: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+		exit 1; \
+	}
+
+.PHONY: ensure-env
+ensure-env:
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "📄 Created .env from .env.example"; \
+	else \
+		echo "ℹ️  .env already exists; skipping copy"; \
+	fi
 
 .PHONY: help
 help: ## Show this help message
@@ -10,24 +38,37 @@ help: ## Show this help message
 
 # Development
 .PHONY: install
-install: ## Install dependencies with UV
+install: ensure-uv ## Install dependencies with UV
 	$(UV) sync
 
 .PHONY: install-dev
-install-dev: ## Install dependencies with dev extras
+install-dev: ensure-uv ## Install dependencies with dev extras
 	$(UV) sync --extra dev
+	$(UV) run pre-commit install
 
 .PHONY: dev
-dev: install-dev ## Setup development environment
-	@echo "🚀 Setting up Cerebro development environment..."
-	cp .env.example .env
-	@echo "📝 Edit .env file with your configuration"
-	@echo "🗄️  Start PostgreSQL and Redis"
-	@echo "📊 Run: make db-migrate && make dev-data && make serve"
+dev: install-dev ensure-env ## Setup development environment
+	@echo "🚀 Cerebro development environment bootstrap"
+	@$(MAKE) db-migrate
+	@if [ "$(LOAD_DEV_DATA)" != "0" ]; then \
+		$(MAKE) dev-data; \
+	else \
+		echo "⏭️  Skipping dev sample data (LOAD_DEV_DATA=$(LOAD_DEV_DATA))"; \
+	fi
+	@echo "🗄️  Need databases? Run: make dev-infra"
+	@echo "▶️  Launch services with: make dev-stack"
 
 .PHONY: serve
 serve: ## Start development API server
 	$(UV) run uvicorn cerebro.api.main:app --reload --host 0.0.0.0 --port 8000
+.PHONY: dev-infra
+dev-infra: ## Start local PostgreSQL and Redis for development
+	docker-compose up -d postgres redis
+
+.PHONY: dev-stack
+dev-stack: ## Run API, Celery, and optional services concurrently (set DEV_STACK_INCLUDE_FRONTEND=1 for frontend, DEV_STACK_INCLUDE_FLOWER=1 for Flower)
+	$(UV) run python scripts/dev_stack.py $(DEV_STACK_ARGS)
+
 
 .PHONY: worker
 worker: ## Start Celery worker
