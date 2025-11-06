@@ -11,6 +11,7 @@ from .analytics_tasks import (
 from .self_play_tasks import run_self_play_batch
 from .integration_tasks import sync_kandji, sync_sentinelone
 from .integration_monitor import monitor_sync_health
+from .agent_self_service_tasks import generate_self_service_question_report
 
 __all__ = [
     "celery_app",
@@ -24,4 +25,5 @@ __all__ = [
     "sync_sentinelone",
     "sync_kandji",
     "monitor_sync_health",
+    "generate_self_service_question_report",
 ]

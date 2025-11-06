@@ -28,6 +28,7 @@ celery_kwargs = {
         'cerebro.tasks.runtime_monitor',
         'cerebro.tasks.serval_tasks',
         'cerebro.tasks.compliance_tasks',
+        'cerebro.tasks.agent_self_service_tasks',
     ],
 }
 
@@ -40,6 +41,7 @@ task_routes = {
     'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
     'cerebro.tasks.analytics_tasks.*': {'queue': 'analytics'},
     'cerebro.tasks.runtime_monitor.*': {'queue': 'analytics'},
+    'cerebro.tasks.agent_self_service.*': {'queue': 'analytics'},
     'cerebro.tasks.integration.*': {'queue': 'integrations'},
     'process_email_digests': {'queue': 'notifications'},
 }
@@ -100,6 +102,11 @@ beat_schedule = {
     'scan-pre-audit-schedules-daily': {
         'task': 'cerebro.tasks.compliance.scan_due_pre_audit_schedules',
         'schedule': crontab(hour=5, minute=0),
+        'options': {'queue': 'analytics'},
+    },
+    'self-service-question-report-monthly': {
+        'task': 'cerebro.tasks.agent_self_service.generate_monthly_report',
+        'schedule': crontab(hour=7, minute=0, day_of_month='1'),
         'options': {'queue': 'analytics'},
     },
 }

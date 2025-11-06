@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Float,
     String,
     Text,
     Enum as SqlEnum,
@@ -765,6 +766,75 @@ class AgentRuntimeEvent(Base):
         nullable=False,
         server_default=func.now(),
         index=True,
+    )
+
+
+class AgentSelfServiceQuestion(Base):
+    """Log entry for self-service security questions answered by agents."""
+
+    __tablename__ = "agent_self_service_questions"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("agent_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    question_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    question_intent: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    handler_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    answer_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    evidence: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
+    details: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+
+
+class AgentSelfServiceReport(Base):
+    """Monthly summary of self-service question activity for documentation planning."""
+
+    __tablename__ = "agent_self_service_reports"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(Organization.__table__.c.org_id, ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    total_questions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    question_breakdown: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
+    recommendations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 
