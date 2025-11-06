@@ -72,10 +72,18 @@ export {
   summarizeVendorPortfolio,
   assessCustomerHealth,
   summarizeCustomerPortfolio,
+  computeVendorPortfolioTrend,
+  computeCustomerHealthTrend,
   type VendorHealthAssessment,
   type VendorPortfolioSummary,
   type CustomerHealthAssessment,
   type CustomerPortfolioSummary,
+  type VendorPortfolioSnapshot,
+  type VendorTrendPoint,
+  type VendorTrendSummary,
+  type CustomerHealthSnapshot,
+  type CustomerTrendPoint,
+  type CustomerTrendSummary,
 } from "./securityCenter/analytics.js";
 export {
   UsersClient,

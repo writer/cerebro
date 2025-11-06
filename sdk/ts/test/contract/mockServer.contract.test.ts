@@ -177,12 +177,22 @@ describe("mock server harness", () => {
     const vendorAssessment = assessVendorHealth(vendorList.vendors[0]!);
     expect(vendorAssessment.vendorId).toBe("vendor-acme");
 
+    const vendorSummaryViaClient = await sdk.securityCenter.summarizeVendorPortfolio("org-1");
+    expect(vendorSummaryViaClient.total).toBe(2);
+    const vendorAssessmentsViaClient = await sdk.securityCenter.assessVendorHealth("org-1");
+    expect(vendorAssessmentsViaClient[0]?.vendorId).toBeDefined();
+
     const customerList = await sdk.securityCenter.listCustomers("org-1");
     expect(customerList.customers).toHaveLength(2);
     const customerPortfolio = summarizeCustomerPortfolio(customerList.customers);
     expect(customerPortfolio.total).toBe(2);
     const customerAssessment = assessCustomerHealth(customerList.customers[0]!);
     expect(customerAssessment.customerId).toBe("customer-alpha");
+
+    const customerSummaryViaClient = await sdk.securityCenter.summarizeCustomerPortfolio("org-1");
+    expect(customerSummaryViaClient.total).toBe(2);
+    const customerAssessmentsViaClient = await sdk.securityCenter.assessCustomerHealth("org-1");
+    expect(customerAssessmentsViaClient).toHaveLength(2);
 
     const streamResult = await sdk.agents.sendSessionMessage("session-123", {
       content: "Hi",

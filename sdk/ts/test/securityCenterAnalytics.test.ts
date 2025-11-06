@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   assessCustomerHealth,
   assessVendorHealth,
+  computeCustomerHealthTrend,
+  computeVendorPortfolioTrend,
   summarizeCustomerPortfolio,
   summarizeVendorPortfolio,
 } from "../src/securityCenter/analytics";
@@ -96,6 +98,28 @@ describe("security center analytics", () => {
     expect(summary.atRiskCount).toBe(1);
     expect(summary.averageHealthScore).toBeCloseTo((0.85 + 0.55) / 2);
     expect(summary.averageChurnRisk).toBeCloseTo((0.2 + 0.6) / 2);
+  });
+
+  it("computes vendor portfolio trend", () => {
+    const trend = computeVendorPortfolioTrend([
+      { timestamp: new Date(REFERENCE_NOW.getTime() - 7 * DAY_MS), vendors: [overdueVendor] },
+      { timestamp: REFERENCE_NOW, vendors: [vendor, overdueVendor] },
+    ]);
+
+    expect(trend.points).toHaveLength(2);
+    expect(trend.residualRiskChange).toBeLessThan(0);
+    expect(trend.direction).toBe("improving");
+  });
+
+  it("computes customer health trend", () => {
+    const trend = computeCustomerHealthTrend([
+      { timestamp: new Date(REFERENCE_NOW.getTime() - 30 * DAY_MS), customers: [atRiskCustomer] },
+      { timestamp: REFERENCE_NOW, customers: [customer, atRiskCustomer] },
+    ]);
+
+    expect(trend.points).toHaveLength(2);
+    expect(trend.healthScoreChange).toBeGreaterThan(0);
+    expect(trend.direction).toBe("improving");
   });
 });
 

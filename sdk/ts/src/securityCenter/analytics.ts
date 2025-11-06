@@ -44,6 +44,44 @@ export interface CustomerPortfolioSummary {
   atRiskCount: number;
 }
 
+export interface VendorPortfolioSnapshot {
+  timestamp: Date;
+  vendors: SecurityCenterVendorInsight[];
+}
+
+export interface VendorTrendPoint {
+  timestamp: Date;
+  total: number;
+  overdueReviews: number;
+  dueSoonReviews: number;
+  averageResidualRisk: number | null;
+}
+
+export interface VendorTrendSummary {
+  points: VendorTrendPoint[];
+  residualRiskChange: number | null;
+  direction: "improving" | "declining" | "steady" | null;
+}
+
+export interface CustomerHealthSnapshot {
+  timestamp: Date;
+  customers: SecurityCenterCustomerInsight[];
+}
+
+export interface CustomerTrendPoint {
+  timestamp: Date;
+  total: number;
+  atRiskCount: number;
+  averageHealthScore: number | null;
+  averageChurnRisk: number | null;
+}
+
+export interface CustomerTrendSummary {
+  points: CustomerTrendPoint[];
+  healthScoreChange: number | null;
+  direction: "improving" | "declining" | "steady" | null;
+}
+
 const REVIEW_DUE_SOON_THRESHOLD_DAYS = 30;
 
 export function assessVendorHealth(vendor: SecurityCenterVendorInsight, now = new Date()): VendorHealthAssessment {
@@ -177,6 +215,52 @@ export function summarizeCustomerPortfolio(customers: SecurityCenterCustomerInsi
   } satisfies CustomerPortfolioSummary;
 }
 
+export function computeVendorPortfolioTrend(snapshots: VendorPortfolioSnapshot[]): VendorTrendSummary {
+  const points = snapshots
+    .map((snapshot) => ({ ...snapshot }))
+    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    .map(({ timestamp, vendors }) => {
+      const summary = summarizeVendorPortfolio(vendors, timestamp);
+      return {
+        timestamp,
+        total: summary.total,
+        overdueReviews: summary.overdueReviews,
+        dueSoonReviews: summary.dueSoonReviews,
+        averageResidualRisk: summary.averageResidualRisk,
+      } satisfies VendorTrendPoint;
+    });
+
+  const residualRiskChange = computeChange(points.map((point) => point.averageResidualRisk));
+  return {
+    points,
+    residualRiskChange,
+    direction: deriveDirection(residualRiskChange, "lower_is_better"),
+  } satisfies VendorTrendSummary;
+}
+
+export function computeCustomerHealthTrend(snapshots: CustomerHealthSnapshot[]): CustomerTrendSummary {
+  const points = snapshots
+    .map((snapshot) => ({ ...snapshot }))
+    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    .map(({ timestamp, customers }) => {
+      const summary = summarizeCustomerPortfolio(customers, timestamp);
+      return {
+        timestamp,
+        total: summary.total,
+        atRiskCount: summary.atRiskCount,
+        averageHealthScore: summary.averageHealthScore,
+        averageChurnRisk: summary.averageChurnRisk,
+      } satisfies CustomerTrendPoint;
+    });
+
+  const healthScoreChange = computeChange(points.map((point) => point.averageHealthScore));
+  return {
+    points,
+    healthScoreChange,
+    direction: deriveDirection(healthScoreChange, "higher_is_better"),
+  } satisfies CustomerTrendSummary;
+}
+
 function coerceNumber(value: unknown, warnings: string[], context: string): number | null {
   if (value === null || value === undefined) {
     warnings.push(`Missing value for ${context}`);
@@ -200,4 +284,25 @@ function classifyReviewStatus(days: number | null): "on_track" | "due_soon" | "o
   if (days < 0) return "overdue";
   if (days <= REVIEW_DUE_SOON_THRESHOLD_DAYS) return "due_soon";
   return "on_track";
+}
+
+function computeChange(values: Array<number | null>): number | null {
+  const filtered = values.filter((value): value is number => value !== null && !Number.isNaN(value));
+  if (filtered.length < 2) {
+    return null;
+  }
+  return filtered[filtered.length - 1]! - filtered[0]!;
+}
+
+function deriveDirection(
+  change: number | null,
+  preference: "higher_is_better" | "lower_is_better",
+): "improving" | "declining" | "steady" | null {
+  if (change === null) return null;
+  const threshold = 0.01;
+  if (Math.abs(change) < threshold) return "steady";
+  if (preference === "higher_is_better") {
+    return change > 0 ? "improving" : "declining";
+  }
+  return change < 0 ? "improving" : "declining";
 }

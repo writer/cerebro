@@ -1,6 +1,16 @@
 import HttpClient from "../httpClient.js";
 import { toCustomerMetadataEnvelope, toVendorMetadataEnvelope } from "../metadata.js";
 import { PageRequest } from "../pagination.js";
+import {
+  assessCustomerHealth as assessCustomerHealthAnalytics,
+  assessVendorHealth as assessVendorHealthAnalytics,
+  summarizeCustomerPortfolio as summarizeCustomerPortfolioAnalytics,
+  summarizeVendorPortfolio as summarizeVendorPortfolioAnalytics,
+  type CustomerHealthAssessment,
+  type CustomerPortfolioSummary,
+  type VendorHealthAssessment,
+  type VendorPortfolioSummary,
+} from "../securityCenter/analytics.js";
 import { CustomerMetadataEnvelope, VendorMetadataEnvelope } from "../types.js";
 
 const parseDate = (value: unknown): Date | null => {
@@ -254,6 +264,10 @@ export interface ListVendorsOptions {
   category?: string;
   lifecycleStage?: string;
   riskLevel?: string;
+  region?: string;
+  industry?: string;
+  complianceFramework?: string;
+  businessCriticality?: string;
 }
 
 export interface ListCustomersOptions {
@@ -262,6 +276,10 @@ export interface ListCustomersOptions {
   segment?: string;
   lifecycleStage?: string;
   accountManager?: string;
+  region?: string;
+  industry?: string;
+  healthBand?: string;
+  successProgram?: string;
 }
 
 export class SecurityCenterClient {
@@ -383,6 +401,42 @@ export class SecurityCenterClient {
     return results;
   }
 
+  async summarizeVendorPortfolio(
+    orgId: string,
+    options: ListVendorsOptions = {},
+    now: Date = new Date(),
+  ): Promise<VendorPortfolioSummary> {
+    const vendors = await this.iterateVendors(orgId, options);
+    return summarizeVendorPortfolioAnalytics(vendors, now);
+  }
+
+  async assessVendorHealth(
+    orgId: string,
+    options: ListVendorsOptions = {},
+    now: Date = new Date(),
+  ): Promise<VendorHealthAssessment[]> {
+    const vendors = await this.iterateVendors(orgId, options);
+    return vendors.map((vendor) => assessVendorHealthAnalytics(vendor, now));
+  }
+
+  async summarizeCustomerPortfolio(
+    orgId: string,
+    options: ListCustomersOptions = {},
+    now: Date = new Date(),
+  ): Promise<CustomerPortfolioSummary> {
+    const customers = await this.iterateCustomers(orgId, options);
+    return summarizeCustomerPortfolioAnalytics(customers, now);
+  }
+
+  async assessCustomerHealth(
+    orgId: string,
+    options: ListCustomersOptions = {},
+    now: Date = new Date(),
+  ): Promise<CustomerHealthAssessment[]> {
+    const customers = await this.iterateCustomers(orgId, options);
+    return customers.map((customer) => assessCustomerHealthAnalytics(customer, now));
+  }
+
   private buildVendorBody(request: RegisterVendorRequest): Record<string, unknown> {
     const body: Record<string, unknown> = {
       name: request.name,
@@ -409,6 +463,10 @@ export class SecurityCenterClient {
     if (options.category) params.category = options.category;
     if (options.lifecycleStage) params.lifecycle_stage = options.lifecycleStage;
     if (options.riskLevel) params.risk_level = options.riskLevel;
+    if (options.region) params.region = options.region;
+    if (options.industry) params.industry = options.industry;
+    if (options.complianceFramework) params.compliance_framework = options.complianceFramework;
+    if (options.businessCriticality) params.business_criticality = options.businessCriticality;
     return Object.keys(params).length ? params : undefined;
   }
 
@@ -419,6 +477,10 @@ export class SecurityCenterClient {
     if (options.segment) params.segment = options.segment;
     if (options.lifecycleStage) params.lifecycle_stage = options.lifecycleStage;
     if (options.accountManager) params.account_manager = options.accountManager;
+    if (options.region) params.region = options.region;
+    if (options.industry) params.industry = options.industry;
+    if (options.healthBand) params.health_band = options.healthBand;
+    if (options.successProgram) params.success_program = options.successProgram;
     return Object.keys(params).length ? params : undefined;
   }
 
