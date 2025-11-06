@@ -18,20 +18,57 @@ const adaptIntegrationCoverage = createSchemaAdapter("IntegrationCoverageSummary
 
 export interface IntegrationCoverageOptions {
   staleSeconds?: number;
+  integration?: string;
+}
+
+export interface IntegrationCoverageHistoryOptions {
+  integration?: string;
+  limit?: number;
+  since?: Date | string;
+  until?: Date | string;
 }
 
 export class IntegrationsClient {
   constructor(private readonly http: HttpClient) {}
 
   async getCoverage(options?: IntegrationCoverageOptions): Promise<IntegrationCoverageRecord[]> {
-    const requestOpts: RequestOptions = {};
+    const requestOpts: RequestOptions = { searchParams: {} };
     if (options?.staleSeconds !== undefined) {
-      requestOpts.searchParams = { stale_seconds: options.staleSeconds };
+      requestOpts.searchParams!.stale_seconds = options.staleSeconds;
+    }
+    if (options?.integration) {
+      requestOpts.searchParams!.integration = options.integration;
+    }
+    if (requestOpts.searchParams && Object.keys(requestOpts.searchParams).length === 0) {
+      delete requestOpts.searchParams;
     }
     const payload = await this.http.get<IntegrationCoveragePayload[]>(
       "/api/v1/integrations/coverage",
       requestOpts,
     );
+    return payload.map(mapCoverageRecord);
+  }
+
+  async getCoverageHistory(options: IntegrationCoverageHistoryOptions = {}): Promise<IntegrationCoverageRecord[]> {
+    const searchParams: Record<string, string> = {};
+    if (options.integration) {
+      searchParams.integration = options.integration;
+    }
+    if (options.limit !== undefined) {
+      searchParams.limit = String(options.limit);
+    }
+    if (options.since) {
+      searchParams.since = toIsoString(options.since);
+    }
+    if (options.until) {
+      searchParams.until = toIsoString(options.until);
+    }
+
+    const payload = await this.http.get<IntegrationCoveragePayload[]>(
+      "/api/v1/integrations/coverage/history",
+      { searchParams: Object.keys(searchParams).length ? searchParams : undefined },
+    );
+
     return payload.map(mapCoverageRecord);
   }
 
@@ -74,6 +111,14 @@ function coerceDate(value: unknown, fallback?: string | null): Date | null {
   if (parsed) return parsed;
   if (!fallback) return null;
   return parseDate(fallback) ?? new Date(fallback);
+}
+
+function toIsoString(value: Date | string): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const parsed = parseDate(value) ?? new Date(value);
+  return parsed.toISOString();
 }
 
 export default IntegrationsClient;

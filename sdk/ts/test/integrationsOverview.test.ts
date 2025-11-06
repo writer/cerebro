@@ -7,7 +7,7 @@ describe("integration overview helpers", () => {
   const coverage: IntegrationCoverageRecord[] = [
     {
       integration: "github",
-      providers: ["github"],
+      providers: ["github", "gitlab"],
       status: "ok",
       scopes: {
         total: 10,
@@ -59,6 +59,42 @@ describe("integration overview helpers", () => {
       summary: null,
       evidence: null,
     },
+    {
+      findingId: "finding-3",
+      orgId: "org-2",
+      accountId: "acct-3",
+      provider: "GitLab",
+      ruleId: "RULE-3",
+      ruleVersion: 1,
+      resourceId: "repo-3",
+      principalId: null,
+      firstSeen: new Date("2024-09-20T00:00:00Z"),
+      lastSeen: new Date("2024-10-02T00:00:00Z"),
+      status: "open",
+      severity: "low",
+      fingerprint: "fp-3",
+      title: "Outdated dependency",
+      summary: null,
+      evidence: null,
+    },
+    {
+      findingId: "finding-4",
+      orgId: "org-2",
+      accountId: "acct-4",
+      provider: "GH",
+      ruleId: "RULE-4",
+      ruleVersion: 1,
+      resourceId: "repo-4",
+      principalId: null,
+      firstSeen: new Date("2024-09-22T00:00:00Z"),
+      lastSeen: new Date("2024-10-02T00:00:00Z"),
+      status: "open",
+      severity: "medium",
+      fingerprint: "fp-4",
+      title: "Missing codeowners",
+      summary: null,
+      evidence: null,
+    },
   ];
 
   const organizations: OrganizationSummary[] = [
@@ -79,11 +115,12 @@ describe("integration overview helpers", () => {
 
     expect(overview.integration).toBe("github");
     expect(overview.coverage.healthyPercentage).toBeCloseTo(0.7);
-    expect(overview.findings).toHaveLength(2);
-    expect(overview.openFindings).toBe(1);
+    expect(overview.findings).toHaveLength(3);
+    expect(overview.openFindings).toBe(2);
     expect(overview.findingsBySeverity.high).toBe(1);
-    expect(overview.organizations).toHaveLength(1);
-    expect(overview.organizations[0]?.name).toBe("Acme Corp");
+    expect(overview.organizations).toHaveLength(2);
+    expect(overview.organizations.map((org) => org?.name)).toContain("Acme Corp");
+    expect(overview.organizations.map((org) => org?.name)).toContain("Globex");
   });
 
   it("builds integration overview map keyed by integration", () => {
@@ -91,5 +128,20 @@ describe("integration overview helpers", () => {
     const github = map.github;
     expect(github).toBeDefined();
     expect(github?.coverage.overallScore).toBeLessThan(1);
+  });
+
+  it("allows custom provider aliases", () => {
+    const map = buildIntegrationOverviewMap({
+      coverage,
+      findings,
+      organizations,
+      providerAliases: {
+        github: ["gh"],
+      },
+    });
+
+    const overview = map.github;
+    expect(overview).toBeDefined();
+    expect(overview?.findings.length).toBe(4);
   });
 });

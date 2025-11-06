@@ -581,6 +581,7 @@ export interface IntegrationCoverageTrend {
   latestChange: number | null;
   improving: boolean | null;
   anomaly?: CoverageAnomaly | null;
+  warnings: string[];
 }
 
 export interface CoverageAnomaly {

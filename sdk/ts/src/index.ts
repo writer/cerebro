@@ -29,7 +29,11 @@ export {
 } from "./clients/agents.js";
 export { AuthClient } from "./clients/auth.js";
 export { FindingsClient, type ListFindingsOptions } from "./clients/findings.js";
-export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations.js";
+export {
+  IntegrationsClient,
+  type IntegrationCoverageOptions,
+  type IntegrationCoverageHistoryOptions,
+} from "./clients/integrations.js";
 export {
   computeCoverageHealth,
   computeCoverageHealthMap,

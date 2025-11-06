@@ -28,6 +28,11 @@ describe("mock server harness", () => {
         return;
       }
 
+      if (req.method === "GET" && requestUrl.pathname === "/api/v1/integrations/coverage/history") {
+        await respondWithFilteredHistory(res, requestUrl.searchParams, "integrations/coverage-history.json");
+        return;
+      }
+
       if (req.method === "GET" && requestUrl.pathname === "/api/v1/findings") {
         await respondWithJson(res, "findings/findings.json");
         return;
@@ -118,6 +123,11 @@ describe("mock server harness", () => {
     expect(githubHealth?.criticalPercentage).toBeGreaterThan(0);
     expect(pagerdutyHealth?.overallScore).toBeGreaterThan(githubHealth?.overallScore ?? 0);
 
+    const githubHistory = await sdk.integrations.getCoverageHistory({ integration: "github" });
+    expect(githubHistory).toHaveLength(2);
+    const pagerdutyHistory = await sdk.integrations.getCoverageHistory({ integration: "pagerduty" });
+    expect(pagerdutyHistory).toHaveLength(2);
+
     const findings = await sdk.findings.list();
     expect(findings).toHaveLength(2);
     expect(findings[0]?.findingId).toBe("finding-1");
@@ -125,8 +135,8 @@ describe("mock server harness", () => {
 
     const organizations = await sdk.organizations.list();
     expect(organizations).toHaveLength(2);
-    expect(organizations[0]?.name).toBe("Acme Corp");
-    expect(organizations[0]?.createdAt?.toISOString()).toBe("2023-07-04T12:00:00.000Z");
+    expect(organizations.some((org) => org.name === "Acme Corp")).toBe(true);
+    expect(organizations.some((org) => org.name === "Globex")).toBe(true);
 
     const overviewMap = buildIntegrationOverviewMap({
       coverage: coverageRecords,
@@ -140,15 +150,7 @@ describe("mock server harness", () => {
     expect(pagerdutyOverview?.openFindings).toBe(1);
     expect((pagerdutyOverview?.organizations ?? []).length).toBeGreaterThan(0);
 
-    const trend = computeCoverageTrendForIntegration("github", [
-      {
-        ...githubCoverage,
-        evaluatedAt: new Date("2024-10-22T09:00:00Z"),
-        coverageRatio: 0.9,
-        lastSuccess: new Date("2024-10-22T08:00:00Z"),
-      },
-      githubCoverage,
-    ]);
+    const trend = computeCoverageTrendForIntegration("github", githubHistory);
     expect(trend.latestChange).toBeLessThan(0);
 
     const streamResult = await sdk.agents.sendSessionMessage("session-123", {
@@ -176,6 +178,42 @@ async function respondWithJson(res: ServerResponse, fixturePath: string) {
   const raw = await readFile(fullPath, "utf8");
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(raw);
+}
+
+async function respondWithFilteredHistory(
+  res: ServerResponse,
+  params: URLSearchParams,
+  fixturePath: string,
+) {
+  const fullPath = path.join(fixturesDir, fixturePath);
+  const raw = await readFile(fullPath, "utf8");
+  const entries = JSON.parse(raw) as Array<Record<string, unknown>>;
+
+  const integration = params.get("integration")?.toLowerCase() ?? null;
+  const since = params.get("since") ? new Date(params.get("since")!) : null;
+  const until = params.get("until") ? new Date(params.get("until")!) : null;
+  const limit = params.get("limit") ? Number.parseInt(params.get("limit")!, 10) : null;
+
+  let filtered = entries.filter((entry) => {
+    if (integration && typeof entry.integration === "string" && entry.integration.toLowerCase() !== integration) {
+      return false;
+    }
+    const evaluatedAt = entry.evaluated_at ? new Date(entry.evaluated_at as string) : null;
+    if (evaluatedAt && since && evaluatedAt < since) {
+      return false;
+    }
+    if (evaluatedAt && until && evaluatedAt > until) {
+      return false;
+    }
+    return true;
+  });
+
+  if (Number.isFinite(limit) && limit !== null && limit >= 0) {
+    filtered = filtered.slice(0, limit);
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(filtered));
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {

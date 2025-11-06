@@ -36,6 +36,7 @@ describe("integration coverage analytics", () => {
     expect(trend.latestChange).toBeCloseTo(0.7 - 0.82);
     expect(trend.improving).toBe(false);
     expect(trend.anomaly?.severity).toBe("warning");
+    expect(trend.warnings).toHaveLength(0);
   });
 
   it("builds trends for all integrations with configurable thresholds", () => {
@@ -49,6 +50,35 @@ describe("integration coverage analytics", () => {
     const pagerduty = trends.find((trend) => trend.integration === "pagerduty");
     expect(pagerduty?.latestChange).toBeCloseTo(0.62 - 0.64);
     expect(pagerduty?.anomaly ?? null).toBeNull();
+    expect(pagerduty?.warnings ?? []).toHaveLength(0);
+  });
+
+  it("returns empty trend list when no records are provided", () => {
+    expect(computeCoverageTrends([], { windowSize: 3 })).toEqual([]);
+  });
+
+  it("handles single-point history without anomalies", () => {
+    const single = computeCoverageTrendForIntegration("github", [createSnapshot("github", "2024-10-05T00:00:00Z", 0.8)]);
+    expect(single.latestChange).toBeNull();
+    expect(single.improving).toBeNull();
+    expect(single.anomaly).toBeNull();
+  });
+
+  it("collects warnings when ratios fall outside expected bounds", () => {
+    const trend = computeCoverageTrendForIntegration("github", [
+      createSnapshot("github", "2024-10-05T00:00:00Z", 1.2),
+      createSnapshot("github", "2024-10-06T00:00:00Z", -0.3),
+    ]);
+
+    expect(trend.warnings.length).toBeGreaterThanOrEqual(2);
+    expect(trend.points[0]?.coverageRatio).toBe(1);
+    expect(trend.points[1]?.coverageRatio).toBe(0);
+  });
+
+  it("validates options", () => {
+    expect(() => computeCoverageTrendForIntegration("github", snapshots, { windowSize: 0 })).toThrow(RangeError);
+    expect(() => computeCoverageTrendForIntegration("github", snapshots, { anomalyThreshold: -0.1 })).toThrow(RangeError);
+    expect(() => computeCoverageTrendForIntegration("github", snapshots, { criticalThreshold: -0.1 })).toThrow(RangeError);
   });
 });
 

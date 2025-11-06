@@ -88,4 +88,61 @@ describe("IntegrationsClient", () => {
     const computed = computeCoverageHealth(health);
     expect(computed.overallScore).toBeCloseTo(health.overallScore);
   });
+
+  it("requests coverage history with filters", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ([
+        {
+          integration: "github",
+          providers: ["github"],
+          status: "ok",
+          scopes: {
+            total: 10,
+            healthy: 9,
+            warning: 1,
+            critical: 0,
+          },
+          accounts: { total: 8 },
+          coverage_ratio: 0.9,
+          last_success: "2024-10-22T08:00:00Z",
+          evaluated_at: "2024-10-22T09:00:00Z",
+        },
+        {
+          integration: "github",
+          providers: ["github"],
+          status: "degraded",
+          scopes: {
+            total: 10,
+            healthy: 7,
+            warning: 2,
+            critical: 1,
+          },
+          accounts: { total: 8 },
+          coverage_ratio: 0.75,
+          last_success: "2024-10-24T08:30:00Z",
+          evaluated_at: "2024-10-24T09:00:00Z",
+        },
+      ]),
+    });
+
+    const client = new IntegrationsClient(new HttpClient({ baseUrl: "https://api.example.com" }));
+    const history = await client.getCoverageHistory({
+      integration: "github",
+      limit: 10,
+      since: new Date("2024-10-20T00:00:00Z"),
+      until: "2024-10-25T00:00:00Z",
+    });
+
+    expect(history).toHaveLength(2);
+    expect(history[0]?.integration).toBe("github");
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("integration=github");
+    expect(url).toContain("limit=10");
+    expect(url).toContain("since=2024-10-20T00%3A00%3A00.000Z");
+    expect(url).toContain("until=2024-10-25T00%3A00%3A00.000Z");
+  });
 });

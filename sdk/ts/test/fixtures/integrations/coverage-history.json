@@ -1,0 +1,70 @@
+[
+  {
+    "integration": "github",
+    "providers": ["github", "gitlab"],
+    "status": "ok",
+    "scopes": {
+      "total": 200,
+      "healthy": 180,
+      "warning": 15,
+      "critical": 5
+    },
+    "accounts": {
+      "total": 150
+    },
+    "coverage_ratio": 0.9,
+    "last_success": "2024-10-22T08:00:00Z",
+    "evaluated_at": "2024-10-22T09:00:00Z"
+  },
+  {
+    "integration": "github",
+    "providers": ["github", "gitlab"],
+    "status": "degraded",
+    "scopes": {
+      "total": 200,
+      "healthy": 150,
+      "warning": 30,
+      "critical": 20
+    },
+    "accounts": {
+      "total": 140
+    },
+    "coverage_ratio": 0.75,
+    "last_success": "2024-10-24T08:30:00Z",
+    "evaluated_at": "2024-10-24T09:00:00Z"
+  },
+  {
+    "integration": "pagerduty",
+    "providers": ["pagerduty", "opsgenie"],
+    "status": "ok",
+    "scopes": {
+      "total": 80,
+      "healthy": 65,
+      "warning": 10,
+      "critical": 5
+    },
+    "accounts": {
+      "total": 60
+    },
+    "coverage_ratio": 0.81,
+    "last_success": "2024-10-23T08:00:00Z",
+    "evaluated_at": "2024-10-23T08:30:00Z"
+  },
+  {
+    "integration": "pagerduty",
+    "providers": ["pagerduty", "opsgenie"],
+    "status": "ok",
+    "scopes": {
+      "total": 80,
+      "healthy": 70,
+      "warning": 6,
+      "critical": 4
+    },
+    "accounts": {
+      "total": 60
+    },
+    "coverage_ratio": 0.88,
+    "last_success": "2024-10-24T08:00:00Z",
+    "evaluated_at": "2024-10-24T08:30:00Z"
+  }
+]
