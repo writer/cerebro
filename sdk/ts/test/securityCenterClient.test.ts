@@ -470,4 +470,44 @@ describe("SecurityCenterClient", () => {
     expect(customerAssessments[0]?.customerId).toBe("customer_beta");
     expect(customerAssessments[0]?.engagementGapDays).toBeGreaterThan(0);
   });
+
+  it("applies filter presets for vendor and customer listings", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          count: 0,
+          vendors: [],
+          nextCursor: null,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          count: 0,
+          customers: [],
+          nextCursor: null,
+        }),
+      });
+
+    const client = new SecurityCenterClient(new HttpClient({ baseUrl: "https://api.test" }));
+
+    const preset = client.getVendorFilterPreset("criticalVendors");
+    expect(preset.riskLevel).toBe("high");
+
+    await client.listVendorsWithPreset("org-6", "criticalVendors", { limit: 50 });
+    await client.listCustomersWithPreset("org-6", "atRiskRenewals", { region: "emea" });
+
+    const vendorUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(vendorUrl.searchParams.get("risk_level")).toBe("high");
+    expect(vendorUrl.searchParams.get("limit")).toBe("50");
+
+    const customerUrl = new URL(String(fetchMock.mock.calls[1]?.[0]));
+    expect(customerUrl.searchParams.get("lifecycle_stage")).toBe("renewal");
+    expect(customerUrl.searchParams.get("region")).toBe("emea");
+  });
 });

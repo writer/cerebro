@@ -3,6 +3,8 @@ import type {
   SecurityCenterVendorInsight,
 } from "../clients/securityCenter.js";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export interface VendorHealthAssessment {
   vendorId: string;
   name: string;
@@ -80,6 +82,69 @@ export interface CustomerTrendSummary {
   points: CustomerTrendPoint[];
   healthScoreChange: number | null;
   direction: "improving" | "declining" | "steady" | null;
+}
+
+export interface TrendAlert {
+  severity: "info" | "warning" | "critical";
+  metric: string;
+  message: string;
+}
+
+export interface VendorTrendWindow {
+  window: "7d" | "30d";
+  residualRiskChange: number | null;
+  overdueReviewChange: number | null;
+  direction: "improving" | "declining" | "steady" | null;
+}
+
+export interface CustomerTrendWindow {
+  window: "7d" | "30d";
+  healthScoreChange: number | null;
+  atRiskChange: number | null;
+  direction: "improving" | "declining" | "steady" | null;
+}
+
+export interface VendorTrendAnalysis {
+  summary: VendorTrendSummary;
+  windows: VendorTrendWindow[];
+  alerts: TrendAlert[];
+}
+
+export interface CustomerTrendAnalysis {
+  summary: CustomerTrendSummary;
+  windows: CustomerTrendWindow[];
+  alerts: TrendAlert[];
+}
+
+export interface VendorRiskDashboard {
+  kpis: {
+    totalVendors: number;
+    highRiskVendors: number;
+    mediumRiskVendors: number;
+    lowRiskVendors: number;
+    overdueReviews: number;
+    dueSoonReviews: number;
+    averageResidualRisk: number | null;
+  };
+  byRiskLevel: Record<string, number>;
+  criticalVendors: VendorHealthAssessment[];
+  assessments: VendorHealthAssessment[];
+  warnings: string[];
+}
+
+export interface CustomerRiskDashboard {
+  kpis: {
+    totalCustomers: number;
+    healthyCustomers: number;
+    neutralCustomers: number;
+    atRiskCustomers: number;
+    averageHealthScore: number | null;
+    averageChurnRisk: number | null;
+  };
+  byHealthBand: Record<string, number>;
+  atRiskCustomers: CustomerHealthAssessment[];
+  assessments: CustomerHealthAssessment[];
+  warnings: string[];
 }
 
 const REVIEW_DUE_SOON_THRESHOLD_DAYS = 30;
@@ -215,6 +280,86 @@ export function summarizeCustomerPortfolio(customers: SecurityCenterCustomerInsi
   } satisfies CustomerPortfolioSummary;
 }
 
+export function buildVendorRiskDashboard(
+  vendors: SecurityCenterVendorInsight[],
+  now = new Date(),
+  criticalLimit = 5,
+): VendorRiskDashboard {
+  const summary = summarizeVendorPortfolio(vendors, now);
+  const assessments = vendors.map((vendor) => assessVendorHealth(vendor, now));
+
+  const warnings = assessments.flatMap((assessment) => assessment.warnings);
+  const highRisk = assessments.filter((assessment) => assessment.riskLevel.toLowerCase() === "high");
+  const critical = assessments
+    .filter(
+      (assessment) =>
+        assessment.reviewStatus === "overdue" ||
+        assessment.riskLevel.toLowerCase() === "high" ||
+        assessment.businessCriticality?.toLowerCase() === "high",
+    )
+    .sort((a, b) => (b.residualRiskScore ?? 0) - (a.residualRiskScore ?? 0))
+    .slice(0, criticalLimit);
+
+  return {
+    kpis: {
+      totalVendors: summary.total,
+      highRiskVendors: highRisk.length,
+      mediumRiskVendors: summary.byRiskLevel.medium ?? 0,
+      lowRiskVendors: summary.byRiskLevel.low ?? 0,
+      overdueReviews: summary.overdueReviews,
+      dueSoonReviews: summary.dueSoonReviews,
+      averageResidualRisk: summary.averageResidualRisk,
+    },
+    byRiskLevel: summary.byRiskLevel,
+    criticalVendors: critical,
+    assessments,
+    warnings,
+  } satisfies VendorRiskDashboard;
+}
+
+export function buildCustomerRiskDashboard(
+  customers: SecurityCenterCustomerInsight[],
+  now = new Date(),
+  atRiskLimit = 5,
+): CustomerRiskDashboard {
+  const summary = summarizeCustomerPortfolio(customers, now);
+  const assessments = customers.map((customer) => assessCustomerHealth(customer, now));
+  const warnings = assessments.flatMap((assessment) => assessment.warnings);
+
+  const byHealthBand: Record<string, number> = {};
+  for (const customer of customers) {
+    const band = (customer.healthBand ?? "unknown").toLowerCase();
+    byHealthBand[band] = (byHealthBand[band] ?? 0) + 1;
+  }
+
+  const atRiskCustomers = assessments
+    .filter((assessment) => {
+      const band = assessment.healthBand?.toLowerCase();
+      return band === "at_risk" || band === "critical" || (assessment.healthScore ?? 1) < 0.6 || (assessment.churnRiskScore ?? 0) >= 0.5;
+    })
+    .sort((a, b) => (b.churnRiskScore ?? 0) - (a.churnRiskScore ?? 0))
+    .slice(0, atRiskLimit);
+
+  const healthyCount = byHealthBand.healthy ?? 0;
+  const neutralCount = (byHealthBand.neutral ?? 0) + (byHealthBand.stable ?? 0);
+  const atRiskCount = summary.atRiskCount;
+
+  return {
+    kpis: {
+      totalCustomers: summary.total,
+      healthyCustomers: healthyCount,
+      neutralCustomers: neutralCount,
+      atRiskCustomers: atRiskCount,
+      averageHealthScore: summary.averageHealthScore,
+      averageChurnRisk: summary.averageChurnRisk,
+    },
+    byHealthBand,
+    atRiskCustomers,
+    assessments,
+    warnings,
+  } satisfies CustomerRiskDashboard;
+}
+
 export function computeVendorPortfolioTrend(snapshots: VendorPortfolioSnapshot[]): VendorTrendSummary {
   const points = snapshots
     .map((snapshot) => ({ ...snapshot }))
@@ -261,6 +406,112 @@ export function computeCustomerHealthTrend(snapshots: CustomerHealthSnapshot[]):
   } satisfies CustomerTrendSummary;
 }
 
+export function analyzeVendorSnapshots(
+  snapshots: VendorPortfolioSnapshot[],
+  now = new Date(),
+): VendorTrendAnalysis {
+  const summary = computeVendorPortfolioTrend(snapshots);
+  const points = summary.points;
+  const windows: VendorTrendWindow[] = [7, 30].map((days) => {
+    const windowPoints = filterPointsWithin(points, now, days * DAY_MS);
+    const residualRiskChange = computeChange(windowPoints.map((point) => point.averageResidualRisk));
+    const overdueChange = computeChange(windowPoints.map((point) => point.overdueReviews));
+    return {
+      window: `${days}d` as VendorTrendWindow["window"],
+      residualRiskChange,
+      overdueReviewChange: overdueChange,
+      direction: deriveDirection(residualRiskChange, "lower_is_better"),
+    } satisfies VendorTrendWindow;
+  });
+
+  const alerts: TrendAlert[] = [];
+  const windowMap = Object.fromEntries(windows.map((win) => [win.window, win]));
+  const last30 = windowMap["30d"];
+  if (last30?.residualRiskChange !== null && last30.residualRiskChange > 0.05) {
+    alerts.push({
+      severity: "warning",
+      metric: "vendor_residual_risk",
+      message: `Vendor residual risk increased by ${(last30.residualRiskChange * 100).toFixed(1)}pts in 30d`,
+    });
+  }
+
+  if (last30?.overdueReviewChange !== null && last30.overdueReviewChange > 0) {
+    alerts.push({
+      severity: last30.overdueReviewChange >= 3 ? "critical" : "warning",
+      metric: "vendor_overdue_reviews",
+      message: `${last30.overdueReviewChange} additional vendor reviews overdue over last 30d`,
+    });
+  }
+
+  const last7 = windowMap["7d"];
+  if (last7?.overdueReviewChange !== null && last7.overdueReviewChange > 0) {
+    alerts.push({
+      severity: "warning",
+      metric: "vendor_overdue_reviews_7d",
+      message: `${last7.overdueReviewChange} vendor reviews became overdue in the last 7d`,
+    });
+  }
+
+  return {
+    summary,
+    windows,
+    alerts,
+  } satisfies VendorTrendAnalysis;
+}
+
+export function analyzeCustomerSnapshots(
+  snapshots: CustomerHealthSnapshot[],
+  now = new Date(),
+): CustomerTrendAnalysis {
+  const summary = computeCustomerHealthTrend(snapshots);
+  const points = summary.points;
+  const windows: CustomerTrendWindow[] = [7, 30].map((days) => {
+    const windowPoints = filterPointsWithin(points, now, days * DAY_MS);
+    const healthChange = computeChange(windowPoints.map((point) => point.averageHealthScore));
+    const atRiskChange = computeChange(windowPoints.map((point) => point.atRiskCount));
+    return {
+      window: `${days}d` as CustomerTrendWindow["window"],
+      healthScoreChange: healthChange,
+      atRiskChange,
+      direction: deriveDirection(healthChange, "higher_is_better"),
+    } satisfies CustomerTrendWindow;
+  });
+
+  const alerts: TrendAlert[] = [];
+  const windowMap = Object.fromEntries(windows.map((win) => [win.window, win]));
+  const last30 = windowMap["30d"];
+  if (last30?.healthScoreChange !== null && last30.healthScoreChange < -0.05) {
+    alerts.push({
+      severity: "warning",
+      metric: "customer_health_score",
+      message: `Customer health dropped ${(Math.abs(last30.healthScoreChange) * 100).toFixed(1)}pts over 30d`,
+    });
+  }
+
+  if (last30?.atRiskChange !== null && last30.atRiskChange > 0) {
+    alerts.push({
+      severity: last30.atRiskChange >= 3 ? "critical" : "warning",
+      metric: "customer_at_risk",
+      message: `${last30.atRiskChange} more customers moved to at-risk in the last 30d`,
+    });
+  }
+
+  const last7 = windowMap["7d"];
+  if (last7?.atRiskChange !== null && last7.atRiskChange > 0) {
+    alerts.push({
+      severity: "warning",
+      metric: "customer_at_risk_7d",
+      message: `${last7.atRiskChange} customers became at-risk in the last 7d`,
+    });
+  }
+
+  return {
+    summary,
+    windows,
+    alerts,
+  } satisfies CustomerTrendAnalysis;
+}
+
 function coerceNumber(value: unknown, warnings: string[], context: string): number | null {
   if (value === null || value === undefined) {
     warnings.push(`Missing value for ${context}`);
@@ -292,6 +543,15 @@ function computeChange(values: Array<number | null>): number | null {
     return null;
   }
   return filtered[filtered.length - 1]! - filtered[0]!;
+}
+
+function filterPointsWithin<T extends { timestamp: Date }>(
+  points: T[],
+  now: Date,
+  windowMs: number,
+): T[] {
+  const minTime = now.getTime() - windowMs;
+  return points.filter((point) => point.timestamp.getTime() >= minTime);
 }
 
 function deriveDirection(

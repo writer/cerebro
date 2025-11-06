@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   assessCustomerHealth,
   assessVendorHealth,
+  analyzeCustomerSnapshots,
+  analyzeVendorSnapshots,
+  buildCustomerRiskDashboard,
+  buildVendorRiskDashboard,
   computeCustomerHealthTrend,
   computeVendorPortfolioTrend,
   summarizeCustomerPortfolio,
@@ -120,6 +124,45 @@ describe("security center analytics", () => {
     expect(trend.points).toHaveLength(2);
     expect(trend.healthScoreChange).toBeGreaterThan(0);
     expect(trend.direction).toBe("improving");
+  });
+
+  it("builds vendor risk dashboard with critical vendors", () => {
+    const dashboard = buildVendorRiskDashboard([vendor, overdueVendor], REFERENCE_NOW, 3);
+    expect(dashboard.kpis.totalVendors).toBe(2);
+    expect(dashboard.kpis.highRiskVendors).toBe(1);
+    expect(dashboard.kpis.overdueReviews).toBe(1);
+    expect(dashboard.criticalVendors.length).toBeGreaterThan(0);
+  });
+
+  it("builds customer risk dashboard with at-risk prioritization", () => {
+    const dashboard = buildCustomerRiskDashboard([customer, atRiskCustomer], REFERENCE_NOW, 3);
+    expect(dashboard.kpis.totalCustomers).toBe(2);
+    expect(dashboard.kpis.atRiskCustomers).toBe(1);
+    expect(dashboard.atRiskCustomers[0]?.customerId).toBe("customer-2");
+  });
+
+  it("analyzes vendor snapshots for windowed alerts", () => {
+    const snapshots = [
+      { timestamp: new Date(REFERENCE_NOW.getTime() - 35 * DAY_MS), vendors: [vendor] },
+      { timestamp: new Date(REFERENCE_NOW.getTime() - 5 * DAY_MS), vendors: [vendor, overdueVendor] },
+      { timestamp: REFERENCE_NOW, vendors: [vendor, overdueVendor] },
+    ];
+
+    const analysis = analyzeVendorSnapshots(snapshots, REFERENCE_NOW);
+    expect(analysis.windows.find((win) => win.window === "7d")?.overdueReviewChange).toBeGreaterThanOrEqual(0);
+    expect(analysis.alerts.some((alert) => alert.metric.includes("vendor"))).toBe(true);
+  });
+
+  it("analyzes customer snapshots and surfaces alerts", () => {
+    const snapshots = [
+      { timestamp: new Date(REFERENCE_NOW.getTime() - 40 * DAY_MS), customers: [customer] },
+      { timestamp: new Date(REFERENCE_NOW.getTime() - 10 * DAY_MS), customers: [customer] },
+      { timestamp: REFERENCE_NOW, customers: [customer, atRiskCustomer] },
+    ];
+
+    const analysis = analyzeCustomerSnapshots(snapshots, REFERENCE_NOW);
+    expect(analysis.windows.find((win) => win.window === "30d")?.direction).toBeDefined();
+    expect(analysis.alerts.some((alert) => alert.metric.includes("customer"))).toBe(true);
   });
 });
 

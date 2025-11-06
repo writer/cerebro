@@ -11,6 +11,14 @@ import {
   type VendorHealthAssessment,
   type VendorPortfolioSummary,
 } from "../securityCenter/analytics.js";
+import {
+  customerFilterPresets,
+  resolveCustomerPreset,
+  resolveVendorPreset,
+  vendorFilterPresets,
+  type CustomerFilterPresetName,
+  type VendorFilterPresetName,
+} from "../securityCenter/presets.js";
 import { CustomerMetadataEnvelope, VendorMetadataEnvelope } from "../types.js";
 
 const parseDate = (value: unknown): Date | null => {
@@ -399,6 +407,50 @@ export class SecurityCenterClient {
     } while (page.cursor);
 
     return results;
+  }
+
+  getVendorFilterPreset(name: VendorFilterPresetName): Readonly<ListVendorsOptions> {
+    return vendorFilterPresets[name];
+  }
+
+  getCustomerFilterPreset(name: CustomerFilterPresetName): Readonly<ListCustomersOptions> {
+    return customerFilterPresets[name];
+  }
+
+  async listVendorsWithPreset(
+    orgId: string,
+    preset: VendorFilterPresetName,
+    overrides: ListVendorsOptions = {},
+  ): Promise<SecurityCenterVendorList> {
+    const options = resolveVendorPreset(preset, overrides);
+    return this.listVendors(orgId, options);
+  }
+
+  async iterateVendorsWithPreset(
+    orgId: string,
+    preset: VendorFilterPresetName,
+    overrides: ListVendorsOptions = {},
+  ): Promise<SecurityCenterVendorInsight[]> {
+    const options = resolveVendorPreset(preset, overrides);
+    return this.iterateVendors(orgId, options);
+  }
+
+  async listCustomersWithPreset(
+    orgId: string,
+    preset: CustomerFilterPresetName,
+    overrides: ListCustomersOptions = {},
+  ): Promise<SecurityCenterCustomerList> {
+    const options = resolveCustomerPreset(preset, overrides);
+    return this.listCustomers(orgId, options);
+  }
+
+  async iterateCustomersWithPreset(
+    orgId: string,
+    preset: CustomerFilterPresetName,
+    overrides: ListCustomersOptions = {},
+  ): Promise<SecurityCenterCustomerInsight[]> {
+    const options = resolveCustomerPreset(preset, overrides);
+    return this.iterateCustomers(orgId, options);
   }
 
   async summarizeVendorPortfolio(
