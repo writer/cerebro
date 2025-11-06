@@ -3,7 +3,7 @@
     "finding_id": "finding-1",
     "org_id": "org-1",
     "account_id": "acct-1",
-    "provider": "aws",
+    "provider": "github",
     "rule_id": "RULE_001",
     "rule_version": 3,
     "resource_id": "res-123",

@@ -4,9 +4,11 @@ import { createSchemaAdapter } from "../generated/adapters/schemaAdapters.js";
 import {
   IntegrationAccountSummary,
   IntegrationCoverageRecord,
+  IntegrationCoverageHealth,
   IntegrationScopeBreakdown,
 } from "../types.js";
 import { parseDate } from "../serialization.js";
+import { computeCoverageHealth } from "../integrations/metrics.js";
 
 type IntegrationCoveragePayload = components["schemas"]["IntegrationCoverageSummary"];
 type IntegrationCoverageScopesPayload = components["schemas"]["IntegrationCoverageScopes"];
@@ -31,6 +33,11 @@ export class IntegrationsClient {
       requestOpts,
     );
     return payload.map(mapCoverageRecord);
+  }
+
+  async getCoverageHealth(options?: IntegrationCoverageOptions): Promise<IntegrationCoverageHealth[]> {
+    const coverage = await this.getCoverage(options);
+    return coverage.map(computeCoverageHealth);
   }
 }
 

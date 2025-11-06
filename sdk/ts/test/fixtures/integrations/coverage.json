@@ -4,14 +4,13 @@
     "providers": ["github"],
     "status": "ok",
     "scopes": {
-      "repositories": {
-        "enabled": 120,
-        "total": 150
-      }
+      "total": 150,
+      "healthy": 120,
+      "warning": 20,
+      "critical": 10
     },
     "accounts": {
-      "active": 90,
-      "inactive": 10
+      "total": 100
     },
     "coverage_ratio": 0.8,
     "last_success": "2024-10-24T08:30:00Z",

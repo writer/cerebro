@@ -562,6 +562,13 @@ export interface IntegrationCoverageRecord {
 
 export type IntegrationCoverageSummary = IntegrationCoverageRecord;
 
+export interface IntegrationCoverageHealth extends IntegrationCoverageRecord {
+  healthyPercentage: number;
+  warningPercentage: number;
+  criticalPercentage: number;
+  overallScore: number;
+}
+
 export interface AgentSessionRecord {
   sessionId: string;
   orgId: string;

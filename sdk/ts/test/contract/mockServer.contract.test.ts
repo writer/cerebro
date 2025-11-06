@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { CerebroSDK } from "../../src/sdk";
 import { collectAgentStream } from "../../src/agents/streaming";
+import { buildIntegrationOverviewMap } from "../../src/integrations/overview";
 
 const fixturesDir = path.resolve(__dirname, "../fixtures");
 
@@ -98,9 +99,13 @@ describe("mock server harness", () => {
     expect(tasks[0]?.title).toBe("Check deployment");
     expect(tasks[0]?.dueAt?.toISOString()).toBe("2024-10-25T10:00:00.000Z");
 
-    const [coverage] = await sdk.integrations.getCoverage({ integration: "github" });
+    const [coverage] = await sdk.integrations.getCoverage();
     expect(coverage?.integration).toBe("github");
     expect(coverage?.coverageRatio).toBeCloseTo(0.8);
+
+    const [coverageHealth] = await sdk.integrations.getCoverageHealth();
+    expect(coverageHealth?.healthyPercentage).toBeGreaterThan(0.5);
+    expect(coverageHealth?.criticalPercentage).toBeGreaterThan(0);
 
     const findings = await sdk.findings.list();
     expect(findings).toHaveLength(1);
@@ -111,6 +116,17 @@ describe("mock server harness", () => {
     expect(organizations).toHaveLength(1);
     expect(organizations[0]?.name).toBe("Acme Corp");
     expect(organizations[0]?.createdAt?.toISOString()).toBe("2023-07-04T12:00:00.000Z");
+
+    if (!coverage) throw new Error("expected coverage record");
+
+    const overviewMap = buildIntegrationOverviewMap({
+      coverage: [coverage],
+      findings,
+      organizations,
+    });
+    const githubOverview = overviewMap.github;
+    expect(githubOverview?.openFindings).toBe(1);
+    expect(githubOverview?.findingsBySeverity.high).toBe(1);
 
     const streamResult = await sdk.agents.sendSessionMessage("session-123", {
       content: "Hi",
