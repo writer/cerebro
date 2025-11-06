@@ -27,6 +27,7 @@ celery_kwargs = {
         'cerebro.tasks.integration_monitor',
         'cerebro.tasks.runtime_monitor',
         'cerebro.tasks.serval_tasks',
+        'cerebro.tasks.compliance_tasks',
     ],
 }
 
@@ -94,6 +95,11 @@ beat_schedule = {
     'monitor-runtime-health': {
         'task': 'cerebro.tasks.runtime.monitor_health',
         'schedule': 300.0,
+        'options': {'queue': 'analytics'},
+    },
+    'scan-pre-audit-schedules-daily': {
+        'task': 'cerebro.tasks.compliance.scan_due_pre_audit_schedules',
+        'schedule': crontab(hour=5, minute=0),
         'options': {'queue': 'analytics'},
     },
 }

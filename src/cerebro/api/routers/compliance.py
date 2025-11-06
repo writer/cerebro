@@ -1,17 +1,36 @@
 """Compliance management endpoints."""
 
+from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from datetime import datetime, timedelta
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cerebro.api.auth import User, require_read_findings
+from cerebro.compliance.pre_audit_service import PreAuditHealthCheckService
+from cerebro.compliance.preaudit_models import ComplianceAuditSchedule, PreAuditRun
 from cerebro.core.database import get_db
-from cerebro.core.models import Organization, Finding
-from cerebro.api.auth import require_read_findings, User
+from cerebro.core.models import Finding, Organization
 
 router = APIRouter()
+_pre_audit_service = PreAuditHealthCheckService()
+
+
+class PreAuditRunRequest(BaseModel):
+    org_id: UUID
+    frameworks: List[str] = Field(..., min_length=1)
+    audit_date: datetime
+    owner_emails: List[str] = Field(default_factory=list)
+
+
+class PreAuditRunResponse(BaseModel):
+    run_id: UUID
+    schedule_id: UUID
+    estimated_outcome: str
+    summary: dict
 
 
 @router.get("/evidence/status")
@@ -93,3 +112,60 @@ async def get_compliance_frameworks(
         "total_frameworks": len(frameworks),
         "avg_score": sum(f["score"] for f in frameworks) / len(frameworks),
     }
+
+
+@router.post("/pre-audit/run", response_model=PreAuditRunResponse)
+async def run_pre_audit_check(
+    request: PreAuditRunRequest,
+    current_user: User = Depends(require_read_findings),
+):
+    """Trigger an on-demand pre-audit health check."""
+
+    if current_user.org_id != request.org_id:
+        raise HTTPException(status_code=403, detail="Not authorised for target organisation")
+
+    run = await _pre_audit_service.run_on_demand(
+        org_id=request.org_id,
+        frameworks=request.frameworks,
+        audit_date=request.audit_date,
+        owner_emails=request.owner_emails or [getattr(current_user, "email", current_user.user_id)],
+    )
+
+    return PreAuditRunResponse(
+        run_id=run.id,
+        schedule_id=run.schedule_id,
+        estimated_outcome=run.estimated_outcome,
+        summary=run.summary,
+    )
+
+
+@router.get("/pre-audit/schedules/{schedule_id}/latest", response_model=PreAuditRunResponse)
+async def get_latest_pre_audit_run(
+    schedule_id: UUID,
+    current_user: User = Depends(require_read_findings),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the most recent pre-audit run for a schedule."""
+
+    schedule = await db.get(ComplianceAuditSchedule, schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if schedule.org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Not authorised for target organisation")
+
+    stmt = (
+        select(PreAuditRun)
+        .where(PreAuditRun.schedule_id == schedule_id)
+        .order_by(PreAuditRun.run_at.desc())
+        .limit(1)
+    )
+    run = await db.scalar(stmt)
+    if not run:
+        raise HTTPException(status_code=404, detail="No runs recorded yet")
+
+    return PreAuditRunResponse(
+        run_id=run.id,
+        schedule_id=run.schedule_id,
+        estimated_outcome=run.estimated_outcome,
+        summary=run.summary,
+    )
