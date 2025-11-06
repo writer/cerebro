@@ -98,9 +98,14 @@ curl "http://localhost:8000/api/v1/findings?severity=critical" \
 - Telemetry is exported through Prometheus metrics such as `cerebro_agent_memory_events_total`
 - Agent tool execution metrics (`cerebro_agent_tool_*`) track success, failure, and latency
 
-## Internal SDK (Writer teams)
+## Internal SDK
 
-The repository ships with `cerebro_sdk`, an async facade layer consumed by internal automation. Facets include authentication, user and organization management, findings workflows, integration orchestration, telemetry utilities, and modular agent helpers. Both the TypeScript and Python SDKs now expose shared Security Center primitives for entity profiles and evidence lifecycle tracking, including staleness policies, refresh windows, and lifecycle summaries for vendor/customer control evidence. Documentation lives under [`docs/sdk/`](docs/sdk/README.md) with domain-specific guides.
+Writer ships two first-class SDKs in this repo:
+
+- **TypeScript SDK (`sdk/ts`)** – published to internal package feeds, powering frontend integrations and automation services. Run `npm run lint` / `npm run test` inside `sdk/ts` to validate changes. Key modules include HTTP client middleware, streaming helpers, pagination utilities, and Security Center analytics bundled with evidence lifecycle primitives.
+- **Python SDK (`src/cerebro_sdk`)** – the async façade consumed by backend workflows, Lambda-style tasks, and compliance tooling. Validate with `PYTHONPATH=src pytest tests/unit/sdk`. The package exports managers for auth, users, organizations, findings, integrations, agents, telemetry, and now the shared Security Center primitives.
+
+Both SDKs expose identical Security Center evidence APIs (`EntityProfile`, `EvidenceArtifact`, lifecycle policies, summaries) so automation can reason about staleness, refresh windows, and control mappings uniformly across languages. Additional guides live under [`docs/sdk/`](docs/sdk/README.md) and the `sdk/ts/test` / `tests/unit/sdk` suites provide reference scenarios.
 
 ```python
 from cerebro.core.database import async_session_factory
