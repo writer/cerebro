@@ -39,6 +39,8 @@ Public helpers are re-exported from `cerebro_sdk` and `cerebro_sdk.agents`. Impo
 
 | Guide | Scope |
 | --- | --- |
+| [TypeScript SDK Guide](typescript.md) | Project layout, HttpClient architecture, streaming, pagination, release workflow, troubleshooting. |
+| [Python SDK Guide](python.md) | Package structure, async session usage, Security Center evidence lifecycle, testing, release process. |
 | [Configuration, Auth, and Agents](auth-and-agents.md) | Settings proxy, auth session, user/org managers, session and review helpers, transaction semantics. |
 | [Integrations and Playbooks](integrations-and-playbooks.md) | Integration registry, tooling analytics, notifications, playbook orchestration. |
 | [Schema and Migrations](migrations.md) | Synchronizing database migrations with SDK models. |
