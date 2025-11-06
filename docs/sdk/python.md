@@ -74,6 +74,72 @@ async def login_service_account(username: str, password: str) -> str:
 
 All managers surface domain-specific exceptions (`AgentNotFoundError`, `AgentValidationError`, etc.) that mirror API semantics.
 
+## Day-to-Day Usage Recipes
+
+### Morning Findings Triage
+
+```python
+from cerebro_sdk.findings import FindingService
+from cerebro.core.database import async_session_factory
+
+async def triage_new_findings():
+    async with async_session_factory() as db:
+        service = FindingService(db)
+        findings = await service.list_findings_page(org_id="org-123", page_size=25)
+        for record in findings.items:
+            if record.severity in {"critical", "high"} and record.status == "open":
+                await service.add_comment(record.id, body="Escalated to incident response")
+                await service.update_status(record.id, status="in_progress")
+```
+
+### Integration Freshness Snapshot
+
+```python
+from cerebro_sdk.integrations import IntegrationService
+from cerebro.core.database import async_session_factory
+
+async def sync_health_report():
+    async with async_session_factory() as db:
+        integrations = IntegrationService(db)
+        states = await integrations.list_states()
+        stale = [state for state in states if (state.metadata.get("last_status") or "") == "stale"]
+        for state in stale:
+            print(f"{state.integration} scope {state.scope} needs attention")
+```
+
+### Daily Compliance Evidence Check
+
+```python
+from datetime import datetime, timezone
+from cerebro_sdk.security_center import summarize_evidence_set, LifecyclePolicy
+from cerebro_sdk.security_center.repository import EvidenceRepository
+from cerebro.core.database import async_session_factory
+
+async def review_evidence(org_id: str):
+    async with async_session_factory() as db:
+        repo = EvidenceRepository(db)
+        artifacts = await repo.list_artifacts(org_id=org_id, framework="soc2")
+        policy = LifecyclePolicy(max_age_days=90, refresh_window_days=14)
+        snapshot = summarize_evidence_set(artifacts, policy, now=datetime.now(timezone.utc))
+        for expired in snapshot.expired:
+            print(f"Evidence {expired.artifact_id} expired {expired.age_days} days ago")
+```
+
+### Agent Notification Follow-Up
+
+```python
+from cerebro_sdk.agents.notifications import AgentNotificationManager
+from cerebro.core.database import async_session_factory
+
+async def remind_pending_notifications():
+    async with async_session_factory() as db:
+        manager = AgentNotificationManager(db)
+        pending = await manager.list_notifications(status="pending", limit=50)
+        for notification in pending:
+            await manager.mark_in_progress(notification.id)
+            await manager.log_activity(notification.id, message="Reminder sent to owner")
+```
+
 ## Security Center Evidence Lifecycle
 
 Both SDKs now expose symmetric evidence primitives. The Python implementation lives in `security_center/primitives.py` and offers:
