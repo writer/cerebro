@@ -31,6 +31,15 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra dev
 
+      - name: Run API smoke tests
+        env:
+          CEREBRO_SMOKE_MODE: asgi
+          CEREBRO_SMOKE_TARGETS: core,db,encryption
+          CEREBRO_SMOKE_DATABASE_URL: sqlite+aiosqlite:///./cerebro_smoke_ci.db
+        run: |
+          set -euo pipefail
+          uv run python scripts/smoke_api.py --json
+
       - name: Run unit test suite
         env:
           ENVIRONMENT: test

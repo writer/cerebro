@@ -6,6 +6,10 @@ UV := uv
 LOAD_DEV_DATA ?= 1
 DEV_STACK_INCLUDE_FRONTEND ?= 0
 DEV_STACK_INCLUDE_FLOWER ?= 0
+DEV_SKIP_SMOKE ?= 0
+SMOKE_MODE ?= asgi
+SMOKE_TARGETS ?= core,db
+SMOKE_BASE_URL ?= http://localhost:8000
 
 DEV_STACK_ARGS :=
 ifeq ($(DEV_STACK_INCLUDE_FRONTEND),1)
@@ -65,9 +69,27 @@ serve: ## Start development API server
 dev-infra: ## Start local PostgreSQL and Redis for development
 	docker-compose up -d postgres redis
 
+.PHONY: smoke-api
+smoke-api: ## Run API smoke checks (set SMOKE_MODE=http for running stacks)
+	CEREBRO_SMOKE_MODE=$(SMOKE_MODE) \
+	CEREBRO_SMOKE_BASE_URL=$(SMOKE_BASE_URL) \
+	CEREBRO_SMOKE_TARGETS=$(SMOKE_TARGETS) \
+	$(UV) run python scripts/smoke_api.py
+
 .PHONY: dev-stack
 dev-stack: ## Run API, Celery, and optional services concurrently (set DEV_STACK_INCLUDE_FRONTEND=1 for frontend, DEV_STACK_INCLUDE_FLOWER=1 for Flower)
+	@if [ "$(DEV_SKIP_SMOKE)" = "0" ]; then \
+		CEREBRO_SMOKE_MODE=asgi \
+		CEREBRO_SMOKE_TARGETS=$(SMOKE_TARGETS) \
+		$(UV) run python scripts/smoke_api.py; \
+	else \
+		echo "⏭️  Skipping smoke checks before dev stack start"; \
+	fi
 	$(UV) run python scripts/dev_stack.py $(DEV_STACK_ARGS)
+
+.PHONY: dev-stop
+dev-stop: ## Gracefully stop processes launched via dev-stack
+	$(UV) run python scripts/dev_teardown.py
 
 
 .PHONY: worker

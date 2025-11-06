@@ -4,16 +4,17 @@
 \usepackage{hyperref}
 
 \lstset{
-  basicstyle=\ttfamily\small,
+  basicstyle=\ttfamily\scriptsize,
   breaklines=true,
   columns=fullflexible,
   keepspaces=true,
+  showstringspaces=false,
 }
 
-\title{Developing with the Cerebro SDK}
-\subtitle{A Practical Guide for Engineers}
+\title{Cerebro SDK: Copy-Paste Code Guide}
+\subtitle{Real Methods, Real Examples, Real Results}
 \author{Writer Security Engineering}
-\date{Updated November 6, 2025}
+\date{November 6, 2025}
 
 \begin{document}
 
@@ -21,396 +22,594 @@
   \titlepage
 \end{frame}
 
-\begin{frame}{What You'll Learn}
-  \begin{itemize}
-    \item Why the Cerebro SDK exists and what problems it solves
-    \item Getting started: installation, configuration, authentication
-    \item Building with core modules: agents, findings, analytics, security center
-    \item Advanced patterns: streaming, pagination, testing strategies
-    \item Best practices for production deployments
-  \end{itemize}
-\end{frame}
-
-\section{Introduction}
-
-\begin{frame}{Why Use the Cerebro SDK?}
-  \textbf{The Problem}:
-  \begin{itemize}
-    \item Ad-hoc REST calls scattered across services
-    \item No type safety, manual JSON parsing
-    \item Duplicate pagination and error handling logic
-    \item Difficult to test without hitting live APIs
-  \end{itemize}
+\begin{frame}{How To Use This Guide}
+  Every code example follows this pattern:
   
-  \vspace{0.3cm}
-  
-  \textbf{The SDK Solution}:
-  \begin{itemize}
-    \item Typed interfaces for all Cerebro operations
-    \item Consistent patterns for async workflows
-    \item Built-in observability and error handling
-    \item Test adapters for offline development
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{Two SDKs, One Platform}
-  \begin{columns}
-    \begin{column}{0.48\textwidth}
-      \textbf{TypeScript SDK} (\texttt{sdk/ts})
-      \begin{itemize}
-        \item Frontend integrations
-        \item Browser-based tools
-        \item Partner APIs
-        \item Real-time streaming
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{Python SDK} (\texttt{src/cerebro\_sdk})
-      \begin{itemize}
-        \item Backend automation
-        \item Compliance tooling
-        \item Async workflows
-        \item Database-backed operations
-      \end{itemize}
-    \end{column}
-  \end{columns}
+  \begin{enumerate}
+    \item \textbf{Use Case}: What you want to accomplish
+    \item \textbf{Code}: Exact method calls with parameters
+    \item \textbf{Result}: What you get back
+    \item \textbf{Notes}: Common gotchas and tips
+  \end{enumerate}
   
   \vspace{0.5cm}
   
-  Both SDKs share:
-  \begin{itemize}
-    \item Identical domain models (agents, findings, evidence)
-    \item Same API surface and semantics
-    \item Parallel feature development
-  \end{itemize}
+  All examples are production-tested and ready to copy-paste.
 \end{frame}
 
-\begin{frame}{Core Capabilities}
-  \textbf{What the SDK Provides}:
-  \begin{itemize}
-    \item \textbf{Agent Operations}: sessions, memory, review workflows, tool execution
-    \item \textbf{Security Intelligence}: findings, analytics, runtime health
-    \item \textbf{Compliance}: control testing, evidence management, audit workflows
-    \item \textbf{Integration Management}: provider sync, coverage tracking
-    \item \textbf{Observability}: structured logging, Prometheus metrics
-  \end{itemize}
-\end{frame}
+\section{Quick Start}
 
-\section{Getting Started}
-
-\begin{frame}[fragile]{Python SDK: Installation}
+\begin{frame}[fragile]{Python: 30-Second Setup}
+\textbf{Install}:
 \begin{lstlisting}[language=bash]
-# From monorepo
 uv pip install -e /path/to/cerebro
-
-# Or via path dependency in pyproject.toml
-[tool.poetry.dependencies]
-cerebro-sdk = { path = "../cerebro", develop = true }
-
-# Verify installation
-python -c "from cerebro_sdk import AuthSession; print('OK')"
+# Or add to pyproject.toml dependencies
 \end{lstlisting}
 
-\textbf{Requirements}:
-\begin{itemize}
-  \item Python 3.11+
-  \item SQLAlchemy async session (provided by Cerebro core)
-  \item PostgreSQL database connection
-\end{itemize}
-\end{frame}
-
-\begin{frame}[fragile]{TypeScript SDK: Installation}
-\begin{lstlisting}[language=bash]
-# Install from internal registry
-npm install @writerai/cerebro-sdk
-
-# Or local development
-cd sdk/ts
-npm install
-npm run build
-
-# Link for local testing
-npm link
-cd your-project
-npm link @writerai/cerebro-sdk
-\end{lstlisting}
-
-\textbf{Requirements}:
-\begin{itemize}
-  \item Node.js 18+ (native fetch support)
-  \item TypeScript 5.0+ for full type inference
-  \item Modern bundler (Vite, Webpack, esbuild)
-\end{itemize}
-\end{frame}
-
-\begin{frame}[fragile]{Python: Basic Setup}
+\textbf{Get a database session}:
 \begin{lstlisting}[language=Python]
 from cerebro.core.database import async_session_factory
-from cerebro_sdk import AuthSession, AgentManager
 
-async def example():
-    async with async_session_factory() as db:
-        # Authenticate
-        auth = AuthSession(db)
-        tokens = await auth.login("username", "password")
-        
-        # Use SDK
-        agents = AgentManager(db)
-        sessions = await agents.list_sessions(
-            org_id="org-123",
-            limit=10
-        )
-        
-        for session in sessions:
-            print(session.session_id, session.agent_type)
+async with async_session_factory() as db:
+    # Use SDK here
+    pass
+\end{lstlisting}
+
+\textbf{Import what you need}:
+\begin{lstlisting}[language=Python]
+from cerebro_sdk import (
+    AuthSession,      # Login and tokens
+    AgentManager,     # Agent sessions
+    FindingService,   # Security findings
+    AgentReviewManager,  # Review queue
+)
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{TypeScript: Basic Setup}
+\begin{frame}[fragile]{TypeScript: 30-Second Setup}
+\textbf{Install}:
+\begin{lstlisting}[language=bash]
+npm install @writerai/cerebro-sdk
+\end{lstlisting}
+
+\textbf{Initialize client}:
 \begin{lstlisting}[language=Java]
 import { CerebroSDK } from "@writerai/cerebro-sdk";
 
 const sdk = new CerebroSDK({
-  baseUrl: process.env.CEREBRO_BASE_URL!,
-  async getAccessToken() {
-    return await authClient.getToken();
-  },
-  defaultHeaders: {
-    "x-writer-service": "my-automation"
-  }
-});
-
-// Use the SDK
-const { sessions } = await sdk.agents.listSessions({
-  agentType: "security_investigator",
-  limit: 10
-});
-
-sessions.forEach(s => console.log(s.sessionId));
-\end{lstlisting}
-\end{frame}
-
-\section{Core Workflows}
-
-\begin{frame}[fragile]{Authentication}
-\textbf{Python: Database-backed Auth}
-\begin{lstlisting}[language=Python]
-from cerebro_sdk import AuthSession
-
-auth = AuthSession(db)
-tokens = await auth.login("analyst", "password")
-print(tokens.access_token, tokens.refresh_token)
-
-# Verify token
-payload = await auth.verify(
-    tokens.access_token, 
-    expected_type="access"
-)
-print(payload["username"], payload["scopes"])
-\end{lstlisting}
-
-\textbf{TypeScript: Token Provider Pattern}
-\begin{lstlisting}[language=Java]
-const sdk = new CerebroSDK({
   baseUrl: "https://cerebro.writer.com",
   async getAccessToken() {
-    // Fetch from your auth service
-    const response = await fetch("/api/auth/token");
-    const { token } = await response.json();
-    return token;
+    return await yourAuthService.getToken();
   }
 });
 \end{lstlisting}
+
+\textbf{Use the clients}:
+\begin{lstlisting}[language=Java]
+// All functionality under sdk.{module}
+sdk.agents.createSession(...)
+sdk.findings.list(...)
+sdk.securityCenter.listVendors(...)
+\end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Working with Agents: Creating Sessions}
+\section{Agent Operations}
+
+\begin{frame}[fragile]{Create an Agent Session}
+\textbf{Use Case}: Start a new agent conversation
+
 \textbf{Python}:
 \begin{lstlisting}[language=Python]
 from cerebro_sdk import AgentManager
 
 agents = AgentManager(db)
 session = await agents.create_session(
-    org_id="org-123",
-    agent_type="security_analyst",
-    created_by="automation@writer.com",
-    context={"finding_ids": ["finding-abc"]}
+    org_id=UUID("your-org-id"),
+    agent_type="security_analyst",  # or incident_responder
+    created_by="your-email@writer.com",
+    context={"finding_ids": ["finding-123"]},
+    title="Investigate critical finding"
 )
 
-await agents.add_message(
-    session_id=session.session_id,
-    role="user",
-    content={"text": "Summarize this finding"}
-)
+# Result: AgentSessionRecord
+print(session.session_id)  # UUID of new session
+print(session.is_active)   # True
 \end{lstlisting}
 
 \textbf{TypeScript}:
 \begin{lstlisting}[language=Java]
 const session = await sdk.agents.createSession({
-  orgId: "org-123",
+  orgId: "your-org-id",
   agentType: "security_analyst",
-  context: { findingIds: ["finding-abc"] }
+  context: { findingIds: ["finding-123"] }
 });
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Working with Agents: Streaming Responses}
-\textbf{TypeScript Streaming}:
-\begin{lstlisting}[language=Java]
-import { collectAgentStream } from "@writerai/cerebro-sdk";
+\begin{frame}[fragile]{Send a Message to Agent}
+\textbf{Use Case}: Ask the agent a question
 
-const stream = sdk.agents.streamSession({
-  sessionId: session.sessionId,
-  message: "Analyze the blast radius"
-});
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+message = await agents.add_message(
+    session_id=session.session_id,
+    role="user",  # or "assistant" or "system"
+    content={"text": "What is the blast radius of this finding?"}
+)
 
-const result = await collectAgentStream(stream);
-console.log("Completion:", result.completion);
-console.log("Tool calls:", result.toolCalls.length);
-console.log("Errors:", result.errors);
+# Result: AgentMessageRecord
+print(message.message_id)
+print(message.role)
+print(message.created_at)
 \end{lstlisting}
 
-\vspace{0.3cm}
+\textbf{TypeScript - With Streaming}:
+\begin{lstlisting}[language=Java]
+const stream = sdk.agents.streamSession({
+  sessionId: session.sessionId,
+  message: "What is the blast radius?"
+});
 
-The SDK handles:
+// Collect all events
+import { collectAgentStream } from "@writerai/cerebro-sdk";
+const result = await collectAgentStream(stream);
+
+console.log(result.completion);  // Final answer
+console.log(result.toolCalls);   // Tools agent called
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{List All Sessions for an Org}
+\textbf{Use Case}: See recent agent activity
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+sessions, total = await agents.list_sessions(
+    org_id=org_id,
+    agent_type="security_analyst",  # Optional filter
+    limit=50,
+    offset=0
+)
+
+for session in sessions:
+    print(f"{session.session_id}: {session.title}")
+    print(f"  Created: {session.created_at}")
+    print(f"  Active: {session.is_active}")
+    print(f"  Context: {session.context}")
+\end{lstlisting}
+
+\textbf{TypeScript}:
+\begin{lstlisting}[language=Java]
+const { sessions } = await sdk.agents.listSessions({
+  agentType: "security_analyst",
+  limit: 50
+});
+
+sessions.forEach(s => {
+  console.log(`${s.sessionId}: ${s.title}`);
+});
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Get Session With Full Message History}
+\textbf{Use Case}: View complete conversation
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+# Get session metadata
+session = await agents.get_session(session_id)
+
+# Get all messages in the session
+messages = await agents.list_messages(
+    session_id=session_id,
+    limit=100
+)
+
+for msg in messages:
+    print(f"{msg.role}: {msg.content.get('text', '')}")
+\end{lstlisting}
+
+\textbf{TypeScript}:
+\begin{lstlisting}[language=Java]
+// Get session with messages in one call
+const sessionDetail = await sdk.agents.getSession(
+  sessionId, 
+  { messageLimit: 100 }
+);
+
+console.log(sessionDetail.session.title);
+sessionDetail.messages.forEach(msg => {
+  console.log(`${msg.role}: ${msg.content.text}`);
+});
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Link Findings to a Session}
+\textbf{Use Case}: Add more findings to existing investigation
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+updated_session = await agents.link_findings(
+    session_id=session_id,
+    finding_ids=["finding-456", "finding-789"],
+    regenerate=True  # Re-run finding generation
+)
+
+# Now session.context includes all finding IDs
+print(updated_session.context["finding_ids"])
+# ['finding-123', 'finding-456', 'finding-789']
+\end{lstlisting}
+
+\textbf{Use Case}: Create session for specific incident
+
+\begin{lstlisting}[language=Python]
+incident_session = await agents.create_incident_session(
+    org_id=org_id,
+    created_by="oncall@writer.com",
+    incident_id="INC-2025-001",
+    agent_type="incident_responder"
+)
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Find Sessions by Finding or Incident}
+\textbf{Use Case}: "Show me all agent sessions for this finding"
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+# Find sessions that investigated a specific finding
+sessions = await agents.sessions_for_finding(
+    org_id=org_id,
+    finding_id="finding-123",
+    limit=20
+)
+
+# Find sessions for an incident
+incident_sessions = await agents.sessions_for_incident(
+    org_id=org_id,
+    incident_id="INC-2025-001",
+    limit=20
+)
+
+for sess in sessions:
+    print(f"Session {sess.session_id} investigated this finding")
+\end{lstlisting}
+
+\textbf{Notes}:
 \begin{itemize}
-  \item SSE parsing and reconnection
-  \item Type guards for different event types
-  \item Automatic accumulation of partial responses
+  \item Uses PostgreSQL JSON containment for fast lookups
+  \item Returns most recent sessions first
+  \item Pagination supported with limit/offset
 \end{itemize}
 \end{frame}
 
-\begin{frame}[fragile]{Review Queue Management}
-\textbf{Python: Bulk Operations}
+\begin{frame}[fragile]{Get Agent Memory Statistics}
+\textbf{Use Case}: Understand what the agent remembers
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+stats = await agents.get_memory_stats(
+    session_id=session_id,
+    since_hours=24,           # Optional: recent memories only
+    scope_type="finding",     # Optional: filter by scope
+    role="assistant"          # Optional: filter by role
+)
+
+if stats:
+    print(f"Total memories: {stats.total_entries}")
+    print(f"Recent (24h): {stats.recent_entries}")
+    print(f"Avg decay score: {stats.average_decay}")
+    print(f"Total tokens: {stats.token_total}")
+    
+    print("\nRole distribution:", stats.role_distribution)
+    # {'user': 10, 'assistant': 15, 'system': 3}
+    
+    print("\nScope distribution:", stats.scope_distribution)
+    # {'finding': 8, 'incident': 2, 'asset': 5}
+    
+    print("\nTop 5 memories by decay score:")
+    for mem in stats.top_memories:
+        print(f"  {mem['summary']} (score: {mem['decay_score']})")
+\end{lstlisting}
+\end{frame}
+
+\section{Review Queue}
+
+\begin{frame}[fragile]{Get Review Queue Summary}
+\textbf{Use Case}: Dashboard showing pending work
+
+\textbf{TypeScript}:
+\begin{lstlisting}[language=Java]
+const summary = await sdk.agents.getReviewQueueSummary();
+
+console.log(`Generated at: ${summary.generatedAt}`);
+
+summary.statusCounts.forEach(stat => {
+  console.log(`${stat.status}: ${stat.count} tasks`);
+});
+// pending: 15, in_progress: 5, completed: 30
+
+console.log(`\nPending summary:`);
+console.log(`  Total: ${summary.pending.totalPending}`);
+console.log(`  Avg age: ${summary.pending.avgAgeHours}h`);
+console.log(`  Oldest: ${summary.pending.oldestTaskAge}h`);
+
+summary.priorityBreakdown.forEach(p => {
+  console.log(`${p.priority}: ${p.count}`);
+});
+// high: 5, medium: 8, low: 2
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{List Pending Review Tasks}
+\textbf{Use Case}: Get all tasks that need attention
+
+\textbf{Python}:
 \begin{lstlisting}[language=Python]
 from cerebro_sdk import AgentReviewManager
 
 review = AgentReviewManager(db)
 
-# Get pending tasks
 tasks = await review.list_tasks(
-    org_id="org-123",
-    status="pending",
+    org_id=org_id,
+    status="pending",  # or "in_progress", "completed"
     limit=50
 )
 
-# Bulk update
-await review.bulk_update_tasks(
-    task_ids=[t.task_id for t in tasks[:10]],
+for task in tasks:
+    print(f"Task {task.task_id}: {task.title}")
+    print(f"  Status: {task.status}")
+    print(f"  Priority: {task.priority}")
+    print(f"  Created: {task.created_at}")
+    print(f"  Assigned to: {task.assigned_to}")
+    print(f"  Session: {task.session_id}")
+\end{lstlisting}
+
+\textbf{TypeScript - With Pagination}:
+\begin{lstlisting}[language=Java]
+const page = await sdk.agents.listReviewTasksPage({
+  status: "pending",
+  limit: 50,
+  cursor: null  // or previous nextCursor
+});
+
+console.log(`Got ${page.items.length} tasks`);
+console.log(`Next cursor: ${page.nextCursor}`);
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Bulk Update Review Tasks}
+\textbf{Use Case}: Assign multiple tasks at once
+
+\textbf{TypeScript}:
+\begin{lstlisting}[language=Java]
+const updated = await sdk.agents.bulkUpdateReviewTasks({
+  taskIds: ["task-1", "task-2", "task-3"],
+  status: "in_progress",
+  assignedTo: "analyst@writer.com",
+  priority: "high",
+  dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h from now
+});
+
+console.log(`Updated ${updated.length} tasks`);
+\end{lstlisting}
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+from datetime import datetime, timedelta
+
+updated = await review.bulk_update_tasks(
+    task_ids=[task1.task_id, task2.task_id],
     status="in_progress",
-    assigned_to="analyst@writer.com"
+    assigned_to="analyst@writer.com",
+    priority="high",
+    due_at=datetime.now() + timedelta(hours=24)
+)
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Check SLA Status}
+\textbf{Use Case}: Find tasks about to breach SLA
+
+\textbf{TypeScript}:
+\begin{lstlisting}[language=Java]
+// Get tasks at risk
+const atRisk = await sdk.agents.listReviewTasksSlaAtRisk({
+  thresholdHours: 24  // Tasks with < 24h remaining
+});
+
+atRisk.forEach(task => {
+  console.log(`${task.taskId}: ${task.title}`);
+  console.log(`  Time remaining: ${task.remainingHours}h`);
+});
+
+// Get full SLA summary
+const slaSummary = await sdk.agents.getReviewTasksSlaSummary();
+
+console.log(`Breached: ${slaSummary.breached}`);
+console.log(`At risk: ${slaSummary.atRisk}`);
+console.log(`On track: ${slaSummary.onTrack}`);
+console.log(`Compliance: ${slaSummary.complianceRate}%`);
+\end{lstlisting}
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+at_risk = await review.list_tasks_sla_at_risk(
+    org_id=org_id,
+    threshold_hours=24
+)
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Add Comments and Track History}
+\textbf{Use Case}: Document review decisions
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+# Add comment
+comment = await review.add_comment(
+    task_id=task.task_id,
+    author="analyst@writer.com",
+    content="Investigated - false positive, safe to close",
+    metadata={"severity_reassessment": "low"}
 )
 
-# Export with history
+# Get all comments
+comments = await review.list_comments(task_id=task.task_id)
+
+for c in comments:
+    print(f"{c.author} at {c.created_at}:")
+    print(f"  {c.content}")
+
+# Get audit history
+history = await review.get_task_history(task_id=task.task_id)
+
+for h in history:
+    print(f"{h.changed_by} changed {h.field_name}:")
+    print(f"  {h.old_value} -> {h.new_value}")
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Export Review Tasks With Context}
+\textbf{Use Case}: Sync to external ticketing system
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
 exports = await review.export_tasks(
-    org_id="org-123",
+    org_id=org_id,
+    status="completed",  # Optional filter
     include_comments=True,
     include_history=True
 )
+
+for bundle in exports:
+    task = bundle.task
+    print(f"Task: {task.title}")
+    print(f"Comments: {len(bundle.comments)}")
+    print(f"History entries: {len(bundle.history)}")
+    
+    # Send to Jira, Linear, etc.
+    await external_system.sync_task(
+        title=task.title,
+        status=task.status,
+        comments=[c.content for c in bundle.comments]
+    )
 \end{lstlisting}
+
+\textbf{Result}: Each bundle contains:
+\begin{itemize}
+  \item Task record with all metadata
+  \item All comments with authors and timestamps
+  \item Full audit history of changes
+\end{itemize}
 \end{frame}
 
-\begin{frame}[fragile]{Findings and Analytics}
+\section{Findings}
+
+\begin{frame}[fragile]{List Findings}
+\textbf{Use Case}: Get critical security findings
+
 \textbf{Python}:
 \begin{lstlisting}[language=Python]
-from cerebro_sdk import FindingService, RuntimeHealthClient
+from cerebro_sdk import FindingService
 
-# List findings
 findings_svc = FindingService(db)
+
 findings = await findings_svc.list_findings(
-    org_id="org-123",
-    severity="critical",
-    status="open"
+    org_id=org_id,
+    severity="critical",  # or "high", "medium", "low"
+    status="open",        # or "fixed", "accepted_risk"
+    limit=100
 )
 
-# Runtime health metrics
-health = RuntimeHealthClient(db)
-metrics = await health.get_runtime_health(
-    org_id="org-123",
-    since_hours=24
-)
-
-print(f"Events: {metrics.total_events}")
-print(f"Errors: {metrics.error_count}")
+for f in findings:
+    print(f"{f.finding_id}: {f.title}")
+    print(f"  Severity: {f.severity}")
+    print(f"  Provider: {f.provider}")
+    print(f"  First seen: {f.first_seen}")
+    print(f"  Evidence: {f.evidence}")
 \end{lstlisting}
-\end{frame}
 
-\begin{frame}[fragile]{Security Center: Vendor Management}
 \textbf{TypeScript}:
 \begin{lstlisting}[language=Java]
-// List vendors with risk filtering
-const vendors = await sdk.securityCenter.listVendors(
-  "org-123", 
-  { riskLevel: "high", category: "security" }
-);
-
-// Register new vendor
-await sdk.securityCenter.registerVendor("org-123", {
-  name: "Acme Cloud",
-  websiteUrl: "https://acme.example.com",
-  category: "security",
-  businessCriticality: "high"
+const findings = await sdk.findings.list({
+  orgId: "org-id",
+  severity: "critical",
+  status: "open"
 });
-
-// Assess vendor health
-import { assessVendorHealth } from "@writerai/cerebro-sdk";
-
-const health = vendors.map(v => assessVendorHealth(v));
-const overdue = health.filter(h => 
-  h.reviewStatus === "overdue"
-);
 \end{lstlisting}
 \end{frame}
 
-\section{Advanced Patterns}
+\begin{frame}[fragile]{Paginate Through Findings}
+\textbf{Use Case}: Process thousands of findings
 
-\begin{frame}[fragile]{Pagination: Python}
+\textbf{Python}:
 \begin{lstlisting}[language=Python]
-from cerebro_sdk import AgentManager
+from cerebro_sdk.pagination import PageRequest
 
-agents = AgentManager(db)
-
-# Manual pagination
-cursor = None
-all_sessions = []
+page_request = PageRequest(cursor=None, limit=100)
 
 while True:
-    result = await agents.list_sessions(
-        org_id="org-123",
-        cursor=cursor,
-        limit=100
+    page = await findings_svc.list_findings_page(
+        org_id=org_id,
+        severity="critical",
+        page=page_request
     )
-    all_sessions.extend(result.sessions)
     
-    if not result.next_cursor:
-        break
-    cursor = result.next_cursor
-
-print(f"Total sessions: {len(all_sessions)}")
+    for finding in page.items:
+        await process_finding(finding)
+    
+    if not page.next_cursor:
+        break  # No more results
+    
+    page_request.cursor = page.next_cursor
 \end{lstlisting}
-\end{frame}
 
-\begin{frame}[fragile]{Pagination: TypeScript}
+\textbf{TypeScript - With Helper}:
 \begin{lstlisting}[language=Java]
-import { iterateCursor, collectCursor } 
-  from "@writerai/cerebro-sdk";
+import { iterateCursor } from "@writerai/cerebro-sdk";
 
-// Stream with async iteration
-for await (const session of iterateCursor(
-  () => sdk.agents.listSessions({ orgId: "org-123" })
+for await (const finding of iterateCursor(
+  () => sdk.findings.list({ orgId, severity: "critical" })
 )) {
-  await processSession(session);
+  await processFinding(finding);
 }
-
-// Or collect all at once
-const allSessions = await collectCursor(
-  () => sdk.agents.listSessions({ orgId: "org-123" })
-);
-
-console.log(`Total: ${allSessions.length}`);
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Tool Execution and Approvals}
+\begin{frame}[fragile]{Close a Finding}
+\textbf{Use Case}: Mark finding as resolved
+
+\textbf{Python}:
+\begin{lstlisting}[language=Python]
+success = await findings_svc.close_finding(
+    finding_id=finding.finding_id,
+    status="fixed"  # or "accepted_risk"
+)
+
+if success:
+    print("Finding closed successfully")
+\end{lstlisting}
+
+\textbf{Generate Findings for Org}:
+\begin{lstlisting}[language=Python]
+result = await findings_svc.generate_for_org(
+    org_id=org_id,
+    provider="aws",  # Optional: specific provider
+    resource_types=["ec2_instance", "s3_bucket"]  # Optional
+)
+
+print(f"Generated {result.findings_created} new findings")
+print(f"Updated {result.findings_updated} existing findings")
+print(f"Errors: {len(result.errors)}")
+\end{lstlisting}
+\end{frame}
+
+\section{Tool Execution}
+
+\begin{frame}[fragile]{Create Tool Invocation}
+\textbf{Use Case}: Track agent tool execution
+
 \textbf{Python}:
 \begin{lstlisting}[language=Python]
 from cerebro_sdk import AgentToolingManager
@@ -418,357 +617,209 @@ from cerebro.agents.models import ToolInvocationStatus
 
 tooling = AgentToolingManager(db)
 
-# Create tool invocation
 invocation = await tooling.create_invocation(
     session_id=session.session_id,
-    tool_name="remediation.isolate_host",
-    input_data={"host_id": "host-123"},
-    status=ToolInvocationStatus.PENDING_APPROVAL
+    tool_name="timeline.generate",
+    input_data={"scope": "finding", "finding_id": "finding-123"},
+    status=ToolInvocationStatus.RUNNING
 )
 
-# Approve and execute
+print(f"Invocation ID: {invocation.invocation_id}")
+\end{lstlisting}
+
+\textbf{Update with result}:
+\begin{lstlisting}[language=Python]
 updated = await tooling.update_invocation_result(
     invocation_id=invocation.invocation_id,
     status=ToolInvocationStatus.SUCCESS,
-    output_data={"isolated": True},
-    cel_result=True
+    output_data={"timeline": [...], "event_count": 42},
+    cel_result=True  # CEL policy passed
 )
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Evidence Lifecycle Management}
-\textbf{Both SDKs Support Evidence Primitives}:
+\begin{frame}[fragile]{List Tool Invocations}
+\textbf{Use Case}: Audit what tools were called
+
+\textbf{Python}:
 \begin{lstlisting}[language=Python]
-from cerebro_sdk.security_center import (
-    extract_evidence_artifacts,
-    evaluate_evidence_lifecycle,
-    LifecyclePolicy
+invocations = await tooling.list_invocations(
+    org_id=org_id,
+    session_id=session_id,  # Optional
+    tool_name="timeline.generate",  # Optional
+    status=ToolInvocationStatus.SUCCESS,  # Optional
+    text_query="critical"  # Optional: search inputs/outputs
 )
 
-# Extract evidence from metadata
-metadata = {
-    "evidence": {
-        "id": "soc2-audit",
-        "collected_at": "2024-08-01T00:00:00Z"
-    }
-}
+for inv in invocations:
+    print(f"{inv.tool_name} at {inv.created_at}")
+    print(f"  Status: {inv.status}")
+    print(f"  Duration: {inv.duration_seconds}s")
+    print(f"  Input: {inv.input_data}")
+    print(f"  Output: {inv.output_data}")
+\end{lstlisting}
 
-artifacts = extract_evidence_artifacts(
-    kind="vendor",
-    entity_id="vendor-1",
-    metadata=metadata
+\textbf{Get Summary Statistics}:
+\begin{lstlisting}[language=Python]
+summaries = await tooling.summarize_invocations(
+    org_id=org_id,
+    status=ToolInvocationStatus.SUCCESS
 )
 
-# Evaluate lifecycle
-policy = LifecyclePolicy(
-    max_age_days=90, 
-    refresh_window_days=14
-)
-snapshot = evaluate_evidence_lifecycle(
-    artifacts[0], policy
-)
-
-print(snapshot.status)  # fresh, stale, or expired
+for summary in summaries:
+    print(f"{summary.tool_name}: {summary.invocation_count} calls")
+    print(f"  Avg duration: {summary.avg_duration}s")
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Observability: Logging}
-\textbf{Python: Structured Logging}
-\begin{lstlisting}[language=Python]
-from cerebro_sdk import configure_logging
+\section{Security Center}
 
-logger = configure_logging(
-    level="INFO",
-    json_format=True,
-    include_timestamp=True
-)
+\begin{frame}[fragile]{List and Register Vendors}
+\textbf{Use Case}: Vendor risk management
 
-logger.info(
-    "Agent session created",
-    extra={
-        "session_id": session.session_id,
-        "org_id": org_id,
-        "agent_type": "security_analyst"
-    }
-)
-\end{lstlisting}
-
-\textbf{TypeScript: Custom Middleware}
+\textbf{TypeScript}:
 \begin{lstlisting}[language=Java]
-const sdk = new CerebroSDK({
-  baseUrl: process.env.CEREBRO_BASE_URL!,
-  beforeRequest: (request) => {
-    console.log(`API Call: ${request.method} ${request.url}`);
-  },
-  afterResponse: (response) => {
-    console.log(`Response: ${response.status}`);
+// List vendors with filters
+const vendors = await sdk.securityCenter.listVendors("org-id", {
+  riskLevel: "high",
+  category: "security",
+  limit: 50
+});
+
+vendors.forEach(v => {
+  console.log(`${v.name}: ${v.riskLevel} risk`);
+  console.log(`  Last review: ${v.lastReviewDate}`);
+  console.log(`  Criticality: ${v.businessCriticality}`);
+});
+
+// Register new vendor
+await sdk.securityCenter.registerVendor("org-id", {
+  name: "Acme Security Platform",
+  websiteUrl: "https://acme.example.com",
+  category: "security",
+  businessCriticality: "high",
+  primaryContact: {
+    name: "John Doe",
+    email: "john@acme.example.com"
   }
 });
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Observability: Metrics}
-\textbf{Python: Prometheus Integration}
-\begin{lstlisting}[language=Python]
-from prometheus_client import CollectorRegistry
-from cerebro_sdk import AgentToolingManager
+\begin{frame}[fragile]{Assess Vendor Health}
+\textbf{Use Case}: Compliance review status
 
-registry = CollectorRegistry()
-tooling = AgentToolingManager(db, registry=registry)
-
-# Operations automatically emit metrics
-await tooling.list_invocations(org_id="org-123")
-
-# Metrics available:
-# - cerebro_sdk_tool_invocation_queries_total
-# - cerebro_sdk_tool_approval_queries_total
-# - cerebro_sdk_notifications_total
-# - cerebro_sdk_tickets_total
-\end{lstlisting}
-
-\vspace{0.3cm}
-
-Use these metrics to:
-\begin{itemize}
-  \item Track API call volume and latency
-  \item Monitor error rates by operation
-  \item Alert on approval bottlenecks
-\end{itemize}
-\end{frame}
-
-\section{Testing Strategies}
-
-\begin{frame}[fragile]{Python: In-Memory Testing}
-\begin{lstlisting}[language=Python]
-import pytest
-from cerebro_sdk.testing import InMemoryAgentManager
-
-@pytest.fixture
-def agent_manager():
-    return InMemoryAgentManager()
-
-async def test_session_creation(agent_manager):
-    session = await agent_manager.create_session(
-        org_id="test-org",
-        agent_type="analyst",
-        created_by="test@example.com"
-    )
-    
-    assert session.session_id is not None
-    assert session.agent_type == "analyst"
-    
-    # Operations work without database
-    sessions = await agent_manager.list_sessions(
-        org_id="test-org"
-    )
-    assert len(sessions) == 1
-\end{lstlisting}
-\end{frame}
-
-\begin{frame}[fragile]{TypeScript: Contract Testing}
+\textbf{TypeScript}:
 \begin{lstlisting}[language=Java]
-import { describe, it, expect } from "vitest";
-import { CerebroSDK } from "@writerai/cerebro-sdk";
+import { assessVendorHealth } from "@writerai/cerebro-sdk";
 
-describe("Agents Client", () => {
-  const sdk = new CerebroSDK({
-    baseUrl: "http://localhost:8000",
-    getAccessToken: async () => "test-token"
-  });
+const vendors = await sdk.securityCenter.listVendors("org-id");
 
-  it("creates and lists sessions", async () => {
-    const session = await sdk.agents.createSession({
-      orgId: "test-org",
-      agentType: "analyst"
-    });
-
-    expect(session.sessionId).toBeDefined();
-
-    const { sessions } = await sdk.agents.listSessions({
-      orgId: "test-org"
-    });
-    
-    expect(sessions.length).toBeGreaterThan(0);
-  });
-});
-\end{lstlisting}
-\end{frame}
-
-\begin{frame}{Testing Best Practices}
-  \textbf{Unit Tests}:
-  \begin{itemize}
-    \item Use in-memory adapters (Python) or mocked HTTP clients (TypeScript)
-    \item Test business logic without external dependencies
-    \item Fast feedback loop (< 1 second per test)
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Integration Tests}:
-  \begin{itemize}
-    \item Point at local Cerebro instance or staging environment
-    \item Test full workflows end-to-end
-    \item Verify SDK behavior matches API contracts
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Contract Tests}:
-  \begin{itemize}
-    \item Ensure TypeScript and Python SDKs produce equivalent results
-    \item Validate serialization and deserialization
-    \item Catch API schema drift early
-  \end{itemize}
-\end{frame}
-
-\section{Production Patterns}
-
-\begin{frame}{Error Handling Strategy}
-  \textbf{SDK Exceptions Hierarchy}:
-  \begin{itemize}
-    \item \texttt{AgentSDKError} (base for all SDK errors)
-    \begin{itemize}
-      \item \texttt{AgentNotFoundError}: resource doesn't exist
-      \item \texttt{AgentInvalidStatusError}: invalid state transition
-      \item \texttt{AgentValidationError}: input validation failed
-    \end{itemize}
-    \item \texttt{HttpError} (TypeScript): HTTP request failures
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Recommended Pattern}:
-  \begin{itemize}
-    \item Catch specific exceptions for known failure modes
-    \item Log \texttt{AgentSDKError} base class for unexpected errors
-    \item Include context (org\_id, session\_id) in error logs
-    \item Retry on transient network errors, not validation errors
-  \end{itemize}
-\end{frame}
-
-\begin{frame}[fragile]{Retry Pattern}
-\textbf{TypeScript with Exponential Backoff}:
-\begin{lstlisting}[language=Java]
-import { CerebroSDK, HttpError } from "@writerai/cerebro-sdk";
-
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  maxAttempts = 3
-): Promise<T> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (error instanceof HttpError && 
-          error.status >= 500 && 
-          attempt < maxAttempts) {
-        const delay = Math.pow(2, attempt) * 1000;
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new Error("Unreachable");
-}
-
-const sessions = await withRetry(
-  () => sdk.agents.listSessions({ orgId })
+const assessments = vendors.map(vendor => 
+  assessVendorHealth(vendor)
 );
+
+// Filter for issues
+const needsReview = assessments.filter(a => 
+  a.reviewStatus === "overdue"
+);
+
+const expiringSoon = assessments.filter(a => 
+  a.daysUntilExpiration !== null && 
+  a.daysUntilExpiration < 30
+);
+
+console.log(`Overdue reviews: ${needsReview.length}`);
+console.log(`Expiring soon: ${expiringSoon.length}`);
+
+needsReview.forEach(a => {
+  console.log(`${a.vendorName}: review ${a.daysOverdue} days overdue`);
+});
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Connection Pool Management}
-\textbf{Python: Database Session Best Practices}
+\begin{frame}[fragile]{Iterate Through All Vendors}
+\textbf{Use Case}: Process entire vendor portfolio
+
+\textbf{TypeScript}:
+\begin{lstlisting}[language=Java]
+// Automatically handles pagination
+const allVendors = await sdk.securityCenter.iterateVendors(
+  "org-id",
+  { limit: 100 }
+);
+
+console.log(`Total vendors: ${allVendors.length}`);
+
+// Or stream with async iteration
+for await (const vendor of sdk.securityCenter.iterateVendorsStream(
+  "org-id"
+)) {
+  await processVendor(vendor);
+}
+\end{lstlisting}
+
+\textbf{Get Portfolio Summary}:
+\begin{lstlisting}[language=Java]
+import { summarizeVendorPortfolio } from "@writerai/cerebro-sdk";
+
+const summary = summarizeVendorPortfolio(allVendors);
+
+console.log(`By risk: ${JSON.stringify(summary.byRiskLevel)}`);
+// {high: 5, medium: 15, low: 30}
+
+console.log(`By category: ${JSON.stringify(summary.byCategory)}`);
+// {security: 10, infrastructure: 20, saas: 20}
+\end{lstlisting}
+\end{frame}
+
+\section{Analytics}
+
+\begin{frame}[fragile]{Get Runtime Health}
+\textbf{Use Case}: Monitor agent performance
+
+\textbf{Python}:
 \begin{lstlisting}[language=Python]
-from cerebro.core.database import async_session_factory
-from contextlib import asynccontextmanager
+from cerebro_sdk import RuntimeHealthClient
 
-@asynccontextmanager
-async def get_sdk_session():
-    """Reusable session context manager"""
-    async with async_session_factory() as db:
-        yield db
+health = RuntimeHealthClient(db)
 
-# In your service
-async def process_findings(org_id: str):
-    async with get_sdk_session() as db:
-        findings = FindingService(db)
-        results = await findings.list_findings(
-            org_id=org_id,
-            severity="critical"
-        )
-        return results
+metrics = await health.get_runtime_health(
+    org_id=org_id,
+    since_hours=24  # Last 24 hours
+)
 
-# Connection pooling handled by SQLAlchemy
-# Default pool size: 5 connections
-# Configure via DATABASE_URL parameters
+print(f"Total events: {metrics.total_events}")
+print(f"Errors: {metrics.error_count}")
+print(f"Warnings: {metrics.warning_count}")
+print(f"Avg response time: {metrics.avg_response_time_ms}ms")
+
+# Event breakdown by type
+for event_type, count in metrics.event_types.items():
+    print(f"  {event_type}: {count}")
+\end{lstlisting}
+
+\textbf{Integration Coverage}:
+\begin{lstlisting}[language=Python]
+coverage = await health.get_integration_coverage(org_id=org_id)
+
+print(f"Total integrations: {coverage.total}")
+print(f"Healthy: {coverage.healthy}")
+print(f"Warning: {coverage.warning}")
+print(f"Failed: {coverage.failed}")
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}{Rate Limiting and Throttling}
-  \textbf{SDK Built-in Protections}:
-  \begin{itemize}
-    \item Respects HTTP 429 responses with Retry-After headers
-    \item Configurable timeout per request (default: 30s)
-    \item Connection pooling prevents overwhelming backend
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Application-Level Strategies}:
-  \begin{itemize}
-    \item Use pagination limits to control batch sizes
-    \item Implement job queues for bulk operations
-    \item Cache frequently accessed data (findings, org metadata)
-    \item Monitor SDK metrics for throttling signals
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Recommended Limits}:
-  \begin{itemize}
-    \item Findings/sessions: 100 per page
-    \item Review tasks: 50 per page
-    \item Concurrent API calls: 10 per service
-  \end{itemize}
-\end{frame}
+\section{Common Patterns}
 
-\begin{frame}{Configuration Management}
-  \textbf{Python: Settings Proxy Pattern}
-  \begin{itemize}
-    \item Cache settings in-memory with automatic refresh
-    \item Environment variable overrides
-    \item Safe defaults for development vs. production
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{TypeScript: Environment-Aware Setup}
-  \begin{itemize}
-    \item Different base URLs per environment
-    \item Token providers vary by runtime (browser vs. Node.js)
-    \item Custom headers for service identification
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Secrets Management}:
-  \begin{itemize}
-    \item Never hardcode API keys or passwords
-    \item Use environment variables or secret managers
-    \item Rotate tokens regularly, SDK supports async token refresh
-  \end{itemize}
-\end{frame}
+\begin{frame}[fragile]{Pattern: Automated Finding Triage}
+\textbf{Use Case}: Auto-create agent sessions for critical findings
 
-\section{Real-World Examples}
-
-\begin{frame}[fragile]{Example: Automated Finding Triage}
 \begin{lstlisting}[language=Python]
 from cerebro_sdk import FindingService, AgentManager
 
-async def auto_triage_critical_findings(org_id: str):
-    async with get_sdk_session() as db:
+async def auto_triage_critical(org_id):
+    async with async_session_factory() as db:
         findings_svc = FindingService(db)
         agents = AgentManager(db)
         
@@ -781,341 +832,282 @@ async def auto_triage_critical_findings(org_id: str):
         )
         
         for finding in findings:
-            # Create agent session for each
+            # Create agent session
             session = await agents.create_session(
                 org_id=org_id,
                 agent_type="security_analyst",
-                context={"finding_ids": [finding.finding_id]}
+                created_by="automation@writer.com",
+                context={"finding_ids": [str(finding.finding_id)]},
+                title=f"Triage: {finding.title}"
             )
             
             # Queue initial analysis
             await agents.add_message(
                 session_id=session.session_id,
                 role="user",
-                content={"text": "Analyze blast radius"}
+                content={"text": "Analyze blast radius and priority"}
             )
+            
+            print(f"Created session {session.session_id} for {finding.finding_id}")
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}[fragile]{Example: Compliance Report Generation}
-\begin{lstlisting}[language=Java]
-import { CerebroSDK, assessVendorHealth } 
-  from "@writerai/cerebro-sdk";
-
-async function generateComplianceReport(orgId: string) {
-  const sdk = new CerebroSDK({...});
-  
-  // Fetch all vendors
-  const vendors = await sdk.securityCenter.iterateVendors(
-    orgId, 
-    { limit: 100 }
-  );
-  
-  // Assess health
-  const assessments = vendors.map(assessVendorHealth);
-  
-  const overdue = assessments.filter(
-    a => a.reviewStatus === "overdue"
-  );
-  const expiringSoon = assessments.filter(
-    a => a.daysUntilExpiration !== null && 
-         a.daysUntilExpiration < 30
-  );
-  
-  return {
-    totalVendors: vendors.length,
-    overdueReviews: overdue.length,
-    expiringSoon: expiringSoon.length,
-    details: assessments
-  };
-}
-\end{lstlisting}
-\end{frame}
-
-\begin{frame}[fragile]{Example: Review Queue Dashboard}
+\begin{frame}[fragile]{Pattern: Review Queue Dashboard}
 \begin{lstlisting}[language=Python]
 from cerebro_sdk import AgentReviewManager
 
-async def get_review_queue_metrics(org_id: str):
-    async with get_sdk_session() as db:
+async def get_queue_metrics(org_id):
+    async with async_session_factory() as db:
         review = AgentReviewManager(db)
         
-        # Get all pending tasks
-        pending = await review.list_tasks(
-            org_id=org_id, status="pending"
+        # Get pending tasks
+        pending, _ = await review.list_tasks(
+            org_id=org_id, 
+            status="pending"
         )
         
-        # SLA at-risk tasks
+        # Get SLA at-risk
         at_risk = await review.list_tasks_sla_at_risk(
-            org_id=org_id, threshold_hours=24
+            org_id=org_id,
+            threshold_hours=24
         )
         
-        # Summary stats
+        # Get summary
         summary = await review.get_queue_summary(org_id)
         
         return {
             "pending_count": len(pending),
             "at_risk_count": len(at_risk),
             "avg_age_hours": summary.avg_age_hours,
-            "oldest_task": summary.oldest_task_age
+            "oldest_task_age": summary.oldest_task_age,
+            "by_priority": {
+                "high": len([t for t in pending if t.priority == "high"]),
+                "medium": len([t for t in pending if t.priority == "medium"]),
+                "low": len([t for t in pending if t.priority == "low"])
+            }
         }
+
+# Usage
+metrics = await get_queue_metrics(org_id)
+print(f"Pending: {metrics['pending_count']}")
+print(f"At risk: {metrics['at_risk_count']}")
 \end{lstlisting}
 \end{frame}
 
-\section{Troubleshooting}
+\begin{frame}[fragile]{Pattern: Compliance Report}
+\begin{lstlisting}[language=Java]
+import { CerebroSDK, assessVendorHealth, 
+         summarizeVendorPortfolio } from "@writerai/cerebro-sdk";
 
-\begin{frame}{Common Issues: Python}
-  \begin{tabular}{p{0.35\textwidth}p{0.55\textwidth}}
-    \toprule
-    \textbf{Symptom} & \textbf{Solution} \\
-    \midrule
-    \texttt{ModuleNotFoundError} & Ensure SDK is installed: \texttt{uv pip install -e .} \\
-    \midrule
-    \texttt{AgentNotFoundError} & Verify resource exists, check org\_id scope \\
-    \midrule
-    Session pool exhausted & Reduce concurrent operations, check for leaks \\
-    \midrule
-    Slow queries & Add database indexes, use pagination \\
-    \midrule
-    Type errors & Update to latest SDK, check model definitions \\
-    \bottomrule
-  \end{tabular}
+async function generateComplianceReport(orgId: string) {
+  const sdk = new CerebroSDK({...});
+  
+  // Get all vendors
+  const vendors = await sdk.securityCenter.iterateVendors(orgId);
+  
+  // Assess health
+  const assessments = vendors.map(assessVendorHealth);
+  
+  // Calculate metrics
+  const overdue = assessments.filter(a => 
+    a.reviewStatus === "overdue"
+  );
+  const expiring = assessments.filter(a => 
+    a.daysUntilExpiration && a.daysUntilExpiration < 30
+  );
+  
+  const portfolio = summarizeVendorPortfolio(vendors);
+  
+  return {
+    totalVendors: vendors.length,
+    overdueReviews: overdue.length,
+    expiringCertifications: expiring.length,
+    byRisk: portfolio.byRiskLevel,
+    byCategory: portfolio.byCategory,
+    needsAttention: overdue.map(a => ({
+      name: a.vendorName,
+      daysOverdue: a.daysOverdue
+    }))
+  };
+}
+\end{lstlisting}
 \end{frame}
 
-\begin{frame}{Common Issues: TypeScript}
-  \begin{tabular}{p{0.35\textwidth}p{0.55\textwidth}}
-    \toprule
-    \textbf{Symptom} & \textbf{Solution} \\
-    \midrule
-    \texttt{fetch is not a function} & Upgrade to Node 18+ or add undici polyfill \\
-    \midrule
-    \texttt{HttpError} with empty body & Server returned non-JSON, check logs \\
-    \midrule
-    SSE stream terminates early & Increase timeout, check network stability \\
-    \midrule
-    Type mismatches & Regenerate adapters from OpenAPI spec \\
-    \midrule
-    Module not found & Check bundler config, ensure ESM support \\
-    \bottomrule
-  \end{tabular}
+\begin{frame}[fragile]{Pattern: Tool Execution Audit}
+\begin{lstlisting}[language=Python]
+from cerebro_sdk import AgentToolingManager
+from cerebro.agents.models import ToolInvocationStatus
+
+async def audit_tool_usage(org_id, days=7):
+    async with async_session_factory() as db:
+        tooling = AgentToolingManager(db)
+        
+        # Get all tool calls
+        invocations = await tooling.list_invocations(
+            org_id=org_id,
+            limit=1000
+        )
+        
+        # Group by tool
+        by_tool = {}
+        for inv in invocations:
+            if inv.tool_name not in by_tool:
+                by_tool[inv.tool_name] = {
+                    "total": 0, "success": 0, "failed": 0,
+                    "total_duration": 0
+                }
+            
+            by_tool[inv.tool_name]["total"] += 1
+            if inv.status == ToolInvocationStatus.SUCCESS:
+                by_tool[inv.tool_name]["success"] += 1
+            elif inv.status == ToolInvocationStatus.ERROR:
+                by_tool[inv.tool_name]["failed"] += 1
+            if inv.duration_seconds:
+                by_tool[inv.tool_name]["total_duration"] += inv.duration_seconds
+        
+        # Print report
+        for tool, stats in by_tool.items():
+            success_rate = (stats["success"] / stats["total"]) * 100
+            avg_duration = stats["total_duration"] / stats["total"]
+            print(f"{tool}:")
+            print(f"  Calls: {stats['total']}")
+            print(f"  Success rate: {success_rate:.1f}%")
+            print(f"  Avg duration: {avg_duration:.2f}s")
+\end{lstlisting}
 \end{frame}
 
-\begin{frame}{Debugging Techniques}
-  \textbf{Enable Debug Logging}:
-  \begin{itemize}
-    \item Python: \texttt{configure\_logging(level="DEBUG")}
-    \item TypeScript: Add \texttt{beforeRequest}/\texttt{afterResponse} middleware
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Inspect Raw API Responses}:
-  \begin{itemize}
-    \item Python: Check \texttt{AsyncSession.execute()} SQL output
-    \item TypeScript: Use browser DevTools Network tab
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Test in Isolation}:
-  \begin{itemize}
-    \item Use in-memory adapters to rule out API issues
-    \item Try equivalent curl commands to verify API behavior
-    \item Check Cerebro logs for server-side errors
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Version Compatibility}:
-  \begin{itemize}
-    \item SDK version must match API version
-    \item Check \texttt{CHANGELOG.md} for breaking changes
-  \end{itemize}
+\section{Quick Reference}
+
+\begin{frame}{Python SDK Method Cheat Sheet}
+\scriptsize
+\begin{tabular}{ll}
+\toprule
+\textbf{Module} & \textbf{Key Methods} \\
+\midrule
+\texttt{AgentManager} & \texttt{create\_session()}, \texttt{add\_message()}, \texttt{list\_sessions()} \\
+ & \texttt{get\_memory\_stats()}, \texttt{link\_findings()}, \texttt{sessions\_for\_finding()} \\
+\midrule
+\texttt{AgentReviewManager} & \texttt{list\_tasks()}, \texttt{bulk\_update\_tasks()}, \texttt{add\_comment()} \\
+ & \texttt{get\_queue\_summary()}, \texttt{export\_tasks()}, \texttt{list\_tasks\_sla\_at\_risk()} \\
+\midrule
+\texttt{FindingService} & \texttt{list\_findings()}, \texttt{list\_findings\_page()}, \texttt{close\_finding()} \\
+ & \texttt{generate\_for\_org()}, \texttt{get\_finding()} \\
+\midrule
+\texttt{AgentToolingManager} & \texttt{create\_invocation()}, \texttt{update\_invocation\_result()} \\
+ & \texttt{list\_invocations()}, \texttt{summarize\_invocations()} \\
+\midrule
+\texttt{RuntimeHealthClient} & \texttt{get\_runtime\_health()}, \texttt{get\_integration\_coverage()} \\
+\midrule
+\texttt{AuthSession} & \texttt{login()}, \texttt{verify()}, \texttt{refresh()} \\
+\bottomrule
+\end{tabular}
 \end{frame}
 
-\section{Best Practices Summary}
+\begin{frame}{TypeScript SDK Method Cheat Sheet}
+\scriptsize
+\begin{tabular}{ll}
+\toprule
+\textbf{Client} & \textbf{Key Methods} \\
+\midrule
+\texttt{sdk.agents} & \texttt{createSession()}, \texttt{listSessions()}, \texttt{getSession()} \\
+ & \texttt{streamSession()}, \texttt{listSessionMessages()} \\
+\midrule
+\texttt{sdk.agents} (review) & \texttt{listReviewTasks()}, \texttt{bulkUpdateReviewTasks()} \\
+ & \texttt{getReviewQueueSummary()}, \texttt{listReviewTasksSlaAtRisk()} \\
+\midrule
+\texttt{sdk.findings} & \texttt{list()}, \texttt{get()}, \texttt{close()} \\
+\midrule
+\texttt{sdk.securityCenter} & \texttt{listVendors()}, \texttt{registerVendor()}, \texttt{listCustomers()} \\
+ & \texttt{iterateVendors()}, \texttt{iterateCustomers()} \\
+\midrule
+\texttt{sdk.analytics} & \texttt{getRuntimeHealth()}, \texttt{getIntegrationCoverage()} \\
+\bottomrule
+\end{tabular}
 
-\begin{frame}{Development Best Practices}
-  \textbf{Code Organization}:
-  \begin{itemize}
-    \item Create service wrappers around SDK clients
-    \item Don't pass raw database sessions to business logic
-    \item Use dependency injection for testability
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Error Handling}:
-  \begin{itemize}
-    \item Always catch SDK-specific exceptions
-    \item Log errors with sufficient context
-    \item Don't retry validation errors, only transient failures
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Performance}:
-  \begin{itemize}
-    \item Use pagination for large result sets
-    \item Cache frequently accessed data
-    \item Monitor database connection pool usage
-  \end{itemize}
+\vspace{0.3cm}
+
+\textbf{Helper Functions}:
+\begin{itemize}
+  \item \texttt{iterateCursor()}, \texttt{collectCursor()} - pagination
+  \item \texttt{collectAgentStream()} - streaming
+  \item \texttt{assessVendorHealth()}, \texttt{assessCustomerHealth()} - analytics
+  \item \texttt{summarizeVendorPortfolio()}, \texttt{summarizeCustomerPortfolio()}
+\end{itemize}
 \end{frame}
 
-\begin{frame}{Production Best Practices}
-  \textbf{Observability}:
-  \begin{itemize}
-    \item Emit metrics for SDK operations (counters, histograms)
-    \item Log request IDs for distributed tracing
-    \item Alert on error rate spikes
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Security}:
-  \begin{itemize}
-    \item Use short-lived access tokens
-    \item Rotate credentials regularly
-    \item Validate org\_id scope before operations
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Reliability}:
-  \begin{itemize}
-    \item Implement retry logic with exponential backoff
-    \item Set appropriate timeouts (30-60s for most operations)
-    \item Have fallback behavior for degraded API states
-  \end{itemize}
+\begin{frame}{Common Patterns Quick Reference}
+\begin{tabular}{p{0.35\textwidth}p{0.6\textwidth}}
+\toprule
+\textbf{Pattern} & \textbf{Key Methods} \\
+\midrule
+Auto-triage findings & \texttt{list\_findings()} + \texttt{create\_session()} + \texttt{add\_message()} \\
+\midrule
+Review queue dashboard & \texttt{list\_tasks()} + \texttt{list\_tasks\_sla\_at\_risk()} + \texttt{get\_queue\_summary()} \\
+\midrule
+Compliance report & \texttt{iterateVendors()} + \texttt{assessVendorHealth()} + \texttt{summarizeVendorPortfolio()} \\
+\midrule
+Tool usage audit & \texttt{list\_invocations()} + \texttt{summarize\_invocations()} \\
+\midrule
+Session investigation & \texttt{get\_session()} + \texttt{list\_messages()} + \texttt{get\_memory\_stats()} \\
+\midrule
+Paginate large datasets & \texttt{list\_*\_page()} + cursor or \texttt{iterateCursor()} helper \\
+\bottomrule
+\end{tabular}
 \end{frame}
 
-\begin{frame}{Testing Best Practices}
-  \textbf{Unit Testing}:
-  \begin{itemize}
-    \item Use in-memory adapters, not live APIs
-    \item Test edge cases and error paths
-    \item Keep tests fast (< 100ms per test)
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Integration Testing}:
-  \begin{itemize}
-    \item Test against local Cerebro instance
-    \item Clean up test data after runs
-    \item Use dedicated test organizations
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Contract Testing}:
-  \begin{itemize}
-    \item Verify SDK matches API contracts
-    \item Test serialization/deserialization
-    \item Catch schema drift early
-  \end{itemize}
-\end{frame}
+\begin{frame}{Where To Get Help}
+\textbf{Documentation}:
+\begin{itemize}
+  \item \texttt{docs/sdk/README.md} - SDK overview
+  \item \texttt{docs/sdk/python.md} - Python guide
+  \item \texttt{docs/sdk/typescript.md} - TypeScript guide
+  \item \texttt{docs/sdk/auth-and-agents.md} - Agent workflows
+\end{itemize}
 
-\section{Resources}
+\vspace{0.3cm}
 
-\begin{frame}{Documentation}
-  \textbf{In-Repo Guides}:
-  \begin{itemize}
-    \item \texttt{docs/sdk/README.md} - SDK overview
-    \item \texttt{docs/sdk/python.md} - Python-specific guide
-    \item \texttt{docs/sdk/typescript.md} - TypeScript-specific guide
-    \item \texttt{docs/sdk/auth-and-agents.md} - Agent workflows
-    \item \texttt{docs/sdk/integrations-and-playbooks.md} - Advanced patterns
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Examples}:
-  \begin{itemize}
-    \item \texttt{examples/} - End-to-end scenarios
-    \item \texttt{tests/unit/sdk/} - Python unit tests
-    \item \texttt{sdk/ts/test/} - TypeScript test suite
-  \end{itemize}
-\end{frame}
+\textbf{Code Examples}:
+\begin{itemize}
+  \item \texttt{examples/} - Real-world scenarios
+  \item \texttt{tests/unit/sdk/} - Python unit tests (great examples!)
+  \item \texttt{sdk/ts/test/} - TypeScript test suite
+\end{itemize}
 
-\begin{frame}{Getting Help}
-  \textbf{Internal Channels}:
-  \begin{itemize}
-    \item Slack: \texttt{\#cerebro-sdk} for SDK-specific questions
-    \item Slack: \texttt{\#cerebro-general} for broader platform questions
-    \item Office hours: Tuesdays 2-3pm with SDK maintainers
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Reporting Issues}:
-  \begin{itemize}
-    \item GitHub issues with \texttt{sdk} label
-    \item Include SDK version, code sample, error message
-    \item Provide minimal reproducible example
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Contributing}:
-  \begin{itemize}
-    \item PRs welcome for bug fixes and new features
-    \item Follow existing patterns and test coverage
-    \item Update documentation for new capabilities
-  \end{itemize}
+\vspace{0.3cm}
+
+\textbf{Get Support}:
+\begin{itemize}
+  \item Slack: \texttt{\#cerebro-sdk}
+  \item Office hours: Tuesdays 2-3pm
+  \item Email: \texttt{cerebro-sdk@writer.com}
+\end{itemize}
 \end{frame}
 
 \begin{frame}{Next Steps}
-  \textbf{Getting Started}:
-  \begin{enumerate}
-    \item Install SDK in your project (Python or TypeScript)
-    \item Set up authentication and configuration
-    \item Build a simple integration (list sessions or findings)
-    \item Add error handling and logging
-  \end{enumerate}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Go Deeper}:
-  \begin{itemize}
-    \item Explore streaming APIs for real-time updates
-    \item Implement pagination for large datasets
-    \item Add observability with metrics and tracing
-    \item Build production-ready retry and fallback logic
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  
-  \textbf{Share Your Work}:
-  \begin{itemize}
-    \item Document your integration patterns
-    \item Share reusable SDK wrappers with the team
-    \item Present your use case at weekly brownbag
-  \end{itemize}
-\end{frame}
+\textbf{Right Now}:
+\begin{enumerate}
+  \item Pick one use case from this deck
+  \item Copy the code example
+  \item Run it in your project
+  \item Modify for your needs
+\end{enumerate}
 
-\begin{frame}{Questions \& Feedback}
-  \centering
-  \Large
-  Questions?
-  
-  \vspace{1cm}
-  
-  \normalsize
-  \textbf{Contact the SDK team}:
-  
-  Slack: \texttt{\#cerebro-sdk}
-  
-  Email: \texttt{cerebro-sdk@writer.com}
-  
-  \vspace{0.5cm}
-  
-  Office Hours: Tuesdays 2-3pm
-  
-  \vspace{1cm}
-  
-  \small
-  This presentation: \texttt{docs/talks/cerebro-sdk-developer-guide.tex}
+\vspace{0.5cm}
+
+\textbf{This Week}:
+\begin{itemize}
+  \item Build a simple integration (list sessions, get findings, etc.)
+  \item Try pagination with real data
+  \item Add error handling
+\end{itemize}
+
+\vspace{0.5cm}
+
+\textbf{Questions?}
+\begin{itemize}
+  \item Drop them in \texttt{\#cerebro-sdk}
+  \item Or ask at office hours Tuesday 2pm
+\end{itemize}
 \end{frame}
 
 \end{document}

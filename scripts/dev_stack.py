@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import signal
 import sys
@@ -21,6 +22,67 @@ class ProcSpec:
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+STATE_DIR = Path.home() / ".cerebro" / "dev_stack"
+STATE_PATH = STATE_DIR / "active.json"
+
+
+def is_process_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    else:
+        return True
+
+
+def ensure_no_active_stack() -> None:
+    if not STATE_PATH.exists():
+        return
+
+    try:
+        with open(STATE_PATH, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        STATE_PATH.unlink(missing_ok=True)
+        return
+
+    active_entries = []
+    for proc in data.get("processes", []):
+        pid = proc.get("pid")
+        if isinstance(pid, int) and is_process_alive(pid):
+            active_entries.append(proc)
+
+    if active_entries:
+        process_list = ", ".join(f"{entry.get('name','unknown')} (pid={entry['pid']})" for entry in active_entries)
+        raise RuntimeError(
+            "An existing dev stack appears to be running: "
+            f"{process_list}. Run 'make dev-stop' before starting a new stack."
+        )
+
+    STATE_PATH.unlink(missing_ok=True)
+
+
+def write_state(processes: Sequence[asyncio.subprocess.Process], names: Sequence[str]) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "processes": [
+            {
+                "name": name,
+                "pid": process.pid,
+            }
+            for process, name in zip(processes, names)
+        ]
+    }
+    with open(STATE_PATH, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2)
+
+
+def clear_state() -> None:
+    STATE_PATH.unlink(missing_ok=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -169,6 +231,7 @@ async def terminate_process(process: asyncio.subprocess.Process, name: str, time
 
 
 async def run_stack(args: argparse.Namespace) -> int:
+    ensure_no_active_stack()
     specs = build_specs(args)
     if not specs:
         print("No services selected")
@@ -177,6 +240,7 @@ async def run_stack(args: argparse.Namespace) -> int:
     processes: List[asyncio.subprocess.Process] = []
     names: List[str] = []
     output_tasks: List[asyncio.Task[None]] = []
+    state_written = False
 
     for spec in specs:
         try:
@@ -191,59 +255,66 @@ async def run_stack(args: argparse.Namespace) -> int:
             output_tasks.append(asyncio.create_task(pipe_stream(process.stderr, f"{spec.name}:err")))
         print(f"[{spec.name}] started (pid={process.pid})")
 
-    stop_event = asyncio.Event()
-
-    loop = asyncio.get_running_loop()
-
-    def request_shutdown() -> None:
-        stop_event.set()
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, request_shutdown)
-        except NotImplementedError:
-            pass
-
-    wait_tasks = {asyncio.create_task(proc.wait()): name for proc, name in zip(processes, names)}
-    stop_task = asyncio.create_task(stop_event.wait())
-
     try:
-        while True:
-            done, _ = await asyncio.wait(
-                list(wait_tasks.keys()) + [stop_task],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+        write_state(processes, names)
+        state_written = True
 
-            if stop_task in done:
-                print("Shutdown requested")
-                break
+        stop_event = asyncio.Event()
 
-            finished = done.intersection(wait_tasks.keys())
-            if finished:
-                for task in finished:
-                    name = wait_tasks[task]
-                    returncode = task.result()
-                    if returncode == 0:
-                        print(f"[{name}] exited cleanly")
-                    else:
-                        print(f"[{name}] exited with code {returncode}")
-                        stop_event.set()
-                break
+        loop = asyncio.get_running_loop()
+
+        def request_shutdown() -> None:
+            stop_event.set()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, request_shutdown)
+            except NotImplementedError:
+                pass
+
+        wait_tasks = {asyncio.create_task(proc.wait()): name for proc, name in zip(processes, names)}
+        stop_task = asyncio.create_task(stop_event.wait())
+
+        try:
+            while True:
+                done, _ = await asyncio.wait(
+                    list(wait_tasks.keys()) + [stop_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if stop_task in done:
+                    print("Shutdown requested")
+                    break
+
+                finished = done.intersection(wait_tasks.keys())
+                if finished:
+                    for task in finished:
+                        name = wait_tasks[task]
+                        returncode = task.result()
+                        if returncode == 0:
+                            print(f"[{name}] exited cleanly")
+                        else:
+                            print(f"[{name}] exited with code {returncode}")
+                            stop_event.set()
+                    break
+        finally:
+            stop_task.cancel()
+
+        for task in wait_tasks.keys():
+            task.cancel()
+
+        for task in output_tasks:
+            task.cancel()
+
+        await asyncio.gather(*output_tasks, return_exceptions=True)
+
+        await asyncio.gather(
+            *(terminate_process(proc, name) for proc, name in zip(processes, names)),
+            return_exceptions=True,
+        )
     finally:
-        stop_task.cancel()
-
-    for task in wait_tasks.keys():
-        task.cancel()
-
-    for task in output_tasks:
-        task.cancel()
-
-    await asyncio.gather(*output_tasks, return_exceptions=True)
-
-    await asyncio.gather(
-        *(terminate_process(proc, name) for proc, name in zip(processes, names)),
-        return_exceptions=True,
-    )
+        if state_written:
+            clear_state()
 
     return 0
 
