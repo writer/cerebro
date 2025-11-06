@@ -105,6 +105,27 @@ export {
   type CustomerFilterPresetName,
 } from "./securityCenter/presets.js";
 export {
+  mapToControlFramework,
+  type ControlCatalog,
+  type ControlDefinition,
+  type ControlMapping,
+  type ControlMappingOptions,
+} from "./securityCenter/grc.js";
+export {
+  generateRemediationActions,
+  type RemediationQueue,
+  type RemediationAction,
+  type RemediationPolicy,
+  type GenerateRemediationOptions,
+  type RemediationSeverity,
+} from "./securityCenter/remediation.js";
+export {
+  evaluateMonitoringEvents,
+  type MonitoringEvent,
+  type GovernanceAlert,
+  type MonitoringContext,
+} from "./securityCenter/alerts.js";
+export {
   getVendorExposure,
   getCustomerEngagement,
   annotateAgentEvents,
