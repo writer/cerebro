@@ -4,6 +4,7 @@ import logging
 import os
 import secrets
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -66,6 +67,20 @@ class Settings(BaseSettings):
     )
     google_workspace_customer_id: Optional[str] = Field(
         default=None, description="Google Workspace customer ID"
+    )
+
+    # Slack Integration
+    slack_signing_secret: Optional[str] = Field(
+        default=None,
+        description="Slack signing secret for verifying slash command signatures",
+    )
+    slack_bot_token: Optional[str] = Field(
+        default=None,
+        description="Slack bot token used for posting messages and notifications",
+    )
+    slack_default_org_id: Optional[UUID] = Field(
+        default=None,
+        description="Fallback organization ID for Slack commands when workspace mapping is unavailable",
     )
 
     # Collection tuning

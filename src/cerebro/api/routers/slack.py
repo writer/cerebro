@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, HttpUrl, Field, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -17,9 +18,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
 
+from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.api.auth import get_current_user, User
 from cerebro.core.models import SlackWebhook, SlackNotification, Organization
+from cerebro.integrations.slack import (
+    SlackCommandError,
+    SlackCommandService,
+    SlackRequestParser,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -411,6 +418,45 @@ async def list_slack_notifications(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list Slack notifications",
         )
+
+
+@router.post("/commands")
+async def handle_slack_command(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Handle Slack slash command requests."""
+
+    parser = SlackRequestParser(signing_secret=settings.slack_signing_secret)
+    try:
+        command = await parser.parse(request)
+    except SlackCommandError as exc:
+        logger.warning("slack_command_parse_failed", error=str(exc))
+        return JSONResponse(
+            status_code=200,
+            content={"response_type": "ephemeral", "text": str(exc)},
+        )
+
+    service = SlackCommandService(default_org_id=settings.slack_default_org_id)
+    try:
+        response = await service.handle_command(command, db)
+    except SlackCommandError as exc:
+        logger.warning("slack_command_handle_failed", error=str(exc))
+        return JSONResponse(
+            status_code=200,
+            content={"response_type": "ephemeral", "text": str(exc)},
+        )
+    except Exception as exc:  # pragma: no cover - unexpected error path
+        logger.exception("slack_command_unhandled_exception", error=str(exc))
+        return JSONResponse(
+            status_code=200,
+            content={
+                "response_type": "ephemeral",
+                "text": "We hit an unexpected error while processing your command. Please try again shortly.",
+            },
+        )
+
+    return JSONResponse(status_code=200, content=response.to_dict())
 
 
 @router.get("/notifications/stats", response_model=SlackNotificationStats)
