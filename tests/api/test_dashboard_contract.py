@@ -20,6 +20,8 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "risk_heatmap",
         "runtime_health",
         "integration_coverage",
+        "freshness",
+        "freshness_warnings",
         "metadata",
     },
     "ExecutiveSummaryResponse": {
@@ -214,6 +216,16 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
         "cache_ttl_seconds",
         "supports_streaming_updates",
         "alert_thresholds",
+        "data_freshness",
+        "data_as_of",
+    },
+    "DashboardFreshness": {"providers", "warnings"},
+    "ProviderFreshnessSummary": {
+        "last_synced_at",
+        "age_seconds",
+        "age_human",
+        "status",
+        "sources",
     },
 }
 
@@ -357,6 +369,13 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     for opportunity in heatmap["improvement_opportunities"]:
         assert set(opportunity.keys()) == EXPECTED_FIELDS["RiskImprovementOpportunity"]
 
+    freshness = payload.get("freshness") or {}
+    assert freshness, "Freshness map should be populated"
+    for summary in freshness.values():
+        assert set(summary.keys()) == EXPECTED_FIELDS["ProviderFreshnessSummary"]
+    warnings = payload.get("freshness_warnings") or []
+    assert isinstance(warnings, list)
+
     trends = payload["compliance_trends"]
     assert set(trends.keys()) == EXPECTED_FIELDS["ComplianceTrendResponse"]
     assert trends["overall"], "Overall compliance trend should not be empty"
@@ -380,6 +399,14 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     alert_thresholds = metadata.get("alert_thresholds") or {}
     for thresholds in alert_thresholds.values():
         assert set(thresholds.keys()) == {"warning", "critical"}
+    data_freshness = metadata.get("data_freshness") or {}
+    if data_freshness:
+        assert set(data_freshness.keys()) == EXPECTED_FIELDS["DashboardFreshness"]
+        for summary in data_freshness.get("providers", {}).values():
+            assert set(summary.keys()) == EXPECTED_FIELDS["ProviderFreshnessSummary"]
+        assert isinstance(data_freshness.get("warnings"), list)
+    if metadata.get("data_as_of"):
+        assert isinstance(metadata["data_as_of"], str)
 
 
 def test_typescript_contract_matches_api_schema(client, test_db, test_org, test_token, monkeypatch):

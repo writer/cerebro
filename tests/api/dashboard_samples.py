@@ -5,6 +5,18 @@ def build_sample_dashboard_response() -> dict:
     now_dt = datetime.now(timezone.utc)
     now = now_dt.isoformat()
     previous = (now_dt - timedelta(days=1)).isoformat()
+    stale = (now_dt - timedelta(hours=2)).isoformat()
+
+    freshness_map = {
+        "github": {
+            "last_synced_at": stale,
+            "age_seconds": 7200.0,
+            "age_human": "2h ago",
+            "status": "stale",
+            "sources": ["github.audit"],
+        }
+    }
+    freshness_warnings = ["⚠️ github data is 2h ago"]
 
     return {
         "executive_summary": {
@@ -271,6 +283,8 @@ def build_sample_dashboard_response() -> dict:
                 "severity": "warning",
             }
         ],
+        "freshness": freshness_map,
+        "freshness_warnings": freshness_warnings,
         "metadata": {
             "generated_at": now,
             "component_timings": {
@@ -296,5 +310,10 @@ def build_sample_dashboard_response() -> dict:
                 "runtime_errors": {"warning": 1, "critical": 1},
                 "integration_coverage": {"warning": 0.7, "critical": 0.4},
             },
+            "data_freshness": {
+                "providers": freshness_map,
+                "warnings": freshness_warnings,
+            },
+            "data_as_of": now,
         },
     }

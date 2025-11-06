@@ -72,6 +72,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "jinja2>=3.1.2",
     "slack-sdk>=3.37.0",
+    "aiohttp>=3.10.5",
 ]
 
 [project.optional-dependencies]

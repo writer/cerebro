@@ -519,6 +519,19 @@ export type ComplianceTrendResponse = {
   };
 };
 
+export type ProviderFreshnessSummary = {
+  last_synced_at: string | null;
+  age_seconds: number | null;
+  age_human: string | null;
+  status: string;
+  sources: string[];
+};
+
+export type DashboardFreshness = {
+  providers: Record<string, ProviderFreshnessSummary>;
+  warnings: string[];
+};
+
 export type DashboardMetadata = {
   generated_at: string;
   component_timings?: Record<string, number>;
@@ -529,6 +542,8 @@ export type DashboardMetadata = {
   cache_ttl_seconds?: number;
   supports_streaming_updates?: boolean;
   alert_thresholds?: Record<string, { warning: number; critical: number }>;
+  data_freshness?: DashboardFreshness;
+  data_as_of?: string | null;
 };
 
 export type ExecutiveDashboardResponse = {
@@ -541,6 +556,8 @@ export type ExecutiveDashboardResponse = {
   compliance_trends: ComplianceTrendResponse;
   runtime_health?: RuntimeHealthDashboardEntry[];
   integration_coverage?: IntegrationCoverageDashboardEntry[];
+  freshness?: Record<string, ProviderFreshnessSummary>;
+  freshness_warnings?: string[];
   metadata: DashboardMetadata;
 };
 
