@@ -3,7 +3,7 @@
 from dataclasses import asdict
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -15,6 +15,8 @@ from cerebro.findings.manager import FindingManager
 from cerebro.api.auth import get_current_user, require_read_findings, require_write_findings, User
 from cerebro_sdk.findings import FindingService
 from cerebro_sdk.pagination import PageRequest
+
+from cerebro.integrations.freshness import IntegrationFreshnessService
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -70,9 +72,25 @@ async def list_findings_page(
         page=PageRequest(limit=limit, cursor=cursor),
     )
 
+    providers = {item.provider for item in page.items if getattr(item, "provider", None)}
+    freshness_service = IntegrationFreshnessService(db)
+    provider_freshness = await freshness_service.provider_freshness(providers)
+    freshness_payload = {
+        key: {
+            "last_synced_at": summary.last_synced_at.isoformat() if summary.last_synced_at else None,
+            "age_seconds": summary.age_seconds,
+            "age_human": summary.age_human,
+            "status": summary.status,
+        }
+        for key, summary in provider_freshness.items()
+    }
+    warnings = [summary.warning for summary in provider_freshness.values() if summary.warning]
+
     return FindingPageResponse(
         items=[FindingResponse.model_validate(asdict(item)) for item in page.items],
         next_cursor=page.next_cursor,
+        freshness=freshness_payload,
+        warnings=warnings,
     )
 
 

@@ -11,6 +11,7 @@ from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 from cerebro.analytics.dashboard_repository import DashboardRepository
+from cerebro.integrations.freshness import IntegrationFreshnessService
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -120,6 +121,55 @@ async def get_organization_dashboard(
     # Generate comprehensive dashboard
     dashboard_analytics = DashboardAnalytics(db)
     dashboard_data = await dashboard_analytics.generate_comprehensive_dashboard(org_id)
+
+    providers: set[str] = set()
+    provider_breakdown = (
+        dashboard_data.get("security_metrics", {}).get("provider_breakdown")
+        if isinstance(dashboard_data, dict)
+        else None
+    )
+    if isinstance(provider_breakdown, list):
+        for entry in provider_breakdown:
+            if isinstance(entry, dict):
+                value = entry.get("provider") or entry.get("name")
+                if isinstance(value, str):
+                    providers.add(value)
+
+    integration_coverage = dashboard_data.get("integration_coverage") if isinstance(dashboard_data, dict) else None
+    if isinstance(integration_coverage, list):
+        for entry in integration_coverage:
+            if isinstance(entry, dict):
+                for provider in entry.get("providers", []) or []:
+                    if isinstance(provider, str):
+                        providers.add(provider)
+
+    freshness_service = IntegrationFreshnessService(db)
+    freshness_map = await freshness_service.provider_freshness(providers)
+    freshness_payload = {
+        provider: {
+            "last_synced_at": summary.last_synced_at.isoformat() if summary.last_synced_at else None,
+            "age_seconds": summary.age_seconds,
+            "age_human": summary.age_human,
+            "status": summary.status,
+            "sources": summary.sources,
+        }
+        for provider, summary in freshness_map.items()
+    }
+    warnings = [summary.warning for summary in freshness_map.values() if summary.warning]
+
+    if isinstance(dashboard_data, dict):
+        dashboard_data.setdefault("metadata", {})
+        metadata = dashboard_data["metadata"]
+        if isinstance(metadata, dict):
+            metadata["data_freshness"] = {
+                "providers": freshness_payload,
+                "warnings": warnings,
+            }
+            freshest = [summary.last_synced_at for summary in freshness_map.values() if summary.last_synced_at]
+            if freshest:
+                metadata["data_as_of"] = max(freshest).isoformat()
+        dashboard_data["freshness"] = freshness_payload
+        dashboard_data["freshness_warnings"] = warnings
 
     return dashboard_data
 

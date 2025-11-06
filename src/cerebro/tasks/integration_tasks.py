@@ -67,9 +67,45 @@ async def _log_integration_sync(
             metadata_update["last_sync_unix"] = float(payload["last_sync_unix"])
             metadata_update["last_sync_at"] = sync_ts.isoformat()
 
+    duration_seconds = payload.get("duration_seconds") if isinstance(payload, dict) else None
+    if duration_seconds is not None:
+        try:
+            duration_value = float(duration_seconds)
+        except (TypeError, ValueError):
+            duration_value = None
+        if duration_value is not None:
+            metadata_update["last_duration_seconds"] = duration_value
+
     try:
         async with async_session_factory() as db:
             repo = IntegrationStateRepository(db)
+            state = await repo.get_state(integration, scope or "default")
+            existing_metadata = dict(state.state_metadata or {}) if state else {}
+
+            if duration_seconds is not None:
+                durations = list(existing_metadata.get("duration_samples", []))
+                if duration_value is not None:
+                    durations.append(duration_value)
+                if len(durations) > 10:
+                    durations = durations[-10:]
+                metadata_update["duration_samples"] = durations
+
+            if status == "ok":
+                metadata_update["last_success_at"] = metadata_update.get("last_sync_at") or metadata_update.get(
+                    "last_status_at"
+                )
+            if status == "error":
+                errors = list(existing_metadata.get("recent_errors", []))
+                errors.append(
+                    {
+                        "recorded_at": metadata_update["last_status_at"],
+                        "details": payload.get("error") if isinstance(payload, dict) else None,
+                    }
+                )
+                if len(errors) > 10:
+                    errors = errors[-10:]
+                metadata_update["recent_errors"] = errors
+
             await repo.upsert_state(
                 integration=integration,
                 scope=scope or "default",
@@ -85,6 +121,7 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
     """Poll SentinelOne for recent activities and persist them as host events."""
 
     async def _run() -> Any:
+        started_at = datetime.now(timezone.utc)
         integration_scope = settings.sentinelone_org_name or "sentinelone"
         integration_id = "sentinelone.activities"
         if not settings.sentinelone_enabled:
@@ -133,6 +170,7 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
                 "status": "error",
                 "error": str(exc),
                 "lookback_minutes": window,
+                "duration_seconds": (datetime.now(timezone.utc) - started_at).total_seconds(),
             }
             await _log_integration_sync(
                 integration=integration_id,
@@ -143,6 +181,7 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
             raise
 
         result.update({"status": "ok", "lookback_minutes": window})
+        result["duration_seconds"] = (datetime.now(timezone.utc) - started_at).total_seconds()
         await _log_integration_sync(
             integration=integration_id,
             scope=integration_scope,
@@ -159,6 +198,7 @@ def sync_kandji(self) -> Any:
     """Synchronize Kandji device inventory and vulnerability detections."""
 
     async def _run() -> Any:
+        started_at = datetime.now(timezone.utc)
         integration_scope = settings.kandji_org_name or "kandji"
         integration_id = _DETECTIONS_SCOPE
         if not settings.kandji_enabled:
@@ -198,7 +238,11 @@ def sync_kandji(self) -> Any:
                     )
                     result = await ingestion.ingest(db)
             except Exception as exc:
-                error_payload = {"status": "error", "error": str(exc)}
+                error_payload = {
+                    "status": "error",
+                    "error": str(exc),
+                    "duration_seconds": (datetime.now(timezone.utc) - started_at).total_seconds(),
+                }
                 await _log_integration_sync(
                     integration=integration_id,
                     scope=integration_scope,
@@ -209,6 +253,7 @@ def sync_kandji(self) -> Any:
         # ``ingest`` returns high-level counters which we bubble up so task
         # monitoring dashboards can surface progress without parsing logs.
         result.update({"status": "ok"})
+        result["duration_seconds"] = (datetime.now(timezone.utc) - started_at).total_seconds()
         await _log_integration_sync(
             integration=integration_id,
             scope=integration_scope,

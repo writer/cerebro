@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, Iterable, List, Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -17,6 +17,7 @@ from cerebro.automation.integration_sync import analyze_state
 from cerebro.core.config import settings
 from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
 from cerebro.tasks.celery_app import celery_app
+from cerebro.integrations.freshness import IntegrationFreshnessService
 
 
 class IntegrationStatus(BaseModel):
@@ -110,6 +111,22 @@ class IntegrationCoverageSummary(BaseModel):
     evaluated_at: datetime
 
 
+class IntegrationAdminOverview(BaseModel):
+    integration: str
+    scope: str
+    status: str
+    last_synced_at: Optional[datetime]
+    age_seconds: Optional[float]
+    age_human: Optional[str]
+    warning: Optional[str]
+    next_scheduled_sync_at: Optional[datetime]
+    duration_average_seconds: Optional[float]
+    duration_samples: List[float] = Field(default_factory=list)
+    recent_errors: List[Dict[str, Any]] = Field(default_factory=list)
+    confidence: str = Field("unknown")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 
@@ -188,6 +205,54 @@ async def trigger_integration_sync(
         scope=scope,
         queued_at=queued_at,
     )
+
+
+@router.get("/admin/overview", response_model=List[IntegrationAdminOverview])
+async def list_integration_admin_overview(
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(require_scopes("view:integrations")),
+) -> List[IntegrationAdminOverview]:
+    freshness_service = IntegrationFreshnessService(db)
+    freshness_records = await freshness_service.list_freshness()
+
+    schedule_index = _build_schedule_index()
+    overviews: List[IntegrationAdminOverview] = []
+
+    for record in freshness_records:
+        metadata = dict(record.metadata or {})
+        duration_samples = _coerce_float_list(metadata.get("duration_samples", []))
+        duration_average = (
+            sum(duration_samples) / len(duration_samples)
+            if duration_samples
+            else metadata.get("last_duration_seconds")
+        )
+        confidence = _derive_confidence(record.status)
+        next_sync = _compute_next_scheduled(record.integration, schedule_index)
+        recent_errors = metadata.get("recent_errors", [])
+        if isinstance(recent_errors, list):
+            filtered_errors = [err for err in recent_errors if isinstance(err, dict)]
+        else:
+            filtered_errors = []
+
+        overviews.append(
+            IntegrationAdminOverview(
+                integration=record.integration,
+                scope=record.scope,
+                status=record.status,
+                last_synced_at=record.last_synced_at,
+                age_seconds=record.age_seconds,
+                age_human=record.age_human,
+                warning=record.warning,
+                next_scheduled_sync_at=next_sync,
+                duration_average_seconds=duration_average,
+                duration_samples=duration_samples,
+                recent_errors=filtered_errors,
+                confidence=confidence,
+                metadata=metadata,
+            )
+        )
+
+    return overviews
 
 
 @router.get("/sync/{task_id}", response_model=IntegrationSyncStatusResponse)
@@ -341,3 +406,77 @@ async def get_integration_status(
         )
         for state in states
     ]
+
+
+def _coerce_float_list(value: Any) -> List[float]:
+    samples: List[float] = []
+    if isinstance(value, list):
+        for item in value:
+            try:
+                samples.append(float(item))
+            except (TypeError, ValueError):
+                continue
+    return samples[-10:]
+
+
+def _derive_confidence(status: str) -> str:
+    normalized = status.lower()
+    if normalized == "fresh":
+        return "high"
+    if normalized == "stale":
+        return "medium"
+    if normalized in {"error", "disabled"}:
+        return "low"
+    return "unknown"
+
+
+def _build_schedule_index() -> Dict[str, Any]:
+    schedule_conf = getattr(celery_app.conf, "beat_schedule", {}) or {}
+    return {
+        details.get("task"): details.get("schedule")
+        for details in schedule_conf.values()
+        if isinstance(details, dict) and details.get("task")
+    }
+
+
+def _compute_next_scheduled(integration: str, schedule_index: Dict[str, Any]) -> Optional[datetime]:
+    task_name = _resolve_task_for_integration(integration, schedule_index.keys())
+    if not task_name:
+        return None
+    schedule_obj = schedule_index.get(task_name)
+    if schedule_obj is None:
+        return None
+
+    now = datetime.now(timezone.utc)
+    delta: Optional[timedelta] = None
+    if isinstance(schedule_obj, (int, float)):
+        delta = timedelta(seconds=float(schedule_obj))
+    elif isinstance(schedule_obj, timedelta):
+        delta = schedule_obj
+    elif hasattr(schedule_obj, "remaining_estimate"):
+        try:
+            remaining = schedule_obj.remaining_estimate(datetime.utcnow())
+            if isinstance(remaining, timedelta):
+                delta = remaining
+        except Exception:
+            delta = None
+    elif hasattr(schedule_obj, "run_every") and isinstance(schedule_obj.run_every, timedelta):
+        delta = schedule_obj.run_every
+
+    if delta is None:
+        return None
+    return now + delta
+
+
+def _resolve_task_for_integration(integration: str, tasks: Iterable[str]) -> Optional[str]:
+    integration_key = integration.split(".")[0].lower()
+    for task in tasks:
+        if not isinstance(task, str):
+            continue
+        if integration_key in task.lower():
+            return task
+    explicit_map = {
+        "sentinelone.activities": "cerebro.tasks.integration.sync_sentinelone",
+        "kandji.vulnerabilities": "cerebro.tasks.integration.sync_kandji",
+    }
+    return explicit_map.get(integration)

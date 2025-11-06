@@ -125,6 +125,8 @@ class FindingResponse(BaseModel):
 class FindingPageResponse(BaseModel):
     items: List[FindingResponse]
     next_cursor: Optional[str] = None
+    freshness: Optional[Dict[str, Any]] = None
+    warnings: List[str] = Field(default_factory=list)
 
 
 class FindingUpdate(BaseModel):

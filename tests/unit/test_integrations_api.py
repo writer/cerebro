@@ -224,3 +224,47 @@ def test_integration_coverage_endpoint(client, test_db, test_org, admin_token, m
     sentinelone_summary = next(item for item in payload if item["integration"] == "sentinelone")
     assert sentinelone_summary["status"] == "missing"
     assert sentinelone_summary["scopes"]["total"] == 0
+
+
+def test_integration_admin_overview_endpoint(client, test_db, admin_token, monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def _seed_state():
+        repo = IntegrationStateRepository(test_db)
+        await repo.upsert_state(
+            integration="sentinelone.activities",
+            scope="acme",
+            last_timestamp=now - timedelta(minutes=20),
+            metadata={
+                "last_status": "ok",
+                "last_success_at": (now - timedelta(minutes=20)).isoformat(),
+                "duration_samples": [45.0, 50.0],
+                "recent_errors": [
+                    {"recorded_at": (now - timedelta(hours=5)).isoformat(), "details": "timeout"}
+                ],
+            },
+        )
+        await test_db.commit()
+
+    _run_async(_seed_state())
+
+    schedule_stub = {
+        "sentinelone-test": {
+            "task": "cerebro.tasks.integration.sync_sentinelone",
+            "schedule": 600,
+        }
+    }
+    monkeypatch.setattr(integrations_router.celery_app.conf, "beat_schedule", schedule_stub, raising=False)
+
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    response = client.get("/api/v1/integrations/admin/overview", headers=headers)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload, "Expected at least one integration overview"
+
+    overview = next(item for item in payload if item["integration"] == "sentinelone.activities")
+    assert overview["scope"] == "acme"
+    assert overview["duration_samples"] == [45.0, 50.0]
+    assert overview["confidence"] == "high"
+    assert isinstance(overview.get("next_scheduled_sync_at"), str)

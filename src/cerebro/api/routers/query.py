@@ -8,11 +8,15 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ...query.engine import QueryEngine, QueryResult
 from ...query.registry import get_registry
 from ...providers.tables import register_all_provider_tables
 from ..schemas.base import BaseResponse
 from ..auth import get_current_user, require_scopes, require_read_findings, User
+from ...core.database import get_db
+from ...integrations.freshness import IntegrationFreshnessService
 
 router = APIRouter(prefix="/query", tags=["Query"], dependencies=[Depends(get_current_user)])
 
@@ -65,7 +69,8 @@ class TableDetailResponse(BaseResponse):
 @router.post("/execute", response_model=QueryResponse, summary="Execute SQL Query")
 async def execute_sql_query(
     request: QueryRequest,
-    current_user: User = Depends(require_scopes("query:execute"))
+    current_user: User = Depends(require_scopes("query:execute")),
+    db: AsyncSession = Depends(get_db),
 ) -> QueryResponse:
     """
     Execute a SQL query against security tables.
@@ -85,6 +90,21 @@ async def execute_sql_query(
                 }
             )
         
+        providers = _derive_providers(result)
+        freshness_service = IntegrationFreshnessService(db)
+        provider_freshness = await freshness_service.provider_freshness(providers)
+        freshness_payload = {
+            provider: {
+                "last_synced_at": summary.last_synced_at.isoformat() if summary.last_synced_at else None,
+                "age_seconds": summary.age_seconds,
+                "age_human": summary.age_human,
+                "status": summary.status,
+                "sources": summary.sources,
+            }
+            for provider, summary in provider_freshness.items()
+        }
+        warnings = [summary.warning for summary in provider_freshness.values() if summary.warning]
+
         return QueryResponse(
             success=True,
             message=f"Query executed successfully, returned {result.total_rows} rows",
@@ -94,6 +114,8 @@ async def execute_sql_query(
                 "total_rows": result.total_rows,
                 "execution_time_ms": result.execution_time_ms,
                 "tables_queried": result.tables_queried,
+                "freshness": freshness_payload,
+                "warnings": warnings,
             }
         )
         
@@ -251,7 +273,8 @@ async def query_security_alerts(
     severity: Optional[str] = Query(None, description="Filter by severity (critical, high, medium, low)"),
     since: Optional[str] = Query(None, description="Filter by creation date (ISO format)"),
     limit: int = Query(100, description="Maximum results to return", ge=1, le=1000),
-    current_user: User = Depends(require_read_findings)
+    current_user: User = Depends(require_read_findings),
+    db: AsyncSession = Depends(get_db),
 ):
     """Query security alerts with common filters."""
     
@@ -287,13 +310,29 @@ async def query_security_alerts(
     
     try:
         result = await query_engine.execute_query(sql, params)
+
+        providers = _derive_providers(result)
+        freshness_service = IntegrationFreshnessService(db)
+        provider_freshness = await freshness_service.provider_freshness(providers)
+        warnings = [summary.warning for summary in provider_freshness.values() if summary.warning]
+        freshness_payload = {
+            provider: {
+                "last_synced_at": summary.last_synced_at.isoformat() if summary.last_synced_at else None,
+                "age_seconds": summary.age_seconds,
+                "age_human": summary.age_human,
+                "status": summary.status,
+            }
+            for provider, summary in provider_freshness.items()
+        }
         
         return {
             "success": True,
             "message": f"Found {result.total_rows} security alerts",
             "data": {
                 "alerts": result.rows,
-                "execution_time_ms": result.execution_time_ms
+                "execution_time_ms": result.execution_time_ms,
+                "freshness": freshness_payload,
+                "warnings": warnings,
             }
         }
     except Exception as e:
@@ -309,7 +348,8 @@ async def query_users(
     status: Optional[str] = Query(None, description="Filter by status"),
     mfa_enabled: Optional[bool] = Query(None, description="Filter by MFA status"),
     limit: int = Query(100, description="Maximum results to return", ge=1, le=1000),
-    current_user: User = Depends(require_read_findings)
+    current_user: User = Depends(require_read_findings),
+    db: AsyncSession = Depends(get_db),
 ):
     """Query user identities across providers."""
     
@@ -345,13 +385,29 @@ async def query_users(
     
     try:
         result = await query_engine.execute_query(sql, params)
+
+        providers = _derive_providers(result)
+        freshness_service = IntegrationFreshnessService(db)
+        provider_freshness = await freshness_service.provider_freshness(providers)
+        warnings = [summary.warning for summary in provider_freshness.values() if summary.warning]
+        freshness_payload = {
+            provider: {
+                "last_synced_at": summary.last_synced_at.isoformat() if summary.last_synced_at else None,
+                "age_seconds": summary.age_seconds,
+                "age_human": summary.age_human,
+                "status": summary.status,
+            }
+            for provider, summary in provider_freshness.items()
+        }
         
         return {
             "success": True, 
             "message": f"Found {result.total_rows} users",
             "data": {
                 "users": result.rows,
-                "execution_time_ms": result.execution_time_ms
+                "execution_time_ms": result.execution_time_ms,
+                "freshness": freshness_payload,
+                "warnings": warnings,
             }
         }
     except Exception as e:
@@ -359,3 +415,18 @@ async def query_users(
             status_code=500,
             detail={"message": "Failed to query users", "error": str(e)}
         )
+
+
+def _derive_providers(result: QueryResult) -> List[str]:
+    providers: List[str] = []
+    if not result.tables_queried:
+        return providers
+    seen = set()
+    registry = query_engine.registry
+    for table in result.tables_queried:
+        info = registry.get_table_info(table)
+        provider = (info or {}).get("provider") if info else None
+        if provider and provider not in seen:
+            providers.append(provider)
+            seen.add(provider)
+    return providers
