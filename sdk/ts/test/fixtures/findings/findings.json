@@ -18,5 +18,25 @@
     "evidence": {
       "bucket": "logs"
     }
+  },
+  {
+    "finding_id": "finding-2",
+    "org_id": "org-2",
+    "account_id": "acct-7",
+    "provider": "pagerduty",
+    "rule_id": "RULE_200",
+    "rule_version": 1,
+    "resource_id": "incident-123",
+    "principal_id": null,
+    "first_seen": "2024-10-20T14:00:00Z",
+    "last_seen": "2024-10-24T09:00:00Z",
+    "status": "open",
+    "severity": "medium",
+    "fingerprint": "pagerduty-incident",
+    "title": "PagerDuty service missing runbook",
+    "summary": "No runbook attached to critical service",
+    "evidence": {
+      "service": "payments"
+    }
   }
 ]

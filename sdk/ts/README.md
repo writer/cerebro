@@ -55,3 +55,33 @@ const sdk = new CerebroSDK({
   },
 });
 ```
+
+## Integration health analytics
+
+```ts
+import {
+  buildIntegrationOverviewMap,
+  computeCoverageHealthMap,
+  computeCoverageTrends,
+} from "@cerebro/sdk";
+
+const coverageSnapshots = await sdk.integrations.getCoverage();
+const findings = await sdk.findings.list();
+const organizations = await sdk.organizations.list();
+
+const healthByIntegration = computeCoverageHealthMap(coverageSnapshots);
+const overviewByIntegration = buildIntegrationOverviewMap({
+  coverage: coverageSnapshots,
+  findings,
+  organizations,
+});
+
+const trends = computeCoverageTrends([
+  /* historical IntegrationCoverageRecord snapshots for all integrations */
+]);
+
+const githubTrend = trends.find((trend) => trend.integration === "github");
+if (githubTrend?.anomaly) {
+  console.warn(`Coverage dip detected for github: Δ${githubTrend.anomaly.delta.toFixed(2)}`);
+}
+```

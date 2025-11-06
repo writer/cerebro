@@ -30,8 +30,20 @@ export {
 export { AuthClient } from "./clients/auth.js";
 export { FindingsClient, type ListFindingsOptions } from "./clients/findings.js";
 export { IntegrationsClient, type IntegrationCoverageOptions } from "./clients/integrations.js";
-export { computeCoverageHealth, computeCoverageHealthMap } from "./integrations/metrics.js";
-export { buildIntegrationOverview, buildIntegrationOverviewMap } from "./integrations/overview.js";
+export {
+  computeCoverageHealth,
+  computeCoverageHealthMap,
+} from "./integrations/metrics.js";
+export {
+  buildIntegrationOverview,
+  buildIntegrationOverviewMap,
+} from "./integrations/overview.js";
+export {
+  computeCoverageTrends,
+  computeCoverageTrendForIntegration,
+  groupCoverageByIntegration,
+  type CoverageTrendOptions,
+} from "./integrations/analytics.js";
 export { OrganizationsClient, type ListOrganizationsOptions } from "./clients/organizations.js";
 export {
   SecurityCenterClient,

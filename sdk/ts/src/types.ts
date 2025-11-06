@@ -569,6 +569,26 @@ export interface IntegrationCoverageHealth extends IntegrationCoverageRecord {
   overallScore: number;
 }
 
+export interface IntegrationCoverageTrendPoint {
+  evaluatedAt: Date;
+  coverageRatio: number | null;
+}
+
+export interface IntegrationCoverageTrend {
+  integration: string;
+  points: IntegrationCoverageTrendPoint[];
+  rollingAverage: IntegrationCoverageTrendPoint[];
+  latestChange: number | null;
+  improving: boolean | null;
+  anomaly?: CoverageAnomaly | null;
+}
+
+export interface CoverageAnomaly {
+  threshold: number;
+  delta: number;
+  severity: "warning" | "critical";
+}
+
 export interface AgentSessionRecord {
   sessionId: string;
   orgId: string;

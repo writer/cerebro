@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CerebroSDK } from "../../src/sdk";
 import { collectAgentStream } from "../../src/agents/streaming";
 import { buildIntegrationOverviewMap } from "../../src/integrations/overview";
+import { computeCoverageTrendForIntegration } from "../../src/integrations/analytics";
 
 const fixturesDir = path.resolve(__dirname, "../fixtures");
 
@@ -99,34 +100,56 @@ describe("mock server harness", () => {
     expect(tasks[0]?.title).toBe("Check deployment");
     expect(tasks[0]?.dueAt?.toISOString()).toBe("2024-10-25T10:00:00.000Z");
 
-    const [coverage] = await sdk.integrations.getCoverage();
-    expect(coverage?.integration).toBe("github");
-    expect(coverage?.coverageRatio).toBeCloseTo(0.8);
+    const coverageRecords = await sdk.integrations.getCoverage();
+    expect(coverageRecords).toHaveLength(2);
+    const githubCoverage = coverageRecords.find((entry) => entry.integration === "github");
+    const pagerdutyCoverage = coverageRecords.find((entry) => entry.integration === "pagerduty");
+    if (!githubCoverage || !pagerdutyCoverage) {
+      throw new Error("expected coverage records for github and pagerduty");
+    }
+    expect(githubCoverage?.providers).toContain("gitlab");
+    expect(githubCoverage?.coverageRatio).toBeCloseTo(0.75);
+    expect(pagerdutyCoverage?.coverageRatio).toBeCloseTo(0.88);
 
-    const [coverageHealth] = await sdk.integrations.getCoverageHealth();
-    expect(coverageHealth?.healthyPercentage).toBeGreaterThan(0.5);
-    expect(coverageHealth?.criticalPercentage).toBeGreaterThan(0);
+    const coverageHealth = await sdk.integrations.getCoverageHealth();
+    const githubHealth = coverageHealth.find((entry) => entry.integration === "github");
+    const pagerdutyHealth = coverageHealth.find((entry) => entry.integration === "pagerduty");
+    expect(githubHealth?.healthyPercentage).toBeGreaterThan(0.5);
+    expect(githubHealth?.criticalPercentage).toBeGreaterThan(0);
+    expect(pagerdutyHealth?.overallScore).toBeGreaterThan(githubHealth?.overallScore ?? 0);
 
     const findings = await sdk.findings.list();
-    expect(findings).toHaveLength(1);
+    expect(findings).toHaveLength(2);
     expect(findings[0]?.findingId).toBe("finding-1");
     expect(findings[0]?.firstSeen?.toISOString()).toBe("2024-10-01T08:30:00.000Z");
 
     const organizations = await sdk.organizations.list();
-    expect(organizations).toHaveLength(1);
+    expect(organizations).toHaveLength(2);
     expect(organizations[0]?.name).toBe("Acme Corp");
     expect(organizations[0]?.createdAt?.toISOString()).toBe("2023-07-04T12:00:00.000Z");
 
-    if (!coverage) throw new Error("expected coverage record");
-
     const overviewMap = buildIntegrationOverviewMap({
-      coverage: [coverage],
+      coverage: coverageRecords,
       findings,
       organizations,
     });
     const githubOverview = overviewMap.github;
+    const pagerdutyOverview = overviewMap.pagerduty;
     expect(githubOverview?.openFindings).toBe(1);
     expect(githubOverview?.findingsBySeverity.high).toBe(1);
+    expect(pagerdutyOverview?.openFindings).toBe(1);
+    expect((pagerdutyOverview?.organizations ?? []).length).toBeGreaterThan(0);
+
+    const trend = computeCoverageTrendForIntegration("github", [
+      {
+        ...githubCoverage,
+        evaluatedAt: new Date("2024-10-22T09:00:00Z"),
+        coverageRatio: 0.9,
+        lastSuccess: new Date("2024-10-22T08:00:00Z"),
+      },
+      githubCoverage,
+    ]);
+    expect(trend.latestChange).toBeLessThan(0);
 
     const streamResult = await sdk.agents.sendSessionMessage("session-123", {
       content: "Hi",
