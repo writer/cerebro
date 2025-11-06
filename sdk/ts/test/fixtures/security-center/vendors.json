@@ -11,7 +11,72 @@
       "lifecycleStage": "active",
       "nextReviewDue": "2024-11-10T00:00:00Z",
       "businessCriticality": "high",
-      "metadata": null
+      "metadata": {
+        "evidence": {
+          "id": "vendor-meta-acme",
+          "collector_id": "vendor_registry",
+          "collector_type": "automated",
+          "content_type": "application/json",
+          "content_size": 1024,
+          "created_at": "2024-10-20T00:00:00Z",
+          "status": "collected",
+          "retention_class": "standard",
+          "pii_detected": false,
+          "sensitivity_level": "internal",
+          "encryption_required": true,
+          "tags": {"integration": "github"},
+          "related_evidence_ids": [],
+          "vendor_id": "vendor-acme",
+          "vendor_name": "Acme Cloud",
+          "risk_level": "medium",
+          "inherent_risk_score": 0.6,
+          "residual_risk_score": 0.4,
+          "business_criticality": "high",
+          "data_types_processed": ["code", "logs"],
+          "certifications": ["SOC2"],
+          "compliance_frameworks": ["SOC2", "ISO27001"],
+          "lifecycle_stage": "active",
+          "relationship_owner": "sec-ops",
+          "service_regions": ["us"],
+          "primary_contacts": ["security@acme.example"],
+          "access_monitoring_enabled": true,
+          "security_alerts_configured": true,
+          "incident_count_last_year": 0
+        },
+        "risk_summary": {
+          "level": "medium",
+          "inherent_score": 0.6,
+          "residual_score": 0.4,
+          "incident_count_last_year": 0,
+          "monitoring": {
+            "access_monitoring_enabled": true,
+            "security_alerts_configured": true
+          }
+        },
+        "compliance_summary": {
+          "certifications": ["SOC2"],
+          "frameworks": ["SOC2", "ISO27001"],
+          "data_processing_agreements": ["2024-dpa"],
+          "security_questionnaire_completed": true,
+          "vulnerability_disclosure_policy": true,
+          "penetration_test_results_present": true
+        },
+        "relationship": {
+          "business_criticality": "high",
+          "annual_spend": 250000,
+          "contract": {
+            "start_date": "2024-01-01T00:00:00Z",
+            "end_date": null,
+            "next_review_due": "2024-11-10T00:00:00Z"
+          }
+        },
+        "integration": {
+          "integration_type": "github",
+          "network_access": ["api"],
+          "authentication_methods": ["oauth"]
+        },
+        "lifecycle_stage": "active"
+      }
     },
     {
       "vendorId": "vendor-beta",
@@ -23,7 +88,72 @@
       "lifecycleStage": "onboarding",
       "nextReviewDue": "2024-09-01T00:00:00Z",
       "businessCriticality": "medium",
-      "metadata": null
+      "metadata": {
+        "evidence": {
+          "id": "vendor-meta-beta",
+          "collector_id": "vendor_registry",
+          "collector_type": "automated",
+          "content_type": "application/json",
+          "content_size": 2048,
+          "created_at": "2024-09-15T00:00:00Z",
+          "status": "collected",
+          "retention_class": "standard",
+          "pii_detected": false,
+          "sensitivity_level": "internal",
+          "encryption_required": true,
+          "tags": {"integration": "pagerduty"},
+          "related_evidence_ids": [],
+          "vendor_id": "vendor-beta",
+          "vendor_name": "Beta Compliance",
+          "risk_level": "high",
+          "inherent_risk_score": 0.7,
+          "residual_risk_score": 0.8,
+          "business_criticality": "medium",
+          "data_types_processed": ["alerts"],
+          "certifications": [],
+          "compliance_frameworks": [],
+          "lifecycle_stage": "onboarding",
+          "relationship_owner": "sec-ops",
+          "service_regions": ["us", "eu"],
+          "primary_contacts": ["compliance@beta.example"],
+          "access_monitoring_enabled": true,
+          "security_alerts_configured": false,
+          "incident_count_last_year": 1
+        },
+        "risk_summary": {
+          "level": "high",
+          "inherent_score": 0.7,
+          "residual_score": 0.8,
+          "incident_count_last_year": 1,
+          "monitoring": {
+            "access_monitoring_enabled": true,
+            "security_alerts_configured": false
+          }
+        },
+        "compliance_summary": {
+          "certifications": [],
+          "frameworks": [],
+          "data_processing_agreements": [],
+          "security_questionnaire_completed": false,
+          "vulnerability_disclosure_policy": false,
+          "penetration_test_results_present": false
+        },
+        "relationship": {
+          "business_criticality": "medium",
+          "annual_spend": 90000,
+          "contract": {
+            "start_date": "2024-03-01T00:00:00Z",
+            "end_date": null,
+            "next_review_due": "2024-09-01T00:00:00Z"
+          }
+        },
+        "integration": {
+          "integration_type": "pagerduty",
+          "network_access": ["api"],
+          "authentication_methods": ["token"]
+        },
+        "lifecycle_stage": "onboarding"
+      }
     }
   ],
   "nextCursor": null

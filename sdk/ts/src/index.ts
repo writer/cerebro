@@ -105,6 +105,15 @@ export {
   type CustomerFilterPresetName,
 } from "./securityCenter/presets.js";
 export {
+  getVendorExposure,
+  getCustomerEngagement,
+  annotateAgentEvents,
+  type VendorExposure,
+  type CustomerEngagement,
+  type EntityAnnotation,
+  type ExposureContext,
+} from "./securityCenter/relations.js";
+export {
   UsersClient,
   InMemoryUsersAdapter,
   type UsersAdapter,
