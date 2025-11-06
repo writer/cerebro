@@ -6,10 +6,13 @@ import { IntegrationsClient } from "../src/clients/integrations";
 import { FindingsClient } from "../src/clients/findings";
 import {
   annotateAgentEvents,
+  buildOrgExposureDashboard,
+  createEntityAwareConsumers,
   getCustomerEngagement,
   getVendorExposure,
+  buildRelationsIndex,
 } from "../src/securityCenter/relations";
-import type { AgentStreamEvent } from "../src/agents/streaming";
+import type { AgentMessage, AgentStreamEvent, AgentStreamConsumers } from "../src/agents/streaming";
 
 const fetchMock = vi.fn();
 
@@ -30,31 +33,17 @@ beforeEach(() => {
 
 describe("security center relations", () => {
   it("builds vendor exposure from cross-client data", async () => {
-    const vendorsPayload = {
-      count: 1,
-      vendors: [vendorFixture],
-      nextCursor: null,
-    };
-
-    const coveragePayload = [coverageFixtureGithub, coverageFixturePagerDuty];
-
-    const findingsPayload = [findingGithub, findingPagerDuty];
-
-    fetchMock
-      .mockResolvedValueOnce(createResponse(vendorsPayload))
-      .mockResolvedValueOnce(createResponse(coveragePayload))
-      .mockResolvedValueOnce(createResponse(findingsPayload));
+    queueRelationsResponses();
 
     const http = new HttpClient({ baseUrl: "https://api.test" });
-    const securityCenter = new SecurityCenterClient(http);
-    const integrations = new IntegrationsClient(http);
-    const findings = new FindingsClient(http);
+    const context = {
+      securityCenter: new SecurityCenterClient(http),
+      integrations: new IntegrationsClient(http),
+      findings: new FindingsClient(http),
+    };
 
-    const exposure = await getVendorExposure("org-1", "vendor-acme", {
-      securityCenter,
-      integrations,
-      findings,
-    });
+    const index = await buildRelationsIndex("org-1", context);
+    const exposure = await getVendorExposure("org-1", "vendor-acme", context, index);
 
     expect(exposure.vendor.vendorId).toBe("vendor-acme");
     expect(exposure.relatedIntegrations.map((entry) => entry.integration)).toContain("github");
@@ -63,34 +52,41 @@ describe("security center relations", () => {
   });
 
   it("builds customer engagement snapshots", async () => {
-    const customersPayload = {
-      count: 1,
-      customers: [customerFixture],
-      nextCursor: null,
-    };
-
-    const coveragePayload = [coverageFixtureGithub];
-    const findingsPayload = [findingGithub];
-
-    fetchMock
-      .mockResolvedValueOnce(createResponse(customersPayload))
-      .mockResolvedValueOnce(createResponse(coveragePayload))
-      .mockResolvedValueOnce(createResponse(findingsPayload));
+    queueRelationsResponses();
 
     const http = new HttpClient({ baseUrl: "https://api.test" });
-    const securityCenter = new SecurityCenterClient(http);
-    const integrations = new IntegrationsClient(http);
-    const findings = new FindingsClient(http);
+    const context = {
+      securityCenter: new SecurityCenterClient(http),
+      integrations: new IntegrationsClient(http),
+      findings: new FindingsClient(http),
+    };
 
-    const engagement = await getCustomerEngagement("org-1", "customer-alpha", {
-      securityCenter,
-      integrations,
-      findings,
-    });
+    const index = await buildRelationsIndex("org-1", context);
+    const engagement = await getCustomerEngagement("org-1", "customer-alpha", context, index);
 
     expect(engagement.customer.customerId).toBe("customer-alpha");
     expect(engagement.relatedIntegrations[0]?.integration).toBe("github");
     expect(engagement.dashboard.kpis.totalCustomers).toBe(1);
+  });
+
+  it("builds unified org exposure dashboard", async () => {
+    queueRelationsResponses();
+
+    const http = new HttpClient({ baseUrl: "https://api.test" });
+    const context = {
+      securityCenter: new SecurityCenterClient(http),
+      integrations: new IntegrationsClient(http),
+      findings: new FindingsClient(http),
+    };
+
+    const dashboard = await buildOrgExposureDashboard("org-1", context);
+
+    expect(dashboard.vendorDashboard.kpis.totalVendors).toBe(2);
+    expect(dashboard.customerDashboard.kpis.totalCustomers).toBe(2);
+    expect(dashboard.integration.total).toBe(2);
+    expect(dashboard.findings.total).toBe(2);
+    expect(dashboard.exposures.topVendors.length).toBeGreaterThan(0);
+    expect(dashboard.alerts.length).toBeGreaterThan(0);
   });
 
   it("annotates agent events with vendor and customer references", () => {
@@ -118,9 +114,45 @@ describe("security center relations", () => {
 
     const annotations = annotateAgentEvents(events, [vendorMapped], [customerMapped]);
     expect(annotations[0]?.vendors[0]?.vendorId).toBe("vendor-acme");
+    expect(annotations[0]?.summary.vendors[0]?.name).toBe("Acme Cloud");
     expect(annotations[1]?.customers[0]?.customerId).toBe("customer-alpha");
+    expect(annotations[1]?.summary.customers[0]?.name).toBe("Alpha Corp");
+  });
+
+  it("wraps streaming consumers with entity annotations", async () => {
+    const events: AgentStreamEvent[] = [
+      {
+        type: "message",
+        payload: {
+          messageId: "msg-1",
+          role: "assistant",
+          content: "Vendor update",
+          metadata: { vendorId: "vendor-acme" },
+        },
+        raw: { data: "", event: "message", id: "1" },
+      },
+    ];
+
+    const consumers: AgentStreamConsumers = {
+      onMessage: vi.fn(),
+    };
+
+    const wrapped = createEntityAwareConsumers([vendorMapped], [customerMapped], consumers, (annotation) => {
+      expect(annotation.summary.vendors[0]?.vendorId).toBe("vendor-acme");
+    });
+
+    await wrapped.onMessage?.(events[0]!.payload as AgentMessage, events[0]! as Extract<AgentStreamEvent, { type: "message" }>);
+    expect(consumers.onMessage).toHaveBeenCalledTimes(1);
   });
 });
+
+function queueRelationsResponses() {
+  fetchMock
+    .mockResolvedValueOnce(createResponse(vendorsPayload))
+    .mockResolvedValueOnce(createResponse(customersPayload))
+    .mockResolvedValueOnce(createResponse(coveragePayload))
+    .mockResolvedValueOnce(createResponse(findingsPayload));
+}
 
 const vendorFixture = {
   vendorId: "vendor-acme",
@@ -200,6 +232,24 @@ const vendorFixture = {
   },
   rawMetadata: {
     tags: { integration: "github" },
+  },
+};
+
+const vendorFixtureBeta = {
+  ...vendorFixture,
+  vendorId: "vendor-beta",
+  name: "Beta Compliance",
+  riskLevel: "high",
+  residualRiskScore: 0.9,
+  metadata: {
+    ...vendorFixture.metadata,
+    evidence: {
+      ...vendorFixture.metadata!.evidence,
+      vendor_id: "vendor-beta",
+      vendor_name: "Beta Compliance",
+      risk_level: "high",
+      residual_risk_score: 0.9,
+    },
   },
 };
 
@@ -346,6 +396,30 @@ const customerMapped = {
   },
 } as SecurityCenterCustomerInsight;
 
+const customerFixtureBeta = {
+  ...customerFixture,
+  customerId: "customer-beta",
+  name: "Beta Ltd",
+  healthBand: "at_risk",
+  churnRiskScore: 0.6,
+  metadata: {
+    ...customerFixture.metadata,
+    evidence: {
+      ...customerFixture.metadata!.evidence,
+      customer_id: "customer-beta",
+      customer_name: "Beta Ltd",
+      churn_risk_score: 0.6,
+      success_programs: [],
+    },
+    health: {
+      score: 0.6,
+      band: "at_risk",
+      churn_risk: 0.6,
+      lifecycle_stage: "renewal",
+    },
+  },
+};
+
 const coverageFixtureGithub = {
   integration: "github",
   providers: ["github"],
@@ -408,3 +482,18 @@ const findingPagerDuty = {
   finding_id: "finding-2",
   provider: "pagerduty",
 };
+
+const vendorsPayload = {
+  count: 2,
+  vendors: [vendorFixture, vendorFixtureBeta],
+  nextCursor: null,
+};
+
+const customersPayload = {
+  count: 2,
+  customers: [customerFixture, customerFixtureBeta],
+  nextCursor: null,
+};
+
+const coveragePayload = [coverageFixtureGithub, coverageFixturePagerDuty];
+const findingsPayload = [findingGithub, findingPagerDuty];

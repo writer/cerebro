@@ -108,10 +108,16 @@ export {
   getVendorExposure,
   getCustomerEngagement,
   annotateAgentEvents,
+  buildRelationsIndex,
+  buildOrgExposureDashboard,
+  createEntityAwareConsumers,
   type VendorExposure,
   type CustomerEngagement,
   type EntityAnnotation,
+  type EntityAnnotationSummary,
   type ExposureContext,
+  type RelationsIndex,
+  type OrgExposureDashboard,
 } from "./securityCenter/relations.js";
 export {
   UsersClient,
