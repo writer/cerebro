@@ -2,6 +2,13 @@ import type {
   SecurityCenterCustomerInsight,
   SecurityCenterVendorInsight,
 } from "../clients/securityCenter.js";
+import {
+  extractEvidenceArtifacts,
+  summarizeEvidenceSet,
+  type EvidenceArtifact,
+  type EvidenceSetSummary,
+  type LifecyclePolicy,
+} from "./primitives.js";
 
 export interface ControlMapping {
   controlId: string;
@@ -18,24 +25,10 @@ export interface EvidenceBundle {
   exportedAt: Date;
   controlId: string;
   framework: string;
-  vendorEvidence: VendorEvidenceArtifact[];
-  customerEvidence: CustomerEvidenceArtifact[];
-}
-
-export interface VendorEvidenceArtifact {
-  vendorId: string;
-  vendorName: string;
-  certifications: string[];
-  residualRisk: number | null;
-  evidenceIds: string[];
-}
-
-export interface CustomerEvidenceArtifact {
-  customerId: string;
-  customerName: string;
-  churnRisk: number | null;
-  successPrograms: string[];
-  evidenceIds: string[];
+  vendorEvidence: EvidenceArtifact[];
+  customerEvidence: EvidenceArtifact[];
+  vendorSummary: EvidenceSetSummary;
+  customerSummary: EvidenceSetSummary;
 }
 
 
@@ -60,6 +53,7 @@ export interface ControlMappingOptions {
   catalog: ControlCatalog;
   vendorTags?: (vendor: SecurityCenterVendorInsight) => string[];
   customerTags?: (customer: SecurityCenterCustomerInsight) => string[];
+  evidencePolicy?: LifecyclePolicy;
 }
 
 export function mapToControlFramework(
@@ -114,6 +108,7 @@ export function mapToControlFramework(
         framework,
         vendors: relatedVendors,
         customers: relatedCustomers,
+        policy: options.evidencePolicy,
       });
 
       mappings.push({
@@ -200,50 +195,76 @@ function evaluateControl(
   };
 }
 
+function dedupeArtifacts(artifacts: EvidenceArtifact[]): EvidenceArtifact[] {
+  const seen = new Map<string, EvidenceArtifact>();
+  for (const artifact of artifacts) {
+    if (!seen.has(artifact.id)) {
+      seen.set(artifact.id, artifact);
+    }
+  }
+  return Array.from(seen.values());
+}
+
 interface EvidenceParams {
   exportedAt: Date;
   controlId: string;
   framework: string;
   vendors: SecurityCenterVendorInsight[];
   customers: SecurityCenterCustomerInsight[];
+  policy: LifecyclePolicy | undefined;
 }
 
 function buildEvidenceBundle(params: EvidenceParams): EvidenceBundle {
+  const vendorEvidence = dedupeArtifacts(
+    params.vendors.flatMap((vendor) => [
+      ...extractEvidenceArtifacts({
+        kind: "vendor",
+        entityId: vendor.vendorId,
+        metadata: asRecord(vendor.metadata),
+        defaultSource: "metadata",
+      }),
+      ...extractEvidenceArtifacts({
+        kind: "vendor",
+        entityId: vendor.vendorId,
+        metadata: asRecord(vendor.rawMetadata),
+        defaultSource: "raw",
+      }),
+    ]),
+  );
+
+  const customerEvidence = dedupeArtifacts(
+    params.customers.flatMap((customer) => [
+      ...extractEvidenceArtifacts({
+        kind: "customer",
+        entityId: customer.customerId,
+        metadata: asRecord(customer.metadata),
+        defaultSource: "metadata",
+      }),
+      ...extractEvidenceArtifacts({
+        kind: "customer",
+        entityId: customer.customerId,
+        metadata: asRecord(customer.rawMetadata),
+        defaultSource: "raw",
+      }),
+    ]),
+  );
+
+  const policy = params.policy ?? { maxAgeDays: 90, refreshWindowDays: 14, hardExpiryDays: 365 } satisfies LifecyclePolicy;
+
+  const vendorSummary = summarizeEvidenceSet(vendorEvidence, policy, params.exportedAt);
+  const customerSummary = summarizeEvidenceSet(customerEvidence, policy, params.exportedAt);
+
   return {
     exportedAt: params.exportedAt,
     controlId: params.controlId,
     framework: params.framework,
-    vendorEvidence: params.vendors.map((vendor) => ({
-      vendorId: vendor.vendorId,
-      vendorName: vendor.name,
-      certifications: vendor.metadata?.complianceSummary?.certifications ?? [],
-      residualRisk: vendor.residualRiskScore ?? null,
-      evidenceIds: collectVendorEvidenceIds(vendor),
-    })),
-    customerEvidence: params.customers.map((customer) => ({
-      customerId: customer.customerId,
-      customerName: customer.name,
-      churnRisk: customer.churnRiskScore ?? null,
-      successPrograms: customer.metadata?.successPrograms ?? [],
-      evidenceIds: collectCustomerEvidenceIds(customer),
-    })),
+    vendorEvidence,
+    customerEvidence,
+    vendorSummary,
+    customerSummary,
   } satisfies EvidenceBundle;
 }
 
-function collectVendorEvidenceIds(vendor: SecurityCenterVendorInsight): string[] {
-  const evidenceIds: string[] = [];
-  if (vendor.metadata?.evidence?.id) evidenceIds.push(vendor.metadata.evidence.id);
-  if (vendor.metadata?.riskSummary?.monitoring?.accessMonitoringEnabled === false)
-    evidenceIds.push("missing-access-monitoring");
-  if (vendor.metadata?.complianceSummary?.securityQuestionnaireCompleted === false)
-    evidenceIds.push("missing-security-questionnaire");
-  return evidenceIds;
-}
-
-function collectCustomerEvidenceIds(customer: SecurityCenterCustomerInsight): string[] {
-  const evidenceIds: string[] = [];
-  if (customer.metadata?.evidence?.id) evidenceIds.push(customer.metadata.evidence.id);
-  if (customer.metadata?.engagement?.openSupportTickets)
-    evidenceIds.push(`support-tickets-${customer.metadata.engagement.openSupportTickets}`);
-  return evidenceIds;
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
 }

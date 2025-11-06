@@ -8,8 +8,6 @@ from .grc import (
     ControlMapping,
     ControlMappingOptions,
     EvidenceBundle,
-    VendorEvidenceArtifact,
-    CustomerEvidenceArtifact,
     map_to_control_framework,
 )
 from .remediation import (
@@ -26,6 +24,18 @@ from .alerts import (
     MonitoringContext,
     evaluate_monitoring_events,
 )
+from .primitives import (
+    EntityProfile,
+    EntityKind,
+    EvidenceArtifact,
+    EvidenceLifecycle,
+    EvidenceLifecycleStatus,
+    EvidenceSetSummary,
+    LifecyclePolicy,
+    evaluate_evidence_lifecycle,
+    summarize_evidence_set,
+    extract_evidence_artifacts,
+)
 
 __all__ = [
     "SecurityCenterVendorInsight",
@@ -36,8 +46,6 @@ __all__ = [
     "ControlMapping",
     "ControlMappingOptions",
     "EvidenceBundle",
-    "VendorEvidenceArtifact",
-    "CustomerEvidenceArtifact",
     "map_to_control_framework",
     "RemediationAction",
     "RemediationQueue",
@@ -49,4 +57,14 @@ __all__ = [
     "GovernanceAlert",
     "MonitoringContext",
     "evaluate_monitoring_events",
+    "EntityProfile",
+    "EntityKind",
+    "EvidenceArtifact",
+    "EvidenceLifecycle",
+    "EvidenceLifecycleStatus",
+    "EvidenceSetSummary",
+    "LifecyclePolicy",
+    "evaluate_evidence_lifecycle",
+    "summarize_evidence_set",
+    "extract_evidence_artifacts",
 ]

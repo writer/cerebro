@@ -7,26 +7,15 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Sequence
 
 from .models import SecurityCenterCustomerInsight, SecurityCenterVendorInsight
+from .primitives import (
+    EvidenceArtifact,
+    EvidenceSetSummary,
+    LifecyclePolicy,
+    extract_evidence_artifacts,
+    summarize_evidence_set,
+)
 
 ControlStatus = str
-
-
-@dataclass(slots=True)
-class VendorEvidenceArtifact:
-    vendor_id: str
-    vendor_name: str
-    certifications: Sequence[str]
-    residual_risk: float | None
-    evidence_ids: Sequence[str]
-
-
-@dataclass(slots=True)
-class CustomerEvidenceArtifact:
-    customer_id: str
-    customer_name: str
-    churn_risk: float | None
-    success_programs: Sequence[str]
-    evidence_ids: Sequence[str]
 
 
 @dataclass(slots=True)
@@ -34,8 +23,10 @@ class EvidenceBundle:
     exported_at: datetime
     control_id: str
     framework: str
-    vendor_evidence: Sequence[VendorEvidenceArtifact]
-    customer_evidence: Sequence[CustomerEvidenceArtifact]
+    vendor_evidence: Sequence[EvidenceArtifact]
+    customer_evidence: Sequence[EvidenceArtifact]
+    vendor_summary: EvidenceSetSummary
+    customer_summary: EvidenceSetSummary
 
 
 @dataclass(slots=True)
@@ -78,6 +69,7 @@ class ControlMappingOptions:
     catalog: ControlCatalog
     vendor_tags: Callable[[SecurityCenterVendorInsight], Sequence[str]] | None = None
     customer_tags: Callable[[SecurityCenterCustomerInsight], Sequence[str]] | None = None
+    evidence_policy: LifecyclePolicy | None = None
 
 
 def map_to_control_framework(
@@ -123,6 +115,7 @@ def map_to_control_framework(
                 framework,
                 related_vendors,
                 related_customers,
+                options.evidence_policy,
             )
 
             mappings.append(
@@ -206,35 +199,59 @@ def _build_evidence_bundle(
     framework: str,
     vendors: Sequence[SecurityCenterVendorInsight],
     customers: Sequence[SecurityCenterCustomerInsight],
+    evidence_policy: LifecyclePolicy | None,
 ) -> EvidenceBundle:
+    policy = evidence_policy or LifecyclePolicy(max_age_days=90, refresh_window_days=14, hard_expiry_days=365)
+
+    vendor_evidence: List[EvidenceArtifact] = []
+    for vendor in vendors:
+        vendor_evidence.extend(
+            extract_evidence_artifacts(
+                kind="vendor",
+                entity_id=vendor.vendor_id,
+                metadata=vendor.metadata,
+                default_source="metadata",
+            )
+        )
+        vendor_evidence.extend(
+            extract_evidence_artifacts(
+                kind="vendor",
+                entity_id=vendor.vendor_id,
+                metadata=vendor.raw_metadata,
+                default_source="raw",
+            )
+        )
+
+    customer_evidence: List[EvidenceArtifact] = []
+    for customer in customers:
+        customer_evidence.extend(
+            extract_evidence_artifacts(
+                kind="customer",
+                entity_id=customer.customer_id,
+                metadata=customer.metadata,
+                default_source="metadata",
+            )
+        )
+        customer_evidence.extend(
+            extract_evidence_artifacts(
+                kind="customer",
+                entity_id=customer.customer_id,
+                metadata=customer.raw_metadata,
+                default_source="raw",
+            )
+        )
+
+    vendor_summary = summarize_evidence_set(vendor_evidence, policy, now=exported_at)
+    customer_summary = summarize_evidence_set(customer_evidence, policy, now=exported_at)
+
     return EvidenceBundle(
         exported_at=exported_at,
         control_id=control_id,
         framework=framework,
-        vendor_evidence=[
-            VendorEvidenceArtifact(
-                vendor_id=vendor.vendor_id,
-                vendor_name=vendor.name,
-                certifications=_safe_sequence(
-                    vendor.metadata.get("complianceSummary", {}).get("certifications", [])
-                ),
-                residual_risk=vendor.residual_risk_score,
-                evidence_ids=_collect_vendor_evidence_ids(vendor),
-            )
-            for vendor in vendors
-        ],
-        customer_evidence=[
-            CustomerEvidenceArtifact(
-                customer_id=customer.customer_id,
-                customer_name=customer.name,
-                churn_risk=customer.churn_risk_score,
-                success_programs=_safe_sequence(
-                    customer.metadata.get("successPrograms", [])
-                ),
-                evidence_ids=_collect_customer_evidence_ids(customer),
-            )
-            for customer in customers
-        ],
+        vendor_evidence=vendor_evidence,
+        customer_evidence=customer_evidence,
+        vendor_summary=vendor_summary,
+        customer_summary=customer_summary,
     )
 
 
@@ -277,43 +294,3 @@ def extract_customer_tags(metadata: Mapping[str, Any] | None) -> Sequence[str]:
     return tags
 
 
-def _collect_vendor_evidence_ids(vendor: SecurityCenterVendorInsight) -> List[str]:
-    evidence_ids: List[str] = []
-    evidence = vendor.metadata.get("evidence") if isinstance(vendor.metadata, Mapping) else None
-    if isinstance(evidence, Mapping):
-        evidence_id = evidence.get("id")
-        if isinstance(evidence_id, str):
-            evidence_ids.append(evidence_id)
-        if evidence.get("securityQuestionnaireCompleted") is False or evidence.get("security_questionnaire_completed") is False:
-            evidence_ids.append("missing-security-questionnaire")
-    risk_summary = vendor.metadata.get("riskSummary") if isinstance(vendor.metadata, Mapping) else None
-    if isinstance(risk_summary, Mapping):
-        monitoring = risk_summary.get("monitoring")
-        if isinstance(monitoring, Mapping) and monitoring.get("accessMonitoringEnabled") is False:
-            evidence_ids.append("missing-access-monitoring")
-    return evidence_ids
-
-
-def _collect_customer_evidence_ids(customer: SecurityCenterCustomerInsight) -> List[str]:
-    evidence_ids: List[str] = []
-    evidence = customer.metadata.get("evidence") if isinstance(customer.metadata, Mapping) else None
-    if isinstance(evidence, Mapping):
-        evidence_id = evidence.get("id")
-        if isinstance(evidence_id, str):
-            evidence_ids.append(evidence_id)
-        tickets = evidence.get("support_tickets_open") or evidence.get("supportTicketsOpen")
-        if isinstance(tickets, int) and tickets > 0:
-            evidence_ids.append(f"support-tickets-{tickets}")
-
-    engagement = customer.metadata.get("engagement") if isinstance(customer.metadata, Mapping) else None
-    if isinstance(engagement, Mapping):
-        tickets = engagement.get("openSupportTickets") or engagement.get("open_support_tickets")
-        if isinstance(tickets, int) and tickets > 0 and f"support-tickets-{tickets}" not in evidence_ids:
-            evidence_ids.append(f"support-tickets-{tickets}")
-    return evidence_ids
-
-
-def _safe_sequence(value: Any) -> Sequence[str]:
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        return [str(item) for item in value]
-    return []

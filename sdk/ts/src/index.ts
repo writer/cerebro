@@ -126,6 +126,18 @@ export {
   type MonitoringContext,
 } from "./securityCenter/alerts.js";
 export {
+  type EntityProfile,
+  type EntityKind,
+  type EvidenceArtifact,
+  type EvidenceLifecycle,
+  type EvidenceLifecycleStatus,
+  type EvidenceSetSummary,
+  type LifecyclePolicy,
+  evaluateEvidenceLifecycle,
+  summarizeEvidenceSet,
+  extractEvidenceArtifacts,
+} from "./securityCenter/primitives.js";
+export {
   getVendorExposure,
   getCustomerEngagement,
   annotateAgentEvents,

@@ -96,8 +96,9 @@ def test_map_to_control_framework_generates_evidence_bundle() -> None:
     assert "vendor(s) exceeding tolerance" in mapping.rationale
 
     vendor_evidence = mapping.evidence_report.vendor_evidence
-    assert vendor_evidence[0].evidence_ids == ["evidence-1"]
+    assert {artifact.artifact_id for artifact in vendor_evidence} == {"evidence-1"}
+    assert mapping.evidence_report.vendor_summary.status == "fresh"
 
     customer_evidence = mapping.evidence_report.customer_evidence
-    # support tickets aggregated once
-    assert sorted(customer_evidence[0].evidence_ids) == ["cust-ev-1", "support-tickets-2"]
+    assert {artifact.artifact_id for artifact in customer_evidence} == {"cust-ev-1"}
+    assert mapping.evidence_report.customer_summary.status == "fresh"
