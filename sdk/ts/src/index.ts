@@ -64,7 +64,19 @@ export {
   type SecurityCenterOverview,
   type SecurityCenterVendorList,
   type SecurityCenterCustomerList,
+  type ListVendorsOptions,
+  type ListCustomersOptions,
 } from "./clients/securityCenter.js";
+export {
+  assessVendorHealth,
+  summarizeVendorPortfolio,
+  assessCustomerHealth,
+  summarizeCustomerPortfolio,
+  type VendorHealthAssessment,
+  type VendorPortfolioSummary,
+  type CustomerHealthAssessment,
+  type CustomerPortfolioSummary,
+} from "./securityCenter/analytics.js";
 export {
   UsersClient,
   InMemoryUsersAdapter,

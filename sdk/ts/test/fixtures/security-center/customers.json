@@ -1,0 +1,32 @@
+{
+  "count": 2,
+  "customers": [
+    {
+      "customerId": "customer-alpha",
+      "name": "Alpha Corp",
+      "segment": "enterprise",
+      "healthBand": "healthy",
+      "healthScore": 0.88,
+      "churnRiskScore": 0.15,
+      "lifecycleStage": "active",
+      "accountManager": "csm-amy",
+      "nextQbrAt": "2024-12-01T00:00:00Z",
+      "lastEngagementAt": "2024-10-10T00:00:00Z",
+      "metadata": null
+    },
+    {
+      "customerId": "customer-beta",
+      "name": "Beta Ltd",
+      "segment": "midmarket",
+      "healthBand": "at_risk",
+      "healthScore": 0.55,
+      "churnRiskScore": 0.6,
+      "lifecycleStage": "renewal",
+      "accountManager": "csm-bob",
+      "nextQbrAt": "2024-10-05T00:00:00Z",
+      "lastEngagementAt": "2024-08-15T00:00:00Z",
+      "metadata": null
+    }
+  ],
+  "nextCursor": null
+}

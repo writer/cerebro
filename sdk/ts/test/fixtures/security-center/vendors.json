@@ -1,0 +1,30 @@
+{
+  "count": 2,
+  "vendors": [
+    {
+      "vendorId": "vendor-acme",
+      "name": "Acme Cloud",
+      "category": "security",
+      "riskLevel": "medium",
+      "inherentRiskScore": 0.6,
+      "residualRiskScore": 0.4,
+      "lifecycleStage": "active",
+      "nextReviewDue": "2024-11-10T00:00:00Z",
+      "businessCriticality": "high",
+      "metadata": null
+    },
+    {
+      "vendorId": "vendor-beta",
+      "name": "Beta Compliance",
+      "category": "compliance",
+      "riskLevel": "high",
+      "inherentRiskScore": 0.7,
+      "residualRiskScore": 0.8,
+      "lifecycleStage": "onboarding",
+      "nextReviewDue": "2024-09-01T00:00:00Z",
+      "businessCriticality": "medium",
+      "metadata": null
+    }
+  ],
+  "nextCursor": null
+}

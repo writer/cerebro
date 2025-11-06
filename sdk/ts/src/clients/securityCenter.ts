@@ -1,5 +1,6 @@
 import HttpClient from "../httpClient.js";
 import { toCustomerMetadataEnvelope, toVendorMetadataEnvelope } from "../metadata.js";
+import { PageRequest } from "../pagination.js";
 import { CustomerMetadataEnvelope, VendorMetadataEnvelope } from "../types.js";
 
 const parseDate = (value: unknown): Date | null => {
@@ -157,11 +158,13 @@ export interface SecurityCenterOverview {
 export interface SecurityCenterVendorList {
   count: number;
   vendors: SecurityCenterVendorInsight[];
+  nextCursor: string | null;
 }
 
 export interface SecurityCenterCustomerList {
   count: number;
   customers: SecurityCenterCustomerInsight[];
+  nextCursor: string | null;
 }
 
 interface VendorRegistrationPayload {
@@ -236,11 +239,29 @@ interface CustomerInsightPayload {
 interface VendorListPayload {
   count: number;
   vendors: VendorInsightPayload[];
+  nextCursor?: string | null;
 }
 
 interface CustomerListPayload {
   count: number;
   customers: CustomerInsightPayload[];
+  nextCursor?: string | null;
+}
+
+export interface ListVendorsOptions {
+  cursor?: string | null;
+  limit?: number;
+  category?: string;
+  lifecycleStage?: string;
+  riskLevel?: string;
+}
+
+export interface ListCustomersOptions {
+  cursor?: string | null;
+  limit?: number;
+  segment?: string;
+  lifecycleStage?: string;
+  accountManager?: string;
 }
 
 export class SecurityCenterClient {
@@ -306,26 +327,60 @@ export class SecurityCenterClient {
     };
   }
 
-  async listVendors(orgId: string): Promise<SecurityCenterVendorList> {
+  async listVendors(orgId: string, options: ListVendorsOptions = {}): Promise<SecurityCenterVendorList> {
+    const searchParams = this.buildVendorSearchParams(options);
     const payload = await this.http.get<VendorListPayload>(
       `/api/v1/security-center/organizations/${orgId}/vendors`,
+      { searchParams },
     );
 
     return {
       count: payload.count,
       vendors: payload.vendors.map(mapVendorInsight),
+      nextCursor: payload.nextCursor ?? null,
     };
   }
 
-  async listCustomers(orgId: string): Promise<SecurityCenterCustomerList> {
+  async listCustomers(orgId: string, options: ListCustomersOptions = {}): Promise<SecurityCenterCustomerList> {
+    const searchParams = this.buildCustomerSearchParams(options);
     const payload = await this.http.get<CustomerListPayload>(
       `/api/v1/security-center/organizations/${orgId}/customers`,
+      { searchParams },
     );
 
     return {
       count: payload.count,
       customers: payload.customers.map(mapCustomerInsight),
+      nextCursor: payload.nextCursor ?? null,
     };
+  }
+
+  async iterateVendors(orgId: string, options: ListVendorsOptions = {}): Promise<SecurityCenterVendorInsight[]> {
+    const results: SecurityCenterVendorInsight[] = [];
+    const page: PageRequest = { cursor: options.cursor ?? null, limit: options.limit };
+
+    do {
+      const pageOptions = { ...options, cursor: page.cursor, limit: page.limit };
+      const { vendors, nextCursor } = await this.listVendors(orgId, pageOptions);
+      results.push(...vendors);
+      page.cursor = nextCursor;
+    } while (page.cursor);
+
+    return results;
+  }
+
+  async iterateCustomers(orgId: string, options: ListCustomersOptions = {}): Promise<SecurityCenterCustomerInsight[]> {
+    const results: SecurityCenterCustomerInsight[] = [];
+    const page: PageRequest = { cursor: options.cursor ?? null, limit: options.limit };
+
+    do {
+      const pageOptions = { ...options, cursor: page.cursor, limit: page.limit };
+      const { customers, nextCursor } = await this.listCustomers(orgId, pageOptions);
+      results.push(...customers);
+      page.cursor = nextCursor;
+    } while (page.cursor);
+
+    return results;
   }
 
   private buildVendorBody(request: RegisterVendorRequest): Record<string, unknown> {
@@ -345,6 +400,26 @@ export class SecurityCenterClient {
     if (request.annualSpend !== undefined) body.annual_spend = request.annualSpend;
 
     return body;
+  }
+
+  private buildVendorSearchParams(options: ListVendorsOptions): Record<string, string> | undefined {
+    const params: Record<string, string> = {};
+    if (options.cursor) params.cursor = options.cursor;
+    if (options.limit !== undefined) params.limit = String(options.limit);
+    if (options.category) params.category = options.category;
+    if (options.lifecycleStage) params.lifecycle_stage = options.lifecycleStage;
+    if (options.riskLevel) params.risk_level = options.riskLevel;
+    return Object.keys(params).length ? params : undefined;
+  }
+
+  private buildCustomerSearchParams(options: ListCustomersOptions): Record<string, string> | undefined {
+    const params: Record<string, string> = {};
+    if (options.cursor) params.cursor = options.cursor;
+    if (options.limit !== undefined) params.limit = String(options.limit);
+    if (options.segment) params.segment = options.segment;
+    if (options.lifecycleStage) params.lifecycle_stage = options.lifecycleStage;
+    if (options.accountManager) params.account_manager = options.accountManager;
+    return Object.keys(params).length ? params : undefined;
   }
 
   private buildCustomerBody(request: RegisterCustomerRequest): Record<string, unknown> {

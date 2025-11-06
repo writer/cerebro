@@ -284,8 +284,39 @@ describe("SecurityCenterClient", () => {
     expect(overview.customerInsights[0].metadata?.evidence.customerId).toBe("customer_galaxy");
   });
 
-  it("lists vendors and customers for an organization", async () => {
+  it("lists vendors and customers for an organization with pagination", async () => {
+    const client = new SecurityCenterClient(new HttpClient({ baseUrl: "https://api.test" }));
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        count: 2,
+        vendors: [
+          { vendorId: "vendor_acme", name: "Acme", category: "security", riskLevel: "medium", inherentRiskScore: 0.6, residualRiskScore: 0.4, lifecycleStage: "active", nextReviewDue: "2024-06-01T00:00:00Z", businessCriticality: "medium", metadata: null },
+        ],
+        nextCursor: "cursor-2",
+      }),
+    });
+
+    const vendorsPage = await client.listVendors("org-4", { limit: 1, category: "security" });
+    expect(vendorsPage.nextCursor).toBe("cursor-2");
+    expect(vendorsPage.vendors).toHaveLength(1);
+
     fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          count: 2,
+          vendors: [
+            { vendorId: "vendor_acme", name: "Acme", category: "security", riskLevel: "medium", inherentRiskScore: 0.6, residualRiskScore: 0.4, lifecycleStage: "active", nextReviewDue: "2024-06-01T00:00:00Z", businessCriticality: "medium", metadata: null },
+          ],
+          nextCursor: "cursor-2",
+        }),
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -293,19 +324,44 @@ describe("SecurityCenterClient", () => {
         json: async () => ({
           count: 1,
           vendors: [
-            {
-              vendorId: "vendor_acme",
-              name: "Acme Cloud",
-              category: "security_vendor",
-              riskLevel: "medium",
-              inherentRiskScore: 0.6,
-              residualRiskScore: 0.4,
-              lifecycleStage: "active",
-              nextReviewDue: "2024-06-01T00:00:00Z",
-              businessCriticality: "medium",
-              metadata: null,
-            },
+            { vendorId: "vendor_beta", name: "Beta", category: "compliance", riskLevel: "low", inherentRiskScore: 0.2, residualRiskScore: 0.1, lifecycleStage: "onboarding", nextReviewDue: null, businessCriticality: "low", metadata: null },
           ],
+          nextCursor: null,
+        }),
+      });
+
+    const allVendors = await client.iterateVendors("org-4", { limit: 1 });
+    expect(allVendors).toHaveLength(2);
+    expect(allVendors[1]?.vendorId).toBe("vendor_beta");
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        count: 2,
+        customers: [
+          { customerId: "customer_alpha", name: "Alpha", segment: "enterprise", healthBand: "healthy", healthScore: 0.9, churnRiskScore: 0.1, lifecycleStage: "active", accountManager: "csm-amy", nextQbrAt: null, lastEngagementAt: null, metadata: null },
+        ],
+        nextCursor: "cursor-3",
+      }),
+    });
+
+    const customersPage = await client.listCustomers("org-4", { limit: 1, segment: "enterprise" });
+    expect(customersPage.nextCursor).toBe("cursor-3");
+    expect(customersPage.customers[0]?.customerId).toBe("customer_alpha");
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          count: 2,
+          customers: [
+            { customerId: "customer_alpha", name: "Alpha", segment: "enterprise", healthBand: "healthy", healthScore: 0.9, churnRiskScore: 0.1, lifecycleStage: "active", accountManager: "csm-amy", nextQbrAt: null, lastEngagementAt: null, metadata: null },
+          ],
+          nextCursor: "cursor-3",
         }),
       })
       .mockResolvedValueOnce({
@@ -315,32 +371,17 @@ describe("SecurityCenterClient", () => {
         json: async () => ({
           count: 1,
           customers: [
-            {
-              customerId: "customer_galaxy",
-              name: "Galaxy Industries",
-              segment: "enterprise",
-              healthBand: "healthy",
-              healthScore: 0.9,
-              churnRiskScore: 0.1,
-              lifecycleStage: "active",
-              accountManager: "csm-jane",
-              nextQbrAt: null,
-              lastEngagementAt: null,
-              metadata: null,
-            },
+            { customerId: "customer_beta", name: "Beta", segment: "midmarket", healthBand: "at_risk", healthScore: 0.5, churnRiskScore: 0.4, lifecycleStage: "renewal", accountManager: "csm-bob", nextQbrAt: "2024-07-01T00:00:00Z", lastEngagementAt: null, metadata: null },
           ],
+          nextCursor: null,
         }),
       });
 
-    const client = new SecurityCenterClient(new HttpClient({ baseUrl: "https://api.test" }));
-    const vendors = await client.listVendors("org-4");
-    const customers = await client.listCustomers("org-4");
+    const allCustomers = await client.iterateCustomers("org-4", { limit: 1 });
+    expect(allCustomers).toHaveLength(2);
+    expect(allCustomers[1]?.customerId).toBe("customer_beta");
 
-    expect(vendors.count).toBe(1);
-    expect(vendors.vendors[0].vendorId).toBe("vendor_acme");
-    expect(customers.customers[0].customerId).toBe("customer_galaxy");
-
-    const [vendorCall] = fetchMock.mock.calls;
-    expect(vendorCall[0]).toContain("/security-center/organizations/org-4/vendors");
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("segment=enterprise"))).toBe(true);
   });
 });

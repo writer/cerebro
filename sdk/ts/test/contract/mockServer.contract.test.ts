@@ -8,6 +8,12 @@ import { CerebroSDK } from "../../src/sdk";
 import { collectAgentStream } from "../../src/agents/streaming";
 import { buildIntegrationOverviewMap } from "../../src/integrations/overview";
 import { computeCoverageTrendForIntegration } from "../../src/integrations/analytics";
+import {
+  assessCustomerHealth,
+  assessVendorHealth,
+  summarizeCustomerPortfolio,
+  summarizeVendorPortfolio,
+} from "../../src/securityCenter/analytics";
 
 const fixturesDir = path.resolve(__dirname, "../fixtures");
 
@@ -40,6 +46,16 @@ describe("mock server harness", () => {
 
       if (req.method === "GET" && requestUrl.pathname === "/api/v1/organizations") {
         await respondWithJson(res, "organizations/organizations.json");
+        return;
+      }
+
+      if (req.method === "GET" && requestUrl.pathname.startsWith("/api/v1/security-center/organizations/") && requestUrl.pathname.endsWith("/vendors")) {
+        await respondWithJson(res, "security-center/vendors.json");
+        return;
+      }
+
+      if (req.method === "GET" && requestUrl.pathname.startsWith("/api/v1/security-center/organizations/") && requestUrl.pathname.endsWith("/customers")) {
+        await respondWithJson(res, "security-center/customers.json");
         return;
       }
 
@@ -152,6 +168,21 @@ describe("mock server harness", () => {
 
     const trend = computeCoverageTrendForIntegration("github", githubHistory);
     expect(trend.latestChange).toBeLessThan(0);
+
+    const vendorList = await sdk.securityCenter.listVendors("org-1");
+    expect(vendorList.vendors).toHaveLength(2);
+    const vendorPortfolio = summarizeVendorPortfolio(vendorList.vendors);
+    expect(vendorPortfolio.total).toBe(2);
+    expect(vendorPortfolio.overdueReviews).toBeGreaterThanOrEqual(0);
+    const vendorAssessment = assessVendorHealth(vendorList.vendors[0]!);
+    expect(vendorAssessment.vendorId).toBe("vendor-acme");
+
+    const customerList = await sdk.securityCenter.listCustomers("org-1");
+    expect(customerList.customers).toHaveLength(2);
+    const customerPortfolio = summarizeCustomerPortfolio(customerList.customers);
+    expect(customerPortfolio.total).toBe(2);
+    const customerAssessment = assessCustomerHealth(customerList.customers[0]!);
+    expect(customerAssessment.customerId).toBe("customer-alpha");
 
     const streamResult = await sdk.agents.sendSessionMessage("session-123", {
       content: "Hi",
