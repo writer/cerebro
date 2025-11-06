@@ -1,6 +1,6 @@
-# Cerebro
+# Cerebro (Writer Internal)
 
-Cerebro is an open-source security data platform that tracks cloud and SaaS configuration state, exposes a consistent API surface, and supports automated or human-in-the-loop investigations.
+Cerebro is Writer's internal security data platform. It tracks cloud and SaaS configuration state, exposes a consistent API surface, and supports automated or human-in-the-loop investigations used by Writer engineering and security teams.
 
 ## Key Capabilities
 
@@ -162,11 +162,6 @@ cerebro/
 - [Development Guide](docs/DEVELOPMENT.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 
-## License
+## Internal Use Only
 
-Apache 2.0 – see [LICENSE](LICENSE)
-
-## Links
-
-- GitHub: https://github.com/WriterInternal/cerebro
-- Issues: https://github.com/WriterInternal/cerebro/issues
+This repository and its artifacts are confidential and intended solely for Writer employees and approved contractors. Do not redistribute or share outside the company. Refer to the internal handbook for deployment controls, data handling requirements, and exception processes.
