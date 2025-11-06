@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass
-from datetime import timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs
 from uuid import UUID
@@ -15,6 +14,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import Finding, Organization
+from cerebro.integrations.slack.block_kit import findings_summary_blocks
 
 logger = structlog.get_logger(__name__)
 
@@ -207,74 +207,14 @@ class SlackCommandService:
             )
 
         severity_label = "All" if normalized == "all" else normalized.capitalize()
-        header_text = f"Top {len(findings)} {severity_label} findings for {org.name}"
-        blocks: List[Dict[str, Any]] = [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": header_text, "emoji": True},
-            }
-        ]
-
-        for index, finding in enumerate(findings, start=1):
-            title = finding.title or "Untitled finding"
-            summary = finding.summary or ""
-            if summary:
-                summary = summary[:160] + ("…" if len(summary) > 160 else "")
-            fingerprint = str(finding.finding_id)
-            last_seen_ts = int(finding.last_seen.astimezone(timezone.utc).timestamp())
-            last_seen = f"<!date^{last_seen_ts}^{{date_short_pretty}} at {{time}}|{finding.last_seen.isoformat()}>"
-
-            section_lines = [
-                f"*{index}. {title}*",
-                f"*Severity:* `{finding.severity.upper()}`   •   *Provider:* `{finding.provider}`",
-                f"*Last seen:* {last_seen}   •   *Fingerprint:* `{fingerprint}`",
-            ]
-            if summary:
-                section_lines.append(summary)
-
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": "\n".join(section_lines)},
-                }
-            )
-
-            resource_bits: List[str] = []
-            if finding.resource_id:
-                resource_bits.append(f"Resource ID: `{finding.resource_id}`")
-            if finding.principal_id:
-                resource_bits.append(f"Principal ID: `{finding.principal_id}`")
-            if resource_bits:
-                blocks.append(
-                    {
-                        "type": "context",
-                        "elements": [{"type": "mrkdwn", "text": " • ".join(resource_bits)}],
-                    }
-                )
-
-            if index < len(findings):
-                blocks.append({"type": "divider"})
-
-        blocks.append(
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": "Use `/cerebro findings <severity>` to change severity or open Cerebro for full context.",
-                    }
-                ],
-            }
+        fallback_text, blocks = findings_summary_blocks(
+            org_name=org.name,
+            severity_label=severity_label,
+            findings=findings,
         )
 
-        fallback_lines = [header_text]
-        for finding in findings:
-            fallback_lines.append(
-                f"- {finding.title or 'Untitled finding'} ({finding.severity.upper()}, {finding.provider})"
-            )
-
         return SlackCommandResponse(
-            text="\n".join(fallback_lines),
+            text=fallback_text,
             blocks=blocks,
         )
 

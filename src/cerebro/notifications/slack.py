@@ -15,11 +15,15 @@ from uuid import UUID, uuid4
 
 import httpx
 import structlog
+from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import SlackWebhook, SlackNotification, Finding, Organization
+from cerebro.integrations.slack.block_kit import findings_summary_blocks
 
 logger = structlog.get_logger(__name__)
 
@@ -265,6 +269,9 @@ class SlackNotificationService:
         self.retry_delay_seconds = retry_delay_seconds
         self.timeout_seconds = timeout_seconds
         self.client = httpx.AsyncClient(timeout=timeout_seconds)
+        self._bot_client: Optional[AsyncWebClient] = None
+        if settings.slack_bot_token:
+            self._bot_client = AsyncWebClient(token=settings.slack_bot_token)
 
     async def send_finding_notification(
         self, org_id: UUID, finding: Finding, db: AsyncSession
@@ -298,6 +305,11 @@ class SlackNotificationService:
 
             # Format message
             message = SlackMessageFormatter.format_finding_created(finding, org.name)
+            fallback_text, blocks = findings_summary_blocks(
+                org_name=org.name,
+                severity_label=finding.severity.capitalize() if finding.severity else "Finding",
+                findings=[finding],
+            )
 
             # Send to each matching webhook
             for webhook in webhooks:
@@ -312,6 +324,18 @@ class SlackNotificationService:
                     severity=finding.severity,
                     db=db,
                 )
+
+                if webhook.channel:
+                    await self._post_bot_message(
+                        channel=webhook.channel,
+                        text=fallback_text,
+                        blocks=blocks,
+                        metadata={
+                            "org_id": str(org.org_id),
+                            "webhook_id": str(webhook.webhook_id),
+                            "event_type": "finding_created",
+                        },
+                    )
 
         except Exception as e:
             logger.error(
@@ -582,6 +606,32 @@ class SlackNotificationService:
             retry_count=retry_count,
             error=last_error,
         )
+
+    async def _post_bot_message(
+        self,
+        *,
+        channel: Optional[str],
+        text: str,
+        blocks: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not self._bot_client or not channel:
+            return
+
+        try:
+            await self._bot_client.chat_postMessage(
+                channel=channel,
+                text=text,
+                blocks=blocks,
+            )
+        except SlackApiError as exc:
+            error_detail = exc.response.get("error") if getattr(exc, "response", None) else str(exc)
+            logger.warning(
+                "slack_bot_post_failed",
+                channel=channel,
+                error=error_detail,
+                metadata=metadata or {},
+            )
 
     async def close(self) -> None:
         """Close HTTP client."""
