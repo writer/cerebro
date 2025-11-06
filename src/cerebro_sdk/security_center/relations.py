@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from cerebro_sdk.analytics import (
@@ -13,6 +15,13 @@ from cerebro_sdk.analytics import (
     IntegrationScopeBreakdown,
 )
 from cerebro_sdk.findings import FindingRecord
+from cerebro_sdk.agents.streaming import (
+    AgentMessage,
+    AgentStreamConsumers,
+    AgentStreamEvent,
+    CompletionUpdate,
+    ToolCallDelta,
+)
 
 from .analytics import (
     CustomerRiskDashboard,
@@ -63,7 +72,6 @@ class IntegrationCoverageHealth:
     critical_percentage: float
     overall_score: float
 
-
 def _to_ratio(value: int | float | None, total: int | float | None) -> float:
     if total is None or not isinstance(total, (int, float)) or total <= 0:
         return 0.0
@@ -92,6 +100,9 @@ def compute_coverage_health(record: IntegrationCoverageRecord) -> IntegrationCov
         critical_percentage=critical_percentage,
         overall_score=overall_score,
     )
+
+
+ConsumerFn = Callable[..., Awaitable[None] | None]
 
 
 @dataclass(slots=True)
@@ -391,6 +402,156 @@ async def build_org_exposure_dashboard(
     )
 
 
+@dataclass(slots=True)
+class EntityAnnotationSummary:
+    vendors: list[dict[str, Any]]
+    customers: list[dict[str, Any]]
+
+
+@dataclass(slots=True)
+class EntityAnnotation:
+    event: AgentStreamEvent
+    vendors: list[SecurityCenterVendorInsight]
+    customers: list[SecurityCenterCustomerInsight]
+    summary: EntityAnnotationSummary
+
+
+def annotate_agent_event(
+    event: AgentStreamEvent,
+    vendors: Sequence[SecurityCenterVendorInsight],
+    customers: Sequence[SecurityCenterCustomerInsight],
+) -> EntityAnnotation:
+    vendor_by_id = {vendor.vendor_id: vendor for vendor in vendors}
+    customer_by_id = {customer.customer_id: customer for customer in customers}
+
+    vendor_matches: list[SecurityCenterVendorInsight] = []
+    customer_matches: list[SecurityCenterCustomerInsight] = []
+
+    payload = event.payload or {}
+
+    if event.type == "message":
+        metadata = payload.get("metadata")
+        if isinstance(metadata, Mapping):
+            _collect_matching_entities(metadata, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+    elif event.type == "tool":
+        input_data = payload.get("input_data") or payload.get("inputData")
+        if isinstance(input_data, Mapping):
+            _collect_matching_entities(input_data, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+
+    if isinstance(payload, Mapping):
+        _collect_matching_entities(payload, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+
+    summary = EntityAnnotationSummary(
+        vendors=[
+            {
+                "vendor_id": vendor.vendor_id,
+                "name": vendor.name,
+                "risk_level": vendor.risk_level,
+                "residual_risk_score": vendor.residual_risk_score,
+            }
+            for vendor in vendor_matches
+        ],
+        customers=[
+            {
+                "customer_id": customer.customer_id,
+                "name": customer.name,
+                "health_band": customer.health_band,
+                "churn_risk_score": customer.churn_risk_score,
+            }
+            for customer in customer_matches
+        ],
+    )
+
+    return EntityAnnotation(event=event, vendors=vendor_matches, customers=customer_matches, summary=summary)
+
+
+def annotate_agent_events(
+    events: Sequence[AgentStreamEvent],
+    vendors: Sequence[SecurityCenterVendorInsight],
+    customers: Sequence[SecurityCenterCustomerInsight],
+) -> list[EntityAnnotation]:
+    return [annotate_agent_event(event, vendors, customers) for event in events]
+
+
+async def _maybe_call(fn: Optional[ConsumerFn], *args: Any, **kwargs: Any) -> None:
+    if fn is None:
+        return
+    result = fn(*args, **kwargs)
+    if inspect.isawaitable(result):
+        await result
+
+
+def create_entity_aware_consumers(
+    vendors: Sequence[SecurityCenterVendorInsight],
+    customers: Sequence[SecurityCenterCustomerInsight],
+    consumers: AgentStreamConsumers | None = None,
+    on_entity: Optional[Callable[[EntityAnnotation], Awaitable[None] | None]] = None,
+) -> AgentStreamConsumers:
+    base = consumers or AgentStreamConsumers()
+
+    async def dispatch(event: AgentStreamEvent) -> None:
+        if on_entity is None:
+            return
+        annotation = annotate_agent_event(event, vendors, customers)
+        await _maybe_call(on_entity, annotation)
+
+    async def wrapped_message(message: AgentMessage, event: AgentStreamEvent) -> None:
+        await _maybe_call(base.on_message, message, event)
+        await dispatch(event)
+
+    async def wrapped_tool(delta: ToolCallDelta, event: AgentStreamEvent) -> None:
+        await _maybe_call(base.on_tool, delta, event)
+        await dispatch(event)
+
+    async def wrapped_status(update: CompletionUpdate, event: AgentStreamEvent) -> None:
+        await _maybe_call(base.on_status, update, event)
+        await dispatch(event)
+
+    async def wrapped_heartbeat(event: AgentStreamEvent) -> None:
+        await _maybe_call(base.on_heartbeat, event)
+        await dispatch(event)
+
+    async def wrapped_unknown(event: AgentStreamEvent) -> None:
+        await _maybe_call(base.on_unknown, event)
+        await dispatch(event)
+
+    return AgentStreamConsumers(
+        on_message=wrapped_message,
+        on_tool=wrapped_tool,
+        on_status=wrapped_status,
+        on_heartbeat=wrapped_heartbeat,
+        on_unknown=wrapped_unknown,
+    )
+
+
+def _collect_matching_entities(
+    payload: Mapping[str, Any],
+    vendor_by_id: Mapping[str, SecurityCenterVendorInsight],
+    customer_by_id: Mapping[str, SecurityCenterCustomerInsight],
+    vendor_matches: list[SecurityCenterVendorInsight],
+    customer_matches: list[SecurityCenterCustomerInsight],
+) -> None:
+    vendor_id = payload.get("vendorId") or payload.get("vendor_id")
+    if isinstance(vendor_id, str):
+        match = vendor_by_id.get(vendor_id)
+        if match and match not in vendor_matches:
+            vendor_matches.append(match)
+
+    customer_id = payload.get("customerId") or payload.get("customer_id")
+    if isinstance(customer_id, str):
+        match = customer_by_id.get(customer_id)
+        if match and match not in customer_matches:
+            customer_matches.append(match)
+
+    for value in payload.values():
+        if isinstance(value, Mapping):
+            _collect_matching_entities(value, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            for item in value:
+                if isinstance(item, Mapping):
+                    _collect_matching_entities(item, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+
+
 def _collect_findings_for_providers(
     provider_keys: set[str],
     findings_by_provider: Mapping[str, Sequence[FindingRecord]],
@@ -498,4 +659,9 @@ __all__ = [
     "get_vendor_exposure",
     "get_customer_engagement",
     "build_org_exposure_dashboard",
+    "EntityAnnotationSummary",
+    "EntityAnnotation",
+    "annotate_agent_event",
+    "annotate_agent_events",
+    "create_entity_aware_consumers",
 ]
