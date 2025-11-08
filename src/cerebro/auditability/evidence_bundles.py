@@ -22,8 +22,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 
 from .timestamping import get_timestamp_service, TimestampToken
 from .transparency_log import get_transparency_log, LogEntryType
-from ..query.engine import QueryEngine
-from ..providers.tables import register_all_provider_tables
+from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
 
@@ -557,8 +556,7 @@ class EvidenceBundleManager:
     """
     
     def __init__(self):
-        self.query_engine = QueryEngine()
-        register_all_provider_tables()
+        self.query_engine = get_query_engine()
     
     async def create_finding_evidence_bundle(
         self,

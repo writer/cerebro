@@ -17,8 +17,7 @@ from sqlalchemy import select, and_, func
 
 from ..core.database import async_session_factory
 from ..core.models import Principal, IamEdge
-from ..query.engine import QueryEngine
-from ..providers.tables import register_all_provider_tables
+from ..query.bootstrap import get_query_engine
 from ..auditability.transparency_log import get_transparency_log, LogEntryType
 
 logger = logging.getLogger(__name__)
@@ -86,8 +85,7 @@ class JMLCampaignManager:
     """
     
     def __init__(self):
-        self.query_engine = QueryEngine()
-        register_all_provider_tables()
+        self.query_engine = get_query_engine()
         self.transparency_log = get_transparency_log()
     
     async def detect_jml_events(

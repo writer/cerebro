@@ -25,6 +25,7 @@ from cerebro.compliance.preaudit_models import (
     PreAuditRunStatus,
 )
 from cerebro.core.database import async_session_factory
+from cerebro.query.bootstrap import get_query_engine
 from cerebro.query.engine import QueryEngine, QueryResult
 
 
@@ -50,7 +51,7 @@ class PreAuditHealthCheckService:
     """Runs compliance control evaluations ahead of scheduled audits."""
 
     def __init__(self, query_engine: Optional[QueryEngine] = None) -> None:
-        self._query_engine = query_engine or QueryEngine()
+        self._query_engine = query_engine or get_query_engine()
 
     async def register_schedule(
         self,

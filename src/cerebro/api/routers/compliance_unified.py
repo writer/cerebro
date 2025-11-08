@@ -29,6 +29,7 @@ from cerebro.compliance.storage import FileBasedEvidenceRepository
 from cerebro.compliance.models import (
     EvidenceStatus, EvidenceCategory, create_compliance_evidence
 )
+from cerebro.query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/compliance", dependencies=[Depends(get_current_user)])
@@ -105,9 +106,7 @@ def get_evidence_service(
     db: AsyncSession = Depends(get_db)
 ):
     """Get evidence service with dependencies."""
-    from cerebro.query.engine import QueryEngine
-
-    query_engine = QueryEngine()
+    query_engine = get_query_engine()
     return EvidenceService(repository, query_engine=query_engine)
 
 

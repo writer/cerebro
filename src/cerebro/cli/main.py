@@ -15,8 +15,7 @@ from cerebro.collectors.manager import CollectorManager
 from cerebro.findings.manager import FindingManager
 from cerebro.findings.evaluator import RuleEvaluator
 from cerebro.rules.engine import rule_engine
-from cerebro.query.engine import QueryEngine
-from cerebro.providers.tables import register_all_provider_tables
+from cerebro.query.bootstrap import get_query_engine
 from cerebro.auditability.evidence_bundles import get_evidence_manager
 from cerebro.auditability.transparency_log import get_transparency_log
 from cerebro.cli.agents import app as agents_app
@@ -313,8 +312,7 @@ def query(
     """Execute SQL queries against security data."""
     async def _query():
         # Initialize query engine
-        query_engine = QueryEngine()
-        register_all_provider_tables()
+        query_engine = get_query_engine()
         
         # Get SQL query
         query_sql = sql
@@ -391,8 +389,7 @@ def tables(
 ):
     """List available security tables."""
     async def _tables():
-        query_engine = QueryEngine()
-        register_all_provider_tables()
+        query_engine = get_query_engine()
         
         try:
             tables = await query_engine.list_tables(provider=provider)

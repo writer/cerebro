@@ -203,6 +203,10 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = Field(
         default=None, description="Anthropic API key for Claude integration"
     )
+    enable_nl_query_translation: bool = Field(
+        default=True,
+        description="Enable Anthropic-backed natural language SQL translation",
+    )
     claude_model: str = Field(
         default="claude-3-5-sonnet-20241022", 
         description="Claude model to use for agents"

@@ -13,8 +13,7 @@ from datetime import datetime
 from enum import Enum
 
 from ..oauth_risk.registry import get_oauth_registry, OAuthApp
-from ..query.engine import QueryEngine
-from ..providers.tables import register_all_provider_tables
+from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +76,7 @@ class DiscoveredVendorTracker:
     
     def __init__(self):
         self.oauth_registry = get_oauth_registry()
-        self.query_engine = QueryEngine()
-        register_all_provider_tables()
+        self.query_engine = get_query_engine()
         self.discovered_vendors: Dict[str, DiscoveredVendor] = {}
     
     async def discover_vendors_from_oauth(self, org_id: str) -> List[DiscoveredVendor]:

@@ -23,8 +23,7 @@ from sqlalchemy import select, and_, func
 
 from ..core.database import async_session_factory
 from ..core.models import Principal, IamEdge, AuditEvent, ConfigSnapshot
-from ..query.engine import QueryEngine
-from ..providers.tables import register_all_provider_tables
+from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class IdentityAnomalyDetector:
     
     def __init__(self, lookback_days: int = 30):
         self.lookback_days = lookback_days
-        self.query_engine = QueryEngine()
+        self.query_engine = get_query_engine()
         self.baselines: Dict[str, BehavioralBaseline] = {}
         
         # ML models
@@ -100,8 +99,6 @@ class IdentityAnomalyDetector:
         self.scaler = StandardScaler()
         self.dbscan = DBSCAN(eps=0.5, min_samples=5)
         
-        # Initialize query engine
-        register_all_provider_tables()
     
     async def analyze_identity_anomalies(
         self, 

@@ -13,8 +13,7 @@ from datetime import datetime
 from enum import Enum
 import statistics
 
-from ..query.engine import QueryEngine
-from ..providers.tables import register_all_provider_tables
+from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +69,7 @@ class PeerGroupAnalyzer:
     """
     
     def __init__(self):
-        self.query_engine = QueryEngine()
-        register_all_provider_tables()
+        self.query_engine = get_query_engine()
         self.baselines: Dict[str, PeerGroupBaseline] = {}
     
     async def establish_peer_group_baselines(self, org_id: str) -> Dict[str, PeerGroupBaseline]:

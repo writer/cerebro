@@ -6,7 +6,6 @@ Enables users to query security data without knowing SQL syntax.
 """
 
 from typing import Any, Dict, List, Optional
-import re
 import structlog
 from pydantic import BaseModel, Field
 
@@ -16,8 +15,10 @@ from cerebro.agents.tools.base import (
     AgentContext,
     ToolPermissionLevel,
 )
-from cerebro.query.engine import QueryEngine
-from anthropic import Anthropic
+from cerebro.core.config import settings
+from cerebro.query.bootstrap import get_query_engine
+
+from .nl_translator import build_translator, TranslationError
 
 logger = structlog.get_logger(__name__)
 
@@ -159,15 +160,8 @@ The system will automatically translate to SQL and execute the query safely."""
 
     def __init__(self):
         super().__init__()
-        self.query_engine = QueryEngine()
-        # Initialize Anthropic client for SQL translation
-        import os
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key:
-            self.anthropic = Anthropic(api_key=api_key)
-        else:
-            self.anthropic = None
-            logger.warning("ANTHROPIC_API_KEY not set, NL query translation disabled")
+        self.query_engine = get_query_engine()
+        self.translator = build_translator(settings)
 
     async def _run(
         self,
@@ -187,7 +181,24 @@ The system will automatically translate to SQL and execute the query safely."""
             ToolResult with SQL query, results, and explanation
         """
 
-        if not self.anthropic:
+        try:
+            logger.info("Translating natural language to SQL", question=question)
+            sql_query = await self.translator.translate(
+                question=question,
+                limit=limit,
+                schema=QUERY_SCHEMA,
+                examples=FEW_SHOT_EXAMPLES,
+            )
+        except TranslationError as exc:
+            logger.warning(
+                "Natural language translation failed; returning fallback response",
+                question=question,
+                error=str(exc),
+            )
+            explanation = (
+                "Natural language query translation is currently unavailable. "
+                "Please try again later or provide a SQL query directly."
+            )
             output = NLQueryOutput(
                 success=False,
                 question=question,
@@ -195,154 +206,111 @@ The system will automatically translate to SQL and execute the query safely."""
                 results=[],
                 result_count=0,
                 execution_time_ms=0,
-                explanation="Natural language query translation requires ANTHROPIC_API_KEY to be set",
+                explanation=f"{explanation} Details: {exc}",
             )
-            return ToolResult(success=False, data=output.model_dump())
-
-        try:
-            # Step 1: Translate natural language to SQL
-            logger.info("Translating natural language to SQL", question=question)
-            sql_query = await self._translate_to_sql(question, limit)
-
-            logger.info("Generated SQL query", sql=sql_query)
-
-            # Step 2: Safety validation
-            if not self._is_safe_query(sql_query):
-                output = NLQueryOutput(
-                    success=False,
-                    question=question,
-                    sql_query=sql_query,
-                    results=[],
-                    result_count=0,
-                    execution_time_ms=0,
-                    explanation="Query contains potentially destructive operations (INSERT, UPDATE, DELETE, DROP). Only read queries are allowed.",
-                )
-                return ToolResult(
-                    success=False,
-                    data=output.model_dump(),
-                    metadata={"error": "unsafe_query"},
-                )
-
-            # Step 3: Execute SQL query
-            import time
-            start_time = time.time()
-
-            result = await self.query_engine.execute_query(
-                sql=sql_query,
-                org_id=str(context.org_id),
-            )
-
-            execution_time = (time.time() - start_time) * 1000
-
-            # Step 4: Format results
-            results = result.get("rows", [])
-            result_count = len(results)
-
-            # Generate explanation
-            explanation = self._generate_explanation(question, sql_query, result_count)
-
-            output = NLQueryOutput(
-                success=True,
-                question=question,
-                sql_query=sql_query,
-                results=results,
-                result_count=result_count,
-                execution_time_ms=execution_time,
-                explanation=explanation,
-            )
-
-            logger.info(
-                "Natural language query executed successfully",
-                question=question,
-                result_count=result_count,
-                execution_time_ms=execution_time,
-            )
-
             return ToolResult(
-                success=True,
+                success=False,
                 data=output.model_dump(),
-                metadata={
-                    "sql_query": sql_query,
-                    "result_count": result_count,
-                    "execution_time_ms": execution_time,
-                },
+                metadata={"error": "translation_failed", "details": str(exc)},
             )
 
-        except Exception as e:
-            logger.exception("Natural language query failed", error=str(e), question=question)
+        logger.info("Generated SQL query", question=question, sql=sql_query)
 
+        if not self._is_safe_query(sql_query):
             output = NLQueryOutput(
                 success=False,
                 question=question,
-                sql_query=sql_query if 'sql_query' in locals() else "",
+                sql_query=sql_query,
                 results=[],
                 result_count=0,
                 execution_time_ms=0,
-                explanation=f"Query execution failed: {str(e)}",
+                explanation=(
+                    "Query contains potentially destructive operations (INSERT, UPDATE, DELETE, DROP). "
+                    "Only read queries are allowed."
+                ),
             )
-
             return ToolResult(
                 success=False,
                 data=output.model_dump(),
-                metadata={"error": str(e)},
+                metadata={"error": "unsafe_query"},
             )
 
-    async def _translate_to_sql(self, question: str, limit: int) -> str:
-        """
-        Use Claude to translate natural language to SQL.
+        import time
 
-        Args:
-            question: Natural language question
-            limit: Result limit
-
-        Returns:
-            SQL query string
-        """
-
-        prompt = f"""You are a SQL query generator for a security database. Translate the user's natural language question into a SQL query.
-
-{QUERY_SCHEMA}
-
-{FEW_SHOT_EXAMPLES}
-
-User Question: "{question}"
-
-Instructions:
-1. Generate a valid PostgreSQL query
-2. Use appropriate tables from the schema above
-3. Add LIMIT {limit} to the query
-4. Return ONLY the SQL query, no explanation or markdown
-5. Use proper WHERE clauses for filtering
-6. For JSON fields, use ::text or JSONB operators appropriately
-7. Use ORDER BY for better result ordering when relevant
-
-SQL Query:"""
+        start_time = time.time()
 
         try:
-            message = self.anthropic.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=1024,
-                temperature=0,  # Deterministic for SQL generation
-                messages=[{
-                    "role": "user",
-                    "content": prompt,
-                }],
+            result = await self.query_engine.execute_query(sql_query)
+        except Exception as exc:
+            logger.exception("Query execution failed", error=str(exc), question=question)
+            output = NLQueryOutput(
+                success=False,
+                question=question,
+                sql_query=sql_query,
+                results=[],
+                result_count=0,
+                execution_time_ms=0,
+                explanation=f"Query execution failed: {exc}",
+            )
+            return ToolResult(
+                success=False,
+                data=output.model_dump(),
+                metadata={"error": "execution_error", "details": str(exc)},
             )
 
-            sql_query = message.content[0].text.strip()
+        execution_time = result.execution_time_ms or ((time.time() - start_time) * 1000)
 
-            # Clean up common issues
-            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+        if result.errors:
+            logger.warning(
+                "Query returned errors", question=question, sql=sql_query, errors=result.errors
+            )
+            error_message = "; ".join(result.errors)
+            output = NLQueryOutput(
+                success=False,
+                question=question,
+                sql_query=sql_query,
+                results=[],
+                result_count=0,
+                execution_time_ms=execution_time,
+                explanation=f"Query execution failed: {error_message}",
+            )
+            return ToolResult(
+                success=False,
+                data=output.model_dump(),
+                metadata={"error": "query_failed", "details": result.errors},
+            )
 
-            # Ensure it ends with semicolon
-            if not sql_query.endswith(";"):
-                sql_query += ";"
+        rows = result.rows
+        result_count = result.total_rows
 
-            return sql_query
+        explanation = self._generate_explanation(question, sql_query, result_count)
 
-        except Exception as e:
-            logger.exception("SQL translation failed", error=str(e))
-            raise
+        output = NLQueryOutput(
+            success=True,
+            question=question,
+            sql_query=sql_query,
+            results=rows,
+            result_count=result_count,
+            execution_time_ms=execution_time,
+            explanation=explanation,
+        )
+
+        logger.info(
+            "Natural language query executed successfully",
+            question=question,
+            result_count=result_count,
+            execution_time_ms=execution_time,
+        )
+
+        return ToolResult(
+            success=True,
+            data=output.model_dump(),
+            metadata={
+                "sql_query": sql_query,
+                "result_count": result_count,
+                "execution_time_ms": execution_time,
+            },
+        )
 
     def _is_safe_query(self, sql: str) -> bool:
         """

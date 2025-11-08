@@ -10,9 +10,8 @@ from pydantic import BaseModel, Field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...query.engine import QueryEngine, QueryResult
-from ...query.registry import get_registry
-from ...providers.tables import register_all_provider_tables
+from ...query.engine import QueryResult
+from ...query.bootstrap import get_query_engine
 from ..schemas.base import BaseResponse
 from ..auth import get_current_user, require_scopes, require_read_findings, User
 from ...core.database import get_db
@@ -20,11 +19,8 @@ from ...integrations.freshness import IntegrationFreshnessService
 
 router = APIRouter(prefix="/query", tags=["Query"], dependencies=[Depends(get_current_user)])
 
-# Initialize query engine
-query_engine = QueryEngine()
-
-# Register all provider tables on startup  
-register_all_provider_tables()
+# Initialize shared query engine
+query_engine = get_query_engine()
 
 
 class QueryRequest(BaseModel):

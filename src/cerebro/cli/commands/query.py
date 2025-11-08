@@ -5,14 +5,16 @@ Provides interactive SQL querying capabilities for security data.
 """
 
 import asyncio
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 import click
 import json
 import tabulate
 from datetime import datetime
 
-from ...query.engine import QueryEngine
-from ...providers.tables import register_all_provider_tables
+from ...query.bootstrap import get_query_engine
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ...query.engine import QueryEngine
 from ..utils import async_command, format_datetime, print_json, print_table
 
 
@@ -37,9 +39,8 @@ async def execute_sql(sql: Optional[str], file: Optional[str], output: str, limi
         cerebro query execute "SELECT * FROM aws_ec2_instance LIMIT 5"
         cerebro query execute --file query.sql --output json
     """
-    # Initialize query engine and register tables
-    query_engine = QueryEngine()
-    register_all_provider_tables()
+    # Initialize query engine
+    query_engine = get_query_engine()
     
     # Get SQL query
     if file:
@@ -104,8 +105,7 @@ async def list_tables(provider: Optional[str], output: str):
     """
     List all available security tables.
     """
-    query_engine = QueryEngine()
-    register_all_provider_tables()
+    query_engine = get_query_engine()
     
     try:
         tables = await query_engine.list_tables(provider=provider)
@@ -143,8 +143,7 @@ async def describe_table(table_name: str, output: str):
     """
     Describe the schema of a security table.
     """
-    query_engine = QueryEngine()
-    register_all_provider_tables()
+    query_engine = get_query_engine()
     
     try:
         table_info = await query_engine.describe_table(table_name)
@@ -265,8 +264,7 @@ async def interactive_query():
     
     Type SQL queries and see results immediately. Type 'quit' or 'exit' to leave.
     """
-    query_engine = QueryEngine()
-    register_all_provider_tables()
+    query_engine = get_query_engine()
     
     click.echo("Cerebro Interactive SQL Query Session")
     click.echo("Type SQL queries and press Enter. Use 'quit' or 'exit' to leave.")
@@ -324,7 +322,7 @@ async def interactive_query():
             break
 
 
-async def handle_special_command(command: str, query_engine: QueryEngine):
+async def handle_special_command(command: str, query_engine: "QueryEngine"):
     """Handle special dot commands in interactive mode."""
     parts = command.split()
     cmd = parts[0].lower()
@@ -379,8 +377,7 @@ async def handle_special_command(command: str, query_engine: QueryEngine):
 @async_command
 async def query_alerts(provider: Optional[str], severity: Optional[str], since: Optional[str], limit: int, output: str):
     """Query security alerts with common filters."""
-    query_engine = QueryEngine()
-    register_all_provider_tables()
+    query_engine = get_query_engine()
     
     conditions = []
     if provider:
@@ -419,8 +416,7 @@ async def query_alerts(provider: Optional[str], severity: Optional[str], since: 
 @async_command
 async def query_users(provider: Optional[str], status: Optional[str], mfa: Optional[bool], limit: int, output: str):
     """Query user identities across providers."""
-    query_engine = QueryEngine()
-    register_all_provider_tables()
+    query_engine = get_query_engine()
     
     conditions = []
     if provider:

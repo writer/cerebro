@@ -17,7 +17,7 @@ from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.compliance.control_tests import ControlTestRunner, ControlTest, TestStatus
 from cerebro.compliance.framework_registry import get_framework_registry
 from cerebro.rules.engine import RuleEngine
-from cerebro.query.engine import QueryEngine
+from cerebro.query.bootstrap import get_query_engine
 from cerebro.core.database import async_session_factory
 import structlog
 
@@ -129,7 +129,7 @@ class ComplianceControlTesterTool(StructuredTool):
 
                 # Initialize test runner
                 rule_engine = RuleEngine(db_session)
-                query_engine = QueryEngine(db_session)
+                query_engine = get_query_engine()
                 test_runner = ControlTestRunner(
                     rule_engine=rule_engine,
                     query_engine=query_engine,

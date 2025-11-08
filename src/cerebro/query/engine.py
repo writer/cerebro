@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, AsyncGenerator, Union
 from dataclasses import dataclass
 from datetime import datetime
 
+from .bootstrap import ensure_tables_registered
 from .registry import get_registry, TableRegistry
 from .table import SecurityTable, QueryContext, QueryFilter
 from .schema import ColumnType
@@ -360,6 +361,7 @@ class QueryEngine:
     """
     
     def __init__(self, registry: Optional[TableRegistry] = None):
+        ensure_tables_registered(registry=registry)
         self.registry = registry or get_registry()
         self.parser = SQLParser()
         

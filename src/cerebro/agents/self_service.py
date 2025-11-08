@@ -24,6 +24,7 @@ from cerebro.compliance.preaudit_models import (
 )
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding
+from cerebro.query.bootstrap import get_query_engine
 from cerebro.query.engine import QueryEngine, QueryResult
 
 
@@ -253,7 +254,7 @@ class SelfServiceKnowledgeService:
         session_factory: Any = None,
         classifier: Optional[SelfServiceQuestionClassifier] = None,
     ) -> None:
-        self.query_engine = query_engine or QueryEngine()
+        self.query_engine = query_engine or get_query_engine()
         self.session_factory = session_factory or async_session_factory
         self.classifier = classifier or SelfServiceQuestionClassifier()
 

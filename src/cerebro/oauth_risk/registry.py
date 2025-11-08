@@ -12,8 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-from ..query.engine import QueryEngine
-from ..providers.tables import register_all_provider_tables
+from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +105,7 @@ class OAuthAppRegistry:
     """
     
     def __init__(self):
-        self.query_engine = QueryEngine()
-        register_all_provider_tables()
+        self.query_engine = get_query_engine()
         self.apps_cache: Dict[str, OAuthApp] = {}
         self.last_refresh: Optional[datetime] = None
     
