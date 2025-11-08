@@ -13,12 +13,12 @@ import structlog
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
-from cerebro.core.database import async_session_factory, get_db
+from cerebro.core.database import get_db
+from cerebro.agents.repositories import AgentSessionRepository
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
     AgentMemoryEntry,
-    AgentPolicySuggestion,
     AgentType,
     ReviewTaskStatus,
     ToolInvocation,
@@ -38,9 +38,14 @@ logger = structlog.get_logger(__name__)
 class AgentSessionService:
     """Service for managing agent sessions and conversations."""
     
-    def __init__(self, runtime: Optional[AgentRuntimeFacade] = None):
+    def __init__(
+        self,
+        runtime: Optional[AgentRuntimeFacade] = None,
+        repository: Optional[AgentSessionRepository] = None,
+    ):
         self.runtime = runtime or AgentRuntimeFacade()
         self._rule_engine = RuleEngine()
+        self._repository = repository or AgentSessionRepository()
     
     async def create_session(
         self,
@@ -83,15 +88,7 @@ class AgentSessionService:
     ) -> Optional[AgentSession]:
         """Get an agent session by ID, optionally filtered by org."""
         
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            query = select(AgentSession).where(AgentSession.id == session_id)
-            
-            if org_id:
-                query = query.where(AgentSession.org_id == org_id)
-            
-            result = await db_session.execute(query)
-            return result.scalar_one_or_none()
+        return await self._repository.get_session(session_id=session_id, org_id=org_id)
     
     async def list_sessions(
         self,
@@ -103,39 +100,22 @@ class AgentSessionService:
     ) -> tuple[List[AgentSession], int]:
         """List agent sessions for an organization."""
         
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            # Build base query
-            query = select(AgentSession).where(AgentSession.org_id == org_id)
-            count_query = select(AgentSession.id).where(AgentSession.org_id == org_id)
-            
-            # Apply filters
-            if agent_type:
-                try:
-                    agent_type_enum = AgentType(agent_type)
-                    query = query.where(AgentSession.agent_type == agent_type_enum)
-                    count_query = count_query.where(AgentSession.agent_type == agent_type_enum)
-                except ValueError:
-                    return [], 0
-            
-            if created_by:
-                query = query.where(AgentSession.created_by == created_by)
-                count_query = count_query.where(AgentSession.created_by == created_by)
-            
-            # Order by newest first
-            query = query.order_by(AgentSession.created_at.desc())
-            
-            # Apply pagination
-            query = query.limit(limit).offset(offset)
-            
-            # Execute queries
-            sessions_result = await db_session.execute(query)
-            sessions = sessions_result.scalars().all()
-            
-            count_result = await db_session.execute(count_query)
-            total_count = len(count_result.scalars().all())
-            
-            return list(sessions), total_count
+        agent_type_enum: Optional[AgentType] = None
+        if agent_type:
+            try:
+                agent_type_enum = AgentType(agent_type)
+            except ValueError:
+                return [], 0
+
+        sessions, total_count = await self._repository.list_sessions(
+            org_id=org_id,
+            agent_type=agent_type_enum,
+            created_by=created_by,
+            limit=limit,
+            offset=offset,
+        )
+
+        return list(sessions), total_count
     
     async def send_message(
         self,
@@ -195,17 +175,7 @@ class AgentSessionService:
         if not session:
             return None
 
-        from cerebro.core.database import async_session_factory
-
-        async with async_session_factory() as db_session:
-            stmt = (
-                select(AgentMemoryEntry)
-                .where(AgentMemoryEntry.session_id == session_id)
-                .order_by(AgentMemoryEntry.created_at.desc())
-                .limit(limit)
-            )
-            result = await db_session.execute(stmt)
-            entries = result.scalars().all()
+        entries = await self._repository.list_memory_entries(session_id, limit=limit)
 
         serialized: List[Dict[str, Any]] = []
         for entry in entries:
@@ -252,12 +222,7 @@ class AgentSessionService:
         if not session:
             return None
 
-        from cerebro.core.database import async_session_factory
-
-        async with async_session_factory() as db_session:
-            stmt = select(AgentMemoryEntry).where(AgentMemoryEntry.session_id == session_id)
-            result = await db_session.execute(stmt)
-            entries = list(result.scalars())
+        entries = await self._repository.list_memory_entries_for_stats(session_id)
 
         total_entries = len(entries)
         if total_entries == 0:
@@ -517,15 +482,7 @@ class AgentSessionService:
         org_id: UUID,
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
-        async with async_session_factory() as db_session:
-            stmt = (
-                select(AgentPolicySuggestion)
-                .where(AgentPolicySuggestion.org_id == org_id)
-                .order_by(AgentPolicySuggestion.support_count.desc())
-                .limit(limit)
-            )
-            result = await db_session.execute(stmt)
-            suggestions = result.scalars().all()
+        suggestions = await self._repository.list_policy_suggestions(org_id, limit=limit)
 
         ranked: List[Dict[str, Any]] = []
         for suggestion in suggestions:
@@ -565,19 +522,11 @@ class AgentSessionService:
 
         normalized_limit = max(1, min(limit, 200))
 
-        async with async_session_factory() as db_session:
-            stmt = (
-                select(ToolInvocation, AgentSession)
-                .join(AgentSession, ToolInvocation.session_id == AgentSession.id)
-                .where(AgentSession.org_id == org_id)
-                .order_by(ToolInvocation.started_at.desc())
-                .limit(normalized_limit)
-            )
-            if tool_name:
-                stmt = stmt.where(ToolInvocation.tool_name == tool_name)
-
-            result = await db_session.execute(stmt)
-            rows = result.all()
+        rows = await self._repository.latest_tool_invocations(
+            org_id,
+            limit=normalized_limit,
+            tool_name=tool_name,
+        )
 
         evaluated = 0
         matched = 0
@@ -646,25 +595,14 @@ class AgentSessionService:
     ) -> Optional[Dict[str, Any]]:
         """Get session with its recent messages."""
         
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            # Get session with related data
-            query = (
-                select(AgentSession)
-                .options(selectinload(AgentSession.messages))
-                .options(selectinload(AgentSession.tool_invocations))
-                .where(AgentSession.id == session_id)
-            )
-            
-            if org_id:
-                query = query.where(AgentSession.org_id == org_id)
-            
-            result = await db_session.execute(query)
-            session = result.scalar_one_or_none()
-            
-            if not session:
-                return None
-            
+        session = await self._repository.get_session_with_relations(
+            session_id=session_id,
+            org_id=org_id,
+        )
+
+        if not session:
+            return None
+
             # Get recent messages
             recent_messages = sorted(
                 session.messages,
@@ -738,27 +676,15 @@ class AgentSessionService:
         deleted_by: str,
     ) -> bool:
         """Delete an agent session (for development/testing only)."""
-        
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            # Verify session exists and belongs to org
-            session = await db_session.get(AgentSession, session_id)
-            if not session or session.org_id != org_id:
-                return False
-            
-            # In production, we would mark as deleted rather than actually delete
-            # to maintain audit trail. For now, we'll actually delete.
-            await db_session.delete(session)
-            await db_session.commit()
-            
+        deleted = await self._repository.delete_session(session_id=session_id, org_id=org_id)
+        if deleted:
             logger.info(
                 "Agent session deleted",
                 session_id=session_id,
                 org_id=org_id,
                 deleted_by=deleted_by,
             )
-            
-            return True
+        return deleted
 
 
 class ToolApprovalService:

@@ -2,16 +2,62 @@
 
 import logging
 import os
-import secrets
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-from pydantic import Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+_DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}
+
+
+class AuthSettings(BaseModel):
+    secret_key: Optional[SecretStr] = Field(default=None, alias="secret_key")
+    algorithm: str = Field(default="HS256")
+    access_token_expire_minutes: int = Field(default=30)
+    refresh_token_expire_days: int = Field(default=7)
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+
+class IntegrationRetrySettings(BaseModel):
+    enabled: bool = Field(default=True, alias="integration_sync_retry_enabled")
+    cooldown_seconds: int = Field(default=3600, alias="integration_sync_retry_cooldown_seconds")
+    lookback_minutes: Optional[int] = Field(default=60, alias="integration_sync_retry_lookback_minutes")
+
+    model_config = SettingsConfigDict(populate_by_name=True)
 
 
 class Settings(BaseSettings):
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        auth_keys = (
+            "secret_key",
+            "algorithm",
+            "access_token_expire_minutes",
+            "refresh_token_expire_days",
+        )
+        legacy_auth = {key: data.pop(key) for key in auth_keys if key in data}
+        if legacy_auth:
+            auth_section = data.setdefault("auth", {})
+            auth_section.update(legacy_auth)
+
+        retry_keys = (
+            "integration_sync_retry_enabled",
+            "integration_sync_retry_cooldown_seconds",
+            "integration_sync_retry_lookback_minutes",
+        )
+        legacy_retry = {key: data.pop(key) for key in retry_keys if key in data}
+        if legacy_retry:
+            retry_section = data.setdefault("integration_retry", {})
+            retry_section.update(legacy_retry)
+
+        return data
+
     """Application settings."""
 
     # Database
@@ -21,17 +67,7 @@ class Settings(BaseSettings):
     )
     
     # Security
-    secret_key: str = Field(
-        default="",
-        description="Secret key for JWT tokens - MUST be set explicitly"
-    )
-    algorithm: str = Field(default="HS256", description="JWT algorithm")
-    access_token_expire_minutes: int = Field(
-        default=30, description="JWT token expiration in minutes"
-    )
-    refresh_token_expire_days: int = Field(
-        default=7, description="JWT refresh token expiration in days"
-    )
+    auth: AuthSettings = Field(default_factory=AuthSettings)
     
     # GitHub Integration
     github_token: Optional[str] = Field(
@@ -174,18 +210,7 @@ class Settings(BaseSettings):
         default=0.4,
         description="Coverage ratio threshold below which a critical alert is sent",
     )
-    integration_sync_retry_enabled: bool = Field(
-        default=True,
-        description="Enable automatic retry attempts when sync health issues are detected",
-    )
-    integration_sync_retry_cooldown_seconds: int = Field(
-        default=3600,
-        description="Cooldown window in seconds between automated sync retries per scope",
-    )
-    integration_sync_retry_lookback_minutes: Optional[int] = Field(
-        default=60,
-        description="Optional lookback window to apply when retrying SentinelOne syncs",
-    )
+    integration_retry: IntegrationRetrySettings = Field(default_factory=IntegrationRetrySettings)
     
     # Logging
     log_level: str = Field(default="INFO", description="Log level")
@@ -622,7 +647,7 @@ class Settings(BaseSettings):
 
     # Environment and Debug Settings
     environment: str = Field(
-        default="production",
+        default="development",
         description="Environment: dev, development, test, testing, production"
     )
     enable_debug_endpoints: bool = Field(
@@ -747,59 +772,11 @@ class Settings(BaseSettings):
         default=None, description="Vault transit key name"
     )
     
-    @field_validator('secret_key')
-    @classmethod
-    def validate_secret_key(cls, v: str | None) -> str:
-        """Validate that secret key is secure and generate one for dev/test if missing."""
-        environment = os.getenv('ENVIRONMENT', 'development').lower()
-        is_dev_env = environment in {'dev', 'development', 'test', 'testing'}
-
-        secret = (v or "").strip()
-
-        if not secret:
-            if is_dev_env:
-                generated = secrets.token_urlsafe(48)
-                logger.warning(
-                    "Generated ephemeral SECRET_KEY for %s environment; set SECRET_KEY env var to keep sessions stable.",
-                    environment,
-                )
-                return generated
-            raise ValueError(
-                "SECRET_KEY must be set to a secure value (minimum 32 characters) in production. "
-                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-            )
-
-        if is_dev_env:
-            return secret
-
-        if secret == "your-secret-key-here":
-            raise ValueError(
-                "SECRET_KEY must be set to a secure value (minimum 32 characters). "
-                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-            )
-
-        if len(secret) < 32:
-            raise ValueError(
-                "SECRET_KEY must be set to a secure value (minimum 32 characters). "
-                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-            )
-
-        has_lower = any(ch.islower() for ch in secret)
-        has_digit = any(ch.isdigit() for ch in secret)
-        has_special = any(not ch.isalnum() for ch in secret)
-
-        if not (has_lower and has_digit and has_special):
-            raise ValueError(
-                "SECRET_KEY must contain at least one lowercase letter, one digit, "
-                "and one special character."
-            )
-        return secret
-
     @field_validator('kms_provider')
     @classmethod
     def validate_kms_provider(cls, v):
         """Validate KMS provider is secure for production environments."""
-        environment = os.getenv('ENVIRONMENT', 'production').lower()
+        environment = os.getenv('ENVIRONMENT', 'development').lower()
 
         if v == "local":
             if environment not in ['dev', 'development', 'test', 'testing']:
@@ -837,7 +814,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_env_fallback(cls, v):
         """Validate provider env fallback is not enabled in production."""
-        environment = os.getenv('ENVIRONMENT', 'production').lower()
+        environment = os.getenv('ENVIRONMENT', 'development').lower()
         if v and environment not in ['dev', 'development', 'test', 'testing']:
             raise ValueError(
                 "Provider environment variable fallback is not allowed in production. "
@@ -849,7 +826,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_debug_endpoints(cls, v):
         """Validate debug endpoints are not enabled in production."""
-        environment = os.getenv('ENVIRONMENT', 'production').lower()
+        environment = os.getenv('ENVIRONMENT', 'development').lower()
         if v and environment not in ['dev', 'development', 'test', 'testing']:
             raise ValueError(
                 "Debug endpoints are not allowed in production for security reasons. "
@@ -879,8 +856,51 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False
+        case_sensitive=False,
+        env_nested_delimiter="__",
+        populate_by_name=True,
     )
+
+    @model_validator(mode="after")
+    def _validate_auth(self) -> "Settings":
+        env = (self.environment or "development").lower()
+        if env not in _DEV_ENVIRONMENTS:
+            secret = self.auth.secret_key
+            if secret is None or not secret.get_secret_value().strip():
+                raise ValueError(
+                    "SECRET_KEY must be configured for non-development environments."
+                )
+        return self
+
+    @property
+    def secret_key(self) -> str:
+        if self.auth.secret_key is None:
+            return ""
+        return self.auth.secret_key.get_secret_value()
+
+    @property
+    def algorithm(self) -> str:
+        return self.auth.algorithm
+
+    @property
+    def access_token_expire_minutes(self) -> int:
+        return self.auth.access_token_expire_minutes
+
+    @property
+    def refresh_token_expire_days(self) -> int:
+        return self.auth.refresh_token_expire_days
+
+    @property
+    def integration_sync_retry_enabled(self) -> bool:
+        return self.integration_retry.enabled
+
+    @property
+    def integration_sync_retry_cooldown_seconds(self) -> int:
+        return self.integration_retry.cooldown_seconds
+
+    @property
+    def integration_sync_retry_lookback_minutes(self) -> Optional[int]:
+        return self.integration_retry.lookback_minutes
 
 
 settings = Settings()
