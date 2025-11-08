@@ -16,8 +16,11 @@ import networkx as nx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
+from ..core.config import settings
 from ..core.database import async_session_factory
 from ..core.models import Principal, Resource, IamEdge
+from .scoring import AttackGraphScoring
+from .service_identity import ServiceIdentityMapper, ServiceIdentityEdge, TrustMechanism
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +80,20 @@ class AttackGraph:
     attack path analysis and blast radius calculations.
     """
     
-    def __init__(self, org_id: str):
+    def __init__(
+        self,
+        org_id: str,
+        *,
+        scoring: Optional[AttackGraphScoring] = None,
+        service_identity_mapper: Optional[ServiceIdentityMapper] = None,
+    ):
         self.org_id = org_id
         self.graph = nx.DiGraph()
         self.nodes: Dict[str, AttackNode] = {}
         self.edges: Dict[str, AttackEdge] = {}
         self.last_built: Optional[datetime] = None
+        self.scoring = scoring or AttackGraphScoring(settings.attack_graph_scoring)
+        self.service_identity_mapper = service_identity_mapper or ServiceIdentityMapper()
     
     async def build_graph(self) -> None:
         """
@@ -108,10 +119,7 @@ class AttackGraph:
             await self._add_iam_edges(db)
             
             # Add service identity edges
-            await self._add_service_identity_edges(db)
-            
-            # Add cross-provider trust relationships
-            await self._add_trust_relationships(db)
+            await self._add_service_identity_edges()
         
         self.last_built = datetime.now()
         
@@ -221,187 +229,103 @@ class AttackGraph:
                 edge_type=edge.edge_type.value
             )
     
-    async def _add_service_identity_edges(self, db: AsyncSession):
-        """Add service-to-service identity edges."""
-        # This would query for:
-        # - GitHub OIDC → AWS STS roles
-        # - GCP Workload Identity Federation
-        # - Azure Entra federated identities
-        # - CI/CD service accounts
-        
-        # Example: GitHub Actions → AWS role
-        # (In production, would discover these from provider configurations)
-        
-        service_edges = [
-            {
-                "source": "github_actions_service",
-                "target": "aws_deployment_role", 
-                "provider": "aws",
-                "permission": "sts:AssumeRoleWithWebIdentity",
-                "trust_policy": "GitHub OIDC trust"
-            },
-            {
-                "source": "gcp_compute_service_account",
-                "target": "gcp_storage_bucket",
-                "provider": "gcp",
-                "permission": "storage.objects.create",
-                "trust_policy": "Workload Identity"
-            }
-        ]
-        
+    async def _add_service_identity_edges(self) -> None:
+        """Add service identity and trust edges discovered from providers."""
+
+        try:
+            service_edges = await self.service_identity_mapper.discover_service_identities(self.org_id)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.error("Failed to discover service identity edges", exc_info=exc)
+            return
+
         for service_edge in service_edges:
-            edge = AttackEdge(
-                edge_id=f"service_{service_edge['source']}_{service_edge['target']}",
-                source_node=service_edge["source"],
-                target_node=service_edge["target"],
-                edge_type=EdgeType.SERVICE_IDENTITY,
-                permission=service_edge["permission"],
-                weight=0.3,  # Service edges are often easier to exploit
-                privilege_level=2,  # Service accounts often have elevated privileges
-                conditions=[service_edge["trust_policy"]],
-                metadata={
-                    "provider": service_edge["provider"],
-                    "trust_mechanism": service_edge["trust_policy"]
-                }
-            )
-            
-            self.edges[edge.edge_id] = edge
-            self.graph.add_edge(
-                edge.source_node,
-                edge.target_node,
-                **edge.__dict__
-            )
-    
-    async def _add_trust_relationships(self, db: AsyncSession):
-        """Add cross-provider trust relationships."""
-        # Examples of trust relationships:
-        # - AWS cross-account roles
-        # - GCP organization policies
-        # - Azure AD B2B trusts
-        # - GitHub organization memberships
-        
-        # Mock trust relationships (would discover from provider configs)
-        trust_relationships = [
-            {
-                "source_provider": "github",
-                "target_provider": "aws",
-                "trust_type": "oidc_federation",
-                "source_resource": "github_repo_actions",
-                "target_resource": "aws_deployment_role"
-            }
-        ]
-        
-        for trust in trust_relationships:
-            edge = AttackEdge(
-                edge_id=f"trust_{trust['source_provider']}_{trust['target_provider']}",
-                source_node=trust["source_resource"],
-                target_node=trust["target_resource"],
-                edge_type=EdgeType.TRUST_RELATIONSHIP,
-                permission=f"{trust['trust_type']}_trust",
-                weight=0.4,
-                privilege_level=2,
-                conditions=[f"{trust['trust_type']} configured"],
-                metadata=trust
-            )
-            
-            self.edges[edge.edge_id] = edge
-            self.graph.add_edge(
-                edge.source_node,
-                edge.target_node,
-                **edge.__dict__
-            )
+            self._ingest_service_identity_edge(service_edge)
+
+    def _ingest_service_identity_edge(self, service_edge: ServiceIdentityEdge) -> None:
+        source_node_id = service_edge.source_service
+        target_node_id = service_edge.target_service
+
+        self._ensure_service_node(
+            node_id=source_node_id,
+            provider=service_edge.provider_source,
+            metadata=service_edge.metadata,
+        )
+
+        self._ensure_service_node(
+            node_id=target_node_id,
+            provider=service_edge.provider_target,
+            metadata=service_edge.metadata,
+        )
+
+        edge_type = self._map_trust_mechanism(service_edge.trust_mechanism)
+
+        metadata = self.scoring.service_edge_metadata(service_edge)
+        permission_label = metadata.get("permission", service_edge.trust_mechanism.value)
+
+        attack_edge = AttackEdge(
+            edge_id=service_edge.edge_id,
+            source_node=source_node_id,
+            target_node=target_node_id,
+            edge_type=edge_type,
+            permission=permission_label,
+            weight=self.scoring.service_edge_weight(service_edge),
+            privilege_level=self.scoring.service_edge_privilege(service_edge),
+            conditions=service_edge.conditions,
+            metadata=metadata,
+        )
+
+        self.edges[attack_edge.edge_id] = attack_edge
+        self.graph.add_edge(
+            attack_edge.source_node,
+            attack_edge.target_node,
+            **attack_edge.__dict__,
+        )
+
+    def _ensure_service_node(self, *, node_id: str, provider: str, metadata: Dict[str, Any]) -> None:
+        if node_id in self.nodes:
+            return
+
+        node = AttackNode(
+            node_id=node_id,
+            node_type=NodeType.SERVICE,
+            provider=provider,
+            display_name=node_id,
+            properties={"provider": provider},
+            risk_score=min(max(metadata.get("risk_score", 0.4), 0.0), 1.0),
+            criticality="high",
+            metadata=metadata,
+        )
+
+        self.nodes[node.node_id] = node
+        self.graph.add_node(node.node_id, **node.__dict__)
+
+    def _map_trust_mechanism(self, mechanism: TrustMechanism) -> EdgeType:
+        mapping = {
+            TrustMechanism.OIDC_FEDERATION: EdgeType.OIDC_FEDERATION,
+            TrustMechanism.WORKLOAD_IDENTITY: EdgeType.SERVICE_IDENTITY,
+            TrustMechanism.INSTANCE_METADATA: EdgeType.SERVICE_IDENTITY,
+            TrustMechanism.SECRET_INJECTION: EdgeType.TRUST_RELATIONSHIP,
+            TrustMechanism.CERTIFICATE_BASED: EdgeType.TRUST_RELATIONSHIP,
+        }
+        return mapping.get(mechanism, EdgeType.SERVICE_IDENTITY)
     
     def _calculate_principal_risk_score(self, principal: Principal) -> float:
-        """Calculate risk score for a principal."""
-        base_score = 0.5
-        
-        # Higher risk for service accounts
-        if principal.principal_type == "service_account":
-            base_score += 0.2
-        
-        # Higher risk for external principals
-        if principal.provider != "internal":
-            base_score += 0.1
-        
-        # Higher risk for inactive principals (stale access)
-        if not principal.is_active:
-            base_score += 0.3
-        
-        return min(base_score, 1.0)
+        return self.scoring.principal_risk(principal)
     
     def _assess_principal_criticality(self, principal: Principal) -> str:
-        """Assess criticality level of principal."""
-        if principal.principal_type == "service_account":
-            return "high"
-        elif not principal.is_active:
-            return "medium"
-        else:
-            return "low"
+        return self.scoring.principal_criticality(principal)
     
     def _calculate_resource_risk_score(self, resource: Resource) -> float:
-        """Calculate risk score for a resource."""
-        base_score = 0.3
-        
-        # Higher risk for certain resource types
-        high_risk_types = ["s3_bucket", "secret", "database", "key_vault"]
-        if any(risk_type in resource.resource_type.lower() for risk_type in high_risk_types):
-            base_score += 0.4
-        
-        # Higher risk for production resources
-        if resource.metadata and "production" in str(resource.metadata).lower():
-            base_score += 0.3
-        
-        return min(base_score, 1.0)
+        return self.scoring.resource_risk(resource)
     
     def _assess_resource_criticality(self, resource: Resource) -> str:
-        """Assess criticality level of resource."""
-        critical_types = ["secret", "key", "database"]
-        high_types = ["s3_bucket", "storage_account", "compute"]
-        
-        resource_type_lower = resource.resource_type.lower()
-        
-        if any(crit_type in resource_type_lower for crit_type in critical_types):
-            return "critical"
-        elif any(high_type in resource_type_lower for high_type in high_types):
-            return "high"
-        else:
-            return "medium"
+        return self.scoring.resource_criticality(resource)
     
     def _calculate_edge_weight(self, permission: str, provider: str) -> float:
-        """Calculate weight (difficulty) for edge traversal."""
-        # Lower weight = easier to exploit
-        base_weight = 0.5
-        
-        # Admin permissions are easier to exploit (lower weight)
-        if any(term in permission.lower() for term in ["admin", "owner", "full", "*"]):
-            base_weight = 0.2
-        
-        # Write permissions are medium difficulty
-        elif any(term in permission.lower() for term in ["write", "create", "delete", "modify"]):
-            base_weight = 0.4
-        
-        # Read permissions are harder to exploit for lateral movement
-        elif "read" in permission.lower():
-            base_weight = 0.7
-        
-        # Service-to-service edges are often easier
-        if provider in ["github_actions", "ci_cd"]:
-            base_weight *= 0.8
-        
-        return base_weight
+        return self.scoring.edge_weight(permission, provider)
     
     def _get_privilege_level(self, permission: str) -> int:
-        """Get numerical privilege level for permission."""
-        permission_lower = permission.lower()
-        
-        if any(term in permission_lower for term in ["owner", "admin", "root", "superuser"]):
-            return 3  # Owner/Admin
-        elif any(term in permission_lower for term in ["write", "create", "delete", "modify", "edit"]):
-            return 2  # Write
-        elif any(term in permission_lower for term in ["read", "list", "get", "describe"]):
-            return 1  # Read
-        else:
-            return 0  # Minimal/Unknown
+        return self.scoring.privilege_level(permission)
     
     def _extract_edge_conditions(self, iam_edge: IamEdge) -> List[str]:
         """Extract conditions required to traverse an edge."""

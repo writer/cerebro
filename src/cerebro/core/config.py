@@ -380,6 +380,10 @@ class Settings(BaseSettings):
         default=1,
         description="Runtime error count threshold that triggers a critical alert",
     )
+    attack_graph_scoring: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Configuration overrides for attack graph scoring weights",
+    )
     self_play_enabled: bool = Field(
         default=False,
         description="Enable agent self-play orchestration",
