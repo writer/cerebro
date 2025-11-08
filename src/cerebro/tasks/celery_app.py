@@ -1,14 +1,22 @@
 """Celery application configuration."""
 
+import logging
+import os
+
 from celery import Celery
 from celery.schedules import crontab
 from kombu import Queue
-import logging
 
 try:  # pragma: no cover - protect optional import during bootstrap
     from cerebro.core.config import settings
 except Exception:  # pragma: no cover
     settings = None
+
+if settings:
+    from cerebro.core.observability import configure_service_observability
+
+    role = os.getenv("CELERY_PROCESS_ROLE", "worker")
+    configure_service_observability(service_name=f"cerebro-celery-{role}")
 
 logger = logging.getLogger(__name__)
 

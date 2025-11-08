@@ -114,6 +114,8 @@ def build_specs(args: argparse.Namespace) -> List[ProcSpec]:
     ]
 
     if not args.skip_worker:
+        worker_env = os.environ.copy()
+        worker_env.setdefault("CELERY_PROCESS_ROLE", "worker")
         specs.append(
             ProcSpec(
                 name="worker",
@@ -127,10 +129,13 @@ def build_specs(args: argparse.Namespace) -> List[ProcSpec]:
                     "-l",
                     "info",
                 ],
+                env=worker_env,
             )
         )
 
     if not args.skip_beat:
+        beat_env = os.environ.copy()
+        beat_env.setdefault("CELERY_PROCESS_ROLE", "beat")
         specs.append(
             ProcSpec(
                 name="beat",
@@ -144,6 +149,7 @@ def build_specs(args: argparse.Namespace) -> List[ProcSpec]:
                     "-l",
                     "info",
                 ],
+                env=beat_env,
             )
         )
 

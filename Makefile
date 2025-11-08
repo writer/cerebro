@@ -3,6 +3,7 @@ SHELL := /bin/bash
 # Environment
 PYTHON := python3
 UV := uv
+LOG_LEVEL ?= INFO
 LOAD_DEV_DATA ?= 1
 DEV_STACK_INCLUDE_FRONTEND ?= 0
 DEV_STACK_INCLUDE_FLOWER ?= 0
@@ -94,11 +95,11 @@ dev-stop: ## Gracefully stop processes launched via dev-stack
 
 .PHONY: worker
 worker: ## Start Celery worker
-	$(UV) run celery -A cerebro.tasks.celery_app worker -l info
+	CELERY_PROCESS_ROLE=worker $(UV) run celery -A cerebro.tasks.celery_app worker -l info
 
 .PHONY: beat
 beat: ## Start Celery beat scheduler
-	$(UV) run celery -A cerebro.tasks.celery_app beat -l info
+	CELERY_PROCESS_ROLE=beat $(UV) run celery -A cerebro.tasks.celery_app beat -l info
 
 .PHONY: flower
 flower: ## Start Celery monitoring with Flower

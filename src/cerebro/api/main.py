@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import suppress
+from typing import Dict
 
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,7 @@ from fastapi.responses import Response
 
 from cerebro.core.config import settings
 from cerebro.core.logging import configure_structlog
-from cerebro.core.observability import configure_agent_observability
+from cerebro.core.observability import configure_service_observability
 from cerebro.core.database import async_session_factory
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.metrics.jwt_metrics import jwt_metrics
@@ -69,7 +70,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-configure_agent_observability()
+configure_service_observability(service_name="cerebro-api")
 
 # Configure rate limiter
 default_limits = [limit for limit in settings.get_default_rate_limits() if limit]
@@ -362,6 +363,30 @@ async def root():
         "version": "0.1.0",
         "docs": "/docs"
     }
+
+
+@app.get("/ready", include_in_schema=False)
+async def readiness():
+    """Readiness probe aggregating core dependencies."""
+    from cerebro.core import probes
+
+    checks: Dict[str, Dict[str, object]] = {}
+    ready = True
+
+    db_ok, db_error = await probes.check_database()
+    checks["database"] = {"healthy": db_ok, "error": db_error}
+    ready &= db_ok
+
+    celery_ok, celery_error = await probes.check_celery_workers()
+    checks["celery"] = {"healthy": celery_ok, "error": celery_error}
+    ready &= celery_ok
+
+    broker_ok, broker_error = await probes.check_broker_connection()
+    checks["broker"] = {"healthy": broker_ok, "error": broker_error}
+    ready &= broker_ok
+
+    status = "ready" if ready else "degraded"
+    return {"status": status, "checks": checks}
 
 
 @app.get("/health")

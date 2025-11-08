@@ -9,11 +9,16 @@ from cerebro.core.config import settings
 from cerebro.core.logging import configure_structlog
 
 _logger = logging.getLogger(__name__)
-_telemetry_configured = False
+_configured_service: Optional[str] = None
 
 
-def configure_agent_observability() -> None:
-    """Configure telemetry exporters if enabled in settings."""
+def configure_service_observability(
+    service_name: str,
+    *,
+    service_namespace: str = "cerebro",
+    service_version: Optional[str] = None,
+) -> None:
+    """Configure logging and telemetry exporters for a named service."""
 
     configure_structlog()
 
@@ -22,12 +27,20 @@ def configure_agent_observability() -> None:
 
     if not settings.agent_otel_endpoint:
         _logger.info(
-            "Agent telemetry enabled but no OTLP endpoint configured; spans will stay local",
+            "Telemetry enabled but no OTLP endpoint configured; spans will stay local",
+            service_name=service_name,
         )
         return
 
-    global _telemetry_configured
-    if _telemetry_configured:
+    global _configured_service
+    if _configured_service:
+        if _configured_service == service_name:
+            return
+        _logger.debug(
+            "Telemetry already configured for %s; skipping reconfiguration for %s",
+            _configured_service,
+            service_name,
+        )
         return
 
     try:  # pragma: no cover - optional dependency wiring
@@ -50,11 +63,19 @@ def configure_agent_observability() -> None:
         timeout=settings.agent_otel_timeout_seconds,
     )
 
+    version_value = (
+        service_version
+        or getattr(settings, "runtime_release_version", None)
+        or getattr(settings, "app_version", None)
+        or "0.1.0"
+    )
+
     resource = Resource.create(
         {
-            "service.name": "cerebro-agent-runtime",
-            "service.namespace": "cerebro",
-            "service.version": "0.1.0",
+            "service.name": service_name,
+            "service.namespace": service_namespace,
+            "service.version": str(version_value),
+            "deployment.environment": settings.environment,
         }
     )
 
@@ -62,12 +83,19 @@ def configure_agent_observability() -> None:
     tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(tracer_provider)
 
-    _telemetry_configured = True
+    _configured_service = service_name
     _logger.info(
-        "Configured agent telemetry exporter",
+        "Configured telemetry exporter",
+        service_name=service_name,
         endpoint=settings.agent_otel_endpoint,
         timeout=settings.agent_otel_timeout_seconds,
     )
+
+
+def configure_agent_observability() -> None:
+    """Backward-compatible wrapper for runtime observability configuration."""
+
+    configure_service_observability(service_name="cerebro-agent-runtime")
 
 
 def _parse_otlp_headers(raw: Optional[str]) -> Optional[Dict[str, str]]:
