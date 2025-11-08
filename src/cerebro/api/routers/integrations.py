@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Literal
 
@@ -125,6 +126,7 @@ class IntegrationAdminOverview(BaseModel):
     recent_errors: List[Dict[str, Any]] = Field(default_factory=list)
     confidence: str = Field("unknown")
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    stale_threshold_hours: Optional[int] = Field(None, description="Stale alert threshold in hours")
 
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -215,24 +217,42 @@ async def list_integration_admin_overview(
     freshness_service = IntegrationFreshnessService(db)
     freshness_records = await freshness_service.list_freshness()
 
+    repo = IntegrationIssueEventRepository(db)
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent_events = await repo.list_events(since=since)
+
+    event_counts: Dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    for event in recent_events:
+        key = (event.integration, event.scope)
+        event_counts[key][event.severity] += 1
+
     schedule_index = _build_schedule_index()
     overviews: List[IntegrationAdminOverview] = []
 
     for record in freshness_records:
         metadata = dict(record.metadata or {})
+        events = event_counts.get((record.integration, record.scope), Counter())
         duration_samples = _coerce_float_list(metadata.get("duration_samples", []))
         duration_average = (
             sum(duration_samples) / len(duration_samples)
             if duration_samples
             else metadata.get("last_duration_seconds")
         )
-        confidence = _derive_confidence(record.status)
+        confidence = getattr(record, "confidence", None) or _derive_confidence(record.status)
         next_sync = _compute_next_scheduled(record.integration, schedule_index)
         recent_errors = metadata.get("recent_errors", [])
         if isinstance(recent_errors, list):
             filtered_errors = [err for err in recent_errors if isinstance(err, dict)]
         else:
             filtered_errors = []
+
+        metadata["issues_last_24h"] = dict(events)
+        error_count = sum(
+            count for severity, count in events.items() if str(severity).lower() in {"error", "critical"}
+        )
+        metadata["error_count_24h"] = error_count
+        metadata["stale_threshold_hours"] = _integration_stale_threshold(record.integration)
+        metadata["status_confidence"] = _derive_confidence(record.status)
 
         overviews.append(
             IntegrationAdminOverview(
@@ -249,6 +269,7 @@ async def list_integration_admin_overview(
                 recent_errors=filtered_errors,
                 confidence=confidence,
                 metadata=metadata,
+                stale_threshold_hours=metadata.get("stale_threshold_hours"),
             )
         )
 
@@ -428,6 +449,21 @@ def _derive_confidence(status: str) -> str:
     if normalized in {"error", "disabled"}:
         return "low"
     return "unknown"
+
+
+def _integration_stale_threshold(integration: str) -> int:
+    overrides = settings.operational_integration_stale_overrides or {}
+    normalized = integration.lower()
+    for key, value in overrides.items():
+        if not isinstance(key, str):
+            continue
+        try:
+            threshold = int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if key.lower() in normalized:
+            return max(1, threshold)
+    return max(1, settings.operational_integration_stale_hours)
 
 
 def _build_schedule_index() -> Dict[str, Any]:

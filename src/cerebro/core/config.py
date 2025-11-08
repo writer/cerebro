@@ -424,6 +424,10 @@ class Settings(BaseSettings):
         default=2,
         description="Hours without successful integration sync before raising an operational alert",
     )
+    operational_integration_stale_overrides: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Override integration stale thresholds in hours using partial integration name matches",
+    )
     operational_celery_queue_threshold: int = Field(
         default=1000,
         description="Threshold for queued Celery tasks that triggers an operational alert",

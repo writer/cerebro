@@ -198,6 +198,7 @@ export function ReviewSummary() {
                     <span>
                       {item.age_human ?? "unknown"}
                       <span className="ml-2 capitalize text-amber-200/70">{item.status}</span>
+                      <span className="ml-2 capitalize text-amber-200/70">confidence {item.confidence}</span>
                     </span>
                   </li>
                 ))}

@@ -7,6 +7,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import {
   IntegrationIssue,
   IntegrationIssueHistory,
+  IntegrationAdminOverview,
   IntegrationStatus,
   IntegrationSyncJob,
   IntegrationSyncStatus,
@@ -26,6 +27,14 @@ type DashboardEntry = {
   isStale: boolean;
   issues: IntegrationIssue[];
   primaryIssue: IntegrationIssue | null;
+  nextScheduled: Date | null;
+  durationAverageSeconds: number | null;
+  durationSamples: number[];
+  recentErrors: Array<Record<string, unknown>>;
+  confidence: string | null;
+  statusConfidence: string | null;
+  staleThresholdHours: number | null;
+  errorCount24h: number;
 };
 
 const STALE_OPTIONS: Array<{ label: string; value: number }> = [
@@ -105,6 +114,21 @@ function formatAge(seconds: number | null): string {
   return `${hours}h ${mins}m`;
 }
 
+function formatDurationSeconds(seconds: number | null | undefined): string {
+  if (seconds == null) {
+    return "n/a";
+  }
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+  const minutes = seconds / 60;
+  if (minutes < 60) {
+    return `${Math.round(minutes)}m`;
+  }
+  const hours = minutes / 60;
+  return `${hours.toFixed(hours >= 10 ? 0 : 1)}h`;
+}
+
 function formatRange(startStr: string, endStr: string): string {
   const start = parseTimestamp(startStr);
   const end = parseTimestamp(endStr);
@@ -126,6 +150,20 @@ function mapSeverity(statusLabel: string, isStale: boolean): "ok" | "warning" | 
     return "warning";
   }
   return "ok";
+}
+
+function deriveConfidenceFromStatus(statusLabel: string): string {
+  const normalized = (statusLabel ?? "").toLowerCase();
+  if (normalized === "fresh" || normalized === "ok") {
+    return "high";
+  }
+  if (normalized === "stale" || normalized === "warning") {
+    return "medium";
+  }
+  if (normalized === "error" || normalized === "critical" || normalized === "skipped") {
+    return "low";
+  }
+  return "unknown";
 }
 
 function primaryIssueForScope(issues: IntegrationIssue[]): IntegrationIssue | null {
@@ -173,6 +211,15 @@ export function IntegrationSyncDashboard() {
     refetchInterval: 60_000,
   });
 
+  const {
+    data: adminOverview = [],
+    isFetching: isFetchingOverview,
+  } = useQuery({
+    queryKey: ["integrationAdminOverview"],
+    queryFn: () => apiGet<IntegrationAdminOverview[]>("/integrations/admin/overview"),
+    refetchInterval: 60_000,
+  });
+
   const issuesByKey = useMemo(() => {
     const map = new Map<string, IntegrationIssue[]>();
     for (const issue of issues) {
@@ -183,6 +230,15 @@ export function IntegrationSyncDashboard() {
     }
     return map;
   }, [issues]);
+
+  const overviewByKey = useMemo(() => {
+    const map = new Map<string, IntegrationAdminOverview>();
+    for (const item of adminOverview) {
+      const key = `${item.integration}:${item.scope}`;
+      map.set(key, item);
+    }
+    return map;
+  }, [adminOverview]);
 
   const entries = useMemo<DashboardEntry[]>(() => {
     const now = Date.now();
@@ -202,6 +258,35 @@ export function IntegrationSyncDashboard() {
         primaryIssue?.issue_type === "stale" || (staleThreshold > 0 && ageSeconds !== null && ageSeconds > staleThreshold),
       );
       const severity = (primaryIssue?.severity as "ok" | "warning" | "critical" | undefined) ?? mapSeverity(statusLabel, isStale);
+      const overview = overviewByKey.get(key);
+      const nextScheduled = parseTimestamp(overview?.next_scheduled_sync_at ?? null);
+      const durationAverageSeconds = overview?.duration_average_seconds ?? null;
+      const durationSamples = Array.isArray(overview?.duration_samples) ? overview.duration_samples : [];
+      const recentErrors = Array.isArray(overview?.recent_errors) ? overview.recent_errors : [];
+      const confidence = overview?.confidence ?? null;
+      const staleThresholdHours = typeof overview?.stale_threshold_hours === "number"
+        ? overview.stale_threshold_hours
+        : typeof overview?.metadata?.stale_threshold_hours === "number"
+          ? (overview.metadata.stale_threshold_hours as number)
+          : null;
+      const issuesCounts = (overview?.metadata?.issues_last_24h as Record<string, number> | undefined) ?? {};
+      const errorCountFromMetadata = typeof overview?.metadata?.error_count_24h === "number"
+        ? (overview.metadata.error_count_24h as number)
+        : null;
+      const errorCount24h = errorCountFromMetadata ?? Object.entries(issuesCounts).reduce((acc, [severityLabel, count]) => {
+        const normalized = severityLabel.toLowerCase();
+        const numeric = typeof count === "number" ? count : Number(count ?? 0);
+        if (Number.isNaN(numeric)) {
+          return acc;
+        }
+        if (normalized.includes("error") || normalized.includes("critical")) {
+          return acc + numeric;
+        }
+        return acc;
+      }, 0);
+      const statusConfidence = overview?.metadata?.status_confidence
+        ? String(overview.metadata.status_confidence)
+        : deriveConfidenceFromStatus(statusLabel);
 
       out.push({
         key,
@@ -215,10 +300,18 @@ export function IntegrationSyncDashboard() {
         isStale,
         issues: issuesForScope,
         primaryIssue,
+        nextScheduled,
+        durationAverageSeconds,
+        durationSamples,
+        recentErrors,
+        confidence,
+        statusConfidence,
+        staleThresholdHours,
+        errorCount24h,
       });
     }
     return out;
-  }, [statuses, issuesByKey, staleThreshold]);
+  }, [statuses, issuesByKey, staleThreshold, overviewByKey]);
 
   const filteredEntries = useMemo(() => {
     const needle = integrationFilter.trim().toLowerCase();
@@ -423,9 +516,9 @@ export function IntegrationSyncDashboard() {
               type="button"
               onClick={() => refetch()}
               className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-200 hover:border-zinc-500"
-              disabled={isFetching || isFetchingIssues}
+              disabled={isFetching || isFetchingIssues || isFetchingOverview}
             >
-              {isFetching || isFetchingIssues ? "Refreshing…" : "Refresh"}
+              {isFetching || isFetchingIssues || isFetchingOverview ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         }
@@ -457,7 +550,10 @@ export function IntegrationSyncDashboard() {
                     <th scope="col" className="px-3 py-2 font-semibold">Severity</th>
                     <th scope="col" className="px-3 py-2 font-semibold">Status</th>
                     <th scope="col" className="px-3 py-2 font-semibold">Last Sync</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Next Sync</th>
                     <th scope="col" className="px-3 py-2 font-semibold">Age</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Confidence</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Errors (24h)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-900">
@@ -495,13 +591,16 @@ export function IntegrationSyncDashboard() {
                           {entry.primaryIssue?.issue_type ?? entry.statusLabel.replace(/_/g, " ")}
                         </td>
                         <td className="px-3 py-2">{formatTimestamp(entry.lastTimestamp)}</td>
+                        <td className="px-3 py-2">{formatTimestamp(entry.nextScheduled)}</td>
                         <td className="px-3 py-2">{formatAge(entry.ageSeconds)}</td>
+                        <td className="px-3 py-2 capitalize">{entry.confidence ?? "unknown"}</td>
+                        <td className="px-3 py-2">{entry.errorCount24h}</td>
                       </tr>
                     );
                   })}
                   {filteredEntries.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-3 py-6 text-center text-sm text-zinc-500">
+                      <td colSpan={9} className="px-3 py-6 text-center text-sm text-zinc-500">
                         No integration sync state matches the selected filters.
                       </td>
                     </tr>
@@ -553,7 +652,20 @@ export function IntegrationSyncDashboard() {
                     >
                       {retryMutation.isLoading ? "Queuing…" : "Retry sync"}
                     </button>
+                    {pollingTaskId ? (
+                      <span className="text-[11px] text-zinc-400">
+                        Sync status: {(taskStatus?.status ?? "queued").toLowerCase()}
+                        {taskStatus?.finished ? " · complete" : ""}
+                      </span>
+                    ) : null}
                   </div>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-[11px] text-zinc-400 md:grid-cols-2">
+                  <span>Next scheduled: {formatTimestamp(selectedEntry.nextScheduled)}</span>
+                  <span>Stale threshold: {selectedEntry.staleThresholdHours ?? "n/a"}h</span>
+                  <span>Data confidence: {selectedEntry.confidence ?? "unknown"}</span>
+                  <span>Status confidence: {selectedEntry.statusConfidence ?? "unknown"}</span>
                 </div>
 
                 {selectedEntry.primaryIssue ? (
@@ -570,6 +682,53 @@ export function IntegrationSyncDashboard() {
                 {feedback ? (
                   <p className="mt-3 text-xs text-emerald-300">{feedback}</p>
                 ) : null}
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-300">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      Sync duration trend
+                    </p>
+                    <p className="mt-1 text-zinc-200">
+                      Average: {formatDurationSeconds(selectedEntry.durationAverageSeconds)}
+                    </p>
+                    <p className="mt-2 text-[11px] text-zinc-400">
+                      Recent runs:
+                      {selectedEntry.durationSamples.length
+                        ? ` ${selectedEntry.durationSamples
+                            .slice(-5)
+                            .map((sample) => formatDurationSeconds(sample))
+                            .join(" → ")}`
+                        : " No samples"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-300">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      Recent sync errors
+                    </p>
+                    <p className="text-[11px] text-zinc-400">In last 24h: {selectedEntry.errorCount24h}</p>
+                    {selectedEntry.recentErrors.length ? (
+                      <ul className="mt-2 space-y-2">
+                        {selectedEntry.recentErrors.slice(0, 4).map((err, index) => {
+                          const record = err as Record<string, unknown>;
+                          const messageValue = record.message;
+                          const message = typeof messageValue === "string"
+                            ? messageValue
+                            : JSON.stringify(record).slice(0, 140);
+                          const timestampValue = record.timestamp as string | undefined;
+                          const observed = formatTimestamp(parseTimestamp(timestampValue));
+                          return (
+                            <li key={index} className="rounded border border-zinc-800 bg-zinc-950/80 px-2 py-1">
+                              <p className="truncate text-[11px] text-zinc-100">{message}</p>
+                              <p className="text-[10px] text-zinc-500">{observed}</p>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-[11px] text-zinc-500">No recent errors recorded.</p>
+                    )}
+                  </div>
+                </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                   <span>Trend window:</span>

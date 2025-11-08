@@ -271,6 +271,7 @@ export type IntegrationAdminOverview = {
   recent_errors: Array<Record<string, unknown>>;
   confidence: string;
   metadata: Record<string, unknown>;
+  stale_threshold_hours?: number | null;
 };
 
 export type IntegrationSyncStatus = {
@@ -541,6 +542,7 @@ export type ProviderFreshnessSummary = {
   age_human: string | null;
   status: string;
   sources: string[];
+  confidence?: string;
 };
 
 export type DashboardFreshness = {
@@ -623,7 +625,10 @@ export type OperationalIntegrationHealthItem = {
   duration_average_seconds?: number | null;
   duration_samples?: number[];
   recent_errors: Array<Record<string, unknown>>;
-  confidence?: string;
+  status_confidence?: string;
+  confidence_level?: string;
+  error_count_24h?: number;
+  stale_threshold_hours?: number;
 };
 
 export type OperationalWorkerStatus = {
@@ -691,6 +696,7 @@ export type OperationalUsageStats = {
     events: number;
   }>;
   unused_features: string[];
+  feature_breakdown: Record<string, number>;
 };
 
 export type OperationalHealthSnapshot = {

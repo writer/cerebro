@@ -152,6 +152,7 @@ async def get_organization_dashboard(
             "age_human": summary.age_human,
             "status": summary.status,
             "sources": summary.sources,
+            "confidence": summary.confidence,
         }
         for provider, summary in freshness_map.items()
     }

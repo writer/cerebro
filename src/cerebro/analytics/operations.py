@@ -96,6 +96,21 @@ def _compute_next_scheduled(
     return now + delta
 
 
+def _get_integration_stale_threshold(integration: str) -> int:
+    overrides = getattr(settings, "operational_integration_stale_overrides", {}) or {}
+    normalized = integration.lower()
+    for key, value in overrides.items():
+        if not isinstance(key, str):
+            continue
+        try:
+            hours = int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if key.lower() in normalized:
+            return max(1, hours)
+    return max(1, settings.operational_integration_stale_hours)
+
+
 async def gather_celery_status() -> Dict[str, Any]:
     """Return Celery worker and queue status summary."""
 
@@ -123,6 +138,17 @@ async def gather_celery_status() -> Dict[str, Any]:
                 short_name = worker_name.split("@", 1)[0]
                 health_status = "healthy" if "rusage" in worker_stats else "degraded"
 
+                failed_tasks = 0
+                task_stats = worker_stats.get("tasks")
+                if isinstance(task_stats, dict):
+                    for metrics in task_stats.values():
+                        if isinstance(metrics, dict):
+                            failure_count = metrics.get("failures") or metrics.get("failed")
+                            try:
+                                failed_tasks += int(failure_count or 0)
+                            except (TypeError, ValueError):
+                                continue
+
                 workers.append(
                     {
                         "name": short_name,
@@ -132,6 +158,7 @@ async def gather_celery_status() -> Dict[str, Any]:
                         "reserved_tasks": reserved_count,
                         "total_completed": worker_stats.get("total", 0),
                         "registered_tasks": len(registered.get(worker_name, [])),
+                        "failed_tasks": failed_tasks,
                     }
                 )
 
@@ -143,6 +170,7 @@ async def gather_celery_status() -> Dict[str, Any]:
                     "total_active_tasks": total_active,
                     "total_reserved_tasks": total_reserved,
                     "total_queue_depth": total_active + total_reserved,
+                    "failed_tasks": sum(worker.get("failed_tasks", 0) for worker in workers),
                 },
             }
         except Exception as exc:  # pragma: no cover - defensive guard
@@ -205,6 +233,10 @@ async def _collect_integration_health(db: AsyncSession) -> Dict[str, Any]:
             filtered_errors = []
 
         next_sync = _compute_next_scheduled(entry.integration, schedule_index)
+        threshold_hours = _get_integration_stale_threshold(entry.integration)
+        error_count = sum(
+            count for severity, count in events.items() if str(severity).lower() in {"error", "critical"}
+        )
 
         items.append(
             {
@@ -221,7 +253,10 @@ async def _collect_integration_health(db: AsyncSession) -> Dict[str, Any]:
                 "duration_average_seconds": duration_average,
                 "duration_samples": duration_samples,
                 "recent_errors": filtered_errors,
-                "confidence": _derive_confidence(entry.status),
+                "status_confidence": _derive_confidence(entry.status),
+                "confidence_level": entry.confidence,
+                "error_count_24h": error_count,
+                "stale_threshold_hours": threshold_hours,
             }
         )
 
@@ -357,6 +392,7 @@ async def _collect_usage_metrics(db: AsyncSession) -> Dict[str, Any]:
     usage = snapshot.to_dict()
 
     events_by_component = usage.get("events_by_component", {})
+    events_by_type = usage.get("events_by_type", {})
     top_features = sorted(
         (
             {
@@ -376,11 +412,32 @@ async def _collect_usage_metrics(db: AsyncSession) -> Dict[str, Any]:
         if (component and component != "(none)" and count <= 3)
     ]
 
+    def _sum_matching(source: Dict[str, int], keywords: Iterable[str]) -> int:
+        total = 0
+        for key, value in source.items():
+            try:
+                normalized = key.lower()
+            except AttributeError:
+                continue
+            if any(keyword in normalized for keyword in keywords):
+                try:
+                    total += int(value)
+                except (TypeError, ValueError):
+                    continue
+        return total
+
+    feature_breakdown = {
+        "queries": _sum_matching(events_by_component, ["query", "sql"]) + _sum_matching(events_by_type, ["query"]),
+        "agent_sessions": _sum_matching(events_by_component, ["agent", "session"]) + _sum_matching(events_by_type, ["agent_session", "agent.run"]),
+        "findings_viewed": _sum_matching(events_by_component, ["finding", "review", "evidence"]) + _sum_matching(events_by_type, ["finding", "evidence"]),
+    }
+
     usage_summary = {
         "snapshot": usage,
         "weekly_active_users": usage.get("unique_users", 0),
         "top_features": top_features,
         "unused_features": unused_candidates,
+        "feature_breakdown": feature_breakdown,
     }
 
     return usage_summary

@@ -83,7 +83,9 @@ async def execute_sql(sql: Optional[str], file: Optional[str], output: str, limi
             for provider, summary in provider_freshness.items():
                 last_synced = format_datetime(summary.last_synced_at) if summary.last_synced_at else "unknown"
                 age = summary.age_human or "age unknown"
-                click.echo(f"  - {provider}: last synced {last_synced} ({age}, status {summary.status})")
+                click.echo(
+                    f"  - {provider}: last synced {last_synced} ({age}, status {summary.status}, confidence {summary.confidence})"
+                )
                 if summary.warning:
                     click.echo(f"    {summary.warning}")
 
@@ -341,7 +343,9 @@ async def interactive_query():
                     for provider, summary in provider_freshness.items():
                         last_synced = format_datetime(summary.last_synced_at) if summary.last_synced_at else "unknown"
                         age = summary.age_human or "age unknown"
-                        click.echo(f"  - {provider}: last synced {last_synced} ({age}, status {summary.status})")
+                        click.echo(
+                            f"  - {provider}: last synced {last_synced} ({age}, status {summary.status}, confidence {summary.confidence})"
+                        )
                         if summary.warning:
                             click.echo(f"    {summary.warning}")
                 

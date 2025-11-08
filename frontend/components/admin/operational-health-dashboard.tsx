@@ -91,6 +91,7 @@ export function OperationalHealthDashboard() {
     }
     const integrations = data.integrations.summary;
     const queueDepth = data.jobs.summary.total_queue_depth;
+    const failedTasks = data.jobs.summary.failed_tasks ?? 0;
     const rpm = data.api.requests_per_minute;
     return [
       {
@@ -103,7 +104,7 @@ export function OperationalHealthDashboard() {
         label: "Queue depth",
         value: String(queueDepth),
         accent: queueDepth > 100 ? "rose" : queueDepth > 20 ? "amber" : "sky",
-        description: `${data.jobs.summary.total_workers} workers active`,
+        description: `${data.jobs.summary.total_workers} workers · ${failedTasks} failed tasks`,
       },
       {
         label: "API RPM",
@@ -218,7 +219,7 @@ export function OperationalHealthDashboard() {
                             </button>
                           </div>
                         </div>
-                        <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        <div className="mt-2 grid gap-2 md:grid-cols-4">
                           <div className="rounded-md border border-zinc-900 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-400">
                             Issues (24h):
                             <span className="ml-1 text-zinc-200">
@@ -230,15 +231,21 @@ export function OperationalHealthDashboard() {
                             </span>
                           </div>
                           <div className="rounded-md border border-zinc-900 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-400">
-                            Confidence:
-                            <span className="ml-1 capitalize text-zinc-200">{item.confidence ?? "unknown"}</span>
+                            Errors (24h):
+                            <span className="ml-1 text-zinc-200">{item.error_count_24h ?? 0}</span>
                           </div>
                           <div className="rounded-md border border-zinc-900 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-400">
-                            Recent errors:
-                            <span className="ml-1 text-zinc-200">
-                              {item.recent_errors.length ? `${item.recent_errors.length} recorded` : "None"}
-                            </span>
+                            Data confidence:
+                            <span className="ml-1 capitalize text-zinc-200">{item.confidence_level ?? "unknown"}</span>
                           </div>
+                          <div className="rounded-md border border-zinc-900 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-400">
+                            Status confidence:
+                            <span className="ml-1 capitalize text-zinc-200">{item.status_confidence ?? "unknown"}</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-400">
+                          <span>Stale threshold: {item.stale_threshold_hours ?? "n/a"}h</span>
+                          <span>Recent errors: {item.recent_errors.length}</span>
                         </div>
                         {item.warning ? (
                           <p className="mt-2 text-xs text-amber-300">{item.warning}</p>
@@ -257,7 +264,7 @@ export function OperationalHealthDashboard() {
                   <div className="rounded-lg border border-zinc-800 bg-black/60 p-3">
                     <p className="text-sm text-zinc-200">
                       {data.jobs.summary.healthy_workers}/{data.jobs.summary.total_workers} workers healthy ·
-                      Queue depth {data.jobs.summary.total_queue_depth}
+                      Queue depth {data.jobs.summary.total_queue_depth} · Failed tasks {data.jobs.summary.failed_tasks ?? 0}
                     </p>
                     <div className="mt-2 grid gap-2 md:grid-cols-2">
                       {data.jobs.workers.map((worker) => (
@@ -277,6 +284,7 @@ export function OperationalHealthDashboard() {
                             <span>Reserved {worker.reserved_tasks}</span>
                             <span>Completed {worker.total_completed}</span>
                           </div>
+                          <div className="mt-1 text-[11px] text-zinc-500">Failed {worker.failed_tasks ?? 0}</div>
                         </div>
                       ))}
                     </div>
@@ -414,6 +422,17 @@ export function OperationalHealthDashboard() {
                       ) : null}
                     </ul>
                   </div>
+                </div>
+                <div className="mt-3 rounded-md border border-zinc-900 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-400">
+                  <p className="font-semibold uppercase tracking-wide text-[11px] text-zinc-500">Key feature usage</p>
+                  <ul className="mt-1 space-y-1 text-zinc-300">
+                    {Object.entries(data.usage.feature_breakdown).map(([feature, value]) => (
+                      <li key={feature} className="flex justify-between">
+                        <span className="capitalize">{feature.replace(/_/g, " ")}</span>
+                        <span>{value}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </section>

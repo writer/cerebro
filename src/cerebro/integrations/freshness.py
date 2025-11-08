@@ -59,6 +59,7 @@ class IntegrationFreshness:
     status: str
     warning: Optional[str]
     metadata: Dict[str, object]
+    confidence: str
 
     @property
     def age_human(self) -> Optional[str]:
@@ -73,6 +74,7 @@ class ProviderFreshness:
     status: str
     warning: Optional[str]
     sources: List[str]
+    confidence: str
 
     @property
     def age_human(self) -> Optional[str]:
@@ -98,6 +100,7 @@ class IntegrationFreshnessService:
             age_seconds = (now - last_synced).total_seconds() if last_synced else None
             status = self._classify_status(age_seconds, metadata)
             warning = self._build_warning(status, state.integration, age_seconds)
+            confidence = self._infer_confidence(state.integration, metadata)
             summaries.append(
                 IntegrationFreshness(
                     integration=state.integration,
@@ -107,6 +110,7 @@ class IntegrationFreshnessService:
                     status=status,
                     warning=warning,
                     metadata=metadata,
+                    confidence=confidence,
                 )
             )
         return summaries
@@ -129,6 +133,7 @@ class IntegrationFreshnessService:
                     status="unknown",
                     warning=None,
                     sources=[],
+                    confidence="low",
                 )
                 continue
 
@@ -136,6 +141,7 @@ class IntegrationFreshnessService:
             age_seconds = latest.age_seconds
             status = latest.status
             warning = latest.warning
+            confidence = self._aggregate_confidence(matches)
             provider_map[provider] = ProviderFreshness(
                 provider=provider,
                 last_synced_at=latest.last_synced_at,
@@ -143,6 +149,7 @@ class IntegrationFreshnessService:
                 status=status,
                 warning=warning,
                 sources=[match.integration for match in matches],
+                confidence=confidence,
             )
 
         # Include any remaining integrations that may be relevant but not explicitly requested
@@ -155,6 +162,7 @@ class IntegrationFreshnessService:
                     status=item.status,
                     warning=item.warning,
                     sources=[item.integration],
+                    confidence=item.confidence,
                 )
 
         return provider_map
@@ -205,3 +213,43 @@ class IntegrationFreshnessService:
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
+
+    @staticmethod
+    def _infer_confidence(integration: str, metadata: Dict[str, object]) -> str:
+        explicit = metadata.get("data_confidence")
+        if isinstance(explicit, str):
+            normalized = explicit.lower()
+            if normalized in {"high", "medium", "low"}:
+                return normalized
+
+        ingestion_method = metadata.get("ingestion_method")
+        if isinstance(ingestion_method, str):
+            method = ingestion_method.lower()
+            if method in {"api", "webhook", "stream"}:
+                return "high"
+            if method in {"inferred", "calculated"}:
+                return "medium"
+            if method in {"manual", "user_reported"}:
+                return "low"
+
+        if metadata.get("inferred", False):
+            return "medium"
+        if metadata.get("user_reported", False):
+            return "low"
+
+        name = integration.lower()
+        if any(token in name for token in ("analytics", "derived", "correlation")):
+            return "medium"
+        if any(token in name for token in ("manual", "synthetic", "simulation")):
+            return "low"
+        return "high"
+
+    @staticmethod
+    def _aggregate_confidence(matches: List[IntegrationFreshness]) -> str:
+        order = {"low": 0, "medium": 1, "high": 2}
+        best = "high"
+        for item in matches:
+            level = order.get(item.confidence, 2)
+            if level < order.get(best, 2):
+                best = item.confidence
+        return best

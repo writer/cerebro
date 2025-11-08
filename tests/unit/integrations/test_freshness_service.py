@@ -28,6 +28,7 @@ async def test_freshness_service_marks_stale(test_db):
     record = by_integration["sentinelone.activities"]
     assert record.status == "stale"
     assert record.age_seconds and record.age_seconds > 1800
+    assert record.confidence == "high"
 
 
 @pytest.mark.asyncio()
@@ -57,3 +58,30 @@ async def test_provider_freshness_collapses_multiple_states(test_db):
     assert summary.status == "fresh"
     assert summary.last_synced_at is not None
     assert "kandji.vulnerabilities" in summary.sources
+    assert summary.confidence == "high"
+
+
+@pytest.mark.asyncio()
+async def test_freshness_confidence_overrides(test_db):
+    repo = IntegrationStateRepository(test_db)
+    now = datetime.now(timezone.utc)
+    await repo.upsert_state(
+        integration="analytics.derived_insights",
+        scope="default",
+        last_timestamp=now - timedelta(minutes=10),
+        metadata={"data_confidence": "medium"},
+    )
+    await repo.upsert_state(
+        integration="user_reported.feedback",
+        scope="default",
+        last_timestamp=now - timedelta(minutes=5),
+        metadata={"user_reported": True},
+    )
+    await test_db.commit()
+
+    service = IntegrationFreshnessService(test_db, stale_seconds=3600)
+    summaries = await service.list_freshness()
+    confidence_map = {item.integration: item.confidence for item in summaries}
+
+    assert confidence_map.get("analytics.derived_insights") == "medium"
+    assert confidence_map.get("user_reported.feedback") == "low"

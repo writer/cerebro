@@ -96,6 +96,7 @@ async def execute_sql_query(
                 "age_human": summary.age_human,
                 "status": summary.status,
                 "sources": summary.sources,
+                "confidence": summary.confidence,
             }
             for provider, summary in provider_freshness.items()
         }
@@ -317,6 +318,8 @@ async def query_security_alerts(
                 "age_seconds": summary.age_seconds,
                 "age_human": summary.age_human,
                 "status": summary.status,
+                "sources": summary.sources,
+                "confidence": summary.confidence,
             }
             for provider, summary in provider_freshness.items()
         }
@@ -392,6 +395,8 @@ async def query_users(
                 "age_seconds": summary.age_seconds,
                 "age_human": summary.age_human,
                 "status": summary.status,
+                "sources": summary.sources,
+                "confidence": summary.confidence,
             }
             for provider, summary in provider_freshness.items()
         }

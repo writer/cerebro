@@ -150,7 +150,6 @@ async def _evaluate_alerts() -> Dict[str, Any]:
 
     alerts_sent: List[Dict[str, Any]] = []
 
-    integration_threshold = max(1, settings.operational_integration_stale_hours) * 3600
     evidence_threshold = max(1, settings.operational_evidence_stale_hours) * 3600
     queue_threshold = max(1, settings.operational_celery_queue_threshold)
     db_threshold = max(0.0, min(1.0, settings.operational_db_pool_utilization_threshold))
@@ -164,9 +163,11 @@ async def _evaluate_alerts() -> Dict[str, Any]:
         status = item.get("status")
         integration_name = item.get("integration") or "unknown"
         scope = item.get("scope") or "default"
+        threshold_hours = item.get("stale_threshold_hours") or settings.operational_integration_stale_hours
+        threshold_seconds = max(1, int(threshold_hours)) * 3600
 
-        if status == "error" or (age is not None and age >= integration_threshold):
-            stale_integrations.append((integration_name, scope, age, status))
+        if status == "error" or (age is not None and age >= threshold_seconds):
+            stale_integrations.append((integration_name, scope, age, status, threshold_hours, item.get("error_count_24h", 0)))
 
         metadata = item.get("metadata") or {}
         is_evidence = False
@@ -182,13 +183,18 @@ async def _evaluate_alerts() -> Dict[str, Any]:
             evidence_lagging.append((integration_name, scope, age))
 
     if stale_integrations:
-        names = ", ".join(f"{name} ({scope})" for name, scope, *_ in stale_integrations[:5])
+        names = ", ".join(
+            f"{name} ({scope})" for name, scope, *_ in stale_integrations[:5]
+        )
         message = f"Detected {len(stale_integrations)} integrations with stale or failing syncs: {names}"
         await _send_slack_alert(
             title="Integration sync backlog",
             message=message,
             severity="warning" if len(stale_integrations) < 3 else "critical",
-            fields={"threshold_hours": settings.operational_integration_stale_hours},
+            fields={
+                "threshold_hours": ", ".join(str(entry[4]) for entry in stale_integrations[:3]),
+                "errors_24h": ", ".join(str(entry[5]) for entry in stale_integrations[:3]),
+            },
         )
         await _send_pagerduty_alert(
             title="Integration sync backlog",
