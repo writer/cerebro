@@ -72,7 +72,7 @@ async def call_sync_with_retries(
     exceptions: Sequence[Type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
     logger: Optional[logging.Logger] = None,
     loop: Optional[asyncio.AbstractEventLoop] = None,
-    executor: Optional[asyncio.AbstractEventLoop] = None,
+    executor: Optional[Executor] = None,
 ) -> T:
     """Run a blocking callable in the default executor with retries."""
 
@@ -107,7 +107,7 @@ async def iterate_sync_iterator(
     exceptions: Sequence[Type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
     logger: Optional[logging.Logger] = None,
     loop: Optional[asyncio.AbstractEventLoop] = None,
-    executor: Optional[Any] = None,
+    executor: Optional[Executor] = None,
 ) -> AsyncIterator[T]:
     """Iterate over a synchronous iterator with retries and executor dispatch."""
 
