@@ -7,88 +7,44 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import func, select, tuple_
-
-from cerebro.agents.models import AgentRuntimeEvent
+from cerebro.agents.repositories import AgentAnalyticsRepository
 from cerebro.core.config import settings
-from cerebro.core.database import async_session_factory
-
-
-async def _fetch_events(
-    *,
-    session_id: UUID,
-    limit: int,
-    event_type: Optional[str],
-    before: Optional[datetime] = None,
-    before_id: Optional[UUID] = None,
-) -> List[Dict[str, Any]]:
-    async with async_session_factory() as db_session:
-        stmt = (
-            select(AgentRuntimeEvent)
-            .where(AgentRuntimeEvent.session_id == session_id)
-            .order_by(AgentRuntimeEvent.created_at.desc(), AgentRuntimeEvent.id.desc())
-            .limit(limit)
-        )
-        if event_type:
-            stmt = stmt.where(AgentRuntimeEvent.event_type == event_type)
-        if before:
-            if before_id:
-                stmt = stmt.where(AgentRuntimeEvent.id != before_id)
-                stmt = stmt.where(
-                    tuple_(AgentRuntimeEvent.created_at, AgentRuntimeEvent.id)
-                    < tuple_(before, before_id)
-                )
-            else:
-                stmt = stmt.where(AgentRuntimeEvent.created_at < before)
-        result = await db_session.execute(stmt)
-        events = result.scalars().all()
-
-    return [
-        {
-            "id": str(event.id),
-            "event_type": event.event_type,
-            "payload": event.payload,
-            "created_at": event.created_at.isoformat(),
-        }
-        for event in events
-    ]
 
 
 class AgentAnalyticsService:
     """Persist runtime analytics events for later analysis."""
 
     _RETENTION_PROBABILITY = 0.05
+    _repository: AgentAnalyticsRepository = AgentAnalyticsRepository()
 
-    @staticmethod
+    @classmethod
+    def configure_repository(cls, repository: AgentAnalyticsRepository) -> None:
+        cls._repository = repository
+
+    @classmethod
     async def record_event(
+        cls,
         *,
         org_id: UUID,
         session_id: UUID,
         event_type: str,
         payload: Dict[str, Any],
     ) -> None:
-        async with async_session_factory() as db_session:
-            event = AgentRuntimeEvent(
-                org_id=org_id,
-                session_id=session_id,
-                event_type=event_type,
-                payload=payload,
-            )
-            db_session.add(event)
-            await db_session.commit()
+        await cls._repository.insert_event(
+            org_id=org_id,
+            session_id=session_id,
+            event_type=event_type,
+            payload=payload,
+        )
 
-        # Opportunistic retention pruning
         retention_days = max(settings.agent_runtime_event_retention_days, 1)
-        if random.random() < AgentAnalyticsService._RETENTION_PROBABILITY:
+        if random.random() < cls._RETENTION_PROBABILITY:
             cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-            async with async_session_factory() as cleanup_session:
-                await cleanup_session.execute(
-                    AgentRuntimeEvent.__table__.delete().where(AgentRuntimeEvent.created_at < cutoff)
-                )
-                await cleanup_session.commit()
+            await cls._repository.delete_older_than(cutoff)
 
-    @staticmethod
+    @classmethod
     async def list_events(
+        cls,
         *,
         session_id: UUID,
         limit: int = 100,
@@ -96,7 +52,7 @@ class AgentAnalyticsService:
         before: Optional[datetime] = None,
         before_id: Optional[UUID] = None,
     ) -> List[Dict[str, Any]]:
-        return await _fetch_events(
+        events = await cls._repository.list_events(
             session_id=session_id,
             limit=limit,
             event_type=event_type,
@@ -104,27 +60,27 @@ class AgentAnalyticsService:
             before_id=before_id,
         )
 
-    @staticmethod
+        return [
+            {
+                "id": str(event.id),
+                "event_type": event.event_type,
+                "payload": event.payload,
+                "created_at": event.created_at.isoformat(),
+            }
+            for event in events
+        ]
+
+    @classmethod
     async def summarize_events(
+        cls,
         *,
         session_id: UUID,
         event_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        async with async_session_factory() as db_session:
-            stmt = (
-                select(
-                    AgentRuntimeEvent.event_type,
-                    func.count().label("event_count"),
-                    func.min(AgentRuntimeEvent.created_at).label("first_seen"),
-                    func.max(AgentRuntimeEvent.created_at).label("last_seen"),
-                )
-                .where(AgentRuntimeEvent.session_id == session_id)
-                .group_by(AgentRuntimeEvent.event_type)
-            )
-            if event_type:
-                stmt = stmt.where(AgentRuntimeEvent.event_type == event_type)
-
-            result = await db_session.execute(stmt)
+        result = await cls._repository.summarize_events(
+            session_id=session_id,
+            event_type=event_type,
+        )
 
         summaries: List[Dict[str, Any]] = []
         for row in result:
@@ -149,15 +105,10 @@ async def list_session_events(
 ) -> List[Dict[str, Any]]:
     """Module-level helper for retrieving runtime events."""
 
-    return await _fetch_events(
+    return await AgentAnalyticsService.list_events(
         session_id=session_id,
         limit=limit,
         event_type=event_type,
         before=before,
         before_id=before_id,
     )
-
-
-# Maintain backwards compatibility for imports that capture the class before
-# definition completes (e.g. during circular imports in tests).
-AgentAnalyticsService.list_events = staticmethod(list_session_events)
