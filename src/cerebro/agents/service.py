@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from cerebro.core.database import get_db
-from cerebro.agents.repositories import AgentSessionRepository
+from cerebro.agents.repositories import AgentSessionRepository, ToolApprovalRepository
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
@@ -689,6 +689,9 @@ class AgentSessionService:
 
 class ToolApprovalService:
     """Service for managing tool approval workflows."""
+
+    def __init__(self, repository: Optional[ToolApprovalRepository] = None) -> None:
+        self._repository = repository or ToolApprovalRepository()
     
     async def list_pending_approvals(
         self,
@@ -698,32 +701,12 @@ class ToolApprovalService:
     ) -> tuple[List[ToolApproval], int]:
         """List pending tool approvals for an organization."""
         
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            # Get pending approvals
-            query = (
-                select(ToolApproval)
-                .options(selectinload(ToolApproval.tool_invocation))
-                .where(ToolApproval.org_id == org_id)
-                .where(ToolApproval.status == ApprovalStatus.PENDING)
-                .order_by(ToolApproval.requested_at.desc())
-                .limit(limit)
-                .offset(offset)
-            )
-            
-            result = await db_session.execute(query)
-            approvals = result.scalars().all()
-            
-            # Get total count
-            count_query = (
-                select(ToolApproval.id)
-                .where(ToolApproval.org_id == org_id)
-                .where(ToolApproval.status == ApprovalStatus.PENDING)
-            )
-            count_result = await db_session.execute(count_query)
-            total_count = len(count_result.scalars().all())
-            
-            return list(approvals), total_count
+        approvals, total_count = await self._repository.list_pending(
+            org_id,
+            limit=limit,
+            offset=offset,
+        )
+        return approvals, total_count
     
     async def get_approval(
         self,
@@ -732,17 +715,7 @@ class ToolApprovalService:
     ) -> Optional[ToolApproval]:
         """Get a specific tool approval."""
         
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            query = (
-                select(ToolApproval)
-                .options(selectinload(ToolApproval.tool_invocation))
-                .where(ToolApproval.id == approval_id)
-                .where(ToolApproval.org_id == org_id)
-            )
-            
-            result = await db_session.execute(query)
-            return result.scalar_one_or_none()
+        return await self._repository.get(approval_id, org_id)
     
     async def approve_tool_invocation(
         self,
@@ -753,25 +726,19 @@ class ToolApprovalService:
     ) -> Optional[ToolApproval]:
         """Approve a tool invocation."""
         
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            # Get approval
-            approval = await self.get_approval(approval_id, org_id)
+        async with self._repository.approval_scope(approval_id, org_id) as (approval, db_session):
             if not approval or approval.status != ApprovalStatus.PENDING:
                 return None
-            
-            # Check if not expired
+
             if approval.expires_at and approval.expires_at < datetime.now(timezone.utc):
                 approval.status = ApprovalStatus.EXPIRED
-                await db_session.commit()
                 return approval
-            
-            # Update approval
+
             approval.status = ApprovalStatus.APPROVED
             approval.decided_by = approved_by
             approval.decided_at = datetime.now(timezone.utc)
             approval.decision_reason = decision_reason or "Approved by authorized user"
-            
+
             # Update tool invocation status and re-execute if needed
             if approval.tool_invocation:
                 from cerebro.agents.tools import tool_registry
@@ -815,16 +782,14 @@ class ToolApprovalService:
                         tool_invocation.status = ToolInvocationStatus.ERROR
                         tool_invocation.error_message = f"Re-execution failed: {str(e)}"
                         tool_invocation.completed_at = datetime.now(timezone.utc)
-            
-            await db_session.commit()
-            
+
             logger.info(
                 "Tool invocation approved",
                 approval_id=approval_id,
                 tool_invocation_id=approval.tool_invocation_id,
                 approved_by=approved_by,
             )
-            
+
             return approval
     
     async def reject_tool_invocation(
@@ -836,21 +801,15 @@ class ToolApprovalService:
     ) -> Optional[ToolApproval]:
         """Reject a tool invocation."""
         
-        from cerebro.core.database import async_session_factory
-        async with async_session_factory() as db_session:
-            # Get approval
-            approval = await self.get_approval(approval_id, org_id)
+        async with self._repository.approval_scope(approval_id, org_id) as (approval, _):
             if not approval or approval.status != ApprovalStatus.PENDING:
                 return None
-            
-            # Update approval
+
             approval.status = ApprovalStatus.REJECTED
             approval.decided_by = rejected_by
             approval.decided_at = datetime.now(timezone.utc)
             approval.decision_reason = decision_reason
-            
-            await db_session.commit()
-            
+
             logger.info(
                 "Tool invocation rejected",
                 approval_id=approval_id,
@@ -858,7 +817,7 @@ class ToolApprovalService:
                 rejected_by=rejected_by,
                 reason=decision_reason,
             )
-            
+
             return approval
 
 
