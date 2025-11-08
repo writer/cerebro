@@ -1,41 +1,72 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
-import { MemoryStats } from "@/lib/types";
+import { AgentSessionListItem, MemoryStats, SessionListResponse } from "@/lib/types";
 import { formatRelative } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
 
 const RECENT_THRESHOLD_HOURS = 24;
 
 export function MemoryInsightsPanel() {
+  const [sessionInput, setSessionInput] = useState("");
   const [sessionId, setSessionId] = useState("");
+  const [didAutoSelect, setDidAutoSelect] = useState(false);
 
-  const { data, isFetching, refetch } = useQuery({
-    queryKey: ["memoryStats", sessionId],
-    queryFn: () =>
-      sessionId
-        ? apiGet<MemoryStats>(`/agents/sessions/${sessionId}/memory/stats`)
-        : Promise.resolve({
-            total_entries: 0,
-            recent_entries: 0,
-            presented_entries: 0,
-            average_decay: 0,
-            token_total: 0,
-            role_distribution: {},
-            scope_distribution: {},
-            top_memories: [],
-          }),
-    enabled: false,
+  const { data: recentSessionsResponse } = useQuery({
+    queryKey: ["recentAgentSessions", "memory"],
+    queryFn: () => apiGet<SessionListResponse>("/agents/sessions", { limit: 12 }),
+    staleTime: 60_000,
   });
 
-  const stats = data;
+  const recentSessions: AgentSessionListItem[] = useMemo(() => {
+    const base = recentSessionsResponse?.sessions ?? [];
+    return [...base].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [recentSessionsResponse]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (didAutoSelect || sessionId || recentSessions.length === 0) {
+      return;
+    }
+
+    const newest = recentSessions[0]?.session_id;
+    if (!newest) {
+      return;
+    }
+
+    setSessionInput(newest);
+    setSessionId(newest);
+    setDidAutoSelect(true);
+  }, [didAutoSelect, recentSessions, sessionId]);
+
+  const { data: stats, isFetching } = useQuery({
+    queryKey: ["memoryStats", sessionId],
+    queryFn: () => apiGet<MemoryStats>(`/agents/sessions/${sessionId}/memory/stats`),
+    enabled: Boolean(sessionId),
+  });
+
+  const emptyStats: MemoryStats = {
+    total_entries: 0,
+    recent_entries: 0,
+    presented_entries: 0,
+    average_decay: 0,
+    token_total: 0,
+    role_distribution: {},
+    scope_distribution: {},
+    top_memories: [],
+  };
+
+  const resolvedStats = stats ?? emptyStats;
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await refetch();
+    const trimmed = sessionInput.trim();
+    if (!trimmed) {
+      return;
+    }
+    setSessionId(trimmed);
   };
 
   return (
@@ -47,11 +78,19 @@ export function MemoryInsightsPanel() {
           <input
             type="text"
             placeholder="Session UUID"
-            value={sessionId}
-            onChange={(event) => setSessionId(event.target.value)}
+            value={sessionInput}
+            onChange={(event) => setSessionInput(event.target.value)}
             className="w-56 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-100 focus:border-zinc-600 focus:outline-none"
             required
+            list="memory-session-suggestions"
           />
+          <datalist id="memory-session-suggestions">
+            {recentSessions.map((session) => (
+              <option key={session.session_id} value={session.session_id}>
+                {session.title?.trim() ? session.title : session.session_id}
+              </option>
+            ))}
+          </datalist>
           <button
             type="submit"
             className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-semibold text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800"
@@ -61,30 +100,34 @@ export function MemoryInsightsPanel() {
         </form>
       }
     >
-      {!stats ? (
-        <p className="text-sm text-zinc-500">Provide a session ID to view memory analytics.</p>
+      {!sessionId ? (
+        <p className="text-sm text-zinc-500">
+          Provide a session ID to view memory analytics. Recent sessions auto-populate once data is available, and you can paste any session UUID to override.
+        </p>
+      ) : !stats ? (
+        <p className="text-sm text-zinc-500">Loading session memory statistics…</p>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="space-y-4">
             <InsightCard title="Totals">
               <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                <InsightRow label="Entries" value={String(stats.total_entries)} />
+                <InsightRow label="Entries" value={String(resolvedStats.total_entries)} />
                 <InsightRow
                   label={`&lt;${RECENT_THRESHOLD_HOURS}h`}
-                  value={String(stats.recent_entries)}
+                  value={String(resolvedStats.recent_entries)}
                 />
-                <InsightRow label="Presented" value={String(stats.presented_entries)} />
-                <InsightRow label="Avg decay" value={stats.average_decay.toFixed(2)} />
-                <InsightRow label="Tokens" value={String(stats.token_total)} />
+                <InsightRow label="Presented" value={String(resolvedStats.presented_entries)} />
+                <InsightRow label="Avg decay" value={resolvedStats.average_decay.toFixed(2)} />
+                <InsightRow label="Tokens" value={String(resolvedStats.token_total)} />
               </dl>
             </InsightCard>
 
             <InsightCard title="Roles">
-              {Object.keys(stats.role_distribution).length === 0 ? (
+              {Object.keys(resolvedStats.role_distribution).length === 0 ? (
                 <p className="text-xs text-zinc-500">No role metadata captured yet.</p>
               ) : (
                 <ul className="space-y-1 text-xs text-zinc-200">
-                  {Object.entries(stats.role_distribution).map(([role, count]) => (
+                  {Object.entries(resolvedStats.role_distribution).map(([role, count]) => (
                     <li key={role} className="flex justify-between text-zinc-300">
                       <span className="uppercase text-zinc-500">{role}</span>
                       <span>{count}</span>
@@ -95,11 +138,11 @@ export function MemoryInsightsPanel() {
             </InsightCard>
 
             <InsightCard title="Scopes">
-              {Object.keys(stats.scope_distribution).length === 0 ? (
+              {Object.keys(resolvedStats.scope_distribution).length === 0 ? (
                 <p className="text-xs text-zinc-500">No scoped memories for this session.</p>
               ) : (
                 <ul className="space-y-1 text-xs text-zinc-200">
-                  {Object.entries(stats.scope_distribution).map(([scope, count]) => (
+                  {Object.entries(resolvedStats.scope_distribution).map(([scope, count]) => (
                     <li key={scope} className="flex justify-between text-zinc-300">
                       <span className="uppercase text-zinc-500">{scope}</span>
                       <span>{count}</span>
@@ -111,11 +154,11 @@ export function MemoryInsightsPanel() {
           </div>
 
           <InsightCard title="Top retained memories" description="Highest decay scores surface the facts the agent revisits most frequently.">
-            {stats.top_memories.length === 0 ? (
+            {resolvedStats.top_memories.length === 0 ? (
               <p className="text-xs text-zinc-500">No highlights yet—add more memory or run the session.</p>
             ) : (
               <ul className="space-y-3">
-                {stats.top_memories.map((memory) => (
+                {resolvedStats.top_memories.map((memory) => (
                   <li key={memory.id} className="rounded-md border border-zinc-900 bg-black/70 p-3 text-xs text-zinc-200">
                     <div className="flex items-center justify-between text-[11px] uppercase text-zinc-500">
                       <span>{memory.role ?? "memory"}</span>

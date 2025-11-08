@@ -195,6 +195,25 @@ export function ReviewTable() {
     [tasks, selectedIds]
   );
 
+  const ACTION_COPY: Record<BulkAction, { label: string; helper: string }> = {
+    approve: {
+      label: "Approve & publish",
+      helper: "Finalizes the agent output and marks tasks as approved.",
+    },
+    reject: {
+      label: "Reject & block",
+      helper: "Stops the action and records reviewer notes for audit.",
+    },
+    promote: {
+      label: "Promote to automation",
+      helper: "Queues tasks for automation follow-up by the tooling team.",
+    },
+    escalate: {
+      label: "Escalate to Security Manager",
+      helper: "Routes tasks to the Security Manager queue (escalated_to: security_manager).",
+    },
+  };
+
   return (
     <Panel
       title="Review queue"
@@ -291,6 +310,11 @@ export function ReviewTable() {
                       <td className="px-4 py-3">
                         <div className="font-medium text-zinc-100">{task.title}</div>
                         <div className="truncate text-xs text-zinc-400">{task.summary || "—"}</div>
+                        {task.escalated_to ? (
+                          <div className="text-[11px] text-amber-300">
+                            Escalated to {task.escalated_to.replace(/_/g, " ")}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={task.status} />
@@ -319,6 +343,9 @@ export function ReviewTable() {
                 className="mt-2 w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
                 rows={2}
               />
+              <p className="mt-2 text-[11px] text-zinc-500">
+                Notes are appended to each task’s history when bulk actions run.
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {(["approve", "reject", "promote", "escalate"] as BulkAction[]).map((action) => (
@@ -333,8 +360,9 @@ export function ReviewTable() {
                       ? "border-zinc-700 bg-black text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
                       : "cursor-not-allowed border-zinc-900 bg-black/60 text-zinc-600"
                   )}
+                  title={ACTION_COPY[action].helper}
                 >
-                  {action}
+                  {ACTION_COPY[action].label}
                 </button>
               ))}
             </div>
@@ -345,7 +373,14 @@ export function ReviewTable() {
               {selectedTasks.map((task) => task.title).join(" · ")}
             </div>
           ) : null}
+          <div className="mt-2 text-[11px] text-zinc-500">
+            Approve publishes the agent action; reject blocks it and records the note.
+          </div>
+          <div className="text-[11px] text-amber-300">
+            Escalations route to the Security Manager queue (escalated_to: security_manager).
+          </div>
         </div>
+
       </div>
 
       {focusedTask ? (

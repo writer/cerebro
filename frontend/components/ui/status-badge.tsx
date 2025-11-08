@@ -5,8 +5,8 @@ const STATUS_STYLES: Record<ReviewTaskStatus, string> = {
   pending: "bg-zinc-800 text-zinc-200 border-zinc-700",
   approved: "bg-emerald-500/10 text-emerald-300 border-emerald-500/40",
   rejected: "bg-rose-500/10 text-rose-300 border-rose-500/40",
-  promoted: "bg-zinc-800 text-zinc-200 border-zinc-700",
-  escalated: "bg-zinc-800 text-zinc-200 border-zinc-700"
+  promoted: "bg-sky-500/10 text-sky-200 border-sky-500/40",
+  escalated: "bg-amber-500/10 text-amber-200 border-amber-500/40"
 };
 
 type StatusBadgeProps = {

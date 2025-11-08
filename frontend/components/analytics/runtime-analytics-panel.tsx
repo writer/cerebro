@@ -35,6 +35,7 @@ export function RuntimeAnalyticsPanel() {
   const [eventType, setEventType] = useState("");
   const [discoveredTypes, setDiscoveredTypes] = useState<string[]>([...DEFAULT_EVENT_TYPES]);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [didAutoSelect, setDidAutoSelect] = useState(false);
 
   const queryClient = useQueryClient();
   const queryEnabled = sessionId.trim().length > 0;
@@ -57,6 +58,21 @@ export function RuntimeAnalyticsPanel() {
     () => recentSessionsResponse?.sessions ?? [],
     [recentSessionsResponse],
   );
+
+  useEffect(() => {
+    if (didAutoSelect || sessionId || recentSessions.length === 0) {
+      return;
+    }
+
+    const newestSessionId = recentSessions[0]?.session_id;
+    if (!newestSessionId) {
+      return;
+    }
+
+    setSessionId(newestSessionId);
+    setHasSubmitted(true);
+    setDidAutoSelect(true);
+  }, [didAutoSelect, recentSessions, sessionId]);
 
   const {
     data,
@@ -298,7 +314,9 @@ export function RuntimeAnalyticsPanel() {
       </div>
 
       {sessionId === "" ? (
-        <p className="text-sm text-zinc-500">Provide a session ID to view its runtime event stream.</p>
+        <p className="text-sm text-zinc-500">
+          Provide a session ID to view its runtime event stream. Recent sessions are suggested above once data loads.
+        </p>
       ) : isError ? (
         <p className="text-sm text-red-400">
           {(error as Error)?.message ?? "Failed to load runtime analytics. Please try again."}

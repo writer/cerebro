@@ -328,20 +328,47 @@ export function IntegrationSyncDashboard() {
     });
   }, [entries, integrationFilter, severityFilter]);
 
+  const sortedEntries = useMemo(() => {
+    const rank: Record<"critical" | "warning" | "ok", number> = {
+      critical: 3,
+      warning: 2,
+      ok: 1,
+    };
+
+    return [...filteredEntries].sort((a, b) => {
+      const severityDelta = (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0);
+      if (severityDelta !== 0) {
+        return severityDelta;
+      }
+
+      if (a.isStale !== b.isStale) {
+        return a.isStale ? -1 : 1;
+      }
+
+      const ageA = a.ageSeconds ?? Number.POSITIVE_INFINITY;
+      const ageB = b.ageSeconds ?? Number.POSITIVE_INFINITY;
+      return ageB - ageA;
+    });
+  }, [filteredEntries]);
+
+  const priorityEntries = useMemo(() => {
+    return sortedEntries.filter((entry) => entry.severity !== "ok" || entry.isStale).slice(0, 5);
+  }, [sortedEntries]);
+
   const counts = useMemo(() => {
-    const tally = { total: filteredEntries.length, critical: 0, warning: 0, ok: 0, stale: 0 };
-    for (const entry of filteredEntries) {
+    const tally = { total: sortedEntries.length, critical: 0, warning: 0, ok: 0, stale: 0 };
+    for (const entry of sortedEntries) {
       tally[entry.severity] += 1;
       if (entry.isStale) {
         tally.stale += 1;
       }
     }
     return tally;
-  }, [filteredEntries]);
+  }, [sortedEntries]);
 
   const selectedEntry = useMemo(
-    () => filteredEntries.find((entry) => entry.key === selectedKey) ?? null,
-    [filteredEntries, selectedKey],
+    () => sortedEntries.find((entry) => entry.key === selectedKey) ?? null,
+    [sortedEntries, selectedKey],
   );
 
   const historyData = useMemo<IntegrationIssueHistory>(() => history ?? { events: [], buckets: [] }, [history]);
@@ -541,6 +568,55 @@ export function IntegrationSyncDashboard() {
               <div className="text-xs text-zinc-500">Last updated {lastUpdated}</div>
             </div>
 
+            {priorityEntries.length ? (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-100 shadow-inner">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-rose-200">Attention needed</h3>
+                    <p className="text-xs text-rose-100/80">
+                      Critical or stale integrations require action. Review the most recent issues below.
+                    </p>
+                  </div>
+                  <span className="text-[11px] uppercase text-rose-200/80">{priorityEntries.length} affected scope{priorityEntries.length === 1 ? "" : "s"}</span>
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {priorityEntries.map((entry) => (
+                    <li
+                      key={`priority-${entry.key}`}
+                      className="rounded-md border border-rose-500/40 bg-black/40 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="font-medium text-rose-100">
+                          {entry.integration}
+                          <span className="ml-2 text-rose-200/70">{entry.scope || "default"}</span>
+                        </div>
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize",
+                            severityStyles[entry.severity],
+                          )}
+                        >
+                          {entry.primaryIssue?.issue_type ?? entry.statusLabel}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-rose-100/80">
+                        <span>Last sync {formatTimestamp(entry.lastTimestamp)}</span>
+                        <span>Age {formatAge(entry.ageSeconds)}</span>
+                        <span>Errors 24h {entry.errorCount24h}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedKey(entry.key)}
+                        className="mt-2 inline-flex items-center text-[11px] font-semibold uppercase tracking-wide text-rose-200 hover:text-rose-100"
+                      >
+                        View details
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
                 <thead>
@@ -557,7 +633,7 @@ export function IntegrationSyncDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-900">
-                  {filteredEntries.map((entry) => {
+                  {sortedEntries.map((entry) => {
                     const selected = entry.key === selectedKey;
                     return (
                       <tr
@@ -598,7 +674,7 @@ export function IntegrationSyncDashboard() {
                       </tr>
                     );
                   })}
-                  {filteredEntries.length === 0 ? (
+                  {sortedEntries.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-3 py-6 text-center text-sm text-zinc-500">
                         No integration sync state matches the selected filters.
@@ -611,7 +687,7 @@ export function IntegrationSyncDashboard() {
 
             {selectedEntry ? (
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-4 text-sm text-zinc-200">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h3 className="text-base font-semibold text-zinc-100">
                       {selectedEntry.integration} · {selectedEntry.scope || "default"}
@@ -619,8 +695,11 @@ export function IntegrationSyncDashboard() {
                     <p className="text-xs text-zinc-400">
                       Last sync {formatTimestamp(selectedEntry.lastTimestamp)} • Age {formatAge(selectedEntry.ageSeconds)}
                     </p>
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      Confidence {selectedEntry.confidence ?? "unknown"} • Status confidence {selectedEntry.statusConfidence ?? "unknown"}
+                    </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-col items-start gap-2 sm:items-end">
                     <span
                       className={cn(
                         "inline-flex items-center rounded-full border px-2 py-0.5 text-xs capitalize",
@@ -629,86 +708,181 @@ export function IntegrationSyncDashboard() {
                     >
                       {selectedEntry.primaryIssue?.issue_type ?? selectedEntry.statusLabel}
                     </span>
-                    <select
-                      value={retryLookback ?? "auto"}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setRetryLookback(value === "auto" ? null : Number(value));
-                      }}
-                      className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-zinc-600 focus:outline-none"
-                      disabled={!selectedEntry.integration.includes("sentinelone")}
-                    >
-                      {LOOKBACK_OPTIONS.map((option) => (
-                        <option key={option.label} value={option.value === null ? "auto" : option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleRetry}
-                      className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-200 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={retryMutation.isLoading}
-                    >
-                      {retryMutation.isLoading ? "Queuing…" : "Retry sync"}
-                    </button>
-                    {pollingTaskId ? (
-                      <span className="text-[11px] text-zinc-400">
-                        Sync status: {(taskStatus?.status ?? "queued").toLowerCase()}
-                        {taskStatus?.finished ? " · complete" : ""}
-                      </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={retryLookback ?? "auto"}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setRetryLookback(value === "auto" ? null : Number(value));
+                        }}
+                        className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-zinc-600 focus:outline-none"
+                        disabled={!selectedEntry.integration.includes("sentinelone")}
+                        aria-label="Select sync retry lookback"
+                      >
+                        {LOOKBACK_OPTIONS.map((option) => (
+                          <option key={option.label} value={option.value === null ? "auto" : option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleRetry}
+                        className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-200 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={retryMutation.isLoading}
+                      >
+                        {retryMutation.isLoading ? "Queuing…" : "Retry sync"}
+                      </button>
+                      {pollingTaskId ? (
+                        <span className="text-[11px] text-zinc-400">
+                          Sync {(taskStatus?.status ?? "queued").toLowerCase()}
+                          {taskStatus?.finished ? " · complete" : ""}
+                        </span>
+                      ) : null}
+                    </div>
+                    {feedback ? (
+                      <p className="text-[11px] text-emerald-300">{feedback}</p>
                     ) : null}
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-2 text-[11px] text-zinc-400 md:grid-cols-2">
-                  <span>Next scheduled: {formatTimestamp(selectedEntry.nextScheduled)}</span>
-                  <span>Stale threshold: {selectedEntry.staleThresholdHours ?? "n/a"}h</span>
-                  <span>Data confidence: {selectedEntry.confidence ?? "unknown"}</span>
-                  <span>Status confidence: {selectedEntry.statusConfidence ?? "unknown"}</span>
-                </div>
-
                 {selectedEntry.primaryIssue ? (
-                  <div className="mt-4 space-y-1">
-                    <p className="text-sm text-zinc-100">{selectedEntry.primaryIssue.message}</p>
-                    <p className="text-xs text-zinc-500">
-                      Observed {formatTimestamp(parseTimestamp(selectedEntry.primaryIssue.observed_at))} • Issue type {selectedEntry.primaryIssue.issue_type}
+                  <div className="mt-4 rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-sm text-rose-100">
+                    <p className="font-semibold">{selectedEntry.primaryIssue.message}</p>
+                    <p className="mt-1 text-xs text-rose-200/80">
+                      Observed {formatTimestamp(parseTimestamp(selectedEntry.primaryIssue.observed_at))} • Type {selectedEntry.primaryIssue.issue_type}
                     </p>
                   </div>
                 ) : (
                   <p className="mt-4 text-sm text-zinc-400">No active issues detected for this scope.</p>
                 )}
 
-                {feedback ? (
-                  <p className="mt-3 text-xs text-emerald-300">{feedback}</p>
-                ) : null}
+                <div className="mt-4 grid gap-3 text-[11px] text-zinc-400 md:grid-cols-2">
+                  <span>Next scheduled: {formatTimestamp(selectedEntry.nextScheduled)}</span>
+                  <span>Stale threshold: {selectedEntry.staleThresholdHours ?? "n/a"}h</span>
+                  <span>Errors last 24h: {selectedEntry.errorCount24h}</span>
+                  <span>Duration avg: {formatDurationSeconds(selectedEntry.durationAverageSeconds)}</span>
+                </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-300">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                      Sync duration trend
-                    </p>
-                    <p className="mt-1 text-zinc-200">
-                      Average: {formatDurationSeconds(selectedEntry.durationAverageSeconds)}
-                    </p>
-                    <p className="mt-2 text-[11px] text-zinc-400">
-                      Recent runs:
-                      {selectedEntry.durationSamples.length
-                        ? ` ${selectedEntry.durationSamples
-                            .slice(-5)
-                            .map((sample) => formatDurationSeconds(sample))
-                            .join(" → ")}`
-                        : " No samples"}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-300">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                <div className="mt-4 space-y-3">
+                  <details open className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      Active issues ({selectedEntry.issues.length})
+                    </summary>
+                    <div className="mt-2 space-y-2 text-xs text-zinc-200">
+                      {selectedEntry.issues.length ? (
+                        selectedEntry.issues.map((issue) => (
+                          <div key={`${issue.issue_type}-${issue.observed_at}`} className="rounded-md border border-zinc-800 bg-zinc-950/70 p-2">
+                            <div className="flex items-center justify-between text-[11px] uppercase text-zinc-500">
+                              <span>{issue.issue_type}</span>
+                              <span>{formatTimestamp(parseTimestamp(issue.observed_at))}</span>
+                            </div>
+                            <p className="mt-1 text-zinc-300">{issue.message}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-zinc-500">No active issues recorded.</p>
+                      )}
+                    </div>
+                  </details>
+
+                  <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      Recent sync history
+                    </summary>
+                    <div className="mt-2 space-y-2 text-xs text-zinc-200">
+                      {recentEvents.length ? (
+                        recentEvents.map((event) => (
+                          <div key={`${event.issue_type}-${event.observed_at}`} className="rounded-md border border-zinc-800 bg-zinc-950/70 p-2">
+                            <div className="flex items-center justify-between text-[11px] uppercase text-zinc-500">
+                              <span>{event.issue_type}</span>
+                              <span>{formatTimestamp(parseTimestamp(event.observed_at))}</span>
+                            </div>
+                            <p className="mt-1 text-zinc-300">{event.message}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-zinc-500">No recent issue history in the selected window.</p>
+                      )}
+                    </div>
+                  </details>
+
+                  <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      Trend summary & controls
+                    </summary>
+                    <div className="mt-2 space-y-2 text-xs text-zinc-200">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                        <span>Trend window:</span>
+                        <div className="flex gap-1">
+                          {TREND_WINDOWS.map((option) => {
+                            const active = trendWindowHours === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setTrendWindowHours(option.value)}
+                                className={cn(
+                                  "rounded-md border px-2 py-1 text-xs transition",
+                                  active
+                                    ? "border-zinc-100 bg-zinc-800 text-zinc-100"
+                                    : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                                )}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {isFetchingHistory ? <span className="text-[11px] text-zinc-400">Loading trends…</span> : null}
+                      </div>
+                      {Object.keys(historyTotals).length ? (
+                        <ul className="space-y-1 text-xs text-zinc-300">
+                          {Object.entries(historyTotals).map(([severity, count]) => (
+                            <li key={severity} className="flex items-center justify-between">
+                              <span className="capitalize text-zinc-400">{severityLabels[severity] ?? severity}</span>
+                              <span>{count}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-zinc-500">No issues observed in this window.</p>
+                      )}
+                      {trendBuckets.length ? (
+                        <table className="w-full table-fixed border-separate border-spacing-y-1 text-[11px]">
+                          <tbody>
+                            {trendBuckets.map((bucket) => (
+                              <tr key={bucket.bucket_start} className="rounded border border-zinc-800 bg-zinc-950/70">
+                                <td className="px-2 py-1 text-zinc-400">{formatRange(bucket.bucket_start, bucket.bucket_end)}</td>
+                                <td className="px-2 py-1 text-right text-zinc-200">
+                                  {Object.entries(bucket.counts)
+                                    .map(([sev, count]) => `${sev}:${count}`)
+                                    .join("  ")}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : null}
+                    </div>
+                  </details>
+
+                  <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      Raw metadata
+                    </summary>
+                    <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-zinc-800 bg-zinc-950/80 p-2 text-[11px] text-zinc-300">
+                      {JSON.stringify(selectedEntry.metadata, null, 2)}
+                    </pre>
+                  </details>
+
+                  <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-zinc-400">
                       Recent sync errors
-                    </p>
-                    <p className="text-[11px] text-zinc-400">In last 24h: {selectedEntry.errorCount24h}</p>
+                    </summary>
                     {selectedEntry.recentErrors.length ? (
-                      <ul className="mt-2 space-y-2">
-                        {selectedEntry.recentErrors.slice(0, 4).map((err, index) => {
+                      <ul className="mt-2 space-y-2 text-xs text-zinc-200">
+                        {selectedEntry.recentErrors.slice(0, 6).map((err, index) => {
                           const record = err as Record<string, unknown>;
                           const messageValue = record.message;
                           const message = typeof messageValue === "string"
@@ -725,117 +899,9 @@ export function IntegrationSyncDashboard() {
                         })}
                       </ul>
                     ) : (
-                      <p className="mt-2 text-[11px] text-zinc-500">No recent errors recorded.</p>
+                      <p className="mt-2 text-xs text-zinc-500">No recent errors recorded.</p>
                     )}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  <span>Trend window:</span>
-                  <div className="flex gap-1">
-                    {TREND_WINDOWS.map((option) => {
-                      const active = trendWindowHours === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setTrendWindowHours(option.value)}
-                          className={cn(
-                            "rounded-md border px-2 py-1 text-xs transition",
-                            active
-                              ? "border-zinc-100 bg-zinc-800 text-zinc-100"
-                              : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
-                          )}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {isFetchingHistory ? <span className="text-[11px] text-zinc-400">Loading trends…</span> : null}
-                </div>
-
-                <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                  <div className="lg:col-span-2 space-y-4">
-                    <div>
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Active issues</h4>
-                      <ul className="mt-2 space-y-2 text-xs">
-                        {selectedEntry.issues.length ? (
-                          selectedEntry.issues.map((issue) => (
-                            <li key={`${issue.issue_type}-${issue.observed_at}`} className="rounded-md border border-zinc-800 bg-zinc-900/60 p-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium capitalize">{issue.issue_type}</span>
-                                <span className="text-[10px] text-zinc-500">{formatTimestamp(parseTimestamp(issue.observed_at))}</span>
-                              </div>
-                              <p className="mt-1 text-zinc-300">{issue.message}</p>
-                            </li>
-                          ))
-                        ) : (
-                          <li className="text-zinc-500">No active issues recorded.</li>
-                        )}
-                      </ul>
-                    </div>
-
-                    <div>
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Recent history</h4>
-                      {recentEvents.length ? (
-                        <ul className="mt-2 space-y-2 text-xs">
-                          {recentEvents.map((event) => (
-                            <li key={`${event.issue_type}-${event.observed_at}`} className="rounded-md border border-zinc-800 bg-zinc-950/80 p-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium capitalize text-zinc-100">{event.issue_type}</span>
-                                <span className="text-[10px] text-zinc-500">{formatTimestamp(parseTimestamp(event.observed_at))}</span>
-                              </div>
-                              <p className="mt-1 text-zinc-300">{event.message}</p>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-2 text-xs text-zinc-500">No recent issue history in the selected window.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Trend summary</h4>
-                      {Object.keys(historyTotals).length ? (
-                        <ul className="mt-2 space-y-1 text-xs text-zinc-300">
-                          {Object.entries(historyTotals).map(([severity, count]) => (
-                            <li key={severity} className="flex items-center justify-between">
-                              <span className="capitalize text-zinc-400">{severityLabels[severity] ?? severity}</span>
-                              <span>{count}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-2 text-xs text-zinc-500">No issues observed in this window.</p>
-                      )}
-                      {trendBuckets.length ? (
-                        <table className="mt-3 w-full table-fixed border-separate border-spacing-y-1 text-[11px]">
-                          <tbody>
-                            {trendBuckets.map((bucket) => (
-                              <tr key={bucket.bucket_start} className="rounded border border-zinc-800 bg-zinc-950/70">
-                                <td className="px-2 py-1 text-zinc-400">{formatRange(bucket.bucket_start, bucket.bucket_end)}</td>
-                                <td className="px-2 py-1 text-right text-zinc-200">
-                                  {Object.entries(bucket.counts)
-                                    .map(([sev, count]) => `${sev}:${count}`)
-                                    .join("  ")}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : null}
-                    </div>
-
-                    <div>
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Metadata</h4>
-                      <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-zinc-800 bg-zinc-950/80 p-2 text-[11px] text-zinc-300">
-                        {JSON.stringify(selectedEntry.metadata, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
+                  </details>
                 </div>
               </div>
             ) : null}

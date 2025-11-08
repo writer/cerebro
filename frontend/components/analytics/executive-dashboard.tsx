@@ -60,6 +60,12 @@ export function ExecutiveDashboard() {
   const [remediationError, setRemediationError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [selectedRemediationIds, setSelectedRemediationIds] = useState<string[]>([]);
+  const [pendingRemediationForm, setPendingRemediationForm] = useState<
+    { actionId: string; mode: "accept" | "complete" | "note" }
+  | null>(null);
+  const [remediationFormNote, setRemediationFormNote] = useState("");
+  const [bulkAcceptNote, setBulkAcceptNote] = useState("");
+  const [bulkCompleteNote, setBulkCompleteNote] = useState("");
 
   const {
     data: organizations = [],
@@ -477,24 +483,17 @@ export function ExecutiveDashboard() {
       setRemediationError("Select pending remediation actions to accept.");
       return;
     }
-    const noteInput = window.prompt(
-      `Optional note to capture context for ${eligible.length} selected action${eligible.length > 1 ? "s" : ""}:`,
-      "",
-    );
-    if (noteInput === null) {
-      return;
-    }
-    const trimmed = noteInput.trim();
     try {
       await bulkAcceptRemediationMutation.mutateAsync({
         actionIds: eligible,
-        note: trimmed ? trimmed : undefined,
+        note: bulkAcceptNote.trim() ? bulkAcceptNote.trim() : undefined,
       });
       setSelectedRemediationIds((prev) => prev.filter((id) => !eligible.includes(id)));
+      setBulkAcceptNote("");
     } catch (error) {
       console.error(error);
     }
-  }, [bulkAcceptRemediationMutation, remediationById, selectedRemediationIds]);
+  }, [bulkAcceptRemediationMutation, bulkAcceptNote, remediationById, selectedRemediationIds]);
 
   const handleBulkCompleteRemediation = useCallback(async () => {
     if (!selectedRemediationIds.length) {
@@ -508,30 +507,17 @@ export function ExecutiveDashboard() {
       setRemediationError("Selected actions are already completed.");
       return;
     }
-    const confirmed = window.confirm(
-      `Mark ${eligible.length} remediation action${eligible.length > 1 ? "s" : ""} as completed?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-    const noteInput = window.prompt(
-      `Optional note to capture resolution details for ${eligible.length} action${eligible.length > 1 ? "s" : ""}:`,
-      "",
-    );
-    if (noteInput === null) {
-      return;
-    }
-    const trimmed = noteInput.trim();
     try {
       await bulkCompleteRemediationMutation.mutateAsync({
         actionIds: eligible,
-        note: trimmed ? trimmed : undefined,
+        note: bulkCompleteNote.trim() ? bulkCompleteNote.trim() : undefined,
       });
       setSelectedRemediationIds((prev) => prev.filter((id) => !eligible.includes(id)));
+      setBulkCompleteNote("");
     } catch (error) {
       console.error(error);
     }
-  }, [bulkCompleteRemediationMutation, remediationById, selectedRemediationIds]);
+  }, [bulkCompleteRemediationMutation, bulkCompleteNote, remediationById, selectedRemediationIds]);
 
   const exportIdentityMutation = useMutation({
     mutationFn: async ({ format }: { format: "json" | "csv" }) => {
@@ -573,70 +559,74 @@ export function ExecutiveDashboard() {
     },
   });
 
-  const handleAcceptRemediation = useCallback(
-    async (item: IdentityRemediationItem) => {
-      if (!item.action_id || item.status !== "pending") {
-        return;
-      }
-      const note = window.prompt("Optional note to capture context:", "");
-      try {
-        await acceptRemediationMutation.mutateAsync({
-          actionId: item.action_id,
-          note: note?.trim() ? note.trim() : undefined,
-        });
-        setSelectedRemediationIds((prev) => prev.filter((id) => id !== item.action_id));
-      } catch (error) {
-        console.error(error);
-      }
-    },
-    [acceptRemediationMutation],
-  );
-
-  const handleCompleteRemediation = useCallback(
-    async (item: IdentityRemediationItem) => {
-      if (!item.action_id || item.status === "completed") {
-        return;
-      }
-      const confirmed = window.confirm(
-        "Mark this remediation action as completed? This will update dashboards immediately.",
-      );
-      if (!confirmed) {
-        return;
-      }
-      const note = window.prompt("Optional note to capture resolution details:", "");
-      try {
-        await completeRemediationMutation.mutateAsync({
-          actionId: item.action_id,
-          note: note?.trim() ? note.trim() : undefined,
-        });
-        setSelectedRemediationIds((prev) => prev.filter((id) => id !== item.action_id));
-      } catch (error) {
-        console.error(error);
-      }
-    },
-    [completeRemediationMutation],
-  );
-
-  const handleAddRemediationNote = useCallback(
-    async (item: IdentityRemediationItem) => {
+  const startRemediationForm = useCallback(
+    (item: IdentityRemediationItem, mode: "accept" | "complete" | "note") => {
       if (!item.action_id) {
         return;
       }
-      const note = window.prompt("Add a note to this remediation item:");
-      if (!note || !note.trim()) {
+      if (mode === "accept" && item.status !== "pending") {
         return;
       }
-      try {
-        await addRemediationNoteMutation.mutateAsync({
-          actionId: item.action_id,
-          note: note.trim(),
-        });
-      } catch (error) {
-        console.error(error);
+      if (mode === "complete" && item.status === "completed") {
+        return;
       }
+      setPendingRemediationForm({ actionId: item.action_id, mode });
+      setRemediationFormNote("");
+      setRemediationError(null);
     },
-    [addRemediationNoteMutation],
+    [],
   );
+
+  const cancelRemediationForm = useCallback(() => {
+    setPendingRemediationForm(null);
+    setRemediationFormNote("");
+    setRemediationError(null);
+  }, []);
+
+  const submitRemediationForm = useCallback(async () => {
+    if (!pendingRemediationForm) {
+      return;
+    }
+    const note = remediationFormNote.trim();
+    const { actionId, mode } = pendingRemediationForm;
+
+    if (mode === "note" && !note) {
+      setRemediationError("Add a note before submitting.");
+      return;
+    }
+
+    try {
+      if (mode === "accept") {
+        await acceptRemediationMutation.mutateAsync({
+          actionId,
+          note: note ? note : undefined,
+        });
+        setSelectedRemediationIds((prev) => prev.filter((id) => id !== actionId));
+      } else if (mode === "complete") {
+        await completeRemediationMutation.mutateAsync({
+          actionId,
+          note: note ? note : undefined,
+        });
+        setSelectedRemediationIds((prev) => prev.filter((id) => id !== actionId));
+      } else {
+        await addRemediationNoteMutation.mutateAsync({
+          actionId,
+          note: note,
+        });
+      }
+      setPendingRemediationForm(null);
+      setRemediationFormNote("");
+      setRemediationError(null);
+    } catch (error) {
+      console.error(error);
+    }
+  }, [
+    acceptRemediationMutation,
+    addRemediationNoteMutation,
+    completeRemediationMutation,
+    pendingRemediationForm,
+    remediationFormNote,
+  ]);
 
   const handleExportIdentity = useCallback(
     (format: "json" | "csv") => {
@@ -1426,9 +1416,43 @@ export function ExecutiveDashboard() {
                     </div>
                   </div>
                 </div>
+                <div className="mt-3 grid gap-3 text-[11px] text-zinc-400 md:grid-cols-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-zinc-500">Accept note (optional)</span>
+                    <textarea
+                      value={bulkAcceptNote}
+                      onChange={(event) => setBulkAcceptNote(event.target.value)}
+                      placeholder="Context shared with assignees when accepting recommendations"
+                      className="h-16 rounded-md border border-zinc-800 bg-black px-2 py-1 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
+                      disabled={isRemediationBusy}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-zinc-500">Complete note (optional)</span>
+                    <textarea
+                      value={bulkCompleteNote}
+                      onChange={(event) => setBulkCompleteNote(event.target.value)}
+                      placeholder="Resolution details recorded when completing recommendations"
+                      className="h-16 rounded-md border border-zinc-800 bg-black px-2 py-1 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
+                      disabled={isRemediationBusy}
+                    />
+                  </label>
+                </div>
                 <ul className="mt-4 space-y-2 text-xs text-zinc-300">
                   {filteredRemediationQueue.map((item) => {
                     const isSelected = selectedRemediationSet.has(item.action_id);
+                    const isFormActive = pendingRemediationForm?.actionId === item.action_id;
+                    const formMode = pendingRemediationForm?.mode;
+                    const confirmLabel = formMode === "accept"
+                      ? "Mark accepted"
+                      : formMode === "complete"
+                      ? "Mark completed"
+                      : "Save note";
+                    const notePlaceholder = formMode === "accept"
+                      ? "Explain why this recommendation should move forward"
+                      : formMode === "complete"
+                      ? "Document what changed to resolve this risk"
+                      : "Add context for future reviewers";
                     return (
                       <li
                         key={item.action_id}
@@ -1481,7 +1505,7 @@ export function ExecutiveDashboard() {
                         <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
                           <button
                             type="button"
-                            onClick={() => handleAcceptRemediation(item)}
+                            onClick={() => startRemediationForm(item, "accept")}
                             disabled={item.status !== "pending" || isRemediationBusy}
                             className="rounded border border-zinc-800 px-3 py-1 text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
@@ -1489,7 +1513,7 @@ export function ExecutiveDashboard() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleCompleteRemediation(item)}
+                            onClick={() => startRemediationForm(item, "complete")}
                             disabled={item.status === "completed" || isRemediationBusy}
                             className="rounded border border-zinc-800 px-3 py-1 text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
@@ -1497,13 +1521,53 @@ export function ExecutiveDashboard() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleAddRemediationNote(item)}
+                            onClick={() => startRemediationForm(item, "note")}
                             disabled={isRemediationBusy}
                             className="rounded border border-zinc-800 px-3 py-1 text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Add note
                           </button>
                         </div>
+                        {isFormActive ? (
+                          <div className="mt-3 rounded-md border border-zinc-800 bg-black/30 p-3 text-[11px] text-zinc-300">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                              {formMode === "note"
+                                ? "Add reviewer note"
+                                : formMode === "accept"
+                                ? "Confirm acceptance"
+                                : "Confirm completion"}
+                            </div>
+                            <textarea
+                              value={remediationFormNote}
+                              onChange={(event) => setRemediationFormNote(event.target.value)}
+                              placeholder={notePlaceholder}
+                              rows={formMode === "note" ? 4 : 3}
+                              className="w-full rounded-md border border-zinc-800 bg-black px-3 py-2 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
+                            />
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={submitRemediationForm}
+                                disabled={isRemediationBusy || (formMode === "note" && remediationFormNote.trim().length === 0)}
+                                className="rounded border border-emerald-700/60 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 transition hover:border-emerald-500 hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isRemediationBusy ? "Saving…" : confirmLabel}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelRemediationForm}
+                                className="rounded border border-zinc-800 px-3 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            {formMode === "complete" ? (
+                              <p className="mt-2 text-[10px] uppercase tracking-wide text-blue-300">
+                                Completing removes this recommendation from the active queue.
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </li>
                     );
                   })}
