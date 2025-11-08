@@ -10,7 +10,6 @@ members, teams, and associated configuration data from GitHub organisations.
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from datetime import datetime
 import logging
-import asyncio
 
 from github import Github, GithubException
 from github.Repository import Repository
@@ -23,6 +22,7 @@ from ..base import (
     BaseProvider, ResourceInfo, PrincipalInfo, 
     ConfigurationSnapshot, IamPermission, ProviderError
 )
+from ..utils.connector import call_sync_with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +48,6 @@ class GitHubProvider(BaseProvider):
             if not settings.github_token:
                 raise ProviderError("GitHub token not configured")
             
-            # Run sync GitHub operations in executor
-            loop = asyncio.get_event_loop()
-            
             def _auth():
                 self._github = Github(settings.github_token)
                 # Test authentication by getting user info
@@ -61,8 +58,12 @@ class GitHubProvider(BaseProvider):
                 self._org = self._github.get_organization(self.org_name)
                 self._org.name  # Test org access
                 return True
-            
-            return await loop.run_in_executor(None, _auth)
+
+            return await call_sync_with_retries(
+                _auth,
+                exceptions=(GithubException,),
+                logger=logger,
+            )
             
         except GithubException as e:
             logger.error(f"GitHub authentication failed: {e}")
@@ -79,14 +80,16 @@ class GitHubProvider(BaseProvider):
         if not self._org:
             await self.authenticate()
         
-        loop = asyncio.get_event_loop()
-        
         # Discover repositories
         if not resource_types or "github.repo" in resource_types:
             def _get_repos():
                 return list(self._org.get_repos())
             
-            repos = await loop.run_in_executor(None, _get_repos)
+            repos = await call_sync_with_retries(
+                _get_repos,
+                exceptions=(GithubException,),
+                logger=logger,
+            )
             
             for repo in repos:
                 yield ResourceInfo(
@@ -107,7 +110,11 @@ class GitHubProvider(BaseProvider):
             def _get_teams():
                 return list(self._org.get_teams())
             
-            teams = await loop.run_in_executor(None, _get_teams)
+            teams = await call_sync_with_retries(
+                _get_teams,
+                exceptions=(GithubException,),
+                logger=logger,
+            )
             
             for team in teams:
                 yield ResourceInfo(
@@ -127,13 +134,15 @@ class GitHubProvider(BaseProvider):
         if not self._org:
             await self.authenticate()
         
-        loop = asyncio.get_event_loop()
-        
         # Discover organization members
         def _get_members():
             return list(self._org.get_members())
         
-        members = await loop.run_in_executor(None, _get_members)
+        members = await call_sync_with_retries(
+            _get_members,
+            exceptions=(GithubException,),
+            logger=logger,
+        )
         
         for member in members:
             yield PrincipalInfo(
@@ -153,7 +162,11 @@ class GitHubProvider(BaseProvider):
         def _get_teams():
             return list(self._org.get_teams())
         
-        teams = await loop.run_in_executor(None, _get_teams)
+        teams = await call_sync_with_retries(
+            _get_teams,
+            exceptions=(GithubException,),
+            logger=logger,
+        )
         
         for team in teams:
             yield PrincipalInfo(
@@ -176,8 +189,6 @@ class GitHubProvider(BaseProvider):
         """Get GitHub resource configuration."""
         if not self._github:
             await self.authenticate()
-        
-        loop = asyncio.get_event_loop()
         
         if resource.resource_type == "github.repo":
             def _get_repo_config():
@@ -219,7 +230,11 @@ class GitHubProvider(BaseProvider):
                     "webhooks": [{"url": hook.config.get("url", ""), "events": hook.events} for hook in repo.get_hooks()],
                 }
             
-            config = await loop.run_in_executor(None, _get_repo_config)
+            config = await call_sync_with_retries(
+                _get_repo_config,
+                exceptions=(GithubException,),
+                logger=logger,
+            )
             
         elif resource.resource_type == "github.team":
             def _get_team_config():
@@ -233,7 +248,11 @@ class GitHubProvider(BaseProvider):
                     "membersCount": team.members_count,
                 }
             
-            config = await loop.run_in_executor(None, _get_team_config)
+            config = await call_sync_with_retries(
+                _get_team_config,
+                exceptions=(GithubException,),
+                logger=logger,
+            )
         
         else:
             config = {}
@@ -252,8 +271,6 @@ class GitHubProvider(BaseProvider):
         if not self._org:
             await self.authenticate()
         
-        loop = asyncio.get_event_loop()
-        
         if resource and resource.resource_type == "github.repo":
             # Repository-specific permissions
             def _get_repo_permissions():
@@ -271,7 +288,11 @@ class GitHubProvider(BaseProvider):
                 
                 return permissions
             
-            perms = await loop.run_in_executor(None, _get_repo_permissions)
+            perms = await call_sync_with_retries(
+                _get_repo_permissions,
+                exceptions=(GithubException,),
+                logger=logger,
+            )
             
             for perm in perms:
                 yield IamPermission(
@@ -297,7 +318,11 @@ class GitHubProvider(BaseProvider):
             
             return permissions
         
-        org_perms = await loop.run_in_executor(None, _get_org_permissions)
+        org_perms = await call_sync_with_retries(
+            _get_org_permissions,
+            exceptions=(GithubException,),
+            logger=logger,
+        )
         
         for perm in org_perms:
             yield IamPermission(

@@ -10,6 +10,7 @@ from datetime import datetime
 import logging
 
 from ...query.table import ProviderSecurityTable, QueryContext
+from ...collectors.normalization import normalize_severity
 from ...query.registry import register_table  
 from ...query.schema import SecurityColumn, ColumnType
 
@@ -316,7 +317,9 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
                 
                 # Extract severity from advisory
                 advisory = alert.get("security_advisory", {})
-                alert["severity"] = advisory.get("severity", "unknown").lower()
+                alert["severity"] = normalize_severity(
+                    advisory.get("severity"), provider="github"
+                )
                 
                 yield alert
                 
@@ -387,8 +390,7 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
                 alert["tags"] = {"secret_type": alert.get("secret_type", "")}
                 alert["metadata"] = {"github_secret_alert_data": alert}
                 
-                # Set severity based on secret type
-                alert["severity"] = "high"  # Secrets are generally high severity
+                alert["severity"] = normalize_severity("high", provider="github")
                 
                 yield alert
                 

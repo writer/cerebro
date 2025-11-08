@@ -18,6 +18,7 @@ from ..base import (
     BaseProvider, ResourceInfo, PrincipalInfo, 
     ConfigurationSnapshot, IamPermission, ProviderError
 )
+from ..utils.connector import call_sync_with_retries, iterate_sync_iterator
 
 logger = logging.getLogger(__name__)
 
@@ -40,26 +41,26 @@ class AWSProvider(BaseProvider):
     async def authenticate(self) -> bool:
         """Authenticate with AWS and verify the expected account id."""
         try:
-            loop = asyncio.get_event_loop()
-            
             def _create_session():
                 session = boto3.Session(
                     aws_access_key_id=settings.aws_access_key_id,
                     aws_secret_access_key=settings.aws_secret_access_key,
                     region_name=self.region
                 )
-                
-                # Test authentication
+
                 sts = session.client('sts')
                 identity = sts.get_caller_identity()
-                
-                # Verify we're in the right account
+
                 if identity['Account'] != self.aws_account_id:
                     raise ProviderError(f"Expected account {self.aws_account_id}, got {identity['Account']}")
-                
+
                 return session
-            
-            self._session = await loop.run_in_executor(None, _create_session)
+
+            self._session = await call_sync_with_retries(
+                _create_session,
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            )
             return True
             
         except ClientError as e:
@@ -77,17 +78,16 @@ class AWSProvider(BaseProvider):
         if not self._session:
             await self.authenticate()
         
-        loop = asyncio.get_event_loop()
-        
         # S3 Buckets
         if not resource_types or "aws.s3.bucket" in resource_types:
-            def _get_s3_buckets():
-                s3 = self._session.client('s3')
-                response = s3.list_buckets()
-                return response.get('Buckets', [])
-            
-            buckets = await loop.run_in_executor(None, _get_s3_buckets)
-            
+            s3_client = self._session.client('s3')
+
+            buckets = await call_sync_with_retries(
+                lambda: s3_client.list_buckets().get('Buckets', []),
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            )
+
             for bucket in buckets:
                 yield ResourceInfo(
                     external_id=bucket['Name'],
@@ -100,19 +100,18 @@ class AWSProvider(BaseProvider):
         
         # EC2 Instances
         if not resource_types or "aws.ec2.instance" in resource_types:
-            def _get_ec2_instances():
-                ec2 = self._session.client('ec2')
-                paginator = ec2.get_paginator('describe_instances')
-                instances = []
-                
-                for page in paginator.paginate():
-                    for reservation in page['Reservations']:
-                        instances.extend(reservation['Instances'])
-                
-                return instances
-            
-            instances = await loop.run_in_executor(None, _get_ec2_instances)
-            
+            ec2_client = self._session.client('ec2')
+            paginator = ec2_client.get_paginator('describe_instances')
+
+            instances = []
+            async for page in iterate_sync_iterator(
+                lambda: paginator.paginate(),
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            ):
+                for reservation in page.get('Reservations', []):
+                    instances.extend(reservation.get('Instances', []))
+
             for instance in instances:
                 name = None
                 for tag in instance.get('Tags', []):
@@ -134,13 +133,13 @@ class AWSProvider(BaseProvider):
         
         # VPCs
         if not resource_types or "aws.ec2.vpc" in resource_types:
-            def _get_vpcs():
-                ec2 = self._session.client('ec2')
-                response = ec2.describe_vpcs()
-                return response.get('Vpcs', [])
-            
-            vpcs = await loop.run_in_executor(None, _get_vpcs)
-            
+            ec2_client = self._session.client('ec2')
+            vpcs = await call_sync_with_retries(
+                lambda: ec2_client.describe_vpcs().get('Vpcs', []),
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            )
+
             for vpc in vpcs:
                 name = None
                 for tag in vpc.get('Tags', []):
@@ -164,21 +163,16 @@ class AWSProvider(BaseProvider):
         if not self._session:
             await self.authenticate()
         
-        loop = asyncio.get_event_loop()
-        
-        # IAM Users
-        def _get_iam_users():
-            iam = self._session.client('iam')
-            paginator = iam.get_paginator('list_users')
-            users = []
-            
-            for page in paginator.paginate():
-                users.extend(page['Users'])
-            
-            return users
-        
-        users = await loop.run_in_executor(None, _get_iam_users)
-        
+        iam_client = self._session.client('iam')
+        user_paginator = iam_client.get_paginator('list_users')
+        users = []
+        async for page in iterate_sync_iterator(
+            lambda: user_paginator.paginate(),
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        ):
+            users.extend(page.get('Users', []))
+
         for user in users:
             yield PrincipalInfo(
                 external_id=user['Arn'],
@@ -193,18 +187,15 @@ class AWSProvider(BaseProvider):
             )
         
         # IAM Roles
-        def _get_iam_roles():
-            iam = self._session.client('iam')
-            paginator = iam.get_paginator('list_roles')
-            roles = []
-            
-            for page in paginator.paginate():
-                roles.extend(page['Roles'])
-            
-            return roles
-        
-        roles = await loop.run_in_executor(None, _get_iam_roles)
-        
+        role_paginator = iam_client.get_paginator('list_roles')
+        roles = []
+        async for page in iterate_sync_iterator(
+            lambda: role_paginator.paginate(),
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        ):
+            roles.extend(page.get('Roles', []))
+
         for role in roles:
             yield PrincipalInfo(
                 external_id=role['Arn'],
@@ -219,18 +210,15 @@ class AWSProvider(BaseProvider):
             )
         
         # IAM Groups
-        def _get_iam_groups():
-            iam = self._session.client('iam')
-            paginator = iam.get_paginator('list_groups')
-            groups = []
-            
-            for page in paginator.paginate():
-                groups.extend(page['Groups'])
-            
-            return groups
-        
-        groups = await loop.run_in_executor(None, _get_iam_groups)
-        
+        group_paginator = iam_client.get_paginator('list_groups')
+        groups = []
+        async for page in iterate_sync_iterator(
+            lambda: group_paginator.paginate(),
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        ):
+            groups.extend(page.get('Groups', []))
+
         for group in groups:
             yield PrincipalInfo(
                 external_id=group['Arn'],
@@ -251,14 +239,12 @@ class AWSProvider(BaseProvider):
         if not self._session:
             await self.authenticate()
         
-        loop = asyncio.get_event_loop()
-        
         if resource.resource_type == "aws.s3.bucket":
-            config = await self._get_s3_bucket_config(resource.external_id, loop)
+            config = await self._get_s3_bucket_config(resource.external_id)
         elif resource.resource_type == "aws.ec2.instance":
-            config = await self._get_ec2_instance_config(resource.external_id, loop)
+            config = await self._get_ec2_instance_config(resource.external_id)
         elif resource.resource_type == "aws.ec2.vpc":
-            config = await self._get_vpc_config(resource.external_id, loop)
+            config = await self._get_vpc_config(resource.external_id)
         else:
             config = {}
         
@@ -268,15 +254,14 @@ class AWSProvider(BaseProvider):
             normalized_config=config
         )
     
-    async def _get_s3_bucket_config(self, bucket_name: str, loop) -> Dict[str, Any]:
+    async def _get_s3_bucket_config(self, bucket_name: str) -> Dict[str, Any]:
         """Get S3 bucket configuration."""
         def _get_config():
             s3 = self._session.client('s3')
-            
+
             config = {"name": bucket_name}
-            
+
             try:
-                # Bucket policy
                 policy = s3.get_bucket_policy(Bucket=bucket_name)
                 config["policy"] = json.loads(policy['Policy'])
                 config["policyAllowsPublic"] = self._check_s3_policy_public(config["policy"])
@@ -285,9 +270,8 @@ class AWSProvider(BaseProvider):
                     logger.warning(f"Could not get policy for bucket {bucket_name}: {e}")
                 config["policy"] = None
                 config["policyAllowsPublic"] = False
-            
+
             try:
-                # Bucket ACL
                 acl = s3.get_bucket_acl(Bucket=bucket_name)
                 config["acl"] = acl
                 config["aclAllowsPublic"] = self._check_s3_acl_public(acl)
@@ -295,9 +279,8 @@ class AWSProvider(BaseProvider):
                 logger.warning(f"Could not get ACL for bucket {bucket_name}: {e}")
                 config["acl"] = None
                 config["aclAllowsPublic"] = False
-            
+
             try:
-                # Public access block
                 pab = s3.get_public_access_block(Bucket=bucket_name)
                 config["blockPublicAccess"] = pab['PublicAccessBlockConfiguration']
                 config["blockPublicAccess"]["effective"] = all([
@@ -310,10 +293,14 @@ class AWSProvider(BaseProvider):
                 if e.response['Error']['Code'] != 'NoSuchPublicAccessBlockConfiguration':
                     logger.warning(f"Could not get public access block for bucket {bucket_name}: {e}")
                 config["blockPublicAccess"] = {"effective": False}
-            
+
             return config
-        
-        return await loop.run_in_executor(None, _get_config)
+
+        return await call_sync_with_retries(
+            _get_config,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        )
     
     def _check_s3_policy_public(self, policy: Dict[str, Any]) -> bool:
         """Check if S3 bucket policy allows public access."""
@@ -345,7 +332,7 @@ class AWSProvider(BaseProvider):
         
         return False
     
-    async def _get_ec2_instance_config(self, instance_id: str, loop) -> Dict[str, Any]:
+    async def _get_ec2_instance_config(self, instance_id: str) -> Dict[str, Any]:
         """Get EC2 instance configuration."""
         def _get_config():
             ec2 = self._session.client('ec2')
@@ -366,9 +353,13 @@ class AWSProvider(BaseProvider):
                 "tags": {tag['Key']: tag['Value'] for tag in instance.get('Tags', [])},
             }
         
-        return await loop.run_in_executor(None, _get_config)
+        return await call_sync_with_retries(
+            _get_config,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        )
     
-    async def _get_vpc_config(self, vpc_id: str, loop) -> Dict[str, Any]:
+    async def _get_vpc_config(self, vpc_id: str) -> Dict[str, Any]:
         """Get VPC configuration.""" 
         def _get_config():
             ec2 = self._session.client('ec2')
@@ -384,7 +375,11 @@ class AWSProvider(BaseProvider):
                 "tags": {tag['Key']: tag['Value'] for tag in vpc.get('Tags', [])},
             }
         
-        return await loop.run_in_executor(None, _get_config)
+        return await call_sync_with_retries(
+            _get_config,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        )
     
     async def discover_iam_edges(
         self,
@@ -393,8 +388,6 @@ class AWSProvider(BaseProvider):
         """Discover AWS IAM permissions with comprehensive policy evaluation."""
         if not self._session:
             await self.authenticate()
-        
-        loop = asyncio.get_event_loop()
         
         # Comprehensive IAM analysis
         def _get_comprehensive_iam_permissions():
@@ -424,7 +417,11 @@ class AWSProvider(BaseProvider):
             
             return permissions
         
-        perms = await loop.run_in_executor(None, _get_comprehensive_iam_permissions)
+        perms = await call_sync_with_retries(
+            _get_comprehensive_iam_permissions,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        )
         
         for perm in perms:
             yield IamPermission(
