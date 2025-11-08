@@ -8,9 +8,10 @@ import asyncio
 from typing import Optional, List, TYPE_CHECKING
 import click
 import json
-import tabulate
 from datetime import datetime
 
+from ...core.database import async_session_factory
+from ...integrations.freshness import IntegrationFreshnessService
 from ...query.bootstrap import get_query_engine
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -71,6 +72,21 @@ async def execute_sql(sql: Optional[str], file: Optional[str], output: str, limi
         # Display results
         click.echo(f"\nQuery completed in {result.execution_time_ms:.2f}ms")
         click.echo(f"Returned {result.total_rows} rows from tables: {', '.join(result.tables_queried)}")
+
+        providers = _derive_providers(query_engine, result)
+        if providers:
+            async with async_session_factory() as session:
+                freshness_service = IntegrationFreshnessService(session)
+                provider_freshness = await freshness_service.provider_freshness(providers)
+
+            click.echo("Data freshness:")
+            for provider, summary in provider_freshness.items():
+                last_synced = format_datetime(summary.last_synced_at) if summary.last_synced_at else "unknown"
+                age = summary.age_human or "age unknown"
+                click.echo(f"  - {provider}: last synced {last_synced} ({age}, status {summary.status})")
+                if summary.warning:
+                    click.echo(f"    {summary.warning}")
+
         click.echo()
         
         if not result.rows:
@@ -95,6 +111,22 @@ async def execute_sql(sql: Optional[str], file: Optional[str], output: str, limi
             
     except Exception as e:
         click.echo(f"Error executing query: {e}", err=True)
+
+
+def _derive_providers(query_engine: "QueryEngine", result) -> List[str]:
+    providers: List[str] = []
+    tables = getattr(result, "tables_queried", []) or []
+    if not tables:
+        return providers
+    seen = set()
+    registry = query_engine.registry
+    for table in tables:
+        info = registry.get_table_info(table)
+        provider = (info or {}).get("provider") if info else None
+        if provider and provider not in seen:
+            providers.append(provider)
+            seen.add(provider)
+    return providers
 
 
 @query_group.command("tables")
@@ -298,6 +330,20 @@ async def interactive_query():
                     continue
                 
                 click.echo(f"({result.total_rows} rows, {result.execution_time_ms:.2f}ms)")
+
+                providers = _derive_providers(query_engine, result)
+                if providers:
+                    async with async_session_factory() as session:
+                        freshness_service = IntegrationFreshnessService(session)
+                        provider_freshness = await freshness_service.provider_freshness(providers)
+
+                    click.echo("Data freshness:")
+                    for provider, summary in provider_freshness.items():
+                        last_synced = format_datetime(summary.last_synced_at) if summary.last_synced_at else "unknown"
+                        age = summary.age_human or "age unknown"
+                        click.echo(f"  - {provider}: last synced {last_synced} ({age}, status {summary.status})")
+                        if summary.warning:
+                            click.echo(f"    {summary.warning}")
                 
                 if result.rows:
                     # Limit display to first 50 rows for readability

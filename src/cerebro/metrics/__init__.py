@@ -8,6 +8,7 @@ from .integration_metrics import (
     INTEGRATION_LAST_SYNC,
     record_integration_sync,
 )
+from .api_metrics import api_metrics
 
 __all__ = [
     "collection_metrics",
@@ -16,4 +17,5 @@ __all__ = [
     "INTEGRATION_EVENTS_INGESTED",
     "INTEGRATION_LAST_SYNC",
     "record_integration_sync",
+    "api_metrics",
 ]

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
 import {
+  IntegrationAdminOverview,
   ReviewQueuePrioritySummary,
   ReviewQueueStatusSummary,
   ReviewQueueSummary,
@@ -111,7 +112,19 @@ export function ReviewSummary() {
     staleTime: 30_000,
   });
 
+  const { data: freshness = [] } = useQuery({
+    queryKey: ["integrationAdminOverview", "review"],
+    queryFn: () => apiGet<IntegrationAdminOverview[]>("/integrations/admin/overview"),
+    staleTime: 60_000,
+  });
+
   const summary = useMemo(() => data ?? null, [data]);
+  const freshnessAlerts = useMemo(() => {
+    const alerts = freshness
+      .filter((entry) => entry.status !== "fresh")
+      .sort((a, b) => (b.age_seconds ?? 0) - (a.age_seconds ?? 0));
+    return alerts.slice(0, 3);
+  }, [freshness]);
 
   return (
     <Panel
@@ -168,6 +181,30 @@ export function ReviewSummary() {
               </h3>
               <PriorityList priorities={summary.priority_breakdown} />
             </div>
+          </div>
+
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-300">
+              Data freshness
+            </h3>
+            {freshnessAlerts.length ? (
+              <ul className="mt-2 space-y-1 text-xs text-amber-100">
+                {freshnessAlerts.map((item) => (
+                  <li key={`${item.integration}:${item.scope}`} className="flex flex-wrap justify-between gap-x-3">
+                    <span>
+                      {item.integration}
+                      <span className="ml-1 text-amber-200/70">({item.scope})</span>
+                    </span>
+                    <span>
+                      {item.age_human ?? "unknown"}
+                      <span className="ml-2 capitalize text-amber-200/70">{item.status}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-amber-200/70">All tracked integrations are fresh.</p>
+            )}
           </div>
 
           <p className="text-[11px] uppercase tracking-wide text-zinc-500">

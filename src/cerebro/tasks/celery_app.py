@@ -34,6 +34,7 @@ celery_kwargs = {
         'cerebro.tasks.integration_tasks',
         'cerebro.tasks.integration_monitor',
         'cerebro.tasks.runtime_monitor',
+        'cerebro.tasks.operational_alerts',
         'cerebro.tasks.serval_tasks',
         'cerebro.tasks.compliance_tasks',
         'cerebro.tasks.agent_self_service_tasks',
@@ -50,6 +51,7 @@ task_routes = {
     'cerebro.tasks.analytics_tasks.*': {'queue': 'analytics'},
     'cerebro.tasks.runtime_monitor.*': {'queue': 'analytics'},
     'cerebro.tasks.agent_self_service.*': {'queue': 'analytics'},
+    'cerebro.tasks.operational.*': {'queue': 'analytics'},
     'cerebro.tasks.integration.*': {'queue': 'integrations'},
     'process_email_digests': {'queue': 'notifications'},
 }
@@ -105,6 +107,11 @@ beat_schedule = {
     'monitor-runtime-health': {
         'task': 'cerebro.tasks.runtime.monitor_health',
         'schedule': 300.0,
+        'options': {'queue': 'analytics'},
+    },
+    'monitor-operational-health': {
+        'task': 'cerebro.tasks.operational.evaluate_health',
+        'schedule': 600.0,
         'options': {'queue': 'analytics'},
     },
     'scan-pre-audit-schedules-daily': {

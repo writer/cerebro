@@ -10,7 +10,8 @@ const NAV_ITEMS = [
   { href: "/agents/notifications", label: "Notifications" },
   { href: "/agents/policy", label: "Policy Suggestions" },
   { href: "/agents/analytics", label: "Runtime Analytics" },
-  { href: "/integrations", label: "Integrations" }
+  { href: "/integrations", label: "Integrations" },
+  { href: "/admin/health", label: "System Health" }
 ];
 
 export function Sidebar() {

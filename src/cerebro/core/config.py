@@ -380,6 +380,62 @@ class Settings(BaseSettings):
         default=1,
         description="Runtime error count threshold that triggers a critical alert",
     )
+    operational_alert_slack_webhook: Optional[str] = Field(
+        default=None,
+        description="Slack webhook URL for operational health alerts",
+    )
+    operational_alert_pagerduty_routing_key: Optional[str] = Field(
+        default=None,
+        description="PagerDuty Events API v2 routing key for operational alerts",
+    )
+    operational_alert_email_sender: Optional[str] = Field(
+        default=None,
+        description="Sender email address used when dispatching operational alert emails",
+    )
+    operational_alert_email_recipients: List[str] = Field(
+        default_factory=list,
+        description="Email recipients for operational alert notifications",
+    )
+    operational_alert_smtp_host: Optional[str] = Field(
+        default=None,
+        description="SMTP host used for operational alert emails",
+    )
+    operational_alert_smtp_port: int = Field(
+        default=587,
+        description="SMTP port used for operational alert emails",
+    )
+    operational_alert_smtp_username: Optional[str] = Field(
+        default=None,
+        description="SMTP username used for operational alert emails",
+    )
+    operational_alert_smtp_password: Optional[str] = Field(
+        default=None,
+        description="SMTP password used for operational alert emails",
+    )
+    operational_alert_smtp_use_tls: bool = Field(
+        default=True,
+        description="Use STARTTLS when sending operational alert emails",
+    )
+    operational_alert_smtp_use_ssl: bool = Field(
+        default=False,
+        description="Use implicit TLS (SMTPS) when sending operational alert emails",
+    )
+    operational_integration_stale_hours: int = Field(
+        default=2,
+        description="Hours without successful integration sync before raising an operational alert",
+    )
+    operational_celery_queue_threshold: int = Field(
+        default=1000,
+        description="Threshold for queued Celery tasks that triggers an operational alert",
+    )
+    operational_evidence_stale_hours: int = Field(
+        default=3,
+        description="Hours without evidence collection updates before sending email alerts",
+    )
+    operational_db_pool_utilization_threshold: float = Field(
+        default=0.9,
+        description="Database connection pool utilization threshold that triggers an operational alert",
+    )
     attack_graph_scoring: Dict[str, Any] = Field(
         default_factory=dict,
         description="Configuration overrides for attack graph scoring weights",

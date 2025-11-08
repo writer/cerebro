@@ -257,6 +257,22 @@ export type IntegrationIssueHistory = {
   buckets: IntegrationIssueTrendBucket[];
 };
 
+export type IntegrationAdminOverview = {
+  integration: string;
+  scope: string;
+  status: string;
+  last_synced_at: string | null;
+  age_seconds: number | null;
+  age_human: string | null;
+  warning?: string | null;
+  next_scheduled_sync_at?: string | null;
+  duration_average_seconds?: number | null;
+  duration_samples?: number[];
+  recent_errors: Array<Record<string, unknown>>;
+  confidence: string;
+  metadata: Record<string, unknown>;
+};
+
 export type IntegrationSyncStatus = {
   task_id: string;
   status: string;
@@ -591,4 +607,109 @@ export type IntegrationCoverageDashboardEntry = {
   last_success?: string | null;
   evaluated_at: string;
   severity?: string;
+};
+
+export type OperationalIntegrationHealthItem = {
+  integration: string;
+  scope: string;
+  status: string;
+  last_synced_at: string | null;
+  age_seconds: number | null;
+  age_human: string | null;
+  warning?: string | null;
+  metadata: Record<string, unknown>;
+  issues_last_24h: Record<string, number>;
+  next_scheduled_at: string | null;
+  duration_average_seconds?: number | null;
+  duration_samples?: number[];
+  recent_errors: Array<Record<string, unknown>>;
+  confidence?: string;
+};
+
+export type OperationalWorkerStatus = {
+  name: string;
+  host: string;
+  status: string;
+  active_tasks: number;
+  reserved_tasks: number;
+  total_completed: number;
+  registered_tasks: number;
+};
+
+export type OperationalCelerySummary = {
+  total_workers: number;
+  healthy_workers: number;
+  total_active_tasks: number;
+  total_reserved_tasks: number;
+  total_queue_depth: number;
+};
+
+export type OperationalDatabaseStats = {
+  pool: {
+    size?: number | null;
+    checked_in?: number | null;
+    checked_out?: number | null;
+    overflow?: number | null;
+    utilization?: number | null;
+  };
+  slow_queries: Array<{
+    pid: number;
+    duration_seconds: number | null;
+    query: string;
+  }>;
+  table_sizes: Array<{
+    table: string;
+    size_bytes: number;
+  }>;
+};
+
+export type OperationalApiStats = {
+  requests_per_minute: number;
+  error_rate: number;
+  p95_latency_ms: number;
+  total_samples: number;
+  top_endpoints: Array<{
+    method: string;
+    path: string;
+    count: number;
+  }>;
+};
+
+export type OperationalAgentStats = {
+  active_sessions: number;
+  messages_per_hour: number;
+  tool_invocations_last_24h: number;
+  tool_error_rate: number;
+  runtime_health: Array<Record<string, unknown>>;
+};
+
+export type OperationalUsageStats = {
+  snapshot: Record<string, unknown>;
+  weekly_active_users: number;
+  top_features: Array<{
+    component: string;
+    events: number;
+  }>;
+  unused_features: string[];
+};
+
+export type OperationalHealthSnapshot = {
+  generated_at: string;
+  integrations: {
+    items: OperationalIntegrationHealthItem[];
+    summary: {
+      total: number;
+      stale: number;
+      error: number;
+    };
+  };
+  jobs: {
+    workers: OperationalWorkerStatus[];
+    summary: OperationalCelerySummary;
+    error?: string;
+  };
+  database: OperationalDatabaseStats;
+  api: OperationalApiStats;
+  agents: OperationalAgentStats;
+  usage: OperationalUsageStats;
 };

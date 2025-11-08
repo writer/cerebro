@@ -3,15 +3,16 @@
 from typing import Dict, Any
 from uuid import UUID
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-import asyncio
 
+from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.analytics.operations import gather_celery_status, collect_operational_health
+from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
-from cerebro.api.auth import get_current_user, require_scopes, User
-from cerebro.analytics.runtime_health import summarize_runtime_health
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -121,72 +122,7 @@ async def get_heartbeat_chips(
 ) -> Dict[str, Any]:
     """Get Celery heartbeat status chips for dashboard monitoring."""
 
-    from cerebro.tasks.celery_app import celery_app
-
-    def get_worker_status():
-        try:
-            inspect = celery_app.control.inspect()
-
-            # Get worker information
-            active_tasks = inspect.active() or {}
-            reserved_tasks = inspect.reserved() or {}
-            worker_stats = inspect.stats() or {}
-            registered_tasks = inspect.registered() or {}
-
-            workers = []
-            total_active = 0
-            total_reserved = 0
-
-            for worker_name in worker_stats:
-                stats = worker_stats[worker_name]
-                active_count = len(active_tasks.get(worker_name, []))
-                reserved_count = len(reserved_tasks.get(worker_name, []))
-
-                total_active += active_count
-                total_reserved += reserved_count
-
-                # Determine worker health
-                health_status = "healthy"
-                if 'rusage' not in stats:
-                    health_status = "degraded"
-
-                workers.append({
-                    "name": worker_name.split('@')[0],  # Clean worker name
-                    "host": worker_name.split('@')[1] if '@' in worker_name else "localhost",
-                    "status": health_status,
-                    "active_tasks": active_count,
-                    "reserved_tasks": reserved_count,
-                    "total_completed": stats.get('total', 0),
-                    "registered_tasks": len(registered_tasks.get(worker_name, []))
-                })
-
-            return {
-                "workers": workers,
-                "summary": {
-                    "total_workers": len(workers),
-                    "healthy_workers": sum(1 for w in workers if w["status"] == "healthy"),
-                    "total_active_tasks": total_active,
-                    "total_reserved_tasks": total_reserved,
-                    "total_queue_depth": total_active + total_reserved
-                }
-            }
-
-        except Exception as e:
-            return {
-                "workers": [],
-                "summary": {
-                    "total_workers": 0,
-                    "healthy_workers": 0,
-                    "total_active_tasks": 0,
-                    "total_reserved_tasks": 0,
-                    "total_queue_depth": 0
-                },
-                "error": str(e)
-            }
-
-    # Run in executor to avoid blocking
-    loop = asyncio.get_event_loop()
-    celery_status = await loop.run_in_executor(None, get_worker_status)
+    celery_status = await gather_celery_status()
 
     # Generate heartbeat chips
     now = datetime.now(timezone.utc)
@@ -263,6 +199,17 @@ async def get_heartbeat_chips(
         "worker_details": celery_status["workers"],
         "error": celery_status.get("error")
     }
+
+
+@router.get("/operations/health")
+async def get_operational_health(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_scopes("read:findings")),
+) -> Dict[str, Any]:
+    """Return the consolidated operational health snapshot."""
+
+    snapshot = await collect_operational_health(db)
+    return snapshot
 
 
 @router.get("/runtime-health")

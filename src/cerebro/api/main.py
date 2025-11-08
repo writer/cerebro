@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import suppress
+from time import perf_counter
 from typing import Dict
 
 from fastapi import FastAPI, Depends, Request, HTTPException
@@ -20,6 +21,7 @@ from cerebro.core.observability import configure_service_observability
 from cerebro.core.database import async_session_factory
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.metrics.jwt_metrics import jwt_metrics
+from cerebro.metrics import api_metrics
 from cerebro.agents.metrics import get_registry
 from .routers import (
     auth,
@@ -96,6 +98,29 @@ app.add_middleware(
     allow_methods=settings.api_cors_allow_methods,
     allow_headers=settings.api_cors_allow_headers,
 )
+
+
+@app.middleware("http")
+async def record_request_metrics(request: Request, call_next):
+    start = perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        duration_ms = (perf_counter() - start) * 1000.0
+        route = request.scope.get("route")
+        path_template = getattr(route, "path", request.url.path)
+        try:
+            api_metrics.record(
+                duration_ms=duration_ms,
+                status_code=status_code,
+                method=request.method,
+                path_template=path_template,
+            )
+        except Exception:  # pragma: no cover - metrics should not break requests
+            logger.debug("api_metrics_record_failed", path=path_template)
 
 # Include routers
 app.include_router(
