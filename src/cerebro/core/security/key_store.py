@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -69,6 +69,11 @@ def get_kms() -> _BaseKMS:
 
     return _get_kms_factory()
 
+def _ensure_aware(dt: datetime) -> datetime:
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 
 class JWTKeyStore:
     """Manages JWT signing keys with rotation and KMS integration."""
@@ -109,7 +114,7 @@ class JWTKeyStore:
         
     async def get_current_signing_key(self) -> Optional[JWTSigningKey]:
         """Get the current active signing key."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         stmt = select(JWTSigningKey).where(
             and_(
@@ -125,7 +130,7 @@ class JWTKeyStore:
     
     async def get_verification_keys(self) -> List[JWTSigningKey]:
         """Get all keys that can be used for token verification (current + overlap period)."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         overlap_cutoff = now - timedelta(hours=settings.jwt_key_overlap_hours)
         
         stmt = select(JWTSigningKey).where(
@@ -189,7 +194,7 @@ class JWTKeyStore:
                 encrypted_dek=encrypted_dek,
                 public_key_pem=public_pem.decode('utf-8'),
                 algorithm=settings.jwt_algorithm,
-                expires_at=datetime.utcnow() + timedelta(hours=settings.jwt_rotation_period_hours)
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.jwt_rotation_period_hours)
             )
             
             self.db.add(signing_key)
@@ -241,8 +246,9 @@ class JWTKeyStore:
             return True
         
         # Check if rotation is needed
-        now = datetime.utcnow()
-        rotation_threshold = current_key.created_at + timedelta(hours=settings.jwt_rotation_period_hours)
+        now = datetime.now(timezone.utc)
+        created_at = _ensure_aware(current_key.created_at)
+        rotation_threshold = created_at + timedelta(hours=settings.jwt_rotation_period_hours)
         
         if now >= rotation_threshold:
             logger.info(f"Key rotation needed for kid: {current_key.kid}")
@@ -253,7 +259,7 @@ class JWTKeyStore:
     
     async def cleanup_expired_keys(self) -> int:
         """Remove expired keys that are beyond the overlap period."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cleanup_cutoff = now - timedelta(hours=settings.jwt_key_overlap_hours * 2)
         
         # Find expired keys
@@ -303,7 +309,7 @@ class JWTKeyStore:
     
     async def _count_active_keys(self) -> int:
         """Count currently active keys."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         stmt = select(func.count(JWTSigningKey.key_id)).where(
             and_(
                 JWTSigningKey.is_active == True,

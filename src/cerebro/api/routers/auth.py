@@ -1,7 +1,7 @@
 """Authentication endpoints."""
 
 from datetime import timedelta
-from typing import Optional
+from typing import Dict, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
@@ -124,6 +124,77 @@ def _set_csrf_cookie(response: Response, csrf_token: str) -> None:
     )
 
 
+RefreshMode = Literal["none", "opaque", "jwt"]
+
+
+async def _issue_tokens(
+    response: Response,
+    *,
+    user: dict,
+    jwt_service: JWTService,
+    db: AsyncSession,
+    refresh_mode: RefreshMode,
+    include_refresh_token_in_body: bool,
+    include_refresh_metadata: bool,
+) -> Dict[str, object]:
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = await jwt_service.create_token(
+        username=user["username"],
+        scopes=user["scopes"],
+        expires_delta=access_token_expires,
+        org_id=user["org_id"],
+    )
+
+    refresh_token: Optional[str] = None
+    refresh_ttl_seconds: Optional[int] = None
+
+    if refresh_mode == "opaque":
+        refresh_service = RefreshTokenService(db)
+        refresh_token = refresh_service.generate_refresh_token()
+        await refresh_service.store_refresh_token(
+            user_id=user["user_id"],
+            token=refresh_token,
+            expires_in_days=settings.refresh_token_expire_days,
+        )
+        refresh_ttl_seconds = settings.refresh_token_expire_days * 24 * 60 * 60
+    elif refresh_mode == "jwt":
+        refresh_delta = timedelta(days=settings.refresh_token_expire_days)
+        refresh_token = await jwt_service.create_token(
+            username=user["username"],
+            scopes=user["scopes"],
+            expires_delta=refresh_delta,
+            token_type="refresh",
+            org_id=user["org_id"],
+        )
+        refresh_ttl_seconds = settings.refresh_token_expire_days * 24 * 60 * 60
+
+    _set_auth_cookies(
+        response,
+        access_token=access_token,
+        access_ttl_seconds=settings.access_token_expire_minutes * 60,
+        refresh_token=refresh_token,
+        refresh_ttl_seconds=refresh_ttl_seconds,
+    )
+
+    csrf_token = generate_csrf_token()
+    _set_csrf_cookie(response, csrf_token)
+
+    payload: Dict[str, object] = {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "access_token_expires_in": settings.access_token_expire_minutes * 60,
+        "csrf_token": csrf_token,
+    }
+
+    if include_refresh_metadata and settings.refresh_token_expire_days:
+        payload["refresh_token_expires_in"] = settings.refresh_token_expire_days * 24 * 60 * 60
+
+    if include_refresh_token_in_body and refresh_token is not None:
+        payload["refresh_token"] = refresh_token
+
+    return payload
+
+
 async def authenticate_user(username: str, password: str, db: AsyncSession) -> Optional[dict]:
     """Authenticate credentials and return user context."""
 
@@ -162,41 +233,15 @@ async def login_oauth2(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = await jwt_service.create_token(
-        username=user["username"],
-        scopes=user["scopes"],
-        expires_delta=access_token_expires,
-        org_id=user["org_id"],
-    )
-
-    refresh_token_service = RefreshTokenService(db)
-    refresh_token = refresh_token_service.generate_refresh_token()
-    await refresh_token_service.store_refresh_token(
-        user_id=user["user_id"],
-        token=refresh_token,
-        expires_in_days=30,
-    )
-
-    csrf_token = generate_csrf_token()
-
-    _set_auth_cookies(
+    return await _issue_tokens(
         response,
-        access_token=access_token,
-        access_ttl_seconds=settings.access_token_expire_minutes * 60,
-        refresh_token=refresh_token,
-        refresh_ttl_seconds=settings.refresh_token_expire_days * 24 * 60 * 60,
+        user=user,
+        jwt_service=jwt_service,
+        db=db,
+        refresh_mode="opaque",
+        include_refresh_token_in_body=True,
+        include_refresh_metadata=True,
     )
-    _set_csrf_cookie(response, csrf_token)
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "access_token_expires_in": settings.access_token_expire_minutes * 60,
-        "refresh_token_expires_in": settings.refresh_token_expire_days * 24 * 60 * 60,
-        "csrf_token": csrf_token,
-    }
 
 
 @router.post("/token", response_model=Token)
@@ -216,31 +261,15 @@ async def login_json(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = await jwt_service.create_token(
-        username=user["username"],
-        scopes=user["scopes"],
-        expires_delta=access_token_expires,
-        org_id=user["org_id"],
-    )
-
-    csrf_token = generate_csrf_token()
-
-    _set_auth_cookies(
+    return await _issue_tokens(
         response,
-        access_token=access_token,
-        access_ttl_seconds=settings.access_token_expire_minutes * 60,
+        user=user,
+        jwt_service=jwt_service,
+        db=db,
+        refresh_mode="none",
+        include_refresh_token_in_body=False,
+        include_refresh_metadata=True,
     )
-
-    _set_csrf_cookie(response, csrf_token)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "access_token_expires_in": settings.access_token_expire_minutes * 60,
-        "refresh_token_expires_in": settings.refresh_token_expire_days * 24 * 60 * 60,
-        "csrf_token": csrf_token,
-    }
 
 
 @router.post("/login", response_model=Token)
@@ -261,44 +290,15 @@ async def login_form(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    refresh_token_expires = timedelta(days=settings.refresh_token_expire_days)
-
-    access_token = await jwt_service.create_token(
-        username=user["username"],
-        scopes=user["scopes"],
-        expires_delta=access_token_expires,
-        org_id=user["org_id"],
-    )
-
-    refresh_token = await jwt_service.create_token(
-        username=user["username"],
-        scopes=user["scopes"],
-        expires_delta=refresh_token_expires,
-        token_type="refresh",
-        org_id=user["org_id"],
-    )
-
-    csrf_token = generate_csrf_token()
-
-    _set_auth_cookies(
+    return await _issue_tokens(
         response,
-        access_token=access_token,
-        access_ttl_seconds=settings.access_token_expire_minutes * 60,
-        refresh_token=refresh_token,
-        refresh_ttl_seconds=settings.refresh_token_expire_days * 24 * 60 * 60,
+        user=user,
+        jwt_service=jwt_service,
+        db=db,
+        refresh_mode="jwt",
+        include_refresh_token_in_body=True,
+        include_refresh_metadata=True,
     )
-
-    _set_csrf_cookie(response, csrf_token)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "refresh_token": refresh_token,
-        "access_token_expires_in": settings.access_token_expire_minutes * 60,
-        "refresh_token_expires_in": settings.refresh_token_expire_days * 24 * 60 * 60,
-        "csrf_token": csrf_token,
-    }
 
 
 @router.post("/token/basic", response_model=Token)
@@ -318,30 +318,15 @@ async def login_basic(
             headers={"WWW-Authenticate": "Basic"},
         )
 
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = await jwt_service.create_token(
-        username=user["username"],
-        scopes=user["scopes"],
-        expires_delta=access_token_expires,
-        org_id=user["org_id"],
-    )
-
-    csrf_token = generate_csrf_token()
-
-    _set_auth_cookies(
+    return await _issue_tokens(
         response,
-        access_token=access_token,
-        access_ttl_seconds=settings.access_token_expire_minutes * 60,
+        user=user,
+        jwt_service=jwt_service,
+        db=db,
+        refresh_mode="none",
+        include_refresh_token_in_body=False,
+        include_refresh_metadata=False,
     )
-
-    _set_csrf_cookie(response, csrf_token)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "access_token_expires_in": settings.access_token_expire_minutes * 60,
-        "csrf_token": csrf_token,
-    }
 
 
 @router.get("/me", response_model=User)

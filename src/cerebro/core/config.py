@@ -2,13 +2,106 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 _DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}
+
+
+_API_SETTING_FIELDS: Set[str] = {
+    "api_base_url",
+    "api_title",
+    "api_description",
+    "api_v1_prefix",
+    "api_allowed_origins",
+    "api_allowed_origins_overrides",
+    "api_cors_allow_credentials",
+    "api_cors_allow_methods",
+    "api_cors_allow_headers",
+    "api_default_rate_limits",
+    "api_default_rate_limits_overrides",
+}
+
+_AGENT_SETTING_FIELDS: Set[str] = {
+    "enable_nl_query_translation",
+    "claude_model",
+    "claude_max_tokens",
+    "claude_temperature",
+    "openai_api_key",
+    "openai_model",
+    "openai_embedding_model",
+    "enable_agent_metrics",
+    "agent_metrics_path",
+    "enable_agent_telemetry",
+    "enable_agent_memory_embeddings",
+    "agent_memory_half_life_hours",
+    "agent_memory_decay_boost",
+    "agent_memory_decay_cap",
+    "agent_memory_summary_max_chars",
+    "agent_memory_max_snippets",
+    "agent_memory_max_entries_per_org",
+    "agent_memory_max_entries_per_session",
+    "agent_memory_prune_batch_size",
+    "agent_memory_prune_min_decay",
+    "agent_memory_prune_max_age_hours",
+    "agent_memory_prune_probability",
+    "agent_memory_duplicate_window_hours",
+    "agent_memory_mmr_lambda",
+    "agent_memory_hybrid_alpha",
+    "agent_memory_enable_annoy",
+    "agent_memory_session_scope_boost",
+    "agent_memory_incident_scope_boost",
+    "agent_memory_finding_scope_boost",
+    "agent_memory_role_weights",
+    "agent_memory_decay_profiles",
+    "agent_otel_endpoint",
+    "agent_otel_headers",
+    "agent_otel_timeout_seconds",
+    "agent_default_runtime",
+    "agent_runtime_preferences",
+    "agent_runtime_event_retention_days",
+    "agent_session_timeout_hours",
+    "agent_default_dry_run",
+}
+
+_OPERATIONAL_ALERT_FIELDS: Set[str] = {
+    "runtime_health_alert_webhook",
+    "runtime_health_alert_window_hours",
+    "runtime_health_warning_threshold",
+    "runtime_health_error_threshold",
+    "operational_alert_slack_webhook",
+    "operational_alert_pagerduty_routing_key",
+    "operational_alert_email_sender",
+    "operational_alert_email_recipients",
+    "operational_alert_smtp_host",
+    "operational_alert_smtp_port",
+    "operational_alert_smtp_username",
+    "operational_alert_smtp_password",
+    "operational_alert_smtp_use_tls",
+    "operational_alert_smtp_use_ssl",
+    "operational_integration_stale_hours",
+    "operational_integration_stale_overrides",
+    "operational_celery_queue_threshold",
+    "operational_evidence_stale_hours",
+    "operational_db_pool_utilization_threshold",
+    "attack_graph_scoring",
+}
+
+_SELF_PLAY_FIELDS: Set[str] = {
+    "self_play_enabled",
+    "self_play_max_turns",
+    "self_play_max_tool_calls",
+    "self_play_scenario_batch_size",
+    "self_play_created_by",
+    "self_play_default_org_id",
+    "self_play_persist_results",
+    "self_play_max_backoff_seconds",
+    "self_play_stream_responses",
+    "self_play_static_scenarios",
+}
 
 
 class AuthSettings(BaseModel):
@@ -24,6 +117,381 @@ class IntegrationRetrySettings(BaseModel):
     enabled: bool = Field(default=True, alias="integration_sync_retry_enabled")
     cooldown_seconds: int = Field(default=3600, alias="integration_sync_retry_cooldown_seconds")
     lookback_minutes: Optional[int] = Field(default=60, alias="integration_sync_retry_lookback_minutes")
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+
+class APISettings(BaseModel):
+    api_base_url: str = Field(
+        default="http://localhost:8000",
+        description="Base URL for API endpoints (used for JWKS and OpenID configuration)",
+    )
+    api_title: str = Field(
+        default="Cerebro Security API",
+        description="API title for OpenAPI documentation",
+    )
+    api_description: str = Field(
+        default="Security compliance and risk management platform",
+        description="API description for OpenAPI documentation",
+    )
+    api_v1_prefix: str = Field(
+        default="/api/v1",
+        description="API version prefix for all v1 endpoints",
+    )
+    api_allowed_origins: List[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "https://cerebro.yourdomain.com",
+        ],
+        description="Allowed CORS origins for the public API",
+    )
+    api_allowed_origins_overrides: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Environment-specific overrides for allowed CORS origins",
+    )
+    api_cors_allow_credentials: bool = Field(
+        default=True,
+        description="Allow credentials (cookies, auth headers) in CORS responses",
+    )
+    api_cors_allow_methods: List[str] = Field(
+        default_factory=lambda: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        description="HTTP methods permitted by CORS",
+    )
+    api_cors_allow_headers: List[str] = Field(
+        default_factory=lambda: ["Authorization", "Content-Type", "X-Requested-With"],
+        description="HTTP headers permitted by CORS",
+    )
+    api_default_rate_limits: List[str] = Field(
+        default_factory=lambda: ["100/minute"],
+        description="Default rate limit configuration passed to SlowAPI",
+    )
+    api_default_rate_limits_overrides: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Environment-specific overrides for rate limits",
+    )
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+    def get_allowed_origins(self, environment: str) -> List[str]:
+        env = environment.lower()
+        return self.api_allowed_origins_overrides.get(env, self.api_allowed_origins)
+
+    def get_default_rate_limits(self, environment: str) -> List[str]:
+        env = environment.lower()
+        return self.api_default_rate_limits_overrides.get(env, self.api_default_rate_limits)
+
+
+class AgentRuntimeSettings(BaseModel):
+    enable_nl_query_translation: bool = Field(
+        default=True,
+        description="Enable Anthropic-backed natural language SQL translation",
+    )
+    claude_model: str = Field(
+        default="claude-3-5-sonnet-20241022",
+        description="Claude model to use for agents",
+    )
+    claude_max_tokens: int = Field(
+        default=8192, description="Maximum tokens per Claude request"
+    )
+    claude_temperature: float = Field(
+        default=0.1, description="Claude temperature (0.0-1.0)"
+    )
+    openai_api_key: Optional[str] = Field(
+        default=None, description="OpenAI API key for Agents runtime"
+    )
+    openai_model: str = Field(
+        default="gpt-4.1", description="OpenAI model for Agents runtime"
+    )
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="OpenAI embedding model for agent memory",
+    )
+    enable_agent_metrics: bool = Field(
+        default=True,
+        description="Emit Prometheus metrics for agent runtimes",
+    )
+    agent_metrics_path: str = Field(
+        default="/metrics",
+        description="Path exposing Prometheus metrics when enabled",
+    )
+    enable_agent_telemetry: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry spans for agent runtimes when tracing is configured",
+    )
+    enable_agent_memory_embeddings: bool = Field(
+        default=True,
+        description="Generate embeddings for agent memory store",
+    )
+    agent_memory_half_life_hours: int = Field(
+        default=72,
+        description="Half-life window in hours for decaying memory relevance scores",
+    )
+    agent_memory_decay_boost: float = Field(
+        default=0.15,
+        description="Increment applied to decay score when a memory snippet is retrieved",
+    )
+    agent_memory_decay_cap: float = Field(
+        default=2.0,
+        description="Maximum multiplier applied to memory relevance after repeated access",
+    )
+    agent_memory_summary_max_chars: int = Field(
+        default=240,
+        description="Maximum characters to retain in stored memory summaries",
+    )
+    agent_memory_max_snippets: int = Field(
+        default=8,
+        description="Maximum number of memory snippets injected into prompts and responses",
+    )
+    agent_memory_max_entries_per_org: int = Field(
+        default=2000,
+        description="Maximum number of memory entries retained per organization before pruning",
+    )
+    agent_memory_max_entries_per_session: int = Field(
+        default=500,
+        description="Maximum number of memory entries retained per session scope",
+    )
+    agent_memory_prune_batch_size: int = Field(
+        default=200,
+        description="How many low-value memory entries to remove per pruning run",
+    )
+    agent_memory_prune_min_decay: float = Field(
+        default=0.05,
+        description="Minimum decay score before a memory entry qualifies for pruning",
+    )
+    agent_memory_prune_max_age_hours: int = Field(
+        default=720,
+        description="Maximum age in hours before a memory entry is eligible for pruning",
+    )
+    agent_memory_prune_probability: float = Field(
+        default=0.1,
+        description="Probability between 0-1 that a pruning run is triggered on write",
+    )
+    agent_memory_duplicate_window_hours: int = Field(
+        default=168,
+        description="Window in hours to treat identical content hashes as duplicates",
+    )
+    agent_memory_mmr_lambda: float = Field(
+        default=0.7,
+        description="Lambda parameter for Max Marginal Relevance diversification (0-1)",
+    )
+    agent_memory_hybrid_alpha: float = Field(
+        default=0.65,
+        description="Weight (0-1) applied to embedding similarity vs lexical similarity when ranking memory",
+    )
+    agent_memory_enable_annoy: bool = Field(
+        default=False,
+        description="Enable Annoy approximate nearest neighbor preprocessing for memory retrieval (experimental)",
+    )
+    agent_memory_session_scope_boost: float = Field(
+        default=1.2,
+        description="Multiplier applied when a memory entry shares the active session scope",
+    )
+    agent_memory_incident_scope_boost: float = Field(
+        default=1.15,
+        description="Multiplier applied when a memory entry matches the active incident scope",
+    )
+    agent_memory_finding_scope_boost: float = Field(
+        default=1.1,
+        description="Multiplier applied when a memory entry matches any active finding scope",
+    )
+    agent_memory_role_weights: Dict[str, float] = Field(
+        default_factory=lambda: {
+            "assistant": 1.1,
+            "user": 1.0,
+            "tool": 0.95,
+            "system": 0.9,
+        },
+        description="Relative weighting applied by role when ranking memory snippets",
+    )
+    agent_memory_decay_profiles: Dict[str, int] = Field(
+        default_factory=lambda: {
+            "session": 48,
+            "incident": 96,
+            "finding": 120,
+        },
+        description="Fallback half-life overrides per scope type (hours)",
+    )
+    agent_otel_endpoint: Optional[str] = Field(
+        default=None,
+        description="OTLP HTTP endpoint for exporting agent telemetry spans (e.g., http://collector:4318/v1/traces)",
+    )
+    agent_otel_headers: Optional[str] = Field(
+        default=None,
+        description="Comma-separated key=value pairs forwarded as OTLP exporter headers",
+    )
+    agent_otel_timeout_seconds: int = Field(
+        default=5,
+        description="Timeout in seconds for OTLP span exporter requests",
+    )
+    agent_default_runtime: str = Field(
+        default="claude",
+        description="Default agent runtime backend (claude or openai)",
+    )
+    agent_runtime_preferences: Dict[str, str] = Field(
+        default_factory=lambda: {
+            "security_analyst": "claude",
+            "incident_responder": "claude",
+            "identity_advisor": "openai",
+            "analysis": "openai",
+            "incident_response": "claude",
+            "remediation": "claude",
+            "reporting": "openai",
+        },
+        description="Preference map guiding runtime selection by agent type or skill tag",
+    )
+    agent_runtime_event_retention_days: int = Field(
+        default=30,
+        description="Number of days to retain agent runtime analytics events",
+    )
+    agent_session_timeout_hours: int = Field(
+        default=24, description="Agent session timeout in hours"
+    )
+    agent_default_dry_run: bool = Field(
+        default=True, description="Default to dry-run for destructive agent actions"
+    )
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+    @field_validator("agent_default_runtime")
+    @classmethod
+    def validate_agent_default_runtime(cls, v: str) -> str:
+        runtime = v.lower()
+        if runtime not in {"claude", "openai"}:
+            raise ValueError("agent_default_runtime must be either 'claude' or 'openai'")
+        return runtime
+
+
+class OperationalAlertSettings(BaseModel):
+    runtime_health_alert_webhook: Optional[str] = Field(
+        default=None,
+        description="Slack webhook URL for runtime health alerts",
+    )
+    runtime_health_alert_window_hours: int = Field(
+        default=1,
+        description="Lookback window in hours when evaluating runtime health alerts",
+    )
+    runtime_health_warning_threshold: int = Field(
+        default=3,
+        description="Runtime warning count threshold that triggers an alert",
+    )
+    runtime_health_error_threshold: int = Field(
+        default=1,
+        description="Runtime error count threshold that triggers a critical alert",
+    )
+    operational_alert_slack_webhook: Optional[str] = Field(
+        default=None,
+        description="Slack webhook URL for operational health alerts",
+    )
+    operational_alert_pagerduty_routing_key: Optional[str] = Field(
+        default=None,
+        description="PagerDuty Events API v2 routing key for operational alerts",
+    )
+    operational_alert_email_sender: Optional[str] = Field(
+        default=None,
+        description="Sender email address used when dispatching operational alert emails",
+    )
+    operational_alert_email_recipients: List[str] = Field(
+        default_factory=list,
+        description="Email recipients for operational alert notifications",
+    )
+    operational_alert_smtp_host: Optional[str] = Field(
+        default=None,
+        description="SMTP host used for operational alert emails",
+    )
+    operational_alert_smtp_port: int = Field(
+        default=587,
+        description="SMTP port used for operational alert emails",
+    )
+    operational_alert_smtp_username: Optional[str] = Field(
+        default=None,
+        description="SMTP username used for operational alert emails",
+    )
+    operational_alert_smtp_password: Optional[str] = Field(
+        default=None,
+        description="SMTP password used for operational alert emails",
+    )
+    operational_alert_smtp_use_tls: bool = Field(
+        default=True,
+        description="Use STARTTLS when sending operational alert emails",
+    )
+    operational_alert_smtp_use_ssl: bool = Field(
+        default=False,
+        description="Use implicit TLS (SMTPS) when sending operational alert emails",
+    )
+    operational_integration_stale_hours: int = Field(
+        default=2,
+        description="Hours without successful integration sync before raising an operational alert",
+    )
+    operational_integration_stale_overrides: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Override integration stale thresholds in hours using partial integration name matches",
+    )
+    operational_celery_queue_threshold: int = Field(
+        default=1000,
+        description="Threshold for queued Celery tasks that triggers an operational alert",
+    )
+    operational_evidence_stale_hours: int = Field(
+        default=3,
+        description="Hours without evidence collection updates before sending email alerts",
+    )
+    operational_db_pool_utilization_threshold: float = Field(
+        default=0.9,
+        description="Database connection pool utilization threshold that triggers an operational alert",
+    )
+    attack_graph_scoring: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Configuration overrides for attack graph scoring weights",
+    )
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+
+class SelfPlaySettings(BaseModel):
+    self_play_enabled: bool = Field(
+        default=False,
+        description="Enable agent self-play orchestration",
+    )
+    self_play_max_turns: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum turns per self-play match",
+    )
+    self_play_max_tool_calls: int = Field(
+        default=20,
+        ge=0,
+        description="Maximum tool invocations per self-play match",
+    )
+    self_play_scenario_batch_size: int = Field(
+        default=3,
+        ge=1,
+        description="Number of self-play scenarios processed per batch",
+    )
+    self_play_created_by: str = Field(
+        default="self_play_orchestrator",
+        description="Synthetic user identifier recorded on self-play sessions",
+    )
+    self_play_default_org_id: Optional[str] = Field(
+        default=None,
+        description="Override organization identifier used for self-play sessions",
+    )
+    self_play_persist_results: bool = Field(
+        default=False,
+        description="Persist self-play outcomes in the database",
+    )
+    self_play_max_backoff_seconds: int = Field(
+        default=60,
+        ge=1,
+        description="Maximum delay applied between failed self-play matches",
+    )
+    self_play_stream_responses: bool = Field(
+        default=True,
+        description="Stream agent responses during self-play to capture transcript data",
+    )
+    self_play_static_scenarios: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Optional static scenario definitions for self-play runs",
+    )
 
     model_config = SettingsConfigDict(populate_by_name=True)
 
@@ -56,6 +524,21 @@ class Settings(BaseSettings):
             retry_section = data.setdefault("integration_retry", {})
             retry_section.update(legacy_retry)
 
+        for section_name, field_names in (
+            ("api", _API_SETTING_FIELDS),
+            ("agent", _AGENT_SETTING_FIELDS),
+            ("operational_alerts", _OPERATIONAL_ALERT_FIELDS),
+            ("self_play", _SELF_PLAY_FIELDS),
+        ):
+            legacy_section = {
+                key: data.pop(key)
+                for key in field_names
+                if key in data
+            }
+            if legacy_section:
+                section_data: Dict[str, Any] = data.setdefault(section_name, {})
+                section_data.update(legacy_section)
+
         return data
 
     """Application settings."""
@@ -68,6 +551,7 @@ class Settings(BaseSettings):
     
     # Security
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    api: APISettings = Field(default_factory=APISettings)
     
     # GitHub Integration
     github_token: Optional[str] = Field(
@@ -228,297 +712,9 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = Field(
         default=None, description="Anthropic API key for Claude integration"
     )
-    enable_nl_query_translation: bool = Field(
-        default=True,
-        description="Enable Anthropic-backed natural language SQL translation",
-    )
-    claude_model: str = Field(
-        default="claude-3-5-sonnet-20241022", 
-        description="Claude model to use for agents"
-    )
-    claude_max_tokens: int = Field(
-        default=8192, description="Maximum tokens per Claude request"
-    )
-    claude_temperature: float = Field(
-        default=0.1, description="Claude temperature (0.0-1.0)"
-    )
-    openai_api_key: Optional[str] = Field(
-        default=None, description="OpenAI API key for Agents runtime"
-    )
-    openai_model: str = Field(
-        default="gpt-4.1", description="OpenAI model for Agents runtime"
-    )
-    openai_embedding_model: str = Field(
-        default="text-embedding-3-small",
-        description="OpenAI embedding model for agent memory",
-    )
-    enable_agent_metrics: bool = Field(
-        default=True,
-        description="Emit Prometheus metrics for agent runtimes",
-    )
-    agent_metrics_path: str = Field(
-        default="/metrics",
-        description="Path exposing Prometheus metrics when enabled",
-    )
-    enable_agent_telemetry: bool = Field(
-        default=False,
-        description="Enable OpenTelemetry spans for agent runtimes when tracing is configured",
-    )
-    enable_agent_memory_embeddings: bool = Field(
-        default=True,
-        description="Generate embeddings for agent memory store",
-    )
-    agent_memory_half_life_hours: int = Field(
-        default=72,
-        description="Half-life window in hours for decaying memory relevance scores",
-    )
-    agent_memory_decay_boost: float = Field(
-        default=0.15,
-        description="Increment applied to decay score when a memory snippet is retrieved",
-    )
-    agent_memory_decay_cap: float = Field(
-        default=2.0,
-        description="Maximum multiplier applied to memory relevance after repeated access",
-    )
-    agent_memory_summary_max_chars: int = Field(
-        default=240,
-        description="Maximum characters to retain in stored memory summaries",
-    )
-    agent_memory_max_snippets: int = Field(
-        default=8,
-        description="Maximum number of memory snippets injected into prompts and responses",
-    )
-    agent_memory_max_entries_per_org: int = Field(
-        default=2000,
-        description="Maximum number of memory entries retained per organization before pruning",
-    )
-    agent_memory_max_entries_per_session: int = Field(
-        default=500,
-        description="Maximum number of memory entries retained per session scope",
-    )
-    agent_memory_prune_batch_size: int = Field(
-        default=200,
-        description="How many low-value memory entries to remove per pruning run",
-    )
-    agent_memory_prune_min_decay: float = Field(
-        default=0.05,
-        description="Minimum decay score before a memory entry qualifies for pruning",
-    )
-    agent_memory_prune_max_age_hours: int = Field(
-        default=720,
-        description="Maximum age in hours before a memory entry is eligible for pruning",
-    )
-    agent_memory_prune_probability: float = Field(
-        default=0.1,
-        description="Probability between 0-1 that a pruning run is triggered on write",
-    )
-    agent_memory_duplicate_window_hours: int = Field(
-        default=168,
-        description="Window in hours to treat identical content hashes as duplicates",
-    )
-    agent_memory_mmr_lambda: float = Field(
-        default=0.7,
-        description="Lambda parameter for Max Marginal Relevance diversification (0-1)",
-    )
-    agent_memory_hybrid_alpha: float = Field(
-        default=0.65,
-        description="Weight (0-1) applied to embedding similarity vs lexical similarity when ranking memory",
-    )
-    agent_memory_enable_annoy: bool = Field(
-        default=False,
-        description="Enable Annoy approximate nearest neighbor preprocessing for memory retrieval (experimental)",
-    )
-    agent_memory_session_scope_boost: float = Field(
-        default=1.2,
-        description="Multiplier applied when a memory entry shares the active session scope",
-    )
-    agent_memory_incident_scope_boost: float = Field(
-        default=1.15,
-        description="Multiplier applied when a memory entry matches the active incident scope",
-    )
-    agent_memory_finding_scope_boost: float = Field(
-        default=1.1,
-        description="Multiplier applied when a memory entry matches any active finding scope",
-    )
-    agent_memory_role_weights: Dict[str, float] = Field(
-        default_factory=lambda: {
-            "assistant": 1.1,
-            "user": 1.0,
-            "tool": 0.95,
-            "system": 0.9,
-        },
-        description="Relative weighting applied by role when ranking memory snippets",
-    )
-    agent_memory_decay_profiles: Dict[str, int] = Field(
-        default_factory=lambda: {
-            "session": 48,
-            "incident": 96,
-            "finding": 120,
-        },
-        description="Fallback half-life overrides per scope type (hours)",
-    )
-    agent_otel_endpoint: Optional[str] = Field(
-        default=None,
-        description="OTLP HTTP endpoint for exporting agent telemetry spans (e.g., http://collector:4318/v1/traces)",
-    )
-    agent_otel_headers: Optional[str] = Field(
-        default=None,
-        description="Comma-separated key=value pairs forwarded as OTLP exporter headers",
-    )
-    agent_otel_timeout_seconds: int = Field(
-        default=5,
-        description="Timeout in seconds for OTLP span exporter requests",
-    )
-    agent_default_runtime: str = Field(
-        default="claude",
-        description="Default agent runtime backend (claude or openai)",
-    )
-    agent_runtime_preferences: Dict[str, str] = Field(
-        default_factory=lambda: {
-            "security_analyst": "claude",
-            "incident_responder": "claude",
-            "identity_advisor": "openai",
-            "analysis": "openai",
-            "incident_response": "claude",
-            "remediation": "claude",
-            "reporting": "openai",
-        },
-        description="Preference map guiding runtime selection by agent type or skill tag",
-    )
-    agent_runtime_event_retention_days: int = Field(
-        default=30,
-        description="Number of days to retain agent runtime analytics events",
-    )
-    runtime_health_alert_webhook: Optional[str] = Field(
-        default=None,
-        description="Slack webhook URL for runtime health alerts",
-    )
-    runtime_health_alert_window_hours: int = Field(
-        default=1,
-        description="Lookback window in hours when evaluating runtime health alerts",
-    )
-    runtime_health_warning_threshold: int = Field(
-        default=3,
-        description="Runtime warning count threshold that triggers an alert",
-    )
-    runtime_health_error_threshold: int = Field(
-        default=1,
-        description="Runtime error count threshold that triggers a critical alert",
-    )
-    operational_alert_slack_webhook: Optional[str] = Field(
-        default=None,
-        description="Slack webhook URL for operational health alerts",
-    )
-    operational_alert_pagerduty_routing_key: Optional[str] = Field(
-        default=None,
-        description="PagerDuty Events API v2 routing key for operational alerts",
-    )
-    operational_alert_email_sender: Optional[str] = Field(
-        default=None,
-        description="Sender email address used when dispatching operational alert emails",
-    )
-    operational_alert_email_recipients: List[str] = Field(
-        default_factory=list,
-        description="Email recipients for operational alert notifications",
-    )
-    operational_alert_smtp_host: Optional[str] = Field(
-        default=None,
-        description="SMTP host used for operational alert emails",
-    )
-    operational_alert_smtp_port: int = Field(
-        default=587,
-        description="SMTP port used for operational alert emails",
-    )
-    operational_alert_smtp_username: Optional[str] = Field(
-        default=None,
-        description="SMTP username used for operational alert emails",
-    )
-    operational_alert_smtp_password: Optional[str] = Field(
-        default=None,
-        description="SMTP password used for operational alert emails",
-    )
-    operational_alert_smtp_use_tls: bool = Field(
-        default=True,
-        description="Use STARTTLS when sending operational alert emails",
-    )
-    operational_alert_smtp_use_ssl: bool = Field(
-        default=False,
-        description="Use implicit TLS (SMTPS) when sending operational alert emails",
-    )
-    operational_integration_stale_hours: int = Field(
-        default=2,
-        description="Hours without successful integration sync before raising an operational alert",
-    )
-    operational_integration_stale_overrides: Dict[str, int] = Field(
-        default_factory=dict,
-        description="Override integration stale thresholds in hours using partial integration name matches",
-    )
-    operational_celery_queue_threshold: int = Field(
-        default=1000,
-        description="Threshold for queued Celery tasks that triggers an operational alert",
-    )
-    operational_evidence_stale_hours: int = Field(
-        default=3,
-        description="Hours without evidence collection updates before sending email alerts",
-    )
-    operational_db_pool_utilization_threshold: float = Field(
-        default=0.9,
-        description="Database connection pool utilization threshold that triggers an operational alert",
-    )
-    attack_graph_scoring: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Configuration overrides for attack graph scoring weights",
-    )
-    self_play_enabled: bool = Field(
-        default=False,
-        description="Enable agent self-play orchestration",
-    )
-    self_play_max_turns: int = Field(
-        default=10,
-        ge=1,
-        description="Maximum turns per self-play match",
-    )
-    self_play_max_tool_calls: int = Field(
-        default=20,
-        ge=0,
-        description="Maximum tool invocations per self-play match",
-    )
-    self_play_scenario_batch_size: int = Field(
-        default=3,
-        ge=1,
-        description="Number of self-play scenarios processed per batch",
-    )
-    self_play_created_by: str = Field(
-        default="self_play_orchestrator",
-        description="Synthetic user identifier recorded on self-play sessions",
-    )
-    self_play_default_org_id: Optional[str] = Field(
-        default=None,
-        description="Override organization identifier used for self-play sessions",
-    )
-    self_play_persist_results: bool = Field(
-        default=False,
-        description="Persist self-play outcomes in the database",
-    )
-    self_play_max_backoff_seconds: int = Field(
-        default=60,
-        ge=1,
-        description="Maximum delay applied between failed self-play matches",
-    )
-    self_play_stream_responses: bool = Field(
-        default=True,
-        description="Stream agent responses during self-play to capture transcript data",
-    )
-    self_play_static_scenarios: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="Optional static scenario definitions for self-play runs",
-    )
-    agent_session_timeout_hours: int = Field(
-        default=24, description="Agent session timeout in hours"
-    )
-    agent_default_dry_run: bool = Field(
-        default=True, description="Default to dry-run for destructive agent actions"
-    )
+    agent: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
+    operational_alerts: OperationalAlertSettings = Field(default_factory=OperationalAlertSettings)
+    self_play: SelfPlaySettings = Field(default_factory=SelfPlaySettings)
     
     # Collection Performance (Phase 1)
     collection_batch_size: int = Field(
@@ -528,57 +724,6 @@ class Settings(BaseSettings):
         default=1000, description="Batch size for IAM edge insertions"
     )
     
-    # API Configuration
-    api_base_url: str = Field(
-        default="http://localhost:8000",
-        description="Base URL for API endpoints (used for JWKS and OpenID configuration)"
-    )
-    api_title: str = Field(
-        default="Cerebro Security API",
-        description="API title for OpenAPI documentation"
-    )
-    api_description: str = Field(
-        default="Security compliance and risk management platform",
-        description="API description for OpenAPI documentation"
-    )
-    api_v1_prefix: str = Field(
-        default="/api/v1",
-        description="API version prefix for all v1 endpoints"
-    )
-
-    api_allowed_origins: List[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:3000",
-            "http://localhost:8080",
-            "https://cerebro.yourdomain.com",
-        ],
-        description="Allowed CORS origins for the public API",
-    )
-    api_allowed_origins_overrides: Dict[str, List[str]] = Field(
-        default_factory=dict,
-        description="Environment-specific overrides for allowed CORS origins",
-    )
-    api_cors_allow_credentials: bool = Field(
-        default=True,
-        description="Allow credentials (cookies, auth headers) in CORS responses",
-    )
-    api_cors_allow_methods: List[str] = Field(
-        default_factory=lambda: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        description="HTTP methods permitted by CORS",
-    )
-    api_cors_allow_headers: List[str] = Field(
-        default_factory=lambda: ["Authorization", "Content-Type", "X-Requested-With"],
-        description="HTTP headers permitted by CORS",
-    )
-    api_default_rate_limits: List[str] = Field(
-        default_factory=lambda: ["100/minute"],
-        description="Default rate limit configuration passed to SlowAPI",
-    )
-    api_default_rate_limits_overrides: Dict[str, List[str]] = Field(
-        default_factory=dict,
-        description="Environment-specific overrides for rate limits",
-    )
-
     # JWT Security (Phase 2)
     jwt_algorithm: str = Field(
         default="RS256", description="JWT signing algorithm (RS256 recommended for production)"
@@ -728,12 +873,10 @@ class Settings(BaseSettings):
         return self.celery_result_backend or self.redis_url
 
     def get_allowed_origins(self) -> List[str]:
-        env = self.environment.lower()
-        return self.api_allowed_origins_overrides.get(env, self.api_allowed_origins)
+        return self.api.get_allowed_origins(self.environment)
 
     def get_default_rate_limits(self) -> List[str]:
-        env = self.environment.lower()
-        return self.api_default_rate_limits_overrides.get(env, self.api_default_rate_limits)
+        return self.api.get_default_rate_limits(self.environment)
     
     # Key Management Service Configuration
     kms_provider: str = Field(
@@ -802,14 +945,6 @@ class Settings(BaseSettings):
 
         return v
 
-    @field_validator('agent_default_runtime')
-    @classmethod
-    def validate_agent_default_runtime(cls, v: str) -> str:
-        runtime = v.lower()
-        if runtime not in {'claude', 'openai'}:
-            raise ValueError("agent_default_runtime must be either 'claude' or 'openai'")
-        return runtime
-
     @field_validator('enable_provider_env_fallback')
     @classmethod
     def validate_env_fallback(cls, v):
@@ -859,6 +994,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
         env_nested_delimiter="__",
         populate_by_name=True,
+        extra="allow",
     )
 
     @model_validator(mode="after")
@@ -901,6 +1037,17 @@ class Settings(BaseSettings):
     @property
     def integration_sync_retry_lookback_minutes(self) -> Optional[int]:
         return self.integration_retry.lookback_minutes
+
+    def __getattr__(self, item: str):
+        if item in _API_SETTING_FIELDS:
+            return getattr(self.api, item)
+        if item in _AGENT_SETTING_FIELDS:
+            return getattr(self.agent, item)
+        if item in _OPERATIONAL_ALERT_FIELDS:
+            return getattr(self.operational_alerts, item)
+        if item in _SELF_PLAY_FIELDS:
+            return getattr(self.self_play, item)
+        raise AttributeError(f"{type(self).__name__!s} object has no attribute {item!r}")
 
 
 settings = Settings()
