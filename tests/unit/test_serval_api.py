@@ -45,8 +45,16 @@ def test_serval_metadata_endpoints(client, admin_token, monkeypatch, test_org):
     async def _list_priorities(self, org_id):  # type: ignore[override]
         return [{"id": "priority-default", "priority": "DEFAULT"}]
 
-    monkeypatch.setattr(serval_ticket_service.ServalTicketService, "list_statuses", _list_statuses)
-    monkeypatch.setattr(serval_ticket_service.ServalTicketService, "list_priorities", _list_priorities)
+    monkeypatch.setattr(
+        serval_ticket_service.ServalTicketService,
+        "list_statuses",
+        _list_statuses,
+    )
+    monkeypatch.setattr(
+        serval_ticket_service.ServalTicketService,
+        "list_priorities",
+        _list_priorities,
+    )
 
     # Ensure config exists to satisfy lookups
     client.put(
@@ -60,10 +68,16 @@ def test_serval_metadata_endpoints(client, admin_token, monkeypatch, test_org):
         headers=headers,
     )
 
-    status_response = client.get(f"/api/v1/serval/{org_id}/statuses", headers=headers)
+    status_response = client.get(
+        f"/api/v1/serval/{org_id}/statuses",
+        headers=headers,
+    )
     assert status_response.status_code == 200
     assert status_response.json()[0]["id"] == "status-open"
 
-    priority_response = client.get(f"/api/v1/serval/{org_id}/priorities", headers=headers)
+    priority_response = client.get(
+        f"/api/v1/serval/{org_id}/priorities",
+        headers=headers,
+    )
     assert priority_response.status_code == 200
     assert priority_response.json()[0]["id"] == "priority-default"

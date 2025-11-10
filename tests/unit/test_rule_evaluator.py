@@ -4,22 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List
-from uuid import uuid4
+from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.core.models import Rule, Resource, Account, Organization, ConfigSnapshot
+from cerebro.core.models import Account, ConfigSnapshot, Organization, Resource, Rule
 from cerebro.findings.evaluator import RuleEvaluator
 from cerebro.rules import EvaluationContext, RuleResult
 
 
 @dataclass
 class StubRuleEngine:
-    results: List[RuleResult]
+    results: list[RuleResult]
 
-    def evaluate_rules(self, rules: List[Dict[str, Any]], context: EvaluationContext) -> List[RuleResult]:
+    def evaluate_rules(
+        self,
+        rules: list[dict[str, Any]],
+        context: EvaluationContext,
+    ) -> list[RuleResult]:
         return self.results
 
 
