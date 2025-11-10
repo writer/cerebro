@@ -1,5 +1,6 @@
-import pytest
 from uuid import UUID
+
+import pytest
 
 from cerebro.telemetry.pack_service import PackManagementService
 from cerebro.telemetry.schemas import (

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Any, ClassVar
 
 import pytest
 
+from cerebro.api.routers import integrations as integrations_router
+from cerebro.automation.integration_sync import IntegrationIssue
 from cerebro.core.config import settings
 from cerebro.core.models import Account
-from cerebro.automation.integration_sync import IntegrationIssue
-from cerebro.integrations.state import IntegrationIssueEventRepository, IntegrationStateRepository
-from cerebro.api.routers import integrations as integrations_router
+from cerebro.integrations.state import (
+    IntegrationIssueEventRepository,
+    IntegrationStateRepository,
+)
 
 
 def _run_async(coro):
@@ -57,7 +60,11 @@ def test_trigger_integration_sync_sentinelone(client, admin_token, monkeypatch):
 
         return _Result()
 
-    monkeypatch.setattr(integrations_router.sync_sentinelone, "apply_async", _fake_apply_async)
+    monkeypatch.setattr(
+        integrations_router.sync_sentinelone,
+        "apply_async",
+        _fake_apply_async,
+    )
 
     headers = {"Authorization": f"Bearer {admin_token}"}
     response = client.post(
@@ -76,7 +83,11 @@ def test_trigger_integration_sync_sentinelone(client, admin_token, monkeypatch):
     assert captured["kwargs"] == {"lookback_minutes": 45}
 
 
-def test_trigger_integration_sync_kandji_rejects_lookback(client, admin_token, monkeypatch):
+def test_trigger_integration_sync_kandji_rejects_lookback(
+    client,
+    admin_token,
+    monkeypatch,
+):
     monkeypatch.setattr(settings, "kandji_enabled", True)
     monkeypatch.setattr(integrations_router.sync_kandji, "apply_async", lambda: None)
 
@@ -91,7 +102,12 @@ def test_trigger_integration_sync_kandji_rejects_lookback(client, admin_token, m
 
 
 @pytest.mark.parametrize("integration", ["sentinelone", "kandji"])
-def test_trigger_integration_sync_respects_disabled(client, admin_token, monkeypatch, integration):
+def test_trigger_integration_sync_respects_disabled(
+    client,
+    admin_token,
+    monkeypatch,
+    integration,
+):
     monkeypatch.setattr(settings, f"{integration}_enabled", False)
 
     headers = {"Authorization": f"Bearer {admin_token}"}
@@ -105,7 +121,7 @@ def test_trigger_integration_sync_respects_disabled(client, admin_token, monkeyp
 
 
 def test_integration_issue_history_endpoint(client, test_db, admin_token):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async def _prepare_history():
         repo = IntegrationIssueEventRepository(test_db)
@@ -141,18 +157,22 @@ def test_integration_issue_history_endpoint(client, test_db, admin_token):
 
 
 def test_get_integration_sync_status_endpoint(client, admin_token, monkeypatch):
-    finished_at = datetime.now(timezone.utc)
+    finished_at = datetime.now(UTC)
 
     class _Result:
-        status = "SUCCESS"
-        result = {"status": "ok"}
-        date_done = finished_at
+        status: ClassVar[str] = "SUCCESS"
+        result: ClassVar[dict[str, str]] = {"status": "ok"}
+        date_done: ClassVar[datetime] = finished_at
 
         @staticmethod
         def ready():
             return True
 
-    monkeypatch.setattr(integrations_router.celery_app, "AsyncResult", lambda task_id: _Result())
+    monkeypatch.setattr(
+        integrations_router.celery_app,
+        "AsyncResult",
+        lambda task_id: _Result(),
+    )
 
     headers = {"Authorization": f"Bearer {admin_token}"}
     response = client.get("/api/v1/integrations/sync/task-xyz", headers=headers)
@@ -164,8 +184,14 @@ def test_get_integration_sync_status_endpoint(client, admin_token, monkeypatch):
     assert body["result"] == {"status": "ok"}
 
 
-def test_integration_coverage_endpoint(client, test_db, test_org, admin_token, monkeypatch):
-    now = datetime.now(timezone.utc)
+def test_integration_coverage_endpoint(
+    client,
+    test_db,
+    test_org,
+    admin_token,
+    monkeypatch,
+):
+    now = datetime.now(UTC)
 
     async def _seed_data():
         account = Account(
@@ -214,20 +240,24 @@ def test_integration_coverage_endpoint(client, test_db, test_org, admin_token, m
     payload = response.json()
     assert len(payload) >= 2
 
-    kandji_summary = next(item for item in payload if item["integration"] == "kandji")
+    kandji_summary = next(
+        item for item in payload if item["integration"] == "kandji"
+    )
     assert kandji_summary["status"] == "critical"
     assert kandji_summary["scopes"]["total"] == 2
     assert kandji_summary["scopes"]["healthy"] == 1
     assert kandji_summary["scopes"]["critical"] == 1
     assert pytest.approx(kandji_summary["coverage_ratio"], rel=1e-3) == 0.5
 
-    sentinelone_summary = next(item for item in payload if item["integration"] == "sentinelone")
+    sentinelone_summary = next(
+        item for item in payload if item["integration"] == "sentinelone"
+    )
     assert sentinelone_summary["status"] == "missing"
     assert sentinelone_summary["scopes"]["total"] == 0
 
 
 def test_integration_admin_overview_endpoint(client, test_db, admin_token, monkeypatch):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async def _seed_state():
         repo = IntegrationStateRepository(test_db)
@@ -240,7 +270,10 @@ def test_integration_admin_overview_endpoint(client, test_db, admin_token, monke
                 "last_success_at": (now - timedelta(minutes=20)).isoformat(),
                 "duration_samples": [45.0, 50.0],
                 "recent_errors": [
-                    {"recorded_at": (now - timedelta(hours=5)).isoformat(), "details": "timeout"}
+                    {
+                        "recorded_at": (now - timedelta(hours=5)).isoformat(),
+                        "details": "timeout",
+                    }
                 ],
             },
         )
@@ -254,7 +287,12 @@ def test_integration_admin_overview_endpoint(client, test_db, admin_token, monke
             "schedule": 600,
         }
     }
-    monkeypatch.setattr(integrations_router.celery_app.conf, "beat_schedule", schedule_stub, raising=False)
+    monkeypatch.setattr(
+        integrations_router.celery_app.conf,
+        "beat_schedule",
+        schedule_stub,
+        raising=False,
+    )
 
     headers = {"Authorization": f"Bearer {admin_token}"}
     response = client.get("/api/v1/integrations/admin/overview", headers=headers)
@@ -263,7 +301,11 @@ def test_integration_admin_overview_endpoint(client, test_db, admin_token, monke
     payload = response.json()
     assert payload, "Expected at least one integration overview"
 
-    overview = next(item for item in payload if item["integration"] == "sentinelone.activities")
+    overview = next(
+        item
+        for item in payload
+        if item["integration"] == "sentinelone.activities"
+    )
     assert overview["scope"] == "acme"
     assert overview["duration_samples"] == [45.0, 50.0]
     assert overview["confidence"] == "high"
