@@ -371,38 +371,6 @@ export function IntegrationSyncDashboard() {
     [sortedEntries, selectedKey],
   );
 
-  const historyData = useMemo<IntegrationIssueHistory>(() => history ?? { events: [], buckets: [] }, [history]);
-
-  const historyTotals = useMemo(() => {
-    const totals: Record<string, number> = {};
-    for (const event of historyData.events) {
-      const key = event.severity.toLowerCase();
-      totals[key] = (totals[key] ?? 0) + 1;
-    }
-    return totals;
-  }, [historyData.events]);
-
-  const recentEvents = useMemo(() => {
-    return [...historyData.events].reverse().slice(0, 20);
-  }, [historyData.events]);
-
-  const trendBuckets = historyData.buckets;
-
-  useEffect(() => {
-    if (!pollingTaskId || !taskStatus?.finished) {
-      return;
-    }
-    const resultText =
-      taskStatus.result && typeof taskStatus.result === "object"
-        ? JSON.stringify(taskStatus.result)
-        : String(taskStatus.result ?? "");
-    const completionMessage = resultText ? `Sync ${taskStatus.status.toLowerCase()}: ${resultText}` : `Sync ${taskStatus.status.toLowerCase()}`;
-    setFeedback(completionMessage);
-    setPollingTaskId(null);
-    refetch();
-    refetchIssues();
-  }, [pollingTaskId, taskStatus, refetch, refetchIssues]);
-
   const {
     data: history,
     isFetching: isFetchingHistory,
@@ -425,6 +393,23 @@ export function IntegrationSyncDashboard() {
     refetchInterval: selectedEntry ? 60_000 : false,
   });
 
+  const historyData = useMemo<IntegrationIssueHistory>(() => history ?? { events: [], buckets: [] }, [history]);
+
+  const historyTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const event of historyData.events) {
+      const key = event.severity.toLowerCase();
+      totals[key] = (totals[key] ?? 0) + 1;
+    }
+    return totals;
+  }, [historyData.events]);
+
+  const recentEvents = useMemo(() => {
+    return [...historyData.events].reverse().slice(0, 20);
+  }, [historyData.events]);
+
+  const trendBuckets = historyData.buckets;
+
   const {
     data: taskStatus,
   } = useQuery({
@@ -433,6 +418,21 @@ export function IntegrationSyncDashboard() {
     enabled: Boolean(pollingTaskId),
     refetchInterval: pollingTaskId ? 5_000 : false,
   });
+
+  useEffect(() => {
+    if (!pollingTaskId || !taskStatus?.finished) {
+      return;
+    }
+    const resultText =
+      taskStatus.result && typeof taskStatus.result === "object"
+        ? JSON.stringify(taskStatus.result)
+        : String(taskStatus.result ?? "");
+    const completionMessage = resultText ? `Sync ${taskStatus.status.toLowerCase()}: ${resultText}` : `Sync ${taskStatus.status.toLowerCase()}`;
+    setFeedback(completionMessage);
+    setPollingTaskId(null);
+    refetch();
+    refetchIssues();
+  }, [pollingTaskId, taskStatus, refetch, refetchIssues]);
 
   const lastUpdated = useMemo(() => {
     if (!dataUpdatedAt) {
@@ -729,9 +729,9 @@ export function IntegrationSyncDashboard() {
                         type="button"
                         onClick={handleRetry}
                         className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-200 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={retryMutation.isLoading}
+                        disabled={retryMutation.isPending}
                       >
-                        {retryMutation.isLoading ? "Queuing…" : "Retry sync"}
+                        {retryMutation.isPending ? "Queuing…" : "Retry sync"}
                       </button>
                       {pollingTaskId ? (
                         <span className="text-[11px] text-zinc-400">

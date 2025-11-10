@@ -638,6 +638,7 @@ export type OperationalWorkerStatus = {
   reserved_tasks: number;
   total_completed: number;
   registered_tasks: number;
+  failed_tasks?: number;
 };
 
 export type OperationalCelerySummary = {
@@ -646,6 +647,7 @@ export type OperationalCelerySummary = {
   total_active_tasks: number;
   total_reserved_tasks: number;
   total_queue_depth: number;
+  failed_tasks?: number;
 };
 
 export type OperationalDatabaseStats = {

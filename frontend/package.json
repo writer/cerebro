@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "start:playwright": "next start --hostname 127.0.0.1 --port 3000",
+    "lint": "next lint",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.6",
@@ -25,6 +27,7 @@
     "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",

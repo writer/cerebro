@@ -352,7 +352,7 @@ export function ReviewTable() {
                 <button
                   key={action}
                   type="button"
-                  disabled={!hasSelection || mutation.isLoading}
+                  disabled={!hasSelection || mutation.isPending}
                   onClick={() => mutation.mutate({ action })}
                   className={cn(
                     "rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-wide transition",
