@@ -919,6 +919,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/operations/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Operational Health
+         * @description Return the consolidated operational health snapshot.
+         */
+        get: operations["get_operational_health_api_v1_analytics_operations_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/organizations/{org_id}/analytics/evidence-freshness": {
         parameters: {
             query?: never;
@@ -1819,6 +1839,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/compliance/pre-audit/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Pre Audit Check
+         * @description Trigger an on-demand pre-audit health check.
+         */
+        post: operations["run_pre_audit_check_api_v1_compliance_pre_audit_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/compliance/pre-audit/schedules/{schedule_id}/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Pre Audit Run
+         * @description Return the most recent pre-audit run for a schedule.
+         */
+        get: operations["get_latest_pre_audit_run_api_v1_compliance_pre_audit_schedules__schedule_id__latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/compliance/unified/compliance/frameworks": {
         parameters: {
             query?: never;
@@ -2400,6 +2460,23 @@ export interface paths {
          * @description Get access outliers compared to peer groups.
          */
         get: operations["get_access_outliers_api_v1_identity_governance_organizations__org_id__peer_groups_outliers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Integration Admin Overview */
+        get: operations["list_integration_admin_overview_api_v1_integrations_admin_overview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3664,6 +3741,26 @@ export interface paths {
         get: operations["list_serval_statuses_api_v1_serval__org_id__statuses_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/slack/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Handle Slack Command
+         * @description Handle Slack slash command requests.
+         */
+        post: operations["handle_slack_command_api_v1_slack_slack_commands_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5516,10 +5613,16 @@ export interface components {
         };
         /** FindingPageResponse */
         FindingPageResponse: {
+            /** Freshness */
+            freshness?: {
+                [key: string]: unknown;
+            } | null;
             /** Items */
             items: components["schemas"]["FindingResponse"][];
             /** Next Cursor */
             next_cursor?: string | null;
+            /** Warnings */
+            warnings?: string[];
         };
         /** FindingResponse */
         FindingResponse: {
@@ -5920,6 +6023,47 @@ export interface components {
             org_id: string;
             /** Principal Id */
             principal_id?: string | null;
+        };
+        /** IntegrationAdminOverview */
+        IntegrationAdminOverview: {
+            /** Age Human */
+            age_human: string | null;
+            /** Age Seconds */
+            age_seconds: number | null;
+            /**
+             * Confidence
+             * @default unknown
+             */
+            confidence: string;
+            /** Duration Average Seconds */
+            duration_average_seconds: number | null;
+            /** Duration Samples */
+            duration_samples?: number[];
+            /** Integration */
+            integration: string;
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Next Scheduled Sync At */
+            next_scheduled_sync_at: string | null;
+            /** Recent Errors */
+            recent_errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Scope */
+            scope: string;
+            /**
+             * Stale Threshold Hours
+             * @description Stale alert threshold in hours
+             */
+            stale_threshold_hours?: number | null;
+            /** Status */
+            status: string;
+            /** Warning */
+            warning: string | null;
         };
         /** IntegrationCoverageAccounts */
         IntegrationCoverageAccounts: {
@@ -6464,6 +6608,42 @@ export interface components {
             support_count: number;
             /** Tool Name */
             tool_name: string;
+        };
+        /** PreAuditRunRequest */
+        PreAuditRunRequest: {
+            /**
+             * Audit Date
+             * Format: date-time
+             */
+            audit_date: string;
+            /** Frameworks */
+            frameworks: string[];
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Owner Emails */
+            owner_emails?: string[];
+        };
+        /** PreAuditRunResponse */
+        PreAuditRunResponse: {
+            /** Estimated Outcome */
+            estimated_outcome: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schedule Id
+             * Format: uuid
+             */
+            schedule_id: string;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
         };
         /** PrincipalResponse */
         PrincipalResponse: {
@@ -9692,6 +9872,28 @@ export interface operations {
             };
         };
     };
+    get_operational_health_api_v1_analytics_operations_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     get_evidence_freshness_donut_api_v1_analytics_organizations__org_id__analytics_evidence_freshness_get: {
         parameters: {
             query?: never;
@@ -11148,6 +11350,70 @@ export interface operations {
             };
         };
     };
+    run_pre_audit_check_api_v1_compliance_pre_audit_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreAuditRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreAuditRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_pre_audit_run_api_v1_compliance_pre_audit_schedules__schedule_id__latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreAuditRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_compliance_frameworks_api_v1_compliance_unified_compliance_frameworks_get: {
         parameters: {
             query?: {
@@ -12227,6 +12493,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_integration_admin_overview_api_v1_integrations_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationAdminOverview"][];
                 };
             };
         };
@@ -14543,6 +14829,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handle_slack_command_api_v1_slack_slack_commands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

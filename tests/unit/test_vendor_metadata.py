@@ -1,5 +1,6 @@
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 
 from cerebro.vendor_management.vendor_registry import (
     VendorCategory,

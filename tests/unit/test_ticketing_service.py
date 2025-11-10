@@ -1,3 +1,4 @@
+from typing import ClassVar
 from uuid import uuid4
 
 import pytest
@@ -5,7 +6,6 @@ import pytest
 from cerebro.agents import ticketing_service
 from cerebro.agents.ticketing_service import TicketingService
 from cerebro.integrations.serval_ticket_service import ServalTicketResult
-
 
 pytestmark = pytest.mark.asyncio
 
@@ -28,7 +28,7 @@ class DummySession:
         obj_id = getattr(obj, "id", None)
         if obj_id is None:
             obj_id = uuid4()
-            setattr(obj, "id", obj_id)
+            obj.id = obj_id  # type: ignore[attr-defined]
         self.storage[obj_id] = obj
 
     async def commit(self) -> None:
@@ -42,8 +42,8 @@ class DummySession:
 
 
 class DummyServalTicketService:
-    create_calls = []
-    update_calls = []
+    create_calls: ClassVar[list[dict]] = []
+    update_calls: ClassVar[list[dict]] = []
 
     def __init__(self, db):
         self.db = db
@@ -66,7 +66,15 @@ class DummyServalTicketService:
             },
         )
 
-    async def update_ticket_status(self, *, org_id, ticket_id, status_key=None, priority_key=None, assigned_to_user_id=None):
+    async def update_ticket_status(
+        self,
+        *,
+        org_id,
+        ticket_id,
+        status_key=None,
+        priority_key=None,
+        assigned_to_user_id=None,
+    ):
         DummyServalTicketService.update_calls.append(
             {
                 "org_id": org_id,
@@ -85,7 +93,11 @@ async def test_ticketing_service_creates_serval_ticket(monkeypatch):
     session = DummySession()
 
     monkeypatch.setattr(ticketing_service, "async_session_factory", lambda: session)
-    monkeypatch.setattr(ticketing_service, "ServalTicketService", DummyServalTicketService)
+    monkeypatch.setattr(
+        ticketing_service,
+        "ServalTicketService",
+        DummyServalTicketService,
+    )
     DummyServalTicketService.create_calls.clear()
     DummyServalTicketService.update_calls.clear()
 
@@ -111,14 +123,21 @@ async def test_ticketing_service_creates_serval_ticket(monkeypatch):
     assert ticket.system == "serval"
     assert ticket.details["serval"]["ticket"]["friendlyIdentifier"] == "SRV-123"
     assert ticket.details["serval"]["team_id"] == "team-default"
-    assert DummyServalTicketService.create_calls[0]["overrides"]["assigned_to_user_id"] == "assign-1"
+    assert (
+        DummyServalTicketService.create_calls[0]["overrides"]["assigned_to_user_id"]
+        == "assign-1"
+    )
 
 
 async def test_ticketing_service_closes_serval_ticket(monkeypatch):
     # Ensure local closure cascades to the Serval API client.
     session = DummySession()
     monkeypatch.setattr(ticketing_service, "async_session_factory", lambda: session)
-    monkeypatch.setattr(ticketing_service, "ServalTicketService", DummyServalTicketService)
+    monkeypatch.setattr(
+        ticketing_service,
+        "ServalTicketService",
+        DummyServalTicketService,
+    )
     DummyServalTicketService.create_calls.clear()
     DummyServalTicketService.update_calls.clear()
 
@@ -130,7 +149,12 @@ async def test_ticketing_service_closes_serval_ticket(monkeypatch):
         task_id=task_id,
         system="serval",
         summary="Escalate",
-        metadata={"serval": {"team_id": "team-default", "created_by_user_id": "creator"}},
+        metadata={
+            "serval": {
+                "team_id": "team-default",
+                "created_by_user_id": "creator",
+            }
+        },
     )
 
     assert ticket.external_id == "srv-123"
@@ -138,7 +162,10 @@ async def test_ticketing_service_closes_serval_ticket(monkeypatch):
 
     DummyServalTicketService.update_calls.clear()
 
-    await TicketingService.close_ticket(ticket_id=ticket.id, external_id=ticket.external_id)
+    await TicketingService.close_ticket(
+        ticket_id=ticket.id,
+        external_id=ticket.external_id,
+    )
 
     assert DummyServalTicketService.update_calls
     call = DummyServalTicketService.update_calls[0]

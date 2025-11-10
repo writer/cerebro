@@ -264,6 +264,11 @@ export const schemaAdapterDefinitions = {
     schema: "IdentityAnomalyRequest",
     snakeCaseDateKeys: [],
   },
+  "IntegrationAdminOverview": {
+    schema: "IntegrationAdminOverview",
+    snakeCaseDateKeys: ["last_synced_at","next_scheduled_sync_at"],
+    deep: true,
+  },
   "IntegrationCoverageAccounts": {
     schema: "IntegrationCoverageAccounts",
     snakeCaseDateKeys: [],
@@ -371,6 +376,16 @@ export const schemaAdapterDefinitions = {
   "PolicySuggestionResponse": {
     schema: "PolicySuggestionResponse",
     snakeCaseDateKeys: ["last_seen"],
+    deep: true,
+  },
+  "PreAuditRunRequest": {
+    schema: "PreAuditRunRequest",
+    snakeCaseDateKeys: ["audit_date"],
+    deep: true,
+  },
+  "PreAuditRunResponse": {
+    schema: "PreAuditRunResponse",
+    snakeCaseDateKeys: [],
     deep: true,
   },
   "PrincipalResponse": {
