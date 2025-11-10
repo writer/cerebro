@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from cerebro.core.models import IntegrationSyncState
 from cerebro.integrations.kandji import KandjiIngestion
 from cerebro.integrations.sentinelone import SentinelOneConfig, SentinelOneIngestion
 from cerebro.integrations.state import IntegrationStateRepository
-from cerebro.core.models import IntegrationSyncState
 from cerebro.telemetry.schemas import HostEvent
 
 
@@ -63,14 +63,22 @@ def test_kandji_build_host_telemetry_includes_serial_metadata() -> None:
         "missing_patch_count": 0,
     }
 
-    compliance = {"status": "Compliant", "issues": ["firewall_disabled"], "last_check_in": "2024-05-02T01:00:00Z"}
+    compliance = {
+        "status": "Compliant",
+        "issues": ["firewall_disabled"],
+        "last_check_in": "2024-05-02T01:00:00Z",
+    }
     blueprint = {"name": "Corp Managed", "owner": "fleet@acme.com"}
     smart_groups = [{"name": "Exec-Fleet"}, {"name": "High-Risk"}]
-    lifecycle = {"owner_email": "user@acme.com", "department": "Security", "asset_tag": "Asset-7"}
+    lifecycle = {
+        "owner_email": "user@acme.com",
+        "department": "Security",
+        "asset_tag": "Asset-7",
+    }
 
     telemetry = ingestion._build_host_telemetry(
         device,
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         compliance=compliance,
         blueprint=blueprint,
         smart_groups=smart_groups,
@@ -102,7 +110,7 @@ def test_kandji_installed_packages_extracted() -> None:
         ],
     }
 
-    telemetry = ingestion._build_host_telemetry(device, collected_at=datetime.now(timezone.utc))
+    telemetry = ingestion._build_host_telemetry(device, collected_at=datetime.now(UTC))
     assert telemetry is not None
     assert telemetry.installed_packages is not None
     assert telemetry.installed_packages[0].name == "Safari"
@@ -112,10 +120,16 @@ def test_kandji_installed_packages_extracted() -> None:
 @pytest.mark.parametrize(
     "detection,expected_uuid",
     [
-        ({"device_serial_number": "C02ABC123", "cve_id": "CVE-2024-0001"}, "4e47c8b6-2c39-5a7f-b4aa-139be5220b10"),
+        (
+            {"device_serial_number": "C02ABC123", "cve_id": "CVE-2024-0001"},
+            "4e47c8b6-2c39-5a7f-b4aa-139be5220b10",
+        ),
     ],
 )
-def test_kandji_detection_normalization_uses_serial_and_cve(detection, expected_uuid) -> None:
+def test_kandji_detection_normalization_uses_serial_and_cve(
+    detection,
+    expected_uuid,
+) -> None:
     ingestion = KandjiIngestion(client=_DummyClient(None), organization="acme")
     detection.update({"latest_detection_date": "2024-05-01T00:00:00Z"})
     event = ingestion._normalize_detection(detection)
@@ -125,7 +139,7 @@ def test_kandji_detection_normalization_uses_serial_and_cve(detection, expected_
 
 
 def test_chunk_events_respects_batch_size() -> None:
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     events = [
         HostEvent(
             event_id=None,
@@ -150,11 +164,15 @@ def test_chunk_events_respects_batch_size() -> None:
 
 
 def test_sentinelone_build_host_telemetry_enriches_health_and_tags() -> None:
-    ingestion = SentinelOneIngestion(_DummyClient(SentinelOneConfig(
-        base_url="https://example.sentinelone.net",
-        api_token="token",
-        organization="acme",
-    )))
+    ingestion = SentinelOneIngestion(
+        _DummyClient(
+            SentinelOneConfig(
+                base_url="https://example.sentinelone.net",
+                api_token="token",
+                organization="acme",
+            )
+        )
+    )
     agent = {
         "id": "agent-1",
         "uuid": "agent-uuid",
@@ -171,11 +189,19 @@ def test_sentinelone_build_host_telemetry_enriches_health_and_tags() -> None:
     policy = {"name": "Corp Default", "policyType": "protect"}
     applications = [{"name": "Chrome", "version": "125", "publisher": "Google"}]
 
-    telemetry = ingestion._build_host_telemetry(agent, policy, applications, datetime.now(timezone.utc))
+    telemetry = ingestion._build_host_telemetry(
+        agent,
+        policy,
+        applications,
+        datetime.now(UTC),
+    )
     assert telemetry is not None
-    assert telemetry.tags is not None and telemetry.tags["policy_name"] == "Corp Default"
-    assert telemetry.installed_packages is not None and telemetry.installed_packages[0].name == "Chrome"
-    assert telemetry.health is not None and telemetry.health.status == "healthy"
+    assert telemetry.tags is not None
+    assert telemetry.tags["policy_name"] == "Corp Default"
+    assert telemetry.installed_packages is not None
+    assert telemetry.installed_packages[0].name == "Chrome"
+    assert telemetry.health is not None
+    assert telemetry.health.status == "healthy"
 
 
 def test_kandji_normalize_audit_event() -> None:
@@ -218,7 +244,7 @@ async def test_integration_state_repository_roundtrip() -> None:
         await conn.run_sync(IntegrationSyncState.__table__.create)
 
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    timestamp = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    timestamp = datetime(2024, 1, 1, tzinfo=UTC)
 
     async with session_factory() as session:
         repo = IntegrationStateRepository(session)
@@ -233,7 +259,7 @@ async def test_integration_state_repository_roundtrip() -> None:
         state_ts = state.last_timestamp
         assert state_ts is not None
         if state_ts.tzinfo is None:
-            state_ts = state_ts.replace(tzinfo=timezone.utc)
+            state_ts = state_ts.replace(tzinfo=UTC)
         assert state_ts == timestamp
         assert state.state_metadata == {"count": 10}
 
