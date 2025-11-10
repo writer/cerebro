@@ -1,7 +1,16 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
+from cerebro.core.models import ConfigSnapshot, Finding
+from cerebro.telemetry.models import (
+    ArtifactPack,
+    ArtifactPackTarget,
+    ArtifactPackTask,
+    ArtifactPackTrigger,
+    HostTelemetryEvent,
+)
 from cerebro.telemetry.schemas import (
     AgentHealth,
     ConfigurationDrift,
@@ -12,14 +21,6 @@ from cerebro.telemetry.schemas import (
     SecurityEvent,
 )
 from cerebro.telemetry.services import TelemetryIngestionService
-from cerebro.core.models import ConfigSnapshot, Finding
-from cerebro.telemetry.models import (
-    ArtifactPack,
-    ArtifactPackTask,
-    ArtifactPackTrigger,
-    ArtifactPackTarget,
-    HostTelemetryEvent,
-)
 
 
 @pytest.mark.asyncio
@@ -37,12 +38,12 @@ async def test_process_host_creates_snapshot_and_findings(test_db):
         os_version="14.6",
         kernel_version="23.6.0",
         architecture="arm64",
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         ip_addresses=["10.0.0.10"],
         mac_addresses=["AA:BB:CC:DD:EE:FF"],
         logged_in_users=["alice"],
         tags={"environment": "prod"},
-        health=AgentHealth(status="healthy", last_heartbeat=datetime.now(timezone.utc)),
+        health=AgentHealth(status="healthy", last_heartbeat=datetime.now(UTC)),
         processes=[
             ProcessSnapshot(
                 pid=1234,
@@ -51,13 +52,13 @@ async def test_process_host_creates_snapshot_and_findings(test_db):
                 command="/usr/local/bin/cerebro-agent",
                 binary_hash="deadbeef",
                 user="alice",
-                start_time=datetime.now(timezone.utc),
+                start_time=datetime.now(UTC),
             )
         ],
         security_events=[
             SecurityEvent(
                 event_type="unauthorized_access",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 severity="high",
                 source_ip="10.1.1.1",
                 user_id="alice",
@@ -92,7 +93,7 @@ async def test_process_host_creates_snapshot_and_findings(test_db):
 async def test_process_host_deduplicates_snapshots(test_db):
     service = TelemetryIngestionService(test_db)
 
-    base_time = datetime.now(timezone.utc)
+    base_time = datetime.now(UTC)
     telemetry = HostTelemetry(
         organization="Acme",
         host_id="host-123",
@@ -107,14 +108,16 @@ async def test_process_host_deduplicates_snapshots(test_db):
     await service.process_host(telemetry)
 
     # Second telemetry with same config but newer timestamp should update snapshot
-    telemetry_new = telemetry.model_copy(update={"collected_at": base_time + timedelta(hours=1)})
+    telemetry_new = telemetry.model_copy(
+        update={"collected_at": base_time + timedelta(hours=1)}
+    )
     await service.process_host(telemetry_new)
 
     snapshots = (await test_db.execute(select(ConfigSnapshot))).scalars().all()
     assert len(snapshots) == 1
     saved_at = snapshots[0].captured_at
     if saved_at.tzinfo is None:
-        saved_at = saved_at.replace(tzinfo=timezone.utc)
+        saved_at = saved_at.replace(tzinfo=UTC)
     assert saved_at == telemetry_new.collected_at
 
 
@@ -122,7 +125,7 @@ async def test_process_host_deduplicates_snapshots(test_db):
 async def test_process_host_events_persists_records(test_db):
     service = TelemetryIngestionService(test_db)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     batch = HostEventBatch(
         host_id="host-123",
         hostname="acme-mbp",
@@ -269,7 +272,7 @@ async def test_host_event_trigger_assigns_follow_on_pack(test_db):
     await test_db.commit()
     await test_db.refresh(follow_on_pack)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     batch = HostEventBatch(
         host_id="host-999",
         hostname="acme-dc",
@@ -288,7 +291,7 @@ async def test_host_event_trigger_assigns_follow_on_pack(test_db):
                 process_id=9001,
                 parent_pid=42,
                 user="svc",
-                command_line="/tmp/evil",
+                command_line="/opt/cerebro/evil",
                 source="process_watcher",
                 payload={"reason": "rapid encryption"},
             )
