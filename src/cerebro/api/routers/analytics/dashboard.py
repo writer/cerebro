@@ -25,7 +25,7 @@ class RemediationNoteRequest(BaseModel):
 
 
 class RemediationBulkUpdateRequest(BaseModel):
-    action_ids: Sequence[UUID] = Field(..., min_items=1, max_items=500)
+    action_ids: Sequence[UUID] = Field(..., min_length=1, max_length=500)
     note: Optional[str] = Field(None, max_length=2000)
 
 
@@ -152,7 +152,6 @@ async def get_organization_dashboard(
             "age_human": summary.age_human,
             "status": summary.status,
             "sources": summary.sources,
-            "confidence": summary.confidence,
         }
         for provider, summary in freshness_map.items()
     }

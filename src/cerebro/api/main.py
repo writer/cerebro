@@ -1,7 +1,7 @@
 """Main FastAPI application."""
 
 import asyncio
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from time import perf_counter
 from typing import Dict
 
@@ -64,12 +64,29 @@ configure_structlog()
 logger = structlog.get_logger(__name__)
 
 # Create FastAPI app
+@asynccontextmanager
+async def _app_lifespan(_: FastAPI):
+    global _rotation_task
+    interval = max(settings.jwt_rotation_check_interval_seconds, 0)
+    if interval > 0 and (_rotation_task is None or _rotation_task.done()):
+        loop = asyncio.get_running_loop()
+        _rotation_task = loop.create_task(_jwt_rotation_worker(interval))
+    try:
+        yield
+    finally:
+        if _rotation_task is not None:
+            _rotation_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await _rotation_task
+
+
 app = FastAPI(
     title=settings.api_title,
     description=settings.api_description,
     version="0.1.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=_app_lifespan,
 )
 
 configure_service_observability(service_name="cerebro-api")
@@ -358,26 +375,6 @@ async def _jwt_rotation_worker(interval: int) -> None:
             logger.warning("JWT rotation worker iteration failed", error=str(exc))
 
         await asyncio.sleep(interval)
-
-
-@app.on_event("startup")
-async def _start_background_tasks() -> None:
-    global _rotation_task
-    interval = max(settings.jwt_rotation_check_interval_seconds, 0)
-    if interval <= 0:
-        return
-    if _rotation_task is None or _rotation_task.done():
-        loop = asyncio.get_running_loop()
-        _rotation_task = loop.create_task(_jwt_rotation_worker(interval))
-
-
-@app.on_event("shutdown")
-async def _stop_background_tasks() -> None:
-    if _rotation_task is None:
-        return
-    _rotation_task.cancel()
-    with suppress(asyncio.CancelledError):
-        await _rotation_task
 
 
 @app.get("/")

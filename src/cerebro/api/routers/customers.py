@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from ...core.database import get_db
 from ...core.models import Organization
@@ -40,7 +40,8 @@ class CustomerCreateRequest(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     success_programs: List[str] = Field(default_factory=list)
 
-    @validator("segment")
+    @field_validator("segment")
+    @classmethod
     def validate_segment(cls, value: str) -> str:
         try:
             CustomerSegment(value.lower())
@@ -48,7 +49,8 @@ class CustomerCreateRequest(BaseModel):
             raise ValueError(f"Unsupported customer segment: {value}") from exc
         return value.lower()
 
-    @validator("lifecycle_stage")
+    @field_validator("lifecycle_stage")
+    @classmethod
     def validate_lifecycle_stage(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return value

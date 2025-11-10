@@ -3,7 +3,6 @@ Tests for identity anomaly detection.
 """
 
 import pytest
-import asyncio
 import pandas as pd
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
@@ -66,16 +65,17 @@ class TestBehavioralBaseline:
         assert baseline.resource_access_frequency["app1"] == 0.8
 
 
-@pytest.mark.asyncio 
 class TestIdentityAnomalyDetector:
     """Test identity anomaly detection functionality."""
     
+    @pytest.mark.asyncio
     async def test_detector_initialization(self, detector):
         """Test detector initializes correctly."""
         assert detector.lookback_days == 30
         assert detector.query_engine is not None
         assert detector.baselines == {}
     
+    @pytest.mark.asyncio
     async def test_collect_behavioral_data(self, detector, mock_baselines):
         """Test behavioral data collection."""
         detector.baselines = mock_baselines
@@ -89,6 +89,7 @@ class TestIdentityAnomalyDetector:
         assert "typical_hours_count" in data.columns
         assert "admin_permissions" in data.columns
     
+    @pytest.mark.asyncio
     async def test_login_anomaly_detection(self, detector, mock_baselines):
         """Test login pattern anomaly detection."""
         detector.baselines = mock_baselines
@@ -105,6 +106,7 @@ class TestIdentityAnomalyDetector:
             assert any(a.principal_id == "user2" for a in anomalies)
             assert any(a.anomaly_type == AnomalyType.LOGIN_PATTERN for a in anomalies)
     
+    @pytest.mark.asyncio
     async def test_permission_anomaly_detection(self, detector, mock_baselines):
         """Test permission escalation anomaly detection."""
         detector.baselines = mock_baselines
@@ -119,6 +121,7 @@ class TestIdentityAnomalyDetector:
             if admin_anomaly:
                 assert admin_anomaly.anomaly_type == AnomalyType.PERMISSION_ESCALATION
     
+    @pytest.mark.asyncio
     async def test_cross_provider_anomaly_detection(self, detector, mock_baselines):
         """Test cross-provider anomaly detection.""" 
         detector.baselines = mock_baselines

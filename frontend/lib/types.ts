@@ -542,7 +542,6 @@ export type ProviderFreshnessSummary = {
   age_human: string | null;
   status: string;
   sources: string[];
-  confidence?: string;
 };
 
 export type DashboardFreshness = {
