@@ -1,8 +1,8 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.core.models import Account, Organization, Resource
 from cerebro_sdk.organizations import OrganizationManager
-from cerebro.core.models import Organization, Account, Resource
 
 
 @pytest.mark.asyncio

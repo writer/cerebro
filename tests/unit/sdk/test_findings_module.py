@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -26,8 +26,8 @@ async def test_finding_service_list_and_close(
         rule_id=test_rule.rule_id,
         rule_version=test_rule.version,
         resource_id=test_resource.resource_id,
-        first_seen=datetime.now(timezone.utc),
-        last_seen=datetime.now(timezone.utc),
+        first_seen=datetime.now(UTC),
+        last_seen=datetime.now(UTC),
         status="open",
         severity="medium",
         fingerprint="sdk-test",

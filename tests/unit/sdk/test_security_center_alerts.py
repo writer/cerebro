@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from cerebro_sdk.security_center import (
-    GovernanceAlert,
     MonitoringContext,
     MonitoringEvent,
     SecurityCenterCustomerInsight,
@@ -57,10 +56,19 @@ def test_evaluate_monitoring_events_builds_alerts_with_escalations() -> None:
         ),
     ]
 
+    def resolve_vendor(vendor_id: str) -> SecurityCenterVendorInsight | None:
+        return vendor if vendor_id == "vendor-1" else None
+
+    def resolve_customer(customer_id: str) -> SecurityCenterCustomerInsight | None:
+        return customer if customer_id == "customer-1" else None
+
+    def resolve_escalation(_, event: MonitoringEvent) -> str | None:
+        return "governance" if event.event_type == "incident" else None
+
     context = MonitoringContext(
-        vendor_resolver=lambda vendor_id: vendor if vendor_id == "vendor-1" else None,
-        customer_resolver=lambda customer_id: customer if customer_id == "customer-1" else None,
-        escalation_resolver=lambda entity, event: "governance" if event.event_type == "incident" else None,
+        vendor_resolver=resolve_vendor,
+        customer_resolver=resolve_customer,
+        escalation_resolver=resolve_escalation,
     )
 
     alerts = evaluate_monitoring_events(events, context)

@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import IntegrationSyncIssueEvent
-from cerebro_sdk.integrations import IntegrationService, IntegrationTaskRegistry
 from cerebro.tasks import integration_tasks
+from cerebro_sdk.integrations import IntegrationService, IntegrationTaskRegistry
 
 
 @pytest.mark.asyncio
@@ -27,7 +27,7 @@ async def test_integration_service_states(test_db: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_integration_service_issue_events(test_db: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     event = IntegrationSyncIssueEvent(
         integration="kandji",
         scope="default",
