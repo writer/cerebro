@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from jose import jwt
@@ -21,7 +21,7 @@ async def test_auth_session_login_success(test_db: AsyncSession, test_user):
     assert tokens.refresh_token is not None
     refresh_payload = jwt.get_unverified_claims(tokens.refresh_token)
     exp = refresh_payload["exp"]
-    now_ts = datetime.now(timezone.utc).timestamp()
+    now_ts = datetime.now(UTC).timestamp()
     min_ttl = settings.refresh_token_expire_days * 24 * 60 * 60 - 300
     assert exp - now_ts >= min_ttl
 

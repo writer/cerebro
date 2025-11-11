@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -10,20 +10,20 @@ from cerebro.agents.models import (
     AgentPolicySuggestion,
     AgentReviewTask,
     AgentRuntimeEvent,
+    ApprovalStatus,
+    MessageRole,
+    NotificationStatus,
+    ReviewTaskStatus,
+    TicketStatus,
     ToolApproval,
     ToolInvocation,
-    MessageRole,
-    ReviewTaskStatus,
     ToolInvocationStatus,
-    ApprovalStatus,
-    NotificationStatus,
-    TicketStatus,
 )
 from cerebro_sdk.agents import (
     AgentAnalyticsClient,
     AgentInvalidStatusError,
-    AgentNotFoundError,
     AgentManager,
+    AgentNotFoundError,
     AgentNotificationManager,
     AgentPlaybook,
     AgentReviewManager,
@@ -99,12 +99,15 @@ async def test_agent_manager_memory_entries_and_stats(test_db: AsyncSession, tes
         extra_metadata={"presented_count": 1},
         decay_score=1.25,
         token_count=64,
-        last_accessed_at=datetime.now(timezone.utc),
+        last_accessed_at=datetime.now(UTC),
     )
     test_db.add(entry)
     await test_db.commit()
 
-    records = await manager.list_memory_entries(session_id=session.session_id, include_content=True)
+    records = await manager.list_memory_entries(
+        session_id=session.session_id,
+        include_content=True,
+    )
     assert len(records) == 1
     assert records[0].content == "Detailed summary of the finding."
 
@@ -139,7 +142,7 @@ async def test_agent_manager_memory_scope_counts(test_db: AsyncSession, test_org
             summary=f"Entry {idx}",
             decay_score=1.0,
             token_count=10,
-            last_accessed_at=datetime.now(timezone.utc),
+            last_accessed_at=datetime.now(UTC),
         )
         test_db.add(entry)
     await test_db.commit()
@@ -213,7 +216,8 @@ async def test_agent_review_manager_workflow(test_db: AsyncSession, test_org):
     assert bulk and bulk[0].priority == "high"
 
     history = await review_manager.list_history(task_id=task.id)
-    assert history and history[0].change_type in {"status_change", "assignment", "comment"}
+    assert history
+    assert history[0].change_type in {"status_change", "assignment", "comment"}
 
     exports = await review_manager.export_tasks(org_id=test_org.org_id)
     assert len(exports) == 1
@@ -342,7 +346,7 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
         context={},
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     statuses = [
         ToolInvocationStatus.PENDING,
         ToolInvocationStatus.SUCCESS,
@@ -373,7 +377,9 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
         await test_db.refresh(invocation)
 
     approvals = []
-    for idx, status in enumerate([ApprovalStatus.PENDING, ApprovalStatus.APPROVED, ApprovalStatus.REJECTED]):
+    for idx, status in enumerate(
+        [ApprovalStatus.PENDING, ApprovalStatus.APPROVED, ApprovalStatus.REJECTED]
+    ):
         approval = ToolApproval(
             org_id=test_org.org_id,
             tool_invocation_id=invocations[idx].id,
@@ -389,7 +395,10 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
 
     tooling = AgentToolingManager(test_db)
 
-    success = await tooling.list_invocations(org_id=test_org.org_id, status=ToolInvocationStatus.SUCCESS)
+    success = await tooling.list_invocations(
+        org_id=test_org.org_id,
+        status=ToolInvocationStatus.SUCCESS,
+    )
     assert len(success) == 1 and success[0].status == ToolInvocationStatus.SUCCESS.value
 
     allow_only = await tooling.list_invocations(
@@ -399,20 +408,36 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
     )
     assert len(allow_only) == 2
 
-    text_matches = await tooling.list_invocations(org_id=test_org.org_id, text_query="critical")
+    text_matches = await tooling.list_invocations(
+        org_id=test_org.org_id,
+        text_query="critical",
+    )
     assert len(text_matches) == 1 and text_matches[0].error_code == "ERR_CRITICAL"
 
-    error_filtered = await tooling.list_invocations(org_id=test_org.org_id, error_code="ERR_CRITICAL")
+    error_filtered = await tooling.list_invocations(
+        org_id=test_org.org_id,
+        error_code="ERR_CRITICAL",
+    )
     assert len(error_filtered) == 1 and error_filtered[0].tool_name == "tool-2"
 
-    recent = await tooling.list_invocations(org_id=test_org.org_id, since=now - timedelta(hours=2))
+    recent = await tooling.list_invocations(
+        org_id=test_org.org_id,
+        since=now - timedelta(hours=2),
+    )
     assert len(recent) == 2
 
     cursor_time = invocations[1].started_at
-    older = await tooling.list_invocations(org_id=test_org.org_id, cursor=cursor_time, page_size=5)
+    older = await tooling.list_invocations(
+        org_id=test_org.org_id,
+        cursor=cursor_time,
+        page_size=5,
+    )
     assert all(record.started_at < cursor_time for record in older)
 
-    pending = await tooling.list_approvals(org_id=test_org.org_id, status=ApprovalStatus.PENDING)
+    pending = await tooling.list_approvals(
+        org_id=test_org.org_id,
+        status=ApprovalStatus.PENDING,
+    )
     assert len(pending) == 1 and pending[0].status == ApprovalStatus.PENDING.value
 
     approval_cursor = approvals[1].requested_at
@@ -428,12 +453,21 @@ async def test_agent_tooling_manager_filters(test_db: AsyncSession, test_org):
     assert summary_map[("tool-0", ToolInvocationStatus.PENDING.value)] == 1
     assert summary_map[("tool-1", ToolInvocationStatus.SUCCESS.value)] == 1
 
-    success_summary = await tooling.summarize_invocations(org_id=test_org.org_id, status=ToolInvocationStatus.SUCCESS)
-    assert len(success_summary) == 1 and success_summary[0].status == ToolInvocationStatus.SUCCESS.value
+    success_summary = await tooling.summarize_invocations(
+        org_id=test_org.org_id,
+        status=ToolInvocationStatus.SUCCESS,
+    )
+    assert (
+        len(success_summary) == 1
+        and success_summary[0].status == ToolInvocationStatus.SUCCESS.value
+    )
 
 
 @pytest.mark.asyncio
-async def test_agent_tooling_manager_rejection_updates_invocation(test_db: AsyncSession, test_org):
+async def test_agent_tooling_manager_rejection_updates_invocation(
+    test_db: AsyncSession,
+    test_org,
+):
     agent_manager = AgentManager(test_db)
     session = await agent_manager.create_session(
         org_id=test_org.org_id,
@@ -442,7 +476,7 @@ async def test_agent_tooling_manager_rejection_updates_invocation(test_db: Async
         context={},
     )
 
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     invocation = ToolInvocation(
         session_id=session.session_id,
         tool_name="dangerous.action",
@@ -594,8 +628,13 @@ async def test_agent_notification_manager(test_db: AsyncSession, test_org):
     )
     assert len(pending_notifications) == 1
 
-    delivered = await notification_manager.mark_delivered(notification.notification_id)
-    assert delivered is not None and delivered.status == NotificationStatus.DELIVERED.value
+    delivered = await notification_manager.mark_delivered(
+        notification.notification_id
+    )
+    assert (
+        delivered is not None
+        and delivered.status == NotificationStatus.DELIVERED.value
+    )
 
     with pytest.raises(AgentInvalidStatusError):
         await notification_manager.mark_delivered(notification.notification_id)
@@ -612,7 +651,10 @@ async def test_agent_notification_manager(test_db: AsyncSession, test_org):
     tickets = await notification_manager.list_tickets(task_id=task.id)
     assert len(tickets) == 1
 
-    closed = await notification_manager.close_ticket(ticket_id=ticket.ticket_id, external_id="JIRA-123")
+    closed = await notification_manager.close_ticket(
+        ticket_id=ticket.ticket_id,
+        external_id="JIRA-123",
+    )
     assert closed is not None and closed.status == TicketStatus.CLOSED.value
 
     with pytest.raises(AgentInvalidStatusError):
@@ -682,7 +724,7 @@ async def test_agent_playbook_helpers(test_db: AsyncSession, test_org):
         summary="assessment",
         decay_score=1.0,
         token_count=16,
-        last_accessed_at=datetime.now(timezone.utc),
+        last_accessed_at=datetime.now(UTC),
     )
     test_db.add(entry)
     await test_db.commit()
@@ -703,9 +745,15 @@ async def test_agent_playbook_helpers(test_db: AsyncSession, test_org):
     await test_db.commit()
     await test_db.refresh(task)
 
-    notifications = await playbook.schedule_notifications(task_id=task.id, channels=["slack", "pagerduty"])
+    notifications = await playbook.schedule_notifications(
+        task_id=task.id,
+        channels=["slack", "pagerduty"],
+    )
     assert len(notifications) == 2
-    assert all(record.status == NotificationStatus.PENDING.value for record in notifications)
+    assert all(
+        record.status == NotificationStatus.PENDING.value
+        for record in notifications
+    )
 
     ticket = await playbook.escalate_to_ticket(
         task_id=task.id,
