@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from typing import Any
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
 
 from .base import BaseGitHubProducer
 
 
-def _is_broad_runner_group(group_info: Optional[Dict[str, object]]) -> bool:
+def _is_broad_runner_group(group_info: dict[str, Any] | None) -> bool:
     if not group_info:
         return False
 
@@ -28,7 +33,7 @@ def _is_broad_runner_group(group_info: Optional[Dict[str, object]]) -> bool:
     return False
 
 
-def _references_multiple_repos(repositories: Optional[List[Dict[str, object]]]) -> bool:
+def _references_multiple_repos(repositories: list[dict[str, Any]] | None) -> bool:
     if not repositories:
         return False
     return len(repositories) > 1
@@ -39,7 +44,7 @@ class GithubRepoRunnerGroupScopeProducer(BaseGitHubProducer):
     """Detect repositories attached to overly broad runner groups."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"github.repo"}
 
     @property
@@ -56,14 +61,17 @@ class GithubRepoRunnerGroupScopeProducer(BaseGitHubProducer):
 
     @property
     def description(self) -> str:
-        return "Repository is configured with a runner group that can be used by untrusted repositories"
+        return (
+            "Repository is configured with a runner group that can be used by "
+            "untrusted repositories"
+        )
 
     def evaluate(
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
+        context: dict[str, object] | None = None,
+    ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         runner_meta = normalized.get("runner") or {}
         runner_group = normalized.get("runner_group") or {}
@@ -90,7 +98,7 @@ class GithubRepoRunnerGroupScopeProducer(BaseGitHubProducer):
             "shared_repositories": repositories,
         }
 
-        summary_parts: List[str] = []
+        summary_parts: list[str] = []
         if risky_group:
             summary_parts.append("runner group permits organization-wide use")
         if multi_repo:
@@ -101,7 +109,10 @@ class GithubRepoRunnerGroupScopeProducer(BaseGitHubProducer):
         finding = self.create_finding(
             resource=resource,
             rule_id=rule_id,
-            title=f"Repository {resource.name or resource.external_id} uses broad runner group",
+            title=(
+                "Repository "
+                f"{resource.name or resource.external_id} uses broad runner group"
+            ),
             summary=f"{resource.external_id}: {summary}",
             evidence=evidence,
             severity=self.severity,

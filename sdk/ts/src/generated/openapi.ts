@@ -5545,6 +5545,148 @@ export interface components {
             total_sent: number;
         };
         /**
+         * EndpointThreat
+         * @description Threat detected on an endpoint by an external sensor.
+         */
+        EndpointThreat: {
+            /**
+             * Analyst Verdict
+             * @description Analyst verdict when available
+             */
+            analyst_verdict?: string | null;
+            /**
+             * C2 Domains
+             * @description Command-and-control domains or endpoints
+             */
+            c2_domains?: string[] | null;
+            /**
+             * Categories
+             * @description Indicator categories associated with threat
+             */
+            categories?: string[] | null;
+            /**
+             * Classification
+             * @description Threat classification label
+             */
+            classification?: string | null;
+            /**
+             * Confidence
+             * @description Detection confidence level
+             */
+            confidence?: string | null;
+            /**
+             * Detected At
+             * Format: date-time
+             * @description Timestamp when the threat was identified
+             */
+            detected_at: string;
+            /**
+             * File Path
+             * @description Filesystem path associated with the threat
+             */
+            file_path?: string | null;
+            /**
+             * Indicators
+             * @description Descriptive indicators linked to the threat
+             */
+            indicators?: string[] | null;
+            /**
+             * Initiated By
+             * @description Process or sensor initiating mitigation
+             */
+            initiated_by?: string | null;
+            /**
+             * Initiating User
+             * @description User associated with initiation
+             */
+            initiating_user?: string | null;
+            /**
+             * Md5
+             * @description MD5 hash of malicious artifact
+             */
+            md5?: string | null;
+            /**
+             * Mitigation Status
+             * @description Current mitigation status
+             */
+            mitigation_status?: string | null;
+            /**
+             * Mitre Tactics
+             * @description MITRE ATT&CK tactics mapped to threat
+             */
+            mitre_tactics?: string[] | null;
+            /**
+             * Mitre Techniques
+             * @description MITRE ATT&CK techniques mapped to threat
+             */
+            mitre_techniques?: string[] | null;
+            /**
+             * Name
+             * @description Human readable threat name
+             */
+            name?: string | null;
+            /**
+             * Process User
+             * @description User owning the malicious process
+             */
+            process_user?: string | null;
+            /**
+             * Quarantine Status
+             * @description Current quarantine status of the asset
+             */
+            quarantine_status?: string | null;
+            /**
+             * Reboot Required
+             * @description Whether mitigation requires reboot
+             */
+            reboot_required?: boolean | null;
+            /**
+             * Resolved At
+             * @description Timestamp when mitigation completed
+             */
+            resolved_at?: string | null;
+            /**
+             * Severity
+             * @description Mapped severity level
+             */
+            severity?: string | null;
+            /**
+             * Sha1
+             * @description SHA1 hash of malicious artifact
+             */
+            sha1?: string | null;
+            /**
+             * Sha256
+             * @description SHA256 hash of malicious artifact
+             */
+            sha256?: string | null;
+            /**
+             * Source Ips
+             * @description Source IP addresses involved in the threat
+             */
+            source_ips?: string[] | null;
+            /**
+             * Status
+             * @description Threat incident status
+             */
+            status?: string | null;
+            /**
+             * Storyline
+             * @description SentinelOne storyline identifier
+             */
+            storyline?: string | null;
+            /**
+             * Threat Id
+             * @description Unique SentinelOne threat identifier
+             */
+            threat_id: string;
+            /**
+             * Updated At
+             * @description Timestamp of last update
+             */
+            updated_at?: string | null;
+        };
+        /**
          * EvidenceBundleRequest
          * @description Request to create evidence bundle.
          */
@@ -6008,6 +6150,11 @@ export interface components {
             tags?: {
                 [key: string]: string;
             } | null;
+            /**
+             * Threats
+             * @description Active or recently observed threats reported by security sensors
+             */
+            threats?: components["schemas"]["EndpointThreat"][] | null;
         };
         /** IdentityAnomalyRequest */
         IdentityAnomalyRequest: {

@@ -193,6 +193,11 @@ export const schemaAdapterDefinitions = {
     schema: "EmailNotificationStatsResponse",
     snakeCaseDateKeys: [],
   },
+  "EndpointThreat": {
+    schema: "EndpointThreat",
+    snakeCaseDateKeys: ["detected_at","resolved_at","updated_at"],
+    deep: true,
+  },
   "EvidenceBundleRequest": {
     schema: "EvidenceBundleRequest",
     snakeCaseDateKeys: ["period_end","period_start"],
