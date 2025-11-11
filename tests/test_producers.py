@@ -10,12 +10,17 @@ from cerebro.findings.producers.aws.iam_user_without_mfa import (
 )
 from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProducer
 from cerebro.findings.producers.aws.storage_write_access import StorageWriteAccessProducer
+from cerebro.findings.producers.gcp.bucket_public_write import GCPBucketPublicWriteProducer
+from cerebro.findings.producers.gcp.bucket_secret_artifacts import GCPBucketSecretArtifactProducer
 from cerebro.findings.producers.github.public_repo_no_branch_protection import (
     PublicRepoNoBranchProtectionProducer,
 )
 from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
 from cerebro.findings.producers.m365.inactive_admin import (
     M365InactivePrivilegedUserProducer,
+)
+from cerebro.findings.producers.m365.sharepoint_anonymous_link import (
+    M365SharePointAnonymousLinkProducer,
 )
 from cerebro.findings.producers.okta.dormant_admin import OktaDormantAdminProducer
 from cerebro.findings.producers.telemetry.repo_secret_key import RepoSecretKeyProducer
@@ -245,6 +250,72 @@ class TestAWSProducers:
         assert "has_admin_privileges" in finding.evidence["risk_factors"]
 
 
+class TestGCPProducers:
+    """Test GCP storage producers."""
+
+    def test_gcp_bucket_public_write(self):
+        producer = GCPBucketPublicWriteProducer()
+
+        resource = ResourceEntity(
+            external_id="projects/acme/buckets/public-bucket",
+            resource_type="gcp.storage.bucket",
+            provider="gcp",
+            name="public-bucket",
+        )
+
+        config = ConfigEntity(
+            resource_external_id="projects/acme/buckets/public-bucket",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "iam_bindings": [
+                    {
+                        "role": "roles/storage.objectAdmin",
+                        "members": ["allUsers"],
+                    }
+                ],
+                "uniform_bucket_level_access": {"enabled": False},
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["iam_bindings"][0]["members"] == ["allUsers"]
+
+    def test_gcp_bucket_secret_artifacts(self):
+        producer = GCPBucketSecretArtifactProducer()
+
+        resource = ResourceEntity(
+            external_id="projects/acme/buckets/exposed-secrets",
+            resource_type="gcp.storage.bucket",
+            provider="gcp",
+            name="exposed-secrets",
+        )
+
+        config = ConfigEntity(
+            resource_external_id="projects/acme/buckets/exposed-secrets",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "is_public": True,
+                "objectsSample": [
+                    {"key": "config/service_account.json", "size": 2048},
+                    {"key": "readme.txt", "size": 128},
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert "service_account.json" in finding.evidence["matched_objects"][0]["key"]
+
+
 class TestProducerRegistry:
     """Test producer registry functionality."""
 
@@ -267,6 +338,9 @@ class TestProducerRegistry:
             "BucketCleartextKeyProducer",
             "StorageWriteAccessProducer",
             "RepoSecretKeyProducer",
+            "GCPBucketPublicWriteProducer",
+            "GCPBucketSecretArtifactProducer",
+            "M365SharePointAnonymousLinkProducer",
         ]
 
         for expected in expected_producers:
@@ -511,3 +585,40 @@ class TestIdentityProducers:
 
         findings = producer.evaluate(resource, config)
         assert len(findings) == 0
+
+
+class TestM365StorageProducers:
+    """Test SharePoint storage exposure producers."""
+
+    def test_sharepoint_anonymous_edit_link(self):
+        producer = M365SharePointAnonymousLinkProducer()
+
+        resource = ResourceEntity(
+            external_id="site-1",
+            resource_type="m365.sharepoint.site",
+            provider="m365",
+            name="Project Docs",
+        )
+
+        config = ConfigEntity(
+            resource_external_id="site-1",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "web_url": "https://contoso.sharepoint.com/sites/project",
+                "permissions": [
+                    {
+                        "link": {"scope": "anonymous", "type": "edit"},
+                        "roles": ["write"],
+                    }
+                ],
+                "sharing_capability": "anonymousAccess",
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["anonymous_links"][0]["scope"] == "anonymous"

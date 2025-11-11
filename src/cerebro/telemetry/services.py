@@ -73,7 +73,10 @@ class TelemetryIngestionService:
     async def process_repository(self, payload: RepositoryTelemetry) -> Dict[str, Any]:
         """Ingest repository telemetry and create findings."""
 
-        logger.info("Received repository telemetry", repository=payload.repository)
+        logger.info(
+            "Received repository telemetry",
+            extra={"repository": payload.repository},
+        )
 
         try:
             context = await self._ensure_repository_context(payload.repository)
@@ -82,6 +85,23 @@ class TelemetryIngestionService:
             if payload.secrets_scan:
                 for secret in payload.secrets_scan:
                     finding = await self._create_secret_finding(secret, payload, context)
+                    if finding:
+                        findings.append(finding)
+
+            for structured_payload, hint in [
+                (payload.dependencies.dict() if payload.dependencies else None, "dependency_scan"),
+                (payload.sbom, "sbom"),
+                (payload.code_metrics, "code_metrics"),
+            ]:
+                if not structured_payload:
+                    continue
+                telemetry_stub = {
+                    "repository": payload.repository,
+                    "timestamp": payload.timestamp,
+                    "sha": payload.sha,
+                }
+                for secret in self._iter_secret_evidence(structured_payload, detector_hint=hint):
+                    finding = await self._create_secret_finding(secret, telemetry_stub, context)
                     if finding:
                         findings.append(finding)
 
@@ -99,8 +119,10 @@ class TelemetryIngestionService:
 
             logger.info(
                 "Processed repository telemetry",
-                repository=payload.repository,
-                findings_created=len(findings),
+                extra={
+                    "repository": payload.repository,
+                    "findings_created": len(findings),
+                },
             )
 
             return {
@@ -118,7 +140,8 @@ class TelemetryIngestionService:
         """Ingest runtime telemetry and create findings."""
 
         logger.info(
-            "Received runtime telemetry", service=payload.service, environment=payload.environment
+            "Received runtime telemetry",
+            extra={"service": payload.service, "environment": payload.environment},
         )
 
         try:
@@ -143,9 +166,11 @@ class TelemetryIngestionService:
 
             logger.info(
                 "Processed runtime telemetry",
-                service=payload.service,
-                environment=payload.environment,
-                findings_created=len(findings),
+                extra={
+                    "service": payload.service,
+                    "environment": payload.environment,
+                    "findings_created": len(findings),
+                },
             )
 
             return {
@@ -441,18 +466,32 @@ class TelemetryIngestionService:
 
         logger.info(
             "Received compliance evidence",
-            repository=payload.repository,
-            framework=payload.framework,
+            extra={"repository": payload.repository, "framework": payload.framework},
         )
 
         try:
             context = await self._ensure_repository_context(payload.repository)
 
-            # TODO: persist evidence payload once data model is available.
+            telemetry_stub = {
+                "repository": payload.repository,
+                "timestamp": payload.collected_at,
+                "sha": None,
+            }
+
+            findings: list[UUID] = []
+
+            for secret in self._iter_secret_evidence(payload.evidence, detector_hint=payload.framework):
+                finding_id = await self._create_secret_finding(secret, telemetry_stub, context)
+                if finding_id:
+                    findings.append(finding_id)
+
             logger.info(
                 "Compliance evidence recorded",
-                framework=payload.framework,
-                controls=list(payload.evidence.keys()),
+                extra={
+                    "framework": payload.framework,
+                    "controls": list(payload.evidence.keys()),
+                    "secret_findings": len(findings),
+                },
             )
 
             await self.db.commit()
@@ -462,6 +501,8 @@ class TelemetryIngestionService:
                 "repository": payload.repository,
                 "framework": payload.framework,
                 "controls_evidenced": len(payload.evidence),
+                "findings_created": len(findings),
+                "finding_ids": [str(fid) for fid in findings],
             }
         except Exception as exc:  # pragma: no cover
             await self.db.rollback()
@@ -471,7 +512,10 @@ class TelemetryIngestionService:
     async def process_dependency_graph(self, payload: DependencyGraph) -> Dict[str, Any]:
         """Ingest dependency graph telemetry."""
 
-        logger.info("Received dependency graph", repository=payload.repository)
+        logger.info(
+            "Received dependency graph",
+            extra={"repository": payload.repository},
+        )
 
         try:
             context = await self._ensure_repository_context(payload.repository)
@@ -491,12 +535,25 @@ class TelemetryIngestionService:
 
             # TODO: persist dependency graph, malicious package detections, license checks.
 
+            secret_stub = {
+                "repository": payload.repository,
+                "timestamp": payload.timestamp,
+                "sha": None,
+            }
+
+            for secret in self._iter_secret_evidence(payload.dependency_graph, detector_hint="dependency_graph"):
+                finding_id = await self._create_secret_finding(secret, secret_stub, context)
+                if finding_id:
+                    findings.append(finding_id)
+
             await self.db.commit()
 
             logger.info(
                 "Processed dependency graph",
-                repository=payload.repository,
-                findings_created=len(findings),
+                extra={
+                    "repository": payload.repository,
+                    "findings_created": len(findings),
+                },
             )
 
             return {
@@ -959,7 +1016,7 @@ class TelemetryIngestionService:
     async def _create_secret_finding(
         self,
         secret: SecretsScanResult,
-        telemetry: RepositoryTelemetry,
+        telemetry: RepositoryTelemetry | Dict[str, Any],
         context: RepositoryContext,
     ) -> Optional[UUID]:
         rule = await self._get_or_create_rule(
@@ -981,16 +1038,23 @@ class TelemetryIngestionService:
         )
 
         producer = RepoSecretKeyProducer()
+        if isinstance(telemetry, dict):
+            timestamp = telemetry.get("timestamp") or datetime.utcnow()
+            sha = telemetry.get("sha")
+        else:
+            timestamp = telemetry.timestamp
+            sha = telemetry.sha
+
         finding_entity = producer.build_from_telemetry(
             resource=resource_entity,
             secret=secret,
-            telemetry={"timestamp": telemetry.timestamp, "sha": telemetry.sha},
+            telemetry={"timestamp": timestamp, "sha": sha},
             rule_id=rule.rule_id,
         )
 
         existing = await self._get_existing_finding(context.org_id, finding_entity.fingerprint)
         if existing:
-            existing.last_seen = telemetry.timestamp
+            existing.last_seen = timestamp
             return existing.finding_id
 
         finding = Finding(
@@ -1000,8 +1064,8 @@ class TelemetryIngestionService:
             rule_id=rule.rule_id,
             rule_version=rule.version,
             resource_id=context.resource_id,
-            first_seen=finding_entity.first_seen or telemetry.timestamp,
-            last_seen=finding_entity.last_seen or telemetry.timestamp,
+            first_seen=finding_entity.first_seen or timestamp,
+            last_seen=finding_entity.last_seen or timestamp,
             status=finding_entity.status.value,
             severity=finding_entity.severity.value,
             fingerprint=finding_entity.fingerprint,
@@ -1087,6 +1151,48 @@ class TelemetryIngestionService:
         self.db.add(finding)
         await self.db.flush()
         return finding.finding_id
+
+    def _iter_secret_evidence(
+        self,
+        payload: Any,
+        detector_hint: Optional[str] = None,
+    ) -> Iterable[SecretsScanResult]:
+        """Yield secret scan results from arbitrary telemetry payloads."""
+
+        if isinstance(payload, list):
+            for item in payload:
+                yield from self._iter_secret_evidence(item, detector_hint)
+            return
+
+        if isinstance(payload, dict):
+            secret_type = payload.get("secret_type") or payload.get("type")
+            file_path = (
+                payload.get("file_path")
+                or payload.get("location")
+                or payload.get("path")
+            )
+
+            if secret_type and file_path:
+                detector_name = (
+                    payload.get("detector")
+                    or payload.get("scanner")
+                    or detector_hint
+                    or "telemetry"
+                )
+
+                yield SecretsScanResult(
+                    detector_name=detector_name,
+                    file_path=str(file_path),
+                    line_number=payload.get("line_number"),
+                    secret_type=str(secret_type),
+                    verified=bool(payload.get("verified", False)),
+                    raw_result=payload,
+                )
+                return
+
+            for key, value in payload.items():
+                next_hint = detector_hint or str(key)
+                yield from self._iter_secret_evidence(value, next_hint)
 
     async def _create_runtime_event_finding(
         self,
@@ -1374,7 +1480,7 @@ class TelemetryIngestionService:
 
     async def _store_sbom(self, resource_id: UUID, sbom: Dict[str, Any]) -> None:
         # TODO: implement persistence once schema is available
-        logger.info("SBOM stored", resource_id=str(resource_id))
+        logger.info("SBOM stored", extra={"resource_id": str(resource_id)})
 
     def _fingerprint(self, prefix: str, *parts: str) -> str:
         data = "-".join(parts)
