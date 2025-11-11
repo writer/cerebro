@@ -78,6 +78,38 @@ class SecurityEvent(BaseModel):
     details: Dict[str, Any]
 
 
+class EndpointThreat(BaseModel):
+    """Threat detected on an endpoint by an external sensor."""
+
+    threat_id: str = Field(..., description="Unique SentinelOne threat identifier")
+    name: Optional[str] = Field(None, description="Human readable threat name")
+    classification: Optional[str] = Field(None, description="Threat classification label")
+    confidence: Optional[str] = Field(None, description="Detection confidence level")
+    severity: Optional[str] = Field(None, description="Mapped severity level")
+    status: Optional[str] = Field(None, description="Threat incident status")
+    mitigation_status: Optional[str] = Field(None, description="Current mitigation status")
+    analyst_verdict: Optional[str] = Field(None, description="Analyst verdict when available")
+    initiated_by: Optional[str] = Field(None, description="Process or sensor initiating mitigation")
+    initiating_user: Optional[str] = Field(None, description="User associated with initiation")
+    process_user: Optional[str] = Field(None, description="User owning the malicious process")
+    file_path: Optional[str] = Field(None, description="Filesystem path associated with the threat")
+    md5: Optional[str] = Field(None, description="MD5 hash of malicious artifact")
+    sha1: Optional[str] = Field(None, description="SHA1 hash of malicious artifact")
+    sha256: Optional[str] = Field(None, description="SHA256 hash of malicious artifact")
+    storyline: Optional[str] = Field(None, description="SentinelOne storyline identifier")
+    detected_at: datetime = Field(..., description="Timestamp when the threat was identified")
+    updated_at: Optional[datetime] = Field(None, description="Timestamp of last update")
+    resolved_at: Optional[datetime] = Field(None, description="Timestamp when mitigation completed")
+    reboot_required: Optional[bool] = Field(None, description="Whether mitigation requires reboot")
+    categories: Optional[List[str]] = Field(None, description="Indicator categories associated with threat")
+    mitre_tactics: Optional[List[str]] = Field(None, description="MITRE ATT&CK tactics mapped to threat")
+    mitre_techniques: Optional[List[str]] = Field(None, description="MITRE ATT&CK techniques mapped to threat")
+    indicators: Optional[List[str]] = Field(None, description="Descriptive indicators linked to the threat")
+    c2_domains: Optional[List[str]] = Field(None, description="Command-and-control domains or endpoints")
+    source_ips: Optional[List[str]] = Field(None, description="Source IP addresses involved in the threat")
+    quarantine_status: Optional[str] = Field(None, description="Current quarantine status of the asset")
+
+
 class ConfigurationDrift(BaseModel):
     """Configuration drift from baseline."""
 
@@ -181,6 +213,10 @@ class HostTelemetry(BaseModel):
     configuration_drift: Optional[List[ConfigurationDrift]] = Field(
         None,
         description="Detected configuration drift items",
+    )
+    threats: Optional[List[EndpointThreat]] = Field(
+        None,
+        description="Active or recently observed threats reported by security sensors",
     )
 
 

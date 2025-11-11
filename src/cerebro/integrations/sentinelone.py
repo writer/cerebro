@@ -15,7 +15,14 @@ import httpx
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.telemetry.schemas import AgentHealth, HostEvent, HostEventBatch, HostTelemetry, SoftwarePackage
+from cerebro.telemetry.schemas import (
+    AgentHealth,
+    EndpointThreat,
+    HostEvent,
+    HostEventBatch,
+    HostTelemetry,
+    SoftwarePackage,
+)
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.integrations.state import IntegrationStateRepository
 from cerebro.metrics.integration_metrics import record_integration_sync
@@ -50,6 +57,17 @@ class SentinelOneConfig:
     agent_version: str = "sentinelone-sync/1.0"
     verify: bool = True
     page_size: int = 200
+
+
+@dataclass(slots=True)
+class _NormalizedThreat:
+    host_id: str
+    hostname: Optional[str]
+    os_family: Optional[str]
+    os_version: Optional[str]
+    agent_version: Optional[str]
+    ip_addresses: List[str]
+    threat: EndpointThreat
 
 
 class SentinelOneClient:
@@ -109,6 +127,44 @@ class SentinelOneClient:
             # account tier.  We rely on helper extractors to normalize the shape
             # before yielding individual rows to callers.
             payload = await self._request_json("/web/api/v2.1/activities", params=params)
+
+            records = self._extract_records(payload)
+            for record in records:
+                yield record
+
+            cursor = self._extract_cursor(payload)
+            if not cursor:
+                break
+
+    async def iter_threats(
+        self,
+        *,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        limit: Optional[int] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Yield threat records using cursor pagination.
+
+        Mirrors :meth:`iter_activities` but targets the ``/threats`` endpoint
+        so callers can backfill and incrementally load SentinelOne detections.
+        """
+
+        page_size = limit or self._config.page_size
+        base_params: Dict[str, Any] = {"limit": page_size}
+        if since:
+            base_params["createdAt__gte"] = _isoformat(since)
+        if until:
+            base_params["createdAt__lte"] = _isoformat(until)
+
+        params = dict(base_params)
+        cursor: Optional[str] = None
+
+        while True:
+            if cursor:
+                params = dict(base_params)
+                params["cursor"] = cursor
+
+            payload = await self._request_json("/web/api/v2.1/threats", params=params)
 
             records = self._extract_records(payload)
             for record in records:
@@ -287,7 +343,20 @@ class SentinelOneIngestion:
             )
         agent_count = await self._ingest_agents(service)
 
-        return {"events_ingested": ingested, "hosts": agent_count, "event_hosts": len(grouped)}
+        threat_summary = await self._ingest_threats(
+            service=service,
+            state_repo=state_repo,
+            since=since,
+            until=until,
+        )
+
+        return {
+            "events_ingested": ingested,
+            "hosts": agent_count,
+            "event_hosts": len(grouped),
+            "threats_ingested": threat_summary.get("threats_ingested", 0),
+            "threat_hosts": threat_summary.get("threat_hosts", 0),
+        }
 
     async def _ingest_agents(self, service: TelemetryIngestionService) -> int:
         collected_at = datetime.now(timezone.utc)
@@ -301,6 +370,447 @@ class SentinelOneIngestion:
             await service.process_host(telemetry)
             count += 1
         return count
+
+    async def _ingest_threats(
+        self,
+        *,
+        service: TelemetryIngestionService,
+        state_repo: IntegrationStateRepository,
+        since: Optional[datetime],
+        until: Optional[datetime],
+    ) -> Dict[str, Any]:
+        state = await state_repo.get_state("sentinelone.threats", self._config.organization)
+        effective_since = since
+        if state and state.last_timestamp:
+            candidate = state.last_timestamp - _STATE_DRIFT
+            if effective_since is None or candidate > effective_since:
+                effective_since = candidate
+
+        grouped: Dict[str, Dict[str, Any]] = {}
+        latest_timestamp: Optional[datetime] = None
+        processed_records = 0
+        active_records = 0
+
+        async for raw in self._client.iter_threats(since=effective_since, until=until):
+            normalized = self._normalize_threat(raw)
+            if normalized is None:
+                continue
+
+            processed_records += 1
+
+            threat_ts = normalized.threat.detected_at
+            if latest_timestamp is None or threat_ts > latest_timestamp:
+                latest_timestamp = threat_ts
+
+            if not self._is_active_threat(normalized.threat):
+                continue
+
+            entry = grouped.setdefault(
+                normalized.host_id,
+                {
+                    "hostname": normalized.hostname,
+                    "os_family": normalized.os_family,
+                    "os_version": normalized.os_version,
+                    "agent_version": normalized.agent_version,
+                    "ip_addresses": set(normalized.ip_addresses),
+                    "threats": [],
+                },
+            )
+
+            if normalized.hostname and not entry.get("hostname"):
+                entry["hostname"] = normalized.hostname
+            if normalized.os_family and not entry.get("os_family"):
+                entry["os_family"] = normalized.os_family
+            if normalized.os_version and not entry.get("os_version"):
+                entry["os_version"] = normalized.os_version
+            if normalized.agent_version and not entry.get("agent_version"):
+                entry["agent_version"] = normalized.agent_version
+            entry["ip_addresses"].update(normalized.ip_addresses)
+            entry["threats"].append(normalized.threat)
+            active_records += 1
+
+        hosts_processed = 0
+        for host_id, entry in grouped.items():
+            threats: List[EndpointThreat] = entry.get("threats", [])
+            if not threats:
+                continue
+
+            collected_at = max((threat.detected_at for threat in threats), default=datetime.now(timezone.utc))
+            if collected_at.tzinfo is None:
+                collected_at = collected_at.replace(tzinfo=timezone.utc)
+
+            ip_addresses = sorted(entry.get("ip_addresses", set()))
+
+            telemetry = HostTelemetry(
+                organization=self._config.organization,
+                site=self._config.site,
+                host_id=host_id,
+                hostname=entry.get("hostname") or host_id,
+                serial_number=host_id,
+                agent_version=entry.get("agent_version") or self._config.agent_version,
+                os_family=(entry.get("os_family") or "unknown"),
+                os_version=entry.get("os_version"),
+                kernel_version=None,
+                architecture=None,
+                collected_at=collected_at,
+                ip_addresses=ip_addresses,
+                mac_addresses=None,
+                logged_in_users=None,
+                tags=None,
+                health=None,
+                processes=[],
+                network_connections=None,
+                installed_packages=None,
+                security_events=None,
+                configuration_drift=None,
+                threats=threats,
+            )
+
+            await service.process_host(telemetry)
+            hosts_processed += 1
+
+        if latest_timestamp:
+            ts = latest_timestamp if latest_timestamp.tzinfo else latest_timestamp.replace(tzinfo=timezone.utc)
+            await state_repo.upsert_state(
+                integration="sentinelone.threats",
+                scope=self._config.organization,
+                last_timestamp=ts,
+                metadata={
+                    "last_ingested_count": processed_records,
+                    "active_count": active_records,
+                },
+            )
+            record_integration_sync(
+                integration="sentinelone.threats",
+                scope=self._config.organization,
+                last_sync_unix=ts.timestamp(),
+                events_ingested=processed_records,
+            )
+
+        return {
+            "threats_ingested": active_records,
+            "threat_hosts": hosts_processed,
+        }
+
+    def _normalize_threat(self, threat: Dict[str, Any]) -> Optional[_NormalizedThreat]:
+        if not isinstance(threat, dict):
+            return None
+
+        info = threat.get("threatInfo") if isinstance(threat.get("threatInfo"), dict) else {}
+        detection = threat.get("agentDetectionInfo") if isinstance(threat.get("agentDetectionInfo"), dict) else {}
+        realtime = threat.get("agentRealtimeInfo") if isinstance(threat.get("agentRealtimeInfo"), dict) else {}
+        mitigation = threat.get("mitigationStatus") if isinstance(threat.get("mitigationStatus"), dict) else {}
+
+        threat_id = (
+            info.get("threatId")
+            or threat.get("id")
+            or threat.get("threatId")
+        )
+        if not threat_id:
+            return None
+        threat_id = str(threat_id)
+
+        host_id = (
+            detection.get("agentUuid")
+            or detection.get("agentId")
+            or threat.get("agentId")
+            or realtime.get("agentUuid")
+            or realtime.get("agentId")
+            or info.get("agentId")
+            or detection.get("deviceId")
+            or threat.get("deviceId")
+        )
+        if not host_id:
+            return None
+        host_id = str(host_id)
+
+        hostname = (
+            detection.get("agentComputerName")
+            or detection.get("agentHostname")
+            or detection.get("computerName")
+            or realtime.get("agentComputerName")
+            or realtime.get("computerName")
+            or info.get("agentComputerName")
+            or info.get("computerName")
+        )
+        if hostname is not None:
+            hostname = str(hostname)
+
+        os_family = (
+            realtime.get("agentOsName")
+            or realtime.get("agentOsType")
+            or detection.get("agentOsName")
+            or detection.get("agentOsType")
+        )
+        if os_family is not None:
+            os_family = str(os_family).lower()
+
+        os_version = (
+            realtime.get("agentOsRevision")
+            or detection.get("agentOsRevision")
+            or detection.get("agentVersion")
+        )
+        if os_version is not None:
+            os_version = str(os_version)
+
+        agent_version = detection.get("agentVersion") or realtime.get("agentVersion")
+        if agent_version is not None:
+            agent_version = str(agent_version)
+
+        ip_addresses: set[str] = set()
+        for key in ("agentIpV4", "agentIpv4", "agentIpV6", "agentIpv6", "externalIp"):
+            value = detection.get(key)
+            if value:
+                ip_addresses.update(self._ensure_list(value))
+        for key in ("externalIp", "lastExternalIp"):
+            value = realtime.get(key)
+            if value:
+                ip_addresses.update(self._ensure_list(value))
+
+        interfaces = realtime.get("networkInterfaces")
+        if isinstance(interfaces, list):
+            for iface in interfaces:
+                if not isinstance(iface, dict):
+                    continue
+                for key in ("inet", "inet6", "ip", "addresses"):
+                    value = iface.get(key)
+                    if value:
+                        ip_addresses.update(self._ensure_list(value))
+
+        detected_at = (
+            self._parse_datetime(info.get("identifiedAt"))
+            or self._parse_datetime(info.get("createdAt"))
+            or self._parse_datetime(threat.get("createdAt"))
+            or datetime.now(timezone.utc)
+        )
+        updated_at = self._parse_datetime(info.get("updatedAt") or threat.get("updatedAt"))
+        resolved_at = self._parse_datetime(mitigation.get("mitigationEndedAt"))
+
+        categories, tactics, techniques, indicator_text, c2_domains, source_ips = self._extract_indicator_details(threat)
+
+        classification = info.get("classification")
+        confidence = info.get("confidenceLevel")
+        severity = self._map_threat_severity(classification, confidence, categories)
+
+        status = info.get("incidentStatus") or info.get("status") or threat.get("status")
+        mitigation_status = (
+            mitigation.get("status")
+            or info.get("mitigationStatus")
+            or info.get("mitigationStatusDescription")
+        )
+
+        endpoint_threat = EndpointThreat(
+            threat_id=threat_id,
+            name=str(info.get("threatName") or info.get("displayName") or threat_id),
+            classification=str(classification) if classification is not None else None,
+            confidence=str(confidence) if confidence is not None else None,
+            severity=severity,
+            status=str(status) if status is not None else None,
+            mitigation_status=str(mitigation_status) if mitigation_status is not None else None,
+            analyst_verdict=str(info.get("analystVerdict")) if info.get("analystVerdict") else None,
+            initiated_by=str(info.get("initiatedBy")) if info.get("initiatedBy") else None,
+            initiating_user=str(info.get("initiatingUsername") or info.get("initiatingUserId"))
+            if (info.get("initiatingUsername") or info.get("initiatingUserId"))
+            else None,
+            process_user=str(info.get("processUser")) if info.get("processUser") else None,
+            file_path=str(info.get("filePath")) if info.get("filePath") else None,
+            md5=str(info.get("md5")) if info.get("md5") else None,
+            sha1=str(info.get("sha1")) if info.get("sha1") else None,
+            sha256=str(info.get("sha256")) if info.get("sha256") else None,
+            storyline=str(info.get("storyline")) if info.get("storyline") else None,
+            detected_at=detected_at,
+            updated_at=updated_at,
+            resolved_at=resolved_at,
+            reboot_required=bool(info.get("rebootRequired")) if info.get("rebootRequired") is not None else None,
+            categories=sorted(categories) or None,
+            mitre_tactics=sorted(tactics) or None,
+            mitre_techniques=sorted(techniques) or None,
+            indicators=sorted(indicator_text) or None,
+            c2_domains=sorted(c2_domains) or None,
+            source_ips=sorted(source_ips) or None,
+            quarantine_status=str(mitigation.get("action")) if mitigation.get("action") else None,
+        )
+
+        return _NormalizedThreat(
+            host_id=host_id,
+            hostname=hostname,
+            os_family=os_family,
+            os_version=os_version,
+            agent_version=agent_version,
+            ip_addresses=list(ip_addresses),
+            threat=endpoint_threat,
+        )
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> Optional[datetime]:
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        if isinstance(value, str):
+            try:
+                parsed = date_parser.isoparse(value)
+            except (ValueError, TypeError):
+                return None
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return None
+
+    @staticmethod
+    def _ensure_list(value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            result: List[str] = []
+            for item in value:
+                result.extend(SentinelOneIngestion._ensure_list(item))
+            return result
+        if isinstance(value, dict):
+            result: List[str] = []
+            for item in value.values():
+                result.extend(SentinelOneIngestion._ensure_list(item))
+            return result
+        return [str(value)] if value not in ("",) else []
+
+    def _extract_indicator_details(
+        self,
+        threat: Dict[str, Any],
+    ) -> tuple[set[str], set[str], set[str], set[str], set[str], set[str]]:
+        categories: set[str] = set()
+        tactics: set[str] = set()
+        techniques: set[str] = set()
+        indicator_text: set[str] = set()
+        c2_domains: set[str] = set()
+        source_ips: set[str] = set()
+
+        threat_info = threat.get("threatInfo") if isinstance(threat.get("threatInfo"), dict) else {}
+        indicators = threat.get("indicators")
+        if isinstance(indicators, dict):
+            categories.update(self._ensure_list(indicators.get("category") or indicators.get("categories")))
+            indicator_text.update(self._ensure_list(indicators.get("description") or indicators.get("descriptions")))
+            self._extend_tactics(indicators.get("tactics"), tactics, techniques)
+        elif isinstance(indicators, list):
+            for item in indicators:
+                if not isinstance(item, dict):
+                    continue
+                categories.update(self._ensure_list(item.get("category")))
+                indicator_text.update(self._ensure_list(item.get("description") or item.get("title")))
+                self._extend_tactics(item.get("tactics"), tactics, techniques)
+
+        detection_engines = threat.get("detectionEngines")
+        if detection_engines is None and isinstance(threat_info, dict):
+            detection_engines = threat_info.get("detectionEngines")
+        if isinstance(detection_engines, dict):
+            indicator_text.update(self._ensure_list(detection_engines.get("title")))
+        elif isinstance(detection_engines, list):
+            for engine in detection_engines:
+                if isinstance(engine, dict):
+                    indicator_text.update(self._ensure_list(engine.get("title")))
+
+        for key in ("sourceIp", "sourceIP"):
+            value = threat_info.get(key)
+            if value:
+                source_ips.update(self._ensure_list(value))
+
+        network_indicators = threat.get("networkIndicators")
+        if isinstance(network_indicators, list):
+            for item in network_indicators:
+                if not isinstance(item, dict):
+                    continue
+                for key in ("domain", "url", "address", "destination", "c2Domain", "commandAndControlDomain"):
+                    value = item.get(key)
+                    if value:
+                        c2_domains.update(self._ensure_list(value))
+                for key in ("sourceIp", "srcIp", "ip"):
+                    value = item.get(key)
+                    if value:
+                        source_ips.update(self._ensure_list(value))
+
+        connection = threat.get("connectionInfo")
+        if isinstance(connection, dict):
+            for key in ("sourceIp", "srcIp"):
+                value = connection.get(key)
+                if value:
+                    source_ips.update(self._ensure_list(value))
+
+        return categories, tactics, techniques, indicator_text, c2_domains, source_ips
+
+    def _extend_tactics(
+        self,
+        value: Any,
+        tactics: set[str],
+        techniques: set[str],
+    ) -> None:
+        if value is None:
+            return
+        if isinstance(value, dict):
+            tactics.update(self._ensure_list(value.get("name") or value.get("names")))
+            self._extend_tactics(value.get("techniques"), tactics, techniques)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    tactics.update(self._ensure_list(item.get("name") or item.get("names")))
+                    techniques.update(self._ensure_list(item.get("id")))
+                    self._extend_tactics(item.get("techniques"), tactics, techniques)
+                else:
+                    tactics.update(self._ensure_list(item))
+        else:
+            tactics.update(self._ensure_list(value))
+
+        # Techniques may be provided as list/dict nested within value
+        if isinstance(value, dict):
+            techniques.update(self._ensure_list(value.get("name") if value.get("type") == "technique" else None))
+
+    def _map_threat_severity(
+        self,
+        classification: Optional[str],
+        confidence: Optional[str],
+        categories: Iterable[str],
+    ) -> str:
+        severity = "medium"
+
+        classification_text = (classification or "").lower()
+        category_tokens = {token.lower() for token in categories if token}
+
+        critical_indicators = {"ransom", "ransomware", "wiper", "bootkit", "rootkit"}
+        high_indicators = {"malware", "trojan", "worm", "backdoor", "botnet", "exploit"}
+
+        if any(token in classification_text for token in critical_indicators):
+            severity = "critical"
+        elif any(token in classification_text for token in high_indicators):
+            severity = "high"
+        elif category_tokens & {"command and control", "c2", "exfiltration", "lateral movement"}:
+            severity = "high"
+        elif "pua" in classification_text or "grayware" in classification_text or "adware" in classification_text:
+            severity = "medium"
+        elif classification_text:
+            severity = "medium"
+
+        if confidence:
+            confidence_level = confidence.lower()
+            if confidence_level == "low" and severity in {"medium", "low"}:
+                severity = "low"
+            elif confidence_level == "medium" and severity == "low":
+                severity = "medium"
+            elif confidence_level == "high" and severity == "medium":
+                severity = "high"
+
+        return severity
+
+    @staticmethod
+    def _is_active_threat(threat: EndpointThreat) -> bool:
+        status = (threat.status or "").lower()
+        mitigation = (threat.mitigation_status or "").lower()
+        verdict = (threat.analyst_verdict or "").lower()
+
+        resolved_tokens = {"resolved", "mitigated", "dismissed", "benign", "suspicious", "false_positive"}
+
+        if threat.resolved_at is not None:
+            return False
+        if any(token in status for token in resolved_tokens if token):
+            return False
+        if any(token in mitigation for token in resolved_tokens if token):
+            return False
+        if verdict in {"benign", "false_positive", "expected_behavior"}:
+            return False
+        return True
 
     async def _get_policy(self, policy_id: Optional[str]) -> Optional[Dict[str, Any]]:
         if not policy_id:

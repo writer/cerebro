@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -10,7 +10,7 @@ from cerebro.core.models import IntegrationSyncState
 from cerebro.integrations.kandji import KandjiIngestion
 from cerebro.integrations.sentinelone import SentinelOneConfig, SentinelOneIngestion
 from cerebro.integrations.state import IntegrationStateRepository
-from cerebro.telemetry.schemas import HostEvent
+from cerebro.telemetry.schemas import EndpointThreat, HostEvent
 
 
 class _DummyClient:
@@ -42,6 +42,83 @@ def test_sentinelone_normalize_activity_generates_deterministic_event_id() -> No
     assert event.event_type == "threatdetected"
     assert event.severity == "high"
     assert event.event_id == UUID("4d8d0d29-39f3-51c8-a6c2-aaca8a83760c")
+
+
+def test_sentinelone_normalize_threat_maps_indicators() -> None:
+    config = SentinelOneConfig(
+        base_url="https://example.sentinelone.net",
+        api_token="token",
+        organization="acme",
+    )
+    ingestion = SentinelOneIngestion(_DummyClient(config))
+
+    payload = {
+        "id": "threat-123",
+        "createdAt": "2024-11-01T12:00:00Z",
+        "agentId": "agent-42",
+        "threatInfo": {
+            "threatId": "threat-123",
+            "threatName": "Eicar.Test",
+            "classification": "Malware",
+            "confidenceLevel": "high",
+            "identifiedAt": "2024-11-01T12:00:00Z",
+            "mitigationStatus": "pending",
+        },
+        "agentDetectionInfo": {
+            "agentUuid": "agent-42",
+            "agentComputerName": "ACME-LAPTOP",
+            "agentOsName": "Windows",
+            "agentIpV4": "10.0.0.42",
+        },
+        "indicators": {
+            "category": ["Malware"],
+            "tactics": [
+                {
+                    "name": "Command and Control",
+                    "techniques": [{"name": "Exfiltration Over C2"}],
+                }
+            ],
+        },
+        "networkIndicators": [
+            {
+                "domain": "bad.c2.example",
+                "sourceIp": "8.8.8.8",
+            }
+        ],
+    }
+
+    normalized = ingestion._normalize_threat(payload)
+    assert normalized is not None
+    assert normalized.host_id == "agent-42"
+    assert normalized.threat.threat_id == "threat-123"
+    assert normalized.threat.severity == "high"
+    assert normalized.threat.categories and "Malware" in normalized.threat.categories
+    assert normalized.threat.c2_domains == ["bad.c2.example"]
+    assert normalized.threat.source_ips == ["8.8.8.8"]
+    assert "10.0.0.42" in normalized.ip_addresses
+
+
+def test_sentinelone_active_threat_filtering() -> None:
+    config = SentinelOneConfig(
+        base_url="https://example.sentinelone.net",
+        api_token="token",
+        organization="acme",
+    )
+    ingestion = SentinelOneIngestion(_DummyClient(config))
+
+    threat = EndpointThreat(
+        threat_id="thr-1",
+        name="Safe",
+        classification="Benign",
+        confidence="low",
+        severity="low",
+        status="resolved",
+        mitigation_status="mitigated",
+        analyst_verdict="benign",
+        detected_at=datetime.now(timezone.utc),
+    )
+
+    assert ingestion._is_active_threat(threat) is False
 
 
 def test_kandji_build_host_telemetry_includes_serial_metadata() -> None:
@@ -78,7 +155,7 @@ def test_kandji_build_host_telemetry_includes_serial_metadata() -> None:
 
     telemetry = ingestion._build_host_telemetry(
         device,
-        collected_at=datetime.now(UTC),
+        collected_at=datetime.now(timezone.utc),
         compliance=compliance,
         blueprint=blueprint,
         smart_groups=smart_groups,
@@ -110,7 +187,7 @@ def test_kandji_installed_packages_extracted() -> None:
         ],
     }
 
-    telemetry = ingestion._build_host_telemetry(device, collected_at=datetime.now(UTC))
+    telemetry = ingestion._build_host_telemetry(device, collected_at=datetime.now(timezone.utc))
     assert telemetry is not None
     assert telemetry.installed_packages is not None
     assert telemetry.installed_packages[0].name == "Safari"
@@ -139,7 +216,7 @@ def test_kandji_detection_normalization_uses_serial_and_cve(
 
 
 def test_chunk_events_respects_batch_size() -> None:
-    timestamp = datetime.now(UTC)
+    timestamp = datetime.now(timezone.utc)
     events = [
         HostEvent(
             event_id=None,
@@ -193,7 +270,7 @@ def test_sentinelone_build_host_telemetry_enriches_health_and_tags() -> None:
         agent,
         policy,
         applications,
-        datetime.now(UTC),
+        datetime.now(timezone.utc),
     )
     assert telemetry is not None
     assert telemetry.tags is not None
@@ -244,7 +321,7 @@ async def test_integration_state_repository_roundtrip() -> None:
         await conn.run_sync(IntegrationSyncState.__table__.create)
 
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    timestamp = datetime(2024, 1, 1, tzinfo=UTC)
+    timestamp = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
     async with session_factory() as session:
         repo = IntegrationStateRepository(session)
@@ -259,7 +336,7 @@ async def test_integration_state_repository_roundtrip() -> None:
         state_ts = state.last_timestamp
         assert state_ts is not None
         if state_ts.tzinfo is None:
-            state_ts = state_ts.replace(tzinfo=UTC)
+            state_ts = state_ts.replace(tzinfo=timezone.utc)
         assert state_ts == timestamp
         assert state.state_metadata == {"count": 10}
 

@@ -921,6 +921,9 @@ class TelemetryIngestionService:
             "installed_packages": [
                 pkg.model_dump(exclude_none=True) for pkg in (payload.installed_packages or [])
             ],
+            "threats": [
+                threat.model_dump(exclude_none=True) for threat in (payload.threats or [])
+            ],
         }
 
         # Drop empty collections to keep snapshot concise
