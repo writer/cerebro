@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import fakeredis.aioredis as fakeredis
@@ -27,6 +27,9 @@ from cerebro.core.models import Organization
 from cerebro_sdk.agents.notifications import AgentNotificationManager
 from cerebro_sdk.agents.playbooks import AgentPlaybook
 from cerebro_sdk.agents.tooling import AgentToolingManager
+
+
+UTC = timezone.utc
 
 
 @pytest_asyncio.fixture()

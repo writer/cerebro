@@ -603,48 +603,48 @@ class AgentSessionService:
         if not session:
             return None
 
-            # Get recent messages
-            recent_messages = sorted(
-                session.messages,
-                key=lambda m: m.created_at,
-                reverse=True
-            )[:message_limit]
-            
-            return {
-                "session": {
-                    "id": str(session.id),
-                    "org_id": str(session.org_id),
-                    "agent_type": session.agent_type.value,
-                    "title": session.title,
-                    "context": session.context,
-                    "created_at": session.created_at.isoformat(),
-                    "created_by": session.created_by,
-                    "status": session.status.value if hasattr(session, "status") else "active",
-                },
-                "messages": [
-                    {
-                        "id": str(msg.id),
-                        "role": msg.role.value,
-                        "content": msg.content,
-                        "created_at": msg.created_at.isoformat(),
-                        "input_tokens": msg.input_tokens,
-                        "output_tokens": msg.output_tokens,
-                    }
-                    for msg in recent_messages
-                ],
-                "tool_invocations": [
-                    {
-                        "id": str(inv.id),
-                        "tool_name": inv.tool_name,
-                        "status": inv.status.value,
-                        "started_at": inv.started_at.isoformat(),
-                        "completed_at": inv.completed_at.isoformat() if inv.completed_at else None,
-                        "error_message": inv.error_message,
-                    }
-                    for inv in session.tool_invocations
-                ],
-                "metrics": await self.runtime.get_session_metrics(session),
-            }
+        # Get recent messages
+        recent_messages = sorted(
+            session.messages,
+            key=lambda m: m.created_at,
+            reverse=True
+        )[:message_limit]
+
+        return {
+            "session": {
+                "id": str(session.id),
+                "org_id": str(session.org_id),
+                "agent_type": session.agent_type.value,
+                "title": session.title,
+                "context": session.context,
+                "created_at": session.created_at.isoformat(),
+                "created_by": session.created_by,
+                "status": session.status.value if hasattr(session, "status") else "active",
+            },
+            "messages": [
+                {
+                    "id": str(msg.id),
+                    "role": msg.role.value,
+                    "content": msg.content,
+                    "created_at": msg.created_at.isoformat(),
+                    "input_tokens": msg.input_tokens,
+                    "output_tokens": msg.output_tokens,
+                }
+                for msg in recent_messages
+            ],
+            "tool_invocations": [
+                {
+                    "id": str(inv.id),
+                    "tool_name": inv.tool_name,
+                    "status": inv.status.value,
+                    "started_at": inv.started_at.isoformat(),
+                    "completed_at": inv.completed_at.isoformat() if inv.completed_at else None,
+                    "error_message": inv.error_message,
+                }
+                for inv in session.tool_invocations
+            ],
+            "metrics": await self.runtime.get_session_metrics(session),
+        }
 
     @staticmethod
     def _serialize_review_task(task) -> Dict[str, Any]:

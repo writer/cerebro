@@ -4,7 +4,7 @@ Tests for Slack Integration
 Tests webhook management, message formatting, and notification delivery.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -17,6 +17,9 @@ from cerebro.notifications.slack import (
 )
 
 # ==================== Fixtures ====================
+
+UTC = timezone.utc
+
 
 @pytest.fixture
 def sample_org():

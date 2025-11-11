@@ -21,8 +21,8 @@ from cerebro.core.database import async_session_factory
 class AgentSessionRepository:
     """Encapsulates read/write operations for agent session data."""
 
-    def __init__(self, session_factory=async_session_factory) -> None:
-        self._session_factory = session_factory
+    def __init__(self, session_factory=None) -> None:
+        self._session_factory = session_factory or async_session_factory
 
     async def get_session(
         self,

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from cerebro.integrations.freshness import IntegrationFreshnessService
 from cerebro.integrations.state import IntegrationStateRepository
+
+
+UTC = timezone.utc
 
 
 @pytest.mark.asyncio()

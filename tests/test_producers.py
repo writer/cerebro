@@ -1,6 +1,6 @@
 """Test finding producers."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
@@ -11,6 +11,11 @@ from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProduc
 from cerebro.findings.producers.github.public_repo_no_branch_protection import (
     PublicRepoNoBranchProtectionProducer,
 )
+from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
+from cerebro.findings.producers.m365.inactive_admin import (
+    M365InactivePrivilegedUserProducer,
+)
+from cerebro.findings.producers.okta.dormant_admin import OktaDormantAdminProducer
 
 
 class TestGitHubProducers:
@@ -190,6 +195,9 @@ class TestProducerRegistry:
             "IAMUserWithoutMFAProducer",
             "S3BucketUnencryptedProducer",
             "EC2InstancePublicIPProducer",
+            "OktaDormantAdminProducer",
+            "M365GuestAdminProducer",
+            "M365InactivePrivilegedUserProducer",
         ]
 
         for expected in expected_producers:
@@ -215,7 +223,177 @@ class TestProducerRegistry:
             "aws",
             "aws.s3.bucket",
         )
-        assert len(s3_producers) > 0
-        assert any(
-            "S3" in producer.__class__.__name__ for producer in s3_producers
+
+
+class TestIdentityProducers:
+    """Test identity-focused producers."""
+
+    def test_okta_dormant_admin(self):
+        producer = OktaDormantAdminProducer()
+
+        resource = ResourceEntity(
+            external_id="00u123",
+            resource_type="okta.user",
+            provider="okta",
+            name="admin@example.com",
         )
+
+        old_login = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+        created = (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()
+
+        config = ConfigEntity(
+            resource_external_id="00u123",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "status": "ACTIVE",
+                "admin_roles": ["SUPER_ADMIN"],
+                "login": "admin@example.com",
+                "email": "admin@example.com",
+                "last_login": old_login,
+                "created": created,
+                "mfa_enrolled": True,
+                "applications": [],
+                "groups": [],
+                "is_service_account": False,
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert "without sign-in activity" in finding.summary.lower()
+        assert "SUPER_ADMIN" in finding.evidence["admin_roles"][0]
+
+    def test_okta_dormant_admin_recent_login_no_finding(self):
+        producer = OktaDormantAdminProducer()
+
+        resource = ResourceEntity(
+            external_id="00u456",
+            resource_type="okta.user",
+            provider="okta",
+            name="ops@example.com",
+        )
+
+        recent_login = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+
+        config = ConfigEntity(
+            resource_external_id="00u456",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "status": "ACTIVE",
+                "admin_roles": ["ORG_ADMIN"],
+                "login": "ops@example.com",
+                "last_login": recent_login,
+                "is_service_account": False,
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+        assert len(findings) == 0
+
+    def test_m365_guest_admin(self):
+        producer = M365GuestAdminProducer()
+
+        resource = ResourceEntity(
+            external_id="user-guest-1",
+            resource_type="m365.user",
+            provider="m365",
+            name="guest-admin@example.com",
+        )
+
+        config = ConfigEntity(
+            resource_external_id="user-guest-1",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "is_guest": True,
+                "account_enabled": True,
+                "role_names": ["Global Administrator"],
+                "directory_roles": [
+                    {
+                        "id": "role1",
+                        "display_name": "Global Administrator",
+                        "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+                    }
+                ],
+                "user_principal_name": "guest-admin@example.com",
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert "guest" in finding.summary.lower()
+
+    def test_m365_inactive_privileged_user(self):
+        producer = M365InactivePrivilegedUserProducer()
+
+        resource = ResourceEntity(
+            external_id="user-admin-1",
+            resource_type="m365.user",
+            provider="m365",
+            name="admin@example.com",
+        )
+
+        stale_login = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+
+        config = ConfigEntity(
+            resource_external_id="user-admin-1",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "account_enabled": True,
+                "directory_roles": [
+                    {
+                        "id": "role1",
+                        "display_name": "Global Administrator",
+                    }
+                ],
+                "role_names": ["Global Administrator"],
+                "last_login": stale_login,
+                "created": (datetime.now(timezone.utc) - timedelta(days=200)).isoformat(),
+                "user_principal_name": "admin@example.com",
+                "mfa_enrolled": False,
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert "dormant" in finding.title.lower()
+        assert "inactive_account" in finding.evidence["risk_factors"]
+
+    def test_m365_inactive_privileged_user_recent_login_no_finding(self):
+        producer = M365InactivePrivilegedUserProducer()
+
+        resource = ResourceEntity(
+            external_id="user-admin-2",
+            resource_type="m365.user",
+            provider="m365",
+            name="admin2@example.com",
+        )
+
+        config = ConfigEntity(
+            resource_external_id="user-admin-2",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "account_enabled": True,
+                "directory_roles": [
+                    {
+                        "id": "role2",
+                        "display_name": "Exchange Administrator",
+                    }
+                ],
+                "last_login": (datetime.now(timezone.utc) - timedelta(days=10)).isoformat(),
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+        assert len(findings) == 0

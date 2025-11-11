@@ -41,7 +41,7 @@ class ClaudeSDKClient:
         return False
 
     async def connect(self):  # pragma: no cover
-        return None
+        raise CLINotFoundError("Claude CLI not available in test environment")
 
     async def query(self, message: str, session_id: str | None = None):  # pragma: no cover
         self._messages.append(message)

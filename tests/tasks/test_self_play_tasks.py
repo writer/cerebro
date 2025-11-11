@@ -36,8 +36,9 @@ async def test_run_self_play_batch_async_executes_scenarios(monkeypatch):
             executed.append(scenario.id)
 
     monkeypatch.setattr(
-        "cerebro.tasks.self_play_tasks.settings.self_play_enabled",
+        "cerebro.tasks.self_play_tasks.settings.self_play.self_play_enabled",
         True,
+        raising=False,
     )
 
     monkeypatch.setattr(
@@ -58,8 +59,9 @@ async def test_run_self_play_batch_async_executes_scenarios(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_self_play_batch_async_disabled(monkeypatch):
     monkeypatch.setattr(
-        "cerebro.tasks.self_play_tasks.settings.self_play_enabled",
+        "cerebro.tasks.self_play_tasks.settings.self_play.self_play_enabled",
         False,
+        raising=False,
     )
 
     result = await run_self_play_batch_async()

@@ -71,6 +71,11 @@ class OktaProvider(BaseProvider):
         if not self._client:
             await self.authenticate()
         
+        # Discover users as manageable resources for identity hygiene
+        if not resource_types or "okta.user" in resource_types:
+            async for user in self._discover_users():
+                yield user
+
         # Discover applications
         if not resource_types or "okta.app" in resource_types:
             async for app in self._discover_applications():
@@ -162,6 +167,57 @@ class OktaProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Failed to discover Okta network zones: {e}")
     
+    async def _discover_users(self) -> AsyncGenerator[ResourceInfo, None]:
+        """Discover Okta users as resources."""
+        try:
+            url = "/api/v1/users"
+            params = {"limit": 200}
+
+            while url:
+                response = await self._client.get(
+                    url,
+                    params=params if not url.startswith("http") else None,
+                )
+                response.raise_for_status()
+
+                users = response.json()
+                if isinstance(users, dict):
+                    users = [users]
+
+                for user in users:
+                    profile = user.get("profile", {})
+                    display_name = (
+                        f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
+                        or profile.get("login")
+                    )
+                    yield ResourceInfo(
+                        external_id=user["id"],
+                        name=display_name,
+                        resource_type="okta.user",
+                        metadata={
+                            "status": user.get("status"),
+                            "email": profile.get("email"),
+                            "login": profile.get("login"),
+                        },
+                    )
+
+                # Pagination handling via Link header
+                next_url = None
+                links = response.headers.get("Link", "")
+                for link in links.split(","):
+                    if 'rel="next"' in link:
+                        next_url = link.split("<")[1].split(">")[0]
+                        break
+
+                if next_url and next_url.startswith("http"):
+                    url = next_url.replace(self.base_url, "")
+                else:
+                    break
+                params = None
+
+        except Exception as e:
+            logger.error(f"Failed to discover Okta users: {e}")
+
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover Okta users and groups."""
         if not self._client:
@@ -230,7 +286,9 @@ class OktaProvider(BaseProvider):
         
         config = {}
         
-        if resource.resource_type == "okta.app":
+        if resource.resource_type == "okta.user":
+            config = await self._get_user_config(resource.external_id)
+        elif resource.resource_type == "okta.app":
             config = await self._get_app_config(resource.external_id)
         elif resource.resource_type == "okta.policy":
             config = await self._get_policy_config(resource.external_id)
@@ -272,6 +330,125 @@ class OktaProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Failed to get Okta app config for {app_id}: {e}")
             return {}
+
+    async def _get_user_config(self, user_id: str) -> Dict[str, Any]:
+        """Get detailed user configuration for identity hygiene checks."""
+        try:
+            user_response = await self._client.get(f"/api/v1/users/{user_id}")
+            user_response.raise_for_status()
+            user = user_response.json()
+
+            # Fetch related data with graceful degradation
+            factors = await self._safe_get(f"/api/v1/users/{user_id}/factors") or []
+            groups = await self._safe_get(f"/api/v1/users/{user_id}/groups") or []
+            roles = await self._safe_get(f"/api/v1/users/{user_id}/roles") or []
+            app_links = await self._safe_get(f"/api/v1/users/{user_id}/appLinks") or []
+
+            profile = user.get("profile", {})
+
+            mfa_factors = []
+            mfa_enrolled = False
+            for factor in factors if isinstance(factors, list) else []:
+                factor_type = factor.get("factorType") or factor.get("provider")
+                status = factor.get("status", "UNKNOWN")
+                mfa_factors.append(
+                    {
+                        "id": factor.get("id"),
+                        "factor_type": factor_type,
+                        "provider": factor.get("provider"),
+                        "status": status,
+                    }
+                )
+                if status in {"ACTIVE", "ENABLED", "ENROLLED"}:
+                    mfa_enrolled = True
+
+            admin_roles = []
+            formatted_roles = []
+            for role in roles if isinstance(roles, list) else []:
+                label = role.get("label") or role.get("type") or role.get("name")
+                formatted_roles.append(
+                    {
+                        "id": role.get("id"),
+                        "label": label,
+                        "type": role.get("type"),
+                        "assignment_type": role.get("assignmentType"),
+                    }
+                )
+                if label:
+                    admin_roles.append(label)
+
+            group_memberships = []
+            for group in groups if isinstance(groups, list) else []:
+                profile_data = group.get("profile", {})
+                group_memberships.append(
+                    {
+                        "id": group.get("id"),
+                        "name": profile_data.get("name"),
+                        "type": group.get("type"),
+                    }
+                )
+
+            applications = []
+            for app in app_links if isinstance(app_links, list) else []:
+                applications.append(
+                    {
+                        "id": app.get("appInstanceId"),
+                        "label": app.get("label"),
+                        "link": app.get("linkUrl"),
+                        "app_name": app.get("appName"),
+                    }
+                )
+
+            service_account = bool(
+                (profile.get("userType") or "").lower() in {"service", "serviceaccount"}
+                or profile.get("login", "").lower().startswith("svc")
+            )
+
+            return {
+                "id": user.get("id"),
+                "status": user.get("status"),
+                "status_changed": user.get("statusChanged"),
+                "email": profile.get("email"),
+                "login": profile.get("login"),
+                "display_name": (
+                    f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
+                    or profile.get("login")
+                ),
+                "profile": profile,
+                "created": user.get("created"),
+                "activated": user.get("activated"),
+                "last_login": user.get("lastLogin"),
+                "password_changed": user.get("passwordChanged"),
+                "credentials": user.get("credentials", {}),
+                "mfa_enrolled": mfa_enrolled,
+                "mfa_factors": mfa_factors,
+                "roles": formatted_roles,
+                "admin_roles": admin_roles,
+                "groups": group_memberships,
+                "applications": applications,
+                "is_admin": bool(admin_roles),
+                "is_service_account": service_account,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get Okta user config for {user_id}: {e}")
+            return {}
+
+    async def _safe_get(self, path: str) -> Optional[Any]:
+        """Fetch auxiliary Okta data with graceful fallback."""
+        try:
+            response = await self._client.get(path)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.debug(f"Okta endpoint not found for {path}: {exc}")
+                return None
+            logger.warning(f"Okta API returned error {exc.response.status_code} for {path}")
+            return None
+        except Exception as exc:
+            logger.warning(f"Okta API request failed for {path}: {exc}")
+            return None
     
     async def _get_policy_config(self, policy_id: str) -> Dict[str, Any]:
         """Get policy configuration."""

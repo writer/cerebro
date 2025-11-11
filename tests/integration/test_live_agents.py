@@ -84,6 +84,16 @@ async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessio
     from cerebro.agents import analytics_service as analytics_module
     analytics_module.async_session_factory = session_factory
 
+    from cerebro.agents.repositories import (
+        session_repository as session_repo_module,
+        tool_approval_repository as approval_repo_module,
+        analytics_repository as analytics_repo_module,
+    )
+
+    session_repo_module.async_session_factory = session_factory
+    approval_repo_module.async_session_factory = session_factory
+    analytics_repo_module.async_session_factory = session_factory
+
     from cerebro.agents.tools import base as tools_base_module
     tools_base_module.async_session_factory = session_factory
 
@@ -191,8 +201,12 @@ async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessio
         def __getattr__(self, item):
             return getattr(self._base, item)
 
+    from cerebro.agents.repositories.session_repository import AgentSessionRepository
+
+    session_repository = AgentSessionRepository(session_factory=session_factory)
+
     runtime_adapter = RuntimeAdapter(mock_runtime, session_factory)
-    return AgentSessionService(runtime=runtime_adapter)
+    return AgentSessionService(runtime=runtime_adapter, repository=session_repository)
 
 
 class MockClaudeResponse:
@@ -494,15 +508,16 @@ class TestToolUsageAndApprovals:
         ):
             response_chunks.append(chunk)
 
-        result = await test_db.execute(
-            select(ToolInvocation).where(
-                ToolInvocation.session_id == session.session_id,
-                ToolInvocation.tool_name == "findings_list"
+        async with core_database.async_session_factory() as session_ctx:
+            result = await session_ctx.execute(
+                select(ToolInvocation).where(
+                    ToolInvocation.session_id == session.session_id,
+                    ToolInvocation.tool_name == "findings_list"
+                )
             )
-        )
-        tool_invocation = result.scalar_one_or_none()
+            tool_invocation = result.scalar_one_or_none()
 
-        assert tool_invocation is not None
+        assert tool_invocation is not None, response_chunks
         assert tool_invocation.status in {
             ToolInvocationStatus.PENDING,
             ToolInvocationStatus.RUNNING,

@@ -37,8 +37,11 @@ if shutil.which("docker") is None:  # pragma: no cover - environment dependent
 
 @pytest.fixture
 def postgres_container():
-    with PostgresContainer("postgres:15-alpine") as container:
-        yield container
+    try:
+        with PostgresContainer("postgres:15-alpine") as container:
+            yield container
+    except Exception as exc:  # pragma: no cover - environment dependent
+        pytest.skip(f"Postgres container unavailable: {exc}")
 
 
 @pytest.fixture

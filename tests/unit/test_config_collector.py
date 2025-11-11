@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -14,7 +14,7 @@ from cerebro.providers.base import (
     ConfigurationSnapshot,
     ResourceInfo,
 )
-
+UTC = timezone.utc
 
 class StubProvider(BaseProvider):
     """Minimal provider implementation for collector tests."""

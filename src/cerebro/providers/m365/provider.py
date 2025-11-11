@@ -58,7 +58,8 @@ class M365Provider(BaseProvider):
                 base_url="https://graph.microsoft.com/v1.0",
                 headers={
                     "Authorization": f"Bearer {self._access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "ConsistencyLevel": "eventual",
                 },
                 timeout=30.0
             )
@@ -85,6 +86,11 @@ class M365Provider(BaseProvider):
         if not self._client:
             await self.authenticate()
         
+        # Discover users for identity hygiene
+        if not resource_types or "m365.user" in resource_types:
+            async for user in self._discover_users():
+                yield user
+
         # Discover SharePoint sites
         if not resource_types or "m365.sharepoint.site" in resource_types:
             async for site in self._discover_sharepoint_sites():
@@ -235,7 +241,9 @@ class M365Provider(BaseProvider):
         
         config = {}
         
-        if resource.resource_type == "m365.sharepoint.site":
+        if resource.resource_type == "m365.user":
+            config = await self._get_user_config(resource.external_id)
+        elif resource.resource_type == "m365.sharepoint.site":
             config = await self._get_sharepoint_config(resource.external_id)
         elif resource.resource_type == "m365.teams.team":
             config = await self._get_teams_config(resource.external_id)
@@ -275,6 +283,145 @@ class M365Provider(BaseProvider):
         except Exception as e:
             logger.error(f"Failed to get SharePoint config for {site_id}: {e}")
             return {}
+
+    async def _discover_users(self) -> AsyncGenerator[ResourceInfo, None]:
+        """Discover Microsoft 365 users as resources."""
+        try:
+            url = "/users"
+            params = {
+                "$top": 100,
+                "$select": "id,displayName,userPrincipalName,mail,userType,accountEnabled,signInActivity",
+            }
+
+            while url:
+                response = await self._client.get(
+                    url,
+                    params=params if not url.startswith("http") else None,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                for user in data.get("value", []):
+                    yield ResourceInfo(
+                        external_id=user.get("id"),
+                        name=user.get("displayName") or user.get("userPrincipalName"),
+                        resource_type="m365.user",
+                        metadata={
+                            "user_principal_name": user.get("userPrincipalName"),
+                            "mail": user.get("mail"),
+                            "user_type": user.get("userType"),
+                            "account_enabled": user.get("accountEnabled"),
+                        },
+                    )
+
+                next_link = data.get("@odata.nextLink")
+                if next_link and next_link.startswith("https://"):
+                    url = next_link.replace("https://graph.microsoft.com/v1.0", "")
+                else:
+                    break
+                params = None
+
+        except Exception as e:
+            logger.error(f"Failed to discover M365 users: {e}")
+
+    async def _get_user_config(self, user_id: str) -> Dict[str, Any]:
+        """Get Microsoft 365 user configuration."""
+        try:
+            select_fields = (
+                "id,displayName,userPrincipalName,mail,userType,accountEnabled,"
+                "createdDateTime,lastPasswordChangeDateTime,signInActivity,usageLocation,department,jobTitle"
+            )
+
+            user_response = await self._client.get(
+                f"/users/{user_id}",
+                params={"$select": select_fields},
+            )
+            user_response.raise_for_status()
+            user = user_response.json()
+
+            directory_roles = await self._safe_graph_get(
+                f"/users/{user_id}/memberOf",
+                params={"$select": "id,displayName,roleTemplateId,@odata.type"},
+            ) or {}
+
+            authentication_methods = await self._safe_graph_get(
+                f"/users/{user_id}/authentication/methods",
+                params={"$select": "id,displayName,@odata.type"},
+            ) or {}
+
+            roles = []
+            for entry in directory_roles.get("value", []):
+                if entry.get("@odata.type", "").endswith("directoryRole"):
+                    roles.append(
+                        {
+                            "id": entry.get("id"),
+                            "display_name": entry.get("displayName"),
+                            "role_template_id": entry.get("roleTemplateId"),
+                        }
+                    )
+
+            mfa_methods = []
+            for method in authentication_methods.get("value", []):
+                method_type = method.get("@odata.type", "")
+                display_name = method.get("displayName") or method_type.split(".")[-1]
+                mfa_methods.append(
+                    {
+                        "id": method.get("id"),
+                        "display_name": display_name,
+                        "odata_type": method_type,
+                    }
+                )
+
+            # Determine if MFA is enrolled by looking for non-password methods
+            mfa_enrolled = any(
+                not method.get("odata_type", "").endswith("passwordAuthenticationMethod")
+                for method in mfa_methods
+            )
+
+            sign_in_activity = user.get("signInActivity", {}) or {}
+            last_login = sign_in_activity.get("lastSignInDateTime")
+
+            return {
+                "id": user.get("id"),
+                "display_name": user.get("displayName"),
+                "user_principal_name": user.get("userPrincipalName"),
+                "email": user.get("mail") or user.get("userPrincipalName"),
+                "user_type": user.get("userType"),
+                "account_enabled": user.get("accountEnabled"),
+                "created": user.get("createdDateTime"),
+                "last_password_change": user.get("lastPasswordChangeDateTime"),
+                "last_login": last_login,
+                "sign_in_activity": sign_in_activity,
+                "department": user.get("department"),
+                "job_title": user.get("jobTitle"),
+                "usage_location": user.get("usageLocation"),
+                "directory_roles": roles,
+                "role_names": [role.get("display_name") for role in roles if role.get("display_name")],
+                "is_admin": bool(roles),
+                "is_guest": (user.get("userType") or "").lower() == "guest",
+                "mfa_methods": mfa_methods,
+                "mfa_enrolled": mfa_enrolled,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get M365 user config for {user_id}: {e}")
+            return {}
+
+    async def _safe_graph_get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Perform Graph API GET with graceful handling."""
+        try:
+            response = await self._client.get(path, params=params)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.debug(f"Graph endpoint not found for {path}: {exc}")
+                return None
+            logger.warning(f"Graph API error {exc.response.status_code} for {path}")
+            return None
+        except Exception as exc:
+            logger.warning(f"Graph API request failed for {path}: {exc}")
+            return None
     
     async def _get_teams_config(self, team_id: str) -> Dict[str, Any]:
         """Get Teams configuration."""

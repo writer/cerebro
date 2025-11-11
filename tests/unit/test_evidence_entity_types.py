@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from cerebro.compliance.evidence_data_fabric import (
     EvidenceEntityType,
@@ -12,7 +12,7 @@ from cerebro.compliance.models import (
     create_vendor_evidence,
     metadata_to_dict,
 )
-
+UTC = timezone.utc
 
 def test_vendor_entity_type_ingest_and_query():
     fabric = create_evidence_data_fabric("sqlite:///:memory:")

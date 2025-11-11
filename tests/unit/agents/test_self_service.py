@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -20,6 +20,9 @@ from cerebro.compliance.preaudit_models import (
 )
 from cerebro.core.models import Organization
 from cerebro.query.engine import QueryResult
+
+
+UTC = timezone.utc
 
 
 class _SessionContext:

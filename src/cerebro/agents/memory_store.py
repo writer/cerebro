@@ -464,6 +464,7 @@ class AgentMemoryStore:
 
         multiplier = 1.0
         matched = False
+        session_matched = False
         for scope in entry_scopes:
             scope_type = scope.get("type") if isinstance(scope, dict) else None
             if not scope_type:
@@ -475,6 +476,7 @@ class AgentMemoryStore:
             if scope_type == MemoryScope.SESSION.value and value_matches:
                 multiplier *= self._session_boost
                 matched = True
+                session_matched = True
             elif scope_type == MemoryScope.INCIDENT.value and value_matches:
                 multiplier *= self._incident_boost
                 matched = True
@@ -486,6 +488,8 @@ class AgentMemoryStore:
                 matched = True
 
         if not matched:
+            multiplier *= self._scope_miss_penalty
+        elif not session_matched:
             multiplier *= self._scope_miss_penalty
 
         return multiplier

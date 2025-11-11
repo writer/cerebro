@@ -1049,5 +1049,20 @@ class Settings(BaseSettings):
             return getattr(self.self_play, item)
         raise AttributeError(f"{type(self).__name__!s} object has no attribute {item!r}")
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in _API_SETTING_FIELDS:
+            setattr(self.api, name, value)
+            return
+        if name in _AGENT_SETTING_FIELDS:
+            setattr(self.agent, name, value)
+            return
+        if name in _OPERATIONAL_ALERT_FIELDS:
+            setattr(self.operational_alerts, name, value)
+            return
+        if name in _SELF_PLAY_FIELDS:
+            setattr(self.self_play, name, value)
+            return
+        super().__setattr__(name, value)
+
 
 settings = Settings()

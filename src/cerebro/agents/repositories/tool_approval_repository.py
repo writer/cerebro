@@ -16,8 +16,8 @@ from cerebro.core.database import async_session_factory
 class ToolApprovalRepository:
     """Encapsulates read/write operations for tool approval workflows."""
 
-    def __init__(self, session_factory=async_session_factory) -> None:
-        self._session_factory = session_factory
+    def __init__(self, session_factory=None) -> None:
+        self._session_factory = session_factory or async_session_factory
 
     async def list_pending(
         self,
