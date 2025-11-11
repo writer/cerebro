@@ -1,5 +1,6 @@
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 
 from cerebro.customer_management.customer_registry import (
     CustomerLifecycleStage,

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,17 +11,21 @@ import pytest
 from cerebro.collectors.collector import ConfigCollector
 from cerebro.providers.base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
-    IamPermission,
+    ResourceInfo,
 )
 
 
 class StubProvider(BaseProvider):
     """Minimal provider implementation for collector tests."""
 
-    def __init__(self, account_id, *, config_map: Optional[Dict[str, Dict]] = None, raise_on_config: bool = False):
+    def __init__(
+        self,
+        account_id,
+        *,
+        config_map: dict[str, dict[str, Any]] | None = None,
+        raise_on_config: bool = False,
+    ) -> None:
         super().__init__(account_id)
         self._config_map = config_map or {}
         self._raise_on_config = raise_on_config
@@ -45,7 +49,10 @@ class StubProvider(BaseProvider):
         for principal in []:
             yield principal
 
-    async def get_resource_configuration(self, resource: ResourceInfo) -> ConfigurationSnapshot:
+    async def get_resource_configuration(
+        self,
+        resource: ResourceInfo,
+    ) -> ConfigurationSnapshot | None:
         if self._raise_on_config:
             raise RuntimeError("config fetch failed")
 
@@ -79,7 +86,7 @@ async def test_config_collector_persists_configuration(
     collector.bulk_ops.preload_resource_map = AsyncMock(return_value={})
     collector.bulk_ops.bulk_insert_iam_edges = AsyncMock(return_value=0)
 
-    captured_at = datetime.utcnow()
+    captured_at = datetime.now(UTC)
     provider = StubProvider(
         test_github_account.account_id,
         config_map={
@@ -111,7 +118,9 @@ async def test_config_collector_records_errors_on_insert_failure(
 
     collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value={"processed": 0})
     collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value={"processed": 0})
-    collector.bulk_ops.bulk_insert_config_snapshots = AsyncMock(side_effect=RuntimeError("db down"))
+    collector.bulk_ops.bulk_insert_config_snapshots = AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
     collector.bulk_ops.preload_principal_map = AsyncMock(return_value={})
     collector.bulk_ops.preload_resource_map = AsyncMock(return_value={})
     collector.bulk_ops.bulk_insert_iam_edges = AsyncMock(return_value=0)
@@ -120,7 +129,7 @@ async def test_config_collector_records_errors_on_insert_failure(
         test_github_account.account_id,
         config_map={
             test_resource.external_id: {
-                "captured_at": datetime.utcnow(),
+                "captured_at": datetime.now(UTC),
                 "normalized_config": {"visibility": "private"},
             }
         },

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from cerebro.compliance.evidence_data_fabric import (
     EvidenceEntityType,
@@ -31,7 +31,7 @@ def test_vendor_entity_type_ingest_and_query():
         entity_type=EvidenceEntityType.VENDOR,
         entity_id=vendor_id,
         raw_data=raw_vendor,
-        observed_at=datetime.now(timezone.utc),
+        observed_at=datetime.now(UTC),
         collector_id="vendor_sync",
         tags={"vendor_id": vendor_id},
     )
@@ -39,7 +39,10 @@ def test_vendor_entity_type_ingest_and_query():
     assert evidence_id
 
     results = fabric.query_evidence(
-        EvidenceQuery(entity_types=[EvidenceEntityType.VENDOR], entity_ids=[vendor_id])
+        EvidenceQuery(
+            entity_types=[EvidenceEntityType.VENDOR],
+            entity_ids=[vendor_id],
+        )
     )
 
     assert len(results) == 1
@@ -65,7 +68,7 @@ def test_customer_entity_type_ingest_and_query():
         entity_type=EvidenceEntityType.CUSTOMER,
         entity_id=customer_id,
         raw_data=raw_customer,
-        observed_at=datetime.now(timezone.utc),
+        observed_at=datetime.now(UTC),
         collector_id="cs_sync",
         tags={"customer_id": customer_id},
     )
@@ -73,7 +76,10 @@ def test_customer_entity_type_ingest_and_query():
     assert evidence_id
 
     results = fabric.query_evidence(
-        EvidenceQuery(entity_types=[EvidenceEntityType.CUSTOMER], entity_ids=[customer_id])
+        EvidenceQuery(
+            entity_types=[EvidenceEntityType.CUSTOMER],
+            entity_ids=[customer_id],
+        )
     )
 
     assert len(results) == 1
