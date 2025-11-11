@@ -13,6 +13,9 @@ from cerebro.findings.producers.aws.storage_write_access import StorageWriteAcce
 from cerebro.findings.producers.aws.codebuild_public_trigger import (
     CodeBuildPublicTriggerProducer,
 )
+from cerebro.findings.producers.aws.codebuild_source_credential import (
+    CodeBuildSharedCredentialProducer,
+)
 from cerebro.findings.producers.azure.storage_public_write import (
     AzureStoragePublicWriteProducer,
 )
@@ -560,6 +563,78 @@ class TestAWSProducers:
 
         assert len(findings) == 0
 
+    def test_codebuild_shared_source_credentials(self):
+        producer = CodeBuildSharedCredentialProducer()
+
+        resource = ResourceEntity(
+            external_id="arn:aws:codebuild:us-east-1:123456789012:project/ci",
+            resource_type="aws.codebuild.project",
+            provider="aws",
+            name="ci",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "source": {
+                    "type": "GITHUB",
+                    "location": "https://github.com/acme/service",
+                    "auth": {"type": "OAUTH", "resource": "token-arn"},
+                    "insecureSsl": True,
+                    "reportBuildStatus": True,
+                },
+                "logsConfig": {"cloudWatchLogs": {"status": "ENABLED"}},
+                "environment": {
+                    "environmentVariables": [
+                        {"name": "GITHUB_TOKEN", "value": "***"},
+                        {"name": "ENV", "value": "prod"},
+                    ]
+                },
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.MEDIUM
+        assert finding.evidence["insecure_ssl"] is True
+
+    def test_codebuild_shared_source_credentials_safe(self):
+        producer = CodeBuildSharedCredentialProducer()
+
+        resource = ResourceEntity(
+            external_id="arn:aws:codebuild:us-east-1:123456789012:project/secure",
+            resource_type="aws.codebuild.project",
+            provider="aws",
+            name="secure",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "source": {
+                    "type": "GITHUB",
+                    "location": "https://github.enterprise/acme/secure",
+                    "auth": {"type": "CODECONNECTIONS"},
+                    "insecureSsl": False,
+                    "reportBuildStatus": False,
+                },
+                "environment": {
+                    "environmentVariables": [
+                        {"name": "ENV", "value": "prod"},
+                    ]
+                },
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
     def test_iam_user_without_mfa_producer(self):
         """Test IAM user without MFA producer."""
         producer = IAMUserWithoutMFAProducer()
@@ -779,6 +854,7 @@ class TestProducerRegistry:
             "BucketCleartextKeyProducer",
             "StorageWriteAccessProducer",
             "CodeBuildPublicTriggerProducer",
+            "CodeBuildSharedCredentialProducer",
             "RepoSecretKeyProducer",
             "GCPBucketPublicWriteProducer",
             "GCPBucketSecretArtifactProducer",

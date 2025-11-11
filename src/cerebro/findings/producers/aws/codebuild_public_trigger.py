@@ -69,27 +69,30 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
         source = normalized.get("source") or {}
         webhook = normalized.get("webhook") or {}
 
-        if not webhook or not webhook.get("url"):
-            return []
-
         source_type = source.get("type")
-        if source_type not in PUBLIC_SOURCE_TYPES:
-            return []
-
         auth = source.get("auth") or {}
-        auth_type = auth.get("type")
-        if auth_type and auth_type not in SENSITIVE_AUTH_TYPES:
-            return []
+        webhook_present = bool(webhook and webhook.get("url"))
 
-        filter_groups = webhook.get("filterGroups")
-        if _has_restrictive_filters(filter_groups):
-            return []
-
+        filter_groups = webhook.get("filterGroups") if webhook else None
         location = (source.get("location") or "").lower()
-        if not any(domain in location for domain in ("github.com", "bitbucket.org")):
-            # For GitHub Enterprise, rely on explicit auth type being sensitive.
-            if source_type not in {"GITHUB_ENTERPRISE", "GITHUB_ENTERPRISE_SERVER"}:
-                return []
+        auth_type = auth.get("type")
+
+        public_source = source_type in PUBLIC_SOURCE_TYPES
+        sensitive_auth = auth_type in SENSITIVE_AUTH_TYPES or bool(auth.get("resource"))
+        risky_filters = webhook_present and not _has_restrictive_filters(filter_groups)
+        public_location = any(domain in location for domain in ("github.com", "bitbucket.org"))
+
+        if not webhook_present and not sensitive_auth:
+            return []
+
+        if not public_source:
+            return []
+
+        if webhook_present and not risky_filters:
+            return []
+
+        if not public_location and source_type not in {"GITHUB_ENTERPRISE", "GITHUB_ENTERPRISE_SERVER"}:
+            return []
 
         rule_id = context.get("rule_id") if context else None
         if not rule_id:
@@ -111,6 +114,8 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
             "webhook_host": webhook_host,
             "filter_groups": filter_groups,
             "report_build_status": source.get("reportBuildStatus"),
+            "auth_resource": auth.get("resource"),
+            "webhook_present": webhook_present,
         }
 
         finding = self.create_finding(
