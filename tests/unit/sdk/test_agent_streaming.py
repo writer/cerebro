@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, List
+from typing import Any
 
 import pytest
 
@@ -30,7 +31,7 @@ class _Stream:
             yield self.payload.encode("utf-8")
 
 
-def _make_stream(lines: List[str]) -> _Stream:
+def _make_stream(lines: list[str]) -> _Stream:
     return _Stream("".join(lines))
 
 

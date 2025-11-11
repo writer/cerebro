@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
+import fakeredis.aioredis as fakeredis
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
-
-import fakeredis.aioredis as fakeredis
 
 from cerebro.agents.models import (
     AgentReviewTask,
@@ -20,10 +19,11 @@ from cerebro.agents.models import (
     ToolInvocation,
     ToolInvocationStatus,
 )
+from cerebro.agents.models import (
+    Base as AgentBase,
+)
 from cerebro.core.database import Base as CoreBase
 from cerebro.core.models import Organization
-from cerebro.agents.models import Base as AgentBase
-
 from cerebro_sdk.agents.notifications import AgentNotificationManager
 from cerebro_sdk.agents.playbooks import AgentPlaybook
 from cerebro_sdk.agents.tooling import AgentToolingManager
@@ -56,7 +56,9 @@ async def redis_client():
         await client.aclose()
 
 
-async def _create_org_and_session(session: AsyncSession) -> tuple[Organization, AgentSession]:
+async def _create_org_and_session(
+    session: AsyncSession,
+) -> tuple[Organization, AgentSession]:
     org = Organization(org_id=uuid4(), name="SDK Org")
     session.add(org)
     agent_session = AgentSession(
@@ -219,7 +221,10 @@ async def test_agent_notification_manager_lifecycle(
     tickets = await manager.list_tickets(task_id=review_task.id)
     assert len(tickets) == 1
 
-    closed = await manager.close_ticket(ticket_id=ticket.ticket_id, external_id="JIRA-123")
+    closed = await manager.close_ticket(
+        ticket_id=ticket.ticket_id,
+        external_id="JIRA-123",
+    )
     assert closed is not None
     assert closed.status == TicketStatus.CLOSED.value
     assert closed.details.get("summary") == "Investigate incident"
@@ -258,7 +263,10 @@ async def test_agent_playbook_scenarios(
     for record in notifications:
         await redis_client.rpush(digest_key, record.channel)
 
-    stored_channels = [value.decode() for value in await redis_client.lrange(digest_key, 0, -1)]
+    stored_channels = [
+        value.decode()
+        for value in await redis_client.lrange(digest_key, 0, -1)
+    ]
     assert stored_channels == ["slack", "email"]
 
     fallback_notifications = await playbook.schedule_notifications(
@@ -296,7 +304,7 @@ async def test_agent_playbook_scenarios(
         cel_expression="input.is_admin",
         support_delta=2,
         reject_delta=1,
-        details={"last_updated": datetime.now(timezone.utc).isoformat()},
+        details={"last_updated": datetime.now(UTC).isoformat()},
     )
     assert updated.suggestion_id == suggestion.suggestion_id
     assert updated.support_count == 3
