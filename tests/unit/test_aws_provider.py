@@ -16,11 +16,24 @@ async def test_authenticate_success(monkeypatch):
     sts.get_caller_identity.return_value = {"Account": "123456789012"}
     session.client.return_value = sts
 
-    monkeypatch.setattr("cerebro.providers.aws.provider.settings.aws_access_key_id", "id")
-    monkeypatch.setattr("cerebro.providers.aws.provider.settings.aws_secret_access_key", "secret")
-    monkeypatch.setattr("cerebro.providers.aws.provider.boto3.Session", MagicMock(return_value=session))
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.settings.aws_access_key_id",
+        "id",
+    )
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.settings.aws_secret_access_key",
+        "secret",
+    )
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.boto3.Session",
+        MagicMock(return_value=session),
+    )
 
-    provider = AWSProvider(account_id="acct", aws_account_id="123456789012", region="us-east-1")
+    provider = AWSProvider(
+        account_id="acct",
+        aws_account_id="123456789012",
+        region="us-east-1",
+    )
 
     assert await provider.authenticate() is True
     session.client.assert_called_with("sts")
@@ -33,11 +46,24 @@ async def test_authenticate_wrong_account(monkeypatch):
     sts.get_caller_identity.return_value = {"Account": "000000000000"}
     session.client.return_value = sts
 
-    monkeypatch.setattr("cerebro.providers.aws.provider.settings.aws_access_key_id", "id")
-    monkeypatch.setattr("cerebro.providers.aws.provider.settings.aws_secret_access_key", "secret")
-    monkeypatch.setattr("cerebro.providers.aws.provider.boto3.Session", MagicMock(return_value=session))
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.settings.aws_access_key_id",
+        "id",
+    )
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.settings.aws_secret_access_key",
+        "secret",
+    )
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.boto3.Session",
+        MagicMock(return_value=session),
+    )
 
-    provider = AWSProvider(account_id="acct", aws_account_id="123456789012", region="us-east-1")
+    provider = AWSProvider(
+        account_id="acct",
+        aws_account_id="123456789012",
+        region="us-east-1",
+    )
 
     assert await provider.authenticate() is False
 
@@ -47,21 +73,25 @@ async def test_discover_principals_yields_users(monkeypatch):
     def paginator_for(name):
         paginator = MagicMock()
         if name == "list_users":
-            paginator.paginate.return_value = [{
-                "Users": [
+            paginator.paginate.return_value = iter(
+                [
                     {
-                        "Arn": "arn",
-                        "UserName": "alice",
-                        "Path": "/",
-                        "CreateDate": MagicMock(isoformat=lambda: "now"),
-                        "PasswordLastUsed": None,
+                        "Users": [
+                            {
+                                "Arn": "arn",
+                                "UserName": "alice",
+                                "Path": "/",
+                                "CreateDate": MagicMock(isoformat=lambda: "now"),
+                                "PasswordLastUsed": None,
+                            }
+                        ]
                     }
                 ]
-            }]
+            )
         elif name == "list_roles":
-            paginator.paginate.return_value = [{"Roles": []}]
+            paginator.paginate.return_value = iter([{"Roles": []}])
         else:
-            paginator.paginate.return_value = [{"Groups": []}]
+            paginator.paginate.return_value = iter([{"Groups": []}])
         return paginator
 
     sts_client = MagicMock()
@@ -79,11 +109,24 @@ async def test_discover_principals_yields_users(monkeypatch):
 
     session.client.side_effect = select_client
 
-    monkeypatch.setattr("cerebro.providers.aws.provider.settings.aws_access_key_id", "id")
-    monkeypatch.setattr("cerebro.providers.aws.provider.settings.aws_secret_access_key", "secret")
-    monkeypatch.setattr("cerebro.providers.aws.provider.boto3.Session", MagicMock(return_value=session))
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.settings.aws_access_key_id",
+        "id",
+    )
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.settings.aws_secret_access_key",
+        "secret",
+    )
+    monkeypatch.setattr(
+        "cerebro.providers.aws.provider.boto3.Session",
+        MagicMock(return_value=session),
+    )
 
-    provider = AWSProvider(account_id="acct", aws_account_id="123456789012", region="us-east-1")
+    provider = AWSProvider(
+        account_id="acct",
+        aws_account_id="123456789012",
+        region="us-east-1",
+    )
     assert await provider.authenticate() is True
 
     principals = []

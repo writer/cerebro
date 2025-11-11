@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import text
 
 from cerebro.collectors.collector import CollectionResult
