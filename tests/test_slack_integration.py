@@ -4,17 +4,17 @@ Tests for Slack Integration
 Tests webhook management, message formatting, and notification delivery.
 """
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from unittest.mock import AsyncMock, patch, MagicMock
 
-from cerebro.core.models import SlackWebhook, SlackNotification, Finding, Organization
+import pytest
+
+from cerebro.core.models import Finding, Organization, SlackNotification, SlackWebhook
 from cerebro.notifications.slack import (
-    SlackNotificationService,
     SlackMessageFormatter,
+    SlackNotificationService,
 )
-
 
 # ==================== Fixtures ====================
 
@@ -24,7 +24,7 @@ def sample_org():
     return Organization(
         org_id=uuid4(),
         name="Acme Corp",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -41,8 +41,8 @@ def sample_webhook(sample_org):
         severity_filter=["critical", "high"],
         finding_type_filter=None,
         event_types=["finding_created", "monitoring_alert"],
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -57,7 +57,7 @@ def sample_finding(sample_org):
         status="open",
     )
     # Manually set created_at after instantiation
-    finding.created_at = datetime.now(timezone.utc)
+    finding.created_at = datetime.now(UTC)
     return finding
 
 
@@ -165,9 +165,13 @@ class TestSlackNotificationService:
         async def fake_commit():
             return None
 
-        with patch.object(sample_webhook, "get_webhook_url", side_effect=fake_get_webhook_url), patch.object(service, "client") as mock_client:
+        with patch.object(
+            sample_webhook,
+            "get_webhook_url",
+            side_effect=fake_get_webhook_url,
+        ), patch.object(service, "client") as mock_client:
             mock_client.post = AsyncMock(side_effect=fake_post)
-            mock_db = AsyncMock()
+            mock_db = MagicMock()
             mock_db.commit = AsyncMock(side_effect=fake_commit)
 
             await service._send_with_retry(
@@ -208,9 +212,13 @@ class TestSlackNotificationService:
         async def fake_get_webhook_url():
             return "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX"
 
-        with patch.object(sample_webhook, "get_webhook_url", side_effect=fake_get_webhook_url), patch.object(service, "client") as mock_client:
+        with patch.object(
+            sample_webhook,
+            "get_webhook_url",
+            side_effect=fake_get_webhook_url,
+        ), patch.object(service, "client") as mock_client:
             mock_client.post = AsyncMock(side_effect=fake_post)
-            mock_db = AsyncMock()
+            mock_db = MagicMock()
             mock_db.commit = AsyncMock(side_effect=fake_commit)
 
             await service._send_with_retry(
@@ -234,7 +242,11 @@ class TestSlackNotificationService:
             assert "500" in notification.error_message
 
     @pytest.mark.asyncio
-    async def test_should_send_finding_severity_filter(self, sample_webhook, sample_finding):
+    async def test_should_send_finding_severity_filter(
+        self,
+        sample_webhook,
+        sample_finding,
+    ):
         """Test severity filtering logic."""
         service = SlackNotificationService()
 
@@ -250,7 +262,11 @@ class TestSlackNotificationService:
         assert service._should_send_finding(sample_webhook, sample_finding) is False
 
     @pytest.mark.asyncio
-    async def test_should_send_finding_event_type_filter(self, sample_webhook, sample_finding):
+    async def test_should_send_finding_event_type_filter(
+        self,
+        sample_webhook,
+        sample_finding,
+    ):
         """Test event type filtering logic."""
         service = SlackNotificationService()
 
@@ -278,7 +294,9 @@ class TestSlackIntegration:
         # This test is skipped by default
         # To run manually:
         # 1. Set SLACK_WEBHOOK_URL environment variable
-        # 2. Run: pytest -m integration tests/test_slack_integration.py::TestSlackIntegration::test_real_slack_webhook
+        # 2. Run: pytest -m integration \
+        #        tests/test_slack_integration.py::
+        #        TestSlackIntegration::test_real_slack_webhook
 
         import os
         webhook_url = os.getenv("SLACK_WEBHOOK_URL")
