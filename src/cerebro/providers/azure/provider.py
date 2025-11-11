@@ -84,24 +84,30 @@ class AzureProvider(BaseProvider):
             account_props = await self._get_account_properties(account.name, resource_group)
 
             if not resource_types or "azure.storage.account" in resource_types:
+                metadata = {
+                    "account_name": account.name,
+                    "resource_group": resource_group,
+                    "kind": account.kind,
+                    "sku": getattr(account.sku, "name", None),
+                    "allow_blob_public_access": getattr(account_props, "allow_blob_public_access", None),
+                    "minimum_tls_version": getattr(account_props, "minimum_tls_version", None),
+                    "https_traffic_only": getattr(account_props, "enable_https_traffic_only", None),
+                    "network_rules": self._serialize_network_rules(getattr(account_props, "network_rule_set", None)),
+                    "region": account.primary_location or account.location or "global",
+                    "tags": account.tags or {},
+                    "account_id": str(self.account_id),
+                    "created_at": (
+                        getattr(account, "creation_time", None).isoformat()
+                        if getattr(account, "creation_time", None)
+                        else datetime.utcnow().isoformat()
+                    ),
+                }
+
                 yield ResourceInfo(
                     external_id=account.id,
                     name=account.name,
                     resource_type="azure.storage.account",
-                    region=(account.primary_location or account.location or "global"),
-                    tags=account.tags or {},
-                    created_at=getattr(account, "creation_time", datetime.utcnow()),
-                    account_id=self.account_id,
-                    metadata={
-                        "account_name": account.name,
-                        "resource_group": resource_group,
-                        "kind": account.kind,
-                        "sku": getattr(account.sku, "name", None),
-                        "allow_blob_public_access": getattr(account_props, "allow_blob_public_access", None),
-                        "minimum_tls_version": getattr(account_props, "minimum_tls_version", None),
-                        "https_traffic_only": getattr(account_props, "enable_https_traffic_only", None),
-                        "network_rules": self._serialize_network_rules(getattr(account_props, "network_rule_set", None)),
-                    },
+                    metadata=metadata,
                 )
 
             if resource_types and "azure.storage.container" not in resource_types:
@@ -127,24 +133,30 @@ class AzureProvider(BaseProvider):
                 if not container_name:
                     continue
 
+                metadata = {
+                    "resource_group": resource_group,
+                    "account_name": account.name,
+                    "public_access": getattr(container, "public_access", None),
+                    "has_immutability_policy": getattr(container, "has_immutability_policy", None),
+                    "has_legal_hold": getattr(container, "has_legal_hold", None),
+                    "default_encryption_scope": getattr(container, "default_encryption_scope", None),
+                    "deny_encryption_scope_override": getattr(container, "deny_encryption_scope_override", None),
+                    "allow_blob_public_access": getattr(account_props, "allow_blob_public_access", None),
+                    "region": account.primary_location or account.location or "global",
+                    "tags": getattr(container, "metadata", {}) or {},
+                    "account_id": str(self.account_id),
+                    "created_at": (
+                        getattr(container, "last_modified", None).isoformat()
+                        if getattr(container, "last_modified", None)
+                        else datetime.utcnow().isoformat()
+                    ),
+                }
+
                 yield ResourceInfo(
                     external_id=f"{account.id}/containers/{container_name}",
                     name=container_name,
                     resource_type="azure.storage.container",
-                    region=(account.primary_location or account.location or "global"),
-                    tags=getattr(container, "metadata", {}) or {},
-                    created_at=getattr(container, "last_modified", None) or datetime.utcnow(),
-                    account_id=self.account_id,
-                    metadata={
-                        "resource_group": resource_group,
-                        "account_name": account.name,
-                        "public_access": getattr(container, "public_access", None),
-                        "has_immutability_policy": getattr(container, "has_immutability_policy", None),
-                        "has_legal_hold": getattr(container, "has_legal_hold", None),
-                        "default_encryption_scope": getattr(container, "default_encryption_scope", None),
-                        "deny_encryption_scope_override": getattr(container, "deny_encryption_scope_override", None),
-                        "allow_blob_public_access": getattr(account_props, "allow_blob_public_access", None),
-                    },
+                    metadata=metadata,
                 )
 
     async def get_resource_configuration(

@@ -21,6 +21,10 @@ from cerebro.findings.producers.gcp.bucket_secret_artifacts import GCPBucketSecr
 from cerebro.findings.producers.github.public_repo_no_branch_protection import (
     PublicRepoNoBranchProtectionProducer,
 )
+from cerebro.findings.producers.github.runner_exposure import (
+    GithubRunnerNetworkExposureProducer,
+    GithubRunnerPublicExposureProducer,
+)
 from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
 from cerebro.findings.producers.m365.inactive_admin import (
     M365InactivePrivilegedUserProducer,
@@ -30,7 +34,7 @@ from cerebro.findings.producers.m365.sharepoint_anonymous_link import (
 )
 from cerebro.findings.producers.okta.dormant_admin import OktaDormantAdminProducer
 from cerebro.findings.producers.telemetry.repo_secret_key import RepoSecretKeyProducer
-from cerebro.telemetry.schemas import SecretsScanResult
+from cerebro.telemetry.schemas import HostTelemetry, NetworkConnection, SecretsScanResult
 
 
 class TestGitHubProducers:
@@ -93,6 +97,107 @@ class TestGitHubProducers:
 
         findings = producer.evaluate(resource, config)
         assert len(findings) == 0
+
+    def test_runner_public_exposure(self):
+        producer = GithubRunnerPublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="runner-123",
+            resource_type="github.runner",
+            provider="github",
+            name="build-runner",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "runner": {
+                    "id": 123,
+                    "name": "build-runner",
+                    "os": "linux",
+                    "ephemeral": False,
+                    "labels": ["self-hosted"],
+                },
+                "runner_group": {
+                    "id": 42,
+                    "name": "default",
+                    "visibility": "all",
+                    "allows_public_repositories": True,
+                },
+                "repositories": [
+                    {"id": 1, "name": "public-repo", "visibility": "public"},
+                    {"id": 2, "name": "private-repo", "visibility": "private"},
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.HIGH
+        assert finding.evidence["runner_group"]["allows_public_repositories"] is True
+        assert finding.evidence["exposed_repositories"][0]["visibility"] == "public"
+
+    def test_runner_network_exposure(self):
+        producer = GithubRunnerNetworkExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="runner-234",
+            resource_type="github.runner",
+            provider="github",
+            name="runner-host",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "runner": {
+                    "id": 234,
+                    "name": "runner-host",
+                    "labels": ["self-hosted"],
+                }
+            },
+        )
+
+        host_telemetry = HostTelemetry(
+            organization="test",
+            site="site1",
+            host_id="host-234",
+            hostname="runner-host",
+            agent_version="1.0.0",
+            os_family="linux",
+            collected_at=datetime.utcnow(),
+            ip_addresses=["52.10.10.10", "10.0.0.5"],
+            network_connections=[
+                NetworkConnection(
+                    protocol="tcp",
+                    local_address="0.0.0.0",
+                    local_port=22,
+                    remote_address=None,
+                    remote_port=None,
+                    status="LISTEN",
+                )
+            ],
+        )
+
+        context = {
+            "rule_id": uuid4(),
+            "host_telemetry_index": {
+                "runner-host": host_telemetry,
+                "runner-host".lower(): host_telemetry,
+            },
+        }
+
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["host"]["public_ips"] == ["52.10.10.10"]
 
 
 class TestAWSProducers:
@@ -414,6 +519,8 @@ class TestProducerRegistry:
             "GCPBucketSecretArtifactProducer",
             "AzureStoragePublicWriteProducer",
             "AzureStorageSecretArtifactProducer",
+            "GithubRunnerPublicExposureProducer",
+            "GithubRunnerNetworkExposureProducer",
             "M365SharePointAnonymousLinkProducer",
         ]
 
