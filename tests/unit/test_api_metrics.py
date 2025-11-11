@@ -7,8 +7,18 @@ from cerebro.metrics.api_metrics import APIMetricsRecorder
 
 def test_api_metrics_snapshot_basic():
     recorder = APIMetricsRecorder(window_seconds=60)
-    recorder.record(duration_ms=12.5, status_code=200, method="GET", path_template="/foo")
-    recorder.record(duration_ms=25.0, status_code=500, method="POST", path_template="/bar")
+    recorder.record(
+        duration_ms=12.5,
+        status_code=200,
+        method="GET",
+        path_template="/foo",
+    )
+    recorder.record(
+        duration_ms=25.0,
+        status_code=500,
+        method="POST",
+        path_template="/bar",
+    )
 
     snapshot = recorder.snapshot()
 
@@ -22,9 +32,19 @@ def test_api_metrics_snapshot_basic():
 
 def test_api_metrics_window_prunes_old_samples():
     recorder = APIMetricsRecorder(window_seconds=1)
-    recorder.record(duration_ms=10.0, status_code=200, method="GET", path_template="/foo")
+    recorder.record(
+        duration_ms=10.0,
+        status_code=200,
+        method="GET",
+        path_template="/foo",
+    )
     time.sleep(1.2)
-    recorder.record(duration_ms=10.0, status_code=200, method="GET", path_template="/foo")
+    recorder.record(
+        duration_ms=10.0,
+        status_code=200,
+        method="GET",
+        path_template="/foo",
+    )
 
     snapshot = recorder.snapshot()
 

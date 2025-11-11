@@ -4,9 +4,9 @@ from prometheus_client import CollectorRegistry
 
 from cerebro_sdk.telemetry import (
     configure_logging,
-    get_logger,
     create_counter,
     create_histogram,
+    get_logger,
     time_operation,
 )
 

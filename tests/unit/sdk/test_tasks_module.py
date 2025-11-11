@@ -3,11 +3,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cerebro_sdk.tasks import TaskManager, TaskSubmission, TaskStatus
+from cerebro_sdk.tasks import TaskManager, TaskStatus, TaskSubmission
 
 
 class DummyAsyncResult:
-    def __init__(self, task_id: str, status: str = "PENDING", result=None, failed=False):
+    def __init__(
+        self,
+        task_id: str,
+        status: str = "PENDING",
+        result=None,
+        failed: bool = False,
+    ) -> None:
         self.id = task_id
         self.status = status
         self.result = result
@@ -35,7 +41,11 @@ def mock_celery():
     task_name, task = build_task("cerebro.tasks.integration.sync_kandji", result)
     app.tasks = {task_name: task}
     app.send_task.return_value = DummyAsyncResult("task-2")
-    app.AsyncResult.side_effect = lambda task_id: DummyAsyncResult(task_id, status="SUCCESS", result="ok")
+
+    def _async_result(task_id: str) -> DummyAsyncResult:
+        return DummyAsyncResult(task_id, status="SUCCESS", result="ok")
+
+    app.AsyncResult.side_effect = _async_result
     return app
 
 
@@ -50,10 +60,16 @@ def test_task_manager_enqueue(mock_celery):
 
 def test_task_manager_send_task(mock_celery):
     manager = TaskManager(app=mock_celery)
-    submission = manager.send_task("cerebro.tasks.integration.sync_kandji", countdown=10)
+    submission = manager.send_task(
+        "cerebro.tasks.integration.sync_kandji",
+        countdown=10,
+    )
     assert submission.task_id == "task-2"
     mock_celery.send_task.assert_called_once_with(
-        "cerebro.tasks.integration.sync_kandji", args=(), kwargs={}, countdown=10
+        "cerebro.tasks.integration.sync_kandji",
+        args=(),
+        kwargs={},
+        countdown=10,
     )
 
 
@@ -67,4 +83,8 @@ def test_task_manager_status(mock_celery):
 def test_task_manager_revoke(mock_celery):
     manager = TaskManager(app=mock_celery)
     manager.revoke("task-9", terminate=True)
-    mock_celery.control.revoke.assert_called_once_with("task-9", terminate=True, signal=None)
+    mock_celery.control.revoke.assert_called_once_with(
+        "task-9",
+        terminate=True,
+        signal=None,
+    )
