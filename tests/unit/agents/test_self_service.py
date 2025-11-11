@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from uuid import UUID, uuid4
+from datetime import UTC, datetime
+from typing import Any
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -13,7 +13,11 @@ from cerebro.agents.self_service import (
     SelfServiceAnalytics,
     SelfServiceKnowledgeService,
 )
-from cerebro.compliance.preaudit_models import ComplianceAuditSchedule, PreAuditRun, PreAuditRunStatus
+from cerebro.compliance.preaudit_models import (
+    ComplianceAuditSchedule,
+    PreAuditRun,
+    PreAuditRunStatus,
+)
 from cerebro.core.models import Organization
 from cerebro.query.engine import QueryResult
 
@@ -34,10 +38,12 @@ def _session_factory(session):
 
 
 class _StubQueryEngine:
-    def __init__(self, responses: Optional[Dict[str, QueryResult]] = None) -> None:
+    def __init__(self, responses: dict[str, QueryResult] | None = None) -> None:
         self.responses = responses or {}
 
-    async def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> QueryResult:
+    async def execute_query(
+        self, sql: str, params: list[Any] | None = None
+    ) -> QueryResult:
         key = next((name for name in self.responses if name in sql.lower()), None)
         if key:
             return self.responses[key]
@@ -51,7 +57,7 @@ class _StubQueryEngine:
         )
 
 
-def _query_result(rows: List[Dict[str, Any]]) -> QueryResult:
+def _query_result(rows: list[dict[str, Any]]) -> QueryResult:
     return QueryResult(
         columns=list(rows[0].keys()) if rows else [],
         rows=rows,
@@ -135,12 +141,12 @@ async def test_compliance_question_reads_schedule(test_db):
         id=uuid4(),
         org_id=org.org_id,
         frameworks=["soc2"],
-        audit_date=datetime(2025, 5, 1, tzinfo=timezone.utc),
+        audit_date=datetime(2025, 5, 1, tzinfo=UTC),
     )
     run = PreAuditRun(
         id=uuid4(),
         schedule_id=schedule.id,
-        run_at=datetime(2025, 1, 15, tzinfo=timezone.utc),
+        run_at=datetime(2025, 1, 15, tzinfo=UTC),
         status=PreAuditRunStatus.COMPLETED,
         summary={},
         estimated_outcome="PASS",
@@ -185,13 +191,15 @@ async def test_monthly_report_generation(test_db):
         answer_summary="Example",
         evidence=[],
         details={},
-        created_at=datetime(2025, 1, 10, tzinfo=timezone.utc),
+        created_at=datetime(2025, 1, 10, tzinfo=UTC),
     )
     test_db.add(record)
     await test_db.commit()
 
     analytics = SelfServiceAnalytics(session_factory=_session_factory(test_db))
-    reports = await analytics.generate_monthly_reports(as_of=datetime(2025, 2, 2, tzinfo=timezone.utc))
+    reports = await analytics.generate_monthly_reports(
+        as_of=datetime(2025, 2, 2, tzinfo=UTC)
+    )
 
     assert len(reports) == 1
     stored = list((await test_db.execute(select(AgentSelfServiceReport))).scalars())
