@@ -35,6 +35,10 @@ async def test_authenticate_success(monkeypatch):
         "cerebro.providers.github.provider.Github",
         MagicMock(return_value=fake_github),
     )
+    monkeypatch.setattr(
+        "cerebro.providers.github.provider.GitHubProvider._rest_request",
+        lambda self, method, endpoint, params=None: {},
+    )
 
     provider = GitHubProvider(account_id="123", org_name="acme")
 
@@ -79,8 +83,9 @@ async def test_discover_resources_yields_repos(monkeypatch):
     async for resource in provider.discover_resources():
         resources.append(resource)
 
-    assert resources[0].resource_type == "github.repo"
-    assert resources[0].external_id == "acme/repo"
+    repo_resources = [res for res in resources if res.resource_type == "github.repo"]
+    assert repo_resources
+    assert repo_resources[0].external_id == "acme/repo"
 
 
 @pytest.mark.asyncio
@@ -118,6 +123,10 @@ async def test_discover_resources_respects_filter(monkeypatch):
     monkeypatch.setattr(
         "cerebro.providers.github.provider.Github",
         MagicMock(return_value=fake_github),
+    )
+    monkeypatch.setattr(
+        "cerebro.providers.github.provider.GitHubProvider._rest_request",
+        lambda self, method, endpoint, params=None: {},
     )
 
     provider = GitHubProvider(account_id="123", org_name="acme")

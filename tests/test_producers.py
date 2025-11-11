@@ -31,6 +31,9 @@ from cerebro.findings.producers.github.runner_exposure import (
 from cerebro.findings.producers.github.workflow_permissions import (
     GithubWorkflowDefaultWriteProducer,
 )
+from cerebro.findings.producers.github.org_workflow_permissions import (
+    GithubOrgWorkflowRiskProducer,
+)
 from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
 from cerebro.findings.producers.m365.inactive_admin import (
     M365InactivePrivilegedUserProducer,
@@ -254,6 +257,62 @@ class TestGitHubProducers:
                     "enabled": True,
                     "allowed_actions": "selected",
                     "default_workflow_permissions": "read",
+                    "can_approve_pull_request_reviews": False,
+                }
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_org_workflow_risk(self):
+        producer = GithubOrgWorkflowRiskProducer()
+
+        resource = ResourceEntity(
+            external_id="acme",
+            resource_type="github.org",
+            provider="github",
+            name="Acme Org",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "actionsPermissions": {
+                    "default_workflow_permissions": "write",
+                    "allowed_actions": "all",
+                    "can_approve_pull_request_reviews": True,
+                }
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.HIGH
+        assert finding.evidence["allowed_actions"] == "all"
+
+    def test_org_workflow_safe(self):
+        producer = GithubOrgWorkflowRiskProducer()
+
+        resource = ResourceEntity(
+            external_id="acme",
+            resource_type="github.org",
+            provider="github",
+            name="Acme Org",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "actionsPermissions": {
+                    "default_workflow_permissions": "read",
+                    "allowed_actions": "selected",
                     "can_approve_pull_request_reviews": False,
                 }
             },
@@ -658,6 +717,7 @@ class TestProducerRegistry:
             "GithubRunnerPublicExposureProducer",
             "GithubRunnerNetworkExposureProducer",
             "GithubWorkflowDefaultWriteProducer",
+            "GithubOrgWorkflowRiskProducer",
             "M365SharePointAnonymousLinkProducer",
         ]
 

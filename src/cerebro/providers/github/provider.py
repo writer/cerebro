@@ -83,6 +83,23 @@ class GitHubProvider(BaseProvider):
         if not self._org:
             await self.authenticate()
         
+        # Organization resource
+        if not resource_types or "github.org" in resource_types:
+            org_metadata = {
+                "id": getattr(self._org, "id", None),
+                "login": self._org.login,
+                "description": getattr(self._org, "description", None),
+                "html_url": getattr(self._org, "html_url", None),
+                "is_verified": getattr(self._org, "is_verified", None),
+            }
+
+            yield ResourceInfo(
+                external_id=self._org.login,
+                name=self._org.name or self._org.login,
+                resource_type="github.org",
+                metadata=org_metadata,
+            )
+
         # Discover repositories
         if not resource_types or "github.repo" in resource_types:
             def _get_repos():
@@ -282,6 +299,8 @@ class GitHubProvider(BaseProvider):
         else:
             if resource.resource_type == "github.runner":
                 config = await self._build_runner_configuration(resource)
+            elif resource.resource_type == "github.org":
+                config = await self._build_org_configuration(resource)
             else:
                 config = {}
         
@@ -601,3 +620,31 @@ class GitHubProvider(BaseProvider):
             raise
 
         return response.json()
+
+    async def _build_org_configuration(self, resource: ResourceInfo) -> Dict[str, Any]:
+        org_login = resource.external_id or self.org_name
+
+        try:
+            org_data = await call_sync_with_retries(
+                lambda: self._rest_request("GET", f"/orgs/{org_login}"),
+                exceptions=(requests.RequestException,),
+                logger=logger,
+            )
+        except requests.RequestException as exc:
+            logger.debug(f"Unable to fetch organization metadata for {org_login}: {exc}")
+            org_data = {}
+
+        try:
+            actions_permissions = await call_sync_with_retries(
+                lambda: self._rest_request("GET", f"/orgs/{org_login}/actions/permissions"),
+                exceptions=(requests.RequestException,),
+                logger=logger,
+            )
+        except requests.RequestException as exc:
+            logger.debug(f"Unable to fetch organization actions permissions for {org_login}: {exc}")
+            actions_permissions = None
+
+        if actions_permissions:
+            org_data["actionsPermissions"] = actions_permissions
+
+        return org_data
