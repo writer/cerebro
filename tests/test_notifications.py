@@ -8,7 +8,7 @@ Tests cover:
 - Error handling
 - Retry logic
 """
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
@@ -23,7 +23,7 @@ from cerebro.tasks.notification_digest import (
     _group_findings_by_severity,
 )
 
-UTC = timezone.utc  # noqa: UP017
+from tests.utils.time import utc_now
 
 
 class TestEmailNotificationService:
@@ -244,7 +244,7 @@ class TestNotificationDigest:
             finding.resource_type = "s3.bucket"
             finding.account_id = "123456789012"
             finding.region = "us-east-1"
-            finding.created_at = datetime.now(UTC)
+            finding.created_at = utc_now()
             findings.append(finding)
 
         return findings
@@ -273,8 +273,8 @@ class TestNotificationDigest:
         config = Mock()
         config.digest_frequency = "daily"
 
-        window_start = datetime.now(UTC) - timedelta(days=1)
-        window_end = datetime.now(UTC)
+        window_start = utc_now() - timedelta(days=1)
+        window_end = utc_now()
 
         subject = _generate_digest_subject(
             config,
@@ -298,8 +298,8 @@ class TestNotificationDigest:
             finding.severity = "medium"
             findings.append(finding)
 
-        window_start = datetime.now(UTC) - timedelta(weeks=1)
-        window_end = datetime.now(UTC)
+        window_start = utc_now() - timedelta(weeks=1)
+        window_end = utc_now()
 
         subject = _generate_digest_subject(config, findings, window_start, window_end)
 
@@ -313,8 +313,8 @@ class TestNotificationDigest:
         config.digest_frequency = "daily"
 
         grouped = _group_findings_by_severity(sample_findings)
-        window_start = datetime.now(UTC) - timedelta(days=1)
-        window_end = datetime.now(UTC)
+        window_start = utc_now() - timedelta(days=1)
+        window_end = utc_now()
 
         html = _generate_digest_html(config, grouped, window_start, window_end)
 
@@ -349,8 +349,8 @@ class TestNotificationDigest:
 
         grouped = {"critical": findings}
         config = Mock()
-        window_start = datetime.now(UTC) - timedelta(days=1)
-        window_end = datetime.now(UTC)
+        window_start = utc_now() - timedelta(days=1)
+        window_end = utc_now()
 
         html = _generate_digest_html(config, grouped, window_start, window_end)
 
@@ -456,8 +456,8 @@ class TestNotificationEdgeCases:
 
         grouped = _group_findings_by_severity([finding])
         config = Mock()
-        window_start = datetime.now(UTC) - timedelta(days=1)
-        window_end = datetime.now(UTC)
+        window_start = utc_now() - timedelta(days=1)
+        window_end = utc_now()
 
         # Should not crash
         html = _generate_digest_html(config, grouped, window_start, window_end)
@@ -476,8 +476,8 @@ class TestNotificationEdgeCases:
 
         grouped = _group_findings_by_severity([finding])
         config = Mock()
-        window_start = datetime.now(UTC) - timedelta(days=1)
-        window_end = datetime.now(UTC)
+        window_start = utc_now() - timedelta(days=1)
+        window_end = utc_now()
 
         html = _generate_digest_html(config, grouped, window_start, window_end)
         assert "🔐" in html
