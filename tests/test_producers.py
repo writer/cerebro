@@ -34,6 +34,9 @@ from cerebro.findings.producers.github.workflow_permissions import (
 from cerebro.findings.producers.github.org_workflow_permissions import (
     GithubOrgWorkflowRiskProducer,
 )
+from cerebro.findings.producers.github.repo_runner_group_scope import (
+    GithubRepoRunnerGroupScopeProducer,
+)
 from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
 from cerebro.findings.producers.m365.inactive_admin import (
     M365InactivePrivilegedUserProducer,
@@ -315,6 +318,73 @@ class TestGitHubProducers:
                     "allowed_actions": "selected",
                     "can_approve_pull_request_reviews": False,
                 }
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_repo_runner_group_scope_broad(self):
+        producer = GithubRepoRunnerGroupScopeProducer()
+
+        resource = ResourceEntity(
+            external_id="acme/repo",
+            resource_type="github.repo",
+            provider="github",
+            name="repo",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "runner": {"id": 101, "name": "shared-runner", "labels": ["linux", "x64"]},
+                "runner_group": {
+                    "id": 5,
+                    "name": "default",
+                    "visibility": "all",
+                    "allows_public_repositories": True,
+                    "restricted_to_workflows": False,
+                },
+                "repositories": [
+                    {"full_name": "acme/repo"},
+                    {"full_name": "acme/other-repo"},
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.MEDIUM
+        assert finding.evidence["runner_group"]["visibility"] == "all"
+
+    def test_repo_runner_group_scope_safe(self):
+        producer = GithubRepoRunnerGroupScopeProducer()
+
+        resource = ResourceEntity(
+            external_id="acme/repo",
+            resource_type="github.repo",
+            provider="github",
+            name="repo",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "runner": {"id": 102, "name": "isolated-runner", "labels": ["linux"]},
+                "runner_group": {
+                    "id": 6,
+                    "name": "repo-only",
+                    "visibility": "private",
+                    "allows_public_repositories": False,
+                    "restricted_to_workflows": True,
+                },
+                "repositories": [{"full_name": "acme/repo"}],
             },
         )
 
@@ -718,6 +788,7 @@ class TestProducerRegistry:
             "GithubRunnerNetworkExposureProducer",
             "GithubWorkflowDefaultWriteProducer",
             "GithubOrgWorkflowRiskProducer",
+            "GithubRepoRunnerGroupScopeProducer",
             "M365SharePointAnonymousLinkProducer",
         ]
 
