@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -11,7 +11,7 @@ from cerebro.integrations.state import IntegrationStateRepository
 @pytest.mark.asyncio()
 async def test_freshness_service_marks_stale(test_db):
     repo = IntegrationStateRepository(test_db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await repo.upsert_state(
         integration="sentinelone.activities",
         scope="default",
@@ -34,7 +34,7 @@ async def test_freshness_service_marks_stale(test_db):
 @pytest.mark.asyncio()
 async def test_provider_freshness_collapses_multiple_states(test_db):
     repo = IntegrationStateRepository(test_db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     await repo.upsert_state(
         integration="kandji.vulnerabilities",
@@ -64,7 +64,7 @@ async def test_provider_freshness_collapses_multiple_states(test_db):
 @pytest.mark.asyncio()
 async def test_freshness_confidence_overrides(test_db):
     repo = IntegrationStateRepository(test_db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await repo.upsert_state(
         integration="analytics.derived_insights",
         scope="default",

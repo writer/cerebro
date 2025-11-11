@@ -1,6 +1,6 @@
 import pytest
 
-from cerebro.core.config import AuthSettings, IntegrationRetrySettings, Settings
+from cerebro.core.config import IntegrationRetrySettings, Settings
 
 
 def test_settings_migrates_legacy_auth_fields(monkeypatch):
