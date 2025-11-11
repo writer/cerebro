@@ -7,3 +7,11 @@ repos:
         language: system
         pass_filenames: false
         stages: [commit]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.8
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: "^src/cerebro/.*\\.py$"
+      - id: ruff-format
+        files: "^src/cerebro/.*\\.py$"

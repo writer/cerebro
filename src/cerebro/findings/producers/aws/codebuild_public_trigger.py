@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
 
 from .base import BaseAWSProducer
 
-
-PUBLIC_SOURCE_TYPES = {"GITHUB", "GITHUB_ENTERPRISE", "GITHUB_ENTERPRISE_SERVER", "BITBUCKET"}
+PUBLIC_SOURCE_TYPES = {
+    "GITHUB",
+    "GITHUB_ENTERPRISE",
+    "GITHUB_ENTERPRISE_SERVER",
+    "BITBUCKET",
+}
 SENSITIVE_AUTH_TYPES = {"OAUTH", "BASIC_AUTH", "PERSONAL_ACCESS_TOKEN"}
 
 
-def _has_restrictive_filters(filter_groups: Optional[List[List[Dict[str, str]]]]) -> bool:
+def _has_restrictive_filters(filter_groups: list[list[dict[str, str]]] | None) -> bool:
     if not filter_groups:
         return False
 
@@ -40,7 +48,7 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
     """Flags CodeBuild projects that accept public webhook triggers."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"aws.codebuild.project"}
 
     @property
@@ -57,14 +65,17 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
 
     @property
     def description(self) -> str:
-        return "CodeBuild project uses public repository webhooks without restrictive filters"
+        return (
+            "CodeBuild project uses public repository webhooks without restrictive "
+            "filters"
+        )
 
     def evaluate(
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
+        context: dict[str, object] | None = None,
+    ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         source = normalized.get("source") or {}
         webhook = normalized.get("webhook") or {}
@@ -80,7 +91,9 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
         public_source = source_type in PUBLIC_SOURCE_TYPES
         sensitive_auth = auth_type in SENSITIVE_AUTH_TYPES or bool(auth.get("resource"))
         risky_filters = webhook_present and not _has_restrictive_filters(filter_groups)
-        public_location = any(domain in location for domain in ("github.com", "bitbucket.org"))
+        public_location = any(
+            domain in location for domain in ("github.com", "bitbucket.org")
+        )
 
         if not webhook_present and not sensitive_auth:
             return []
@@ -91,7 +104,10 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
         if webhook_present and not risky_filters:
             return []
 
-        if not public_location and source_type not in {"GITHUB_ENTERPRISE", "GITHUB_ENTERPRISE_SERVER"}:
+        if not public_location and source_type not in {
+            "GITHUB_ENTERPRISE",
+            "GITHUB_ENTERPRISE_SERVER",
+        }:
             return []
 
         rule_id = context.get("rule_id") if context else None
@@ -121,10 +137,13 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
         finding = self.create_finding(
             resource=resource,
             rule_id=rule_id,
-            title=f"CodeBuild project {resource.name or resource.external_id} accepts public triggers",
+            title=(
+                "CodeBuild project "
+                f"{resource.name or resource.external_id} accepts public triggers"
+            ),
             summary=(
-                "CodeBuild project is configured with a webhook from a public repository without branch or path"
-                " restrictions, allowing untrusted pushes to trigger builds."
+                "Webhook from a public repository lacks branch or path restrictions, "
+                "allowing untrusted pushes to trigger builds."
             ),
             evidence=evidence,
             severity=self.severity,
