@@ -265,20 +265,24 @@ class AWSProvider(BaseProvider):
                 policy = s3.get_bucket_policy(Bucket=bucket_name)
                 config["policy"] = json.loads(policy['Policy'])
                 config["policyAllowsPublic"] = self._check_s3_policy_public(config["policy"])
+                config["policyAllowsPublicWrite"] = self._check_s3_policy_public_write(config["policy"])
             except ClientError as e:
                 if e.response['Error']['Code'] != 'NoSuchBucketPolicy':
                     logger.warning(f"Could not get policy for bucket {bucket_name}: {e}")
                 config["policy"] = None
                 config["policyAllowsPublic"] = False
+                config["policyAllowsPublicWrite"] = False
 
             try:
                 acl = s3.get_bucket_acl(Bucket=bucket_name)
                 config["acl"] = acl
                 config["aclAllowsPublic"] = self._check_s3_acl_public(acl)
+                config["aclAllowsPublicWrite"] = self._check_s3_acl_public_write(acl)
             except ClientError as e:
                 logger.warning(f"Could not get ACL for bucket {bucket_name}: {e}")
                 config["acl"] = None
                 config["aclAllowsPublic"] = False
+                config["aclAllowsPublicWrite"] = False
 
             try:
                 pab = s3.get_public_access_block(Bucket=bucket_name)
@@ -293,6 +297,68 @@ class AWSProvider(BaseProvider):
                 if e.response['Error']['Code'] != 'NoSuchPublicAccessBlockConfiguration':
                     logger.warning(f"Could not get public access block for bucket {bucket_name}: {e}")
                 config["blockPublicAccess"] = {"effective": False}
+
+            try:
+                location = s3.get_bucket_location(Bucket=bucket_name)
+                config["region"] = location.get("LocationConstraint") or "us-east-1"
+            except ClientError as e:
+                logger.debug(f"Could not determine bucket location for {bucket_name}: {e}")
+                config["region"] = None
+
+            try:
+                encryption = s3.get_bucket_encryption(Bucket=bucket_name)
+                rules = encryption.get("ServerSideEncryptionConfiguration", {}).get("Rules", [])
+                config["encryption"] = {
+                    "enabled": bool(rules),
+                    "rules": rules,
+                }
+            except ClientError as e:
+                if e.response['Error']['Code'] not in {'ServerSideEncryptionConfigurationNotFoundError', 'AccessDenied'}:
+                    logger.debug(f"Could not get encryption for bucket {bucket_name}: {e}")
+                config["encryption"] = {"enabled": False}
+
+            try:
+                versioning = s3.get_bucket_versioning(Bucket=bucket_name)
+                config["versioning"] = {
+                    "enabled": versioning.get("Status") == "Enabled",
+                    "mfa_delete": versioning.get("MFADelete") == "Enabled",
+                }
+            except ClientError as e:
+                logger.debug(f"Could not get versioning for bucket {bucket_name}: {e}")
+                config["versioning"] = {"enabled": False}
+
+            try:
+                logging_cfg = s3.get_bucket_logging(Bucket=bucket_name)
+                logging_enabled = logging_cfg.get("LoggingEnabled")
+                config["logging"] = {
+                    "enabled": logging_enabled is not None,
+                    "target_bucket": logging_enabled.get("TargetBucket") if logging_enabled else None,
+                }
+            except ClientError as e:
+                logger.debug(f"Could not get logging configuration for bucket {bucket_name}: {e}")
+                config["logging"] = {"enabled": False}
+
+            try:
+                lifecycle = s3.get_bucket_lifecycle_configuration(Bucket=bucket_name)
+                config["lifecycle"] = lifecycle.get("Rules", [])
+            except ClientError:
+                config["lifecycle"] = []
+
+            config["objectsSample"] = []
+            try:
+                object_listing = s3.list_objects_v2(Bucket=bucket_name, MaxKeys=50)
+                for obj in object_listing.get("Contents", []):
+                    config["objectsSample"].append(
+                        {
+                            "key": obj.get("Key"),
+                            "size": obj.get("Size"),
+                            "modified": obj.get("LastModified").isoformat() if obj.get("LastModified") else None,
+                        }
+                    )
+                config["objectCount"] = object_listing.get("KeyCount")
+            except ClientError as e:
+                logger.debug(f"Could not list objects for bucket {bucket_name}: {e}")
+                config["objectCount"] = None
 
             return config
 
@@ -330,6 +396,61 @@ class AWSProvider(BaseProvider):
             if grantee.get('URI') in public_uris:
                 return True
         
+        return False
+
+    def _check_s3_acl_public_write(self, acl: Dict[str, Any]) -> bool:
+        """Check if S3 bucket ACL grants public write access."""
+        if not acl or 'Grants' not in acl:
+            return False
+
+        public_uris = {
+            'http://acs.amazonaws.com/groups/global/AllUsers',
+            'http://acs.amazonaws.com/groups/global/AuthenticatedUsers'
+        }
+
+        writable_permissions = {"WRITE", "FULL_CONTROL", "WRITE_ACP"}
+
+        for grant in acl['Grants']:
+            grantee = grant.get('Grantee', {})
+            if grantee.get('URI') in public_uris and grant.get('Permission') in writable_permissions:
+                return True
+
+        return False
+
+    def _principal_allows_public(self, principals: Any) -> bool:
+        if principals == "*":
+            return True
+        if isinstance(principals, dict):
+            if principals.get("AWS") == "*":
+                return True
+            uri = principals.get("URI")
+            if isinstance(uri, str) and uri.endswith("AllUsers"):
+                return True
+            if isinstance(principals.get("AWS"), list) and "*" in principals.get("AWS"):
+                return True
+        if isinstance(principals, list):
+            return any(self._principal_allows_public(p) for p in principals)
+        return False
+
+    def _check_s3_policy_public_write(self, policy: Dict[str, Any]) -> bool:
+        """Check if S3 bucket policy allows public write access."""
+        if not policy or 'Statement' not in policy:
+            return False
+
+        for statement in policy['Statement']:
+            if statement.get('Effect') != 'Allow':
+                continue
+            principals = statement.get('Principal')
+            if not self._principal_allows_public(principals):
+                continue
+
+            actions = statement.get('Action', [])
+            if isinstance(actions, str):
+                actions = [actions]
+            actions = [action.lower() for action in actions]
+            if any(action in {"s3:*", "s3:putobject", "s3:putobjectacl", "s3:deleteobject"} for action in actions):
+                return True
+
         return False
     
     async def _get_ec2_instance_config(self, instance_id: str) -> Dict[str, Any]:

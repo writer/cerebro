@@ -969,17 +969,29 @@ class TelemetryIngestionService:
             provider="telemetry",
         )
 
-        fingerprint = self._fingerprint(
-            "telemetry-secret",
-            telemetry.repository,
-            secret.file_path,
-            secret.secret_type,
+        from cerebro.findings.producers.telemetry.repo_secret_key import RepoSecretKeyProducer
+        from cerebro.domain.entities import ResourceEntity
+
+        resource_entity = ResourceEntity(
+            external_id=context.resource_external_id,
+            resource_type=context.resource_type,
+            provider=context.account_provider,
+            name=context.resource_name,
+            metadata=context.metadata,
         )
 
-        finding = await self._get_existing_finding(context.org_id, fingerprint)
-        if finding:
-            finding.last_seen = telemetry.timestamp
-            return finding.finding_id
+        producer = RepoSecretKeyProducer()
+        finding_entity = producer.build_from_telemetry(
+            resource=resource_entity,
+            secret=secret,
+            telemetry={"timestamp": telemetry.timestamp, "sha": telemetry.sha},
+            rule_id=rule.rule_id,
+        )
+
+        existing = await self._get_existing_finding(context.org_id, finding_entity.fingerprint)
+        if existing:
+            existing.last_seen = telemetry.timestamp
+            return existing.finding_id
 
         finding = Finding(
             org_id=context.org_id,
@@ -988,26 +1000,14 @@ class TelemetryIngestionService:
             rule_id=rule.rule_id,
             rule_version=rule.version,
             resource_id=context.resource_id,
-            first_seen=telemetry.timestamp,
-            last_seen=telemetry.timestamp,
-            status="open",
-            severity="critical",
-            fingerprint=fingerprint,
-            title=f"Secret detected: {secret.secret_type} in {secret.file_path}",
-            summary=(
-                f"Secret of type '{secret.secret_type}' detected in {telemetry.repository} "
-                f"at {secret.file_path}. This secret should be removed and rotated."
-            ),
-            evidence={
-                "source": "telemetry",
-                "detector": secret.detector_name,
-                "file_path": secret.file_path,
-                "line_number": secret.line_number,
-                "secret_type": secret.secret_type,
-                "verified": secret.verified,
-                "commit_sha": telemetry.sha,
-                "detected_at": telemetry.timestamp.isoformat(),
-            },
+            first_seen=finding_entity.first_seen or telemetry.timestamp,
+            last_seen=finding_entity.last_seen or telemetry.timestamp,
+            status=finding_entity.status.value,
+            severity=finding_entity.severity.value,
+            fingerprint=finding_entity.fingerprint,
+            title=finding_entity.title,
+            summary=finding_entity.summary,
+            evidence=finding_entity.evidence,
         )
         self.db.add(finding)
         await self.db.flush()

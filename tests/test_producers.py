@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
+from cerebro.findings.producers.aws.bucket_cleartext_key import BucketCleartextKeyProducer
 from cerebro.findings.producers.aws.iam_user_without_mfa import (
     IAMUserWithoutMFAProducer,
 )
 from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProducer
+from cerebro.findings.producers.aws.storage_write_access import StorageWriteAccessProducer
 from cerebro.findings.producers.github.public_repo_no_branch_protection import (
     PublicRepoNoBranchProtectionProducer,
 )
@@ -16,6 +18,8 @@ from cerebro.findings.producers.m365.inactive_admin import (
     M365InactivePrivilegedUserProducer,
 )
 from cerebro.findings.producers.okta.dormant_admin import OktaDormantAdminProducer
+from cerebro.findings.producers.telemetry.repo_secret_key import RepoSecretKeyProducer
+from cerebro.telemetry.schemas import SecretsScanResult
 
 
 class TestGitHubProducers:
@@ -114,6 +118,68 @@ class TestAWSProducers:
         assert "test-public-bucket" in finding.title
         assert "bucket_policy" in finding.evidence["access_vectors"]
 
+    def test_s3_bucket_cleartext_key_producer(self):
+        producer = BucketCleartextKeyProducer()
+
+        resource = ResourceEntity(
+            external_id="secret-bucket",
+            resource_type="aws.s3.bucket",
+            provider="aws",
+            name="secret-bucket",
+        )
+
+        config = ConfigEntity(
+            resource_external_id="secret-bucket",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "objectsSample": [
+                    {"key": "backups/api_keys.env", "size": 120, "modified": datetime.utcnow().isoformat()},
+                    {"key": "README.md", "size": 80, "modified": datetime.utcnow().isoformat()},
+                ],
+                "policyAllowsPublic": True,
+                "aclAllowsPublic": False,
+                "blockPublicAccess": {"effective": False},
+                "region": "us-west-2",
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert "api_keys" in finding.evidence["matched_objects"][0]["key"]
+
+    def test_storage_write_access_producer(self):
+        producer = StorageWriteAccessProducer()
+
+        resource = ResourceEntity(
+            external_id="writeable-bucket",
+            resource_type="aws.s3.bucket",
+            provider="aws",
+            name="writeable-bucket",
+        )
+
+        config = ConfigEntity(
+            resource_external_id="writeable-bucket",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "policyAllowsPublicWrite": True,
+                "aclAllowsPublicWrite": False,
+                "blockPublicAccess": {"effective": False},
+                "region": "us-east-2",
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["policy_allows_public_write"] is True
+
     def test_iam_user_without_mfa_producer(self):
         """Test IAM user without MFA producer."""
         producer = IAMUserWithoutMFAProducer()
@@ -198,6 +264,9 @@ class TestProducerRegistry:
             "OktaDormantAdminProducer",
             "M365GuestAdminProducer",
             "M365InactivePrivilegedUserProducer",
+            "BucketCleartextKeyProducer",
+            "StorageWriteAccessProducer",
+            "RepoSecretKeyProducer",
         ]
 
         for expected in expected_producers:
@@ -223,6 +292,51 @@ class TestProducerRegistry:
             "aws",
             "aws.s3.bucket",
         )
+
+
+class TestTelemetryProducers:
+    """Test telemetry-based producers."""
+
+    def test_repo_secret_key_producer(self):
+        producer = RepoSecretKeyProducer()
+
+        resource = ResourceEntity(
+            external_id="org/repo",
+            resource_type="github.repo",
+            provider="github",
+            name="repo",
+        )
+
+        secret_payload = SecretsScanResult(
+            detector_name="trufflehog",
+            file_path="config/.env",
+            line_number=12,
+            secret_type="openai_api_key",
+            verified=False,
+            raw_result={"redacted": "sk-abc123xyz456", "DetectorType": "openai"},
+        )
+
+        config = ConfigEntity(
+            resource_external_id="org/repo",
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "secrets": [
+                    {
+                        "raw_payload": secret_payload.model_dump(),
+                        "commit_sha": "deadbeef",
+                    }
+                ]
+            },
+        )
+
+        context = {"rule_id": uuid4(), "detected_at": datetime.utcnow()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert "OpenAI API key" in finding.summary
+        assert finding.evidence["validation"]["status"] in {"format_match", "inferred", "verified"}
 
 
 class TestIdentityProducers:
