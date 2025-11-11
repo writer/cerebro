@@ -75,14 +75,18 @@ def test_generate_remediation_actions_creates_vendor_and_customer_queue() -> Non
 
     assert isinstance(queue, RemediationQueue)
     assert len(queue.actions) == 2
-    vendor_action = next(action for action in queue.actions if action.entity_type == "vendor")
+    vendor_action = next(
+        action for action in queue.actions if action.entity_type == "vendor"
+    )
     assert vendor_action.owner == "vendor-owner"
     assert vendor_action.severity == "critical"
     assert "Residual risk score" in vendor_action.description
     assert "Missing penetration test results" in vendor_action.description
     assert "vendor-ev-1" in vendor_action.evidence_ids
 
-    customer_action = next(action for action in queue.actions if action.entity_type == "customer")
+    customer_action = next(
+        action for action in queue.actions if action.entity_type == "customer"
+    )
     assert customer_action.owner == "customer-success"
     assert customer_action.severity == "high"
     assert "support-tickets-3" in customer_action.evidence_ids

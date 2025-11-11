@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from cerebro_sdk.agents.streaming import AgentStreamConsumers, AgentStreamEvent
 from cerebro_sdk.analytics import (
     IntegrationAccountSummary,
     IntegrationCoverageRecord,
@@ -14,10 +15,7 @@ from cerebro_sdk.findings import FindingRecord
 from cerebro_sdk.security_center import (
     CustomerEngagement,
     EntityAnnotation,
-    ExposureCollections,
-    FindingsSummary,
     IntegrationCoverageHealth,
-    IntegrationSummary,
     OrgExposureDashboard,
     RelationsContext,
     VendorExposure,
@@ -30,13 +28,11 @@ from cerebro_sdk.security_center import (
     get_customer_engagement,
     get_vendor_exposure,
 )
-from cerebro_sdk.agents.streaming import AgentStreamConsumers, AgentStreamEvent
-from cerebro_sdk.streaming import ServerSentEvent
 from cerebro_sdk.security_center.models import (
     SecurityCenterCustomerInsight,
     SecurityCenterVendorInsight,
 )
-
+from cerebro_sdk.streaming import ServerSentEvent
 
 REFERENCE_NOW = datetime(2024, 10, 24)
 
@@ -130,7 +126,12 @@ def coverage() -> list[IntegrationCoverageRecord]:
             integration="github",
             providers=["github"],
             status="ok",
-            scopes=IntegrationScopeBreakdown(total=10, healthy=8, warning=1, critical=1),
+            scopes=IntegrationScopeBreakdown(
+                total=10,
+                healthy=8,
+                warning=1,
+                critical=1,
+            ),
             accounts=IntegrationAccountSummary(total=2),
             coverage_ratio=0.8,
             last_success=REFERENCE_NOW - timedelta(hours=6),
@@ -237,7 +238,12 @@ async def test_get_vendor_exposure_returns_dashboard(context) -> None:
 @pytest.mark.asyncio()
 async def test_get_customer_engagement_returns_dashboard(context) -> None:
     index = await build_relations_index("org-1", context)
-    engagement = await get_customer_engagement("org-1", "customer-alpha", context, index)
+    engagement = await get_customer_engagement(
+        "org-1",
+        "customer-alpha",
+        context,
+        index,
+    )
 
     assert isinstance(engagement, CustomerEngagement)
     assert engagement.customer.customer_id == "customer-alpha"
@@ -260,7 +266,12 @@ async def test_build_org_exposure_dashboard_combines_metrics(context) -> None:
 def test_annotate_agent_event_matches_entities(vendors, customers) -> None:
     event = AgentStreamEvent(
         type="message",
-        payload={"metadata": {"vendorId": "vendor-acme", "customer_id": "customer-alpha"}},
+        payload={
+            "metadata": {
+                "vendorId": "vendor-acme",
+                "customer_id": "customer-alpha",
+            }
+        },
         raw=ServerSentEvent(event="message", data="{}"),
     )
 
@@ -273,23 +284,45 @@ def test_annotate_agent_event_matches_entities(vendors, customers) -> None:
 
 def test_annotate_agent_events_handles_multiple(vendors, customers) -> None:
     events = [
-        AgentStreamEvent(type="message", payload={"metadata": {"vendorId": "vendor-acme"}}, raw=ServerSentEvent(event="message", data="{}")),
-        AgentStreamEvent(type="tool", payload={"inputData": {"customer_id": "customer-alpha"}}, raw=ServerSentEvent(event="tool", data="{}")),
+        AgentStreamEvent(
+            type="message",
+            payload={"metadata": {"vendorId": "vendor-acme"}},
+            raw=ServerSentEvent(event="message", data="{}"),
+        ),
+        AgentStreamEvent(
+            type="tool",
+            payload={"inputData": {"customer_id": "customer-alpha"}},
+            raw=ServerSentEvent(event="tool", data="{}"),
+        ),
     ]
 
     annotations = annotate_agent_events(events, vendors, customers)
 
     assert len(annotations) == 2
-    assert annotations[0].vendors and annotations[0].vendors[0].vendor_id == "vendor-acme"
-    assert annotations[1].customers and annotations[1].customers[0].customer_id == "customer-alpha"
+    assert (
+        annotations[0].vendors
+        and annotations[0].vendors[0].vendor_id == "vendor-acme"
+    )
+    assert (
+        annotations[1].customers
+        and annotations[1].customers[0].customer_id == "customer-alpha"
+    )
 
 
 @pytest.mark.asyncio()
-async def test_create_entity_aware_consumers_decorates_handlers(vendors, customers) -> None:
+async def test_create_entity_aware_consumers_decorates_handlers(
+    vendors,
+    customers,
+) -> None:
     events: list[EntityAnnotation] = []
 
     consumers = AgentStreamConsumers()
-    wrapped = create_entity_aware_consumers(vendors, customers, consumers, events.append)
+    wrapped = create_entity_aware_consumers(
+        vendors,
+        customers,
+        consumers,
+        events.append,
+    )
 
     event = AgentStreamEvent(
         type="message",
