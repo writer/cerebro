@@ -5,7 +5,6 @@ import pytest
 
 from cerebro.integrations.serval import ServalClient, ServalConfig
 
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -30,7 +29,10 @@ async def test_serval_client_caches_token() -> None:
 
     transport = httpx.MockTransport(handler)
 
-    async with httpx.AsyncClient(transport=transport, base_url="https://public.api.serval.com") as http_client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://public.api.serval.com",
+    ) as http_client:
         client = ServalClient(
             ServalConfig(
                 base_url="https://public.api.serval.com",
@@ -82,7 +84,10 @@ async def test_serval_client_create_ticket_payload() -> None:
 
     transport = httpx.MockTransport(handler)
 
-    async with httpx.AsyncClient(transport=transport, base_url="https://public.api.serval.com") as http_client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://public.api.serval.com",
+    ) as http_client:
         client = ServalClient(
             ServalConfig(
                 base_url="https://public.api.serval.com",
@@ -138,7 +143,10 @@ async def test_serval_client_update_ticket() -> None:
 
     transport = httpx.MockTransport(handler)
 
-    async with httpx.AsyncClient(transport=transport, base_url="https://public.api.serval.com") as http_client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://public.api.serval.com",
+    ) as http_client:
         client = ServalClient(
             ServalConfig(
                 base_url="https://public.api.serval.com",

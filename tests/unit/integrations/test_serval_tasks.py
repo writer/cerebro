@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from cerebro.tasks import serval_tasks
 
@@ -35,16 +35,25 @@ def test_sync_serval_tickets_updates_state(monkeypatch, test_db, test_org):
             {
                 "id": "ticket-1",
                 "statusId": "status-closed",
-                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "updatedAt": datetime.now(UTC).isoformat(),
             }
         ]
 
     async def _sync_ticket(self, org_id, ticket_payload):  # type: ignore[override]
         return None
 
-    monkeypatch.setattr("cerebro.integrations.serval_service.ServalIntegrationRepository.list_all", _list_all)
-    monkeypatch.setattr("cerebro.integrations.serval_ticket_service.ServalTicketService.list_recent_tickets", _list_recent_tickets)
-    monkeypatch.setattr("cerebro.integrations.serval_ticket_service.ServalTicketService.synchronize_remote_ticket", _sync_ticket)
+    monkeypatch.setattr(
+        "cerebro.integrations.serval_service.ServalIntegrationRepository.list_all",
+        _list_all,
+    )
+    monkeypatch.setattr(
+        "cerebro.integrations.serval_ticket_service.ServalTicketService.list_recent_tickets",
+        _list_recent_tickets,
+    )
+    monkeypatch.setattr(
+        "cerebro.integrations.serval_ticket_service.ServalTicketService.synchronize_remote_ticket",
+        _sync_ticket,
+    )
 
     result = serval_tasks.sync_serval_tickets.apply().get()
 
