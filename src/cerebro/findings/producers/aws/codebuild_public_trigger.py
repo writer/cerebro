@@ -1,0 +1,128 @@
+"""Detect CodeBuild projects exposed to public webhook triggers."""
+
+from __future__ import annotations
+
+from typing import Dict, List, Optional, Set
+from urllib.parse import urlparse
+
+from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.findings.producers.registry import register_producer
+
+from .base import BaseAWSProducer
+
+
+PUBLIC_SOURCE_TYPES = {"GITHUB", "GITHUB_ENTERPRISE", "GITHUB_ENTERPRISE_SERVER", "BITBUCKET"}
+SENSITIVE_AUTH_TYPES = {"OAUTH", "BASIC_AUTH", "PERSONAL_ACCESS_TOKEN"}
+
+
+def _has_restrictive_filters(filter_groups: Optional[List[List[Dict[str, str]]]]) -> bool:
+    if not filter_groups:
+        return False
+
+    for group in filter_groups:
+        if not group:
+            continue
+
+        has_branch_or_path_restriction = any(
+            filter_def.get("type") in {"BASE_REF", "HEAD_REF", "FILE_PATH"}
+            and filter_def.get("pattern")
+            for filter_def in group
+        )
+
+        if not has_branch_or_path_restriction:
+            return False
+
+    return True
+
+
+@register_producer
+class CodeBuildPublicTriggerProducer(BaseAWSProducer):
+    """Flags CodeBuild projects that accept public webhook triggers."""
+
+    @property
+    def resource_types(self) -> Set[str]:
+        return {"aws.codebuild.project"}
+
+    @property
+    def finding_name(self) -> str:
+        return "AWS: CodeBuild project exposes public webhook trigger"
+
+    @property
+    def rule_name(self) -> str:
+        return "aws_codebuild_public_trigger"
+
+    @property
+    def severity(self) -> Severity:
+        return Severity.CRITICAL
+
+    @property
+    def description(self) -> str:
+        return "CodeBuild project uses public repository webhooks without restrictive filters"
+
+    def evaluate(
+        self,
+        resource: ResourceEntity,
+        config: ConfigEntity,
+        context: Optional[Dict[str, object]] = None,
+    ) -> List[FindingEntity]:
+        normalized = config.normalized_config or {}
+        source = normalized.get("source") or {}
+        webhook = normalized.get("webhook") or {}
+
+        if not webhook or not webhook.get("url"):
+            return []
+
+        source_type = source.get("type")
+        if source_type not in PUBLIC_SOURCE_TYPES:
+            return []
+
+        auth = source.get("auth") or {}
+        auth_type = auth.get("type")
+        if auth_type and auth_type not in SENSITIVE_AUTH_TYPES:
+            return []
+
+        filter_groups = webhook.get("filterGroups")
+        if _has_restrictive_filters(filter_groups):
+            return []
+
+        location = (source.get("location") or "").lower()
+        if not any(domain in location for domain in ("github.com", "bitbucket.org")):
+            # For GitHub Enterprise, rely on explicit auth type being sensitive.
+            if source_type not in {"GITHUB_ENTERPRISE", "GITHUB_ENTERPRISE_SERVER"}:
+                return []
+
+        rule_id = context.get("rule_id") if context else None
+        if not rule_id:
+            from cerebro.rules.rule_service import get_rule_by_name_sync
+
+            rule_id = get_rule_by_name_sync(self.rule_name)
+
+        webhook_host = None
+        try:
+            webhook_host = urlparse(webhook.get("url", "")).netloc or None
+        except Exception:
+            webhook_host = None
+
+        evidence = {
+            "project": resource.name or resource.external_id,
+            "source_type": source_type,
+            "repository": source.get("location"),
+            "auth_type": auth_type,
+            "webhook_host": webhook_host,
+            "filter_groups": filter_groups,
+            "report_build_status": source.get("reportBuildStatus"),
+        }
+
+        finding = self.create_finding(
+            resource=resource,
+            rule_id=rule_id,
+            title=f"CodeBuild project {resource.name or resource.external_id} accepts public triggers",
+            summary=(
+                "CodeBuild project is configured with a webhook from a public repository without branch or path"
+                " restrictions, allowing untrusted pushes to trigger builds."
+            ),
+            evidence=evidence,
+            severity=self.severity,
+        )
+
+        return [finding]

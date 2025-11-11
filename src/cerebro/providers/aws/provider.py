@@ -157,6 +157,67 @@ class AWSProvider(BaseProvider):
                         "is_default": vpc['IsDefault'],
                     }
                 )
+
+        # CodeBuild projects
+        if not resource_types or "aws.codebuild.project" in resource_types:
+            codebuild_client = self._session.client('codebuild')
+            paginator = codebuild_client.get_paginator('list_projects')
+
+            project_names: List[str] = []
+            async for page in iterate_sync_iterator(
+                lambda: paginator.paginate(),
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            ):
+                project_names.extend(page.get('projects', []))
+
+            # Batch-get project metadata in chunks of 100 to avoid API limits
+            for index in range(0, len(project_names), 100):
+                batch = project_names[index : index + 100]
+                if not batch:
+                    continue
+
+                response = await call_sync_with_retries(
+                    lambda names=batch: codebuild_client.batch_get_projects(names=names),
+                    exceptions=(ClientError, BotoCoreError),
+                    logger=logger,
+                )
+
+                for project in response.get('projects', []):
+                    arn = project.get('arn')
+                    name = project.get('name')
+                    source = project.get('source', {})
+                    webhook = project.get('webhook', {})
+
+                    metadata = {
+                        "arn": arn,
+                        "service_role": project.get('serviceRole'),
+                        "created": project.get('created')
+                        .isoformat()
+                        if isinstance(project.get('created'), datetime)
+                        else None,
+                        "last_modified": project.get('lastModified')
+                        .isoformat()
+                        if isinstance(project.get('lastModified'), datetime)
+                        else None,
+                        "source_type": source.get('type'),
+                        "source_location": source.get('location'),
+                        "source_auth_type": (source.get('auth') or {}).get('type'),
+                        "webhook_enabled": bool(webhook),
+                        "webhook_filter_groups": webhook.get('filterGroups'),
+                        "environment_type": (project.get('environment') or {}).get('type'),
+                        "privileged_mode": (project.get('environment') or {}).get('privilegedMode'),
+                        "badge_enabled": project.get('badge', {}).get('badgeEnabled')
+                        if isinstance(project.get('badge'), dict)
+                        else None,
+                    }
+
+                    yield ResourceInfo(
+                        external_id=name or arn,
+                        name=name,
+                        resource_type="aws.codebuild.project",
+                        metadata=metadata,
+                    )
     
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover AWS IAM users, groups, and roles."""
@@ -245,6 +306,8 @@ class AWSProvider(BaseProvider):
             config = await self._get_ec2_instance_config(resource.external_id)
         elif resource.resource_type == "aws.ec2.vpc":
             config = await self._get_vpc_config(resource.external_id)
+        elif resource.resource_type == "aws.codebuild.project":
+            config = await self._get_codebuild_project_config(resource.external_id)
         else:
             config = {}
         
@@ -364,6 +427,99 @@ class AWSProvider(BaseProvider):
 
         return await call_sync_with_retries(
             _get_config,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        )
+
+    async def _get_codebuild_project_config(self, project_name: str) -> Dict[str, Any]:
+        """Fetch CodeBuild project configuration."""
+
+        def _get_project():
+            codebuild = self._session.client('codebuild')
+            response = codebuild.batch_get_projects(names=[project_name])
+            projects = response.get('projects', [])
+            if not projects:
+                return {}
+
+            project = projects[0]
+
+            def _serialize_source(src: Dict[str, Any]) -> Dict[str, Any]:
+                if not src:
+                    return {}
+                auth = src.get('auth') or {}
+                return {
+                    "type": src.get('type'),
+                    "location": src.get('location'),
+                    "gitCloneDepth": src.get('gitCloneDepth'),
+                    "insecureSsl": src.get('insecureSsl'),
+                    "reportBuildStatus": src.get('reportBuildStatus'),
+                    "buildspec": src.get('buildspec'),
+                    "auth": {
+                        "type": auth.get('type'),
+                        "resource": auth.get('resource'),
+                    },
+                }
+
+            def _serialize_artifacts(artifacts: Dict[str, Any]) -> Dict[str, Any]:
+                if not artifacts:
+                    return {}
+                return {
+                    "type": artifacts.get('type'),
+                    "location": artifacts.get('location'),
+                    "path": artifacts.get('path'),
+                    "namespaceType": artifacts.get('namespaceType'),
+                    "packaging": artifacts.get('packaging'),
+                    "encryptionDisabled": artifacts.get('encryptionDisabled'),
+                }
+
+            def _serialize_environment(env: Dict[str, Any]) -> Dict[str, Any]:
+                if not env:
+                    return {}
+                return {
+                    "type": env.get('type'),
+                    "image": env.get('image'),
+                    "computeType": env.get('computeType'),
+                    "privilegedMode": env.get('privilegedMode'),
+                    "environmentVariables": env.get('environmentVariables'),
+                }
+
+            def _serialize_webhook(wh: Dict[str, Any]) -> Dict[str, Any]:
+                if not wh:
+                    return {}
+                return {
+                    "url": wh.get('url'),
+                    "payloadUrl": wh.get('payloadUrl'),
+                    "buildType": wh.get('buildType'),
+                    "filterGroups": wh.get('filterGroups'),
+                    "branchFilter": wh.get('branchFilter'),
+                }
+
+            return {
+                "arn": project.get('arn'),
+                "name": project.get('name'),
+                "serviceRole": project.get('serviceRole'),
+                "source": _serialize_source(project.get('source') or {}),
+                "secondarySources": [
+                    _serialize_source(src) for src in project.get('secondarySources', [])
+                ],
+                "artifacts": _serialize_artifacts(project.get('artifacts') or {}),
+                "secondaryArtifacts": [
+                    _serialize_artifacts(artifact)
+                    for artifact in project.get('secondaryArtifacts', [])
+                ],
+                "environment": _serialize_environment(project.get('environment') or {}),
+                "encryptionKey": project.get('encryptionKey'),
+                "logsConfig": project.get('logsConfig'),
+                "vpcConfig": project.get('vpcConfig'),
+                "badge": project.get('badge'),
+                "queuedTimeoutInMinutes": project.get('queuedTimeoutInMinutes'),
+                "timeoutInMinutes": project.get('timeoutInMinutes'),
+                "webhook": _serialize_webhook(project.get('webhook') or {}),
+                "tags": project.get('tags'),
+            }
+
+        return await call_sync_with_retries(
+            _get_project,
             exceptions=(ClientError, BotoCoreError),
             logger=logger,
         )

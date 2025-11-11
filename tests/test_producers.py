@@ -10,6 +10,9 @@ from cerebro.findings.producers.aws.iam_user_without_mfa import (
 )
 from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProducer
 from cerebro.findings.producers.aws.storage_write_access import StorageWriteAccessProducer
+from cerebro.findings.producers.aws.codebuild_public_trigger import (
+    CodeBuildPublicTriggerProducer,
+)
 from cerebro.findings.producers.azure.storage_public_write import (
     AzureStoragePublicWriteProducer,
 )
@@ -296,6 +299,77 @@ class TestAWSProducers:
         assert finding.severity == Severity.CRITICAL
         assert finding.evidence["policy_allows_public_write"] is True
 
+    def test_codebuild_public_trigger(self):
+        producer = CodeBuildPublicTriggerProducer()
+
+        resource = ResourceEntity(
+            external_id="arn:aws:codebuild:us-east-1:123456789012:project/public",
+            resource_type="aws.codebuild.project",
+            provider="aws",
+            name="public",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "source": {
+                    "type": "GITHUB",
+                    "location": "https://github.com/acme/public-repo",
+                    "auth": {"type": "OAUTH"},
+                    "reportBuildStatus": True,
+                },
+                "webhook": {
+                    "url": "https://codebuild.us-east-1.amazonaws.com/webhooks?id=abc",
+                    "filterGroups": [],
+                },
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["repository"] == "https://github.com/acme/public-repo"
+
+    def test_codebuild_public_trigger_with_filters(self):
+        producer = CodeBuildPublicTriggerProducer()
+
+        resource = ResourceEntity(
+            external_id="arn:aws:codebuild:us-east-1:123456789012:project/restricted",
+            resource_type="aws.codebuild.project",
+            provider="aws",
+            name="restricted",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "source": {
+                    "type": "GITHUB",
+                    "location": "https://github.com/acme/private-repo",
+                    "auth": {"type": "OAUTH"},
+                },
+                "webhook": {
+                    "url": "https://codebuild.us-east-1.amazonaws.com/webhooks?id=def",
+                    "filterGroups": [
+                        [
+                            {"type": "EVENT", "pattern": "PUSH"},
+                            {"type": "BASE_REF", "pattern": "^refs/heads/main$"},
+                        ]
+                    ],
+                },
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 0
+
     def test_iam_user_without_mfa_producer(self):
         """Test IAM user without MFA producer."""
         producer = IAMUserWithoutMFAProducer()
@@ -514,6 +588,7 @@ class TestProducerRegistry:
             "M365InactivePrivilegedUserProducer",
             "BucketCleartextKeyProducer",
             "StorageWriteAccessProducer",
+            "CodeBuildPublicTriggerProducer",
             "RepoSecretKeyProducer",
             "GCPBucketPublicWriteProducer",
             "GCPBucketSecretArtifactProducer",
