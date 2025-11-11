@@ -1,0 +1,82 @@
+"""Producers for GitHub workflow permissions hardening."""
+
+from __future__ import annotations
+
+from typing import Dict, List, Optional, Set
+
+from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.findings.producers.registry import register_producer
+
+from .base import BaseGitHubProducer
+
+
+@register_producer
+class GithubWorkflowDefaultWriteProducer(BaseGitHubProducer):
+    """Detect repositories with default workflow write permissions."""
+
+    @property
+    def resource_types(self) -> Set[str]:
+        return {"github.repo"}
+
+    @property
+    def finding_name(self) -> str:
+        return "GitHub: Workflow default permissions set to write"
+
+    @property
+    def rule_name(self) -> str:
+        return "github_workflow_default_write_permissions"
+
+    @property
+    def severity(self) -> Severity:
+        return Severity.HIGH
+
+    @property
+    def description(self) -> str:
+        return "Repository allows GitHub Actions workflows default write access"
+
+    def evaluate(
+        self,
+        resource: ResourceEntity,
+        config: ConfigEntity,
+        context: Optional[Dict[str, object]] = None,
+    ) -> List[FindingEntity]:
+        normalized = config.normalized_config or {}
+        permissions = normalized.get("actionsPermissions") or {}
+        if not permissions:
+            return []
+
+        default_permission = permissions.get("default_workflow_permissions")
+        can_approve_forks = permissions.get("can_approve_pull_request_reviews")
+
+        if default_permission != "write" and not can_approve_forks:
+            return []
+
+        rule_id = context.get("rule_id") if context else None
+        if not rule_id:
+            from cerebro.rules.rule_service import get_rule_by_name_sync
+
+            rule_id = get_rule_by_name_sync(self.rule_name)
+
+        evidence = {
+            "repository": resource.external_id,
+            "default_workflow_permissions": default_permission,
+            "can_approve_pull_request_reviews": can_approve_forks,
+            "actions_permissions": permissions,
+        }
+
+        title = f"Repository {resource.name or resource.external_id} grants workflow write permissions"
+        summary = (
+            "GitHub Actions workflows execute with default write permissions or can approve pull request reviews,"
+            " increasing the blast radius of compromised workflows."
+        )
+
+        finding = self.create_finding(
+            resource=resource,
+            rule_id=rule_id,
+            title=title,
+            summary=summary,
+            evidence=evidence,
+            severity=self.severity,
+        )
+
+        return [finding]

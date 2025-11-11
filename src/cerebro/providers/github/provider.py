@@ -217,7 +217,7 @@ class GitHubProvider(BaseProvider):
                 except Exception as e:
                     logger.debug(f"Could not get branch protection for {resource.external_id}: {e}")
                 
-                return {
+                config = {
                     "name": repo.name,
                     "fullName": repo.full_name,
                     "private": repo.private,
@@ -236,12 +236,30 @@ class GitHubProvider(BaseProvider):
                     "branchProtection": branch_protection,
                     "webhooks": [{"url": hook.config.get("url", ""), "events": hook.events} for hook in repo.get_hooks()],
                 }
+
+                return config
             
             config = await call_sync_with_retries(
                 _get_repo_config,
                 exceptions=(GithubException,),
                 logger=logger,
             )
+
+            try:
+                actions_permissions = await call_sync_with_retries(
+                    lambda: self._rest_request(
+                        "GET",
+                        f"/repos/{resource.external_id}/actions/permissions",
+                    ),
+                    exceptions=(requests.RequestException,),
+                    logger=logger,
+                )
+            except requests.RequestException as exc:
+                logger.debug(f"Unable to fetch actions permissions for {resource.external_id}: {exc}")
+                actions_permissions = None
+
+            if actions_permissions:
+                config["actionsPermissions"] = actions_permissions
             
         elif resource.resource_type == "github.team":
             def _get_team_config():

@@ -28,6 +28,9 @@ from cerebro.findings.producers.github.runner_exposure import (
     GithubRunnerNetworkExposureProducer,
     GithubRunnerPublicExposureProducer,
 )
+from cerebro.findings.producers.github.workflow_permissions import (
+    GithubWorkflowDefaultWriteProducer,
+)
 from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
 from cerebro.findings.producers.m365.inactive_admin import (
     M365InactivePrivilegedUserProducer,
@@ -201,6 +204,64 @@ class TestGitHubProducers:
         finding = findings[0]
         assert finding.severity == Severity.CRITICAL
         assert finding.evidence["host"]["public_ips"] == ["52.10.10.10"]
+
+    def test_workflow_default_write_permissions(self):
+        producer = GithubWorkflowDefaultWriteProducer()
+
+        resource = ResourceEntity(
+            external_id="acme/repo",
+            resource_type="github.repo",
+            provider="github",
+            name="repo",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "actionsPermissions": {
+                    "enabled": True,
+                    "allowed_actions": "all",
+                    "default_workflow_permissions": "write",
+                    "can_approve_pull_request_reviews": True,
+                }
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.HIGH
+        assert finding.evidence["default_workflow_permissions"] == "write"
+
+    def test_workflow_read_permissions_no_finding(self):
+        producer = GithubWorkflowDefaultWriteProducer()
+
+        resource = ResourceEntity(
+            external_id="acme/repo",
+            resource_type="github.repo",
+            provider="github",
+            name="repo",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "actionsPermissions": {
+                    "enabled": True,
+                    "allowed_actions": "selected",
+                    "default_workflow_permissions": "read",
+                    "can_approve_pull_request_reviews": False,
+                }
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
 
 
 class TestAWSProducers:
@@ -596,6 +657,7 @@ class TestProducerRegistry:
             "AzureStorageSecretArtifactProducer",
             "GithubRunnerPublicExposureProducer",
             "GithubRunnerNetworkExposureProducer",
+            "GithubWorkflowDefaultWriteProducer",
             "M365SharePointAnonymousLinkProducer",
         ]
 
