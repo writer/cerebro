@@ -15,7 +15,10 @@ from cerebro_sdk.security_center import (
 
 def _vendor() -> SecurityCenterVendorInsight:
     metadata = {
-        "integration": {"integrationType": "github", "authenticationMethods": ["oauth"]},
+        "integration": {
+            "integrationType": "github",
+            "authenticationMethods": ["oauth"],
+        },
         "complianceSummary": {
             "certifications": ["soc2"],
             "frameworks": ["iso27001"],
@@ -73,7 +76,10 @@ def test_map_to_control_framework_generates_evidence_bundle() -> None:
                     owner="trust-and-safety",
                     vendor_tags=["github"],
                     customer_tags=["design_partner"],
-                    tolerance=ControlTolerance(residual_risk_max=0.5, churn_risk_max=0.4),
+                    tolerance=ControlTolerance(
+                        residual_risk_max=0.5,
+                        churn_risk_max=0.4,
+                    ),
                 )
             }
         }

@@ -6,8 +6,8 @@ from cerebro_sdk.security_center import (
     EvidenceArtifact,
     LifecyclePolicy,
     evaluate_evidence_lifecycle,
-    summarize_evidence_set,
     extract_evidence_artifacts,
+    summarize_evidence_set,
 )
 
 
@@ -52,7 +52,11 @@ def test_summarize_evidence_set_dedupes_by_identifier() -> None:
         ),
     ]
 
-    summary = summarize_evidence_set(artifacts, LifecyclePolicy(max_age_days=30), now=now)
+    summary = summarize_evidence_set(
+        artifacts,
+        LifecyclePolicy(max_age_days=30),
+        now=now,
+    )
     assert summary.status == "expired"
     assert len(summary.expired_artifacts) == 1
     assert len(summary.lifecycle) == 1
