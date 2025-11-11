@@ -8,21 +8,22 @@ Tests cover:
 - Error handling
 - Retry logic
 """
-import pytest
-import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
-from cerebro.core.models import EmailConfig, WebhookConfig, Finding, EmailNotification
+import pytest
+
+from cerebro.core.models import EmailConfig, EmailNotification, Finding, WebhookConfig
 from cerebro.notifications.email import EmailNotificationService
 from cerebro.notifications.webhooks import WebhookNotificationService
 from cerebro.tasks.notification_digest import (
-    _process_config_digest,
-    _group_findings_by_severity,
-    _generate_digest_subject,
     _generate_digest_html,
+    _generate_digest_subject,
+    _group_findings_by_severity,
 )
+
+UTC = timezone.utc  # noqa: UP017
 
 
 class TestEmailNotificationService:
@@ -92,7 +93,9 @@ class TestEmailNotificationService:
     async def test_decryption_failure_handling(self, email_service, email_config):
         """Test graceful handling of decryption failure."""
         # Mock decryption to fail
-        email_config.get_smtp_password = AsyncMock(side_effect=Exception("Decryption failed"))
+        email_config.get_smtp_password = AsyncMock(
+            side_effect=RuntimeError("Decryption failed")
+        )
 
         db = MagicMock()
         db.add = MagicMock()
@@ -192,9 +195,15 @@ class TestWebhookNotificationService:
         assert not webhook_service._is_valid_url("")
 
     @pytest.mark.asyncio
-    async def test_url_decryption_failure_handling(self, webhook_service, webhook_config):
+    async def test_url_decryption_failure_handling(
+        self,
+        webhook_service,
+        webhook_config,
+    ):
         """Test handling of URL decryption failure."""
-        webhook_config.get_webhook_url = AsyncMock(side_effect=Exception("Decryption failed"))
+        webhook_config.get_webhook_url = AsyncMock(
+            side_effect=RuntimeError("Decryption failed")
+        )
 
         finding = Mock()
         finding.finding_id = uuid4()
@@ -205,15 +214,16 @@ class TestWebhookNotificationService:
         db.commit = AsyncMock()
 
         # Should surface decryption failure
-        with pytest.raises(Exception):
-            await webhook_service._send_with_retry(
-                config=webhook_config,
-                payload={"test": "data"},
-                event_type="finding.created",
-                finding_id=finding.finding_id,
-                severity=finding.severity,
-                db=db,
-            )
+        with patch("cerebro.notifications.webhooks.logger.error"):
+            with pytest.raises(RuntimeError, match="Decryption failed"):
+                await webhook_service._send_with_retry(
+                    config=webhook_config,
+                    payload={"test": "data"},
+                    event_type="finding.created",
+                    finding_id=finding.finding_id,
+                    severity=finding.severity,
+                    db=db,
+                )
 
 
 class TestNotificationDigest:
@@ -234,7 +244,7 @@ class TestNotificationDigest:
             finding.resource_type = "s3.bucket"
             finding.account_id = "123456789012"
             finding.region = "us-east-1"
-            finding.created_at = datetime.now(timezone.utc)
+            finding.created_at = datetime.now(UTC)
             findings.append(finding)
 
         return findings
@@ -263,10 +273,15 @@ class TestNotificationDigest:
         config = Mock()
         config.digest_frequency = "daily"
 
-        window_start = datetime.now(timezone.utc) - timedelta(days=1)
-        window_end = datetime.now(timezone.utc)
+        window_start = datetime.now(UTC) - timedelta(days=1)
+        window_end = datetime.now(UTC)
 
-        subject = _generate_digest_subject(config, sample_findings, window_start, window_end)
+        subject = _generate_digest_subject(
+            config,
+            sample_findings,
+            window_start,
+            window_end,
+        )
 
         assert "[CRITICAL]" in subject
         assert "20 findings" in subject
@@ -278,13 +293,13 @@ class TestNotificationDigest:
         config.digest_frequency = "weekly"
 
         findings = []
-        for i in range(10):
+        for _ in range(10):
             finding = Mock()
             finding.severity = "medium"
             findings.append(finding)
 
-        window_start = datetime.now(timezone.utc) - timedelta(weeks=1)
-        window_end = datetime.now(timezone.utc)
+        window_start = datetime.now(UTC) - timedelta(weeks=1)
+        window_end = datetime.now(UTC)
 
         subject = _generate_digest_subject(config, findings, window_start, window_end)
 
@@ -298,8 +313,8 @@ class TestNotificationDigest:
         config.digest_frequency = "daily"
 
         grouped = _group_findings_by_severity(sample_findings)
-        window_start = datetime.now(timezone.utc) - timedelta(days=1)
-        window_end = datetime.now(timezone.utc)
+        window_start = datetime.now(UTC) - timedelta(days=1)
+        window_end = datetime.now(UTC)
 
         html = _generate_digest_html(config, grouped, window_start, window_end)
 
@@ -334,8 +349,8 @@ class TestNotificationDigest:
 
         grouped = {"critical": findings}
         config = Mock()
-        window_start = datetime.now(timezone.utc) - timedelta(days=1)
-        window_end = datetime.now(timezone.utc)
+        window_start = datetime.now(UTC) - timedelta(days=1)
+        window_end = datetime.now(UTC)
 
         html = _generate_digest_html(config, grouped, window_start, window_end)
 
@@ -441,8 +456,8 @@ class TestNotificationEdgeCases:
 
         grouped = _group_findings_by_severity([finding])
         config = Mock()
-        window_start = datetime.now(timezone.utc) - timedelta(days=1)
-        window_end = datetime.now(timezone.utc)
+        window_start = datetime.now(UTC) - timedelta(days=1)
+        window_end = datetime.now(UTC)
 
         # Should not crash
         html = _generate_digest_html(config, grouped, window_start, window_end)
@@ -461,8 +476,8 @@ class TestNotificationEdgeCases:
 
         grouped = _group_findings_by_severity([finding])
         config = Mock()
-        window_start = datetime.now(timezone.utc) - timedelta(days=1)
-        window_end = datetime.now(timezone.utc)
+        window_start = datetime.now(UTC) - timedelta(days=1)
+        window_end = datetime.now(UTC)
 
         html = _generate_digest_html(config, grouped, window_start, window_end)
         assert "🔐" in html
