@@ -20,6 +20,11 @@ except Exception:  # pragma: no cover
     GCPProvider = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - optional dependency
+    from .azure import AzureProvider
+except Exception:  # pragma: no cover
+    AzureProvider = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - optional dependency
     from .workspace import GoogleWorkspaceProvider
 except Exception:  # pragma: no cover
     GoogleWorkspaceProvider = None  # type: ignore[assignment]
@@ -40,6 +45,7 @@ __all__ = [
     "GitHubProvider",
     "AWSProvider",
     "GCPProvider",
+    "AzureProvider",
     "GoogleWorkspaceProvider",
     "OktaProvider",
     "M365Provider",

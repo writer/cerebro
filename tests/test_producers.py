@@ -10,6 +10,12 @@ from cerebro.findings.producers.aws.iam_user_without_mfa import (
 )
 from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProducer
 from cerebro.findings.producers.aws.storage_write_access import StorageWriteAccessProducer
+from cerebro.findings.producers.azure.storage_public_write import (
+    AzureStoragePublicWriteProducer,
+)
+from cerebro.findings.producers.azure.storage_secret_artifacts import (
+    AzureStorageSecretArtifactProducer,
+)
 from cerebro.findings.producers.gcp.bucket_public_write import GCPBucketPublicWriteProducer
 from cerebro.findings.producers.gcp.bucket_secret_artifacts import GCPBucketSecretArtifactProducer
 from cerebro.findings.producers.github.public_repo_no_branch_protection import (
@@ -316,6 +322,72 @@ class TestGCPProducers:
         assert "service_account.json" in finding.evidence["matched_objects"][0]["key"]
 
 
+class TestAzureProducers:
+    """Test Azure storage producers."""
+
+    def test_azure_storage_public_write(self):
+        producer = AzureStoragePublicWriteProducer()
+
+        resource = ResourceEntity(
+            external_id="/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/acct/containers/public",
+            resource_type="azure.storage.container",
+            provider="azure",
+            name="public",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "resource_group": "rg",
+                "account_name": "acct",
+                "public_access": "container",
+                "allow_blob_public_access": True,
+                "signed_identifiers": [],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["public_access"] == "container"
+
+    def test_azure_storage_secret_artifacts(self):
+        producer = AzureStorageSecretArtifactProducer()
+
+        resource = ResourceEntity(
+            external_id="/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/acct/containers/secrets",
+            resource_type="azure.storage.container",
+            provider="azure",
+            name="secrets",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "public_access": "blob",
+                "allow_blob_public_access": True,
+                "account_name": "acct",
+                "objectsSample": [
+                    {"name": "keys/service_account.json", "size": 1024},
+                    {"name": "README.md", "size": 512},
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert "service_account.json" in finding.evidence["matched_objects"][0]["name"]
+
+
 class TestProducerRegistry:
     """Test producer registry functionality."""
 
@@ -340,6 +412,8 @@ class TestProducerRegistry:
             "RepoSecretKeyProducer",
             "GCPBucketPublicWriteProducer",
             "GCPBucketSecretArtifactProducer",
+            "AzureStoragePublicWriteProducer",
+            "AzureStorageSecretArtifactProducer",
             "M365SharePointAnonymousLinkProducer",
         ]
 
