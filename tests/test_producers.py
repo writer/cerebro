@@ -31,6 +31,9 @@ from cerebro.findings.producers.kubernetes.cluster_admin_binding import (
 from cerebro.findings.producers.kubernetes.cluster_admin_wildcard import (
     K8sClusterAdminWildcardBindingProducer,
 )
+from cerebro.findings.producers.kubernetes.service_public_exposure import (
+    K8sServicePublicExposureProducer,
+)
 from cerebro.findings.producers.azure.storage_public_write import (
     AzureStoragePublicWriteProducer,
 )
@@ -867,6 +870,127 @@ class TestKubernetesProducers:
                 "subjects": [
                     {"kind": "Group", "name": "dev-team"},
                     {"kind": "User", "name": "alice"},
+                ],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_service_load_balancer_public_ip(self):
+        producer = K8sServicePublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/web",
+            resource_type="k8s.service",
+            provider="kubernetes",
+            name="web",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "type": "LoadBalancer",
+                "annotations": {},
+                "loadBalancer": [
+                    {"ip": "8.8.8.8"},
+                ],
+                "externalIPs": [],
+                "ports": [
+                    {
+                        "name": "http",
+                        "protocol": "TCP",
+                        "port": 80,
+                        "targetPort": 8080,
+                        "nodePort": None,
+                    }
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        exposure_types = {exp["type"] for exp in finding.evidence["exposures"]}
+        assert "load_balancer_ip" in exposure_types
+
+    def test_service_node_port_exposure(self):
+        producer = K8sServicePublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="team/api",
+            resource_type="k8s.service",
+            provider="kubernetes",
+            name="api",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "team",
+                "type": "NodePort",
+                "annotations": {},
+                "ports": [
+                    {
+                        "name": "https",
+                        "protocol": "TCP",
+                        "port": 443,
+                        "targetPort": 8443,
+                        "nodePort": 31443,
+                    }
+                ],
+                "loadBalancer": [],
+                "externalIPs": [],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.HIGH
+        exposure = finding.evidence["exposures"][0]
+        assert exposure["type"] == "node_port"
+        assert exposure["port"] == 31443
+
+    def test_service_internal_load_balancer(self):
+        producer = K8sServicePublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/internal",
+            resource_type="k8s.service",
+            provider="kubernetes",
+            name="internal",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "type": "LoadBalancer",
+                "annotations": {
+                    "service.beta.kubernetes.io/aws-load-balancer-internal": "true",
+                },
+                "loadBalancer": [
+                    {"ip": "10.0.0.5"},
+                ],
+                "externalIPs": [],
+                "ports": [
+                    {
+                        "name": "http",
+                        "protocol": "TCP",
+                        "port": 80,
+                        "targetPort": 8080,
+                        "nodePort": None,
+                    }
                 ],
             },
         )

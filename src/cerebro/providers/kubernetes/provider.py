@@ -192,6 +192,58 @@ class KubernetesProvider(BaseProvider):
                     },
                 )
 
+        if not resource_types or "k8s.service" in resource_types:
+            services = await call_sync_with_retries(
+                lambda: self._core.list_service_for_all_namespaces(),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+
+            for service in services.items:
+                metadata = service.metadata
+                spec = service.spec or client.V1ServiceSpec()
+                status = service.status or client.V1ServiceStatus()
+
+                external_id = f"{metadata.namespace}/{metadata.name}"
+                load_balancer = []
+                if status.load_balancer and status.load_balancer.ingress:
+                    for ingress in status.load_balancer.ingress:
+                        load_balancer.append(
+                            {
+                                "hostname": getattr(ingress, "hostname", None),
+                                "ip": getattr(ingress, "ip", None),
+                            }
+                        )
+
+                ports = [
+                    {
+                        "name": port.name,
+                        "protocol": port.protocol,
+                        "port": port.port,
+                        "targetPort": getattr(port, "target_port", None),
+                        "nodePort": getattr(port, "node_port", None),
+                    }
+                    for port in spec.ports or []
+                ]
+
+                yield ResourceInfo(
+                    external_id=external_id,
+                    name=metadata.name,
+                    resource_type="k8s.service",
+                    parent_external_id=metadata.namespace,
+                    metadata={
+                        "namespace": metadata.namespace,
+                        "type": spec.type,
+                        "cluster_ip": getattr(spec, "cluster_ip", None),
+                        "cluster_ips": getattr(spec, "cluster_i_ps", None) or [],
+                        "external_ips": getattr(spec, "external_i_ps", None) or [],
+                        "load_balancer": load_balancer,
+                        "ports": ports,
+                        "selector": spec.selector or {},
+                        "annotations": metadata.annotations or {},
+                    },
+                )
+
         if not resource_types or "k8s.ingress" in resource_types:
             ingresses = await call_sync_with_retries(
                 lambda: self._networking.list_ingress_for_all_namespaces(),
@@ -305,6 +357,16 @@ class KubernetesProvider(BaseProvider):
                 logger=logger,
             )
             normalized_config = self._build_ingress_config(ingress)
+        elif resource.resource_type == "k8s.service":
+            namespace, name = self._split_namespaced_name(resource.external_id)
+            service = await call_sync_with_retries(
+                lambda: self._core.read_namespaced_service(
+                    name=name, namespace=namespace
+                ),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+            normalized_config = self._build_service_config(service)
         elif resource.resource_type == "k8s.cluster_role_binding":
             binding = await call_sync_with_retries(
                 lambda: self._rbac.read_cluster_role_binding(name=resource.external_id),
@@ -437,6 +499,52 @@ class KubernetesProvider(BaseProvider):
             "rules": rules,
             "tls": tls_entries,
             "loadBalancer": load_balancer,
+        }
+
+    def _build_service_config(self, service: client.V1Service) -> dict[str, Any]:
+        metadata = service.metadata
+        spec = service.spec or client.V1ServiceSpec()
+        status = service.status or client.V1ServiceStatus()
+
+        ports = [
+            {
+                "name": port.name,
+                "protocol": port.protocol,
+                "port": port.port,
+                "targetPort": getattr(port, "target_port", None),
+                "nodePort": getattr(port, "node_port", None),
+            }
+            for port in spec.ports or []
+        ]
+
+        load_balancer = []
+        if status.load_balancer and status.load_balancer.ingress:
+            for ingress in status.load_balancer.ingress:
+                load_balancer.append(
+                    {
+                        "hostname": getattr(ingress, "hostname", None),
+                        "ip": getattr(ingress, "ip", None),
+                    }
+                )
+
+        return {
+            "name": metadata.name,
+            "namespace": metadata.namespace,
+            "type": spec.type,
+            "clusterIP": getattr(spec, "cluster_ip", None),
+            "clusterIPs": getattr(spec, "cluster_i_ps", None) or [],
+            "externalIPs": getattr(spec, "external_i_ps", None) or [],
+            "externalName": getattr(spec, "external_name", None),
+            "externalTrafficPolicy": getattr(spec, "external_traffic_policy", None),
+            "loadBalancerIP": getattr(spec, "load_balancer_ip", None),
+            "loadBalancerSourceRanges": getattr(
+                spec, "load_balancer_source_ranges", []
+            ),
+            "selector": spec.selector or {},
+            "ports": ports,
+            "sessionAffinity": getattr(spec, "session_affinity", None),
+            "loadBalancer": load_balancer,
+            "annotations": metadata.annotations or {},
         }
 
     def _build_cluster_role_binding_config(
