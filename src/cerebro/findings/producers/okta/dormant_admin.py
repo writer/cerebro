@@ -14,7 +14,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_str_sequence, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    clip_sequence,
+    coerce_str_sequence,
+    resolve_rule_id,
+)
 
 from .base import BaseOktaProducer
 
@@ -99,8 +103,8 @@ class OktaDormantAdminProducer(BaseOktaProducer):
             "created": data.get("created"),
             "status": status,
             "mfa_enrolled": data.get("mfa_enrolled"),
-            "applications": data.get("applications", []),
-            "groups": data.get("groups", []),
+            "applications": clip_sequence(data.get("applications")),
+            "groups": clip_sequence(data.get("groups")),
             "risk_factors": [
                 "admin_privileges",
                 "no_recent_login" if last_login else "never_logged_in",

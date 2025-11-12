@@ -13,7 +13,13 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_str_sequence, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    clip_sequence,
+    coerce_mapping,
+    coerce_str_sequence,
+    compact_mapping,
+    resolve_rule_id,
+)
 
 from .base import BaseOktaProducer
 
@@ -80,6 +86,8 @@ class OktaMFADisabledProducer(BaseOktaProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
+        profile = coerce_mapping(data.get("profile")) or {}
+
         evidence = {
             "user_id": resource.external_id,
             "email": data.get("email"),
@@ -89,8 +97,8 @@ class OktaMFADisabledProducer(BaseOktaProducer):
             "last_login": last_login,
             "admin_roles": admin_roles,
             "risk_factors": risk_factors,
-            "profile": data.get("profile", {}),
-            "groups": data.get("groups", []),
+            "profile": compact_mapping(profile),
+            "groups": clip_sequence(data.get("groups")),
         }
 
         severity = Severity.CRITICAL if admin_roles else self.severity
