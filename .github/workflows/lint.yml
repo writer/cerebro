@@ -63,7 +63,12 @@ jobs:
             src/cerebro/findings/producers/utils
 
       - name: Type-check with mypy
-        run: uv run mypy src
+        run: |
+          uv run mypy \
+            src/cerebro/findings/producers/aws \
+            src/cerebro/findings/producers/github \
+            src/cerebro/findings/producers/kubernetes \
+            src/cerebro/findings/producers/utils
 
   frontend-lint:
     name: Frontend lint

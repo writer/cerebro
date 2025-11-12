@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from collections.abc import Mapping
+from typing import Any
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseAWSProducer
 
@@ -15,7 +22,7 @@ class StorageWriteAccessProducer(BaseAWSProducer):
     """Flags S3 buckets that allow anonymous write access."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"aws.s3.bucket"}
 
     @property
@@ -45,11 +52,11 @@ class StorageWriteAccessProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[FindingEntity]:
-        findings: List[FindingEntity] = []
+        context: Mapping[str, Any] | None = None,
+    ) -> list[FindingEntity]:
+        findings: list[FindingEntity] = []
 
-        normalized = config.normalized_config
+        normalized = config.normalized_config or {}
         policy_allows_write = normalized.get("policyAllowsPublicWrite", False)
         acl_allows_write = normalized.get("aclAllowsPublicWrite", False)
         block_public_access_effective = normalized.get("blockPublicAccess", {}).get("effective", True)
@@ -57,11 +64,7 @@ class StorageWriteAccessProducer(BaseAWSProducer):
         if not policy_allows_write and not acl_allows_write:
             return findings
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "bucket": resource.external_id,

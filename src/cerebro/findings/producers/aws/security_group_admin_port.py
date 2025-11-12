@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
 from cerebro.domain.entities import (
     ConfigEntity,
@@ -11,6 +12,7 @@ from cerebro.domain.entities import (
     Severity,
 )
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseAWSProducer
 
@@ -26,30 +28,33 @@ WORLD_IPV6 = "::/0"
 
 
 def _port_in_range(port: int, rule: dict[str, Any]) -> bool:
-    from_port = rule.get("fromPort")
-    to_port = rule.get("toPort")
-    protocol = (rule.get("ipProtocol") or "").lower()
+    from_port_value = rule.get("fromPort")
+    to_port_value = rule.get("toPort")
+    protocol = str(rule.get("ipProtocol") or "").lower()
 
-    if protocol in {"icmp", "icmpv6"}:
-        return False
-
-    if protocol == "udp":
+    if protocol in {"icmp", "icmpv6", "udp"}:
         # Administrative protocols of interest are TCP-based
         return False
 
-    if from_port is None or to_port is None:
+    if from_port_value is None or to_port_value is None:
         # Protocol -1 exposes all ports
         return True
 
-    return from_port <= port <= to_port
+    try:
+        from_port_int = int(from_port_value)
+        to_port_int = int(to_port_value)
+    except (TypeError, ValueError):
+        return False
+
+    return from_port_int <= port <= to_port_int
 
 
 def _rule_exposes_world(rule: dict[str, Any]) -> list[str]:
     cidrs: list[str] = []
-    for cidr in rule.get("ipv4Cidr", []) or []:
+    for cidr in cast(Iterable[str], rule.get("ipv4Cidr") or []):
         if cidr == WORLD_IPV4:
             cidrs.append(cidr)
-    for cidr in rule.get("ipv6Cidr", []) or []:
+    for cidr in cast(Iterable[str], rule.get("ipv6Cidr") or []):
         if cidr == WORLD_IPV6:
             cidrs.append(cidr)
     return cidrs
@@ -86,7 +91,7 @@ class AwsSecurityGroupAdminPortProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, Any] | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         ingress_rules: list[dict[str, Any]] = normalized.get("ingressRules") or []
@@ -113,11 +118,7 @@ class AwsSecurityGroupAdminPortProducer(BaseAWSProducer):
         if not exposures:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "groupId": normalized.get("groupId") or resource.external_id,

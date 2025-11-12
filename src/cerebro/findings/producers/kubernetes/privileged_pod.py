@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from cerebro.domain.entities import (
@@ -12,6 +13,7 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import BaseFindingProducer
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 SENSITIVE_CAPABILITIES: set[str] = {
     "SYS_ADMIN",
@@ -93,7 +95,7 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, Any] | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
 
@@ -118,7 +120,7 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
 
         for container in normalized.get("containers") or []:
             security_context = container.get("securityContext") or {}
-            container_name = container.get("name")
+            container_name = str(container.get("name") or "<unnamed>")
 
             if _normalize_bool(security_context.get("privileged")):
                 exposures.append(
@@ -193,11 +195,7 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
         if not exposures:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         severity = self.severity
         critical_conditions = {
@@ -208,7 +206,7 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
         if any(exp.get("type") in critical_conditions for exp in exposures):
             severity = Severity.CRITICAL
 
-        summary_parts = []
+        summary_parts: list[str] = []
         for exposure in exposures:
             exposure_type = exposure["type"]
             if exposure_type == "host_network":
@@ -231,12 +229,12 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
                     f"container {exposure.get('container')} grants capabilities {caps}"
                 )
             elif exposure_type == "host_path_mount":
-                path = exposure.get("path")
+                path = str(exposure.get("path") or "")
                 summary_parts.append(
                     "container " f"{exposure.get('container')} mounts host path {path}"
                 )
             elif exposure_type == "sensitive_host_path":
-                path = exposure.get("path")
+                path = str(exposure.get("path") or "")
                 summary_parts.append(
                     "container "
                     f"{exposure.get('container')} mounts sensitive host path {path}"

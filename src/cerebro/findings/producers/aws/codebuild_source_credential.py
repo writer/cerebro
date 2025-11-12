@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from cerebro.domain.entities import (
@@ -11,6 +12,7 @@ from cerebro.domain.entities import (
     Severity,
 )
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseAWSProducer
 
@@ -46,7 +48,7 @@ class CodeBuildSharedCredentialProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, object] | None = None,
+        context: Mapping[str, Any] | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         source = normalized.get("source") or {}
@@ -88,11 +90,7 @@ class CodeBuildSharedCredentialProducer(BaseAWSProducer):
         if not insecure_conditions:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "project": resource.external_id,

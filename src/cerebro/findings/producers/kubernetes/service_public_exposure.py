@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Any
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
 from cerebro.domain.entities import (
     ConfigEntity,
@@ -13,6 +14,7 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import BaseFindingProducer
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 INTERNAL_ANNOTATION_KEYS = {
     "service.beta.kubernetes.io/aws-load-balancer-internal",
@@ -93,7 +95,7 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, Any] | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         service_type = (normalized.get("type") or "").upper()
@@ -113,7 +115,8 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
                     }
                 )
         elif normalized.get("externalIPs"):
-            for ip in normalized.get("externalIPs"):
+            external_ips = cast(Iterable[str], normalized.get("externalIPs"))
+            for ip in external_ips:
                 exposures.append(
                     {
                         "type": "external_ip",
@@ -135,11 +138,7 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
         else:
             severity = Severity.MEDIUM
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         summary_parts: list[str] = []
         for exposure in exposures:
@@ -221,7 +220,8 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
                     }
                 )
 
-        for ip_value in normalized.get("externalIPs") or []:
+        external_ips = cast(Iterable[str], normalized.get("externalIPs") or [])
+        for ip_value in external_ips:
             is_public = _is_public_ip(ip_value)
             if internal_only and not is_public:
                 continue

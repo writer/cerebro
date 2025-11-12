@@ -1,14 +1,20 @@
-"""Detect cleartext keys or credentials in public S3 buckets."""
+"""Detect plaintext credentials stored in public S3 buckets."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from collections.abc import Mapping
+from typing import Any
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseAWSProducer
-
 
 SUSPICIOUS_KEYWORDS = {
     "secret",
@@ -26,7 +32,7 @@ SUSPICIOUS_KEYWORDS = {
 SUSPICIOUS_EXTENSIONS = {".pem", ".key", ".pfx", ".p12", ".env", ".ini", ".json"}
 
 
-def _is_suspicious_key(key: Optional[str]) -> bool:
+def _is_suspicious_key(key: str | None) -> bool:
     if not key:
         return False
     lowered = key.lower()
@@ -43,7 +49,7 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
     """Detects suspicious credential artefacts in publicly exposed buckets."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"aws.s3.bucket"}
 
     @property
@@ -70,22 +76,20 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         )
 
     @property
-    def framework_mappings(self) -> Dict[str, List[str]]:
+    def framework_mappings(self) -> dict[str, list[str]]:
         base = dict(super().framework_mappings)
-        base.update({
-            "cwe": ["CWE-200", "CWE-522"],
-        })
+        base.update({"cwe": ["CWE-200", "CWE-522"]})
         return base
 
     def evaluate(
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[FindingEntity]:
-        findings: List[FindingEntity] = []
+        context: Mapping[str, Any] | None = None,
+    ) -> list[FindingEntity]:
+        findings: list[FindingEntity] = []
 
-        normalized = config.normalized_config
+        normalized = config.normalized_config or {}
         objects_sample = normalized.get("objectsSample", [])
         if not objects_sample:
             return findings
@@ -103,11 +107,7 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         if not is_public:
             return findings
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "bucket": resource.external_id,
@@ -139,7 +139,7 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         return findings
 
     @staticmethod
-    def _build_fingerprint(rule_id: Any, bucket_id: str, matches: List[Dict[str, Any]]) -> str:
+    def _build_fingerprint(rule_id: Any, bucket_id: str, matches: list[dict[str, Any]]) -> str:
         from hashlib import sha256
 
         key_fragment = ";".join(sorted(obj.get("key", "") for obj in matches[:5]))

@@ -3,22 +3,27 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Dict, List, Optional, Sequence, Set, Union
+from collections.abc import Mapping, Sequence
+from typing import Any, Iterable, cast
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 from cerebro.telemetry.schemas import HostTelemetry, NetworkConnection
 
 from .base import BaseGitHubProducer
-
-
-def _get_value(source: Union[Dict[str, object], HostTelemetry], key: str, default=None):
-    if isinstance(source, dict):
+def _get_value(source: Mapping[str, Any] | HostTelemetry, key: str, default: Any = None) -> Any:
+    if isinstance(source, Mapping):
         return source.get(key, default)
     return getattr(source, key, default)
 
 
-def _is_public_ip(ip: Optional[str]) -> bool:
+def _is_public_ip(ip: str | None) -> bool:
     if not ip:
         return False
     try:
@@ -28,22 +33,24 @@ def _is_public_ip(ip: Optional[str]) -> bool:
     return not (address.is_private or address.is_loopback or address.is_link_local)
 
 
-def _iter_public_ips(ips: Sequence[str]) -> List[str]:
+def _iter_public_ips(ips: Iterable[str]) -> list[str]:
     return [ip for ip in ips if _is_public_ip(ip)]
 
 
-def _normalize_network_connections(connections: Optional[Sequence]) -> List[NetworkConnection]:
-    results: List[NetworkConnection] = []
+def _normalize_network_connections(
+    connections: Sequence[NetworkConnection | Mapping[str, Any]] | None,
+) -> list[NetworkConnection]:
+    results: list[NetworkConnection] = []
     if not connections:
         return results
 
     for item in connections:
         if isinstance(item, NetworkConnection):
             results.append(item)
-        elif isinstance(item, dict):
+        elif isinstance(item, Mapping):
             try:
                 results.append(NetworkConnection(**item))
-            except Exception:
+            except Exception:  # pragma: no cover - defensive
                 continue
     return results
 
@@ -53,7 +60,7 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
     """Detect runners that can be used by public repositories."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"github.runner"}
 
     @property
@@ -69,8 +76,10 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         return Severity.HIGH
 
     @property
-    def framework_mappings(self) -> Dict[str, List[str]]:
-        mappings = super().framework_mappings
+    def framework_mappings(self) -> dict[str, list[str]]:
+        mappings: dict[str, list[str]] = {
+            key: list(value) for key, value in super().framework_mappings.items()
+        }
         mappings.setdefault("cis", []).append("4.2.1")
         mappings.setdefault("nist_800_53", []).extend(["CM-6", "SC-7"])
         return mappings
@@ -79,12 +88,14 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
+        context: Mapping[str, Any] | None = None,
+    ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
-        runner = normalized.get("runner", {})
-        runner_group = normalized.get("runner_group", {}) or {}
-        repositories = normalized.get("repositories", []) or []
+        runner = cast(Mapping[str, Any], normalized.get("runner", {}))
+        runner_group = cast(Mapping[str, Any], normalized.get("runner_group") or {})
+        repositories = cast(
+            list[Mapping[str, Any]], normalized.get("repositories") or []
+        )
 
         if runner.get("ephemeral") is True:
             return []
@@ -97,11 +108,7 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         if not allows_public_repos and visibility not in {"all", "public"} and not public_repos:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "runner": {
@@ -140,7 +147,7 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
     """Detect runners with public network exposure and remote management ports."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"github.runner"}
 
     @property
@@ -159,31 +166,38 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
+        context: Mapping[str, Any] | None = None,
+    ) -> list[FindingEntity]:
         if not context:
             return []
 
-        telemetry_index = context.get("host_telemetry_index")
-        if not telemetry_index:
+        telemetry_index_obj = context.get("host_telemetry_index")
+        if not telemetry_index_obj:
             return []
 
         runner = (config.normalized_config or {}).get("runner", {})
         runner_name = runner.get("name") or resource.name
 
-        host = telemetry_index.get(runner_name) if isinstance(telemetry_index, dict) else None
-        if not host and isinstance(telemetry_index, dict):
-            host = telemetry_index.get((runner_name or "").lower())
+        host: Mapping[str, Any] | HostTelemetry | None = None
+        if isinstance(telemetry_index_obj, Mapping):
+            host = telemetry_index_obj.get(runner_name)
+            if not host:
+                host = telemetry_index_obj.get((runner_name or "").lower())
 
         if not host:
             return []
 
-        ip_addresses = _get_value(host, "ip_addresses", []) or []
+        ip_addresses = cast(Iterable[str], _get_value(host, "ip_addresses", []) or [])
         public_ips = _iter_public_ips(ip_addresses)
         if not public_ips:
             return []
 
-        network_connections = _normalize_network_connections(_get_value(host, "network_connections"))
+        network_connections = _normalize_network_connections(
+            cast(
+                Sequence[NetworkConnection | Mapping[str, Any]] | None,
+                _get_value(host, "network_connections"),
+            )
+        )
 
         listening_ports = [
             conn.local_port
@@ -195,11 +209,7 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
         if not listening_ports:
             return []
 
-        rule_id = context.get("rule_id")
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "runner": {

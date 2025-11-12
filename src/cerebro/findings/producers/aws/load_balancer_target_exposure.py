@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, cast
 
 from cerebro.domain.entities import (
     ConfigEntity,
@@ -12,7 +13,10 @@ from cerebro.domain.entities import (
     Severity,
 )
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import analyze_instance_network_exposure
+from cerebro.findings.producers.utils import (
+    analyze_instance_network_exposure,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -60,7 +64,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, Any] | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         scheme = (normalized.get("scheme") or "").lower()
@@ -114,7 +118,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
                     )
 
                 elif target_type == "instance":
-                    public_instances = []
+                    public_instances: list[dict[str, Any]] = []
                     target_port = target_group.get("port")
                     for target in target_group.get("targets") or []:
                         instance_exposure = analyze_instance_network_exposure(
@@ -141,11 +145,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
         if not affected:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "loadBalancerArn": normalized.get("loadBalancerArn")
@@ -153,7 +153,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
             "exposures": affected,
         }
 
-        summary_parts = []
+        summary_parts: list[str] = []
         for exposure in affected:
             if exposure.get("targetType") == "instance":
                 for instance in exposure.get("publicInstances") or []:
@@ -183,11 +183,14 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
                         f"with {reason_text}"
                     )
             else:
-                public_targets = ", ".join(exposure.get("publicTargets", []))
+                exposure_targets = cast(
+                    list[str], exposure.get("publicTargets") or []
+                )
+                joined_targets = ", ".join(exposure_targets)
                 summary_parts.append(
                     "listener "
                     f"{exposure['listenerArn']} forwards to public targets "
-                    f"{public_targets}"
+                    f"{joined_targets}"
                 )
         summary = "; ".join(summary_parts)
 

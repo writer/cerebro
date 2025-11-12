@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from collections.abc import Mapping
+from typing import Any
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseGitHubProducer
 
@@ -15,7 +22,7 @@ class GithubWorkflowDefaultWriteProducer(BaseGitHubProducer):
     """Detect repositories with default workflow write permissions."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"github.repo"}
 
     @property
@@ -38,8 +45,8 @@ class GithubWorkflowDefaultWriteProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
+        context: Mapping[str, Any] | None = None,
+    ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         permissions = normalized.get("actionsPermissions") or {}
         if not permissions:
@@ -51,11 +58,7 @@ class GithubWorkflowDefaultWriteProducer(BaseGitHubProducer):
         if default_permission != "write" and not can_approve_forks:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "repository": resource.external_id,

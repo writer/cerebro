@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from collections.abc import Mapping
+from typing import Any
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseGitHubProducer
 
@@ -15,7 +22,7 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
     """Flag GitHub organizations that allow untrusted workflow defaults."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"github.org"}
 
     @property
@@ -38,8 +45,8 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
+        context: Mapping[str, Any] | None = None,
+    ) -> list[FindingEntity]:
         permissions = (config.normalized_config or {}).get("actionsPermissions") or {}
         if not permissions:
             return []
@@ -55,11 +62,7 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
         if not (risky_default or risky_approval or risky_allowed_actions):
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "organization": resource.external_id,
@@ -68,7 +71,7 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
             "can_approve_pull_request_reviews": can_approve,
         }
 
-        summary_parts: List[str] = []
+        summary_parts: list[str] = []
         if risky_default:
             summary_parts.append("workflows run with write permissions")
         if risky_approval:
