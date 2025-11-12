@@ -12,6 +12,7 @@ from cerebro.domain.entities import (
     Severity,
 )
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import analyze_instance_network_exposure
 
 from .base import BaseAWSProducer
 
@@ -29,45 +30,6 @@ def _is_public_ip(value: str | None) -> bool:
         and not ip_obj.is_multicast
         and not ip_obj.is_unspecified
     )
-
-
-def _security_group_rule_allows_public(
-    rule: dict[str, Any], target_port: int | None
-) -> bool:
-    ipv4_cidrs = rule.get("ipv4Cidr") or []
-    ipv6_cidrs = rule.get("ipv6Cidr") or []
-    has_public_cidr = any(cidr == "0.0.0.0/0" for cidr in ipv4_cidrs) or any(
-        cidr == "::/0" for cidr in ipv6_cidrs
-    )
-    if not has_public_cidr:
-        return False
-
-    protocol = rule.get("ipProtocol")
-    from_port = rule.get("fromPort")
-    to_port = rule.get("toPort")
-
-    if protocol in {None, "-1"}:
-        return True
-
-    protocol = str(protocol).lower()
-    if protocol not in {"tcp", "udp", "all"}:
-        return False
-
-    if target_port is None:
-        return True
-
-    if from_port is None and to_port is None:
-        return True
-
-    if from_port is None:
-        from_port = to_port
-    if to_port is None:
-        to_port = from_port
-
-    if from_port is None or to_port is None:
-        return True
-
-    return int(from_port) <= target_port <= int(to_port)
 
 
 @register_producer
@@ -155,62 +117,13 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
                     public_instances = []
                     target_port = target_group.get("port")
                     for target in target_group.get("targets") or []:
-                        instance_details = target.get("instance") or {}
-                        exposure_sources: list[str] = []
-
-                        public_ip = instance_details.get("publicIpAddress")
-                        interface_ips = (
-                            instance_details.get("networkInterfacePublicIps") or []
+                        instance_exposure = analyze_instance_network_exposure(
+                            target.get("id"),
+                            target.get("instance"),
+                            target_port,
                         )
-                        has_public_interface = (
-                            instance_details.get("hasPublicInterface")
-                            or _is_public_ip(public_ip)
-                            or any(_is_public_ip(ip) for ip in interface_ips)
-                        )
-
-                        if has_public_interface:
-                            exposure_sources.append("public_interface")
-
-                        security_group_findings: list[dict[str, Any]] = []
-                        for security_group in (
-                            instance_details.get("securityGroups") or []
-                        ):
-                            group_id = security_group.get("groupId")
-                            for rule in security_group.get("ingressRules") or []:
-                                allows_public = _security_group_rule_allows_public(
-                                    rule,
-                                    target_port,
-                                )
-                                if allows_public:
-                                    security_group_findings.append(
-                                        {
-                                            "groupId": group_id,
-                                            "ipProtocol": rule.get("ipProtocol"),
-                                            "fromPort": rule.get("fromPort"),
-                                            "toPort": rule.get("toPort"),
-                                            "ipv4Cidr": rule.get("ipv4Cidr"),
-                                            "ipv6Cidr": rule.get("ipv6Cidr"),
-                                        }
-                                    )
-
-                        if security_group_findings:
-                            exposure_sources.append("security_group")
-
-                        if not exposure_sources:
-                            continue
-
-                        public_instances.append(
-                            {
-                                "instanceId": target.get("id"),
-                                "publicIpAddress": public_ip,
-                                "interfacePublicIps": interface_ips,
-                                "publicDnsName": instance_details.get("publicDnsName"),
-                                "subnetId": instance_details.get("subnetId"),
-                                "vpcId": instance_details.get("vpcId"),
-                                "exposureSources": exposure_sources,
-                                "securityGroupFindings": security_group_findings,
-                            }
-                        )
+                        if instance_exposure:
+                            public_instances.append(instance_exposure)
 
                     if not public_instances:
                         continue
