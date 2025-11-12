@@ -432,6 +432,10 @@ class AWSProvider(BaseProvider):
 
         def _describe_load_balancer():
             elb = self._session.client('elbv2')
+            try:
+                acm_client = self._session.client('acm')
+            except (ClientError, BotoCoreError):
+                acm_client = None
             response = elb.describe_load_balancers(LoadBalancerArns=[lb_arn])
             load_balancers = response.get('LoadBalancers', [])
             if not load_balancers:
@@ -447,6 +451,47 @@ class AWSProvider(BaseProvider):
                     params["Marker"] = marker
                 listener_response = elb.describe_listeners(**params)
                 for listener in listener_response.get('Listeners', []):
+                    certificates = []
+                    for certificate in listener.get('Certificates', []) or []:
+                        cert_info: Dict[str, Any] = {
+                            "certificateArn": certificate.get('CertificateArn'),
+                            "isDefault": certificate.get('IsDefault'),
+                        }
+                        cert_arn = certificate.get('CertificateArn')
+                        if (
+                            acm_client
+                            and cert_arn
+                            and isinstance(cert_arn, str)
+                            and ":acm:" in cert_arn
+                        ):
+                            try:
+                                cert_details = acm_client.describe_certificate(
+                                    CertificateArn=cert_arn
+                                )
+                                certificate_meta = cert_details.get('Certificate', {})
+                                not_before = certificate_meta.get('NotBefore')
+                                not_after = certificate_meta.get('NotAfter')
+                                cert_info.update(
+                                    {
+                                        "status": certificate_meta.get('Status'),
+                                        "type": certificate_meta.get('Type'),
+                                        "inUseBy": certificate_meta.get('InUseBy'),
+                                        "notBefore": not_before.isoformat()
+                                        if hasattr(not_before, "isoformat")
+                                        else None,
+                                        "notAfter": not_after.isoformat()
+                                        if hasattr(not_after, "isoformat")
+                                        else None,
+                                    }
+                                )
+                            except ClientError as exc:
+                                logger.warning(
+                                    "Failed to describe ACM certificate %s: %s",
+                                    cert_arn,
+                                    exc,
+                                )
+                        certificates.append(cert_info)
+
                     listeners.append(
                         {
                             "listenerArn": listener.get('ListenerArn'),
@@ -463,6 +508,7 @@ class AWSProvider(BaseProvider):
                                 }
                                 for action in listener.get('DefaultActions', [])
                             ],
+                            "certificates": certificates,
                         }
                     )
                 marker = listener_response.get('NextMarker')
