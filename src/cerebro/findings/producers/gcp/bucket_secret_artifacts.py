@@ -14,6 +14,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    clip_sequence,
     coerce_mapping,
     coerce_mapping_sequence,
     resolve_rule_id,
@@ -149,7 +150,7 @@ class GCPBucketSecretArtifactProducer(BaseGCPProducer):
                 "content_type": obj.get("content_type"),
                 "size_bytes": obj.get("size"),
             }
-            for obj in matches[:10]
+            for obj in clip_sequence(matches)
         ]
 
         upla = coerce_mapping(normalized.get("uniform_bucket_level_access")) or {}

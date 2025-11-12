@@ -13,7 +13,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    clip_sequence,
+    coerce_mapping,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -116,7 +120,7 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         evidence = {
             "bucket": resource.external_id,
             "region": normalized.get("region"),
-            "matched_objects": matches[:10],
+            "matched_objects": clip_sequence(matches),
             "public_access": {
                 "policy_allows_public": normalized.get("policyAllowsPublic"),
                 "acl_allows_public": normalized.get("aclAllowsPublic"),
@@ -158,7 +162,10 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         from hashlib import sha256
 
         key_fragment = ";".join(
-            sorted(obj.get("key", "") for obj in matches[:5])
+            sorted(
+                obj.get("key", "")
+                for obj in clip_sequence(matches, limit=5)
+            )
         )
         raw = f"{rule_id}|{bucket_id}|{key_fragment}"
         return sha256(raw.encode()).hexdigest()

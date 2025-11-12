@@ -14,6 +14,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    clip_sequence,
     coerce_mapping,
     coerce_mapping_sequence,
     coerce_str_sequence,
@@ -121,8 +122,8 @@ class GCPBucketPublicWriteProducer(BaseGCPProducer):
             "uniform_bucket_level_access": normalized.get(
                 "uniform_bucket_level_access"
             ),
-            "iam_bindings": iam_bindings[:5],
-            "acl_entries": acl_entries[:5],
+            "iam_bindings": clip_sequence(iam_bindings, limit=5),
+            "acl_entries": clip_sequence(acl_entries, limit=5),
         }
 
         finding = self.create_finding(

@@ -14,7 +14,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    clip_sequence,
+    coerce_mapping,
+    resolve_rule_id,
+)
 from cerebro.telemetry.schemas import HostTelemetry, NetworkConnection
 
 from .base import BaseGitHubProducer
@@ -141,7 +145,7 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
                 "visibility": visibility,
                 "allows_public_repositories": allows_public_repos,
             },
-            "exposed_repositories": public_repos[:10],
+            "exposed_repositories": clip_sequence(public_repos),
         }
 
         summary = (

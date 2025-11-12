@@ -14,6 +14,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    clip_sequence,
     coerce_mapping,
     coerce_mapping_sequence,
     coerce_str_sequence,
@@ -98,6 +99,8 @@ class M365FileSharedExternallyProducer(BaseFindingProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
+        limited_external_users = clip_sequence(external_users)
+
         evidence = {
             "site_name": resource.name,
             "site_url": data.get("web_url"),
@@ -105,7 +108,7 @@ class M365FileSharedExternallyProducer(BaseFindingProducer):
             "external_users_count": len(external_users),
             "external_users": [
                 _summarize_permission(permission)
-                for permission in external_users[:10]
+                for permission in limited_external_users
             ],
             "sharing_capability": data.get("sharing_capability"),
             "site_id": resource.external_id,

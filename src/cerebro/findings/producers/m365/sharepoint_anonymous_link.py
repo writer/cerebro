@@ -13,7 +13,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping_sequence, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    clip_sequence,
+    coerce_mapping_sequence,
+    resolve_rule_id,
+)
 
 
 def _has_anonymous_edit_link(permissions: Sequence[Mapping[str, Any]]) -> bool:
@@ -77,18 +81,20 @@ class M365SharePointAnonymousLinkProducer(BaseFindingProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
+        anonymous_links = [
+            {
+                "scope": permission.get("link", {}).get("scope"),
+                "type": permission.get("link", {}).get("type"),
+                "roles": permission.get("roles"),
+            }
+            for permission in permissions
+            if permission.get("link", {}).get("scope") == "anonymous"
+        ]
+
         evidence = {
             "site_url": normalized.get("web_url"),
             "sharing_capability": normalized.get("sharing_capability"),
-            "anonymous_links": [
-                {
-                    "scope": permission.get("link", {}).get("scope"),
-                    "type": permission.get("link", {}).get("type"),
-                    "roles": permission.get("roles"),
-                }
-                for permission in permissions
-                if permission.get("link", {}).get("scope") == "anonymous"
-            ][:5],
+            "anonymous_links": clip_sequence(anonymous_links, limit=5),
         }
 
         finding = self.create_finding(
