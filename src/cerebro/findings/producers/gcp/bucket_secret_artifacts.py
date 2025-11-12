@@ -14,7 +14,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
-    clip_sequence,
+    build_storage_secret_evidence,
     coerce_mapping,
     coerce_mapping_sequence,
     resolve_rule_id,
@@ -144,25 +144,20 @@ class GCPBucketSecretArtifactProducer(BaseGCPProducer):
 
         bucket_name = resource.name or resource.external_id
         location = normalized.get("location") or normalized.get("region")
-        sample = [
-            {
-                "key": obj.get("key"),
-                "content_type": obj.get("content_type"),
-                "size_bytes": obj.get("size"),
-            }
-            for obj in clip_sequence(matches)
-        ]
-
         upla = coerce_mapping(normalized.get("uniform_bucket_level_access")) or {}
-
-        evidence = {
-            "bucket": bucket_name,
-            "region": location,
-            "matched_objects": sample,
-            "total_objects_sampled": len(objects),
-            "public_access_prevention": normalized.get("public_access_prevention"),
-            "uniform_bucket_level_access": upla.get("enabled"),
-        }
+        evidence = build_storage_secret_evidence(
+            storage_id=bucket_name,
+            artifacts=matches,
+            region=location,
+            sample_size=len(objects),
+            extra={
+                "bucket": bucket_name,
+                "public_access_prevention": normalized.get(
+                    "public_access_prevention"
+                ),
+                "uniform_bucket_level_access": upla.get("enabled"),
+            },
+        )
 
         finding = self.create_finding(
             resource=resource,

@@ -1,0 +1,375 @@
+from __future__ import annotations
+
+import inspect
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import get_args, get_origin
+from uuid import uuid4
+
+import pytest
+
+from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
+from cerebro.findings.producers.aws.bucket_cleartext_key import (
+    BucketCleartextKeyProducer,
+)
+from cerebro.findings.producers.azure.storage_secret_artifacts import (
+    AzureStorageSecretArtifactProducer,
+)
+from cerebro.findings.producers.base import ProducerContext
+from cerebro.findings.producers.gcp.bucket_secret_artifacts import (
+    GCPBucketSecretArtifactProducer,
+)
+from cerebro.findings.producers.github.runner_exposure import (
+    GithubRunnerNetworkExposureProducer,
+    GithubRunnerPublicExposureProducer,
+)
+from cerebro.findings.producers.kubernetes.service_public_exposure import (
+    K8sServicePublicExposureProducer,
+)
+from cerebro.findings.producers.m365.file_shared_externally import (
+    M365FileSharedExternallyProducer,
+)
+from cerebro.findings.producers.m365.sharepoint_anonymous_link import (
+    M365SharePointAnonymousLinkProducer,
+)
+from cerebro.findings.producers.registry import (
+    auto_discover_producers,
+    get_producer_registry,
+)
+
+
+@pytest.fixture(scope="module")
+def producer_instances():
+    auto_discover_producers()
+    registry = get_producer_registry()
+    return list(registry._producers.values())  # pragma: no cover - internal access
+
+
+def test_producer_context_annotation(producer_instances):
+    for producer in producer_instances:
+        cls = producer.__class__
+        module = sys.modules[cls.__module__]
+        hints = inspect.get_annotations(
+            cls.evaluate,
+            eval_str=True,
+            globals=module.__dict__,
+        )
+
+        assert "context" in hints, f"Missing context annotation in {cls.__name__}"
+        context_hint = hints["context"]
+
+        if context_hint is ProducerContext:
+            continue
+
+        origin = get_origin(context_hint)
+        args = get_args(context_hint)
+
+        if origin is None:
+            assert (
+                context_hint is ProducerContext
+            ), f"context annotation for {cls.__name__} should include ProducerContext"
+            continue
+
+        assert ProducerContext in args and type(None) in args, (
+            "context annotation for "
+            f"{cls.__name__} should include ProducerContext | None"
+        )
+
+
+def test_producer_resolve_rule_id_usage(producer_instances):
+    for producer in producer_instances:
+        source = inspect.getsource(producer.__class__.evaluate)
+        assert any(
+            token in source for token in ("resolve_rule_id", "_resolve_rule_id")
+        ), f"Producer {producer.__class__.__name__} should resolve rule IDs via helper"
+
+
+def test_producer_files_avoid_literal_slice_limits():
+    root = Path(__file__).resolve().parents[2]
+    producer_dir = root / "src" / "cerebro" / "findings" / "producers"
+    pattern = re.compile(r"\[\s*:\s*\d+")
+
+    offenders: list[Path] = []
+    for path in producer_dir.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        text = path.read_text()
+        if pattern.search(text):
+            offenders.append(path)
+
+    assert not offenders, (
+        "Found fixed-length slices in: "
+        + ", ".join(str(path) for path in offenders)
+    )
+
+
+# Cross-provider behaviour tests
+
+
+@pytest.mark.parametrize(
+    "producer_cls, provider, resource_type, config_builder",
+    [
+        (
+            BucketCleartextKeyProducer,
+            "aws",
+            "aws.s3.bucket",
+            lambda count: {
+                "objectsSample": [
+                    {"key": f"secrets/api_key_{i}.json"}
+                    for i in range(count)
+                ],
+                "policyAllowsPublic": True,
+            },
+        ),
+        (
+            GCPBucketSecretArtifactProducer,
+            "gcp",
+            "gcp.storage.bucket",
+            lambda count: {
+                "is_public": True,
+                "objectsSample": [
+                    {
+                        "key": f"service_account_{i}.json",
+                        "content_type": "application/json",
+                        "size": 1024,
+                    }
+                    for i in range(count)
+                ],
+            },
+        ),
+        (
+            AzureStorageSecretArtifactProducer,
+            "azure",
+            "azure.storage.container",
+            lambda count: {
+                "public_access": "container",
+                "objectsSample": [
+                    {
+                        "name": f"backup/credential_{i}.pem",
+                        "content_type": "application/x-pem-file",
+                        "size": 2048,
+                    }
+                    for i in range(count)
+                ],
+            },
+        ),
+    ],
+)
+def test_storage_secret_evidence_clamped(
+    producer_cls,
+    provider,
+    resource_type,
+    config_builder,
+):
+    producer = producer_cls()
+    resource = ResourceEntity(
+        external_id=f"{provider}-resource",
+        resource_type=resource_type,
+        provider=provider,
+        name=f"{provider}-resource",
+    )
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config=config_builder(15),
+    )
+
+    findings = producer.evaluate(resource, config, {"rule_id": uuid4()})
+    assert findings, "Producer should yield a finding for synthetic secret exposure"
+
+    evidence = findings[0].evidence
+    assert len(evidence["matched_objects"]) == 10
+
+
+def test_github_runner_public_exposure_clamps_repositories():
+    producer = GithubRunnerPublicExposureProducer()
+    resource = ResourceEntity(
+        external_id="runner-1",
+        resource_type="github.runner",
+        provider="github",
+        name="self-hosted",
+    )
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config={
+            "runner": {"name": "self-hosted"},
+            "runner_group": {
+                "id": 42,
+                "name": "all-runners",
+                "visibility": "all",
+                "allows_public_repositories": True,
+            },
+            "repositories": [
+                {"name": f"public-{i}", "visibility": "public"}
+                for i in range(15)
+            ],
+        },
+    )
+
+    findings = producer.evaluate(resource, config, {"rule_id": uuid4()})
+    assert findings
+    assert len(findings[0].evidence["exposed_repositories"]) == 10
+
+
+def test_github_runner_network_exposure_evidence():
+    producer = GithubRunnerNetworkExposureProducer()
+    resource = ResourceEntity(
+        external_id="runner-2",
+        resource_type="github.runner",
+        provider="github",
+        name="runner-2",
+    )
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config={
+            "runner": {
+                "name": "runner-2",
+                "labels": ["self-hosted"],
+            }
+        },
+    )
+
+    host = {
+        "host_id": "host-2",
+        "hostname": "runner-2",
+        "ip_addresses": ["35.85.12.34"],
+        "network_connections": [
+            {
+                "protocol": "tcp",
+                "local_address": "0.0.0.0",
+                "local_port": 22,
+                "remote_address": None,
+                "remote_port": None,
+                "status": "LISTEN",
+            }
+        ],
+    }
+
+    context = ProducerContext(
+        rule_id=uuid4(),
+        extras={"host_telemetry_index": {"runner-2": host}},
+    )
+
+    findings = producer.evaluate(resource, config, context)
+    assert findings
+    host_evidence = findings[0].evidence["host"]
+    assert host_evidence["public_ips"] == ["35.85.12.34"]
+    assert host_evidence["listening_ports"] == [22]
+
+
+def test_service_public_exposure_severity_downgrade_with_network_posture():
+    producer = K8sServicePublicExposureProducer()
+    resource = ResourceEntity(
+        external_id="svc1",
+        resource_type="k8s.service",
+        provider="kubernetes",
+        name="frontend",
+    )
+    normalized_config = {
+        "type": "LoadBalancer",
+        "namespace": "prod",
+        "loadBalancer": [{"ip": "35.85.12.34"}],
+        "annotations": {},
+    }
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config=normalized_config,
+    )
+
+    base_context = ProducerContext(rule_id=uuid4())
+    findings_no_posture = producer.evaluate(resource, config, base_context)
+    assert findings_no_posture
+    assert findings_no_posture[0].severity == Severity.CRITICAL
+
+    posture_context = ProducerContext(
+        rule_id=uuid4(),
+        extras={
+            "namespace_network_posture": {
+                "prod": {
+                    "default_deny_ingress": True,
+                    "default_deny_egress": True,
+                }
+            }
+        },
+    )
+
+    findings_with_posture = producer.evaluate(resource, config, posture_context)
+    assert findings_with_posture
+    finding = findings_with_posture[0]
+    assert finding.severity == Severity.HIGH
+    assert finding.evidence["namespace_network_posture"]["default_deny_ingress"]
+
+
+def test_file_sharing_producers_clip_external_users():
+    producer = M365FileSharedExternallyProducer()
+    resource = ResourceEntity(
+        external_id="sharepoint-site",
+        resource_type="m365.sharepoint.site",
+        provider="m365",
+        name="site",
+    )
+    permissions = [
+        {
+            "grantedToV2": {
+                "user": {
+                    "email": f"guest{i}@example.com",
+                    "displayName": f"Guest {i}",
+                }
+            },
+            "roles": ["write"],
+        }
+        for i in range(25)
+    ]
+
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config={
+            "web_url": "https://contoso.sharepoint.com/sites/site",
+            "external_sharing": True,
+            "permissions": permissions,
+            "sharing_capability": "ExternalUserSharingOnly",
+        },
+    )
+
+    context = ProducerContext(
+        rule_id=uuid4(),
+        organization_domains={"contoso.com"},
+    )
+    findings = producer.evaluate(resource, config, context)
+    assert findings
+    assert len(findings[0].evidence["external_users"]) == 10
+
+
+def test_sharepoint_anonymous_link_evidence_clipped():
+    producer = M365SharePointAnonymousLinkProducer()
+    resource = ResourceEntity(
+        external_id="sp-site",
+        resource_type="m365.sharepoint.site",
+        provider="m365",
+        name="sp-site",
+    )
+    permissions = [
+        {
+            "link": {"scope": "anonymous", "type": "edit"},
+            "roles": ["write"],
+        }
+        for _ in range(12)
+    ]
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config={
+            "web_url": "https://contoso.sharepoint.com/sites/sp-site",
+            "permissions": permissions,
+        },
+    )
+
+    findings = producer.evaluate(resource, config, {"rule_id": uuid4()})
+    assert findings
+    assert len(findings[0].evidence["anonymous_links"]) == 5

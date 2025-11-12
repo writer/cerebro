@@ -14,6 +14,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    build_storage_secret_evidence,
     clip_sequence,
     coerce_mapping,
     resolve_rule_id,
@@ -117,17 +118,22 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-        evidence = {
-            "bucket": resource.external_id,
-            "region": normalized.get("region"),
-            "matched_objects": clip_sequence(matches),
-            "public_access": {
-                "policy_allows_public": normalized.get("policyAllowsPublic"),
-                "acl_allows_public": normalized.get("aclAllowsPublic"),
-                "block_public_access": normalized.get("blockPublicAccess", {}),
-            },
-            "object_sample_size": len(objects_sample),
+        public_access = {
+            "policy_allows_public": normalized.get("policyAllowsPublic"),
+            "acl_allows_public": normalized.get("aclAllowsPublic"),
+            "block_public_access": normalized.get("blockPublicAccess", {}),
         }
+
+        evidence = build_storage_secret_evidence(
+            storage_id=resource.external_id,
+            artifacts=matches,
+            region=normalized.get("region"),
+            sample_size=len(objects_sample),
+            public_access=public_access,
+            extra={
+                "bucket": resource.external_id,
+            },
+        )
 
         finding = self.create_finding(
             resource=resource,

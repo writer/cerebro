@@ -13,7 +13,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
-    clip_sequence,
+    build_storage_secret_evidence,
     coerce_mapping,
     coerce_mapping_sequence,
     resolve_rule_id,
@@ -111,24 +111,18 @@ class AzureStorageSecretArtifactProducer(BaseAzureProducer):
         container_name = resource.name or resource.external_id
         account = coerce_mapping(normalized.get("account")) or {}
 
-        matched_summary = [
-            {
-                "name": obj.get("name"),
-                "content_type": obj.get("content_type"),
-                "size_bytes": obj.get("size"),
-            }
-            for obj in clip_sequence(matches)
-        ]
-
-        evidence = {
-            "container": container_name,
-            "account_name": normalized.get("account_name"),
-            "resource_group": normalized.get("resource_group"),
-            "public_access": normalized.get("public_access"),
-            "account_subscription": account.get("subscription_id"),
-            "matched_objects": matched_summary,
-            "sample_size": len(samples),
-        }
+        evidence = build_storage_secret_evidence(
+            storage_id=container_name,
+            artifacts=matches,
+            sample_size=len(samples),
+            extra={
+                "container": container_name,
+                "account_name": normalized.get("account_name"),
+                "resource_group": normalized.get("resource_group"),
+                "public_access": normalized.get("public_access"),
+                "account_subscription": account.get("subscription_id"),
+            },
+        )
 
         finding = self.create_finding(
             resource=resource,

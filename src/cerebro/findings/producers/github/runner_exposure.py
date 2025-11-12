@@ -15,7 +15,8 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
-    clip_sequence,
+    build_runner_group_exposure,
+    build_runner_host_exposure,
     coerce_mapping,
     resolve_rule_id,
 )
@@ -113,6 +114,9 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         runner_group = coerce_mapping(normalized.get("runner_group")) or {}
         repositories = _coerce_mapping_sequence(normalized.get("repositories"))
 
+        runner.setdefault("id", runner.get("id") or resource.external_id)
+        runner.setdefault("name", runner.get("name") or resource.name)
+
         if runner.get("ephemeral") is True:
             return []
 
@@ -132,21 +136,11 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-        evidence = {
-            "runner": {
-                "id": runner.get("id") or resource.external_id,
-                "name": runner.get("name") or resource.name,
-                "os": runner.get("os"),
-                "labels": runner.get("labels"),
-            },
-            "runner_group": {
-                "id": runner_group.get("id"),
-                "name": runner_group.get("name"),
-                "visibility": visibility,
-                "allows_public_repositories": allows_public_repos,
-            },
-            "exposed_repositories": clip_sequence(public_repos),
-        }
+        evidence = build_runner_group_exposure(
+            runner=runner,
+            runner_group=runner_group,
+            exposed_repositories=public_repos,
+        )
 
         summary = (
             "Runner "
@@ -198,8 +192,11 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
         if not telemetry_index_obj:
             return []
 
-        runner = (config.normalized_config or {}).get("runner", {})
+        runner = coerce_mapping((config.normalized_config or {}).get("runner")) or {}
         runner_name = runner.get("name") or resource.name
+
+        runner.setdefault("id", runner.get("id") or resource.external_id)
+        runner.setdefault("name", runner_name)
 
         host: Mapping[str, Any] | HostTelemetry | None = None
         if isinstance(telemetry_index_obj, Mapping):
@@ -234,19 +231,17 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-        evidence = {
-            "runner": {
-                "id": runner.get("id") or resource.external_id,
-                "name": runner_name,
-                "labels": runner.get("labels"),
-            },
-            "host": {
-                "host_id": _get_value(host, "host_id"),
-                "hostname": _get_value(host, "hostname"),
-                "public_ips": public_ips,
-                "listening_ports": listening_ports,
-            },
+        host_context = {
+            "host_id": _get_value(host, "host_id"),
+            "hostname": _get_value(host, "hostname"),
         }
+
+        evidence = build_runner_host_exposure(
+            runner=runner,
+            host=host_context,
+            public_ips=public_ips,
+            listening_ports=listening_ports,
+        )
 
         summary = (
             "Runner host "
