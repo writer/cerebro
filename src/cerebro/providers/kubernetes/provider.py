@@ -472,6 +472,9 @@ class KubernetesProvider(BaseProvider):
             "namespace": metadata.namespace,
             "node": getattr(spec, "node_name", None),
             "serviceAccount": getattr(spec, "service_account_name", None),
+            "automountServiceAccountToken": getattr(
+                spec, "automount_service_account_token", None
+            ),
             "labels": metadata.labels or {},
             "annotations": metadata.annotations or {},
             "hostNetwork": bool(getattr(spec, "host_network", False)),
@@ -723,6 +726,100 @@ class KubernetesProvider(BaseProvider):
         host_path = getattr(volume, "host_path", None)
         projected = getattr(volume, "projected", None)
 
+        projected_sources: list[dict[str, Any]] | None = None
+        if projected and projected.sources:
+            projected_sources = []
+            for source in projected.sources:
+                token = getattr(source, "service_account_token", None)
+                if token:
+                    projected_sources.append(
+                        {
+                            "type": "serviceAccountToken",
+                            "audience": getattr(token, "audience", None),
+                            "expirationSeconds": getattr(
+                                token, "expiration_seconds", None
+                            ),
+                            "path": getattr(token, "path", None),
+                        }
+                    )
+                    continue
+
+                config_map = getattr(source, "config_map", None)
+                if config_map:
+                    projected_sources.append(
+                        {
+                            "type": "configMap",
+                            "name": getattr(config_map, "name", None),
+                            "items": [
+                                {
+                                    "key": item.key,
+                                    "path": item.path,
+                                }
+                                for item in getattr(config_map, "items", []) or []
+                            ],
+                        }
+                    )
+                    continue
+
+                secret = getattr(source, "secret", None)
+                if secret:
+                    projected_sources.append(
+                        {
+                            "type": "secret",
+                            "name": getattr(secret, "name", None),
+                            "items": [
+                                {
+                                    "key": item.key,
+                                    "path": item.path,
+                                }
+                                for item in getattr(secret, "items", []) or []
+                            ],
+                        }
+                    )
+                    continue
+
+                downward_api = getattr(source, "downward_api", None)
+                if downward_api:
+                    projected_sources.append(
+                        {
+                            "type": "downwardAPI",
+                            "items": [
+                                {
+                                    "path": item.path,
+                                    "fieldRef": (
+                                        {
+                                            "fieldPath": getattr(
+                                                item.field_ref, "field_path", None
+                                            )
+                                        }
+                                        if item.field_ref
+                                        else None
+                                    ),
+                                    "resourceFieldRef": (
+                                        {
+                                            "containerName": getattr(
+                                                item.resource_field_ref,
+                                                "container_name",
+                                                None,
+                                            ),
+                                            "resource": getattr(
+                                                item.resource_field_ref,
+                                                "resource",
+                                                None,
+                                            ),
+                                        }
+                                        if item.resource_field_ref
+                                        else None
+                                    ),
+                                }
+                                for item in getattr(downward_api, "items", []) or []
+                            ],
+                        }
+                    )
+                    continue
+
+                projected_sources.append({"type": "unknown"})
+
         return {
             "name": volume.name,
             "hostPath": {
@@ -731,21 +828,8 @@ class KubernetesProvider(BaseProvider):
             }
             if host_path
             else None,
-            "projectedSources": [
-                {
-                    "serviceAccountToken": self._service_account_audience(source)
-                }
-                for source in projected.sources
-            ]
-            if projected and projected.sources
-            else None,
+            "projectedSources": projected_sources,
         }
-
-    def _service_account_audience(self, source: Any) -> str | None:
-        service_account_token = getattr(source, "service_account_token", None)
-        if not service_account_token:
-            return None
-        return getattr(service_account_token, "audience", None)
 
     def _describe_env_source(self, value_from: Any) -> dict[str, Any] | None:
         if not value_from:
