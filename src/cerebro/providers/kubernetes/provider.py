@@ -315,6 +315,29 @@ class KubernetesProvider(BaseProvider):
                     },
                 )
 
+        if (
+            (not resource_types or "k8s.network_policy" in resource_types)
+            and self._networking
+        ):
+            policies = await call_sync_with_retries(
+                lambda: self._networking.list_network_policy_for_all_namespaces(),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+
+            for policy in policies.items:
+                metadata = policy.metadata
+                external_id = f"{metadata.namespace}/{metadata.name}"
+                yield ResourceInfo(
+                    external_id=external_id,
+                    name=metadata.name,
+                    resource_type="k8s.network_policy",
+                    parent_external_id=metadata.namespace,
+                    metadata={
+                        "namespace": metadata.namespace,
+                    },
+                )
+
         if not resource_types or "k8s.cluster_role_binding" in resource_types:
             cluster_role_bindings = await call_sync_with_retries(
                 lambda: self._rbac.list_cluster_role_binding(),
@@ -383,7 +406,28 @@ class KubernetesProvider(BaseProvider):
                 exceptions=(ApiException,),
                 logger=logger,
             )
-            normalized_config = self._build_namespace_config(namespace)
+            network_policies: list[Any] = []
+            if self._networking:
+                try:
+                    policy_list = await call_sync_with_retries(
+                        lambda: self._networking.list_namespaced_network_policy(
+                            namespace=resource.external_id
+                        ),
+                        exceptions=(ApiException,),
+                        logger=logger,
+                    )
+                    network_policies = policy_list.items or []
+                except ApiException as exc:  # pragma: no cover - logged for visibility
+                    logger.warning(
+                        "Failed to list network policies for namespace %s: %s",
+                        resource.external_id,
+                        exc,
+                    )
+
+            normalized_config = self._build_namespace_config(
+                namespace,
+                network_policies=network_policies,
+            )
         elif resource.resource_type == "k8s.pod":
             namespace, name = self._split_namespaced_name(resource.external_id)
             pod = await call_sync_with_retries(
@@ -426,6 +470,16 @@ class KubernetesProvider(BaseProvider):
                 logger=logger,
             )
             normalized_config = self._build_cluster_role_binding_config(binding)
+        elif resource.resource_type == "k8s.network_policy" and self._networking:
+            namespace, name = self._split_namespaced_name(resource.external_id)
+            policy = await call_sync_with_retries(
+                lambda: self._networking.read_namespaced_network_policy(
+                    name=name, namespace=namespace
+                ),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+            normalized_config = self._build_network_policy_config(policy)
         else:
             normalized_config = {}
 
@@ -450,7 +504,12 @@ class KubernetesProvider(BaseProvider):
             return namespace, name
         return "default", value
 
-    def _build_namespace_config(self, namespace: client.V1Namespace) -> dict[str, Any]:
+    def _build_namespace_config(
+        self,
+        namespace: client.V1Namespace,
+        *,
+        network_policies: list[Any] | None = None,
+    ) -> dict[str, Any]:
         metadata = namespace.metadata
         return {
             "name": metadata.name,
@@ -460,6 +519,10 @@ class KubernetesProvider(BaseProvider):
             "creation_timestamp": metadata.creation_timestamp.isoformat()
             if metadata.creation_timestamp
             else None,
+            "networkPolicies": [
+                self._summarize_network_policy(policy)
+                for policy in network_policies or []
+            ],
         }
 
     def _build_pod_config(self, pod: client.V1Pod) -> dict[str, Any]:
@@ -679,6 +742,72 @@ class KubernetesProvider(BaseProvider):
             },
         }
 
+    def _build_network_policy_config(
+        self, policy: client.V1NetworkPolicy
+    ) -> dict[str, Any]:
+        metadata = policy.metadata
+        spec = policy.spec or client.V1NetworkPolicySpec()
+        selector = spec.pod_selector or client.V1LabelSelector()
+
+        def _summarize_peers(peers: list[Any] | None) -> list[dict[str, Any]]:
+            summarized: list[dict[str, Any]] = []
+            for peer in peers or []:
+                summarized.append(
+                    {
+                        "podSelector": self._describe_label_selector(
+                            getattr(peer, "pod_selector", None)
+                        ),
+                        "namespaceSelector": self._describe_label_selector(
+                            getattr(peer, "namespace_selector", None)
+                        ),
+                        "ipBlock": {
+                            "cidr": getattr(peer.ip_block, "cidr", None),
+                            "except": getattr(peer.ip_block, "_except", None) or [],
+                        }
+                        if getattr(peer, "ip_block", None)
+                        else None,
+                    }
+                )
+            return summarized
+
+        def _summarize_ports(ports: list[Any] | None) -> list[dict[str, Any]]:
+            summarized: list[dict[str, Any]] = []
+            for port in ports or []:
+                summarized.append(
+                    {
+                        "port": getattr(port, "port", None),
+                        "protocol": getattr(port, "protocol", None),
+                    }
+                )
+            return summarized
+
+        ingress_rules = []
+        for rule in spec.ingress or []:
+            ingress_rules.append(
+                {
+                    "from": _summarize_peers(getattr(rule, "_from", None)),
+                    "ports": _summarize_ports(getattr(rule, "ports", None)),
+                }
+            )
+
+        egress_rules = []
+        for rule in spec.egress or []:
+            egress_rules.append(
+                {
+                    "to": _summarize_peers(getattr(rule, "to", None)),
+                    "ports": _summarize_ports(getattr(rule, "ports", None)),
+                }
+            )
+
+        return {
+            "name": metadata.name,
+            "namespace": metadata.namespace,
+            "policyTypes": spec.policy_types or ["Ingress"],
+            "podSelector": self._describe_label_selector(selector),
+            "ingress": ingress_rules,
+            "egress": egress_rules,
+        }
+
     def _build_container_config(self, container: client.V1Container) -> dict[str, Any]:
         security_context = container.security_context
         capabilities = getattr(security_context, "capabilities", None)
@@ -831,6 +960,24 @@ class KubernetesProvider(BaseProvider):
             "projectedSources": projected_sources,
         }
 
+    def _summarize_network_policy(
+        self,
+        policy: client.V1NetworkPolicy,
+    ) -> dict[str, Any]:
+        spec = policy.spec or client.V1NetworkPolicySpec()
+        selector = spec.pod_selector or client.V1LabelSelector()
+        selects_all = not (
+            getattr(selector, "match_labels", None) or selector.match_expressions
+        )
+
+        return {
+            "name": policy.metadata.name,
+            "policyTypes": spec.policy_types or ["Ingress"],
+            "selectsAllPods": selects_all,
+            "ingressRuleCount": len(spec.ingress or []),
+            "egressRuleCount": len(spec.egress or []),
+        }
+
     def _describe_env_source(self, value_from: Any) -> dict[str, Any] | None:
         if not value_from:
             return None
@@ -879,3 +1026,26 @@ class KubernetesProvider(BaseProvider):
             }
 
         return target or None
+
+    def _describe_label_selector(self, selector: Any) -> dict[str, Any] | None:
+        if not selector:
+            return None
+
+        match_labels = getattr(selector, "match_labels", None) or {}
+        match_expressions = []
+        for expression in getattr(selector, "match_expressions", []) or []:
+            match_expressions.append(
+                {
+                    "key": getattr(expression, "key", None),
+                    "operator": getattr(expression, "operator", None),
+                    "values": getattr(expression, "values", None) or [],
+                }
+            )
+
+        if not match_labels and not match_expressions:
+            return None
+
+        return {
+            "matchLabels": match_labels,
+            "matchExpressions": match_expressions,
+        }

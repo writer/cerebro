@@ -183,9 +183,7 @@ class K8sServiceAccountTokenExposureProducer(BaseFindingProducer):
             elif exposure["type"] == "service_account_token_mount":
                 container_name = exposure.get("container")
                 mount_path = exposure.get("path")
-                parts.append(
-                    f"container {container_name} mounts token at {mount_path}"
-                )
+                parts.append(f"container {container_name} mounts token at {mount_path}")
             elif exposure["type"] == "projected_service_account_token":
                 tokens = exposure.get("tokens") or []
                 audiences = {
