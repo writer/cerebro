@@ -10,8 +10,13 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import (
+    coerce_mapping,
+    coerce_mapping_sequence,
+    resolve_rule_id,
+)
 
 from .base import BaseAzureProducer
 
@@ -88,36 +93,49 @@ class AzureStorageSecretArtifactProducer(BaseAzureProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, object] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
 
         if not _is_public(normalized):
             return []
 
-        samples = list(normalized.get("objectsSample", []) or [])
+        samples = coerce_mapping_sequence(normalized.get("objectsSample"))
         matches = [obj for obj in samples if _is_suspicious(obj.get("name"))]
         if not matches:
             return []
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
+        container_name = resource.name or resource.external_id
+        account = coerce_mapping(normalized.get("account")) or {}
+
+        matched_summary = [
+            {
+                "name": obj.get("name"),
+                "content_type": obj.get("content_type"),
+                "size_bytes": obj.get("size"),
+            }
+            for obj in matches[:10]
+        ]
+
         evidence = {
-            "container": resource.name,
+            "container": container_name,
             "account_name": normalized.get("account_name"),
             "resource_group": normalized.get("resource_group"),
             "public_access": normalized.get("public_access"),
-            "matched_objects": matches[:10],
+            "account_subscription": account.get("subscription_id"),
+            "matched_objects": matched_summary,
             "sample_size": len(samples),
         }
 
         finding = self.create_finding(
             resource=resource,
             rule_id=rule_id,
-            title=f"Public container {resource.name} contains potential secrets",
+            title=f"Public container {container_name} contains potential secrets",
             summary=(
                 "Azure container "
-                f"{resource.name} is publicly accessible and contains objects "
+                f"{container_name} is publicly accessible and contains objects "
                 "resembling credentials or API keys."
             ),
             evidence=evidence,

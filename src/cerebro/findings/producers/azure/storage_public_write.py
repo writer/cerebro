@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from cerebro.domain.entities import (
     ConfigEntity,
     FindingEntity,
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import resolve_rule_id
 
@@ -44,7 +43,7 @@ class AzureStoragePublicWriteProducer(BaseAzureProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, object] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         public_access = normalized.get("public_access")
@@ -55,8 +54,10 @@ class AzureStoragePublicWriteProducer(BaseAzureProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
+        container_name = resource.name or resource.external_id
+
         evidence = {
-            "container": resource.name,
+            "container": container_name,
             "account_name": normalized.get("account_name"),
             "resource_group": normalized.get("resource_group"),
             "public_access": public_access,
@@ -68,10 +69,10 @@ class AzureStoragePublicWriteProducer(BaseAzureProducer):
         finding = self.create_finding(
             resource=resource,
             rule_id=rule_id,
-            title=f"Container {resource.name} allows public write access",
+            title=f"Container {container_name} allows public write access",
             summary=(
                 "Azure storage container "
-                f"{resource.name} is publicly accessible and allows anonymous "
+                f"{container_name} is publicly accessible and allows anonymous "
                 "write operations."
             ),
             evidence=evidence,
