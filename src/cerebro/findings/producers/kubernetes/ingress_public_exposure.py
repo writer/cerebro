@@ -12,7 +12,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    build_network_exposure_evidence,
+    coerce_mapping,
+    resolve_rule_id,
+)
 
 _FALSEY = {"false", "0", "no", "off", "disabled"}
 _TRUEY = {"true", "1", "yes", "on", "enabled"}
@@ -129,13 +133,13 @@ class K8sIngressPublicExposureProducer(BaseFindingProducer):
             if namespace_posture.get("default_deny_ingress"):
                 severity = self.severity
 
-        evidence = {
-            "namespace": namespace,
-            "ingress_class": normalized.get("ingressClass"),
-            "annotations": annotations,
-            "exposures": exposures,
-            "namespace_network_posture": namespace_posture,
-        }
+        evidence = build_network_exposure_evidence(
+            namespace=namespace,
+            exposures=exposures,
+            annotations=annotations,
+            namespace_network_posture=namespace_posture,
+            ingress_class=normalized.get("ingressClass"),
+        )
 
         finding = self.create_finding(
             resource=resource,

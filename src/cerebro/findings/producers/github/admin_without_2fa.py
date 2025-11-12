@@ -10,7 +10,10 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import (
+    build_identity_user_evidence,
+    resolve_rule_id,
+)
 
 from .base import BaseGitHubProducer
 
@@ -71,16 +74,19 @@ class AdminWithout2FAProducer(BaseGitHubProducer):
         if is_admin and not has_2fa and is_human:
             rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-            evidence = {
-                "username": resource.name,
-                "user_id": resource.external_id,
-                "is_admin": is_admin,
-                "two_factor_authentication": has_2fa,
-                "account_type": normalized.get("type"),
-                "site_admin": normalized.get("site_admin", False),
-                "profile_url": normalized.get("html_url"),
-                "last_seen": config.captured_at.isoformat(),
-            }
+            evidence = build_identity_user_evidence(
+                user_id=resource.external_id,
+                username=resource.name,
+                two_factor_authentication=has_2fa,
+                account_type=normalized.get("type"),
+                metadata={
+                    "site_admin": normalized.get("site_admin", False),
+                    "profile_url": normalized.get("html_url"),
+                    "last_seen": config.captured_at.isoformat(),
+                },
+                risk_factors=["admin_privileges", "mfa_disabled"],
+                extra={"is_admin": is_admin},
+            )
             title = f"GitHub admin user {resource.name} lacks 2FA"
             summary = (
                 f"Admin user {resource.name} has administrative privileges but does "

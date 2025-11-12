@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from itertools import islice
 from typing import Any, TypedDict
 
-from .collections import coerce_mapping, coerce_str_sequence
+from .collections import coerce_mapping, coerce_mapping_sequence, coerce_str_sequence
 
 
 def clip_sequence(values: Iterable[Any] | None, limit: int = 10) -> list[Any]:
@@ -205,6 +205,149 @@ def build_runner_host_exposure(
     }
 
 
+class IdentityUserEvidence(TypedDict, total=False):
+    """Evidence describing identity user security posture."""
+
+    user_id: Any
+    username: str | None
+    login: str | None
+    email: str | None
+    user_principal_name: str | None
+    display_name: str | None
+    status: str | None
+    account_type: str | None
+    account_enabled: bool | None
+    mfa_enrolled: bool | None
+    two_factor_authentication: bool | None
+    last_login: str | None
+    created: str | None
+    admin_roles: list[str]
+    role_names: list[str]
+    directory_roles: list[Mapping[str, Any]]
+    groups: list[Any]
+    applications: list[Any]
+    risk_factors: list[str]
+    profile: Mapping[str, Any]
+    metadata: Mapping[str, Any]
+
+
+def _coerce_str_list(values: Iterable[Any] | None) -> list[str]:
+    if not values:
+        return []
+    return [value for value in values if isinstance(value, str) and value]
+
+
+def _clip_generic_sequence(value: Any, limit: int) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)):
+        return [value]
+    if isinstance(value, Iterable):
+        return list(islice(value, limit))
+    return [value]
+
+
+def build_identity_user_evidence(
+    *,
+    user_id: Any = None,
+    username: str | None = None,
+    login: str | None = None,
+    email: str | None = None,
+    user_principal_name: str | None = None,
+    display_name: str | None = None,
+    status: str | None = None,
+    account_type: str | None = None,
+    account_enabled: bool | None = None,
+    mfa_enrolled: bool | None = None,
+    two_factor_authentication: bool | None = None,
+    last_login: str | None = None,
+    created: str | None = None,
+    admin_roles: Iterable[str] | None = None,
+    role_names: Iterable[str] | None = None,
+    directory_roles: Iterable[Mapping[str, Any]] | None = None,
+    groups: Iterable[Any] | None = None,
+    applications: Iterable[Any] | None = None,
+    risk_factors: Iterable[str] | None = None,
+    profile: Mapping[str, Any] | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
+    limit: int = 10,
+) -> IdentityUserEvidence:
+    """Create standardized evidence payload for identity user risks.
+
+    This helper should be used by all identity- and access-management oriented
+    producers so that we consistently clamp large collections (groups,
+    applications, directory roles), normalize string fields, and avoid manual
+    slicing. Producers should prefer passing raw provider payloads—this helper
+    will coerce them into safe, bounded structures and accept optional
+    ``extra`` metadata for scenario-specific keys.
+    """
+
+    evidence: IdentityUserEvidence = {}
+
+    if user_id is not None:
+        evidence["user_id"] = user_id
+    if username is not None:
+        evidence["username"] = username
+    if login is not None:
+        evidence["login"] = login
+    if email is not None:
+        evidence["email"] = email
+    if user_principal_name is not None:
+        evidence["user_principal_name"] = user_principal_name
+    if display_name is not None:
+        evidence["display_name"] = display_name
+    if status is not None:
+        evidence["status"] = status
+    if account_type is not None:
+        evidence["account_type"] = account_type
+    if account_enabled is not None:
+        evidence["account_enabled"] = account_enabled
+    if mfa_enrolled is not None:
+        evidence["mfa_enrolled"] = mfa_enrolled
+    if two_factor_authentication is not None:
+        evidence["two_factor_authentication"] = two_factor_authentication
+    if last_login is not None:
+        evidence["last_login"] = last_login
+    if created is not None:
+        evidence["created"] = created
+
+    admin_roles_list = _coerce_str_list(admin_roles)
+    if admin_roles_list:
+        evidence["admin_roles"] = admin_roles_list
+
+    role_names_list = _coerce_str_list(role_names)
+    if role_names_list:
+        evidence["role_names"] = role_names_list
+
+    dir_roles = list(coerce_mapping_sequence(directory_roles))
+    if dir_roles:
+        evidence["directory_roles"] = list(islice(dir_roles, limit))
+
+    groups_clipped = _clip_generic_sequence(groups, limit)
+    if groups_clipped:
+        evidence["groups"] = groups_clipped
+
+    apps_clipped = _clip_generic_sequence(applications, limit)
+    if apps_clipped:
+        evidence["applications"] = apps_clipped
+
+    risk_list = _coerce_str_list(risk_factors)
+    if risk_list:
+        evidence["risk_factors"] = risk_list
+
+    if profile:
+        evidence["profile"] = compact_mapping(profile)
+
+    if metadata:
+        evidence["metadata"] = dict(metadata)
+
+    if extra:
+        evidence.update(extra)
+
+    return evidence
+
+
 class ExternalUserAccess(TypedDict, total=False):
     """Summary of an external user's permissions."""
 
@@ -316,3 +459,194 @@ def build_sharepoint_anonymous_link_evidence(
         "sharing_capability": sharing_capability,
         "anonymous_links": summaries,
     }
+
+
+class CiPipelineExposureEvidence(TypedDict, total=False):
+    """Evidence describing CI/CD pipeline exposure risks."""
+
+    project: str | None
+    pipeline_id: str | None
+    source_type: str | None
+    repository: str | None
+    auth_type: str | None
+    auth_resource: str | None
+    webhook_host: str | None
+    webhook_present: bool | None
+    filter_groups: list[Any]
+    report_build_status: bool | None
+    insecure_ssl: bool | None
+    env_variables: list[Any]
+    tokens_present: bool | None
+    logs_enabled: bool | None
+    metadata: Mapping[str, Any]
+
+
+def build_ci_pipeline_exposure(
+    *,
+    project: str | None,
+    source_type: str | None = None,
+    repository: str | None = None,
+    auth_type: str | None = None,
+    auth_resource: str | None = None,
+    webhook_host: str | None = None,
+    webhook_present: bool | None = None,
+    filter_groups: Iterable[Any] | None = None,
+    report_build_status: bool | None = None,
+    insecure_ssl: bool | None = None,
+    env_variables: Iterable[Any] | None = None,
+    tokens_present: bool | None = None,
+    logs_enabled: bool | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
+    limit: int = 10,
+) -> CiPipelineExposureEvidence:
+    """Create standardized evidence payload for CI/CD exposures.
+
+    Use this helper for build-system findings (e.g., CodeBuild, GitHub Actions)
+    to capture consistent metadata about source repositories, authentication
+    methods, webhook state, and environment variables. Lists such as
+    ``filter_groups`` and ``env_variables`` are automatically clipped to avoid
+    large payloads while preserving type fidelity.
+    """
+
+    evidence: CiPipelineExposureEvidence = {
+        "project": project,
+    }
+
+    if source_type is not None:
+        evidence["source_type"] = source_type
+    if repository is not None:
+        evidence["repository"] = repository
+    if auth_type is not None:
+        evidence["auth_type"] = auth_type
+    if auth_resource is not None:
+        evidence["auth_resource"] = auth_resource
+    if webhook_host is not None:
+        evidence["webhook_host"] = webhook_host
+    if webhook_present is not None:
+        evidence["webhook_present"] = webhook_present
+    if report_build_status is not None:
+        evidence["report_build_status"] = report_build_status
+    if insecure_ssl is not None:
+        evidence["insecure_ssl"] = insecure_ssl
+    if tokens_present is not None:
+        evidence["tokens_present"] = tokens_present
+    if logs_enabled is not None:
+        evidence["logs_enabled"] = logs_enabled
+
+    filter_list = _clip_generic_sequence(filter_groups, limit)
+    if filter_list:
+        evidence["filter_groups"] = filter_list
+
+    env_list = _clip_generic_sequence(env_variables, limit)
+    if env_list:
+        evidence["env_variables"] = env_list
+
+    if metadata:
+        evidence["metadata"] = dict(metadata)
+
+    if extra:
+        evidence.update(extra)
+
+    return evidence
+
+
+class NetworkExposureDetail(TypedDict, total=False):
+    """Detail entry describing a specific network exposure."""
+
+    type: str | None
+    hosts: list[str]
+    ports: list[int]
+    load_balancer: list[Any]
+    ip: str | None
+    public: bool | None
+    description: str | None
+    metadata: Mapping[str, Any]
+
+
+class NetworkExposureEvidence(TypedDict, total=False):
+    """Evidence describing network exposure and namespace posture."""
+
+    namespace: str | None
+    service_type: str | None
+    ingress_class: str | None
+    annotations: Mapping[str, Any] | None
+    namespace_network_posture: Mapping[str, Any] | None
+    exposures: list[NetworkExposureDetail]
+
+
+def _summarize_exposure(entry: Mapping[str, Any]) -> NetworkExposureDetail:
+    result: NetworkExposureDetail = {}
+    if "type" in entry:
+        result["type"] = entry.get("type")
+    hosts = entry.get("hosts")
+    if isinstance(hosts, Iterable) and not isinstance(hosts, (str, bytes)):
+        result["hosts"] = list(islice(hosts, 20))
+    ports = entry.get("ports")
+    if isinstance(ports, Iterable) and not isinstance(ports, (str, bytes)):
+        result["ports"] = [
+            port for port in islice(ports, 20) if isinstance(port, int)
+        ]
+    if "port" in entry and isinstance(entry.get("port"), int):
+        result["port"] = entry.get("port")
+    if "service_port" in entry and isinstance(entry.get("service_port"), int):
+        result["service_port"] = entry.get("service_port")
+    load_balancer = entry.get("load_balancer")
+    if load_balancer is not None:
+        result["load_balancer"] = _clip_generic_sequence(load_balancer, 10)
+    ip_value = entry.get("ip")
+    if isinstance(ip_value, str):
+        result["ip"] = ip_value
+    if "public" in entry:
+        result["public"] = bool(entry.get("public"))
+    description = entry.get("description")
+    if isinstance(description, str):
+        result["description"] = description
+    metadata = entry.get("metadata")
+    if isinstance(metadata, Mapping):
+        result["metadata"] = dict(metadata)
+    return result
+
+
+def build_network_exposure_evidence(
+    *,
+    namespace: str | None,
+    exposures: Iterable[Mapping[str, Any]],
+    annotations: Mapping[str, Any] | None = None,
+    namespace_network_posture: Mapping[str, Any] | None = None,
+    service_type: str | None = None,
+    ingress_class: str | None = None,
+    extra: Mapping[str, Any] | None = None,
+    limit: int = 10,
+) -> NetworkExposureEvidence:
+    """Create evidence payload for network exposure findings.
+
+    Kubernetes producers should route exposure maps through this helper to keep
+    namespace posture data, annotations, and exposure details normalized. The
+    builder trims large exposure lists, preserves key fields like ``port`` and
+    ``ip``, and accepts ``extra`` metadata for resource-specific attributes
+    (e.g., provider IDs or service flags).
+    """
+
+    exposure_entries = [
+        _summarize_exposure(entry)
+        for entry in islice(exposures, limit)
+    ]
+
+    evidence: NetworkExposureEvidence = {
+        "namespace": namespace,
+        "exposures": exposure_entries,
+    }
+
+    if service_type is not None:
+        evidence["service_type"] = service_type
+    if ingress_class is not None:
+        evidence["ingress_class"] = ingress_class
+    if annotations:
+        evidence["annotations"] = annotations
+    if namespace_network_posture:
+        evidence["namespace_network_posture"] = namespace_network_posture
+    if extra:
+        evidence.update(extra)
+
+    return evidence

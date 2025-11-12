@@ -14,7 +14,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
-    clip_sequence,
+    build_identity_user_evidence,
     coerce_mapping_sequence,
     coerce_str_sequence,
     resolve_rule_id,
@@ -88,17 +88,17 @@ class M365GuestAdminProducer(BaseFindingProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-        evidence = {
-            "user_id": resource.external_id,
-            "user_principal_name": data.get("user_principal_name"),
-            "email": data.get("email"),
-            "role_names": role_names,
-            "directory_roles": clip_sequence(data.get("directory_roles")),
-            "invited": data.get("created"),
-            "last_login": data.get("last_login"),
-            "mfa_enrolled": data.get("mfa_enrolled"),
-            "risk_factors": ["guest_identity", "privileged_access"],
-        }
+        evidence = build_identity_user_evidence(
+            user_id=resource.external_id,
+            user_principal_name=data.get("user_principal_name"),
+            email=data.get("email"),
+            role_names=role_names,
+            directory_roles=data.get("directory_roles"),
+            created=data.get("created"),
+            last_login=data.get("last_login"),
+            mfa_enrolled=data.get("mfa_enrolled"),
+            risk_factors=["guest_identity", "privileged_access"],
+        )
 
         summary = (
             "Guest user retains administrative Microsoft 365 permissions, "

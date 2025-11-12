@@ -12,7 +12,10 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import clip_sequence, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    build_ci_pipeline_exposure,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -120,17 +123,17 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
         except Exception:
             webhook_host = None
 
-        evidence = {
-            "project": resource.name or resource.external_id,
-            "source_type": source_type,
-            "repository": source.get("location"),
-            "auth_type": auth_type,
-            "webhook_host": webhook_host,
-            "filter_groups": clip_sequence(filter_groups),
-            "report_build_status": source.get("reportBuildStatus"),
-            "auth_resource": auth.get("resource"),
-            "webhook_present": webhook_present,
-        }
+        evidence = build_ci_pipeline_exposure(
+            project=resource.name or resource.external_id,
+            source_type=source_type,
+            repository=source.get("location"),
+            auth_type=auth_type,
+            auth_resource=auth.get("resource"),
+            webhook_host=webhook_host,
+            webhook_present=webhook_present,
+            filter_groups=filter_groups,
+            report_build_status=source.get("reportBuildStatus"),
+        )
 
         finding = self.create_finding(
             resource=resource,

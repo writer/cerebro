@@ -15,7 +15,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
-    clip_sequence,
+    build_identity_user_evidence,
     coerce_mapping_sequence,
     coerce_str_sequence,
     resolve_rule_id,
@@ -102,20 +102,20 @@ class M365InactivePrivilegedUserProducer(BaseFindingProducer):
 
         role_names = self._resolve_role_names(data.get("role_names"), roles)
 
-        evidence = {
-            "user_id": resource.external_id,
-            "user_principal_name": data.get("user_principal_name"),
-            "email": data.get("email"),
-            "role_names": role_names,
-            "directory_roles": clip_sequence(roles),
-            "last_login": data.get("last_login"),
-            "created": data.get("created"),
-            "mfa_enrolled": data.get("mfa_enrolled"),
-            "risk_factors": self._build_risk_factors(
+        evidence = build_identity_user_evidence(
+            user_id=resource.external_id,
+            user_principal_name=data.get("user_principal_name"),
+            email=data.get("email"),
+            role_names=role_names,
+            directory_roles=roles,
+            last_login=data.get("last_login"),
+            created=data.get("created"),
+            mfa_enrolled=data.get("mfa_enrolled"),
+            risk_factors=self._build_risk_factors(
                 last_login is not None,
                 bool(data.get("mfa_enrolled")),
             ),
-        }
+        )
 
         severity = Severity.CRITICAL if any(
             (name or "").lower() in {"global administrator", "company administrator"}

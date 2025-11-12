@@ -14,6 +14,12 @@ from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
 from cerebro.findings.producers.aws.bucket_cleartext_key import (
     BucketCleartextKeyProducer,
 )
+from cerebro.findings.producers.aws.codebuild_public_trigger import (
+    CodeBuildPublicTriggerProducer,
+)
+from cerebro.findings.producers.aws.codebuild_source_credential import (
+    CodeBuildSharedCredentialProducer,
+)
 from cerebro.findings.producers.azure.storage_secret_artifacts import (
     AzureStorageSecretArtifactProducer,
 )
@@ -21,9 +27,18 @@ from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.gcp.bucket_secret_artifacts import (
     GCPBucketSecretArtifactProducer,
 )
+from cerebro.findings.producers.github.admin_without_2fa import (
+    AdminWithout2FAProducer,
+)
 from cerebro.findings.producers.github.runner_exposure import (
     GithubRunnerNetworkExposureProducer,
     GithubRunnerPublicExposureProducer,
+)
+from cerebro.findings.producers.kubernetes.ingress_public_exposure import (
+    K8sIngressPublicExposureProducer,
+)
+from cerebro.findings.producers.kubernetes.node_public_exposure import (
+    K8sNodePublicExposureProducer,
 )
 from cerebro.findings.producers.kubernetes.service_public_exposure import (
     K8sServicePublicExposureProducer,
@@ -31,8 +46,18 @@ from cerebro.findings.producers.kubernetes.service_public_exposure import (
 from cerebro.findings.producers.m365.file_shared_externally import (
     M365FileSharedExternallyProducer,
 )
+from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
+from cerebro.findings.producers.m365.inactive_admin import (
+    M365InactivePrivilegedUserProducer,
+)
 from cerebro.findings.producers.m365.sharepoint_anonymous_link import (
     M365SharePointAnonymousLinkProducer,
+)
+from cerebro.findings.producers.okta.dormant_admin import (
+    OktaDormantAdminProducer,
+)
+from cerebro.findings.producers.okta.mfa_disabled import (
+    OktaMFADisabledProducer,
 )
 from cerebro.findings.producers.registry import (
     auto_discover_producers,
@@ -103,6 +128,46 @@ def test_producer_files_avoid_literal_slice_limits():
         "Found fixed-length slices in: "
         + ", ".join(str(path) for path in offenders)
     )
+
+
+def test_identity_producers_use_identity_builder():
+    identity_producers = [
+        OktaDormantAdminProducer,
+        OktaMFADisabledProducer,
+        M365GuestAdminProducer,
+        M365InactivePrivilegedUserProducer,
+        AdminWithout2FAProducer,
+    ]
+    for producer_cls in identity_producers:
+        source = inspect.getsource(producer_cls.evaluate)
+        assert "build_identity_user_evidence" in source, (
+            f"{producer_cls.__name__} should use identity evidence builder"
+        )
+
+
+def test_ci_producers_use_ci_builder():
+    ci_producers = [
+        CodeBuildPublicTriggerProducer,
+        CodeBuildSharedCredentialProducer,
+    ]
+    for producer_cls in ci_producers:
+        source = inspect.getsource(producer_cls.evaluate)
+        assert "build_ci_pipeline_exposure" in source, (
+            f"{producer_cls.__name__} should use CI pipeline evidence builder"
+        )
+
+
+def test_network_producers_use_network_builder():
+    network_producers = [
+        K8sServicePublicExposureProducer,
+        K8sIngressPublicExposureProducer,
+        K8sNodePublicExposureProducer,
+    ]
+    for producer_cls in network_producers:
+        source = inspect.getsource(producer_cls.evaluate)
+        assert "build_network_exposure_evidence" in source, (
+            f"{producer_cls.__name__} should use network exposure builder"
+        )
 
 
 # Cross-provider behaviour tests
@@ -183,6 +248,39 @@ def test_storage_secret_evidence_clamped(
     assert len(evidence["matched_objects"]) == 10
 
 
+def test_okta_dormant_admin_evidence_clamps_sequences():
+    producer = OktaDormantAdminProducer()
+    resource = ResourceEntity(
+        external_id="okta-user-1",
+        resource_type="okta.user",
+        provider="okta",
+        name="user1",
+    )
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config={
+            "status": "ACTIVE",
+            "admin_roles": ["SUPER_ADMIN"],
+            "last_login": "2023-01-01T00:00:00Z",
+            "mfa_enrolled": False,
+            "applications": [{"id": i} for i in range(15)],
+            "groups": [f"group-{i}" for i in range(15)],
+            "email": "admin@example.com",
+            "login": "admin@example.com",
+            "is_service_account": False,
+        },
+    )
+
+    findings = producer.evaluate(resource, config, ProducerContext(rule_id=uuid4()))
+    assert findings
+    evidence = findings[0].evidence
+    assert len(evidence["applications"]) == 10
+    assert len(evidence["groups"]) == 10
+    assert "admin_privileges" in evidence["risk_factors"]
+    assert evidence["status"] == "ACTIVE"
+
+
 def test_github_runner_public_exposure_clamps_repositories():
     producer = GithubRunnerPublicExposureProducer()
     resource = ResourceEntity(
@@ -261,6 +359,43 @@ def test_github_runner_network_exposure_evidence():
     assert host_evidence["listening_ports"] == [22]
 
 
+def test_codebuild_public_trigger_evidence_builder():
+    producer = CodeBuildPublicTriggerProducer()
+    resource = ResourceEntity(
+        external_id="project-1",
+        resource_type="aws.codebuild.project",
+        provider="aws",
+        name="project-1",
+    )
+    filter_groups = [[{"type": "EVENT", "pattern": "PUSH"}]] * 12
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config={
+            "source": {
+                "type": "GITHUB",
+                "location": "https://github.com/example/repo",
+                "auth": {
+                    "type": "OAUTH",
+                    "resource": "arn:aws:secretsmanager:us-east-1:123:secret",
+                },
+                "reportBuildStatus": True,
+            },
+            "webhook": {
+                "url": "https://codedeploy.aws/webhook",
+                "filterGroups": filter_groups,
+            },
+        },
+    )
+
+    findings = producer.evaluate(resource, config, ProducerContext(rule_id=uuid4()))
+    assert findings
+    evidence = findings[0].evidence
+    assert len(evidence["filter_groups"]) == 10
+    assert evidence["webhook_present"] is True
+    assert evidence["project"] == "project-1"
+
+
 def test_service_public_exposure_severity_downgrade_with_network_posture():
     producer = K8sServicePublicExposureProducer()
     resource = ResourceEntity(
@@ -303,6 +438,35 @@ def test_service_public_exposure_severity_downgrade_with_network_posture():
     finding = findings_with_posture[0]
     assert finding.severity == Severity.HIGH
     assert finding.evidence["namespace_network_posture"]["default_deny_ingress"]
+
+
+def test_k8s_node_public_exposure_evidence_builder():
+    producer = K8sNodePublicExposureProducer()
+    resource = ResourceEntity(
+        external_id="node-1",
+        resource_type="k8s.node",
+        provider="kubernetes",
+        name="node-1",
+    )
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.utcnow(),
+        normalized_config={
+            "addresses": [
+                {"type": "ExternalIP", "address": "35.85.12.34"},
+                {"type": "Hostname", "address": "node1.example.com"},
+            ],
+            "namespace": "prod",
+            "providerID": "aws:///us-west-2a/i-1234567890",
+        },
+    )
+
+    findings = producer.evaluate(resource, config, ProducerContext(rule_id=uuid4()))
+    assert findings
+    evidence = findings[0].evidence
+    assert evidence["exposures"][0]["ip"] == "35.85.12.34"
+    assert evidence["exposures"][0]["public"] is True
+    assert evidence["provider_id"] == "aws:///us-west-2a/i-1234567890"
 
 
 def test_file_sharing_producers_clip_external_users():

@@ -12,7 +12,10 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import clip_sequence, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    build_ci_pipeline_exposure,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -92,16 +95,17 @@ class CodeBuildSharedCredentialProducer(BaseAWSProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-        evidence = {
-            "project": resource.external_id,
-            "source_type": source_type,
-            "auth_type": auth_type,
-            "auth_resource": auth_resource,
-            "insecure_ssl": insecure_ssl,
-            "report_build_status": report_status,
-            "env_variables": clip_sequence(environment_variables),
-            "logs_enabled": bool(fetch_logs),
-        }
+        evidence = build_ci_pipeline_exposure(
+            project=resource.external_id,
+            source_type=source_type,
+            auth_type=auth_type,
+            auth_resource=auth_resource,
+            insecure_ssl=insecure_ssl,
+            report_build_status=report_status,
+            env_variables=environment_variables,
+            logs_enabled=bool(fetch_logs),
+            extra={"tokens_present": has_token_env},
+        )
 
         summary_flags: list[str] = []
         if insecure_ssl:

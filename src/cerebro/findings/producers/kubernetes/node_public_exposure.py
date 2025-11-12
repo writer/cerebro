@@ -13,7 +13,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    build_network_exposure_evidence,
+    coerce_mapping,
+    resolve_rule_id,
+)
 
 
 def _is_public_ip(value: str | None) -> bool:
@@ -85,7 +89,7 @@ class K8sNodePublicExposureProducer(BaseFindingProducer):
                 exposures.append(
                     {
                         "type": "external_ip",
-                        "address": value,
+                        "ip": value,
                         "public": True,
                     }
                 )
@@ -93,7 +97,7 @@ class K8sNodePublicExposureProducer(BaseFindingProducer):
                 exposures.append(
                     {
                         "type": "hostname",
-                        "hostname": value,
+                        "metadata": {"hostname": value},
                     }
                 )
 
@@ -124,20 +128,23 @@ class K8sNodePublicExposureProducer(BaseFindingProducer):
         for exposure in exposures:
             if exposure["type"] == "external_ip":
                 summary_parts.append(
-                    f"node has public external IP {exposure['address']}"
+                    f"node has public external IP {exposure.get('ip')}"
                 )
             elif exposure["type"] == "hostname":
                 summary_parts.append(
-                    f"node has externally reachable hostname {exposure['hostname']}"
+                    f"node has externally reachable hostname "
+                    f"{exposure.get('metadata', {}).get('hostname')}"
                 )
 
-        evidence = {
-            "namespace": normalized.get("namespace"),
-            "provider_id": normalized.get("providerID"),
-            "unschedulable": normalized.get("unschedulable"),
-            "exposures": exposures,
-            "namespace_network_posture": namespace_posture,
-        }
+        evidence = build_network_exposure_evidence(
+            namespace=normalized.get("namespace"),
+            exposures=exposures,
+            namespace_network_posture=namespace_posture,
+            extra={
+                "provider_id": normalized.get("providerID"),
+                "unschedulable": normalized.get("unschedulable"),
+            },
+        )
 
         finding = self.create_finding(
             resource=resource,

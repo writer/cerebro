@@ -14,7 +14,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    build_network_exposure_evidence,
+    coerce_mapping,
+    resolve_rule_id,
+)
 
 INTERNAL_ANNOTATION_KEYS = {
     "service.beta.kubernetes.io/aws-load-balancer-internal",
@@ -176,13 +180,13 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
                     f"external IP {exposure.get('ip')} assigned to service"
                 )
 
-        evidence = {
-            "service_type": service_type,
-            "namespace": namespace,
-            "exposures": exposures,
-            "annotations": annotations,
-            "namespace_network_posture": namespace_posture,
-        }
+        evidence = build_network_exposure_evidence(
+            namespace=namespace,
+            exposures=exposures,
+            annotations=annotations,
+            namespace_network_posture=namespace_posture,
+            service_type=service_type,
+        )
 
         finding = self.create_finding(
             resource=resource,

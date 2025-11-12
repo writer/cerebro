@@ -15,7 +15,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
-    clip_sequence,
+    build_identity_user_evidence,
     coerce_str_sequence,
     resolve_rule_id,
 )
@@ -94,22 +94,24 @@ class OktaDormantAdminProducer(BaseOktaProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-        evidence = {
-            "user_id": resource.external_id,
-            "login": data.get("login"),
-            "email": data.get("email"),
-            "admin_roles": admin_roles,
-            "last_login": data.get("last_login"),
-            "created": data.get("created"),
-            "status": status,
-            "mfa_enrolled": data.get("mfa_enrolled"),
-            "applications": clip_sequence(data.get("applications")),
-            "groups": clip_sequence(data.get("groups")),
-            "risk_factors": [
-                "admin_privileges",
-                "no_recent_login" if last_login else "never_logged_in",
-            ],
-        }
+        risk_factors = [
+            "admin_privileges",
+            "no_recent_login" if last_login else "never_logged_in",
+        ]
+
+        evidence = build_identity_user_evidence(
+            user_id=resource.external_id,
+            login=data.get("login"),
+            email=data.get("email"),
+            status=status,
+            mfa_enrolled=data.get("mfa_enrolled"),
+            last_login=data.get("last_login"),
+            created=data.get("created"),
+            admin_roles=admin_roles,
+            applications=data.get("applications"),
+            groups=data.get("groups"),
+            risk_factors=risk_factors,
+        )
 
         summary = (
             "Okta administrator without sign-in activity for more than 60 days "
