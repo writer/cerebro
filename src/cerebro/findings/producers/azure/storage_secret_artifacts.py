@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from collections.abc import Mapping
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseAzureProducer
 
@@ -35,14 +41,14 @@ SUSPICIOUS_EXTENSIONS = {
 }
 
 
-def _is_public(normalized: Dict[str, object]) -> bool:
+def _is_public(normalized: Mapping[str, object]) -> bool:
     public_access = normalized.get("public_access")
     if public_access in {"container", "blob"}:
         return True
     return bool(normalized.get("allow_blob_public_access"))
 
 
-def _is_suspicious(name: Optional[str]) -> bool:
+def _is_suspicious(name: str | None) -> bool:
     if not name:
         return False
     lowered = name.lower()
@@ -56,7 +62,7 @@ class AzureStorageSecretArtifactProducer(BaseAzureProducer):
     """Flags suspicious credential artifacts in public Azure storage containers."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"azure.storage.container"}
 
     @property
@@ -73,29 +79,28 @@ class AzureStorageSecretArtifactProducer(BaseAzureProducer):
 
     @property
     def description(self) -> str:
-        return "Azure storage container contains files indicative of credentials while publicly accessible"
+        return (
+            "Azure storage container contains files indicative of credentials while "
+            "publicly accessible"
+        )
 
     def evaluate(
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
-        normalized = config.normalized_config
+        context: Mapping[str, object] | None = None,
+    ) -> list[FindingEntity]:
+        normalized = config.normalized_config or {}
 
         if not _is_public(normalized):
             return []
 
-        samples = normalized.get("objectsSample", []) or []
+        samples = list(normalized.get("objectsSample", []) or [])
         matches = [obj for obj in samples if _is_suspicious(obj.get("name"))]
         if not matches:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "container": resource.name,
@@ -111,7 +116,9 @@ class AzureStorageSecretArtifactProducer(BaseAzureProducer):
             rule_id=rule_id,
             title=f"Public container {resource.name} contains potential secrets",
             summary=(
-                f"Azure container {resource.name} is publicly accessible and contains objects resembling credentials or API keys."
+                "Azure container "
+                f"{resource.name} is publicly accessible and contains objects "
+                "resembling credentials or API keys."
             ),
             evidence=evidence,
             severity=self.severity,

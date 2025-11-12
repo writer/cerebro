@@ -60,7 +60,9 @@ jobs:
             src/cerebro/findings/producers/kubernetes/node_public_exposure.py \
             src/cerebro/findings/producers/kubernetes/service_account_token.py \
             src/cerebro/findings/producers/kubernetes/network_policy.py \
-            src/cerebro/findings/producers/utils
+            src/cerebro/findings/producers/utils \
+            src/cerebro/findings/producers/azure \
+            src/cerebro/findings/producers/sentinelone
 
       - name: Type-check with mypy
         run: |
@@ -68,7 +70,9 @@ jobs:
             src/cerebro/findings/producers/aws \
             src/cerebro/findings/producers/github \
             src/cerebro/findings/producers/kubernetes \
-            src/cerebro/findings/producers/utils
+            src/cerebro/findings/producers/utils \
+            src/cerebro/findings/producers/azure \
+            src/cerebro/findings/producers/sentinelone
 
   frontend-lint:
     name: Frontend lint

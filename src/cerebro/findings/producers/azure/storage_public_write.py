@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from collections.abc import Mapping
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseAzureProducer
 
@@ -15,7 +21,7 @@ class AzureStoragePublicWriteProducer(BaseAzureProducer):
     """Flags blob containers with public write access."""
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"azure.storage.container"}
 
     @property
@@ -38,20 +44,16 @@ class AzureStoragePublicWriteProducer(BaseAzureProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, object]] = None,
-    ) -> List[FindingEntity]:
-        normalized = config.normalized_config
+        context: Mapping[str, object] | None = None,
+    ) -> list[FindingEntity]:
+        normalized = config.normalized_config or {}
         public_access = normalized.get("public_access")
         allow_account_public = normalized.get("allow_blob_public_access")
 
         if public_access not in {"container", "blob"}:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "container": resource.name,
@@ -68,7 +70,9 @@ class AzureStoragePublicWriteProducer(BaseAzureProducer):
             rule_id=rule_id,
             title=f"Container {resource.name} allows public write access",
             summary=(
-                f"Azure storage container {resource.name} is publicly accessible and allows anonymous write operations."
+                "Azure storage container "
+                f"{resource.name} is publicly accessible and allows anonymous "
+                "write operations."
             ),
             evidence=evidence,
             severity=self.severity,

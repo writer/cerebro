@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from collections.abc import Mapping
+from typing import Any
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.findings.producers.registry import register_producer
 
 from .base import BaseSentinelOneProducer
+
+ContextData = Mapping[str, Any]
+ThreatData = Mapping[str, Any]
 
 
 @register_producer
@@ -32,10 +41,13 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
 
     @property
     def remediation(self) -> str:
-        return "Isolate the endpoint, block the identified C2 infrastructure, and perform full eradication"
+        return (
+            "Isolate the endpoint, block the identified C2 infrastructure, and "
+            "perform full eradication"
+        )
 
     @property
-    def framework_mappings(self) -> Dict[str, List[str]]:
+    def framework_mappings(self) -> dict[str, list[str]]:
         return {
             "nist_800_53": ["SC-7", "SI-4"],
             "cis": ["13.10"],
@@ -45,9 +57,9 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[FindingEntity]:
-        findings: List[FindingEntity] = []
+        context: ContextData | None = None,
+    ) -> list[FindingEntity]:
+        findings: list[FindingEntity] = []
 
         threats = self._extract_threats(config)
         if not threats:
@@ -83,7 +95,7 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
 
         return findings
 
-    def _has_c2_indicator(self, threat: Dict[str, Any]) -> bool:
+    def _has_c2_indicator(self, threat: ThreatData) -> bool:
         categories = {str(cat).lower() for cat in threat.get("categories", []) if cat}
         tactics = {str(tac).lower() for tac in threat.get("mitre_tactics", []) if tac}
         domains = threat.get("c2_domains") or []
@@ -96,12 +108,15 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
             return True
         return False
 
-    def _build_title(self, resource: ResourceEntity, threat: Dict[str, Any]) -> str:
+    def _build_title(self, resource: ResourceEntity, threat: ThreatData) -> str:
         host_name = resource.name or resource.external_id
         indicator = threat.get("c2_domains", ["unknown destination"])[0]
-        return f"SentinelOne observed command-and-control traffic from {host_name} to {indicator}"
+        return (
+            "SentinelOne observed command-and-control traffic from "
+            f"{host_name} to {indicator}"
+        )
 
-    def _build_summary(self, resource: ResourceEntity, threat: Dict[str, Any]) -> str:
+    def _build_summary(self, resource: ResourceEntity, threat: ThreatData) -> str:
         host_name = resource.name or resource.external_id
         domains = threat.get("c2_domains") or []
         domain_text = ", ".join(domains) if domains else "unknown destinations"
@@ -113,7 +128,7 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
             parts.append(f"detected at {detected_at}")
         return f"{', '.join(parts)} from {host_name}."
 
-    def _build_evidence(self, threat: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_evidence(self, threat: ThreatData) -> dict[str, Any]:
         return {
             "classification": threat.get("classification"),
             "confidence": threat.get("confidence"),
