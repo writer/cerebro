@@ -15,6 +15,7 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    clip_sequence,
     coerce_mapping_sequence,
     coerce_str_sequence,
     resolve_rule_id,
@@ -106,7 +107,7 @@ class M365InactivePrivilegedUserProducer(BaseFindingProducer):
             "user_principal_name": data.get("user_principal_name"),
             "email": data.get("email"),
             "role_names": role_names,
-            "directory_roles": roles,
+            "directory_roles": clip_sequence(roles),
             "last_login": data.get("last_login"),
             "created": data.get("created"),
             "mfa_enrolled": data.get("mfa_enrolled"),
