@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
-
 from cerebro.domain.entities import (
     ConfigEntity,
     FindingEntity,
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
 
 from .base import BaseGitHubProducer
 
@@ -45,10 +43,10 @@ class GithubWorkflowDefaultWriteProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
-        permissions = normalized.get("actionsPermissions") or {}
+        permissions = coerce_mapping(normalized.get("actionsPermissions")) or {}
         if not permissions:
             return []
 
@@ -67,10 +65,12 @@ class GithubWorkflowDefaultWriteProducer(BaseGitHubProducer):
             "actions_permissions": permissions,
         }
 
-        title = f"Repository {resource.name or resource.external_id} grants workflow write permissions"
+        repo_name = resource.name or resource.external_id
+        title = f"Repository {repo_name} grants workflow write permissions"
         summary = (
-            "GitHub Actions workflows execute with default write permissions or can approve pull request reviews,"
-            " increasing the blast radius of compromised workflows."
+            "GitHub Actions workflows execute with default write permissions or "
+            "can approve pull request reviews, increasing the blast radius of "
+            "compromised workflows."
         )
 
         finding = self.create_finding(

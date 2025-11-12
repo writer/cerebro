@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Mapping, Sequence
-from typing import Any, Iterable, cast
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, cast
 
 from cerebro.domain.entities import (
     ConfigEntity,
@@ -12,12 +12,19 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
 from cerebro.telemetry.schemas import HostTelemetry, NetworkConnection
 
 from .base import BaseGitHubProducer
-def _get_value(source: Mapping[str, Any] | HostTelemetry, key: str, default: Any = None) -> Any:
+
+
+def _get_value(
+    source: Mapping[str, Any] | HostTelemetry,
+    key: str,
+    default: Any = None,
+) -> Any:
     if isinstance(source, Mapping):
         return source.get(key, default)
     return getattr(source, key, default)
@@ -50,9 +57,16 @@ def _normalize_network_connections(
         elif isinstance(item, Mapping):
             try:
                 results.append(NetworkConnection(**item))
-            except Exception:  # pragma: no cover - defensive
+            except (TypeError, ValueError):  # pragma: no cover - defensive
                 continue
     return results
+
+
+def _coerce_mapping_sequence(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [item for item in value if isinstance(item, Mapping)]
+    mapping = coerce_mapping(value)
+    return [mapping] if mapping is not None else []
 
 
 @register_producer
@@ -88,14 +102,12 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
-        runner = cast(Mapping[str, Any], normalized.get("runner", {}))
-        runner_group = cast(Mapping[str, Any], normalized.get("runner_group") or {})
-        repositories = cast(
-            list[Mapping[str, Any]], normalized.get("repositories") or []
-        )
+        runner = coerce_mapping(normalized.get("runner")) or {}
+        runner_group = coerce_mapping(normalized.get("runner_group")) or {}
+        repositories = _coerce_mapping_sequence(normalized.get("repositories"))
 
         if runner.get("ephemeral") is True:
             return []
@@ -103,9 +115,15 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         allows_public_repos = runner_group.get("allows_public_repositories")
         visibility = runner_group.get("visibility")
 
-        public_repos = [repo for repo in repositories if repo.get("visibility") == "public"]
+        public_repos = [
+            repo for repo in repositories if repo.get("visibility") == "public"
+        ]
 
-        if not allows_public_repos and visibility not in {"all", "public"} and not public_repos:
+        if (
+            not allows_public_repos
+            and visibility not in {"all", "public"}
+            and not public_repos
+        ):
             return []
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
@@ -127,8 +145,9 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         }
 
         summary = (
-            f"Runner {runner.get('name') or resource.name} is assigned to group"
-            f" '{runner_group.get('name')}' which permits public repositories."
+            "Runner "
+            f"{runner.get('name') or resource.name} is assigned to group "
+            f"'{runner_group.get('name')}' which permits public repositories."
         )
 
         finding = self.create_finding(
@@ -166,7 +185,7 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         if not context:
             return []
@@ -226,7 +245,8 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
         }
 
         summary = (
-            f"Runner host {runner_name} listens on {listening_ports} while exposed to public IPs"
+            "Runner host "
+            f"{runner_name} listens on {listening_ports} while exposed to public IPs"
         )
 
         finding = self.create_finding(

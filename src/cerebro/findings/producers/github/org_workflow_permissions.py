@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
-
 from cerebro.domain.entities import (
     ConfigEntity,
     FindingEntity,
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
 
 from .base import BaseGitHubProducer
 
@@ -39,15 +37,19 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
 
     @property
     def description(self) -> str:
-        return "Organization workflows run with write privileges or allow approval of forked pull requests"
+        return (
+            "Organization workflows run with write privileges or allow approval "
+            "of forked pull requests."
+        )
 
     def evaluate(
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
-        permissions = (config.normalized_config or {}).get("actionsPermissions") or {}
+        normalized = config.normalized_config or {}
+        permissions = coerce_mapping(normalized.get("actionsPermissions")) or {}
         if not permissions:
             return []
 
@@ -81,11 +83,14 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
 
         summary_detail = ", ".join(summary_parts)
 
+        subject = resource.name or resource.external_id
         finding = self.create_finding(
             resource=resource,
             rule_id=rule_id,
-            title=f"Organization {resource.name or resource.external_id} allows untrusted workflow defaults",
-            summary=f"GitHub organization {resource.external_id} {summary_detail}.",
+            title=f"Organization {subject} allows untrusted workflow defaults",
+            summary=(
+                f"GitHub organization {resource.external_id} {summary_detail}."
+            ),
             evidence=evidence,
             severity=self.severity,
         )

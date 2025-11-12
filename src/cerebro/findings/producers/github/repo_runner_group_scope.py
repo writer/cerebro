@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from cerebro.domain.entities import (
@@ -11,13 +11,14 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
 
 from .base import BaseGitHubProducer
 
 
-def _is_broad_runner_group(group_info: dict[str, Any] | None) -> bool:
+def _is_broad_runner_group(group_info: Mapping[str, Any] | None) -> bool:
     if not group_info:
         return False
 
@@ -35,7 +36,9 @@ def _is_broad_runner_group(group_info: dict[str, Any] | None) -> bool:
     return False
 
 
-def _references_multiple_repos(repositories: list[dict[str, Any]] | None) -> bool:
+def _references_multiple_repos(
+    repositories: Sequence[Mapping[str, Any]] | None,
+) -> bool:
     if not repositories:
         return False
     return len(repositories) > 1
@@ -72,12 +75,12 @@ class GithubRepoRunnerGroupScopeProducer(BaseGitHubProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
-        runner_meta = normalized.get("runner") or {}
-        runner_group = normalized.get("runner_group") or {}
-        repositories = normalized.get("repositories") or []
+        runner_meta = coerce_mapping(normalized.get("runner")) or {}
+        runner_group = coerce_mapping(normalized.get("runner_group")) or {}
+        repositories = _coerce_mapping_sequence(normalized.get("repositories"))
 
         risky_group = _is_broad_runner_group(runner_group)
         multi_repo = _references_multiple_repos(repositories)
@@ -117,3 +120,10 @@ class GithubRepoRunnerGroupScopeProducer(BaseGitHubProducer):
         )
 
         return [finding]
+
+
+def _coerce_mapping_sequence(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [item for item in value if isinstance(item, Mapping)]
+    mapping = coerce_mapping(value)
+    return [mapping] if mapping is not None else []
