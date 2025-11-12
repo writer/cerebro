@@ -5,7 +5,7 @@ state in the collector contract.  It currently focuses on S3, EC2, and IAM data
 required for risk analyses.
 """
 
-from typing import Any, Dict, List, Optional, AsyncGenerator
+from typing import Any, Dict, List, Optional, AsyncGenerator, Set
 from datetime import datetime
 import json
 import logging
@@ -436,6 +436,10 @@ class AWSProvider(BaseProvider):
                 acm_client = self._session.client('acm')
             except (ClientError, BotoCoreError):
                 acm_client = None
+            try:
+                ec2_client = self._session.client('ec2')
+            except (ClientError, BotoCoreError):
+                ec2_client = None
             response = elb.describe_load_balancers(LoadBalancerArns=[lb_arn])
             load_balancers = response.get('LoadBalancers', [])
             if not load_balancers:
@@ -561,6 +565,68 @@ class AWSProvider(BaseProvider):
                         "targets": tg_targets,
                     }
                 )
+
+            instance_target_ids: Set[str] = set()
+            for target_group in target_groups:
+                if target_group.get("targetType") != "instance":
+                    continue
+                for target in target_group.get("targets") or []:
+                    target_id = target.get("id")
+                    if target_id:
+                        instance_target_ids.add(target_id)
+
+            instance_details: Dict[str, Dict[str, Any]] = {}
+            if instance_target_ids and ec2_client:
+                instance_id_list = list(instance_target_ids)
+                for index in range(0, len(instance_id_list), 100):
+                    batch_ids = instance_id_list[index : index + 100]
+                    try:
+                        instances_response = ec2_client.describe_instances(
+                            InstanceIds=batch_ids
+                        )
+                    except ClientError as exc:
+                        logger.warning(
+                            "Failed to describe instances %s: %s",
+                            batch_ids,
+                            exc,
+                        )
+                        continue
+
+                    for reservation in instances_response.get('Reservations', []):
+                        for instance in reservation.get('Instances', []):
+                            instance_id = instance.get('InstanceId')
+                            if not instance_id:
+                                continue
+
+                            public_ip = instance.get('PublicIpAddress')
+                            public_dns = instance.get('PublicDnsName')
+                            network_interfaces = instance.get('NetworkInterfaces') or []
+                            interface_public_ips: List[str] = []
+                            for interface in network_interfaces:
+                                association = interface.get('Association') or {}
+                                interface_ip = association.get('PublicIp')
+                                if interface_ip:
+                                    interface_public_ips.append(interface_ip)
+
+                            instance_details[instance_id] = {
+                                "publicIpAddress": public_ip,
+                                "publicDnsName": public_dns,
+                                "networkInterfacePublicIps": interface_public_ips,
+                                "hasPublicInterface": bool(public_ip or interface_public_ips),
+                                "state": (instance.get('State') or {}).get('Name'),
+                                "privateIpAddress": instance.get('PrivateIpAddress'),
+                                "subnetId": instance.get('SubnetId'),
+                                "vpcId": instance.get('VpcId'),
+                            }
+
+            if instance_details:
+                for target_group in target_groups:
+                    if target_group.get("targetType") != "instance":
+                        continue
+                    for target in target_group.get("targets") or []:
+                        target_id = target.get("id")
+                        if target_id and target_id in instance_details:
+                            target["instance"] = instance_details[target_id]
 
             availability_zones = []
             for az in lb.get('AvailabilityZones', []) or []:

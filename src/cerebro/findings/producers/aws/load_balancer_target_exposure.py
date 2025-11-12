@@ -88,28 +88,72 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
                     continue
 
                 target_group = target_group_by_arn[tg_arn]
-                if target_group.get("targetType") != "ip":
-                    continue
+                target_type = (target_group.get("targetType") or "").lower()
 
-                public_targets = [
-                    target
-                    for target in target_group.get("targets") or []
-                    if _is_public_ip(target.get("id"))
-                ]
+                if target_type == "ip":
+                    public_targets = [
+                        target
+                        for target in target_group.get("targets") or []
+                        if _is_public_ip(target.get("id"))
+                    ]
 
-                if not public_targets:
-                    continue
+                    if not public_targets:
+                        continue
 
-                affected.append(
-                    {
-                        "listenerArn": listener.get("listenerArn"),
-                        "port": listener.get("port"),
-                        "targetGroupArn": tg_arn,
-                        "publicTargets": [
-                            target.get("id") for target in public_targets
-                        ],
-                    }
-                )
+                    affected.append(
+                        {
+                            "listenerArn": listener.get("listenerArn"),
+                            "port": listener.get("port"),
+                            "targetGroupArn": tg_arn,
+                            "targetType": "ip",
+                            "publicTargets": [
+                                target.get("id") for target in public_targets
+                            ],
+                        }
+                    )
+
+                elif target_type == "instance":
+                    public_instances = []
+                    for target in target_group.get("targets") or []:
+                        instance_details = target.get("instance") or {}
+                        has_public_interface = instance_details.get(
+                            "hasPublicInterface"
+                        )
+                        public_ip = instance_details.get("publicIpAddress")
+                        interface_ips = (
+                            instance_details.get("networkInterfacePublicIps") or []
+                        )
+
+                        if not (
+                            has_public_interface
+                            or _is_public_ip(public_ip)
+                            or any(_is_public_ip(ip) for ip in interface_ips)
+                        ):
+                            continue
+
+                        public_instances.append(
+                            {
+                                "instanceId": target.get("id"),
+                                "publicIpAddress": public_ip,
+                                "interfacePublicIps": interface_ips,
+                                "publicDnsName": instance_details.get("publicDnsName"),
+                                "subnetId": instance_details.get("subnetId"),
+                                "vpcId": instance_details.get("vpcId"),
+                            }
+                        )
+
+                    if not public_instances:
+                        continue
+
+                    affected.append(
+                        {
+                            "listenerArn": listener.get("listenerArn"),
+                            "port": listener.get("port"),
+                            "targetGroupArn": tg_arn,
+                            "targetType": "instance",
+                            "publicInstances": public_instances,
+                        }
+                    )
 
         if not affected:
             return []
@@ -128,12 +172,24 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
 
         summary_parts = []
         for exposure in affected:
-            public_targets = ", ".join(exposure["publicTargets"])
-            summary_parts.append(
-                "listener "
-                f"{exposure['listenerArn']} forwards to public targets "
-                f"{public_targets}"
-            )
+            if exposure.get("targetType") == "instance":
+                instance_ids = ", ".join(
+                    instance.get("instanceId") or ""
+                    for instance in exposure.get("publicInstances") or []
+                    if instance.get("instanceId")
+                )
+                summary_parts.append(
+                    "listener "
+                    f"{exposure['listenerArn']} forwards to public instances "
+                    f"{instance_ids}"
+                )
+            else:
+                public_targets = ", ".join(exposure.get("publicTargets", []))
+                summary_parts.append(
+                    "listener "
+                    f"{exposure['listenerArn']} forwards to public targets "
+                    f"{public_targets}"
+                )
         summary = "; ".join(summary_parts)
 
         finding = self.create_finding(

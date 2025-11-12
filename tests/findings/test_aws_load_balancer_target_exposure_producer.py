@@ -107,6 +107,101 @@ def test_private_ip_target_not_flagged() -> None:
     assert findings == []
 
 
+def test_instance_target_with_public_interface_flagged() -> None:
+    producer = AwsLoadBalancerTargetExposureProducer()
+    resource = _make_resource("arn:aws:elasticloadbalancing:lb/app/instance-public")
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.now(timezone.utc),  # noqa: UP017
+        normalized_config={
+            "loadBalancerArn": resource.external_id,
+            "scheme": "internet-facing",
+            "listeners": [
+                {
+                    "listenerArn": "arn:listener/https",
+                    "port": 443,
+                    "protocol": "HTTPS",
+                    "defaultActions": [
+                        {
+                            "type": "forward",
+                            "targetGroupArn": "arn:target-group/instance-public",
+                        }
+                    ],
+                }
+            ],
+            "targetGroups": [
+                {
+                    "targetGroupArn": "arn:target-group/instance-public",
+                    "targetType": "instance",
+                    "targets": [
+                        {
+                            "id": "i-1234567890abcdef0",
+                            "instance": {
+                                "publicIpAddress": "8.8.4.4",
+                                "networkInterfacePublicIps": ["8.8.4.4"],
+                                "hasPublicInterface": True,
+                                "publicDnsName": "example.amazonaws.com",
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    findings = producer.evaluate(resource, config)
+
+    assert len(findings) == 1
+    exposure = findings[0].evidence["exposures"][0]
+    assert exposure["targetType"] == "instance"
+    assert exposure["publicInstances"][0]["instanceId"] == "i-1234567890abcdef0"
+
+
+def test_instance_target_without_public_interface_not_flagged() -> None:
+    producer = AwsLoadBalancerTargetExposureProducer()
+    resource = _make_resource("arn:aws:elasticloadbalancing:lb/app/instance-private")
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.now(timezone.utc),  # noqa: UP017
+        normalized_config={
+            "loadBalancerArn": resource.external_id,
+            "scheme": "internet-facing",
+            "listeners": [
+                {
+                    "listenerArn": "arn:listener/http",
+                    "port": 80,
+                    "protocol": "HTTP",
+                    "defaultActions": [
+                        {
+                            "type": "forward",
+                            "targetGroupArn": "arn:target-group/instance-private",
+                        }
+                    ],
+                }
+            ],
+            "targetGroups": [
+                {
+                    "targetGroupArn": "arn:target-group/instance-private",
+                    "targetType": "instance",
+                    "targets": [
+                        {
+                            "id": "i-0abcdef1234567890",
+                            "instance": {
+                                "hasPublicInterface": False,
+                                "networkInterfacePublicIps": [],
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    findings = producer.evaluate(resource, config)
+
+    assert findings == []
+
+
 def test_internal_load_balancer_not_flagged() -> None:
     producer = AwsLoadBalancerTargetExposureProducer()
     resource = _make_resource(
