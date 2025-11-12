@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from cerebro.domain.entities import (
@@ -11,8 +11,9 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
 
 from .base import BaseAWSProducer
 
@@ -71,8 +72,9 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
     @property
     def remediation(self) -> str:
         return (
-            "Remove the exposed objects and rotate affected credentials."
-            " Enforce block public access or move secrets to a dedicated secret manager."
+            "Remove the exposed objects and rotate affected credentials. "
+            "Enforce block public access or move secrets to a dedicated secret "
+            "manager."
         )
 
     @property
@@ -85,16 +87,18 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         findings: list[FindingEntity] = []
 
         normalized = config.normalized_config or {}
-        objects_sample = normalized.get("objectsSample", [])
+        objects_sample = _coerce_sequence_of_mappings(normalized.get("objectsSample"))
         if not objects_sample:
             return findings
 
-        matches = [obj for obj in objects_sample if _is_suspicious_key(obj.get("key"))]
+        matches = [
+            obj for obj in objects_sample if _is_suspicious_key(obj.get("key"))
+        ]
         if not matches:
             return findings
 
@@ -124,24 +128,49 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         finding = self.create_finding(
             resource=resource,
             rule_id=rule_id,
-            title=f"Public bucket {resource.name or resource.external_id} contains potential secrets",
-            summary=
-            (
-                f"S3 bucket {resource.name or resource.external_id} is publicly accessible and contains files "
-                f"indicative of credentials or API keys."
+            title=(
+                "Public bucket "
+                f"{resource.name or resource.external_id} contains potential secrets"
+            ),
+            summary=(
+                "S3 bucket "
+                f"{resource.name or resource.external_id} is publicly accessible "
+                "and contains files indicative of credentials or API keys."
             ),
             evidence=evidence,
             severity=self.severity,
         )
 
-        finding.fingerprint = self._build_fingerprint(rule_id, resource.external_id, matches)
+        finding.fingerprint = self._build_fingerprint(
+            rule_id,
+            resource.external_id,
+            matches,
+        )
         findings.append(finding)
         return findings
 
     @staticmethod
-    def _build_fingerprint(rule_id: Any, bucket_id: str, matches: list[dict[str, Any]]) -> str:
+    def _build_fingerprint(
+        rule_id: Any,
+        bucket_id: str,
+        matches: Sequence[Mapping[str, Any]],
+    ) -> str:
         from hashlib import sha256
 
-        key_fragment = ";".join(sorted(obj.get("key", "") for obj in matches[:5]))
+        key_fragment = ";".join(
+            sorted(obj.get("key", "") for obj in matches[:5])
+        )
         raw = f"{rule_id}|{bucket_id}|{key_fragment}"
         return sha256(raw.encode()).hexdigest()
+
+
+def _coerce_sequence_of_mappings(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        entries: list[Mapping[str, Any]] = []
+        for item in value:
+            mapping = coerce_mapping(item)
+            if mapping is not None:
+                entries.append(mapping)
+        return entries
+    mapping = coerce_mapping(value)
+    return [mapping] if mapping is not None else []
