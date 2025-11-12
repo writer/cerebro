@@ -29,6 +29,10 @@ SENSITIVE_HOST_PATH_PREFIXES: set[str] = {
     "/var/run/crio",
     "/var/lib/kubelet",
     "/var/lib/docker",
+    "/etc/kubernetes",
+    "/var/lib/etcd",
+    "/etc/ssh",
+    "/root",
 }
 
 
@@ -151,7 +155,7 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
                 if not host_path:
                     continue
 
-                path = str(host_path.get("path"))
+                path = str(host_path.get("path", ""))
                 exposures.append(
                     {
                         "type": "host_path_mount",
@@ -161,7 +165,7 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
                     }
                 )
 
-                if any(
+                if path == "/" or any(
                     path.startswith(prefix) for prefix in SENSITIVE_HOST_PATH_PREFIXES
                 ):
                     exposures.append(
@@ -171,6 +175,20 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
                             "path": path,
                         }
                     )
+
+            for port in container.get("ports") or []:
+                host_port = port.get("hostPort")
+                if not host_port:
+                    continue
+                exposures.append(
+                    {
+                        "type": "host_port",
+                        "container": container_name,
+                        "hostPort": host_port,
+                        "containerPort": port.get("containerPort"),
+                        "protocol": port.get("protocol"),
+                    }
+                )
 
         if not exposures:
             return []
@@ -212,11 +230,21 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
                 summary_parts.append(
                     f"container {exposure.get('container')} grants capabilities {caps}"
                 )
+            elif exposure_type == "host_path_mount":
+                path = exposure.get("path")
+                summary_parts.append(
+                    "container " f"{exposure.get('container')} mounts host path {path}"
+                )
             elif exposure_type == "sensitive_host_path":
                 path = exposure.get("path")
                 summary_parts.append(
                     "container "
                     f"{exposure.get('container')} mounts sensitive host path {path}"
+                )
+            elif exposure_type == "host_port":
+                summary_parts.append(
+                    f"container {exposure.get('container')} exposes host port "
+                    f"{exposure.get('hostPort')}"
                 )
 
         evidence = {

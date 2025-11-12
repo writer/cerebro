@@ -168,6 +168,51 @@ class KubernetesProvider(BaseProvider):
                     },
                 )
 
+        if not resource_types or "k8s.node" in resource_types:
+            nodes = await call_sync_with_retries(
+                lambda: self._core.list_node(),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+
+            for node in nodes.items:
+                metadata = node.metadata
+                status = node.status or client.V1NodeStatus()
+
+                addresses = [
+                    {
+                        "type": address.type,
+                        "address": address.address,
+                    }
+                    for address in status.addresses or []
+                ]
+
+                taints = []
+                for taint in getattr(node.spec, "taints", []) or []:
+                    taints.append(
+                        {
+                            "key": taint.key,
+                            "value": taint.value,
+                            "effect": taint.effect,
+                        }
+                    )
+
+                yield ResourceInfo(
+                    external_id=metadata.name,
+                    name=metadata.name,
+                    resource_type="k8s.node",
+                    metadata={
+                        "labels": metadata.labels or {},
+                        "annotations": metadata.annotations or {},
+                        "provider_id": getattr(node.spec, "provider_id", None),
+                        "unschedulable": bool(
+                            getattr(node.spec, "unschedulable", False)
+                        ),
+                        "addresses": addresses,
+                        "taints": taints,
+                    },
+                )
+
         if not resource_types or "k8s.pod" in resource_types:
             pods = await call_sync_with_retries(
                 lambda: self._core.list_pod_for_all_namespaces(),
@@ -367,6 +412,13 @@ class KubernetesProvider(BaseProvider):
                 logger=logger,
             )
             normalized_config = self._build_service_config(service)
+        elif resource.resource_type == "k8s.node":
+            node = await call_sync_with_retries(
+                lambda: self._core.read_node(name=resource.external_id),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+            normalized_config = self._build_node_config(node)
         elif resource.resource_type == "k8s.cluster_role_binding":
             binding = await call_sync_with_retries(
                 lambda: self._rbac.read_cluster_role_binding(name=resource.external_id),
@@ -545,6 +597,53 @@ class KubernetesProvider(BaseProvider):
             "sessionAffinity": getattr(spec, "session_affinity", None),
             "loadBalancer": load_balancer,
             "annotations": metadata.annotations or {},
+        }
+
+    def _build_node_config(self, node: client.V1Node) -> dict[str, Any]:
+        metadata = node.metadata
+        status = node.status or client.V1NodeStatus()
+        spec = node.spec or client.V1NodeSpec()
+
+        addresses = [
+            {
+                "type": address.type,
+                "address": address.address,
+            }
+            for address in status.addresses or []
+        ]
+
+        taints = []
+        for taint in spec.taints or []:
+            taints.append(
+                {
+                    "key": taint.key,
+                    "value": taint.value,
+                    "effect": taint.effect,
+                }
+            )
+
+        conditions = []
+        for condition in status.conditions or []:
+            conditions.append(
+                {
+                    "type": condition.type,
+                    "status": condition.status,
+                    "reason": getattr(condition, "reason", None),
+                }
+            )
+
+        return {
+            "name": metadata.name,
+            "labels": metadata.labels or {},
+            "annotations": metadata.annotations or {},
+            "providerID": getattr(spec, "provider_id", None),
+            "unschedulable": bool(getattr(spec, "unschedulable", False)),
+            "addresses": addresses,
+            "taints": taints,
+            "conditions": conditions,
+            "creation_timestamp": metadata.creation_timestamp.isoformat()
+            if metadata.creation_timestamp
+            else None,
         }
 
     def _build_cluster_role_binding_config(

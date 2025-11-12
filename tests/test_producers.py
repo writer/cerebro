@@ -31,6 +31,9 @@ from cerebro.findings.producers.kubernetes.cluster_admin_binding import (
 from cerebro.findings.producers.kubernetes.cluster_admin_wildcard import (
     K8sClusterAdminWildcardBindingProducer,
 )
+from cerebro.findings.producers.kubernetes.node_public_exposure import (
+    K8sNodePublicExposureProducer,
+)
 from cerebro.findings.producers.kubernetes.service_public_exposure import (
     K8sServicePublicExposureProducer,
 )
@@ -673,6 +676,89 @@ class TestKubernetesProducers:
 
         assert len(findings) == 0
 
+    def test_privileged_pod_host_port(self):
+        producer = K8sPrivilegedPodProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/hostport-pod",
+            resource_type="k8s.pod",
+            provider="kubernetes",
+            name="hostport-pod",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "containers": [
+                    {
+                        "name": "app",
+                        "ports": [
+                            {
+                                "containerPort": 8443,
+                                "hostPort": 30443,
+                                "protocol": "TCP",
+                            }
+                        ],
+                    }
+                ],
+                "volumes": [],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.HIGH
+        exposure_types = {exp["type"] for exp in finding.evidence["exposures"]}
+        assert "host_port" in exposure_types
+
+    def test_privileged_pod_sensitive_host_path_prefix(self):
+        producer = K8sPrivilegedPodProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/kube-secrets",
+            resource_type="k8s.pod",
+            provider="kubernetes",
+            name="kube-secrets",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "containers": [
+                    {
+                        "name": "app",
+                        "volumeMounts": [
+                            {
+                                "name": "kubeconfig",
+                                "mountPath": "/etc/kubernetes/admin.conf",
+                                "readOnly": True,
+                            }
+                        ],
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kubeconfig",
+                        "hostPath": {"path": "/etc/kubernetes/admin.conf"},
+                    }
+                ],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        exposure_types = {exp["type"] for exp in finding.evidence["exposures"]}
+        assert "sensitive_host_path" in exposure_types
+
     def test_ingress_plain_http(self):
         producer = K8sIngressPublicExposureProducer()
 
@@ -992,6 +1078,92 @@ class TestKubernetesProducers:
                         "nodePort": None,
                     }
                 ],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_node_public_external_ip(self):
+        producer = K8sNodePublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="node-1",
+            resource_type="k8s.node",
+            provider="kubernetes",
+            name="node-1",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "addresses": [
+                    {"type": "InternalIP", "address": "10.1.0.3"},
+                    {"type": "ExternalIP", "address": "8.8.4.4"},
+                ],
+                "providerID": "aws:///us-west-2a/i-1234567890",
+                "unschedulable": False,
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        evidence = finding.evidence
+        assert any(exp["type"] == "external_ip" for exp in evidence["exposures"])
+
+    def test_node_hostname_only(self):
+        producer = K8sNodePublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="node-2",
+            resource_type="k8s.node",
+            provider="kubernetes",
+            name="node-2",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "addresses": [
+                    {"type": "Hostname", "address": "public.example.net"},
+                ],
+                "providerID": "gce:///projects/test/zones/us-central1-a/nodes/node-2",
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.HIGH
+        assert finding.evidence["exposures"][0]["type"] == "hostname"
+
+    def test_node_no_public_exposure(self):
+        producer = K8sNodePublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="node-3",
+            resource_type="k8s.node",
+            provider="kubernetes",
+            name="node-3",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "addresses": [
+                    {"type": "InternalIP", "address": "10.10.0.5"},
+                    {"type": "Hostname", "address": None},
+                ],
+                "unschedulable": True,
             },
         )
 

@@ -12,6 +12,6 @@ repos:
     hooks:
       - id: ruff
         args: ["--fix"]
-        files: "^src/cerebro/findings/producers/(aws/(codebuild_(public_trigger|source_credential)|service_account_open_assume)\\.py|github/repo_runner_group_scope\\.py|kubernetes/(privileged_pod|ingress_public_exposure|cluster_admin_binding|cluster_admin_wildcard|service_public_exposure)\\.py)$"
+        files: "^src/cerebro/findings/producers/(aws/(codebuild_(public_trigger|source_credential)|service_account_open_assume)\\.py|github/repo_runner_group_scope\\.py|kubernetes/(privileged_pod|ingress_public_exposure|cluster_admin_binding|cluster_admin_wildcard|service_public_exposure|node_public_exposure)\\.py)$"
       - id: ruff-format
-        files: "^src/cerebro/findings/producers/(aws/(codebuild_(public_trigger|source_credential)|service_account_open_assume)\\.py|github/repo_runner_group_scope\\.py|kubernetes/(privileged_pod|ingress_public_exposure|cluster_admin_binding|cluster_admin_wildcard|service_public_exposure)\\.py)$"
+        files: "^src/cerebro/findings/producers/(aws/(codebuild_(public_trigger|source_credential)|service_account_open_assume)\\.py|github/repo_runner_group_scope\\.py|kubernetes/(privileged_pod|ingress_public_exposure|cluster_admin_binding|cluster_admin_wildcard|service_public_exposure|node_public_exposure)\\.py)$"
