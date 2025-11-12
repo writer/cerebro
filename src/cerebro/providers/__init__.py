@@ -39,6 +39,11 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover
     M365Provider = None  # type: ignore[assignment]
 
+try:  # pragma: no cover - optional dependency
+    from .kubernetes import KubernetesProvider
+except Exception:  # pragma: no cover
+    KubernetesProvider = None  # type: ignore[assignment]
+
 __all__ = [
     "BaseProvider",
     "ProviderError",
@@ -49,4 +54,5 @@ __all__ = [
     "GoogleWorkspaceProvider",
     "OktaProvider",
     "M365Provider",
+    "KubernetesProvider",
 ]

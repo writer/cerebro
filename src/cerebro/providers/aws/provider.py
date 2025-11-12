@@ -218,6 +218,31 @@ class AWSProvider(BaseProvider):
                         resource_type="aws.codebuild.project",
                         metadata=metadata,
                     )
+
+        # IAM Roles (service accounts)
+        if not resource_types or "aws.iam.role" in resource_types:
+            iam_client = self._session.client('iam')
+            role_paginator = iam_client.get_paginator('list_roles')
+
+            roles: List[Dict[str, Any]] = []
+            async for page in iterate_sync_iterator(
+                lambda: role_paginator.paginate(),
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            ):
+                roles.extend(page.get('Roles', []))
+
+            for role in roles:
+                yield ResourceInfo(
+                    external_id=role['Arn'],
+                    name=role['RoleName'],
+                    resource_type="aws.iam.role",
+                    metadata={
+                        "path": role.get('Path'),
+                        "max_session_duration": role.get('MaxSessionDuration'),
+                        "description": role.get('Description'),
+                    },
+                )
     
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover AWS IAM users, groups, and roles."""
@@ -308,6 +333,8 @@ class AWSProvider(BaseProvider):
             config = await self._get_vpc_config(resource.external_id)
         elif resource.resource_type == "aws.codebuild.project":
             config = await self._get_codebuild_project_config(resource.external_id)
+        elif resource.resource_type == "aws.iam.role":
+            config = await self._get_iam_role_config(resource.external_id)
         else:
             config = {}
         
@@ -520,6 +547,63 @@ class AWSProvider(BaseProvider):
 
         return await call_sync_with_retries(
             _get_project,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        )
+
+    async def _get_iam_role_config(self, role_arn: str) -> Dict[str, Any]:
+        """Fetch IAM role configuration, including trust and permission policies."""
+
+        def _get_role():
+            iam = self._session.client('iam')
+
+            role_name = role_arn.split('/')[-1]
+            role_response = iam.get_role(RoleName=role_name)
+            role = role_response.get('Role', {})
+
+            attached_policies: List[Dict[str, Any]] = []
+            attached_resp = iam.list_attached_role_policies(RoleName=role_name)
+            for policy in attached_resp.get('AttachedPolicies', []):
+                attached_policies.append(
+                    {
+                        "policy_name": policy.get('PolicyName'),
+                        "policy_arn": policy.get('PolicyArn'),
+                    }
+                )
+
+            inline_policies: Dict[str, Any] = {}
+            inline_names = iam.list_role_policies(RoleName=role_name).get('PolicyNames', [])
+            for policy_name in inline_names:
+                inline_doc = iam.get_role_policy(RoleName=role_name, PolicyName=policy_name)
+                inline_policies[policy_name] = inline_doc.get('PolicyDocument')
+
+            try:
+                tag_response = iam.list_role_tags(RoleName=role_name)
+                tags = tag_response.get('Tags', [])
+            except ClientError as exc:
+                if exc.response['Error']['Code'] == 'NoSuchEntity':
+                    tags = []
+                else:
+                    logger.debug(f"Could not list tags for role {role_name}: {exc}")
+                    tags = []
+
+            return {
+                "role_name": role.get('RoleName'),
+                "arn": role.get('Arn'),
+                "path": role.get('Path'),
+                "created": role.get('CreateDate').isoformat() if role.get('CreateDate') else None,
+                "description": role.get('Description'),
+                "max_session_duration": role.get('MaxSessionDuration'),
+                "assume_role_policy": role.get('AssumeRolePolicyDocument'),
+                "attached_policies": attached_policies,
+                "inline_policies": inline_policies,
+                "tags": tags,
+                "account_id": self.aws_account_id,
+                "last_used": role.get('RoleLastUsed'),
+            }
+
+        return await call_sync_with_retries(
+            _get_role,
             exceptions=(ClientError, BotoCoreError),
             logger=logger,
         )

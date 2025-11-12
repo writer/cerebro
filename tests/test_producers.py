@@ -16,6 +16,21 @@ from cerebro.findings.producers.aws.codebuild_public_trigger import (
 from cerebro.findings.producers.aws.codebuild_source_credential import (
     CodeBuildSharedCredentialProducer,
 )
+from cerebro.findings.producers.aws.service_account_open_assume import (
+    AwsServiceAccountOpenAssumeProducer,
+)
+from cerebro.findings.producers.kubernetes.privileged_pod import (
+    K8sPrivilegedPodProducer,
+)
+from cerebro.findings.producers.kubernetes.ingress_public_exposure import (
+    K8sIngressPublicExposureProducer,
+)
+from cerebro.findings.producers.kubernetes.cluster_admin_binding import (
+    K8sClusterAdminServiceAccountProducer,
+)
+from cerebro.findings.producers.kubernetes.cluster_admin_wildcard import (
+    K8sClusterAdminWildcardBindingProducer,
+)
 from cerebro.findings.producers.azure.storage_public_write import (
     AzureStoragePublicWriteProducer,
 )
@@ -563,6 +578,303 @@ class TestAWSProducers:
 
         assert len(findings) == 0
 
+
+class TestKubernetesProducers:
+    """Test Kubernetes finding producers."""
+
+    def test_privileged_pod_producer(self):
+        producer = K8sPrivilegedPodProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/privileged-pod",
+            resource_type="k8s.pod",
+            provider="kubernetes",
+            name="privileged-pod",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "serviceAccount": "builder",
+                "hostNetwork": True,
+                "containers": [
+                    {
+                        "name": "app",
+                        "securityContext": {
+                            "privileged": True,
+                            "capabilities": {"add": ["SYS_ADMIN", "NET_RAW"]},
+                        },
+                        "volumeMounts": [
+                            {
+                                "name": "docker-sock",
+                                "mountPath": "/var/run/docker.sock",
+                                "readOnly": False,
+                            }
+                        ],
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "docker-sock",
+                        "hostPath": {"path": "/var/run/docker.sock"},
+                    }
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        exposure_types = {exp["type"] for exp in finding.evidence["exposures"]}
+        assert "privileged_container" in exposure_types
+        assert "host_network" in exposure_types
+        assert "sensitive_host_path" in exposure_types
+
+    def test_privileged_pod_safe(self):
+        producer = K8sPrivilegedPodProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/safe-pod",
+            resource_type="k8s.pod",
+            provider="kubernetes",
+            name="safe-pod",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "serviceAccount": "default",
+                "hostNetwork": False,
+                "containers": [
+                    {
+                        "name": "app",
+                        "securityContext": {
+                            "runAsNonRoot": True,
+                            "allowPrivilegeEscalation": False,
+                        },
+                        "volumeMounts": [],
+                    }
+                ],
+                "volumes": [],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_ingress_plain_http(self):
+        producer = K8sIngressPublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/ingress-http",
+            resource_type="k8s.ingress",
+            provider="kubernetes",
+            name="ingress-http",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "annotations": {
+                    "kubernetes.io/ingress.allow-http": "true",
+                    "nginx.ingress.kubernetes.io/ssl-redirect": "false",
+                },
+                "rules": [
+                    {
+                        "host": "api.example.com",
+                        "paths": [
+                            {
+                                "path": "/",
+                                "pathType": "Prefix",
+                                "backend": {"service": {"name": "api", "port": 80}},
+                            }
+                        ],
+                    }
+                ],
+                "tls": [],
+                "loadBalancer": [
+                    {"hostname": "abc123.elb.amazonaws.com", "ip": "203.0.113.10"}
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["exposures"][0]["type"] == "plain_http"
+
+    def test_ingress_with_tls(self):
+        producer = K8sIngressPublicExposureProducer()
+
+        resource = ResourceEntity(
+            external_id="prod/ingress-tls",
+            resource_type="k8s.ingress",
+            provider="kubernetes",
+            name="ingress-tls",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "namespace": "prod",
+                "annotations": {
+                    "kubernetes.io/ingress.allow-http": "false",
+                    "nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
+                },
+                "rules": [
+                    {
+                        "host": "secure.example.com",
+                        "paths": [
+                            {
+                                "path": "/",
+                                "pathType": "Prefix",
+                                "backend": {"service": {"name": "api", "port": 443}},
+                            }
+                        ],
+                    }
+                ],
+                "tls": [
+                    {"hosts": ["secure.example.com"], "secretName": "tls-secret"}
+                ],
+                "loadBalancer": [
+                    {"hostname": "abc123.elb.amazonaws.com", "ip": "203.0.113.10"}
+                ],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_cluster_admin_service_account(self):
+        producer = K8sClusterAdminServiceAccountProducer()
+
+        resource = ResourceEntity(
+            external_id="binding-admin",
+            resource_type="k8s.cluster_role_binding",
+            provider="kubernetes",
+            name="binding-admin",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "roleRef": {"kind": "ClusterRole", "name": "cluster-admin"},
+                "subjects": [
+                    {"kind": "ServiceAccount", "name": "builder", "namespace": "default"},
+                    {"kind": "ServiceAccount", "name": "ci", "namespace": "prod"},
+                ],
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        accounts = finding.evidence["service_accounts"]
+        assert any(acc.get("namespace") == "default" for acc in accounts)
+
+    def test_cluster_admin_service_account_irrelevant(self):
+        producer = K8sClusterAdminServiceAccountProducer()
+
+        resource = ResourceEntity(
+            external_id="binding-view",
+            resource_type="k8s.cluster_role_binding",
+            provider="kubernetes",
+            name="binding-view",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "roleRef": {"kind": "ClusterRole", "name": "view"},
+                "subjects": [
+                    {"kind": "ServiceAccount", "name": "viewer", "namespace": "team"}
+                ],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_cluster_admin_wildcard_group(self):
+        producer = K8sClusterAdminWildcardBindingProducer()
+
+        resource = ResourceEntity(
+            external_id="binding-authenticated",
+            resource_type="k8s.cluster_role_binding",
+            provider="kubernetes",
+            name="binding-authenticated",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "roleRef": {"kind": "ClusterRole", "name": "cluster-admin"},
+                "subjects": [
+                    {"kind": "Group", "name": "system:authenticated"},
+                    {"kind": "Group", "name": "system:serviceaccounts:prod"},
+                ],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        exposures = finding.evidence["exposures"]
+        assert any(exp.get("name") == "system:authenticated" for exp in exposures)
+        assert any(
+            exp.get("name") == "system:serviceaccounts:prod" for exp in exposures
+        )
+
+    def test_cluster_admin_wildcard_safe(self):
+        producer = K8sClusterAdminWildcardBindingProducer()
+
+        resource = ResourceEntity(
+            external_id="binding-team",
+            resource_type="k8s.cluster_role_binding",
+            provider="kubernetes",
+            name="binding-team",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "roleRef": {"kind": "ClusterRole", "name": "cluster-admin"},
+                "subjects": [
+                    {"kind": "Group", "name": "dev-team"},
+                    {"kind": "User", "name": "alice"},
+                ],
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
     def test_codebuild_shared_source_credentials(self):
         producer = CodeBuildSharedCredentialProducer()
 
@@ -628,6 +940,133 @@ class TestAWSProducers:
                         {"name": "ENV", "value": "prod"},
                     ]
                 },
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 0
+
+    def test_service_account_open_assume_public(self):
+        producer = AwsServiceAccountOpenAssumeProducer()
+
+        resource = ResourceEntity(
+            external_id="arn:aws:iam::123456789012:role/PublicRole",
+            resource_type="aws.iam.role",
+            provider="aws",
+            name="PublicRole",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "account_id": "123456789012",
+                "assume_role_policy": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                },
+                "attached_policies": [
+                    {"policy_name": "ReadOnlyAccess", "policy_arn": "arn:aws:iam::aws:policy/ReadOnlyAccess"}
+                ],
+                "inline_policies": {},
+                "last_used": None,
+            },
+        )
+
+        context = {"rule_id": uuid4()}
+        findings = producer.evaluate(resource, config, context)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.CRITICAL
+        assert finding.evidence["exposures"][0]["type"] == "public"
+
+    def test_service_account_open_assume_external_account(self):
+        producer = AwsServiceAccountOpenAssumeProducer()
+
+        resource = ResourceEntity(
+            external_id="arn:aws:iam::123456789012:role/CrossAccount",
+            resource_type="aws.iam.role",
+            provider="aws",
+            name="CrossAccount",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "account_id": "123456789012",
+                "assume_role_policy": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": [
+                                    "arn:aws:iam::210987654321:root",
+                                    "210987654322",
+                                ]
+                            },
+                            "Action": ["sts:AssumeRole"],
+                        }
+                    ],
+                },
+                "attached_policies": [],
+                "inline_policies": {},
+                "last_used": None,
+            },
+        )
+
+        findings = producer.evaluate(resource, config)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.severity == Severity.HIGH
+        exposure = finding.evidence["exposures"][0]
+        assert exposure["type"] == "external_account"
+        assert "210987654321" in exposure["accounts"]
+        assert "210987654322" in exposure["accounts"]
+
+    def test_service_account_open_assume_restricted_condition(self):
+        producer = AwsServiceAccountOpenAssumeProducer()
+
+        resource = ResourceEntity(
+            external_id="arn:aws:iam::123456789012:role/OrgBound",
+            resource_type="aws.iam.role",
+            provider="aws",
+            name="OrgBound",
+        )
+
+        config = ConfigEntity(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config={
+                "account_id": "123456789012",
+                "assume_role_policy": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::210987654321:root"},
+                            "Action": "sts:AssumeRole",
+                            "Condition": {
+                                "StringEquals": {
+                                    "aws:PrincipalOrgID": "o-example",
+                                }
+                            },
+                        }
+                    ],
+                },
+                "attached_policies": [],
+                "inline_policies": {},
+                "last_used": None,
             },
         )
 
@@ -855,6 +1294,11 @@ class TestProducerRegistry:
             "StorageWriteAccessProducer",
             "CodeBuildPublicTriggerProducer",
             "CodeBuildSharedCredentialProducer",
+            "AwsServiceAccountOpenAssumeProducer",
+            "K8sPrivilegedPodProducer",
+            "K8sIngressPublicExposureProducer",
+            "K8sClusterAdminServiceAccountProducer",
+            "K8sClusterAdminWildcardBindingProducer",
             "RepoSecretKeyProducer",
             "GCPBucketPublicWriteProducer",
             "GCPBucketSecretArtifactProducer",

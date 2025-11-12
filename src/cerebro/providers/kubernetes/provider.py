@@ -1,0 +1,590 @@
+"""Kubernetes provider implementation."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
+from typing import Any
+
+from ..base import (
+    BaseProvider,
+    ConfigurationSnapshot,
+    IamPermission,
+    PrincipalInfo,
+    ProviderError,
+    ResourceInfo,
+)
+from ..utils.connector import call_sync_with_retries
+
+logger = logging.getLogger(__name__)
+
+
+try:  # pragma: no cover - optional dependency
+    from kubernetes import client, config  # type: ignore
+    from kubernetes.client import ApiException  # type: ignore
+    from kubernetes.config.config_exception import ConfigException  # type: ignore
+
+    _K8S_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    client = None  # type: ignore
+    config = None  # type: ignore
+    ApiException = Exception  # type: ignore
+    ConfigException = Exception  # type: ignore
+    _K8S_AVAILABLE = False
+
+
+class KubernetesProvider(BaseProvider):
+    """Collect Kubernetes resources for cluster posture analysis."""
+
+    def __init__(
+        self,
+        account_id,
+        cluster_name: str,
+        kubeconfig_path: str | None = None,
+        kube_context: str | None = None,
+        verify_ssl: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(account_id, **kwargs)
+        self.cluster_name = cluster_name
+        self.kubeconfig_path = kubeconfig_path
+        self.kube_context = kube_context
+        self.verify_ssl = verify_ssl
+
+        self._api_client: client.ApiClient | None = None
+        self._core: client.CoreV1Api | None = None
+        self._apps: client.AppsV1Api | None = None
+        self._networking: client.NetworkingV1Api | None = None
+        self._rbac: client.RbacAuthorizationV1Api | None = None
+        self._cluster_version: dict[str, Any] | None = None
+
+    @property
+    def name(self) -> str:
+        return "kubernetes"
+
+    async def authenticate(self) -> bool:
+        if not _K8S_AVAILABLE:
+            raise ProviderError(
+                "kubernetes Python client is not installed; install the 'kubernetes' "
+                "package"
+            )
+
+        try:
+            def _load_config() -> tuple[client.ApiClient, dict[str, Any]]:
+                if not self.verify_ssl:
+                    config.load_kube_config(
+                        config_file=self.kubeconfig_path,
+                        context=self.kube_context,
+                        persist_config=False,
+                    )
+                    cfg = client.Configuration.get_default_copy()
+                    cfg.verify_ssl = False
+                    api_client = client.ApiClient(configuration=cfg)
+                else:
+                    try:
+                        if self.kubeconfig_path:
+                            config.load_kube_config(
+                                config_file=self.kubeconfig_path,
+                                context=self.kube_context,
+                            )
+                        else:
+                            config.load_incluster_config()
+                    except ConfigException:
+                        config.load_kube_config(context=self.kube_context)
+
+                    api_client = client.ApiClient()
+
+                version_api = client.VersionApi(api_client)
+                version_info = version_api.get_code()
+
+                cluster_version = {
+                    "major": getattr(version_info, "major", None),
+                    "minor": getattr(version_info, "minor", None),
+                    "git_version": getattr(version_info, "git_version", None),
+                    "platform": getattr(version_info, "platform", None),
+                }
+
+                return api_client, cluster_version
+
+            api_client, cluster_version = await call_sync_with_retries(
+                _load_config,
+                exceptions=(ConfigException, ApiException, OSError),
+                logger=logger,
+            )
+
+            self._api_client = api_client
+            self._cluster_version = cluster_version
+            self._core = client.CoreV1Api(api_client)
+            self._apps = client.AppsV1Api(api_client)
+            self._networking = client.NetworkingV1Api(api_client)
+            self._rbac = client.RbacAuthorizationV1Api(api_client)
+            return True
+        except (ConfigException, ApiException, OSError) as exc:
+            logger.error("Failed to authenticate with Kubernetes cluster: %s", exc)
+            raise ProviderError(f"Kubernetes authentication failed: {exc}") from exc
+
+    async def discover_resources(
+        self,
+        resource_types: list[str] | None = None,
+    ) -> AsyncGenerator[ResourceInfo, None]:
+        if not self._api_client:
+            await self.authenticate()
+
+        if not resource_types or "k8s.cluster" in resource_types:
+            server = None
+            if self._api_client:
+                server = getattr(self._api_client.configuration, "host", None)
+
+            yield ResourceInfo(
+                external_id=self.cluster_name,
+                name=self.cluster_name,
+                resource_type="k8s.cluster",
+                metadata={
+                    "version": self._cluster_version,
+                    "server": server,
+                },
+            )
+
+        if not resource_types or "k8s.namespace" in resource_types:
+            namespaces = await call_sync_with_retries(
+                lambda: self._core.list_namespace(),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+
+            for namespace in namespaces.items:
+                metadata = namespace.metadata
+                yield ResourceInfo(
+                    external_id=metadata.name,
+                    name=metadata.name,
+                    resource_type="k8s.namespace",
+                    metadata={
+                        "labels": metadata.labels or {},
+                        "annotations": metadata.annotations or {},
+                        "creation_timestamp": metadata.creation_timestamp.isoformat()
+                        if metadata.creation_timestamp
+                        else None,
+                    },
+                )
+
+        if not resource_types or "k8s.pod" in resource_types:
+            pods = await call_sync_with_retries(
+                lambda: self._core.list_pod_for_all_namespaces(),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+
+            for pod in pods.items:
+                metadata = pod.metadata
+                external_id = f"{metadata.namespace}/{metadata.name}"
+                pod_node = getattr(pod.spec, "node_name", None)
+                service_account = getattr(pod.spec, "service_account_name", None)
+                yield ResourceInfo(
+                    external_id=external_id,
+                    name=metadata.name,
+                    resource_type="k8s.pod",
+                    parent_external_id=metadata.namespace,
+                    metadata={
+                        "namespace": metadata.namespace,
+                        "node": pod_node,
+                        "service_account": service_account,
+                    },
+                )
+
+        if not resource_types or "k8s.ingress" in resource_types:
+            ingresses = await call_sync_with_retries(
+                lambda: self._networking.list_ingress_for_all_namespaces(),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+
+            for ingress in ingresses.items:
+                metadata = ingress.metadata
+                external_id = f"{metadata.namespace}/{metadata.name}"
+                annotations = metadata.annotations or {}
+                ingress_class = (
+                    ingress.spec.ingress_class_name
+                    or annotations.get("kubernetes.io/ingress.class")
+                )
+                yield ResourceInfo(
+                    external_id=external_id,
+                    name=metadata.name,
+                    resource_type="k8s.ingress",
+                    parent_external_id=metadata.namespace,
+                    metadata={
+                        "namespace": metadata.namespace,
+                        "ingress_class": ingress_class,
+                    },
+                )
+
+        if not resource_types or "k8s.cluster_role_binding" in resource_types:
+            cluster_role_bindings = await call_sync_with_retries(
+                lambda: self._rbac.list_cluster_role_binding(),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+
+            for binding in cluster_role_bindings.items:
+                metadata = binding.metadata
+                yield ResourceInfo(
+                    external_id=metadata.name,
+                    name=metadata.name,
+                    resource_type="k8s.cluster_role_binding",
+                    metadata={
+                        "labels": metadata.labels or {},
+                        "annotations": metadata.annotations or {},
+                    },
+                )
+
+    async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
+        if not self._api_client:
+            await self.authenticate()
+
+        service_accounts = await call_sync_with_retries(
+            lambda: self._core.list_service_account_for_all_namespaces(),
+            exceptions=(ApiException,),
+            logger=logger,
+        )
+
+        for service_account in service_accounts.items:
+            metadata = service_account.metadata
+            external_id = f"{metadata.namespace}:{metadata.name}"
+            secret_names = [
+                secret.name for secret in service_account.secrets or []
+            ]
+            yield PrincipalInfo(
+                external_id=external_id,
+                principal_type="service_account",
+                display_name=metadata.name,
+                is_human=False,
+                metadata={
+                    "namespace": metadata.namespace,
+                    "secrets": secret_names,
+                    "labels": metadata.labels or {},
+                },
+            )
+
+    async def get_resource_configuration(
+        self,
+        resource: ResourceInfo,
+    ) -> ConfigurationSnapshot:
+        if not self._api_client:
+            await self.authenticate()
+
+        if resource.resource_type == "k8s.cluster":
+            normalized_config = {
+                "cluster": self.cluster_name,
+                "server": getattr(self._api_client.configuration, "host", None)
+                if self._api_client
+                else None,
+                "version": self._cluster_version,
+            }
+        elif resource.resource_type == "k8s.namespace":
+            namespace = await call_sync_with_retries(
+                lambda: self._core.read_namespace(name=resource.external_id),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+            normalized_config = self._build_namespace_config(namespace)
+        elif resource.resource_type == "k8s.pod":
+            namespace, name = self._split_namespaced_name(resource.external_id)
+            pod = await call_sync_with_retries(
+                lambda: self._core.read_namespaced_pod(name=name, namespace=namespace),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+            normalized_config = self._build_pod_config(pod)
+        elif resource.resource_type == "k8s.ingress":
+            namespace, name = self._split_namespaced_name(resource.external_id)
+            ingress = await call_sync_with_retries(
+                lambda: self._networking.read_namespaced_ingress(
+                    name=name, namespace=namespace
+                ),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+            normalized_config = self._build_ingress_config(ingress)
+        elif resource.resource_type == "k8s.cluster_role_binding":
+            binding = await call_sync_with_retries(
+                lambda: self._rbac.read_cluster_role_binding(name=resource.external_id),
+                exceptions=(ApiException,),
+                logger=logger,
+            )
+            normalized_config = self._build_cluster_role_binding_config(binding)
+        else:
+            normalized_config = {}
+
+        return ConfigurationSnapshot(
+            resource_external_id=resource.external_id,
+            captured_at=datetime.utcnow(),
+            normalized_config=normalized_config,
+            raw_config=None,
+        )
+
+    async def discover_iam_edges(
+        self,
+        resource: ResourceInfo | None = None,
+    ) -> AsyncGenerator[IamPermission, None]:
+        # Kubernetes RBAC ingestion is not yet implemented.
+        if False:  # pragma: no cover - placeholder to satisfy async generator typing
+            yield
+
+    def _split_namespaced_name(self, value: str) -> tuple[str, str]:
+        if "/" in value:
+            namespace, name = value.split("/", 1)
+            return namespace, name
+        return "default", value
+
+    def _build_namespace_config(self, namespace: client.V1Namespace) -> dict[str, Any]:
+        metadata = namespace.metadata
+        return {
+            "name": metadata.name,
+            "labels": metadata.labels or {},
+            "annotations": metadata.annotations or {},
+            "status": getattr(namespace.status, "phase", None),
+            "creation_timestamp": metadata.creation_timestamp.isoformat()
+            if metadata.creation_timestamp
+            else None,
+        }
+
+    def _build_pod_config(self, pod: client.V1Pod) -> dict[str, Any]:
+        metadata = pod.metadata
+        spec = pod.spec
+        status = pod.status
+
+        return {
+            "name": metadata.name,
+            "namespace": metadata.namespace,
+            "node": getattr(spec, "node_name", None),
+            "serviceAccount": getattr(spec, "service_account_name", None),
+            "labels": metadata.labels or {},
+            "annotations": metadata.annotations or {},
+            "hostNetwork": bool(getattr(spec, "host_network", False)),
+            "hostPID": bool(getattr(spec, "host_pid", False)),
+            "hostIPC": bool(getattr(spec, "host_ipc", False)),
+            "containers": [
+                self._build_container_config(container)
+                for container in spec.containers or []
+            ],
+            "initContainers": [
+                self._build_container_config(container)
+                for container in spec.init_containers or []
+            ],
+            "volumes": [
+                self._build_volume_config(volume) for volume in spec.volumes or []
+            ],
+            "conditions": [
+                {
+                    "type": condition.type,
+                    "status": condition.status,
+                }
+                for condition in status.conditions or []
+            ]
+            if status
+            else [],
+        }
+
+    def _build_ingress_config(self, ingress: client.V1Ingress) -> dict[str, Any]:
+        metadata = ingress.metadata
+        spec = ingress.spec or client.V1IngressSpec()
+        status = ingress.status or client.V1IngressStatus()
+
+        load_balancer = []
+        if status.load_balancer and status.load_balancer.ingress:
+            for lb in status.load_balancer.ingress:
+                load_balancer.append(
+                    {
+                        "hostname": getattr(lb, "hostname", None),
+                        "ip": getattr(lb, "ip", None),
+                    }
+                )
+
+        rules = []
+        for rule in spec.rules or []:
+            http_paths = []
+            if rule.http and rule.http.paths:
+                for path in rule.http.paths:
+                    http_paths.append(
+                        {
+                            "path": getattr(path, "path", None),
+                            "pathType": getattr(path, "path_type", None),
+                            "backend": self._get_backend_target(path.backend),
+                        }
+                    )
+            rules.append({"host": getattr(rule, "host", None), "paths": http_paths})
+
+        tls_entries = []
+        for tls in spec.tls or []:
+            tls_entries.append(
+                {
+                    "hosts": tls.hosts or [],
+                    "secretName": tls.secret_name,
+                }
+            )
+
+        annotations = metadata.annotations or {}
+        ingress_class = (
+            spec.ingress_class_name or annotations.get("kubernetes.io/ingress.class")
+        )
+
+        return {
+            "name": metadata.name,
+            "namespace": metadata.namespace,
+            "ingressClass": ingress_class,
+            "annotations": annotations,
+            "labels": metadata.labels or {},
+            "rules": rules,
+            "tls": tls_entries,
+            "loadBalancer": load_balancer,
+        }
+
+    def _build_cluster_role_binding_config(
+        self, binding: client.V1ClusterRoleBinding
+    ) -> dict[str, Any]:
+        metadata = binding.metadata
+        subjects = binding.subjects or []
+        normalized_subjects = []
+        for subject in subjects:
+            normalized_subjects.append(
+                {
+                    "kind": getattr(subject, "kind", None),
+                    "name": getattr(subject, "name", None),
+                    "namespace": getattr(subject, "namespace", None),
+                    "apiGroup": getattr(subject, "api_group", None),
+                }
+            )
+
+        role_ref = binding.role_ref
+
+        return {
+            "name": metadata.name,
+            "annotations": metadata.annotations or {},
+            "labels": metadata.labels or {},
+            "subjects": normalized_subjects,
+            "roleRef": {
+                "apiGroup": getattr(role_ref, "api_group", None),
+                "kind": getattr(role_ref, "kind", None),
+                "name": getattr(role_ref, "name", None),
+            },
+        }
+
+    def _build_container_config(self, container: client.V1Container) -> dict[str, Any]:
+        security_context = container.security_context
+        capabilities = getattr(security_context, "capabilities", None)
+        add_caps = capabilities.add if capabilities and capabilities.add else []
+        drop_caps = capabilities.drop if capabilities and capabilities.drop else []
+
+        return {
+            "name": container.name,
+            "image": container.image,
+            "securityContext": {
+                "privileged": getattr(security_context, "privileged", None),
+                "allowPrivilegeEscalation": getattr(
+                    security_context, "allow_privilege_escalation", None
+                ),
+                "readOnlyRootFilesystem": getattr(
+                    security_context, "read_only_root_filesystem", None
+                ),
+                "runAsNonRoot": getattr(security_context, "run_as_non_root", None),
+                "runAsUser": getattr(security_context, "run_as_user", None),
+                "runAsGroup": getattr(security_context, "run_as_group", None),
+                "capabilities": {
+                    "add": add_caps,
+                    "drop": drop_caps,
+                },
+            },
+            "volumeMounts": [
+                {
+                    "name": mount.name,
+                    "mountPath": mount.mount_path,
+                    "readOnly": mount.read_only,
+                }
+                for mount in container.volume_mounts or []
+            ],
+            "env": [
+                {
+                    "name": env_var.name,
+                    "value": env_var.value,
+                    "valueFrom": self._describe_env_source(env_var.value_from),
+                }
+                for env_var in container.env or []
+            ],
+        }
+
+    def _build_volume_config(self, volume: client.V1Volume) -> dict[str, Any]:
+        host_path = getattr(volume, "host_path", None)
+        projected = getattr(volume, "projected", None)
+
+        return {
+            "name": volume.name,
+            "hostPath": {
+                "path": host_path.path,
+                "type": host_path.type,
+            }
+            if host_path
+            else None,
+            "projectedSources": [
+                {
+                    "serviceAccountToken": self._service_account_audience(source)
+                }
+                for source in projected.sources
+            ]
+            if projected and projected.sources
+            else None,
+        }
+
+    def _service_account_audience(self, source: Any) -> str | None:
+        service_account_token = getattr(source, "service_account_token", None)
+        if not service_account_token:
+            return None
+        return getattr(service_account_token, "audience", None)
+
+    def _describe_env_source(self, value_from: Any) -> dict[str, Any] | None:
+        if not value_from:
+            return None
+
+        if value_from.secret_key_ref:
+            return {
+                "type": "secret",
+                "name": value_from.secret_key_ref.name,
+                "key": value_from.secret_key_ref.key,
+            }
+
+        if value_from.config_map_key_ref:
+            return {
+                "type": "configMap",
+                "name": value_from.config_map_key_ref.name,
+                "key": value_from.config_map_key_ref.key,
+            }
+
+        if value_from.field_ref:
+            return {
+                "type": "fieldRef",
+                "fieldPath": value_from.field_ref.field_path,
+            }
+
+        return None
+
+    def _get_backend_target(self, backend: Any) -> dict[str, Any] | None:
+        if not backend:
+            return None
+
+        target = {}
+        service = getattr(backend, "service", None)
+        if service:
+            target["service"] = {
+                "name": service.name,
+                "port": getattr(service.port, "number", None)
+                or getattr(service.port, "name", None),
+            }
+
+        resource = getattr(backend, "resource", None)
+        if resource:
+            target["resource"] = {
+                "apiGroup": resource.api_group,
+                "kind": resource.kind,
+                "name": resource.name,
+            }
+
+        return target or None
