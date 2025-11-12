@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Mapping
 from typing import Any, cast
 
 from cerebro.domain.entities import (
@@ -12,6 +11,7 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
     analyze_instance_network_exposure,
@@ -64,7 +64,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         scheme = (normalized.get("scheme") or "").lower()

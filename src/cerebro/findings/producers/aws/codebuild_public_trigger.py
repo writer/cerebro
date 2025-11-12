@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
 from urllib.parse import urlparse
 
 from cerebro.domain.entities import (
@@ -12,8 +10,9 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import clip_sequence, resolve_rule_id
 
 from .base import BaseAWSProducer
 
@@ -77,7 +76,7 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         source = normalized.get("source") or {}
@@ -127,7 +126,7 @@ class CodeBuildPublicTriggerProducer(BaseAWSProducer):
             "repository": source.get("location"),
             "auth_type": auth_type,
             "webhook_host": webhook_host,
-            "filter_groups": filter_groups,
+            "filter_groups": clip_sequence(filter_groups),
             "report_build_status": source.get("reportBuildStatus"),
             "auth_resource": auth.get("resource"),
             "webhook_present": webhook_present,

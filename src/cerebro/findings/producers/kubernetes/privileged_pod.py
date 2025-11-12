@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 from cerebro.domain.entities import (
@@ -11,7 +10,7 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
-from cerebro.findings.producers.base import BaseFindingProducer
+from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import resolve_rule_id
 
@@ -95,7 +94,7 @@ class K8sPrivilegedPodProducer(BaseFindingProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
 

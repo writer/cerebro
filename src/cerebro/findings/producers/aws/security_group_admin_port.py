@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any, cast
 
 from cerebro.domain.entities import (
@@ -11,6 +11,7 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import resolve_rule_id
 
@@ -91,7 +92,7 @@ class AwsSecurityGroupAdminPortProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         ingress_rules: list[dict[str, Any]] = normalized.get("ingressRules") or []
