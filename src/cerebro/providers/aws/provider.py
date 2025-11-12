@@ -158,6 +158,29 @@ class AWSProvider(BaseProvider):
                     }
                 )
 
+        # Security Groups
+        if not resource_types or "aws.ec2.security_group" in resource_types:
+            ec2_client = self._session.client('ec2')
+            paginator = ec2_client.get_paginator('describe_security_groups')
+
+            async for page in iterate_sync_iterator(
+                lambda: paginator.paginate(),
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            ):
+                for group in page.get('SecurityGroups', []):
+                    yield ResourceInfo(
+                        external_id=group['GroupId'],
+                        name=group.get('GroupName'),
+                        resource_type="aws.ec2.security_group",
+                        metadata={
+                            "group_name": group.get('GroupName'),
+                            "description": group.get('Description'),
+                            "vpc_id": group.get('VpcId'),
+                            "owner_id": group.get('OwnerId'),
+                        }
+                    )
+
         # CodeBuild projects
         if not resource_types or "aws.codebuild.project" in resource_types:
             codebuild_client = self._session.client('codebuild')
@@ -331,6 +354,8 @@ class AWSProvider(BaseProvider):
             config = await self._get_ec2_instance_config(resource.external_id)
         elif resource.resource_type == "aws.ec2.vpc":
             config = await self._get_vpc_config(resource.external_id)
+        elif resource.resource_type == "aws.ec2.security_group":
+            config = await self._get_security_group_config(resource.external_id)
         elif resource.resource_type == "aws.codebuild.project":
             config = await self._get_codebuild_project_config(resource.external_id)
         elif resource.resource_type == "aws.iam.role":
@@ -342,6 +367,39 @@ class AWSProvider(BaseProvider):
             resource_external_id=resource.external_id,
             captured_at=datetime.utcnow(),
             normalized_config=config
+        )
+
+    async def _get_security_group_config(self, group_id: str) -> Dict[str, Any]:
+        """Get Security Group configuration."""
+
+        def _describe_security_group():
+            ec2 = self._session.client('ec2')
+            response = ec2.describe_security_groups(GroupIds=[group_id])
+            groups = response.get('SecurityGroups', [])
+            if not groups:
+                return {}
+            group = groups[0]
+
+            return {
+                "groupId": group.get('GroupId'),
+                "groupName": group.get('GroupName'),
+                "description": group.get('Description'),
+                "vpcId": group.get('VpcId'),
+                "ownerId": group.get('OwnerId'),
+                "ingressRules": [
+                    self._normalize_security_group_permission(permission)
+                    for permission in group.get('IpPermissions', [])
+                ],
+                "egressRules": [
+                    self._normalize_security_group_permission(permission)
+                    for permission in group.get('IpPermissionsEgress', [])
+                ],
+            }
+
+        return await call_sync_with_retries(
+            _describe_security_group,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
         )
     
     async def _get_s3_bucket_config(self, bucket_name: str) -> Dict[str, Any]:
@@ -692,6 +750,44 @@ class AWSProvider(BaseProvider):
                 return True
 
         return False
+
+    def _normalize_security_group_permission(self, permission: Dict[str, Any]) -> Dict[str, Any]:
+        ipv4_ranges = [
+            rng.get('CidrIp')
+            for rng in permission.get('IpRanges', []) or []
+            if rng.get('CidrIp')
+        ]
+        ipv6_ranges = [
+            rng.get('CidrIpv6')
+            for rng in permission.get('Ipv6Ranges', []) or []
+            if rng.get('CidrIpv6')
+        ]
+        prefix_list_ids = [
+            entry.get('PrefixListId')
+            for entry in permission.get('PrefixListIds', []) or []
+            if entry.get('PrefixListId')
+        ]
+        user_group_pairs = []
+        for pair in permission.get('UserIdGroupPairs', []) or []:
+            user_group_pairs.append(
+                {
+                    "groupId": pair.get('GroupId'),
+                    "userId": pair.get('UserId'),
+                    "peeringStatus": pair.get('PeeringStatus'),
+                    "vpcId": pair.get('VpcId'),
+                    "vpcPeeringConnectionId": pair.get('VpcPeeringConnectionId'),
+                }
+            )
+
+        return {
+            "ipProtocol": permission.get('IpProtocol'),
+            "fromPort": permission.get('FromPort'),
+            "toPort": permission.get('ToPort'),
+            "ipv4Cidr": ipv4_ranges,
+            "ipv6Cidr": ipv6_ranges,
+            "prefixListIds": prefix_list_ids,
+            "userIdGroupPairs": user_group_pairs,
+        }
     
     async def _get_ec2_instance_config(self, instance_id: str) -> Dict[str, Any]:
         """Get EC2 instance configuration."""

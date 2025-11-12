@@ -1,0 +1,148 @@
+"""Detect AWS security groups exposing administrative ports to the internet."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
+from cerebro.findings.producers.registry import register_producer
+
+from .base import BaseAWSProducer
+
+ADMIN_PORTS: dict[int, str] = {
+    22: "SSH",
+    3389: "RDP",
+    5985: "WinRM HTTP",
+    5986: "WinRM HTTPS",
+}
+
+WORLD_IPV4 = "0.0.0.0/0"
+WORLD_IPV6 = "::/0"
+
+
+def _port_in_range(port: int, rule: dict[str, Any]) -> bool:
+    from_port = rule.get("fromPort")
+    to_port = rule.get("toPort")
+    protocol = (rule.get("ipProtocol") or "").lower()
+
+    if protocol in {"icmp", "icmpv6"}:
+        return False
+
+    if protocol == "udp":
+        # Administrative protocols of interest are TCP-based
+        return False
+
+    if from_port is None or to_port is None:
+        # Protocol -1 exposes all ports
+        return True
+
+    return from_port <= port <= to_port
+
+
+def _rule_exposes_world(rule: dict[str, Any]) -> list[str]:
+    cidrs: list[str] = []
+    for cidr in rule.get("ipv4Cidr", []) or []:
+        if cidr == WORLD_IPV4:
+            cidrs.append(cidr)
+    for cidr in rule.get("ipv6Cidr", []) or []:
+        if cidr == WORLD_IPV6:
+            cidrs.append(cidr)
+    return cidrs
+
+
+@register_producer
+class AwsSecurityGroupAdminPortProducer(BaseAWSProducer):
+    """Flag security groups exposing admin ports to anonymous internet clients."""
+
+    @property
+    def resource_types(self) -> set[str]:
+        return {"aws.ec2.security_group"}
+
+    @property
+    def finding_name(self) -> str:
+        return "AWS security group exposes administrative ports"
+
+    @property
+    def rule_name(self) -> str:
+        return "aws_security_group_admin_port_exposure"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Security group allows 0.0.0.0/0 or ::/0 ingress to administrative "
+            "protocol ports"
+        )
+
+    @property
+    def severity(self) -> Severity:
+        return Severity.HIGH
+
+    def evaluate(
+        self,
+        resource: ResourceEntity,
+        config: ConfigEntity,
+        context: dict[str, Any] | None = None,
+    ) -> list[FindingEntity]:
+        normalized = config.normalized_config or {}
+        ingress_rules: list[dict[str, Any]] = normalized.get("ingressRules") or []
+
+        exposures: list[dict[str, Any]] = []
+
+        for rule in ingress_rules:
+            exposed_cidrs = _rule_exposes_world(rule)
+            if not exposed_cidrs:
+                continue
+
+            for port, service in ADMIN_PORTS.items():
+                if _port_in_range(port, rule):
+                    exposures.append(
+                        {
+                            "type": "admin_port_exposure",
+                            "port": port,
+                            "service": service,
+                            "protocol": rule.get("ipProtocol"),
+                            "cidrs": exposed_cidrs,
+                        }
+                    )
+
+        if not exposures:
+            return []
+
+        rule_id = context.get("rule_id") if context else None
+        if not rule_id:
+            from cerebro.rules.rule_service import get_rule_by_name_sync
+
+            rule_id = get_rule_by_name_sync(self.rule_name)
+
+        evidence = {
+            "groupId": normalized.get("groupId") or resource.external_id,
+            "groupName": normalized.get("groupName"),
+            "vpcId": normalized.get("vpcId"),
+            "exposures": exposures,
+        }
+
+        summary_parts = []
+        for exposure in exposures:
+            cidrs = ", ".join(exposure["cidrs"])
+            summary_parts.append(
+                f"{exposure['service']} on port {exposure['port']} open to {cidrs}"
+            )
+        summary = "; ".join(summary_parts)
+
+        finding = self.create_finding(
+            resource=resource,
+            rule_id=rule_id,
+            title=(
+                f"AWS security group {evidence['groupId']} exposes administrative ports"
+            ),
+            summary=summary,
+            evidence=evidence,
+            severity=self.severity,
+        )
+
+        return [finding]
