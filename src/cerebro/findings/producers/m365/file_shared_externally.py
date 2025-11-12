@@ -14,10 +14,9 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
-    clip_sequence,
+    build_external_sharing_evidence,
     coerce_mapping,
     coerce_mapping_sequence,
-    coerce_str_sequence,
     resolve_rule_id,
 )
 
@@ -99,20 +98,14 @@ class M365FileSharedExternallyProducer(BaseFindingProducer):
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
-        limited_external_users = clip_sequence(external_users)
-
-        evidence = {
-            "site_name": resource.name,
-            "site_url": data.get("web_url"),
-            "external_sharing_enabled": external_sharing,
-            "external_users_count": len(external_users),
-            "external_users": [
-                _summarize_permission(permission)
-                for permission in limited_external_users
-            ],
-            "sharing_capability": data.get("sharing_capability"),
-            "site_id": resource.external_id,
-        }
+        evidence = build_external_sharing_evidence(
+            site_name=resource.name,
+            site_url=data.get("web_url"),
+            site_id=resource.external_id,
+            sharing_capability=data.get("sharing_capability"),
+            external_sharing_enabled=external_sharing,
+            external_permissions=external_users,
+        )
 
         summary = (
             "SharePoint site has external sharing enabled with "
@@ -157,18 +150,3 @@ def _extract_email(permission: Mapping[str, Any]) -> str | None:
         return None
     email = user.get("email")
     return email if isinstance(email, str) else None
-
-
-def _summarize_permission(permission: Mapping[str, Any]) -> dict[str, Any]:
-    user = coerce_mapping(permission.get("grantedToV2"))
-    user_info = coerce_mapping(user.get("user")) if user else None
-    email = user_info.get("email") if isinstance(user_info, Mapping) else None
-    display_name = (
-        user_info.get("displayName") if isinstance(user_info, Mapping) else None
-    )
-    roles = list(coerce_str_sequence(permission.get("roles")))
-    return {
-        "email": email,
-        "display_name": display_name,
-        "roles": roles,
-    }

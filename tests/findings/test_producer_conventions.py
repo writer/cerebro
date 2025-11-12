@@ -343,7 +343,12 @@ def test_file_sharing_producers_clip_external_users():
     )
     findings = producer.evaluate(resource, config, context)
     assert findings
-    assert len(findings[0].evidence["external_users"]) == 10
+    evidence = findings[0].evidence
+    assert evidence["external_sharing_enabled"] is True
+    assert evidence["external_users_count"] == 25
+    assert len(evidence["external_users"]) == 10
+    assert evidence["site_id"] == "sharepoint-site"
+    assert all("roles" in entry for entry in evidence["external_users"])
 
 
 def test_sharepoint_anonymous_link_evidence_clipped():
@@ -372,4 +377,6 @@ def test_sharepoint_anonymous_link_evidence_clipped():
 
     findings = producer.evaluate(resource, config, {"rule_id": uuid4()})
     assert findings
-    assert len(findings[0].evidence["anonymous_links"]) == 5
+    evidence = findings[0].evidence
+    assert len(evidence["anonymous_links"]) == 5
+    assert all("scope" in link for link in evidence["anonymous_links"])
