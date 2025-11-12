@@ -10,8 +10,9 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
-from cerebro.findings.producers.base import BaseFindingProducer
+from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 
 def _is_service_account_token_mount(mount_path: str | None) -> bool:
@@ -60,7 +61,7 @@ class K8sServiceAccountTokenExposureProducer(BaseFindingProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         service_account = normalized.get("serviceAccount")
@@ -127,11 +128,7 @@ class K8sServiceAccountTokenExposureProducer(BaseFindingProducer):
 
         severity = self._determine_severity(exposures)
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         summary = self._build_summary(exposures)
 

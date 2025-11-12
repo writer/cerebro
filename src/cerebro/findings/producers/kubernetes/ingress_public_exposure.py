@@ -10,8 +10,9 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
-from cerebro.findings.producers.base import BaseFindingProducer
+from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
 
 _FALSEY = {"false", "0", "no", "off", "disabled"}
 _TRUEY = {"true", "1", "yes", "on", "enabled"}
@@ -79,7 +80,7 @@ class K8sIngressPublicExposureProducer(BaseFindingProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
 
@@ -106,11 +107,7 @@ class K8sIngressPublicExposureProducer(BaseFindingProducer):
             }
         ]
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         severity = Severity.CRITICAL if not tls_entries else self.severity
 
@@ -121,11 +118,23 @@ class K8sIngressPublicExposureProducer(BaseFindingProducer):
         if hosts:
             summary_parts.append(f"hosts: {', '.join(hosts)}")
 
+        namespace_posture = None
+        namespace = normalized.get("namespace")
+        if namespace and context:
+            posture_index = coerce_mapping(context.get("namespace_network_posture"))
+            if posture_index:
+                namespace_posture = coerce_mapping(posture_index.get(namespace))
+
+        if namespace_posture and severity == Severity.CRITICAL:
+            if namespace_posture.get("default_deny_ingress"):
+                severity = self.severity
+
         evidence = {
-            "namespace": normalized.get("namespace"),
+            "namespace": namespace,
             "ingress_class": normalized.get("ingressClass"),
             "annotations": annotations,
             "exposures": exposures,
+            "namespace_network_posture": namespace_posture,
         }
 
         finding = self.create_finding(

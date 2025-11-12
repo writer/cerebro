@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any, cast
 
 from cerebro.domain.entities import (
@@ -12,9 +12,9 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
-from cerebro.findings.producers.base import BaseFindingProducer
+from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
 
 INTERNAL_ANNOTATION_KEYS = {
     "service.beta.kubernetes.io/aws-load-balancer-internal",
@@ -95,11 +95,18 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Mapping[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         service_type = (normalized.get("type") or "").upper()
         annotations = normalized.get("annotations") or {}
+        namespace = normalized.get("namespace")
+
+        namespace_posture = None
+        if namespace and context:
+            posture_index = coerce_mapping(context.get("namespace_network_posture"))
+            if posture_index:
+                namespace_posture = coerce_mapping(posture_index.get(namespace))
 
         exposures: list[dict[str, Any]] = []
 
@@ -138,6 +145,14 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
         else:
             severity = Severity.MEDIUM
 
+        if namespace_posture:
+            if (
+                namespace_posture.get("default_deny_ingress")
+                and namespace_posture.get("default_deny_egress")
+                and severity == Severity.CRITICAL
+            ):
+                severity = self.severity
+
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         summary_parts: list[str] = []
@@ -163,9 +178,10 @@ class K8sServicePublicExposureProducer(BaseFindingProducer):
 
         evidence = {
             "service_type": service_type,
-            "namespace": normalized.get("namespace"),
+            "namespace": namespace,
             "exposures": exposures,
             "annotations": annotations,
+            "namespace_network_posture": namespace_posture,
         }
 
         finding = self.create_finding(

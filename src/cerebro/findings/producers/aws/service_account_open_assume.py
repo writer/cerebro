@@ -11,7 +11,9 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import resolve_rule_id
 
 from .base import BaseAWSProducer
 
@@ -167,7 +169,7 @@ class AwsServiceAccountOpenAssumeProducer(BaseAWSProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: dict[str, Any] | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
         trust_policy = normalized.get("assume_role_policy") or {}
@@ -205,11 +207,7 @@ class AwsServiceAccountOpenAssumeProducer(BaseAWSProducer):
         if not exposures:
             return []
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         severity = self.severity
         if any(exposure["type"] == "public" for exposure in exposures):

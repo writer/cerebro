@@ -3,24 +3,30 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from cerebro.analysis.secrets import identify_secret_family, validate_secret_payload
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
 from cerebro.telemetry.schemas import SecretsScanResult
 
-from ..base import BaseFindingProducer
+from ..base import BaseFindingProducer, ProducerContext
+from ..utils import clip_sequence, resolve_rule_id
 
 
 class RepoSecretKeyProducer(BaseFindingProducer):
     """Evaluates repository telemetry for leaked secrets."""
 
     @property
-    def desired_sources(self) -> Set[str]:
+    def desired_sources(self) -> set[str]:
         return {"github"}
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"github.repo"}
 
     @property
@@ -42,35 +48,32 @@ class RepoSecretKeyProducer(BaseFindingProducer):
     @property
     def remediation(self) -> str:
         return (
-            "Purge the credential from version control history and rotate the associated secret."
-            " Implement automated scanning in CI to block future leaks."
+            "Purge the credential from version control history, rotate the associated "
+            "secret, and implement automated scanning in CI to block future leaks."
         )
 
     def evaluate(
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[FindingEntity]:
-        findings: List[FindingEntity] = []
+        context: ProducerContext | None = None,
+    ) -> list[FindingEntity]:
+        findings: list[FindingEntity] = []
 
         secrets = config.normalized_config.get("secrets", [])
         if not secrets:
             return findings
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         timestamp = context.get("detected_at") if context else None
-
         for item in secrets:
             scan_result = SecretsScanResult(**item["raw_payload"])
-            descriptor = identify_secret_family(scan_result.secret_type, scan_result.raw_result)
+            descriptor = identify_secret_family(
+                scan_result.secret_type,
+                scan_result.raw_result,
+            )
             validation = validate_secret_payload(scan_result)
-
             evidence = {
                 "file_path": scan_result.file_path,
                 "line_number": scan_result.line_number,
@@ -84,11 +87,12 @@ class RepoSecretKeyProducer(BaseFindingProducer):
                     "metadata": validation.metadata,
                 },
                 "commit_sha": item.get("commit_sha"),
-                "graph_controls": list(descriptor.graph_controls),
+                "graph_controls": clip_sequence(descriptor.graph_controls),
             }
 
+            repository_name = resource.name or resource.external_id
             summary = (
-                f"{descriptor.display_name} detected in repository {resource.name or resource.external_id} "
+                f"{descriptor.display_name} detected in repository {repository_name} "
                 f"at {scan_result.file_path}."
             )
 
@@ -101,7 +105,14 @@ class RepoSecretKeyProducer(BaseFindingProducer):
                 severity=self.severity,
             )
 
-            fingerprint_seed = f"{rule_id}|{resource.external_id}|{scan_result.file_path}|{descriptor.family.value}"
+            fingerprint_seed = "|".join(
+                [
+                    str(rule_id),
+                    resource.external_id,
+                    scan_result.file_path,
+                    descriptor.family.value,
+                ]
+            )
             finding.fingerprint = sha256(fingerprint_seed.encode()).hexdigest()
             if timestamp:
                 finding.first_seen = timestamp
@@ -115,7 +126,7 @@ class RepoSecretKeyProducer(BaseFindingProducer):
         self,
         resource: ResourceEntity,
         secret: SecretsScanResult,
-        telemetry: Dict[str, Any],
+        telemetry: dict[str, Any],
         rule_id: Any,
     ) -> FindingEntity:
         """Helper used by telemetry ingestion to construct a finding entity."""

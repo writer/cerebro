@@ -13,8 +13,8 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
-from cerebro.findings.producers.base import BaseFindingProducer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
+from cerebro.findings.producers.utils import coerce_mapping_sequence, resolve_rule_id
 
 
 class BaseSentinelOneProducer(BaseFindingProducer):
@@ -28,12 +28,14 @@ class BaseSentinelOneProducer(BaseFindingProducer):
     def resource_types(self) -> set[str]:
         return {"endpoint.device"}
 
-    def _resolve_rule_id(self, context: Mapping[str, Any] | None) -> UUID:
+    def _resolve_rule_id(self, context: ProducerContext | None) -> UUID:
         return resolve_rule_id(rule_name=self.rule_name, context=context)
 
     def _extract_threats(self, config: ConfigEntity) -> list[dict[str, Any]]:
-        threats = (config.normalized_config or {}).get("threats", [])
-        return [threat for threat in threats if isinstance(threat, dict)]
+        threats = coerce_mapping_sequence(
+            (config.normalized_config or {}).get("threats")
+        )
+        return [dict(threat) for threat in threats]
 
     def _is_active_threat(self, threat: Mapping[str, Any]) -> bool:
         status = str(threat.get("status", "")).lower()

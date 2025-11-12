@@ -11,11 +11,12 @@ from cerebro.domain.entities import (
     ResourceEntity,
     Severity,
 )
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import clip_sequence, compact_mapping
 
 from .base import BaseSentinelOneProducer
 
-ContextData = Mapping[str, Any]
 ThreatData = Mapping[str, Any]
 
 
@@ -57,7 +58,7 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: ContextData | None = None,
+        context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         findings: list[FindingEntity] = []
 
@@ -118,7 +119,7 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
 
     def _build_summary(self, resource: ResourceEntity, threat: ThreatData) -> str:
         host_name = resource.name or resource.external_id
-        domains = threat.get("c2_domains") or []
+        domains = clip_sequence(threat.get("c2_domains"))
         domain_text = ", ".join(domains) if domains else "unknown destinations"
         detected_at = threat.get("detected_at")
         parts = [
@@ -136,9 +137,9 @@ class SentinelOneCommandControlProducer(BaseSentinelOneProducer):
             "status": threat.get("status"),
             "mitigation_status": threat.get("mitigation_status"),
             "detected_at": threat.get("detected_at"),
-            "c2_domains": threat.get("c2_domains"),
-            "source_ips": threat.get("source_ips"),
-            "mitre_tactics": threat.get("mitre_tactics"),
-            "mitre_techniques": threat.get("mitre_techniques"),
-            "indicators": threat.get("indicators"),
+            "c2_domains": clip_sequence(threat.get("c2_domains")),
+            "source_ips": clip_sequence(threat.get("source_ips")),
+            "mitre_tactics": clip_sequence(threat.get("mitre_tactics")),
+            "mitre_techniques": clip_sequence(threat.get("mitre_techniques")),
+            "indicators": compact_mapping(threat.get("indicators")),
         }
