@@ -8,7 +8,7 @@ __all__ = [
     "security_group_rule_allows_public",
 ]
 
-from .exposure import (  # noqa: F401
+from .exposure import (
     analyze_instance_network_exposure,
     has_public_interface,
     security_group_rule_allows_public,
