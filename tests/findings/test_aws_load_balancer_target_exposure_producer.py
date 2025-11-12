@@ -1,0 +1,152 @@
+"""Tests for load balancer target exposure producer."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
+from cerebro.findings.producers.aws.load_balancer_target_exposure import (
+    AwsLoadBalancerTargetExposureProducer,
+)
+
+
+def _make_resource(lb_arn: str, scheme: str = "internet-facing") -> ResourceEntity:
+    return ResourceEntity(
+        external_id=lb_arn,
+        resource_type="aws.elbv2.load_balancer",
+        provider="aws",
+        name="alb",
+        metadata={"scheme": scheme},
+    )
+
+
+def test_public_ip_target_flagged() -> None:
+    producer = AwsLoadBalancerTargetExposureProducer()
+    resource = _make_resource("arn:aws:elasticloadbalancing:lb/app/public")
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.now(timezone.utc),  # noqa: UP017
+        normalized_config={
+            "loadBalancerArn": resource.external_id,
+            "scheme": "internet-facing",
+            "listeners": [
+                {
+                    "listenerArn": "arn:listener/https",
+                    "port": 443,
+                    "protocol": "HTTPS",
+                    "defaultActions": [
+                        {
+                            "type": "forward",
+                            "targetGroupArn": "arn:target-group/public-ip",
+                        }
+                    ],
+                }
+            ],
+            "targetGroups": [
+                {
+                    "targetGroupArn": "arn:target-group/public-ip",
+                    "targetType": "ip",
+                    "targets": [
+                        {
+                            "id": "8.8.8.8",
+                            "port": 80,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    findings = producer.evaluate(resource, config)
+
+    assert len(findings) == 1
+    assert findings[0].severity == Severity.HIGH
+    exposure = findings[0].evidence["exposures"][0]
+    assert exposure["publicTargets"] == ["8.8.8.8"]
+
+
+def test_private_ip_target_not_flagged() -> None:
+    producer = AwsLoadBalancerTargetExposureProducer()
+    resource = _make_resource("arn:aws:elasticloadbalancing:lb/app/private")
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.now(timezone.utc),  # noqa: UP017
+        normalized_config={
+            "loadBalancerArn": resource.external_id,
+            "scheme": "internet-facing",
+            "listeners": [
+                {
+                    "listenerArn": "arn:listener/http",
+                    "port": 80,
+                    "protocol": "HTTP",
+                    "defaultActions": [
+                        {
+                            "type": "forward",
+                            "targetGroupArn": "arn:target-group/private",
+                        }
+                    ],
+                }
+            ],
+            "targetGroups": [
+                {
+                    "targetGroupArn": "arn:target-group/private",
+                    "targetType": "ip",
+                    "targets": [
+                        {
+                            "id": "10.0.1.5",
+                            "port": 8080,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    findings = producer.evaluate(resource, config)
+
+    assert findings == []
+
+
+def test_internal_load_balancer_not_flagged() -> None:
+    producer = AwsLoadBalancerTargetExposureProducer()
+    resource = _make_resource(
+        "arn:aws:elasticloadbalancing:lb/app/internal",
+        "internal",
+    )
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.now(timezone.utc),  # noqa: UP017
+        normalized_config={
+            "loadBalancerArn": resource.external_id,
+            "scheme": "internal",
+            "listeners": [
+                {
+                    "listenerArn": "arn:listener/http",
+                    "port": 80,
+                    "protocol": "HTTP",
+                    "defaultActions": [
+                        {
+                            "type": "forward",
+                            "targetGroupArn": "arn:target-group/public-ip",
+                        }
+                    ],
+                }
+            ],
+            "targetGroups": [
+                {
+                    "targetGroupArn": "arn:target-group/public-ip",
+                    "targetType": "ip",
+                    "targets": [
+                        {
+                            "id": "8.8.8.8",
+                            "port": 80,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    findings = producer.evaluate(resource, config)
+
+    assert findings == []

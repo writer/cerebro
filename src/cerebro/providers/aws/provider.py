@@ -444,6 +444,7 @@ class AWSProvider(BaseProvider):
             lb = load_balancers[0]
 
             listeners: List[Dict[str, Any]] = []
+            target_groups: List[Dict[str, Any]] = []
             marker = None
             while True:
                 params = {"LoadBalancerArn": lb_arn}
@@ -515,6 +516,52 @@ class AWSProvider(BaseProvider):
                 if not marker:
                     break
 
+            tg_response = elb.describe_target_groups(LoadBalancerArn=lb_arn)
+            for target_group in tg_response.get('TargetGroups', []):
+                target_group_arn = target_group.get('TargetGroupArn')
+                tg_targets: List[Dict[str, Any]] = []
+                try:
+                    health_response = elb.describe_target_health(
+                        TargetGroupArn=target_group_arn
+                    )
+                    for description in health_response.get(
+                        'TargetHealthDescriptions', []
+                    ):
+                        target = description.get('Target', {})
+                        target_health = description.get('TargetHealth', {})
+                        tg_targets.append(
+                            {
+                                "id": target.get('Id'),
+                                "port": target.get('Port'),
+                                "availabilityZone": target.get('AvailabilityZone'),
+                                "healthState": target_health.get('State'),
+                                "reason": target_health.get('ReasonCode'),
+                                "description": target_health.get('Description'),
+                            }
+                        )
+                except ClientError as exc:
+                    logger.warning(
+                        "Failed to describe target health for %s: %s",
+                        target_group_arn,
+                        exc,
+                    )
+
+                target_groups.append(
+                    {
+                        "targetGroupArn": target_group_arn,
+                        "targetGroupName": target_group.get('TargetGroupName'),
+                        "targetType": target_group.get('TargetType'),
+                        "vpcId": target_group.get('VpcId'),
+                        "protocol": target_group.get('Protocol'),
+                        "port": target_group.get('Port'),
+                        "healthCheckProtocol": target_group.get('HealthCheckProtocol'),
+                        "healthCheckPort": target_group.get('HealthCheckPort'),
+                        "healthCheckPath": target_group.get('HealthCheckPath'),
+                        "matcher": target_group.get('Matcher'),
+                        "targets": tg_targets,
+                    }
+                )
+
             availability_zones = []
             for az in lb.get('AvailabilityZones', []) or []:
                 availability_zones.append(
@@ -543,6 +590,7 @@ class AWSProvider(BaseProvider):
                 "securityGroups": lb.get('SecurityGroups'),
                 "availabilityZones": availability_zones,
                 "listeners": listeners,
+                "targetGroups": target_groups,
             }
 
         return await call_sync_with_retries(

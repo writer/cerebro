@@ -91,8 +91,7 @@ class AwsLoadBalancerCertificateExpiryProducer(BaseAWSProducer):
                 if severity == Severity.CRITICAL:
                     highest_severity = Severity.CRITICAL
                 elif (
-                    severity == Severity.HIGH
-                    and highest_severity != Severity.CRITICAL
+                    severity == Severity.HIGH and highest_severity != Severity.CRITICAL
                 ):
                     highest_severity = Severity.HIGH
 
