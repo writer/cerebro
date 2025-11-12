@@ -31,6 +31,45 @@ def _is_public_ip(value: str | None) -> bool:
     )
 
 
+def _security_group_rule_allows_public(
+    rule: dict[str, Any], target_port: int | None
+) -> bool:
+    ipv4_cidrs = rule.get("ipv4Cidr") or []
+    ipv6_cidrs = rule.get("ipv6Cidr") or []
+    has_public_cidr = any(cidr == "0.0.0.0/0" for cidr in ipv4_cidrs) or any(
+        cidr == "::/0" for cidr in ipv6_cidrs
+    )
+    if not has_public_cidr:
+        return False
+
+    protocol = rule.get("ipProtocol")
+    from_port = rule.get("fromPort")
+    to_port = rule.get("toPort")
+
+    if protocol in {None, "-1"}:
+        return True
+
+    protocol = str(protocol).lower()
+    if protocol not in {"tcp", "udp", "all"}:
+        return False
+
+    if target_port is None:
+        return True
+
+    if from_port is None and to_port is None:
+        return True
+
+    if from_port is None:
+        from_port = to_port
+    if to_port is None:
+        to_port = from_port
+
+    if from_port is None or to_port is None:
+        return True
+
+    return int(from_port) <= target_port <= int(to_port)
+
+
 @register_producer
 class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
     """Flag load balancers routing traffic directly to public IP targets."""
@@ -114,21 +153,50 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
 
                 elif target_type == "instance":
                     public_instances = []
+                    target_port = target_group.get("port")
                     for target in target_group.get("targets") or []:
                         instance_details = target.get("instance") or {}
-                        has_public_interface = instance_details.get(
-                            "hasPublicInterface"
-                        )
+                        exposure_sources: list[str] = []
+
                         public_ip = instance_details.get("publicIpAddress")
                         interface_ips = (
                             instance_details.get("networkInterfacePublicIps") or []
                         )
-
-                        if not (
-                            has_public_interface
+                        has_public_interface = (
+                            instance_details.get("hasPublicInterface")
                             or _is_public_ip(public_ip)
                             or any(_is_public_ip(ip) for ip in interface_ips)
+                        )
+
+                        if has_public_interface:
+                            exposure_sources.append("public_interface")
+
+                        security_group_findings: list[dict[str, Any]] = []
+                        for security_group in (
+                            instance_details.get("securityGroups") or []
                         ):
+                            group_id = security_group.get("groupId")
+                            for rule in security_group.get("ingressRules") or []:
+                                allows_public = _security_group_rule_allows_public(
+                                    rule,
+                                    target_port,
+                                )
+                                if allows_public:
+                                    security_group_findings.append(
+                                        {
+                                            "groupId": group_id,
+                                            "ipProtocol": rule.get("ipProtocol"),
+                                            "fromPort": rule.get("fromPort"),
+                                            "toPort": rule.get("toPort"),
+                                            "ipv4Cidr": rule.get("ipv4Cidr"),
+                                            "ipv6Cidr": rule.get("ipv6Cidr"),
+                                        }
+                                    )
+
+                        if security_group_findings:
+                            exposure_sources.append("security_group")
+
+                        if not exposure_sources:
                             continue
 
                         public_instances.append(
@@ -139,6 +207,8 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
                                 "publicDnsName": instance_details.get("publicDnsName"),
                                 "subnetId": instance_details.get("subnetId"),
                                 "vpcId": instance_details.get("vpcId"),
+                                "exposureSources": exposure_sources,
+                                "securityGroupFindings": security_group_findings,
                             }
                         )
 
@@ -173,16 +243,32 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
         summary_parts = []
         for exposure in affected:
             if exposure.get("targetType") == "instance":
-                instance_ids = ", ".join(
-                    instance.get("instanceId") or ""
-                    for instance in exposure.get("publicInstances") or []
-                    if instance.get("instanceId")
-                )
-                summary_parts.append(
-                    "listener "
-                    f"{exposure['listenerArn']} forwards to public instances "
-                    f"{instance_ids}"
-                )
+                for instance in exposure.get("publicInstances") or []:
+                    identifier = instance.get("instanceId") or "unknown"
+                    reasons: list[str] = []
+                    if "public_interface" in instance.get("exposureSources", []):
+                        reasons.append("public interface")
+                    if instance.get("securityGroupFindings"):
+                        group_ids = {
+                            finding.get("groupId")
+                            for finding in instance.get("securityGroupFindings") or []
+                            if finding.get("groupId")
+                        }
+                        if group_ids:
+                            reasons.append(
+                                "open security group " + ", ".join(sorted(group_ids))
+                            )
+                        else:
+                            reasons.append("open security group")
+                    if reasons:
+                        reason_text = " and ".join(reasons)
+                    else:
+                        reason_text = "public exposure"
+                    summary_parts.append(
+                        "listener "
+                        f"{exposure['listenerArn']} forwards to instance {identifier} "
+                        f"with {reason_text}"
+                    )
             else:
                 public_targets = ", ".join(exposure.get("publicTargets", []))
                 summary_parts.append(

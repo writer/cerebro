@@ -189,6 +189,20 @@ def test_instance_target_without_public_interface_not_flagged() -> None:
                             "instance": {
                                 "hasPublicInterface": False,
                                 "networkInterfacePublicIps": [],
+                                "securityGroups": [
+                                    {
+                                        "groupId": "sg-closed",
+                                        "ingressRules": [
+                                            {
+                                                "ipProtocol": "tcp",
+                                                "fromPort": 443,
+                                                "toPort": 443,
+                                                "ipv4Cidr": ["10.0.0.0/16"],
+                                                "ipv6Cidr": [],
+                                            }
+                                        ],
+                                    }
+                                ],
                             },
                         }
                     ],
@@ -200,6 +214,78 @@ def test_instance_target_without_public_interface_not_flagged() -> None:
     findings = producer.evaluate(resource, config)
 
     assert findings == []
+
+
+def test_instance_target_with_open_security_group_flagged() -> None:
+    producer = AwsLoadBalancerTargetExposureProducer()
+    resource = _make_resource("arn:aws:elasticloadbalancing:lb/app/instance-sg")
+    config = ConfigEntity(
+        resource_external_id=resource.external_id,
+        captured_at=datetime.now(timezone.utc),  # noqa: UP017
+        normalized_config={
+            "loadBalancerArn": resource.external_id,
+            "scheme": "internet-facing",
+            "listeners": [
+                {
+                    "listenerArn": "arn:listener/https",
+                    "port": 443,
+                    "protocol": "HTTPS",
+                    "defaultActions": [
+                        {
+                            "type": "forward",
+                            "targetGroupArn": "arn:target-group/instance-sg",
+                        }
+                    ],
+                }
+            ],
+            "targetGroups": [
+                {
+                    "targetGroupArn": "arn:target-group/instance-sg",
+                    "targetType": "instance",
+                    "port": 443,
+                    "targets": [
+                        {
+                            "id": "i-0feedfeed12345678",
+                            "instance": {
+                                "hasPublicInterface": False,
+                                "publicIpAddress": None,
+                                "networkInterfacePublicIps": [],
+                                "securityGroups": [
+                                    {
+                                        "groupId": "sg-open",
+                                        "ingressRules": [
+                                            {
+                                                "ipProtocol": "tcp",
+                                                "fromPort": 80,
+                                                "toPort": 443,
+                                                "ipv4Cidr": ["0.0.0.0/0"],
+                                                "ipv6Cidr": [],
+                                            },
+                                            {
+                                                "ipProtocol": "udp",
+                                                "fromPort": None,
+                                                "toPort": None,
+                                                "ipv4Cidr": ["192.168.0.0/16"],
+                                                "ipv6Cidr": [],
+                                            },
+                                        ],
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    findings = producer.evaluate(resource, config)
+
+    assert len(findings) == 1
+    exposure = findings[0].evidence["exposures"][0]
+    instance_exposure = exposure["publicInstances"][0]
+    assert "security_group" in instance_exposure["exposureSources"]
+    assert instance_exposure["securityGroupFindings"][0]["groupId"] == "sg-open"
 
 
 def test_internal_load_balancer_not_flagged() -> None:

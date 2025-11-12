@@ -567,6 +567,7 @@ class AWSProvider(BaseProvider):
                 )
 
             instance_target_ids: Set[str] = set()
+            security_group_ids: Set[str] = set()
             for target_group in target_groups:
                 if target_group.get("targetType") != "instance":
                     continue
@@ -608,6 +609,14 @@ class AWSProvider(BaseProvider):
                                 if interface_ip:
                                     interface_public_ips.append(interface_ip)
 
+                            security_groups = instance.get('SecurityGroups') or []
+                            group_ids = [
+                                group.get('GroupId')
+                                for group in security_groups
+                                if group.get('GroupId')
+                            ]
+                            security_group_ids.update(group_ids)
+
                             instance_details[instance_id] = {
                                 "publicIpAddress": public_ip,
                                 "publicDnsName": public_dns,
@@ -617,7 +626,39 @@ class AWSProvider(BaseProvider):
                                 "privateIpAddress": instance.get('PrivateIpAddress'),
                                 "subnetId": instance.get('SubnetId'),
                                 "vpcId": instance.get('VpcId'),
+                                "securityGroupIds": group_ids,
                             }
+
+            security_group_details: Dict[str, Dict[str, Any]] = {}
+            if security_group_ids and ec2_client:
+                sg_id_list = list(security_group_ids)
+                for index in range(0, len(sg_id_list), 100):
+                    batch_ids = sg_id_list[index : index + 100]
+                    try:
+                        sg_response = ec2_client.describe_security_groups(
+                            GroupIds=batch_ids
+                        )
+                    except ClientError as exc:
+                        logger.warning(
+                            "Failed to describe security groups %s: %s",
+                            batch_ids,
+                            exc,
+                        )
+                        continue
+
+                    for group in sg_response.get('SecurityGroups', []):
+                        group_id = group.get('GroupId')
+                        if not group_id:
+                            continue
+                        security_group_details[group_id] = {
+                            "groupId": group_id,
+                            "groupName": group.get('GroupName'),
+                            "description": group.get('Description'),
+                            "ingressRules": [
+                                self._normalize_security_group_permission(permission)
+                                for permission in group.get('IpPermissions', [])
+                            ],
+                        }
 
             if instance_details:
                 for target_group in target_groups:
@@ -626,7 +667,14 @@ class AWSProvider(BaseProvider):
                     for target in target_group.get("targets") or []:
                         target_id = target.get("id")
                         if target_id and target_id in instance_details:
-                            target["instance"] = instance_details[target_id]
+                            instance_info = instance_details[target_id]
+                            security_groups = []
+                            for group_id in instance_info.get("securityGroupIds", []):
+                                if group_id in security_group_details:
+                                    security_groups.append(security_group_details[group_id])
+                            instance_info["securityGroups"] = security_groups
+                            instance_info.pop("securityGroupIds", None)
+                            target["instance"] = instance_info
 
             availability_zones = []
             for az in lb.get('AvailabilityZones', []) or []:
