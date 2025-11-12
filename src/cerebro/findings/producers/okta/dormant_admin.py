@@ -1,10 +1,20 @@
 """Producer for detecting dormant Okta admin accounts."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Set
+from __future__ import annotations
 
-from cerebro.domain.entities import ConfigEntity, FindingEntity, ResourceEntity, Severity
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    ResourceEntity,
+    Severity,
+)
+from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
+from cerebro.findings.producers.utils import coerce_str_sequence, resolve_rule_id
 
 from .base import BaseOktaProducer
 
@@ -16,7 +26,7 @@ class OktaDormantAdminProducer(BaseOktaProducer):
     _MAX_INACTIVITY = timedelta(days=60)
 
     @property
-    def resource_types(self) -> Set[str]:
+    def resource_types(self) -> set[str]:
         return {"okta.user"}
 
     @property
@@ -38,12 +48,12 @@ class OktaDormantAdminProducer(BaseOktaProducer):
     @property
     def remediation(self) -> str:
         return (
-            "Review the administrator account, disable it if unused, or rotate the credentials "
-            "after validating the owner's need for access."
+            "Review the administrator account, disable it if unused, or rotate "
+            "the credentials after validating the owner's need for access."
         )
 
     @property
-    def framework_mappings(self) -> Dict[str, List[str]]:
+    def framework_mappings(self) -> dict[str, list[str]]:
         return {
             "nist_800_53": ["AC-2(4)", "AC-2(5)", "IA-4"],
             "cis": ["1.1.10"],
@@ -53,16 +63,16 @@ class OktaDormantAdminProducer(BaseOktaProducer):
         self,
         resource: ResourceEntity,
         config: ConfigEntity,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[FindingEntity]:
-        findings: List[FindingEntity] = []
+        context: ProducerContext | None = None,
+    ) -> list[FindingEntity]:
+        findings: list[FindingEntity] = []
 
-        data = config.normalized_config
-        status = (data.get("status") or "").upper()
+        data: Mapping[str, Any] = config.normalized_config or {}
+        status = str(data.get("status", "")).upper()
         if status not in {"ACTIVE"}:
             return findings
 
-        admin_roles = data.get("admin_roles") or []
+        admin_roles = list(coerce_str_sequence(data.get("admin_roles")))
         if not admin_roles:
             return findings
 
@@ -71,18 +81,14 @@ class OktaDormantAdminProducer(BaseOktaProducer):
 
         last_login = self._parse_timestamp(data.get("last_login"))
         if last_login:
-            if datetime.now(timezone.utc) - last_login <= self._MAX_INACTIVITY:
+            if datetime.now(UTC) - last_login <= self._MAX_INACTIVITY:
                 return findings
         else:
             created = self._parse_timestamp(data.get("created"))
-            if created and datetime.now(timezone.utc) - created <= self._MAX_INACTIVITY:
+            if created and datetime.now(UTC) - created <= self._MAX_INACTIVITY:
                 return findings
 
-        rule_id = context.get("rule_id") if context else None
-        if not rule_id:
-            from cerebro.rules.rule_service import get_rule_by_name_sync
-
-            rule_id = get_rule_by_name_sync(self.rule_name)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
 
         evidence = {
             "user_id": resource.external_id,
@@ -106,7 +112,11 @@ class OktaDormantAdminProducer(BaseOktaProducer):
             "remains enabled."
         )
 
-        severity = Severity.CRITICAL if any("SUPER" in role.upper() for role in admin_roles) else self.severity
+        severity = (
+            Severity.CRITICAL
+            if any("SUPER" in role.upper() for role in admin_roles)
+            else self.severity
+        )
 
         findings.append(
             self.create_finding(
@@ -124,12 +134,12 @@ class OktaDormantAdminProducer(BaseOktaProducer):
         return findings
 
     @staticmethod
-    def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
+    def _parse_timestamp(value: str | None) -> datetime | None:
         if not value:
             return None
         try:
             if value.endswith("Z"):
                 value = value.replace("Z", "+00:00")
-            return datetime.fromisoformat(value).astimezone(timezone.utc)
+            return datetime.fromisoformat(value).astimezone(UTC)
         except Exception:
             return None

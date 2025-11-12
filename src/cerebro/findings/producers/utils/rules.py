@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from .context import ProducerRunContext
 
 
 def coerce_rule_id(value: object) -> UUID | None:
@@ -23,13 +26,16 @@ def coerce_rule_id(value: object) -> UUID | None:
 def resolve_rule_id(
     *,
     rule_name: str,
-    context: Mapping[str, Any] | None,
+    context: ProducerRunContext | Mapping[str, Any] | None,
 ) -> UUID:
     """Return a UUID for the rule associated with a producer evaluation."""
 
-    rule_id = coerce_rule_id(context.get("rule_id")) if context else None
-    if rule_id is not None:
-        return rule_id
+    if context is not None:
+        from .context import ProducerRunContext
+
+        normalized = ProducerRunContext.ensure(context)
+        if normalized and normalized.rule_id is not None:
+            return normalized.rule_id
 
     from cerebro.rules.rule_service import get_rule_by_name_sync
 
