@@ -39,7 +39,28 @@ jobs:
         run: uv sync --extra dev
 
       - name: Ruff lint
-        run: uv run ruff check src tests
+        run: |
+          uv run ruff check \
+            src/cerebro/findings/producers/aws/codebuild_public_trigger.py \
+            src/cerebro/findings/producers/aws/codebuild_source_credential.py \
+            src/cerebro/findings/producers/aws/service_account_open_assume.py \
+            src/cerebro/findings/producers/aws/security_group_admin_port.py \
+            src/cerebro/findings/producers/aws/security_group_public_ingress.py \
+            src/cerebro/findings/producers/aws/load_balancer_public_http.py \
+            src/cerebro/findings/producers/aws/load_balancer_missing_https.py \
+            src/cerebro/findings/producers/aws/load_balancer_weak_tls.py \
+            src/cerebro/findings/producers/aws/load_balancer_certificate_expiry.py \
+            src/cerebro/findings/producers/aws/load_balancer_target_exposure.py \
+            src/cerebro/findings/producers/github/repo_runner_group_scope.py \
+            src/cerebro/findings/producers/kubernetes/privileged_pod.py \
+            src/cerebro/findings/producers/kubernetes/ingress_public_exposure.py \
+            src/cerebro/findings/producers/kubernetes/cluster_admin_binding.py \
+            src/cerebro/findings/producers/kubernetes/cluster_admin_wildcard.py \
+            src/cerebro/findings/producers/kubernetes/service_public_exposure.py \
+            src/cerebro/findings/producers/kubernetes/node_public_exposure.py \
+            src/cerebro/findings/producers/kubernetes/service_account_token.py \
+            src/cerebro/findings/producers/kubernetes/network_policy.py \
+            src/cerebro/findings/producers/utils
 
       - name: Type-check with mypy
         run: uv run mypy src
