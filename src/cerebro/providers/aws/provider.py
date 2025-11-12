@@ -181,6 +181,29 @@ class AWSProvider(BaseProvider):
                         }
                     )
 
+        # Load Balancers (Application/Network)
+        if not resource_types or "aws.elbv2.load_balancer" in resource_types:
+            elb_client = self._session.client('elbv2')
+            paginator = elb_client.get_paginator('describe_load_balancers')
+
+            async for page in iterate_sync_iterator(
+                lambda: paginator.paginate(),
+                exceptions=(ClientError, BotoCoreError),
+                logger=logger,
+            ):
+                for lb in page.get('LoadBalancers', []):
+                    yield ResourceInfo(
+                        external_id=lb.get('LoadBalancerArn'),
+                        name=lb.get('LoadBalancerName'),
+                        resource_type="aws.elbv2.load_balancer",
+                        metadata={
+                            "type": lb.get('Type'),
+                            "scheme": lb.get('Scheme'),
+                            "state": (lb.get('State') or {}).get('Code'),
+                            "dns_name": lb.get('DNSName'),
+                        }
+                    )
+
         # CodeBuild projects
         if not resource_types or "aws.codebuild.project" in resource_types:
             codebuild_client = self._session.client('codebuild')
@@ -356,6 +379,8 @@ class AWSProvider(BaseProvider):
             config = await self._get_vpc_config(resource.external_id)
         elif resource.resource_type == "aws.ec2.security_group":
             config = await self._get_security_group_config(resource.external_id)
+        elif resource.resource_type == "aws.elbv2.load_balancer":
+            config = await self._get_load_balancer_config(resource.external_id)
         elif resource.resource_type == "aws.codebuild.project":
             config = await self._get_codebuild_project_config(resource.external_id)
         elif resource.resource_type == "aws.iam.role":
@@ -398,6 +423,84 @@ class AWSProvider(BaseProvider):
 
         return await call_sync_with_retries(
             _describe_security_group,
+            exceptions=(ClientError, BotoCoreError),
+            logger=logger,
+        )
+
+    async def _get_load_balancer_config(self, lb_arn: str) -> Dict[str, Any]:
+        """Get load balancer configuration."""
+
+        def _describe_load_balancer():
+            elb = self._session.client('elbv2')
+            response = elb.describe_load_balancers(LoadBalancerArns=[lb_arn])
+            load_balancers = response.get('LoadBalancers', [])
+            if not load_balancers:
+                return {}
+
+            lb = load_balancers[0]
+
+            listeners: List[Dict[str, Any]] = []
+            marker = None
+            while True:
+                params = {"LoadBalancerArn": lb_arn}
+                if marker:
+                    params["Marker"] = marker
+                listener_response = elb.describe_listeners(**params)
+                for listener in listener_response.get('Listeners', []):
+                    listeners.append(
+                        {
+                            "listenerArn": listener.get('ListenerArn'),
+                            "port": listener.get('Port'),
+                            "protocol": listener.get('Protocol'),
+                            "sslPolicy": listener.get('SslPolicy'),
+                            "defaultActions": [
+                                {
+                                    "type": action.get('Type'),
+                                    "order": action.get('Order'),
+                                    "targetGroupArn": action.get('TargetGroupArn'),
+                                    "redirectConfig": action.get('RedirectConfig'),
+                                    "fixedResponseConfig": action.get('FixedResponseConfig'),
+                                }
+                                for action in listener.get('DefaultActions', [])
+                            ],
+                        }
+                    )
+                marker = listener_response.get('NextMarker')
+                if not marker:
+                    break
+
+            availability_zones = []
+            for az in lb.get('AvailabilityZones', []) or []:
+                availability_zones.append(
+                    {
+                        "zoneName": az.get('ZoneName'),
+                        "subnetId": az.get('SubnetId'),
+                        "outpostArn": az.get('OutpostArn'),
+                    }
+                )
+
+            state = lb.get('State') or {}
+
+            return {
+                "loadBalancerArn": lb.get('LoadBalancerArn'),
+                "name": lb.get('LoadBalancerName'),
+                "scheme": lb.get('Scheme'),
+                "type": lb.get('Type'),
+                "dnsName": lb.get('DNSName'),
+                "ipAddressType": lb.get('IpAddressType'),
+                "createdTime": lb.get('CreatedTime').isoformat() if lb.get('CreatedTime') else None,
+                "state": 
+                    {
+                        "code": state.get('Code'),
+                        "reason": state.get('Reason'),
+                    },
+                "securityGroups": lb.get('SecurityGroups'),
+                "availabilityZones": availability_zones,
+                "listeners": listeners,
+            }
+
+        return await call_sync_with_retries(
+            _describe_load_balancer,
             exceptions=(ClientError, BotoCoreError),
             logger=logger,
         )
