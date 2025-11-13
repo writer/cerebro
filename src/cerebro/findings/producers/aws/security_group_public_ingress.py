@@ -12,7 +12,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import (
+    ProducerRunContext,
+    build_security_group_exposure,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -61,6 +65,8 @@ class AwsSecurityGroupPublicIngressProducer(BaseAWSProducer):
         config: ConfigEntity,
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
+        run_context = ProducerRunContext.ensure(context)
+
         normalized = config.normalized_config or {}
         ingress_rules: list[dict[str, Any]] = normalized.get("ingressRules") or []
 
@@ -75,47 +81,55 @@ class AwsSecurityGroupPublicIngressProducer(BaseAWSProducer):
             to_port = rule.get("toPort")
             protocol = rule.get("ipProtocol")
 
-            if from_port is None and to_port is None:
-                exposures.append(
-                    {
-                        "type": "all_ports",
-                        "protocol": protocol,
-                        "cidrs": cidrs,
-                    }
-                )
-            else:
-                exposures.append(
-                    {
-                        "type": "port_range",
-                        "protocol": protocol,
-                        "fromPort": from_port,
-                        "toPort": to_port,
-                        "cidrs": cidrs,
-                    }
-                )
+            metadata = {
+                "cidrs": cidrs,
+                "rule_type": (
+                    "all_ports"
+                    if from_port is None and to_port is None
+                    else "port_range"
+                ),
+            }
+
+            exposures.append(
+                {
+                    "direction": "ingress",
+                    "protocol": protocol,
+                    "from_port": from_port,
+                    "to_port": to_port,
+                    "cidr": cidrs[0],
+                    "metadata": metadata,
+                }
+            )
 
         if not exposures:
             return []
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
         severity = self._determine_severity(exposures)
 
-        evidence = {
-            "groupId": normalized.get("groupId") or resource.external_id,
-            "groupName": normalized.get("groupName"),
-            "vpcId": normalized.get("vpcId"),
-            "exposures": exposures,
-        }
+        evidence = build_security_group_exposure(
+            group_id=normalized.get("groupId") or resource.external_id,
+            group_name=normalized.get("groupName"),
+            vpc_id=normalized.get("vpcId"),
+            attached_resources=normalized.get("networkInterfaceIds"),
+            public_rules=exposures,
+            total_rules=len(ingress_rules),
+            metadata={
+                "owner_id": normalized.get("ownerId"),
+                "tags": normalized.get("tags"),
+            },
+        )
 
         summary_parts: list[str] = []
         for exposure in exposures:
-            cidr_text = ", ".join(exposure["cidrs"])
-            if exposure["type"] == "all_ports":
+            metadata = exposure.get("metadata", {})
+            cidr_text = ", ".join(metadata.get("cidrs", [exposure.get("cidr")]))
+            if metadata.get("rule_type") == "all_ports":
                 summary_parts.append(f"all ports open to {cidr_text}")
             else:
-                from_port = exposure.get("fromPort")
-                to_port = exposure.get("toPort")
+                from_port = exposure.get("from_port")
+                to_port = exposure.get("to_port")
                 if from_port == to_port:
                     port_label = f"port {from_port}"
                 else:
@@ -126,7 +140,7 @@ class AwsSecurityGroupPublicIngressProducer(BaseAWSProducer):
             resource=resource,
             rule_id=rule_id,
             title=(
-                f"AWS security group {evidence['groupId']} allows unrestricted ingress"
+                f"AWS security group {evidence['group_id']} allows unrestricted ingress"
             ),
             summary="; ".join(summary_parts),
             evidence=evidence,
@@ -136,6 +150,9 @@ class AwsSecurityGroupPublicIngressProducer(BaseAWSProducer):
         return [finding]
 
     def _determine_severity(self, exposures: list[dict[str, Any]]) -> Severity:
-        if any(exposure["type"] == "all_ports" for exposure in exposures):
+        if any(
+            exposure.get("metadata", {}).get("rule_type") == "all_ports"
+            for exposure in exposures
+        ):
             return Severity.CRITICAL
         return self.severity

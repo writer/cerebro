@@ -10,7 +10,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    ProducerRunContext,
+    coerce_mapping,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -63,6 +67,8 @@ class S3BucketPublicProducer(BaseAWSProducer):
         """Evaluate S3 bucket for public access."""
         findings: list[FindingEntity] = []
 
+        run_context = ProducerRunContext.ensure(context)
+
         normalized = config.normalized_config or {}
         policy_allows_public = bool(normalized.get("policyAllowsPublic", False))
         acl_allows_public = bool(normalized.get("aclAllowsPublic", False))
@@ -72,7 +78,7 @@ class S3BucketPublicProducer(BaseAWSProducer):
         is_public = policy_allows_public or acl_allows_public or block_public_disabled
 
         if is_public:
-            rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+            rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
             access_vectors: list[str] = []
             if policy_allows_public:

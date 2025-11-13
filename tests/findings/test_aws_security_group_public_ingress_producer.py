@@ -50,8 +50,8 @@ def test_security_group_all_ports_open() -> None:
     assert len(findings) == 1
     finding = findings[0]
     assert finding.severity == Severity.CRITICAL
-    exposures = finding.evidence["exposures"]
-    assert exposures[0]["type"] == "all_ports"
+    rules = finding.evidence["public_rules"]
+    assert rules[0]["metadata"]["rule_type"] == "all_ports"
 
 
 def test_security_group_specific_port_open() -> None:
@@ -85,9 +85,9 @@ def test_security_group_specific_port_open() -> None:
     assert len(findings) == 1
     finding = findings[0]
     assert finding.severity == Severity.HIGH
-    exposure = finding.evidence["exposures"][0]
-    assert exposure["fromPort"] == 8080
-    assert exposure["toPort"] == 8080
+    rule = finding.evidence["public_rules"][0]
+    assert rule["from_port"] == 8080
+    assert rule["to_port"] == 8080
 
 
 def test_security_group_internal_only() -> None:

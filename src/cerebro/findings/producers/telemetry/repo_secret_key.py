@@ -15,7 +15,11 @@ from cerebro.domain.entities import (
 from cerebro.telemetry.schemas import SecretsScanResult
 
 from ..base import BaseFindingProducer, ProducerContext
-from ..utils import clip_sequence, resolve_rule_id
+from ..utils import (
+    ProducerRunContext,
+    build_telemetry_incident_evidence,
+    resolve_rule_id,
+)
 
 
 class RepoSecretKeyProducer(BaseFindingProducer):
@@ -58,15 +62,17 @@ class RepoSecretKeyProducer(BaseFindingProducer):
         config: ConfigEntity,
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
+        run_context = ProducerRunContext.ensure(context)
+
         findings: list[FindingEntity] = []
 
         secrets = config.normalized_config.get("secrets", [])
         if not secrets:
             return findings
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
-        timestamp = context.get("detected_at") if context else None
+        timestamp = run_context.get("detected_at") if run_context else None
         for item in secrets:
             scan_result = SecretsScanResult(**item["raw_payload"])
             descriptor = identify_secret_family(
@@ -74,21 +80,27 @@ class RepoSecretKeyProducer(BaseFindingProducer):
                 scan_result.raw_result,
             )
             validation = validate_secret_payload(scan_result)
-            evidence = {
-                "file_path": scan_result.file_path,
-                "line_number": scan_result.line_number,
-                "secret_type": scan_result.secret_type,
-                "secret_family": descriptor.family.value,
-                "detector": scan_result.detector_name,
-                "validation": {
+            metadata: dict[str, Any] = {}
+            if timestamp:
+                metadata["detected_at"] = timestamp.isoformat()
+
+            evidence = build_telemetry_incident_evidence(
+                repository=resource.external_id,
+                file_path=scan_result.file_path,
+                line_number=scan_result.line_number,
+                secret_type=scan_result.secret_type,
+                secret_family=descriptor.family.value,
+                detector=scan_result.detector_name,
+                validation={
                     "status": validation.status,
                     "confidence": validation.confidence,
                     "reason": validation.reason,
                     "metadata": validation.metadata,
                 },
-                "commit_sha": item.get("commit_sha"),
-                "graph_controls": clip_sequence(descriptor.graph_controls),
-            }
+                commit_sha=item.get("commit_sha"),
+                graph_controls=descriptor.graph_controls,
+                metadata=metadata,
+            )
 
             repository_name = resource.name or resource.external_id
             summary = (

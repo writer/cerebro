@@ -20,6 +20,12 @@ from cerebro.findings.producers.aws.codebuild_public_trigger import (
 from cerebro.findings.producers.aws.codebuild_source_credential import (
     CodeBuildSharedCredentialProducer,
 )
+from cerebro.findings.producers.aws.security_group_admin_port import (
+    AwsSecurityGroupAdminPortProducer,
+)
+from cerebro.findings.producers.aws.security_group_public_ingress import (
+    AwsSecurityGroupPublicIngressProducer,
+)
 from cerebro.findings.producers.azure.storage_secret_artifacts import (
     AzureStorageSecretArtifactProducer,
 )
@@ -30,9 +36,15 @@ from cerebro.findings.producers.gcp.bucket_secret_artifacts import (
 from cerebro.findings.producers.github.admin_without_2fa import (
     AdminWithout2FAProducer,
 )
+from cerebro.findings.producers.github.org_workflow_permissions import (
+    GithubOrgWorkflowRiskProducer,
+)
 from cerebro.findings.producers.github.runner_exposure import (
     GithubRunnerNetworkExposureProducer,
     GithubRunnerPublicExposureProducer,
+)
+from cerebro.findings.producers.github.workflow_permissions import (
+    GithubWorkflowDefaultWriteProducer,
 )
 from cerebro.findings.producers.kubernetes.ingress_public_exposure import (
     K8sIngressPublicExposureProducer,
@@ -62,6 +74,9 @@ from cerebro.findings.producers.okta.mfa_disabled import (
 from cerebro.findings.producers.registry import (
     auto_discover_producers,
     get_producer_registry,
+)
+from cerebro.findings.producers.telemetry.repo_secret_key import (
+    RepoSecretKeyProducer,
 )
 
 
@@ -168,6 +183,37 @@ def test_network_producers_use_network_builder():
         assert "build_network_exposure_evidence" in source, (
             f"{producer_cls.__name__} should use network exposure builder"
         )
+
+
+def test_security_group_producers_use_security_builder():
+    sg_producers = [
+        AwsSecurityGroupAdminPortProducer,
+        AwsSecurityGroupPublicIngressProducer,
+    ]
+    for producer_cls in sg_producers:
+        source = inspect.getsource(producer_cls.evaluate)
+        assert "build_security_group_exposure" in source, (
+            f"{producer_cls.__name__} should use security group evidence builder"
+        )
+
+
+def test_workflow_permission_producers_use_builder():
+    workflow_producers = [
+        GithubWorkflowDefaultWriteProducer,
+        GithubOrgWorkflowRiskProducer,
+    ]
+    for producer_cls in workflow_producers:
+        source = inspect.getsource(producer_cls.evaluate)
+        assert "build_workflow_permission_evidence" in source, (
+            f"{producer_cls.__name__} should use workflow permission builder"
+        )
+
+
+def test_telemetry_secret_producer_uses_incident_builder():
+    source = inspect.getsource(RepoSecretKeyProducer.evaluate)
+    assert "build_telemetry_incident_evidence" in source, (
+        "RepoSecretKeyProducer should use telemetry incident builder"
+    )
 
 
 # Cross-provider behaviour tests

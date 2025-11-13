@@ -650,3 +650,214 @@ def build_network_exposure_evidence(
         evidence.update(extra)
 
     return evidence
+
+
+class SecurityGroupRuleSummary(TypedDict, total=False):
+    """Summary of an individual security group rule."""
+
+    direction: str | None
+    protocol: str | None
+    from_port: int | None
+    to_port: int | None
+    port: int | None
+    cidr: str | None
+    cidrs: list[str]
+    description: str | None
+    service: str | None
+    metadata: Mapping[str, Any]
+
+
+class SecurityGroupExposureEvidence(TypedDict, total=False):
+    """Evidence describing security group exposure posture."""
+
+    group_id: str | None
+    group_name: str | None
+    vpc_id: str | None
+    attached_resources: list[Any]
+    public_rules: list[SecurityGroupRuleSummary]
+    total_rules: int | None
+    metadata: Mapping[str, Any]
+
+
+def build_security_group_exposure(
+    *,
+    group_id: str | None,
+    group_name: str | None = None,
+    vpc_id: str | None = None,
+    attached_resources: Iterable[Any] | None = None,
+    public_rules: Iterable[Mapping[str, Any]] | None = None,
+    total_rules: int | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    limit: int = 20,
+) -> SecurityGroupExposureEvidence:
+    """Create evidence payload representing security group exposures."""
+
+    def _summarize_rule(rule: Mapping[str, Any]) -> SecurityGroupRuleSummary:
+        summary: SecurityGroupRuleSummary = {}
+        direction = rule.get("direction")
+        if isinstance(direction, str):
+            summary["direction"] = direction
+        protocol = rule.get("protocol")
+        if isinstance(protocol, str):
+            summary["protocol"] = protocol
+        for key in ("from_port", "to_port"):
+            value = rule.get(key)
+            if isinstance(value, int):
+                summary[key] = value
+        cidr = rule.get("cidr") or rule.get("cidr_block")
+        if isinstance(cidr, str):
+            summary["cidr"] = cidr
+        cidrs = rule.get("cidrs")
+        if isinstance(cidrs, Iterable):
+            summary["cidrs"] = list(islice(cidrs, limit))
+        port = rule.get("port")
+        if isinstance(port, int):
+            summary["port"] = port
+        service = rule.get("service")
+        if isinstance(service, str):
+            summary["service"] = service
+        description = rule.get("description")
+        if isinstance(description, str):
+            summary["description"] = description
+        metadata = rule.get("metadata")
+        if isinstance(metadata, Mapping):
+            summary["metadata"] = dict(metadata)
+        return summary
+
+    evidence: SecurityGroupExposureEvidence = {
+        "group_id": group_id,
+    }
+
+    if group_name is not None:
+        evidence["group_name"] = group_name
+    if vpc_id is not None:
+        evidence["vpc_id"] = vpc_id
+    if total_rules is not None:
+        evidence["total_rules"] = total_rules
+
+    if attached_resources is not None:
+        evidence["attached_resources"] = _clip_generic_sequence(
+            attached_resources, limit
+        )
+
+    if public_rules is not None:
+        summarized = [
+            _summarize_rule(rule) for rule in islice(public_rules, limit)
+        ]
+        evidence["public_rules"] = summarized
+
+    if metadata:
+        evidence["metadata"] = dict(metadata)
+
+    return evidence
+
+
+class WorkflowPermissionEvidence(TypedDict, total=False):
+    """Evidence describing GitHub workflow permission posture."""
+
+    repository: str | None
+    organization: str | None
+    default_permissions: Mapping[str, Any] | None
+    workflow_access: Mapping[str, Any] | None
+    pinned_workflows: list[Any]
+    risk_factors: list[str]
+
+
+def build_workflow_permission_evidence(
+    *,
+    repository: str | None = None,
+    organization: str | None = None,
+    default_permissions: Mapping[str, Any] | None = None,
+    workflow_access: Mapping[str, Any] | None = None,
+    pinned_workflows: Iterable[Any] | None = None,
+    risk_factors: Iterable[str] | None = None,
+    limit: int = 20,
+) -> WorkflowPermissionEvidence:
+    """Create standardized evidence for workflow permission findings."""
+
+    evidence: WorkflowPermissionEvidence = {}
+    if repository is not None:
+        evidence["repository"] = repository
+    if organization is not None:
+        evidence["organization"] = organization
+    if default_permissions:
+        default_permissions_dict = dict(default_permissions)
+        evidence["default_permissions"] = default_permissions_dict
+        default_workflow = default_permissions_dict.get(
+            "default_workflow_permissions"
+        )
+        if default_workflow is not None:
+            evidence["default_workflow_permissions"] = default_workflow
+    if workflow_access:
+        workflow_access_dict = dict(workflow_access)
+        evidence["workflow_access"] = workflow_access_dict
+        allowed_actions = workflow_access_dict.get("allowed_actions")
+        if allowed_actions is not None:
+            evidence["allowed_actions"] = allowed_actions
+        if "can_approve_pull_request_reviews" in workflow_access_dict:
+            evidence["can_approve_pull_request_reviews"] = workflow_access_dict[
+                "can_approve_pull_request_reviews"
+            ]
+    if pinned_workflows is not None:
+        evidence["pinned_workflows"] = _clip_generic_sequence(
+            pinned_workflows, limit
+        )
+    risk_list = _coerce_str_list(risk_factors)
+    if risk_list:
+        evidence["risk_factors"] = risk_list
+    return evidence
+
+
+class TelemetryIncidentEvidence(TypedDict, total=False):
+    """Evidence describing telemetry-detected incidents or secrets."""
+
+    repository: str | None
+    file_path: str | None
+    line_number: int | None
+    secret_type: str | None
+    secret_family: str | None
+    detector: str | None
+    validation: Mapping[str, Any]
+    commit_sha: str | None
+    graph_controls: list[Any]
+    metadata: Mapping[str, Any]
+
+
+def build_telemetry_incident_evidence(
+    *,
+    repository: str | None,
+    file_path: str | None,
+    line_number: int | None,
+    secret_type: str | None,
+    secret_family: str | None,
+    detector: str | None,
+    validation: Mapping[str, Any],
+    commit_sha: str | None = None,
+    graph_controls: Iterable[Any] | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    limit: int = 20,
+) -> TelemetryIncidentEvidence:
+    """Create evidence payload for secrets or telemetry incidents."""
+
+    evidence: TelemetryIncidentEvidence = {
+        "repository": repository,
+        "file_path": file_path,
+        "line_number": line_number,
+        "secret_type": secret_type,
+        "secret_family": secret_family,
+        "detector": detector,
+        "validation": dict(validation),
+    }
+
+    if commit_sha is not None:
+        evidence["commit_sha"] = commit_sha
+
+    if graph_controls is not None:
+        evidence["graph_controls"] = _clip_generic_sequence(
+            graph_controls, limit
+        )
+
+    if metadata:
+        evidence["metadata"] = dict(metadata)
+
+    return evidence

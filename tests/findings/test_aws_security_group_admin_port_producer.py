@@ -50,9 +50,9 @@ def test_security_group_exposes_ssh() -> None:
     assert len(findings) == 1
     finding = findings[0]
     assert finding.severity == Severity.HIGH
-    exposures = finding.evidence["exposures"]
-    assert exposures[0]["port"] == 22
-    assert exposures[0]["service"] == "SSH"
+    rules = finding.evidence["public_rules"]
+    assert rules[0]["from_port"] == 22
+    assert rules[0]["metadata"]["service"] == "SSH"
 
 
 def test_security_group_restricted_ingress() -> None:
@@ -117,5 +117,5 @@ def test_security_group_all_ports_open() -> None:
     assert len(findings) == 1
     finding = findings[0]
     assert finding.severity == Severity.HIGH
-    ports = {exposure["port"] for exposure in finding.evidence["exposures"]}
+    ports = {rule["from_port"] for rule in finding.evidence["public_rules"]}
     assert 22 in ports and 3389 in ports

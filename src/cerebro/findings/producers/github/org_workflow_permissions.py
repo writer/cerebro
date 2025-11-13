@@ -10,7 +10,12 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import coerce_mapping, resolve_rule_id
+from cerebro.findings.producers.utils import (
+    ProducerRunContext,
+    build_workflow_permission_evidence,
+    coerce_mapping,
+    resolve_rule_id,
+)
 
 from .base import BaseGitHubProducer
 
@@ -48,6 +53,8 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
         config: ConfigEntity,
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
+        run_context = ProducerRunContext.ensure(context)
+
         normalized = config.normalized_config or {}
         permissions = coerce_mapping(normalized.get("actionsPermissions")) or {}
         if not permissions:
@@ -64,14 +71,25 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
         if not (risky_default or risky_approval or risky_allowed_actions):
             return []
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
-        evidence = {
-            "organization": resource.external_id,
-            "default_workflow_permissions": default_permissions,
-            "allowed_actions": allowed_actions,
-            "can_approve_pull_request_reviews": can_approve,
-        }
+        risk_factors: list[str] = []
+        if risky_default:
+            risk_factors.append("default_write_permissions")
+        if risky_approval:
+            risk_factors.append("approves_fork_prs")
+        if risky_allowed_actions:
+            risk_factors.append("allows_all_actions")
+
+        evidence = build_workflow_permission_evidence(
+            organization=resource.external_id,
+            default_permissions=permissions,
+            workflow_access={
+                "allowed_actions": allowed_actions,
+                "can_approve_pull_request_reviews": can_approve,
+            },
+            risk_factors=risk_factors,
+        )
 
         summary_parts: list[str] = []
         if risky_default:

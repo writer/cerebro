@@ -13,7 +13,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import (
+    ProducerRunContext,
+    build_security_group_exposure,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -94,10 +98,12 @@ class AwsSecurityGroupAdminPortProducer(BaseAWSProducer):
         config: ConfigEntity,
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
+        run_context = ProducerRunContext.ensure(context)
+
         normalized = config.normalized_config or {}
         ingress_rules: list[dict[str, Any]] = normalized.get("ingressRules") or []
 
-        exposures: list[dict[str, Any]] = []
+        exposed_rules: list[dict[str, Any]] = []
 
         for rule in ingress_rules:
             exposed_cidrs = _rule_exposes_world(rule)
@@ -106,30 +112,44 @@ class AwsSecurityGroupAdminPortProducer(BaseAWSProducer):
 
             for port, service in ADMIN_PORTS.items():
                 if _port_in_range(port, rule):
-                    exposures.append(
+                    exposed_rules.append(
                         {
                             "type": "admin_port_exposure",
+                            "direction": "ingress",
+                            "from_port": port,
+                            "to_port": port,
                             "port": port,
                             "service": service,
                             "protocol": rule.get("ipProtocol"),
+                            "cidr": exposed_cidrs[0],
                             "cidrs": exposed_cidrs,
+                            "metadata": {
+                                "cidrs": exposed_cidrs,
+                                "service": service,
+                            },
                         }
                     )
 
-        if not exposures:
+        if not exposed_rules:
             return []
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
-        evidence = {
-            "groupId": normalized.get("groupId") or resource.external_id,
-            "groupName": normalized.get("groupName"),
-            "vpcId": normalized.get("vpcId"),
-            "exposures": exposures,
-        }
+        evidence = build_security_group_exposure(
+            group_id=normalized.get("groupId") or resource.external_id,
+            group_name=normalized.get("groupName"),
+            vpc_id=normalized.get("vpcId"),
+            attached_resources=normalized.get("networkInterfaceIds"),
+            public_rules=exposed_rules,
+            total_rules=len(ingress_rules),
+            metadata={
+                "owner_id": normalized.get("ownerId"),
+                "tags": normalized.get("tags"),
+            },
+        )
 
         summary_parts = []
-        for exposure in exposures:
+        for exposure in exposed_rules:
             cidrs = ", ".join(exposure["cidrs"])
             summary_parts.append(
                 f"{exposure['service']} on port {exposure['port']} open to {cidrs}"
@@ -140,7 +160,8 @@ class AwsSecurityGroupAdminPortProducer(BaseAWSProducer):
             resource=resource,
             rule_id=rule_id,
             title=(
-                f"AWS security group {evidence['groupId']} exposes administrative ports"
+                "AWS security group "
+                f"{evidence['group_id']} exposes administrative ports"
             ),
             summary=summary,
             evidence=evidence,
