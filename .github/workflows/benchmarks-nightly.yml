@@ -9,48 +9,44 @@ on:
   workflow_dispatch:
 
 jobs:
+  skip-on-push:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip nightly benchmarks on push
+        run: echo "Nightly benchmark workflow is skipped for push events."
+
   nightly-benchmarks:
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     env:
       ENVIRONMENT: testing
     steps:
-      - name: Skip workflow on push
-        if: ${{ github.event_name == 'push' }}
-        run: |
-          echo "Nightly benchmark workflow is skipped for push events."
-          exit 0
-
       - uses: actions/checkout@v4
-        if: ${{ github.event_name != 'push' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
-        if: ${{ github.event_name != 'push' }}
         with:
           python-version: "3.10"
 
       - name: Install uv
-        if: ${{ github.event_name != 'push' }}
         run: pip install uv
 
       - name: Sync dependencies
-        if: ${{ github.event_name != 'push' }}
         run: uv sync --extra dev
 
       - name: Run benchmark suite
         id: run_benchmarks
         continue-on-error: true
-        if: ${{ github.event_name != 'push' }}
         run: uv run python scripts/run_benchmarks.py --fail-on-error
 
       - name: Verify regression baselines
         id: regression_check
         continue-on-error: true
-        if: ${{ github.event_name != 'push' }}
         run: uv run python scripts/check_regression_tournament.py
 
       - name: Upload benchmark scorecard
-        if: ${{ always() && github.event_name != 'push' }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nightly-benchmark-scorecard-${{ github.run_id }}
@@ -58,7 +54,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Publish benchmark summary
-        if: ${{ always() && github.event_name != 'push' }}
+        if: always()
         run: |
           python - <<'PY'
           import json
@@ -96,7 +92,7 @@ jobs:
           PY
 
       - name: Post benchmark summary to Slack
-        if: ${{ always() && github.event_name != 'push' && secrets.AUTONOMY_SLACK_WEBHOOK != '' }}
+        if: always() && secrets.AUTONOMY_SLACK_WEBHOOK != ''
         env:
           SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
         run: |
@@ -111,7 +107,7 @@ jobs:
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Fail on benchmark regression
-        if: ${{ github.event_name != 'push' && (steps.run_benchmarks.outcome == 'failure' || steps.regression_check.outcome == 'failure') }}
+        if: steps.run_benchmarks.outcome == 'failure' || steps.regression_check.outcome == 'failure'
         run: |
           echo "Benchmark regression detected during nightly run." >&2
           exit 1
