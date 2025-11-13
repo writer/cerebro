@@ -127,3 +127,97 @@ jobs:
       - name: Telemetry alerts skipped (missing secrets)
         if: steps.telemetry-check.outputs.run != 'true'
         run: echo "Telemetry alerts workflow completed without execution because required secrets are not configured."
+
+      - name: Run producer audit snapshot
+        run: |
+          set -euo pipefail
+          uv run python scripts/producer_audit.py --output-format json > producer_audit.json
+
+      - name: Publish producer audit summary
+        run: |
+          python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+records = json.loads(Path("producer_audit.json").read_text(encoding="utf-8"))
+total = len(records)
+missing_builder = [r for r in records if not r.get("builder_used")]
+missing_context = [r for r in records if not r.get("run_context_normalized")]
+
+summary_lines = [
+    "## Producer Audit Snapshot",
+    f"- Producers audited: {total}",
+    f"- Missing standardized builder: {len(missing_builder)}",
+    f"- Missing ProducerRunContext.ensure: {len(missing_context)}",
+]
+
+if missing_builder:
+    preview = ", ".join(record["name"] for record in missing_builder[:10])
+    summary_lines.append("")
+    summary_lines.append("### Builder gaps (first 10)")
+    summary_lines.append(preview)
+
+if missing_context:
+    preview = ", ".join(record["name"] for record in missing_context[:10])
+    summary_lines.append("")
+    summary_lines.append("### Context normalization gaps (first 10)")
+    summary_lines.append(preview)
+
+summary = "\n".join(summary_lines) + "\n"
+print(summary)
+
+summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+if summary_path:
+    with Path(summary_path).open("a", encoding="utf-8") as handle:
+        handle.write(summary)
+
+has_gaps = bool(missing_builder or missing_context)
+Path("producer_audit_status.txt").write_text("gap" if has_gaps else "ok", encoding="utf-8")
+PY
+
+      - name: Send producer audit Slack alert
+        if: github.event_name == 'schedule'
+        env:
+          SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK:-}" ]; then
+            echo "Slack webhook not configured; skipping producer audit alert."
+            exit 0
+          fi
+
+          STATUS="$(cat producer_audit_status.txt)"
+          payload=$(python - <<'PY'
+import json
+from pathlib import Path
+
+records = json.loads(Path("producer_audit.json").read_text(encoding="utf-8"))
+missing_builder = [r for r in records if not r.get("builder_used")]
+missing_context = [r for r in records if not r.get("run_context_normalized")]
+
+if missing_builder or missing_context:
+    status_line = "Audit gaps detected across finding producers."
+else:
+    status_line = "Producer audit passed with all required builders and context normalization."
+
+details = [
+    status_line,
+    f"Missing builder: {len(missing_builder)}",
+    f"Missing context normalization: {len(missing_context)}",
+]
+
+preview = []
+for record in missing_builder[:5]:
+    preview.append(f"🔧 {record['name']}")
+for record in missing_context[:5]:
+    preview.append(f"🧭 {record['name']}")
+
+if preview:
+    details.append("Preview: " + ", ".join(preview))
+
+print(json.dumps({"text": "\n".join(details)}))
+PY
+)
+
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK"

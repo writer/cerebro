@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import abc
 import hashlib
+import json
 import logging
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -18,12 +19,24 @@ from cerebro.domain.entities import (
     Severity,
 )
 from cerebro.findings.producers.utils import ProducerRunContext
+from cerebro.metrics import (
+    record_finding_evidence,
+    record_serialization_failure,
+)
 
 logger = logging.getLogger(__name__)
 
 ProducerContext = ProducerRunContext
 ProducerContextInput = ProducerRunContext | Mapping[str, Any]
 ProducerMetadata = dict[str, Any]
+
+
+def _serialize_default(value: Any) -> Any:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, set):
+        return sorted(str(item) for item in value)
+    return str(value)
 
 
 class BaseFindingProducer(abc.ABC):
@@ -95,6 +108,32 @@ class BaseFindingProducer(abc.ABC):
     ) -> FindingEntity:
         """Helper to create standardized findings."""
         evidence_dict = dict(evidence) if evidence is not None else {}
+        top_level_keys = len(evidence_dict)
+
+        payload_bytes: int | None
+        if evidence_dict:
+            try:
+                serialized = json.dumps(
+                    evidence_dict,
+                    default=_serialize_default,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                payload_bytes = len(serialized.encode("utf-8"))
+            except Exception:
+                logger.debug(
+                    "Failed to serialize finding evidence for metrics",
+                    exc_info=True,
+                    extra={
+                        "producer": self.__class__.__name__,
+                        "rule_name": self.rule_name,
+                        "resource_id": resource.external_id,
+                    },
+                )
+                record_serialization_failure(producer_name=self.__class__.__name__)
+                payload_bytes = None
+        else:
+            payload_bytes = 0
         finding = FindingEntity(
             rule_id=rule_id,
             resource_external_id=resource.external_id,
@@ -116,6 +155,26 @@ class BaseFindingProducer(abc.ABC):
         # Generate fingerprint based on rule and resource
         fingerprint_str = f"{rule_id}|{resource.external_id}|{self.finding_name}"
         finding.fingerprint = hashlib.sha256(fingerprint_str.encode()).hexdigest()
+
+        logger.debug(
+            "Finding evidence payload metrics",
+            extra={
+                "producer": self.__class__.__name__,
+                "rule_name": self.rule_name,
+                "resource_id": resource.external_id,
+                "severity": finding.severity.value,
+                "evidence_top_level_keys": top_level_keys,
+                "evidence_bytes": payload_bytes,
+            },
+        )
+
+        if payload_bytes is not None:
+            record_finding_evidence(
+                producer_name=self.__class__.__name__,
+                severity=finding.severity.value,
+                payload_bytes=payload_bytes,
+                top_level_keys=top_level_keys,
+            )
 
         return finding
 

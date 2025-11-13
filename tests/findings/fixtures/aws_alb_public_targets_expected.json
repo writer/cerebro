@@ -1,0 +1,19 @@
+{
+  "evidence": {
+    "exposures": [
+      {
+        "listenerArn": "arn:aws:elasticloadbalancing:us-east-1:111111111111:listener/app/prod-app/1a2b3c4d5e6f7g8h/1234567890abcdef",
+        "port": 443,
+        "publicTargets": [
+          "54.241.128.10"
+        ],
+        "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:111111111111:targetgroup/prod-app-https/11aa22bb33cc44dd",
+        "targetType": "ip"
+      }
+    ],
+    "loadBalancerArn": "arn:aws:elasticloadbalancing:us-east-1:111111111111:loadbalancer/app/prod-app/1a2b3c4d5e6f7g8h"
+  },
+  "severity": "critical",
+  "summary": "listener arn:aws:elasticloadbalancing:us-east-1:111111111111:listener/app/prod-app/1a2b3c4d5e6f7g8h/1234567890abcdef forwards to public targets 54.241.128.10",
+  "title": "AWS load balancer arn:aws:elasticloadbalancing:us-east-1:111111111111:loadbalancer/app/prod-app/1a2b3c4d5e6f7g8h routes to public targets"
+}
