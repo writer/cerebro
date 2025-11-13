@@ -110,8 +110,8 @@ class GithubRunnerPublicExposureProducer(BaseGitHubProducer):
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
-        runner = coerce_mapping(normalized.get("runner")) or {}
-        runner_group = coerce_mapping(normalized.get("runner_group")) or {}
+        runner = dict(coerce_mapping(normalized.get("runner")) or {})
+        runner_group = dict(coerce_mapping(normalized.get("runner_group")) or {})
         repositories = _coerce_mapping_sequence(normalized.get("repositories"))
 
         runner.setdefault("id", runner.get("id") or resource.external_id)
@@ -192,7 +192,8 @@ class GithubRunnerNetworkExposureProducer(BaseGitHubProducer):
         if not telemetry_index_obj:
             return []
 
-        runner = coerce_mapping((config.normalized_config or {}).get("runner")) or {}
+        runner_source = coerce_mapping((config.normalized_config or {}).get("runner"))
+        runner = dict(runner_source or {})
         runner_name = runner.get("name") or resource.name
 
         runner.setdefault("id", runner.get("id") or resource.external_id)

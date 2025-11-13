@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from itertools import islice
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from .collections import coerce_mapping, coerce_mapping_sequence, coerce_str_sequence
 
@@ -15,8 +15,8 @@ def clip_sequence(values: Iterable[Any] | None, limit: int = 10) -> list[Any]:
     if not values or limit <= 0:
         return []
 
-    if isinstance(values, Sequence):
-        return list(values[: limit])  # type: ignore[index]
+    if isinstance(values, (str, bytes)):
+        return [values]
 
     return list(islice(values, limit))
 
@@ -127,7 +127,7 @@ def build_storage_secret_evidence(
         evidence["access_context"] = access_context
 
     if extra:
-        evidence.update(extra)
+        cast("dict[str, Any]", evidence).update(extra)
 
     return evidence
 
@@ -146,7 +146,7 @@ class RunnerGroupExposureEvidence(TypedDict, total=False):
 
     runner: RunnerMetadata
     runner_group: Mapping[str, Any]
-    exposed_repositories: list[Mapping[str, Any]]
+    exposed_repositories: list[dict[str, Any]]
 
 
 class RunnerHostExposureEvidence(TypedDict, total=False):
@@ -343,7 +343,7 @@ def build_identity_user_evidence(
         evidence["metadata"] = dict(metadata)
 
     if extra:
-        evidence.update(extra)
+        cast("dict[str, Any]", evidence).update(extra)
 
     return evidence
 
@@ -546,7 +546,7 @@ def build_ci_pipeline_exposure(
         evidence["metadata"] = dict(metadata)
 
     if extra:
-        evidence.update(extra)
+        cast("dict[str, Any]", evidence).update(extra)
 
     return evidence
 
@@ -557,6 +557,8 @@ class NetworkExposureDetail(TypedDict, total=False):
     type: str | None
     hosts: list[str]
     ports: list[int]
+    port: int | None
+    service_port: int | None
     load_balancer: list[Any]
     ip: str | None
     public: bool | None
@@ -647,7 +649,7 @@ def build_network_exposure_evidence(
     if namespace_network_posture:
         evidence["namespace_network_posture"] = namespace_network_posture
     if extra:
-        evidence.update(extra)
+        cast("dict[str, Any]", evidence).update(extra)
 
     return evidence
 
@@ -758,7 +760,10 @@ class WorkflowPermissionEvidence(TypedDict, total=False):
     repository: str | None
     organization: str | None
     default_permissions: Mapping[str, Any] | None
+    default_workflow_permissions: str | None
     workflow_access: Mapping[str, Any] | None
+    allowed_actions: str | None
+    can_approve_pull_request_reviews: bool | None
     pinned_workflows: list[Any]
     risk_factors: list[str]
 
