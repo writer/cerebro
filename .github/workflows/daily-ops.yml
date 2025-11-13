@@ -1,6 +1,9 @@
 name: Daily Operations
 
 on:
+  push:
+    paths:
+      - ".github/workflows/daily-ops.yml"
   schedule:
     - cron: "30 12 * * 1-5" # 12:30 UTC on weekdays
   workflow_dispatch:

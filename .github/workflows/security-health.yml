@@ -1,6 +1,9 @@
 name: Weekly Security Health
 
 on:
+  push:
+    paths:
+      - ".github/workflows/security-health.yml"
   schedule:
     - cron: "0 5 * * 1" # Mondays at 05:00 UTC
   workflow_dispatch:

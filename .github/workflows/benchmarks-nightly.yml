@@ -1,6 +1,9 @@
 name: Benchmarks Nightly
 
 on:
+  push:
+    paths:
+      - ".github/workflows/benchmarks-nightly.yml"
   schedule:
     - cron: "30 03 * * *"  # 03:30 UTC nightly
   workflow_dispatch:
