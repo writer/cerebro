@@ -6,7 +6,15 @@ on:
   workflow_dispatch:
 
 jobs:
+  skip-on-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip security health on push
+        run: echo "Security health workflow is skipped for push events."
+
   security-health:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
