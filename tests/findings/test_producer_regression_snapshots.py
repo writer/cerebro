@@ -12,6 +12,15 @@ from cerebro.domain.entities import ConfigEntity, ResourceEntity
 from cerebro.findings.producers.aws.load_balancer_target_exposure import (
     AwsLoadBalancerTargetExposureProducer,
 )
+from cerebro.findings.producers.azure.storage_secret_artifacts import (
+    AzureStorageSecretArtifactProducer,
+)
+from cerebro.findings.producers.gcp.bucket_secret_artifacts import (
+    GCPBucketSecretArtifactProducer,
+)
+from cerebro.findings.producers.github.runner_exposure import (
+    GithubRunnerPublicExposureProducer,
+)
 from cerebro.findings.producers.kubernetes.service_public_exposure import (
     K8sServicePublicExposureProducer,
 )
@@ -20,9 +29,13 @@ FIXTURE_ROOT = Path(__file__).parent / "fixtures"
 
 
 @pytest.mark.parametrize(
-    "case_name", [
+    "case_name",
+    [
         "aws_alb_public_targets",
         "k8s_service_public_exposure",
+        "azure_container_secret_artifacts",
+        "gcp_bucket_secret_artifacts",
+        "github_runner_public_exposure",
     ],
 )
 def test_producer_snapshot(case_name: str) -> None:
@@ -31,6 +44,9 @@ def test_producer_snapshot(case_name: str) -> None:
     producer_map = {
         "aws_alb_public_targets": AwsLoadBalancerTargetExposureProducer(),
         "k8s_service_public_exposure": K8sServicePublicExposureProducer(),
+        "azure_container_secret_artifacts": AzureStorageSecretArtifactProducer(),
+        "gcp_bucket_secret_artifacts": GCPBucketSecretArtifactProducer(),
+        "github_runner_public_exposure": GithubRunnerPublicExposureProducer(),
     }
 
     input_path = FIXTURE_ROOT / f"{case_name}_input.json"
