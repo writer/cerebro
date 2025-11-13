@@ -13,28 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Skip workflow on push
-        if: github.event_name == 'push'
+        if: ${{ github.event_name == 'push' }}
         run: echo "Daily operations workflow is skipped for push events."
 
       - uses: actions/checkout@v4
-        if: github.event_name != 'push'
+        if: ${{ github.event_name != 'push' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
-        if: github.event_name != 'push'
+        if: ${{ github.event_name != 'push' }}
         with:
           python-version: "3.10"
 
       - name: Install uv
-        if: github.event_name != 'push'
+        if: ${{ github.event_name != 'push' }}
         run: pip install uv
 
       - name: Sync dependencies
-        if: github.event_name != 'push'
+        if: ${{ github.event_name != 'push' }}
         run: uv sync --extra dev
 
       - name: Create daily agent summary
-        if: github.event_name != 'push'
+        if: ${{ github.event_name != 'push' }}
         env:
           DATABASE_URL: ${{ secrets.CEREBRO_DATABASE_URL }}
           CEREBRO_ANALYTICS_DB_URL: ${{ secrets.CEREBRO_ANALYTICS_DB_URL }}
@@ -62,7 +62,7 @@ jobs:
           uv run python "${args[@]}"
 
       - name: Check telemetry health
-        if: github.event_name != 'push'
+        if: ${{ github.event_name != 'push' }}
         id: telemetry
         continue-on-error: true
         env:
@@ -78,7 +78,7 @@ jobs:
             --fail-on-issues
 
       - name: Publish telemetry summary to Slack
-        if: github.event_name != 'push' && env.SLACK_WEBHOOK != ''
+        if: ${{ github.event_name != 'push' && env.SLACK_WEBHOOK != '' }}
         env:
           SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
           STEP_RESULT: ${{ steps.telemetry.outcome }}
@@ -125,7 +125,7 @@ PY
           curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK"
 
       - name: Fail when telemetry issues detected
-        if: github.event_name != 'push' && steps.telemetry.outcome == 'failure'
+        if: ${{ github.event_name != 'push' && steps.telemetry.outcome == 'failure' }}
         run: |
           echo "Telemetry health check detected issues." >&2
           exit 1
