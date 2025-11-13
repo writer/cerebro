@@ -9,33 +9,34 @@ on:
   workflow_dispatch:
 
 jobs:
-  skip-on-push:
-    if: ${{ github.event_name == 'push' }}
+  security-health:
     runs-on: ubuntu-latest
     steps:
-      - name: Skip security health on push
+      - name: Skip workflow on push
+        if: github.event_name == 'push'
         run: echo "Security health workflow is skipped for push events."
 
-  security-health:
-    if: ${{ github.event_name != 'push' }}
-    runs-on: ubuntu-latest
-    steps:
       - uses: actions/checkout@v4
+        if: github.event_name != 'push'
 
       - name: Set up Python
         uses: actions/setup-python@v5
+        if: github.event_name != 'push'
         with:
           python-version: "3.10"
 
       - name: Install uv
+        if: github.event_name != 'push'
         run: pip install uv
 
       - name: Sync dependencies
+        if: github.event_name != 'push'
         run: uv sync --extra dev
 
       - name: Run security health checks
         id: security
         continue-on-error: true
+        if: github.event_name != 'push'
         env:
           DATABASE_URL: ${{ secrets.CEREBRO_DATABASE_URL }}
         run: |
@@ -45,7 +46,7 @@ jobs:
             --fail-on-issues
 
       - name: Publish security report to Slack
-        if: secrets.AUTONOMY_SLACK_WEBHOOK != ''
+        if: github.event_name != 'push' && secrets.AUTONOMY_SLACK_WEBHOOK != ''
         env:
           SLACK_WEBHOOK: ${{ secrets.AUTONOMY_SLACK_WEBHOOK }}
           STEP_RESULT: ${{ steps.security.outcome }}
@@ -89,7 +90,7 @@ PY
           curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK"
 
       - name: Fail when security issues detected
-        if: steps.security.outcome == 'failure'
+        if: github.event_name != 'push' && steps.security.outcome == 'failure'
         run: |
           echo "Security health check reported issues." >&2
           exit 1
