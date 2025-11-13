@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ast
 import inspect
 import re
 import sys
+import textwrap
 from datetime import datetime
 from pathlib import Path
 from typing import get_args, get_origin
@@ -78,6 +80,23 @@ from cerebro.findings.producers.registry import (
 from cerebro.findings.producers.telemetry.repo_secret_key import (
     RepoSecretKeyProducer,
 )
+
+
+def _has_builder_call(source: str, function_name: str) -> bool:
+    tree = ast.parse(textwrap.dedent(source))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == function_name:
+                return True
+    return False
+
+
+def _assert_builder_call(producer_cls, function_name: str) -> None:
+    source = inspect.getsource(producer_cls.evaluate)
+    assert _has_builder_call(source, function_name), (
+        f"{producer_cls.__name__} should call {function_name}"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -179,10 +198,7 @@ def test_network_producers_use_network_builder():
         K8sNodePublicExposureProducer,
     ]
     for producer_cls in network_producers:
-        source = inspect.getsource(producer_cls.evaluate)
-        assert "build_network_exposure_evidence" in source, (
-            f"{producer_cls.__name__} should use network exposure builder"
-        )
+        _assert_builder_call(producer_cls, "build_network_exposure_evidence")
 
 
 def test_security_group_producers_use_security_builder():
@@ -191,10 +207,7 @@ def test_security_group_producers_use_security_builder():
         AwsSecurityGroupPublicIngressProducer,
     ]
     for producer_cls in sg_producers:
-        source = inspect.getsource(producer_cls.evaluate)
-        assert "build_security_group_exposure" in source, (
-            f"{producer_cls.__name__} should use security group evidence builder"
-        )
+        _assert_builder_call(producer_cls, "build_security_group_exposure")
 
 
 def test_workflow_permission_producers_use_builder():
@@ -203,17 +216,11 @@ def test_workflow_permission_producers_use_builder():
         GithubOrgWorkflowRiskProducer,
     ]
     for producer_cls in workflow_producers:
-        source = inspect.getsource(producer_cls.evaluate)
-        assert "build_workflow_permission_evidence" in source, (
-            f"{producer_cls.__name__} should use workflow permission builder"
-        )
+        _assert_builder_call(producer_cls, "build_workflow_permission_evidence")
 
 
 def test_telemetry_secret_producer_uses_incident_builder():
-    source = inspect.getsource(RepoSecretKeyProducer.evaluate)
-    assert "build_telemetry_incident_evidence" in source, (
-        "RepoSecretKeyProducer should use telemetry incident builder"
-    )
+    _assert_builder_call(RepoSecretKeyProducer, "build_telemetry_incident_evidence")
 
 
 # Cross-provider behaviour tests

@@ -74,6 +74,18 @@ jobs:
             src/cerebro/findings/producers/azure \
             src/cerebro/findings/producers/sentinelone
 
+      - name: Producer audit
+        run: |
+          uv run python scripts/producer_audit.py \
+            --require-builder-prefix cerebro.findings.producers.aws.security_group_ \
+            --require-builder-prefix cerebro.findings.producers.github.workflow_permissions \
+            --require-builder-prefix cerebro.findings.producers.telemetry.repo_secret_key \
+            --require-context-prefix cerebro.findings.producers.aws.security_group_ \
+            --require-context-prefix cerebro.findings.producers.github.workflow_permissions \
+            --require-context-prefix cerebro.findings.producers.github.org_workflow_permissions \
+            --require-context-prefix cerebro.findings.producers.telemetry.repo_secret_key \
+            --output-format compact
+
   frontend-lint:
     name: Frontend lint
     runs-on: ubuntu-latest
