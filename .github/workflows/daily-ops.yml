@@ -7,14 +7,14 @@ on:
 
 jobs:
   skip-on-push:
-    if: github.event_name == 'push'
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - name: Skip daily-ops on push
         run: echo "Daily operations workflow is skipped for push events."
 
   daily-ops:
-    if: github.event_name != 'push'
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

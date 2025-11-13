@@ -7,14 +7,14 @@ on:
 
 jobs:
   skip-on-push:
-    if: github.event_name == 'push'
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - name: Skip nightly benchmarks on push
         run: echo "Nightly benchmark workflow is skipped for push events."
 
   nightly-benchmarks:
-    if: github.event_name != 'push'
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     env:
       ENVIRONMENT: testing
