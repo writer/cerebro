@@ -12,7 +12,7 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import ProducerRunContext, resolve_rule_id
 
 from .base import BaseAWSProducer
 
@@ -77,6 +77,7 @@ class AwsLoadBalancerWeakTlsProducer(BaseAWSProducer):
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
+        run_context = ProducerRunContext.ensure(context)
         listeners: list[dict[str, Any]] = normalized.get("listeners") or []
 
         insecure_listeners: list[dict[str, Any]] = []
@@ -100,7 +101,7 @@ class AwsLoadBalancerWeakTlsProducer(BaseAWSProducer):
         if not insecure_listeners:
             return []
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
         evidence = {
             "loadBalancerArn": normalized.get("loadBalancerArn")

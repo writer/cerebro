@@ -14,7 +14,9 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    ProducerRunContext,
     analyze_instance_network_exposure,
+    exposures_contain_public,
     resolve_rule_id,
 )
 
@@ -67,6 +69,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
+        run_context = ProducerRunContext.ensure(context)
         scheme = (normalized.get("scheme") or "").lower()
         if scheme != "internet-facing":
             return []
@@ -145,13 +148,17 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
         if not affected:
             return []
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
         evidence = {
             "loadBalancerArn": normalized.get("loadBalancerArn")
             or resource.external_id,
             "exposures": affected,
         }
+
+        severity = (
+            Severity.CRITICAL if exposures_contain_public(affected) else self.severity
+        )
 
         summary_parts: list[str] = []
         for exposure in affected:
@@ -203,7 +210,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
             ),
             summary=summary,
             evidence=evidence,
-            severity=self.severity,
+            severity=severity,
         )
 
         return [finding]

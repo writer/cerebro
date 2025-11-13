@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
+from .collections import coerce_mapping
 from .rules import coerce_rule_id
 
 
@@ -111,3 +112,24 @@ class ProducerRunContext(Mapping[str, Any]):
         if self.organization_domains:
             data["organization_domains"] = self.organization_domains
         return data
+
+
+def get_namespace_network_posture(
+    context: ProducerRunContext | Mapping[str, Any] | None,
+    namespace: str | None,
+) -> Mapping[str, Any] | None:
+    """Extract namespace network posture metadata from producer context."""
+
+    if not namespace:
+        return None
+
+    run_context = ProducerRunContext.ensure(context)
+    if run_context is None:
+        return None
+
+    posture_index = coerce_mapping(run_context.get("namespace_network_posture"))
+    if not posture_index:
+        return None
+
+    posture = coerce_mapping(posture_index.get(namespace))
+    return posture if posture else None

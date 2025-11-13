@@ -39,13 +39,18 @@ __all__ = [
     "coerce_rule_id",
     "coerce_str_sequence",
     "compact_mapping",
+    "downgrade_severity_for_namespace_policy",
+    "exposures_contain_public",
+    "exposures_contain_type",
+    "get_namespace_network_posture",
     "has_public_interface",
+    "max_severity",
     "resolve_rule_id",
     "security_group_rule_allows_public",
 ]
 
 from .collections import coerce_mapping, coerce_mapping_sequence, coerce_str_sequence
-from .context import ProducerRunContext
+from .context import ProducerRunContext, get_namespace_network_posture
 from .evidence import (
     AnonymousLinkSummary,
     CiPipelineExposureEvidence,
@@ -84,3 +89,9 @@ from .exposure import (
     security_group_rule_allows_public,
 )
 from .rules import coerce_rule_id, resolve_rule_id
+from .severity import (
+    downgrade_severity_for_namespace_policy,
+    exposures_contain_public,
+    exposures_contain_type,
+    max_severity,
+)

@@ -13,7 +13,11 @@ from cerebro.domain.entities import (
 )
 from cerebro.findings.producers.base import ProducerContext
 from cerebro.findings.producers.registry import register_producer
-from cerebro.findings.producers.utils import resolve_rule_id
+from cerebro.findings.producers.utils import (
+    ProducerRunContext,
+    max_severity,
+    resolve_rule_id,
+)
 
 from .base import BaseAWSProducer
 
@@ -64,6 +68,7 @@ class AwsLoadBalancerCertificateExpiryProducer(BaseAWSProducer):
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
+        run_context = ProducerRunContext.ensure(context)
         listeners: list[dict[str, Any]] = normalized.get("listeners") or []
 
         now = datetime.now(timezone.utc)  # noqa: UP017
@@ -90,12 +95,7 @@ class AwsLoadBalancerCertificateExpiryProducer(BaseAWSProducer):
                 else:
                     continue
 
-                if severity == Severity.CRITICAL:
-                    highest_severity = Severity.CRITICAL
-                elif (
-                    severity == Severity.HIGH and highest_severity != Severity.CRITICAL
-                ):
-                    highest_severity = Severity.HIGH
+                highest_severity = max_severity(highest_severity, severity)
 
                 exposures.append(
                     {
@@ -111,7 +111,7 @@ class AwsLoadBalancerCertificateExpiryProducer(BaseAWSProducer):
         if not exposures:
             return []
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
         evidence = {
             "loadBalancerArn": normalized.get("loadBalancerArn")

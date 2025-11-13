@@ -13,8 +13,10 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    ProducerRunContext,
     build_network_exposure_evidence,
-    coerce_mapping,
+    downgrade_severity_for_namespace_policy,
+    get_namespace_network_posture,
     resolve_rule_id,
 )
 
@@ -87,6 +89,7 @@ class K8sIngressPublicExposureProducer(BaseFindingProducer):
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
+        run_context = ProducerRunContext.ensure(context)
 
         load_balancer = normalized.get("loadBalancer") or []
         if not load_balancer:
@@ -108,10 +111,11 @@ class K8sIngressPublicExposureProducer(BaseFindingProducer):
                 "type": "plain_http",
                 "hosts": _collect_hosts(rules),
                 "load_balancer": load_balancer,
+                "public": True,
             }
         ]
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
         severity = Severity.CRITICAL if not tls_entries else self.severity
 
@@ -122,16 +126,16 @@ class K8sIngressPublicExposureProducer(BaseFindingProducer):
         if hosts:
             summary_parts.append(f"hosts: {', '.join(hosts)}")
 
-        namespace_posture = None
         namespace = normalized.get("namespace")
-        if namespace and context:
-            posture_index = coerce_mapping(context.get("namespace_network_posture"))
-            if posture_index:
-                namespace_posture = coerce_mapping(posture_index.get(namespace))
+        namespace_posture = get_namespace_network_posture(run_context, namespace)
 
-        if namespace_posture and severity == Severity.CRITICAL:
-            if namespace_posture.get("default_deny_ingress"):
-                severity = self.severity
+        severity = downgrade_severity_for_namespace_policy(
+            severity,
+            namespace_posture=namespace_posture,
+            when=Severity.CRITICAL,
+            downgrade_to=self.severity,
+            require_ingress_default_deny=True,
+        )
 
         evidence = build_network_exposure_evidence(
             namespace=namespace,

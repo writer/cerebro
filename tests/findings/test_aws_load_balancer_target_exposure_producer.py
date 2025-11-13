@@ -60,7 +60,7 @@ def test_public_ip_target_flagged() -> None:
     findings = producer.evaluate(resource, config)
 
     assert len(findings) == 1
-    assert findings[0].severity == Severity.HIGH
+    assert findings[0].severity == Severity.CRITICAL
     exposure = findings[0].evidence["exposures"][0]
     assert exposure["publicTargets"] == ["8.8.8.8"]
 

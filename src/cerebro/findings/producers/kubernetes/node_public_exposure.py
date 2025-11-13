@@ -14,8 +14,11 @@ from cerebro.domain.entities import (
 from cerebro.findings.producers.base import BaseFindingProducer, ProducerContext
 from cerebro.findings.producers.registry import register_producer
 from cerebro.findings.producers.utils import (
+    ProducerRunContext,
     build_network_exposure_evidence,
-    coerce_mapping,
+    downgrade_severity_for_namespace_policy,
+    exposures_contain_public,
+    get_namespace_network_posture,
     resolve_rule_id,
 )
 
@@ -77,6 +80,7 @@ class K8sNodePublicExposureProducer(BaseFindingProducer):
         context: ProducerContext | None = None,
     ) -> list[FindingEntity]:
         normalized = config.normalized_config or {}
+        run_context = ProducerRunContext.ensure(context)
         addresses = normalized.get("addresses") or []
 
         exposures: list[dict[str, Any]] = []
@@ -104,25 +108,25 @@ class K8sNodePublicExposureProducer(BaseFindingProducer):
         if not exposures:
             return []
 
-        namespace_posture = None
         namespace = normalized.get("namespace")
-        if namespace and context:
-            posture_index = coerce_mapping(context.get("namespace_network_posture"))
-            if posture_index:
-                namespace_posture = coerce_mapping(posture_index.get(namespace))
+        namespace_posture = get_namespace_network_posture(run_context, namespace)
 
-        severity = Severity.CRITICAL
-        if not any(exp.get("type") == "external_ip" for exp in exposures):
-            severity = self.severity
+        severity = (
+            Severity.CRITICAL
+            if exposures_contain_public(exposures)
+            else self.severity
+        )
 
-        if namespace_posture and severity == Severity.CRITICAL:
-            if (
-                namespace_posture.get("default_deny_ingress")
-                and namespace_posture.get("default_deny_egress")
-            ):
-                severity = self.severity
+        severity = downgrade_severity_for_namespace_policy(
+            severity,
+            namespace_posture=namespace_posture,
+            when=Severity.CRITICAL,
+            downgrade_to=self.severity,
+            require_ingress_default_deny=True,
+            require_egress_default_deny=True,
+        )
 
-        rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
+        rule_id = resolve_rule_id(rule_name=self.rule_name, context=run_context)
 
         summary_parts = []
         for exposure in exposures:
