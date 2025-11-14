@@ -19,6 +19,7 @@ from cerebro.findings.producers.gcp.bucket_secret_artifacts import (
     GCPBucketSecretArtifactProducer,
 )
 from cerebro.findings.producers.github.runner_exposure import (
+    GithubRunnerNetworkExposureProducer,
     GithubRunnerPublicExposureProducer,
 )
 from cerebro.findings.producers.kubernetes.service_public_exposure import (
@@ -36,6 +37,7 @@ FIXTURE_ROOT = Path(__file__).parent / "fixtures"
         "azure_container_secret_artifacts",
         "gcp_bucket_secret_artifacts",
         "github_runner_public_exposure",
+        "github_runner_network_exposure",
     ],
 )
 def test_producer_snapshot(case_name: str) -> None:
@@ -47,6 +49,7 @@ def test_producer_snapshot(case_name: str) -> None:
         "azure_container_secret_artifacts": AzureStorageSecretArtifactProducer(),
         "gcp_bucket_secret_artifacts": GCPBucketSecretArtifactProducer(),
         "github_runner_public_exposure": GithubRunnerPublicExposureProducer(),
+        "github_runner_network_exposure": GithubRunnerNetworkExposureProducer(),
     }
 
     input_path = FIXTURE_ROOT / f"{case_name}_input.json"
@@ -72,8 +75,10 @@ def test_producer_snapshot(case_name: str) -> None:
         normalized_config=config_data,
     )
 
+    context_data = payload.get("context")
+
     producer = producer_map[case_name]
-    findings = producer.evaluate(resource, config)
+    findings = producer.evaluate(resource, config, context=context_data)
 
     assert findings, "Producer did not emit a finding for fixture"
     assert len(findings) == 1, "Fixture should yield exactly one finding"
