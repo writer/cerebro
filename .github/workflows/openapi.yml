@@ -46,3 +46,30 @@ jobs:
         with:
           name: openapi.json
           path: openapi.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: sdk/ts/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci --prefix sdk/ts
+
+      - name: Generate TypeScript SDK types from exported schema
+        env:
+          CEREBRO_OPENAPI_SPEC_PATH: openapi.json
+        run: npm run generate:types --prefix sdk/ts
+
+      - name: Build TypeScript SDK
+        run: npm run build --prefix sdk/ts
+
+      - name: Pack TypeScript SDK
+        run: npm pack --prefix sdk/ts --pack-destination sdk/ts/tmp
+
+      - name: Upload TypeScript SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cerebro-ts-sdk.tgz
+          path: sdk/ts/tmp/*.tgz
