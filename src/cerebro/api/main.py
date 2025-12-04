@@ -117,6 +117,11 @@ app.add_middleware(
 )
 
 
+@app.get(f"{settings.api_v1_prefix}/openapi.json", include_in_schema=False)
+async def get_versioned_openapi() -> Dict:
+    return app.openapi()
+
+
 @app.middleware("http")
 async def record_request_metrics(request: Request, call_next):
     start = perf_counter()

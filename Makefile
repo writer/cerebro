@@ -180,6 +180,10 @@ cli-findings: ## Generate findings (make cli-findings ORG="Company")
 cli-rules: ## List rules
 	$(UV) run python -m cerebro.cli rules list
 
+.PHONY: openapi
+openapi: ## Export OpenAPI schema to openapi.json for frontend consumers
+	$(UV) run python scripts/export_openapi.py --output openapi.json
+
 # Docker
 .PHONY: docker-build
 docker-build: ## Build Docker image

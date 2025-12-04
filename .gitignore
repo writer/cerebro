@@ -139,6 +139,9 @@ Thumbs.db
 logs/
 *.log
 
+# API specs
+openapi.json
+
 # Temporary files
 *.tmp
 *.temp
