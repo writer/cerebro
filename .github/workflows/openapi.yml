@@ -66,7 +66,10 @@ jobs:
         run: npm run build --prefix sdk/ts
 
       - name: Pack TypeScript SDK
-        run: npm pack --prefix sdk/ts --pack-destination sdk/ts/tmp
+        working-directory: sdk/ts
+        run: |
+          mkdir -p tmp
+          npm pack --pack-destination tmp
 
       - name: Upload TypeScript SDK artifact
         uses: actions/upload-artifact@v4
