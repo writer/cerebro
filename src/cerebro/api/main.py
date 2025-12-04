@@ -138,12 +138,89 @@ def custom_openapi() -> Dict:
         },
     )
 
+    schemas.setdefault(
+        "PaginatedResponse",
+        {
+            "title": "PaginatedResponse",
+            "type": "object",
+            "properties": {
+                "items": {"type": "array", "items": {"type": "object"}},
+                "pagination": {"$ref": "#/components/schemas/PaginationMeta"},
+            },
+        },
+    )
+
     components.setdefault("securitySchemes", {}).setdefault(
         "HTTPBearer",
         {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
     )
 
     schema.setdefault("security", [{"HTTPBearer": []}])
+
+    schema.setdefault("x-websocket-endpoints", [
+        {"url": "wss://api.cerebro.yourdomain.com/ws/events", "description": "Streaming events"},
+        {"url": "ws://localhost:8000/ws/events", "description": "Local development events"},
+    ])
+
+    def _inject_example(path: str, method: str, example: Dict) -> None:
+        paths = schema.get("paths", {})
+        entry = paths.get(path, {})
+        op = entry.get(method)
+        if not op:
+            return
+        responses = op.setdefault("responses", {})
+        ok = responses.setdefault("200", {})
+        content = ok.setdefault("content", {}).setdefault("application/json", {})
+        content.setdefault("example", example)
+
+    _inject_example(
+        "/api/v1/auth/token",
+        "post",
+        {"access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", "token_type": "bearer", "expires_in": 3600},
+    )
+
+    _inject_example(
+        "/api/v1/analytics/organizations/{org_id}/dashboard",
+        "get",
+        {
+            "executive_summary": {"org_id": "11111111-1111-1111-1111-111111111111", "overall_risk_score": 67, "risk_level": "medium"},
+            "security_metrics": {"findings": {"total": 120, "critical": 2, "high": 8, "open": 54, "trend_7d": -3, "critical_trend_7d": 0}, "sla_performance": {"breaches": 1, "mttr_hours": 12, "new_24h": 3, "resolved_24h": 6}},
+            "compliance_status": {},
+            "compliance_trends": {"overall": [{"date": "2024-10-01", "score": 0.82}]},
+            "investment_recommendations": [],
+            "identity_analytics": {"summary": {"total_identities": 500}},
+            "risk_heatmap": {"heatmap_data": []},
+            "runtime_health": {},
+            "integration_coverage": {},
+            "freshness": {},
+            "freshness_warnings": [],
+            "metadata": {"generated_at": "2024-10-16T00:00:00Z", "component_timings": {"total": 0.17}},
+        },
+    )
+
+    _inject_example(
+        "/api/v1/findings",
+        "get",
+        {
+            "items": [
+                {
+                    "finding_id": "f-123",
+                    "title": "Public S3 bucket",
+                    "severity": "high",
+                    "status": "open",
+                    "provider": "aws",
+                    "resource_id": "arn:aws:s3:::example",
+                }
+            ],
+            "pagination": {"page": 1, "page_size": 50, "total": 1, "next_cursor": None},
+        },
+    )
+
+    _inject_example(
+        "/api/v1/telemetry/frontend/observe",
+        "post",
+        {"status": "accepted"},
+    )
 
     app.openapi_schema = schema
     return app.openapi_schema
