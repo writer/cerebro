@@ -17,9 +17,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enable extensions
-    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
-    op.execute("CREATE EXTENSION IF NOT EXISTS btree_gin")
+    bind = op.get_bind()
+    is_postgres = bind.dialect.name == "postgresql" if bind else False
+
+    # Enable extensions when supported (skip for SQLite compatibility in CI)
+    if is_postgres:
+        op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        op.execute("CREATE EXTENSION IF NOT EXISTS btree_gin")
     
     # Organizations
     op.create_table('orgs',

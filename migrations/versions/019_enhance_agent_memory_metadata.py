@@ -1,6 +1,6 @@
 """Enhance agent memory metadata with content hashes and token counts
 
-Revision ID: 019
+Revision ID: 019_enhance_agent_memory_metadata
 Revises: 018
 Create Date: 2024-10-16 17:05:00.000000
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = "019"
+revision = "019_enhance_agent_memory_metadata"
 down_revision = "018"
 branch_labels = None
 depends_on = None

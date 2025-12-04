@@ -1,7 +1,7 @@
 """Add identity remediation actions table
 
-Revision ID: 009
-Revises: 008
+Revision ID: 009a_identity_remediation_actions
+Revises: 009
 Create Date: 2025-10-27 00:00:00.000000
 
 """
@@ -11,8 +11,8 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision = "009"
-down_revision = "008"
+revision = "009a_identity_remediation_actions"
+down_revision = "009"
 branch_labels = None
 depends_on = None
 

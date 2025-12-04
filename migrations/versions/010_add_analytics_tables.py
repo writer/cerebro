@@ -1,7 +1,7 @@
 """Add analytics and time series tables
 
 Revision ID: 010
-Revises: 009
+Revises: 009a_identity_remediation_actions
 Create Date: 2024-01-10 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '010'
-down_revision = '009'
+down_revision = '009a_identity_remediation_actions'
 branch_labels = None
 depends_on = None
 

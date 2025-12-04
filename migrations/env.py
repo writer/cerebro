@@ -16,8 +16,10 @@ from cerebro.core.config import settings
 # access to the values within the .ini file in use.
 config = context.config
 
-# Override sqlalchemy.url with our settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Respect alembic-provided URL when present (e.g., test sqlite); fall back to settings
+configured_url = config.get_main_option("sqlalchemy.url")
+database_url = configured_url or settings.database_url
+config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -71,11 +73,17 @@ async def run_async_migrations() -> None:
 
     """
 
+    async_url = database_url
+    if database_url.startswith("postgresql://"):
+        async_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+    elif database_url.startswith("sqlite+pysqlite://"):
+        async_url = database_url.replace("sqlite+pysqlite://", "sqlite+aiosqlite://")
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        url=settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
+        url=async_url,
     )
 
     async with connectable.connect() as connection:

@@ -1,7 +1,7 @@
 """add review task enhancements
 
-Revision ID: 024
-Revises: 023
+Revision ID: 024_add_review_enhancements
+Revises: 023_memory_decay_overrides_and_policy_suggestions
 Create Date: 2024-10-16
 
 Adds assignment, comments, and audit history to review tasks.
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '024'
-down_revision = '023'
+revision = "024_add_review_enhancements"
+down_revision = "023_memory_decay_overrides_and_policy_suggestions"
 branch_labels = None
 depends_on = None
 

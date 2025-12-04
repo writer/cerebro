@@ -1,7 +1,7 @@
 """add self play matches table
 
-Revision ID: 025
-Revises: 024
+Revision ID: 025_add_self_play_matches
+Revises: 024_add_review_enhancements
 Create Date: 2024-10-21
 
 Introduce persistence for self-play orchestration results.
@@ -13,8 +13,8 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision = "025"
-down_revision = "024"
+revision = "025_add_self_play_matches"
+down_revision = "024_add_review_enhancements"
 branch_labels = None
 depends_on = None
 

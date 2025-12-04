@@ -217,6 +217,9 @@ class TestDatabaseMigrations:
         alembic_cfg.set_main_option("script_location", "migrations")
         alembic_cfg.set_main_option("sqlalchemy.url", database_url)
 
+        if not database_url.startswith("postgresql"):
+            pytest.skip("migration compatibility test requires PostgreSQL")
+
         try:
             await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
         except KeyError as exc:
