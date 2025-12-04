@@ -14,5 +14,3 @@ build/
 *.sqlite
 tests/__pycache__/
 tests_unit/__pycache__/
-frontend/.next/
-frontend/node_modules/

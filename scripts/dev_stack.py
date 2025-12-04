@@ -21,7 +21,6 @@ class ProcSpec:
     env: Optional[Dict[str, str]] = None
 
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
 STATE_DIR = Path.home() / ".cerebro" / "dev_stack"
 STATE_PATH = STATE_DIR / "active.json"
 
@@ -90,7 +89,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-port", type=int, default=8000, help="Port for the API server")
     parser.add_argument("--skip-worker", action="store_true", help="Skip starting the Celery worker")
     parser.add_argument("--skip-beat", action="store_true", help="Skip starting the Celery beat scheduler")
-    parser.add_argument("--frontend", action="store_true", help="Launch the frontend dev server")
     parser.add_argument("--flower", action="store_true", help="Launch Flower for Celery monitoring")
     return parser.parse_args()
 
@@ -170,37 +168,7 @@ def build_specs(args: argparse.Namespace) -> List[ProcSpec]:
             )
         )
 
-    if args.frontend:
-        specs.append(build_frontend_spec())
-
     return specs
-
-
-def build_frontend_spec() -> ProcSpec:
-    import shutil
-
-    frontend_dir = ROOT_DIR / "frontend"
-    command: Sequence[str]
-
-    if shutil.which("bun") and (frontend_dir / "bun.lock").exists():
-        command = ["bun", "dev"]
-    elif shutil.which("npm"):
-        command = ["npm", "run", "dev"]
-    elif shutil.which("yarn"):
-        command = ["yarn", "dev"]
-    else:
-        raise RuntimeError("No Node package manager (bun, npm, yarn) available for frontend dev server")
-
-    node_modules = frontend_dir / "node_modules"
-    if not node_modules.exists():
-        raise RuntimeError(
-            f"frontend dependencies missing. Install them in {frontend_dir} before launching the dev server"
-        )
-
-    env = os.environ.copy()
-    env.setdefault("PORT", "3000")
-
-    return ProcSpec(name="frontend", command=command, cwd=frontend_dir, env=env,)
 
 
 async def create_process(spec: ProcSpec) -> asyncio.subprocess.Process:

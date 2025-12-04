@@ -1,13 +1,10 @@
 from copy import deepcopy
-from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 
 from tests.api.dashboard_samples import build_sample_dashboard_response
 
-
-TYPES_PATH = Path(__file__).resolve().parents[2] / "frontend" / "lib" / "types.ts"
 
 EXPECTED_FIELDS: Dict[str, set[str]] = {
     "ExecutiveDashboardResponse": {
@@ -230,60 +227,6 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
 }
 
 
-def _extract_type_fields(source: str, type_name: str) -> List[str]:
-    marker = f"export type {type_name}"
-    start = source.find(marker)
-    if start == -1:
-        raise AssertionError(f"Type {type_name} not found in types.ts")
-
-    brace_start = source.find("{", start)
-    if brace_start == -1:
-        raise AssertionError(f"Type {type_name} missing opening brace")
-
-    depth = 0
-    block_chars = []
-    for char in source[brace_start:]:
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                break
-        block_chars.append(char)
-    else:  # pragma: no cover - malformed types file
-        raise AssertionError(f"Type {type_name} missing closing brace")
-
-    block = "".join(block_chars)[1:]  # drop initial opening brace
-
-    fields: List[str] = []
-    depth = 0
-    current: List[str] = []
-    for char in block:
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-        current.append(char)
-        if char == ";" and depth == 0:
-            segment = "".join(current).strip()
-            current.clear()
-            if not segment or ":" not in segment:
-                continue
-            field_name = segment.split(":", 1)[0].strip()
-            if field_name.startswith("|"):
-                continue
-            if field_name.endswith("?"):
-                field_name = field_name[:-1]
-            fields.append(field_name)
-
-    return fields
-
-
-def _assert_field_set(name: str, parsed: List[str]) -> None:
-    expected = EXPECTED_FIELDS[name]
-    assert set(parsed) == expected, f"TypeScript definition for {name} changed"
-
-
 def _validate_api_response(payload: Dict[str, object]) -> None:
     assert set(payload.keys()) == EXPECTED_FIELDS["ExecutiveDashboardResponse"]
 
@@ -409,12 +352,7 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
         assert isinstance(metadata["data_as_of"], str)
 
 
-def test_typescript_contract_matches_api_schema(client, test_db, test_org, test_token, monkeypatch):
-    types_source = TYPES_PATH.read_text(encoding="utf-8")
-    for type_name in EXPECTED_FIELDS:
-        parsed_fields = _extract_type_fields(types_source, type_name)
-        _assert_field_set(type_name, parsed_fields)
-
+def test_dashboard_contract_matches_expected_schema(client, test_db, test_org, test_token, monkeypatch):
     sample = build_sample_dashboard_response()
 
     async def _fake_dashboard(self, org_id):

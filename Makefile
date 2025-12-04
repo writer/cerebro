@@ -5,7 +5,6 @@ PYTHON := python3
 UV := uv
 LOG_LEVEL ?= INFO
 LOAD_DEV_DATA ?= 1
-DEV_STACK_INCLUDE_FRONTEND ?= 0
 DEV_STACK_INCLUDE_FLOWER ?= 0
 DEV_SKIP_SMOKE ?= 0
 SMOKE_MODE ?= asgi
@@ -13,9 +12,6 @@ SMOKE_TARGETS ?= core,db
 SMOKE_BASE_URL ?= http://localhost:8000
 
 DEV_STACK_ARGS :=
-ifeq ($(DEV_STACK_INCLUDE_FRONTEND),1)
-DEV_STACK_ARGS += --frontend
-endif
 ifeq ($(DEV_STACK_INCLUDE_FLOWER),1)
 DEV_STACK_ARGS += --flower
 endif
@@ -78,7 +74,7 @@ smoke-api: ## Run API smoke checks (set SMOKE_MODE=http for running stacks)
 	$(UV) run python scripts/smoke_api.py
 
 .PHONY: dev-stack
-dev-stack: ## Run API, Celery, and optional services concurrently (set DEV_STACK_INCLUDE_FRONTEND=1 for frontend, DEV_STACK_INCLUDE_FLOWER=1 for Flower)
+dev-stack: ## Run API, Celery, and optional services concurrently (set DEV_STACK_INCLUDE_FLOWER=1 for Flower)
 	@if [ "$(DEV_SKIP_SMOKE)" = "0" ]; then \
 		CEREBRO_SMOKE_MODE=asgi \
 		CEREBRO_SMOKE_TARGETS=$(SMOKE_TARGETS) \
