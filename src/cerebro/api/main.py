@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Dict
 
 from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -88,6 +89,67 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=_app_lifespan,
 )
+
+
+def custom_openapi() -> Dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    schema["servers"] = [
+        {"url": "https://api.cerebro.yourdomain.com"},
+        {"url": "https://staging-api.cerebro.yourdomain.com"},
+        {"url": "http://localhost:8000"},
+    ]
+
+    components = schema.setdefault("components", {})
+    schemas = components.setdefault("schemas", {})
+
+    schemas.setdefault(
+        "ErrorResponse",
+        {
+            "title": "ErrorResponse",
+            "type": "object",
+            "properties": {
+                "detail": {"anyOf": [{"type": "string"}, {"type": "object"}]},
+                "error": {"type": "string"},
+                "code": {"type": "string"},
+            },
+        },
+    )
+
+    schemas.setdefault(
+        "PaginationMeta",
+        {
+            "title": "PaginationMeta",
+            "type": "object",
+            "properties": {
+                "page": {"type": "integer", "minimum": 1},
+                "page_size": {"type": "integer", "minimum": 1},
+                "total": {"type": "integer", "minimum": 0},
+                "next_cursor": {"type": ["string", "null"]},
+            },
+        },
+    )
+
+    components.setdefault("securitySchemes", {}).setdefault(
+        "HTTPBearer",
+        {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+    )
+
+    schema.setdefault("security", [{"HTTPBearer": []}])
+
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi  # type: ignore
 
 configure_service_observability(service_name="cerebro-api")
 
