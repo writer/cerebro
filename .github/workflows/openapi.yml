@@ -1,0 +1,48 @@
+name: openapi-spec
+
+on:
+  push:
+    branches: ["main", "feature/**", "hotfix/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-openapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install --upgrade uv
+
+      - name: Cache uv environments
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Export OpenAPI schema
+        run: uv run python scripts/export_openapi.py --output openapi.json
+
+      - name: Upload OpenAPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi.json
+          path: openapi.json
