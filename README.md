@@ -46,10 +46,8 @@ LOAD_DEV_DATA=0 make dev
 # Start Postgres + Redis locally
 make dev-infra
 
-# Launch API, Celery worker, and beat; add frontend/Flower via env flags
+# Launch API, Celery worker, and beat (backend only; no bundled frontend)
 make dev-stack
-DEV_STACK_INCLUDE_FRONTEND=1 make dev-stack
-DEV_STACK_INCLUDE_FLOWER=1 make dev-stack
 
 # Containerised alternative
 make docker-up
@@ -58,8 +56,7 @@ make docker-up
 Access points:
 
 - API docs: `http://localhost:8000/docs`
-- Web UI: `http://localhost:3000`
-- Default credentials: `admin` / `admin123!`
+- OpenAPI (versioned): `http://localhost:8000/api/v1/openapi.json`
 
 ### Minimal Configuration
 
@@ -107,7 +104,7 @@ curl "http://localhost:8000/api/v1/findings?severity=critical" \
 - Telemetry is exported through Prometheus metrics such as `cerebro_agent_memory_events_total`
 - Agent tool execution metrics (`cerebro_agent_tool_*`) track success, failure, and latency
 
-## Internal SDK
+## Internal SDK & Frontend Integration
 
 Writer ships two first-class SDKs in this repo:
 
@@ -130,6 +127,12 @@ async def list_high_risk_findings(org_id: str, username: str, password: str) -> 
 ```
 
 Additional modules cover agent tooling analytics, review queue exports, integration sync triggers, and telemetry wiring.
+
+Frontend consumption:
+
+- CI publishes `openapi.json` and a packed TS SDK artifact (`cerebro-ts-sdk.tgz`) via the `openapi-spec` workflow.
+- Live schema: `GET /api/v1/openapi.json` (servers included); use for codegen or client validation.
+- For local snapshots, run `make openapi` to emit `openapi.json`.
 
 ## Development Workflow
 
