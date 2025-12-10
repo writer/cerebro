@@ -41,7 +41,7 @@ if alb_internal is None:
 from aws import (
     networking,
     secrets,
-    database,
+    dynamodb,
     cache,
     kms,
     compute,
@@ -66,14 +66,6 @@ kms_key = kms.create_kms_key(
     description="Cerebro encryption key",
 )
 
-# Generate database password if not provided
-db_password = config.get_secret("dbPassword") or random.RandomPassword(
-    "db-password",
-    length=32,
-    special=True,
-    override_special="!#$%&*()-_=+[]{}<>:?",
-).result
-
 # Generate Redis password if not provided
 redis_password = config.get_secret("redisPassword") or random.RandomPassword(
     "redis-password",
@@ -92,7 +84,6 @@ cerebro_secrets = secrets.create_secrets(
     name=f"cerebro-{environment}",
     secrets={
         "SECRET_KEY": secret_key,
-        "DB_PASSWORD": db_password,
         "REDIS_PASSWORD": redis_password,
         "KMS_KEY_ID": kms_key.id,
         "CEREBRO_AUTOMATION_ORG_ID": automation_org_id,
@@ -101,37 +92,18 @@ cerebro_secrets = secrets.create_secrets(
     },
 )
 
-# Create PostgreSQL database
-database_stack = database.create_rds_postgres(
-    name=f"cerebro-{environment}",
-    vpc_id=vpc_stack["vpc_id"],
-    subnet_ids=vpc_stack["database_subnet_ids"],
-    security_group_id=vpc_stack["db_security_group_id"],
-    instance_class=config.get("dbInstanceClass") or "db.r6g.xlarge",
-    allocated_storage=config.get_int("dbStorageSize") or 500,
-    master_password=db_password,
-    multi_az=_config_bool("enableMultiAz", True),
-    backup_retention_period=config.get_int("backupRetentionDays") or 30,
-    kms_key_id=kms_key.arn,
-    existing_db_instance_id=config.get("dbInstanceId"),
-    existing_parameter_group_id=config.get("dbParameterGroupId"),
-    existing_subnet_group_id=config.get("dbSubnetGroupId"),
+# Create DynamoDB tables
+dynamodb_stack = dynamodb.create_dynamodb_tables(
+    name="cerebro",
+    environment=environment,
+    kms_key_arn=kms_key.arn,
+    enable_point_in_time_recovery=True,
+    enable_streams=True,
+    audit_ttl_enabled=True,
+    tags={
+        "Project": "Cerebro",
+    },
 )
-
-# Create read replicas if enabled
-read_replicas = []
-if _config_bool("enableReadReplicas", True):
-    replica_count = config.get_int("readReplicaCount") or 2
-    for i in range(replica_count):
-        existing_replica_id = config.get(f"dbReplica{i+1}Id")
-        replica = database.create_read_replica(
-            name=f"cerebro-{environment}-replica-{i+1}",
-            source_db_instance=database_stack["db_instance"].identifier,
-            instance_class="db.r6g.large",
-            kms_key_id=kms_key.arn,
-            existing_replica_id=existing_replica_id,
-        )
-        read_replicas.append(replica)
 
 existing_redis_replication_group_id = config.get("redisReplicationGroupId")
 existing_redis_parameter_group_id = config.get("redisParameterGroupId")
@@ -173,9 +145,19 @@ ecs_stack = compute.create_ecs_cluster(
     subnet_ids=vpc_stack["private_subnet_ids"],
     security_group_id=vpc_stack["app_security_group_id"],
     secrets_arn=cerebro_secrets.arn,
-    database_endpoint=database_stack["endpoint"],
+    dynamodb_table_arns=[
+        dynamodb_stack["core_table_arn"],
+        dynamodb_stack["audit_table_arn"],
+        dynamodb_stack["agents_table_arn"],
+        dynamodb_stack["notifications_table_arn"],
+        dynamodb_stack["users_table_arn"],
+    ],
+    dynamodb_core_table=dynamodb_stack["core_table_name"],
+    dynamodb_audit_table=dynamodb_stack["audit_table_name"],
+    dynamodb_agents_table=dynamodb_stack["agents_table_name"],
+    dynamodb_notifications_table=dynamodb_stack["notifications_table_name"],
+    dynamodb_users_table=dynamodb_stack["users_table_name"],
     redis_endpoint=redis_stack["primary_endpoint"],
-    db_password=db_password,
     redis_password=redis_password,
     kms_key_id=kms_key.id,
     target_group_arn=alb_stack["target_group"].arn,
@@ -203,7 +185,13 @@ monitoring_stack = monitoring.create_monitoring(
         ecs_stack["worker_service"].name,
         ecs_stack["beat_service"].name,
     ],
-    db_instance_id=database_stack["db_instance"].id,
+    dynamodb_table_names=[
+        dynamodb_stack["core_table_name"],
+        dynamodb_stack["audit_table_name"],
+        dynamodb_stack["agents_table_name"],
+        dynamodb_stack["notifications_table_name"],
+        dynamodb_stack["users_table_name"],
+    ],
     redis_cluster_id=redis_stack["replication_group"].id,
     log_retention_days=config.get_int("logRetentionDays") or 30,
 )
@@ -217,31 +205,28 @@ pulumi.export(
     else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
 )
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
-pulumi.export("db_endpoint", database_stack["endpoint"])
 pulumi.export("redis_endpoint", redis_stack["primary_endpoint"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("kms_key_id", kms_key.id)
 pulumi.export("secrets_arn", cerebro_secrets.arn)
+
+# Export DynamoDB table names
+pulumi.export("dynamodb_core_table", dynamodb_stack["core_table_name"])
+pulumi.export("dynamodb_audit_table", dynamodb_stack["audit_table_name"])
+pulumi.export("dynamodb_agents_table", dynamodb_stack["agents_table_name"])
+pulumi.export("dynamodb_notifications_table", dynamodb_stack["notifications_table_name"])
+pulumi.export("dynamodb_users_table", dynamodb_stack["users_table_name"])
+
+# Export DynamoDB Stream ARNs (for Lambda triggers)
+pulumi.export("dynamodb_core_stream_arn", dynamodb_stack["core_stream_arn"])
+pulumi.export("dynamodb_audit_stream_arn", dynamodb_stack["audit_stream_arn"])
 
 if _config_bool("enableFlower", True):
     pulumi.export("flower_url", pulumi.Output.concat(
         "http://", alb_stack["alb"].dns_name, ":5555"
     ))
 
-if len(read_replicas) > 0:
-    pulumi.export("read_replica_endpoints", [
-        replica["endpoint"] for replica in read_replicas
-    ])
-
-# Export connection strings
-pulumi.export("database_url", pulumi.Output.concat(
-    "postgresql://cerebro:",
-    db_password,
-    "@",
-    database_stack["endpoint"],
-    "/cerebro"
-))
-
+# Export Redis connection string
 pulumi.export("redis_url", pulumi.Output.concat(
     "rediss://:",
     redis_password,
@@ -259,7 +244,9 @@ pulumi.export(
         ) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
         alb_dns=alb_stack["alb"].dns_name,
         cluster=ecs_stack["cluster"].name,
-        db_endpoint=database_stack["endpoint"],
+        core_table=dynamodb_stack["core_table_name"],
+        audit_table=dynamodb_stack["audit_table_name"],
+        agents_table=dynamodb_stack["agents_table_name"],
         redis_endpoint=redis_stack["primary_endpoint"],
     ).apply(
         lambda args: (
@@ -269,7 +256,9 @@ pulumi.export(
             f"- **API URL:** {args['api_url']}\n"
             f"- **ALB DNS:** {args['alb_dns']}\n"
             f"- **ECS Cluster:** {args['cluster']}\n"
-            f"- **PostgreSQL Endpoint:** {args['db_endpoint']}\n"
+            f"- **DynamoDB Core Table:** {args['core_table']}\n"
+            f"- **DynamoDB Audit Table:** {args['audit_table']}\n"
+            f"- **DynamoDB Agents Table:** {args['agents_table']}\n"
             f"- **Redis Endpoint:** {args['redis_endpoint']}\n\n"
             "Deployment artifacts (container images, task definitions, and secrets) "
             "are managed automatically. Update `cerebro:containerImage` and rerun "
