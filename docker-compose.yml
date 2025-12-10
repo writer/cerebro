@@ -1,6 +1,35 @@
 version: '3.8'
 
 services:
+  # DynamoDB Local for development (primary data store)
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8000/shell/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # DynamoDB table setup (runs once on startup)
+  dynamodb-setup:
+    build: .
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+    environment:
+      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_DEFAULT_REGION: us-east-1
+    command: python scripts/dynamodb_local_setup.py --endpoint http://dynamodb-local:8000
+    restart: "no"
+
+  # PostgreSQL (deprecated - kept for migration period)
   postgres:
     image: postgres:15
     environment:
@@ -17,6 +46,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles:
+      - legacy  # Only start with --profile legacy
 
   redis:
     image: redis:7-alpine
@@ -34,16 +65,28 @@ services:
   cerebro-api:
     build: .
     ports:
-      - "8000:8000"
+      - "8080:8000"
     environment:
+      # DynamoDB configuration
+      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      DYNAMODB_CORE_TABLE: cerebro-core
+      DYNAMODB_AUDIT_TABLE: cerebro-audit
+      DYNAMODB_AGENTS_TABLE: cerebro-agents
+      DYNAMODB_NOTIFICATIONS_TABLE: cerebro-notifications
+      DYNAMODB_USERS_TABLE: cerebro-users
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_REGION: us-east-1
+      # Legacy PostgreSQL (for migration period)
       DATABASE_URL: postgresql://cerebro:cerebro@postgres/cerebro
+      # Redis and other config
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: dev-secret-key-change-in-production
       LOG_LEVEL: INFO
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
     depends_on:
-      postgres:
+      dynamodb-local:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -59,7 +102,19 @@ services:
   cerebro-worker:
     build: .
     environment:
+      # DynamoDB configuration
+      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      DYNAMODB_CORE_TABLE: cerebro-core
+      DYNAMODB_AUDIT_TABLE: cerebro-audit
+      DYNAMODB_AGENTS_TABLE: cerebro-agents
+      DYNAMODB_NOTIFICATIONS_TABLE: cerebro-notifications
+      DYNAMODB_USERS_TABLE: cerebro-users
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_REGION: us-east-1
+      # Legacy PostgreSQL (for migration period)
       DATABASE_URL: postgresql://cerebro:cerebro@postgres/cerebro
+      # Redis and other config
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: dev-secret-key-change-in-production
       LOG_LEVEL: INFO
@@ -67,7 +122,7 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
       CELERY_PROCESS_ROLE: worker
     depends_on:
-      postgres:
+      dynamodb-local:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -84,7 +139,19 @@ services:
   cerebro-beat:
     build: .
     environment:
+      # DynamoDB configuration
+      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      DYNAMODB_CORE_TABLE: cerebro-core
+      DYNAMODB_AUDIT_TABLE: cerebro-audit
+      DYNAMODB_AGENTS_TABLE: cerebro-agents
+      DYNAMODB_NOTIFICATIONS_TABLE: cerebro-notifications
+      DYNAMODB_USERS_TABLE: cerebro-users
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_REGION: us-east-1
+      # Legacy PostgreSQL (for migration period)
       DATABASE_URL: postgresql://cerebro:cerebro@postgres/cerebro
+      # Redis and other config
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: dev-secret-key-change-in-production
       LOG_LEVEL: INFO
@@ -92,7 +159,7 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
       CELERY_PROCESS_ROLE: beat
     depends_on:
-      postgres:
+      dynamodb-local:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -117,6 +184,7 @@ services:
     command: celery -A cerebro.tasks.celery_app flower --port=5555
 
 volumes:
+  dynamodb_data:
   postgres_data:
   redis_data:
 
