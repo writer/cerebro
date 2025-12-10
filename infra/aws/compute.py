@@ -20,9 +20,13 @@ def create_ecs_cluster(
     subnet_ids: list[pulumi.Output[str]],
     security_group_id: pulumi.Output[str],
     secrets_arn: pulumi.Output[str],
-    database_endpoint: pulumi.Output[str],
+    dynamodb_table_arns: list[pulumi.Output[str]],
+    dynamodb_core_table: pulumi.Output[str],
+    dynamodb_audit_table: pulumi.Output[str],
+    dynamodb_agents_table: pulumi.Output[str],
+    dynamodb_notifications_table: pulumi.Output[str],
+    dynamodb_users_table: pulumi.Output[str],
     redis_endpoint: pulumi.Output[str],
-    db_password: pulumi.Input[str],
     redis_password: pulumi.Input[str],
     kms_key_id: pulumi.Output[str],
     target_group_arn: pulumi.Output[str],
@@ -47,8 +51,14 @@ def create_ecs_cluster(
         subnet_ids: Private subnet IDs for ECS tasks
         security_group_id: Security group for ECS tasks
         secrets_arn: Secrets Manager ARN for environment variables
-        database_endpoint: Database endpoint
+        dynamodb_table_arns: List of DynamoDB table ARNs for IAM permissions
+        dynamodb_core_table: DynamoDB core table name
+        dynamodb_audit_table: DynamoDB audit table name
+        dynamodb_agents_table: DynamoDB agents table name
+        dynamodb_notifications_table: DynamoDB notifications table name
+        dynamodb_users_table: DynamoDB users table name
         redis_endpoint: Redis endpoint
+        redis_password: Redis password
         kms_key_id: KMS key ID for encryption
         target_group_arn: ALB target group ARN for API service
         container_image: Docker image URI (ECR)
@@ -84,8 +94,8 @@ def create_ecs_cluster(
     # Create IAM execution role (for pulling images, secrets)
     execution_role = _create_execution_role(name, secrets_arn, kms_key_id)
 
-    # Create IAM task role (for application AWS API access)
-    task_role = _create_task_role(name, kms_key_id)
+    # Create IAM task role (for application AWS API access including DynamoDB)
+    task_role = _create_task_role(name, kms_key_id, dynamodb_table_arns)
 
     # Create CloudWatch log groups
     api_log_group = _create_log_group(f"/ecs/{name}-api", retention_days=log_retention_days)
@@ -94,14 +104,21 @@ def create_ecs_cluster(
 
     # Base environment variables
     base_env = {
-        "DATABASE_URL": pulumi.Output.all(
-            database_endpoint, db_password
-        ).apply(lambda args: _build_database_url(*args)),
+        # DynamoDB table names
+        "DYNAMODB_CORE_TABLE": dynamodb_core_table,
+        "DYNAMODB_AUDIT_TABLE": dynamodb_audit_table,
+        "DYNAMODB_AGENTS_TABLE": dynamodb_agents_table,
+        "DYNAMODB_NOTIFICATIONS_TABLE": dynamodb_notifications_table,
+        "DYNAMODB_USERS_TABLE": dynamodb_users_table,
+        # Redis connection
         "REDIS_URL": pulumi.Output.all(
             redis_endpoint, redis_password
         ).apply(lambda args: _build_redis_url(*args)),
+        # Encryption
         "KMS_KEY_ID": kms_key_id,
         "KMS_PROVIDER": "aws",
+        # AWS region for DynamoDB
+        "AWS_REGION": aws.get_region().name,
     }
 
     # Create API task definition
@@ -382,8 +399,12 @@ def _create_execution_role(
     return role
 
 
-def _create_task_role(name: str, kms_key_id: pulumi.Output[str]) -> aws.iam.Role:
-    """Create IAM role for ECS tasks (application permissions)."""
+def _create_task_role(
+    name: str,
+    kms_key_id: pulumi.Output[str],
+    dynamodb_table_arns: list[pulumi.Output[str]],
+) -> aws.iam.Role:
+    """Create IAM role for ECS tasks (application permissions including DynamoDB)."""
     role = aws.iam.Role(
         f"{name}-task-role",
         assume_role_policy=json.dumps(
@@ -420,6 +441,53 @@ def _create_task_role(name: str, kms_key_id: pulumi.Output[str]) -> aws.iam.Role
                             ],
                             "Resource": f"arn:aws:kms:*:*:key/{key_id}",
                         }
+                    ],
+                }
+            )
+        ),
+    )
+
+    # Add inline policy for DynamoDB access
+    aws.iam.RolePolicy(
+        f"{name}-task-dynamodb-policy",
+        role=role.name,
+        policy=pulumi.Output.all(*dynamodb_table_arns).apply(
+            lambda arns: json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "DynamoDBTableAccess",
+                            "Effect": "Allow",
+                            "Action": [
+                                "dynamodb:GetItem",
+                                "dynamodb:PutItem",
+                                "dynamodb:UpdateItem",
+                                "dynamodb:DeleteItem",
+                                "dynamodb:BatchGetItem",
+                                "dynamodb:BatchWriteItem",
+                                "dynamodb:Query",
+                                "dynamodb:Scan",
+                                "dynamodb:TransactGetItems",
+                                "dynamodb:TransactWriteItems",
+                                "dynamodb:ConditionCheckItem",
+                            ],
+                            "Resource": [
+                                *arns,
+                                *[f"{arn}/index/*" for arn in arns],
+                            ],
+                        },
+                        {
+                            "Sid": "DynamoDBStreamAccess",
+                            "Effect": "Allow",
+                            "Action": [
+                                "dynamodb:DescribeStream",
+                                "dynamodb:GetRecords",
+                                "dynamodb:GetShardIterator",
+                                "dynamodb:ListStreams",
+                            ],
+                            "Resource": [f"{arn}/stream/*" for arn in arns],
+                        },
                     ],
                 }
             )
@@ -494,11 +562,6 @@ def _create_task_definition(
     )
 
 
-def _build_database_url(endpoint: str, password: str) -> str:
-    """Compose the SQLAlchemy database URL."""
-    return f"postgresql://cerebro:{password}@{endpoint}/cerebro"
-
-
 def _build_redis_url(endpoint: str, password: str) -> str:
     """Compose the Redis connection URL used by Celery."""
     return f"rediss://:{password}@{endpoint}:6379/0"
@@ -507,10 +570,6 @@ def _build_redis_url(endpoint: str, password: str) -> str:
 def _build_secret_references(secrets_arn: pulumi.Output[str]) -> list[dict]:
     """Return the set of secret environment variable mappings."""
     return [
-        {
-            "name": "DATABASE_PASSWORD",
-            "valueFrom": pulumi.Output.concat(secrets_arn, ":DB_PASSWORD::"),
-        },
         {
             "name": "REDIS_PASSWORD",
             "valueFrom": pulumi.Output.concat(secrets_arn, ":REDIS_PASSWORD::"),
