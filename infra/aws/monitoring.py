@@ -18,7 +18,7 @@ def create_monitoring(
     target_group_arn_suffix: pulumi.Output[str],
     ecs_cluster_name: pulumi.Output[str],
     ecs_service_names: list[pulumi.Output[str]],
-    db_instance_id: pulumi.Output[str],
+    dynamodb_table_names: list[pulumi.Output[str]],
     redis_cluster_id: pulumi.Output[str],
     alarm_email: str = None,
     log_retention_days: int = 30,
@@ -32,7 +32,7 @@ def create_monitoring(
         target_group_arn_suffix: Target group ARN suffix for metrics
         ecs_cluster_name: ECS cluster name
         ecs_service_names: List of ECS service names
-        db_instance_id: RDS instance ID
+        dynamodb_table_names: List of DynamoDB table names
         redis_cluster_id: Redis cluster ID
         alarm_email: Email address for alarm notifications
         log_retention_days: CloudWatch log retention in days
@@ -79,12 +79,14 @@ def create_monitoring(
             alarm_actions=[alarm_topic.arn] if alarm_email else [],
         )
 
-    # RDS Alarms
-    _create_rds_alarms(
-        name=name,
-        db_instance_id=db_instance_id,
-        alarm_actions=[alarm_topic.arn] if alarm_email else [],
-    )
+    # DynamoDB Alarms
+    for idx, table_name in enumerate(dynamodb_table_names):
+        _create_dynamodb_alarms(
+            name=name,
+            table_name=table_name,
+            index=idx,
+            alarm_actions=[alarm_topic.arn] if alarm_email else [],
+        )
 
     # Redis Alarms
     _create_redis_alarms(
@@ -100,7 +102,7 @@ def create_monitoring(
         target_group_arn_suffix=target_group_arn_suffix,
         ecs_cluster_name=ecs_cluster_name,
         ecs_service_names=ecs_service_names,
-        db_instance_id=db_instance_id,
+        dynamodb_table_names=dynamodb_table_names,
         redis_cluster_id=redis_cluster_id,
     )
 
@@ -227,60 +229,114 @@ def _build_ecs_alarm_resource_name(prefix: str, index: int) -> str:
     return f"{safe_prefix}-ecs-{index}"
 
 
-def _create_rds_alarms(
+def _create_dynamodb_alarms(
     name: str,
-    db_instance_id: pulumi.Output[str],
+    table_name: pulumi.Output[str],
+    index: int,
     alarm_actions: list[str],
 ):
-    """Create CloudWatch alarms for RDS."""
-    # High CPU
+    """Create CloudWatch alarms for DynamoDB table."""
+    resource_base = f"{name}-dynamodb-{index}"
+
+    # High read throttling
     aws.cloudwatch.MetricAlarm(
-        f"{name}-rds-cpu-high",
+        f"{resource_base}-read-throttle",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
-        metric_name="CPUUtilization",
-        namespace="AWS/RDS",
+        metric_name="ReadThrottledRequests",
+        namespace="AWS/DynamoDB",
         period=300,
-        statistic="Average",
-        threshold=80,
-        alarm_description="RDS CPU above threshold",
+        statistic="Sum",
+        threshold=10,
+        alarm_description="DynamoDB read throttling detected",
         alarm_actions=alarm_actions,
         dimensions={
-            "DBInstanceIdentifier": db_instance_id,
+            "TableName": table_name,
         },
     )
 
-    # Low storage space
+    # High write throttling
     aws.cloudwatch.MetricAlarm(
-        f"{name}-rds-storage-low",
-        comparison_operator="LessThanThreshold",
+        f"{resource_base}-write-throttle",
+        comparison_operator="GreaterThanThreshold",
+        evaluation_periods=2,
+        metric_name="WriteThrottledRequests",
+        namespace="AWS/DynamoDB",
+        period=300,
+        statistic="Sum",
+        threshold=10,
+        alarm_description="DynamoDB write throttling detected",
+        alarm_actions=alarm_actions,
+        dimensions={
+            "TableName": table_name,
+        },
+    )
+
+    # High system errors
+    aws.cloudwatch.MetricAlarm(
+        f"{resource_base}-system-errors",
+        comparison_operator="GreaterThanThreshold",
         evaluation_periods=1,
-        metric_name="FreeStorageSpace",
-        namespace="AWS/RDS",
+        metric_name="SystemErrors",
+        namespace="AWS/DynamoDB",
         period=300,
-        statistic="Average",
-        threshold=10 * 1024 * 1024 * 1024,  # 10 GB
-        alarm_description="RDS storage space below threshold",
+        statistic="Sum",
+        threshold=1,
+        alarm_description="DynamoDB system errors detected",
         alarm_actions=alarm_actions,
         dimensions={
-            "DBInstanceIdentifier": db_instance_id,
+            "TableName": table_name,
         },
     )
 
-    # High connection count
+    # High user errors (client-side issues like validation errors)
     aws.cloudwatch.MetricAlarm(
-        f"{name}-rds-connections-high",
+        f"{resource_base}-user-errors",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
-        metric_name="DatabaseConnections",
-        namespace="AWS/RDS",
+        metric_name="UserErrors",
+        namespace="AWS/DynamoDB",
         period=300,
-        statistic="Average",
-        threshold=400,  # 80% of max_connections=500
-        alarm_description="RDS connections above threshold",
+        statistic="Sum",
+        threshold=100,
+        alarm_description="DynamoDB user errors above threshold",
         alarm_actions=alarm_actions,
         dimensions={
-            "DBInstanceIdentifier": db_instance_id,
+            "TableName": table_name,
+        },
+    )
+
+    # High consumed read capacity (for capacity planning)
+    aws.cloudwatch.MetricAlarm(
+        f"{resource_base}-consumed-rcu",
+        comparison_operator="GreaterThanThreshold",
+        evaluation_periods=3,
+        metric_name="ConsumedReadCapacityUnits",
+        namespace="AWS/DynamoDB",
+        period=300,
+        statistic="Sum",
+        threshold=100000,  # Alert if consuming >100K RCU in 5 minutes
+        alarm_description="DynamoDB high read consumption",
+        alarm_actions=alarm_actions,
+        dimensions={
+            "TableName": table_name,
+        },
+    )
+
+    # High consumed write capacity (for capacity planning)
+    aws.cloudwatch.MetricAlarm(
+        f"{resource_base}-consumed-wcu",
+        comparison_operator="GreaterThanThreshold",
+        evaluation_periods=3,
+        metric_name="ConsumedWriteCapacityUnits",
+        namespace="AWS/DynamoDB",
+        period=300,
+        statistic="Sum",
+        threshold=50000,  # Alert if consuming >50K WCU in 5 minutes
+        alarm_description="DynamoDB high write consumption",
+        alarm_actions=alarm_actions,
+        dimensions={
+            "TableName": table_name,
         },
     )
 
@@ -349,29 +405,39 @@ def _create_dashboard(
     target_group_arn_suffix: pulumi.Output[str],
     ecs_cluster_name: pulumi.Output[str],
     ecs_service_names: list[pulumi.Output[str]],
-    db_instance_id: pulumi.Output[str],
+    dynamodb_table_names: list[pulumi.Output[str]],
     redis_cluster_id: pulumi.Output[str],
 ) -> aws.cloudwatch.Dashboard:
     """Create CloudWatch dashboard."""
-    # Note: Dashboard body is static JSON for simplicity
-    # In production, you'd dynamically generate this
+    region = aws.get_region().name
+
     dashboard_body = {
         "widgets": [
             {
                 "type": "metric",
+                "x": 0,
+                "y": 0,
+                "width": 12,
+                "height": 6,
                 "properties": {
                     "metrics": [
                         ["AWS/ApplicationELB", "RequestCount", {"stat": "Sum"}],
                         [".", "TargetResponseTime", {"stat": "Average"}],
+                        [".", "HTTPCode_Target_5XX_Count", {"stat": "Sum"}],
+                        [".", "HTTPCode_Target_4XX_Count", {"stat": "Sum"}],
                     ],
                     "period": 300,
                     "stat": "Average",
-                    "region": aws.get_region().name,
+                    "region": region,
                     "title": "ALB Metrics",
                 },
             },
             {
                 "type": "metric",
+                "x": 12,
+                "y": 0,
+                "width": 12,
+                "height": 6,
                 "properties": {
                     "metrics": [
                         ["AWS/ECS", "CPUUtilization", {"stat": "Average"}],
@@ -379,39 +445,79 @@ def _create_dashboard(
                     ],
                     "period": 300,
                     "stat": "Average",
-                    "region": aws.get_region().name,
+                    "region": region,
                     "title": "ECS Metrics",
                 },
             },
             {
                 "type": "metric",
+                "x": 0,
+                "y": 6,
+                "width": 12,
+                "height": 6,
                 "properties": {
                     "metrics": [
-                        ["AWS/RDS", "CPUUtilization", {"stat": "Average"}],
-                        [".", "DatabaseConnections", {"stat": "Average"}],
-                        [".", "FreeStorageSpace", {"stat": "Average"}],
+                        ["AWS/DynamoDB", "ConsumedReadCapacityUnits", {"stat": "Sum"}],
+                        [".", "ConsumedWriteCapacityUnits", {"stat": "Sum"}],
                     ],
                     "period": 300,
-                    "stat": "Average",
-                    "region": aws.get_region().name,
-                    "title": "RDS Metrics",
+                    "stat": "Sum",
+                    "region": region,
+                    "title": "DynamoDB Capacity Consumption",
                 },
             },
             {
                 "type": "metric",
+                "x": 12,
+                "y": 6,
+                "width": 12,
+                "height": 6,
                 "properties": {
                     "metrics": [
-                        ["AWS/ElastiCache", "CPUUtilization", {"stat": "Average"}],
-                        [
-                            ".",
-                            "DatabaseMemoryUsagePercentage",
-                            {"stat": "Average"},
-                        ],
-                        [".", "Evictions", {"stat": "Sum"}],
+                        ["AWS/DynamoDB", "ReadThrottledRequests", {"stat": "Sum"}],
+                        [".", "WriteThrottledRequests", {"stat": "Sum"}],
+                        [".", "SystemErrors", {"stat": "Sum"}],
+                        [".", "UserErrors", {"stat": "Sum"}],
+                    ],
+                    "period": 300,
+                    "stat": "Sum",
+                    "region": region,
+                    "title": "DynamoDB Errors & Throttling",
+                },
+            },
+            {
+                "type": "metric",
+                "x": 0,
+                "y": 12,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                    "metrics": [
+                        ["AWS/DynamoDB", "SuccessfulRequestLatency", {"stat": "Average"}],
+                        [".", "SuccessfulRequestLatency", {"stat": "p99"}],
                     ],
                     "period": 300,
                     "stat": "Average",
-                    "region": aws.get_region().name,
+                    "region": region,
+                    "title": "DynamoDB Latency",
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12,
+                "y": 12,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                    "metrics": [
+                        ["AWS/ElastiCache", "CPUUtilization", {"stat": "Average"}],
+                        [".", "DatabaseMemoryUsagePercentage", {"stat": "Average"}],
+                        [".", "Evictions", {"stat": "Sum"}],
+                        [".", "CurrConnections", {"stat": "Average"}],
+                    ],
+                    "period": 300,
+                    "stat": "Average",
+                    "region": region,
                     "title": "Redis Metrics",
                 },
             },
