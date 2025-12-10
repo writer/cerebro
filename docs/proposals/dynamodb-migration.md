@@ -2,11 +2,61 @@
 
 **Status:** Draft  
 **Author:** Engineering  
-**Date:** 2024-12-10
+**Date:** 2024-12-10  
+**Reviewers:** InfoSec Team, Platform Engineering, SRE  
+**Last Updated:** 2024-12-10
+
+---
+
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [Current State Analysis](#1-current-state-analysis)
+3. [DynamoDB Data Model Design](#2-dynamodb-data-model-design)
+4. [Patterns Requiring Alternative Solutions](#3-patterns-requiring-alternative-solutions)
+5. [Infrastructure Changes](#4-infrastructure-changes)
+6. [Application Layer Changes](#5-application-layer-changes)
+7. [Migration Strategy](#6-migration-strategy)
+8. [Files Requiring Modification](#7-files-requiring-modification)
+9. [Testing Strategy](#8-testing-strategy)
+10. [Security Considerations](#9-security-considerations)
+11. [Risks and Mitigations](#10-risks-and-mitigations)
+12. [Cost Analysis](#11-cost-analysis)
+13. [Success Criteria](#12-success-criteria)
+14. [Open Questions](#13-open-questions)
+15. [Appendices](#appendices)
+
+---
 
 ## Executive Summary
 
 This document outlines the migration strategy from PostgreSQL to Amazon DynamoDB for the Cerebro security platform. The migration affects ~40 SQLAlchemy models, ~130 files with database queries, and infrastructure across AWS and GCP.
+
+### Why DynamoDB?
+
+| Factor | PostgreSQL (Current) | DynamoDB (Proposed) |
+|--------|---------------------|---------------------|
+| Scalability | Vertical (instance size) | Horizontal (automatic) |
+| Operational Overhead | High (backups, replicas, patching) | Low (fully managed) |
+| Cost Model | Instance-based (always on) | On-demand or provisioned |
+| Latency | ~5-20ms typical | ~1-10ms typical |
+| Global Distribution | Complex (read replicas) | Native (Global Tables) |
+| Schema Flexibility | Rigid (migrations required) | Flexible (schemaless) |
+
+### Scope of Changes
+
+- **40+ database models** requiring redesign
+- **130+ files** with database queries requiring rewrite
+- **2 infrastructure modules** (AWS RDS, GCP Cloud SQL) to replace
+- **37 Alembic migrations** to deprecate
+- **Estimated timeline**: 9-12 weeks
+
+### Key Decisions Required
+
+1. **GCP Support**: Continue with GCP (requires Firestore) or AWS-only?
+2. **Data Retention**: TTL policies for audit logs and config snapshots?
+3. **Search Strategy**: OpenSearch integration or denormalization?
+4. **Consistency Model**: Where is strong consistency required?
 
 ---
 
@@ -14,53 +64,289 @@ This document outlines the migration strategy from PostgreSQL to Amazon DynamoDB
 
 ### 1.1 Database Schema Overview
 
-The current PostgreSQL schema consists of the following entity groups:
+The current PostgreSQL schema consists of **47 tables** organized into the following entity groups:
 
-#### Core Entities (src/cerebro/core/models.py)
-| Table | Primary Key | Key Relationships | Record Volume |
-|-------|-------------|-------------------|---------------|
-| `orgs` | `org_id` (UUID) | Parent of all tenant data | Low (~100s) |
-| `accounts` | `account_id` (UUID) | FK → orgs, parent of principals/resources | Medium (~1000s) |
-| `principals` | `principal_id` (UUID) | FK → accounts | High (~100Ks) |
-| `resources` | `resource_id` (UUID) | FK → accounts | High (~100Ks) |
-| `config_snapshots` | `snapshot_id` (UUID) | FK → resources | Very High (~millions) |
-| `iam_edges` | `edge_id` (UUID) | FK → accounts, principals, resources | Very High (~millions) |
-| `findings` | `finding_id` (UUID) | FK → orgs, accounts, rules, resources, principals | High (~100Ks) |
-| `rules` | `rule_id` (UUID) | FK → policies | Medium (~1000s) |
-| `policies` | `policy_id` (UUID) | FK → orgs | Low (~100s) |
-| `suppressions` | `suppression_id` (UUID) | FK → orgs, rules | Low (~1000s) |
-| `audit_events` | `event_id` (UUID) | FK → accounts | Very High (~millions) |
+#### Core Entities (src/cerebro/core/models.py) - 22 Tables
 
-#### Agent Entities (src/cerebro/agents/models.py)
-| Table | Primary Key | Key Relationships |
-|-------|-------------|-------------------|
-| `agent_sessions` | `id` (UUID) | FK → orgs |
-| `agent_messages` | `id` (UUID) | FK → agent_sessions |
-| `agent_conversation_items` | `id` (UUID) | FK → agent_sessions |
-| `agent_memory_entries` | `id` (UUID) | FK → orgs, agent_sessions |
-| `tool_invocations` | `id` (UUID) | FK → agent_sessions |
-| `tool_approvals` | `id` (UUID) | FK → orgs, tool_invocations |
-| `agent_review_tasks` | `id` (UUID) | FK → orgs, agent_sessions |
-| `agent_recommendations` | `id` (UUID) | FK → agent_sessions, orgs |
+| Table | Primary Key | Columns | Key Relationships | Estimated Volume | Growth Rate |
+|-------|-------------|---------|-------------------|------------------|-------------|
+| `orgs` | `org_id` (UUID) | 4 | Parent of all tenant data | ~100s | Low |
+| `accounts` | `account_id` (UUID) | 5 | FK → orgs | ~1,000s | Medium |
+| `principals` | `principal_id` (UUID) | 8 | FK → accounts | ~100,000s | High |
+| `resources` | `resource_id` (UUID) | 8 | FK → accounts | ~100,000s | High |
+| `config_snapshots` | `snapshot_id` (UUID) | 6 | FK → resources | ~10,000,000s | Very High |
+| `iam_edges` | `edge_id` (UUID) | 10 | FK → accounts, principals, resources | ~10,000,000s | Very High |
+| `findings` | `finding_id` (UUID) | 17 | FK → orgs, accounts, rules, resources, principals | ~100,000s | High |
+| `evidence_artifacts` | `artifact_id` (UUID) | 7 | FK → findings | ~500,000s | High |
+| `rules` | `rule_id` (UUID) | 15 | FK → policies | ~1,000s | Low |
+| `policies` | `policy_id` (UUID) | 6 | FK → orgs | ~100s | Low |
+| `suppressions` | `suppression_id` (UUID) | 8 | FK → orgs, rules | ~1,000s | Low |
+| `audit_events` | `event_id` (UUID) | 8 | FK → accounts | ~50,000,000s | Very High |
+| `slack_webhooks` | `webhook_id` (UUID) | 14 | FK → orgs | ~100s | Low |
+| `slack_notifications` | `notification_id` (UUID) | 13 | FK → slack_webhooks, orgs | ~100,000s | Medium |
+| `email_configs` | `config_id` (UUID) | 18 | FK → orgs | ~100s | Low |
+| `email_notifications` | `notification_id` (UUID) | 15 | FK → email_configs, orgs | ~50,000s | Medium |
+| `webhook_configs` | `config_id` (UUID) | 16 | FK → orgs | ~100s | Low |
+| `webhook_notifications` | `notification_id` (UUID) | 14 | FK → webhook_configs, orgs | ~50,000s | Medium |
+| `identity_clusters` | `cluster_id` (UUID) | 9 | FK → orgs | ~10,000s | Medium |
+| `identity_cluster_members` | `member_id` (UUID) | 7 | FK → clusters, principals | ~50,000s | Medium |
+| `identity_stitching_logs` | `log_id` (UUID) | 9 | FK → orgs, clusters | ~100,000s | Medium |
+| `identity_remediation_actions` | `action_id` (UUID) | 16 | FK → orgs, principals, users | ~10,000s | Medium |
 
-#### Notification Entities
-| Table | Primary Key | Key Relationships |
-|-------|-------------|-------------------|
-| `slack_webhooks` | `webhook_id` (UUID) | FK → orgs |
-| `slack_notifications` | `notification_id` (UUID) | FK → slack_webhooks, orgs |
-| `email_configs` | `config_id` (UUID) | FK → orgs |
-| `email_notifications` | `notification_id` (UUID) | FK → email_configs, orgs |
-| `webhook_configs` | `config_id` (UUID) | FK → orgs |
-| `webhook_notifications` | `notification_id` (UUID) | FK → webhook_configs, orgs |
+#### Agent Entities (src/cerebro/agents/models.py) - 18 Tables
 
-#### Integration Entities
-| Table | Primary Key | Key Relationships |
-|-------|-------------|-------------------|
-| `serval_integrations` | `integration_id` (UUID) | FK → orgs (1:1) |
-| `integration_sync_state` | `state_id` (UUID) | Standalone |
-| `integration_sync_issue_events` | `issue_id` (UUID) | Standalone |
+| Table | Primary Key | Columns | Key Relationships | Estimated Volume |
+|-------|-------------|---------|-------------------|------------------|
+| `agent_sessions` | `id` (UUID) | 8 | FK → orgs | ~50,000s |
+| `agent_messages` | `id` (UUID) | 7 | FK → agent_sessions | ~500,000s |
+| `agent_conversation_items` | `id` (UUID) | 4 | FK → agent_sessions | ~1,000,000s |
+| `agent_memory_entries` | `id` (UUID) | 16 | FK → orgs, agent_sessions | ~100,000s |
+| `tool_invocations` | `id` (UUID) | 17 | FK → agent_sessions | ~200,000s |
+| `tool_approvals` | `id` (UUID) | 12 | FK → orgs, tool_invocations | ~10,000s |
+| `agent_review_tasks` | `id` (UUID) | 20 | FK → orgs, agent_sessions, messages | ~20,000s |
+| `agent_review_notifications` | `id` (UUID) | 8 | FK → orgs, tasks | ~50,000s |
+| `agent_review_tickets` | `id` (UUID) | 9 | FK → orgs, tasks | ~10,000s |
+| `agent_review_comments` | `id` (UUID) | 7 | FK → tasks | ~30,000s |
+| `agent_review_history` | `id` (UUID) | 9 | FK → tasks | ~100,000s |
+| `agent_session_context` | `id` (UUID) | 12 | FK → sessions, orgs | ~50,000s |
+| `agent_runtime_events` | `id` (UUID) | 6 | FK → orgs, sessions | ~500,000s |
+| `agent_self_service_questions` | `id` (UUID) | 13 | FK → orgs, sessions | ~20,000s |
+| `agent_self_service_reports` | `id` (UUID) | 8 | FK → orgs | ~1,000s |
+| `agent_memory_decay_overrides` | `id` (UUID) | 7 | FK → orgs | ~100s |
+| `agent_policy_suggestions` | `id` (UUID) | 9 | FK → orgs | ~5,000s |
+| `agent_recommendations` | `id` (UUID) | 14 | FK → sessions, orgs | ~10,000s |
 
-### 1.2 Current Query Patterns
+#### Integration Entities - 4 Tables
+
+| Table | Primary Key | Columns | Key Relationships | Estimated Volume |
+|-------|-------------|---------|-------------------|------------------|
+| `serval_integrations` | `integration_id` (UUID) | 14 | FK → orgs (1:1) | ~100s |
+| `integration_sync_state` | `state_id` (UUID) | 7 | Standalone | ~500s |
+| `integration_sync_issue_events` | `issue_id` (UUID) | 10 | Standalone | ~10,000s |
+| `frontend_observation_events` | `event_id` (UUID) | 9 | FK → orgs, users | ~1,000,000s |
+
+#### User/Auth Entities - 3 Tables
+
+| Table | Primary Key | Columns | Key Relationships | Estimated Volume |
+|-------|-------------|---------|-------------------|------------------|
+| `users` | `user_id` (UUID) | ~15 | FK → orgs | ~10,000s |
+| `refresh_tokens` | `token_id` (UUID) | ~8 | FK → users | ~50,000s |
+| `api_keys` | `key_id` (UUID) | ~10 | FK → orgs, users | ~5,000s |
+
+### 1.2 Complete Column Definitions
+
+#### 1.2.1 Organization Table (`orgs`)
+
+```sql
+CREATE TABLE orgs (
+    org_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR NOT NULL,
+    slack_config JSONB,                    -- Slack workspace configuration
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Security Consideration**: `slack_config` may contain OAuth tokens - requires encryption at rest.
+
+#### 1.2.2 Accounts Table (`accounts`)
+
+```sql
+CREATE TABLE accounts (
+    account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID NOT NULL REFERENCES orgs(org_id) ON DELETE CASCADE,
+    provider VARCHAR NOT NULL,              -- 'github', 'google_workspace', 'aws', 'gcp', 'runtime', 'endpoint'
+    external_id VARCHAR NOT NULL,           -- Provider-specific account ID
+    display_name VARCHAR,
+    UNIQUE(org_id, provider, external_id),
+    CHECK (provider IN ('github','google_workspace','aws','gcp','runtime','endpoint'))
+);
+```
+
+#### 1.2.3 Principals Table (`principals`)
+
+```sql
+CREATE TABLE principals (
+    principal_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+    provider VARCHAR NOT NULL,
+    principal_type VARCHAR NOT NULL,        -- 'user', 'group', 'service_account', 'app', 'role'
+    external_id VARCHAR NOT NULL,
+    email VARCHAR,
+    display_name VARCHAR,
+    is_human BOOLEAN,
+    UNIQUE(account_id, provider, external_id),
+    CHECK (principal_type IN ('user','group','service_account','app','role'))
+);
+```
+
+#### 1.2.4 Resources Table (`resources`)
+
+```sql
+CREATE TABLE resources (
+    resource_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+    provider VARCHAR NOT NULL,
+    resource_type VARCHAR NOT NULL,
+    external_id VARCHAR NOT NULL,
+    name VARCHAR,
+    parent_external_id VARCHAR,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(account_id, provider, resource_type, external_id)
+);
+```
+
+#### 1.2.5 Config Snapshots Table (`config_snapshots`)
+
+```sql
+CREATE TABLE config_snapshots (
+    snapshot_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    resource_id UUID NOT NULL REFERENCES resources(resource_id) ON DELETE CASCADE,
+    captured_at TIMESTAMPTZ NOT NULL,
+    config_sha BYTEA NOT NULL,              -- SHA-256 hash for deduplication
+    normalized_config JSONB NOT NULL,       -- Full configuration document
+    collector_version VARCHAR NOT NULL,
+    UNIQUE(resource_id, config_sha)
+);
+
+CREATE INDEX ix_config_snapshots_resource_captured ON config_snapshots(resource_id, captured_at);
+CREATE INDEX ix_config_snapshots_normalized_config ON config_snapshots USING GIN(normalized_config);
+```
+
+**Security Consideration**: `normalized_config` contains cloud resource configurations - may include sensitive settings.
+
+#### 1.2.6 IAM Edges Table (`iam_edges`)
+
+```sql
+CREATE TABLE iam_edges (
+    edge_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+    provider VARCHAR NOT NULL,
+    principal_id UUID NOT NULL REFERENCES principals(principal_id) ON DELETE CASCADE,
+    resource_id UUID REFERENCES resources(resource_id) ON DELETE CASCADE,
+    permission VARCHAR NOT NULL,
+    via VARCHAR,                            -- How permission was granted (role, group, direct)
+    effective_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE(account_id, provider, principal_id, resource_id, permission, effective_at, via)
+);
+
+CREATE INDEX ix_iam_edges_principal ON iam_edges(principal_id);
+CREATE INDEX ix_iam_edges_resource ON iam_edges(resource_id);
+CREATE INDEX ix_iam_edges_is_admin ON iam_edges(is_admin);
+CREATE INDEX ix_iam_edges_effective_at ON iam_edges(effective_at);
+```
+
+#### 1.2.7 Findings Table (`findings`)
+
+```sql
+CREATE TABLE findings (
+    finding_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID NOT NULL REFERENCES orgs(org_id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+    provider VARCHAR NOT NULL,
+    rule_id UUID NOT NULL REFERENCES rules(rule_id),
+    rule_version INTEGER NOT NULL,
+    resource_id UUID REFERENCES resources(resource_id),
+    principal_id UUID REFERENCES principals(principal_id),
+    first_seen TIMESTAMPTZ NOT NULL,
+    last_seen TIMESTAMPTZ NOT NULL,
+    status VARCHAR NOT NULL,                -- 'open', 'suppressed', 'accepted_risk', 'fixed'
+    severity VARCHAR NOT NULL,              -- 'critical', 'high', 'medium', 'low', 'info'
+    fingerprint VARCHAR NOT NULL,           -- Unique identifier for deduplication
+    title VARCHAR NOT NULL,
+    summary TEXT,
+    evidence JSONB,                         -- Supporting evidence for the finding
+    UNIQUE(org_id, fingerprint),
+    CHECK (status IN ('open','suppressed','accepted_risk','fixed'))
+);
+
+CREATE INDEX ix_findings_status ON findings(status);
+CREATE INDEX ix_findings_severity ON findings(severity);
+CREATE INDEX ix_findings_last_seen ON findings(last_seen);
+```
+
+#### 1.2.8 Rules Table (`rules`)
+
+```sql
+CREATE TABLE rules (
+    rule_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    policy_id UUID REFERENCES policies(policy_id) ON DELETE SET NULL,
+    name VARCHAR NOT NULL,
+    description TEXT,
+    provider VARCHAR[] NOT NULL,            -- Array of applicable providers
+    resource_types VARCHAR[],               -- Array of applicable resource types
+    expression_lang VARCHAR NOT NULL,       -- 'sql', 'rego', 'cel'
+    expression TEXT NOT NULL,               -- The rule expression
+    severity VARCHAR NOT NULL,
+    cwe VARCHAR[],                          -- CWE identifiers
+    cis VARCHAR[],                          -- CIS benchmark mappings
+    nist_800_53 VARCHAR[],                  -- NIST 800-53 control mappings
+    mitre_attack VARCHAR[],                 -- MITRE ATT&CK mappings
+    version INTEGER NOT NULL DEFAULT 1,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    CHECK (expression_lang IN ('sql','rego','cel')),
+    CHECK (severity IN ('critical','high','medium','low','info'))
+);
+
+CREATE INDEX ix_rules_is_active ON rules(is_active);
+CREATE INDEX ix_rules_provider ON rules USING GIN(provider);
+CREATE INDEX ix_rules_resource_types ON rules USING GIN(resource_types);
+```
+
+#### 1.2.9 Audit Events Table (`audit_events`)
+
+```sql
+CREATE TABLE audit_events (
+    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+    provider VARCHAR NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    actor_external_id VARCHAR,
+    action VARCHAR NOT NULL,
+    resource_external_id VARCHAR,
+    raw JSONB NOT NULL,                     -- Raw event from provider
+);
+
+CREATE INDEX ix_audit_events_occurred_at ON audit_events(occurred_at);
+CREATE INDEX ix_audit_events_provider_action ON audit_events(provider, action);
+CREATE INDEX ix_audit_events_raw ON audit_events USING GIN(raw);
+```
+
+**Security Consideration**: `raw` contains complete audit logs which may include PII, IP addresses, and sensitive actions.
+
+#### 1.2.10 Encrypted Fields (Notification Tables)
+
+Several tables contain envelope-encrypted sensitive data:
+
+```sql
+-- slack_webhooks
+webhook_url BYTEA,          -- AES-256-GCM encrypted webhook URL
+webhook_url_dek BYTEA,      -- Encrypted DEK (wrapped by KMS)
+
+-- email_configs
+smtp_password BYTEA,        -- AES-256-GCM encrypted SMTP password
+smtp_password_dek BYTEA,    -- Encrypted DEK
+
+-- webhook_configs
+hmac_secret BYTEA,          -- AES-256-GCM encrypted HMAC secret
+hmac_secret_dek BYTEA,      -- Encrypted DEK
+
+-- serval_integrations
+encrypted_client_id BYTEA,
+encrypted_client_id_dek BYTEA,
+encrypted_client_secret BYTEA,
+encrypted_client_secret_dek BYTEA,
+```
+
+**Encryption Pattern**: Uses envelope encryption with AWS KMS or GCP Cloud KMS:
+1. Generate random DEK (Data Encryption Key)
+2. Encrypt data with DEK using AES-256-GCM
+3. Encrypt DEK with KMS KEK (Key Encryption Key)
+4. Store both encrypted data and encrypted DEK
+
+### 1.3 Current Query Patterns
 
 Analysis of ~130 files reveals the following access patterns:
 
@@ -77,16 +363,106 @@ Analysis of ~130 files reveals the following access patterns:
 3. **Multi-table Aggregations**: MTTR calculations across findings
 4. **Relationship Traversals**: Account → Principals → IAM Edges → Resources
 
-### 1.3 PostgreSQL-Specific Features in Use
+### 1.4 PostgreSQL-Specific Features in Use
 
-| Feature | Usage Location | DynamoDB Alternative |
-|---------|----------------|---------------------|
-| `JSONB` with GIN indexes | config_snapshots, audit_events | Denormalize or use OpenSearch |
-| `ARRAY` types | rules.provider, rules.cwe | Store as JSON List |
-| `UUID` with `gen_random_uuid()` | All tables | Client-side UUID generation |
-| Foreign Key Constraints | All relationships | Application-level enforcement |
-| `CHECK` constraints | Enum validations | Application-level validation |
-| Transactions | Multi-table writes | DynamoDB Transactions (25 item limit) |
+| Feature | Usage Location | DynamoDB Alternative | Migration Complexity |
+|---------|----------------|---------------------|----------------------|
+| `JSONB` with GIN indexes | config_snapshots, audit_events, evidence | Denormalize or use OpenSearch | High |
+| `ARRAY` types | rules.provider, rules.cwe, to_emails | Store as JSON List (L type) | Low |
+| `UUID` with `gen_random_uuid()` | All 47 tables | Client-side UUID generation (uuid4) | Low |
+| Foreign Key Constraints | 60+ relationships | Application-level enforcement | Medium |
+| `CHECK` constraints | 15+ enum validations | Application-level validation + GSI sparse indexes | Medium |
+| `UNIQUE` constraints | 25+ composite keys | Conditional writes + GSI uniqueness | Medium |
+| Transactions | Multi-table writes in 40+ locations | DynamoDB Transactions (25 item limit) | High |
+| `CASCADE DELETE` | All FK relationships | DynamoDB Streams + Lambda cleanup | High |
+| `ON UPDATE` triggers | updated_at columns | Application-level timestamp management | Low |
+| Window Functions | Analytics queries | Pre-computed aggregates or Athena | High |
+| CTEs (WITH clause) | Complex reports | Multiple queries + application joins | High |
+
+### 1.5 Current Index Analysis
+
+#### B-Tree Indexes (Standard)
+```sql
+-- 45+ B-tree indexes across all tables
+ix_findings_status ON findings(status)
+ix_findings_severity ON findings(severity)
+ix_findings_last_seen ON findings(last_seen)
+ix_iam_edges_principal ON iam_edges(principal_id)
+ix_iam_edges_resource ON iam_edges(resource_id)
+ix_iam_edges_is_admin ON iam_edges(is_admin)
+ix_audit_events_occurred_at ON audit_events(occurred_at)
+ix_agent_sessions_org ON agent_sessions(org_id)
+ix_agent_sessions_created ON agent_sessions(created_at)
+-- ... and 35+ more
+```
+
+#### GIN Indexes (JSON/Array Search)
+```sql
+-- 8 GIN indexes requiring OpenSearch or denormalization
+ix_config_snapshots_normalized_config ON config_snapshots USING GIN(normalized_config)
+ix_audit_events_raw ON audit_events USING GIN(raw)
+ix_rules_provider ON rules USING GIN(provider)
+ix_rules_resource_types ON rules USING GIN(resource_types)
+-- These support queries like:
+-- SELECT * FROM config_snapshots WHERE normalized_config @> '{"encryption": {"enabled": false}}'
+-- SELECT * FROM audit_events WHERE raw @> '{"actor": {"email": "user@example.com"}}'
+```
+
+#### Composite Indexes
+```sql
+-- 12 composite indexes
+ix_config_snapshots_resource_captured ON config_snapshots(resource_id, captured_at)
+ix_audit_events_provider_action ON audit_events(provider, action)
+ix_iam_edges_account_permission ON iam_edges(account_id, permission)
+```
+
+### 1.6 Relationship Cardinality Analysis
+
+```
+Organization (1) ─────┬───── (N) Account
+                      ├───── (N) Policy
+                      ├───── (N) Finding
+                      ├───── (N) Suppression
+                      ├───── (N) SlackWebhook
+                      ├───── (N) EmailConfig
+                      ├───── (N) WebhookConfig
+                      ├───── (N) AgentSession
+                      ├───── (N) IdentityCluster
+                      ├───── (1) ServalIntegration
+                      └───── (N) User
+
+Account (1) ──────────┬───── (N) Principal (~100-10K per account)
+                      ├───── (N) Resource (~100-100K per account)
+                      ├───── (N) IAMEdge (~1K-1M per account)
+                      ├───── (N) AuditEvent (~10K-10M per account)
+                      └───── (N) Finding
+
+Principal (1) ────────┬───── (N) IAMEdge
+                      ├───── (N) Finding
+                      └───── (N) IdentityClusterMember
+
+Resource (1) ─────────┬───── (N) ConfigSnapshot (~1-1K per resource)
+                      ├───── (N) IAMEdge
+                      └───── (N) Finding
+
+AgentSession (1) ─────┬───── (N) AgentMessage (~1-500 per session)
+                      ├───── (N) ToolInvocation (~1-100 per session)
+                      ├───── (N) AgentConversationItem (~1-1K per session)
+                      └───── (N) AgentMemoryEntry
+```
+
+### 1.7 Data Volume Projections (12-month)
+
+| Table | Current | 6 Months | 12 Months | Storage (12mo) |
+|-------|---------|----------|-----------|----------------|
+| audit_events | 50M | 150M | 300M | ~500 GB |
+| config_snapshots | 10M | 30M | 60M | ~200 GB |
+| iam_edges | 10M | 25M | 50M | ~50 GB |
+| agent_conversation_items | 1M | 5M | 15M | ~30 GB |
+| frontend_observation_events | 1M | 5M | 15M | ~20 GB |
+| findings | 100K | 300K | 600K | ~5 GB |
+| All other tables | - | - | - | ~10 GB |
+| **Total** | **~72M** | **~215M** | **~440M** | **~815 GB** |
 
 ---
 
@@ -572,39 +948,371 @@ dynamodb-local:
 
 ---
 
-## 9. Risks and Mitigations
+## 9. Security Considerations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Hot partitions on high-write tables | Performance degradation | Use write sharding for audit_events |
-| GSI eventual consistency | Stale reads | Use strongly consistent reads where critical |
-| 25-item transaction limit | Data inconsistency | Design for smaller transaction scopes |
-| Complex query migration | Feature regression | Extensive testing, phased rollout |
-| GCP support loss | Customer impact | Firestore abstraction or cross-cloud solution |
-| Cost increase | Budget overrun | Monitor usage, implement caching |
+### 9.1 Data Classification
+
+| Classification | Tables | Sensitivity | Encryption Requirement |
+|---------------|--------|-------------|----------------------|
+| **Highly Sensitive** | serval_integrations, slack_webhooks, email_configs, webhook_configs | Contains API keys, secrets, credentials | Application-level envelope encryption + DynamoDB encryption |
+| **Sensitive PII** | principals, users, audit_events | Email addresses, names, IP addresses | DynamoDB encryption at rest |
+| **Sensitive Security** | findings, iam_edges, config_snapshots | Security posture data | DynamoDB encryption at rest |
+| **Internal** | All other tables | Business data | DynamoDB encryption at rest |
+
+### 9.2 Encryption Architecture (DynamoDB)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        ENCRYPTION LAYERS                                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  Layer 1: DynamoDB Server-Side Encryption (SSE)                         │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  • AWS-managed keys (default) OR Customer-managed KMS keys (CMK)   │ │
+│  │  • Encrypts all data at rest automatically                         │ │
+│  │  • Transparent to application                                       │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  Layer 2: Application-Level Envelope Encryption (Secrets Only)          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  • Used for: webhook URLs, SMTP passwords, API keys, OAuth tokens  │ │
+│  │  • Algorithm: AES-256-GCM                                           │ │
+│  │  • DEK wrapped by AWS KMS CMK                                       │ │
+│  │  • Stored as Binary (B) type in DynamoDB                           │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  Layer 3: TLS in Transit                                                │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  • All DynamoDB API calls over HTTPS (TLS 1.2+)                    │ │
+│  │  • VPC Endpoints for private connectivity                          │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 9.3 Access Control Model
+
+```python
+# IAM Policy for DynamoDB Access (Principle of Least Privilege)
+
+# Application Service Role
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "DynamoDBTableAccess",
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:Query",
+                "dynamodb:Scan",
+                "dynamodb:BatchGetItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:TransactGetItems",
+                "dynamodb:TransactWriteItems"
+            ],
+            "Resource": [
+                "arn:aws:dynamodb:*:*:table/cerebro-core-*",
+                "arn:aws:dynamodb:*:*:table/cerebro-core-*/index/*",
+                "arn:aws:dynamodb:*:*:table/cerebro-audit-*",
+                "arn:aws:dynamodb:*:*:table/cerebro-audit-*/index/*",
+                "arn:aws:dynamodb:*:*:table/cerebro-agents-*",
+                "arn:aws:dynamodb:*:*:table/cerebro-agents-*/index/*",
+                "arn:aws:dynamodb:*:*:table/cerebro-notifications-*",
+                "arn:aws:dynamodb:*:*:table/cerebro-notifications-*/index/*"
+            ],
+            "Condition": {
+                "ForAllValues:StringEquals": {
+                    "dynamodb:LeadingKeys": ["${aws:PrincipalTag/OrgId}"]
+                }
+            }
+        },
+        {
+            "Sid": "KMSDecrypt",
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt",
+                "kms:GenerateDataKey"
+            ],
+            "Resource": "arn:aws:kms:*:*:key/cerebro-dek-key"
+        }
+    ]
+}
+```
+
+### 9.4 Multi-Tenancy Isolation
+
+**Current (PostgreSQL)**: Row-level security via `org_id` foreign key and application-level filtering.
+
+**DynamoDB Approach**:
+1. **Partition Key Isolation**: All tenant data partitioned by `ORG#<org_id>` prefix
+2. **IAM Condition Keys**: Use `dynamodb:LeadingKeys` condition for API-level enforcement
+3. **Application Validation**: Verify org_id in all repository methods
+4. **Audit Logging**: CloudTrail for all DynamoDB API calls
+
+```python
+# Multi-tenant repository pattern
+class TenantAwareRepository:
+    def __init__(self, dynamodb: DynamoDBClient, org_id: UUID):
+        self.table = dynamodb.core_table
+        self.org_id = org_id
+        self._org_prefix = f"ORG#{org_id}"
+    
+    async def get_finding(self, finding_id: UUID) -> Optional[Finding]:
+        response = self.table.get_item(
+            Key={
+                "PK": self._org_prefix,  # Tenant isolation
+                "SK": f"FIND#{finding_id}",
+            }
+        )
+        item = response.get("Item")
+        if item and item.get("org_id") == str(self.org_id):  # Double-check
+            return Finding.from_dynamodb(item)
+        return None
+```
+
+### 9.5 Audit Trail Requirements
+
+| Requirement | PostgreSQL (Current) | DynamoDB (Proposed) |
+|-------------|---------------------|---------------------|
+| Data access logging | Application logs | CloudTrail + Application logs |
+| Schema changes | Alembic migration history | N/A (schemaless) |
+| Data modifications | `updated_at` columns | DynamoDB Streams + audit table |
+| Admin actions | Application audit table | CloudTrail + IAM Access Analyzer |
+| Compliance evidence | SQL query exports | DynamoDB Export to S3 + Athena |
+
+### 9.6 Data Retention & Deletion
+
+```python
+# TTL-based automatic deletion for audit_events
+{
+    "PK": "ACCT#abc123",
+    "SK": "EVENT#2024-12-10T10:30:00Z#event-id",
+    "expires_at": 1734278400,  # Unix timestamp (90 days from creation)
+    # ... other attributes
+}
+
+# For GDPR right-to-deletion (principals with PII)
+async def delete_principal_data(org_id: UUID, principal_id: UUID):
+    """Delete all data associated with a principal (GDPR compliance)."""
+    # 1. Delete principal record
+    # 2. Delete associated IAM edges (via Streams + Lambda)
+    # 3. Anonymize findings (remove principal_id reference)
+    # 4. Delete identity cluster memberships
+    # 5. Audit log the deletion
+```
 
 ---
 
-## 10. Success Criteria
+## 10. Risks and Mitigations
 
-- [ ] All existing API endpoints function correctly
-- [ ] Query latency P99 < 100ms for common patterns
-- [ ] Zero data loss during migration
-- [ ] Successful data validation (100% match)
-- [ ] All tests passing
-- [ ] Cost within 20% of PostgreSQL baseline
+| Risk | Likelihood | Impact | Mitigation | Owner |
+|------|------------|--------|------------|-------|
+| **Hot partitions** on high-write tables (audit_events) | Medium | High | Write sharding with random suffix; use account_id partitioning | Platform |
+| **GSI eventual consistency** causes stale reads | Medium | Medium | Use strongly consistent reads for critical paths; document eventual consistency behavior | Platform |
+| **25-item transaction limit** causes data inconsistency | Medium | High | Redesign transaction boundaries; use DynamoDB Streams for eventual consistency | Platform |
+| **Complex query migration** causes feature regression | High | High | Comprehensive integration tests; parallel read validation; phased rollout | Engineering |
+| **GCP support loss** impacts multi-cloud customers | Low | High | Evaluate Firestore abstraction or ScyllaDB Alternator; document as breaking change | Product |
+| **Cost increase** exceeds budget | Medium | Medium | Implement read caching (ElastiCache); monitor with Cost Explorer; set billing alerts | SRE |
+| **Data migration corruption** | Low | Critical | Checksums on all migrated records; parallel validation queries; rollback procedure | Platform |
+| **Performance regression** on complex queries | Medium | High | Pre-compute aggregations; add OpenSearch for full-text; benchmark all query patterns | Platform |
+| **Operational knowledge gap** | Medium | Medium | Training sessions; runbook documentation; shadowing with AWS support | SRE |
+| **Encryption key rotation** complexity | Low | Medium | Use AWS-managed rotation; test rotation procedure in staging | Security |
+
+### 10.1 Rollback Strategy
+
+```
+Phase 1-2 (Dual-Read):
+  Rollback: Disable feature flag, revert to PostgreSQL-only reads
+  Time: < 5 minutes
+  Data Loss: None
+
+Phase 3 (Dual-Write):
+  Rollback: Disable DynamoDB writes, continue PostgreSQL-only
+  Time: < 5 minutes
+  Data Loss: None (PostgreSQL remains source of truth)
+
+Phase 4 (Data Migration):
+  Rollback: Stop migration, PostgreSQL remains authoritative
+  Time: < 1 hour
+  Data Loss: None
+
+Phase 5 (Cutover):
+  Rollback: Re-enable PostgreSQL writes, sync delta from DynamoDB
+  Time: < 4 hours
+  Data Loss: Potential for conflicts requiring manual resolution
+```
 
 ---
 
-## 11. Open Questions
+## 11. Cost Analysis
 
-1. **GCP Support**: Do we need to maintain GCP database support? If yes, Firestore or alternative?
-2. **Data Retention**: What TTL policies for audit_events and config_snapshots?
-3. **Search Requirements**: Do we need OpenSearch for JSON field queries, or can we denormalize?
-4. **Aggregation Frequency**: How often are aggregate queries run? Real-time vs batch acceptable?
-5. **Transaction Boundaries**: Which operations require strong consistency?
+### 11.1 Current PostgreSQL Costs (Monthly)
+
+| Component | Specification | Monthly Cost |
+|-----------|--------------|--------------|
+| AWS RDS (Production) | db.r6g.xlarge, Multi-AZ, 500GB | $1,200 |
+| AWS RDS (Staging) | db.r6g.large, Single-AZ, 100GB | $300 |
+| GCP Cloud SQL (DR) | db-custom-4-16384, HA, 200GB | $600 |
+| Backup Storage | 30-day retention, ~200GB | $50 |
+| **Total** | | **$2,150/month** |
+
+### 11.2 Projected DynamoDB Costs (Monthly)
+
+| Component | Specification | Monthly Cost |
+|-----------|--------------|--------------|
+| **cerebro-core** | | |
+| - Storage | ~50 GB | $12.50 |
+| - On-demand reads | ~100M RCU/month | $25 |
+| - On-demand writes | ~20M WCU/month | $25 |
+| - GSI storage (3 GSIs) | ~150 GB | $37.50 |
+| **cerebro-audit** | | |
+| - Storage | ~500 GB | $125 |
+| - On-demand reads | ~50M RCU/month | $12.50 |
+| - On-demand writes | ~200M WCU/month | $250 |
+| - GSI storage (1 GSI) | ~500 GB | $125 |
+| **cerebro-agents** | | |
+| - Storage | ~30 GB | $7.50 |
+| - On-demand reads | ~20M RCU/month | $5 |
+| - On-demand writes | ~10M WCU/month | $12.50 |
+| **cerebro-notifications** | | |
+| - Storage | ~5 GB | $1.25 |
+| - On-demand reads | ~5M RCU/month | $1.25 |
+| - On-demand writes | ~2M WCU/month | $2.50 |
+| **Additional Services** | | |
+| - DynamoDB Streams | ~200M records/month | $5 |
+| - Point-in-time Recovery | All tables | $50 |
+| - Global Tables (optional) | N/A initially | $0 |
+| **Total DynamoDB** | | **$697.50/month** |
+
+### 11.3 Additional Infrastructure Costs
+
+| Component | Purpose | Monthly Cost |
+|-----------|---------|--------------|
+| OpenSearch (optional) | Full-text search on config/audit | $300-500 |
+| ElastiCache Redis | Read caching | $100-200 |
+| Lambda (Streams processing) | Cascade deletes, aggregations | $20-50 |
+| CloudWatch | Enhanced monitoring | $50 |
+| **Total Additional** | | **$470-800/month** |
+
+### 11.4 Cost Comparison Summary
+
+| Scenario | Monthly Cost | vs. Current |
+|----------|--------------|-------------|
+| Current PostgreSQL | $2,150 | baseline |
+| DynamoDB Only | $700 | -67% |
+| DynamoDB + OpenSearch + Cache | $1,300 | -40% |
+| DynamoDB + All Options | $1,500 | -30% |
+
+**Note**: Costs assume on-demand capacity. Provisioned capacity with reserved capacity could reduce costs by additional 20-30% once usage patterns stabilize.
 
 ---
+
+## 12. Success Criteria
+
+### 12.1 Functional Requirements
+
+- [ ] All 47 existing API endpoints function correctly
+- [ ] All 130+ query patterns produce identical results
+- [ ] Multi-tenant isolation verified (cross-org data access prevented)
+- [ ] All CRUD operations work for all 47 entity types
+- [ ] Pagination works correctly with DynamoDB cursors
+- [ ] Sorting works for all sortable fields
+- [ ] Filtering works for all filterable fields
+
+### 12.2 Performance Requirements
+
+- [ ] Query latency P50 < 10ms for single-item lookups
+- [ ] Query latency P99 < 100ms for list operations
+- [ ] Query latency P99 < 500ms for complex aggregations
+- [ ] Write latency P99 < 50ms for single-item writes
+- [ ] Batch operations complete within 5x single operation time
+- [ ] No query timeouts under normal load
+
+### 12.3 Data Integrity Requirements
+
+- [ ] Zero data loss during migration (100% record count match)
+- [ ] All field values match between PostgreSQL and DynamoDB
+- [ ] All relationships preserved (verified via reference integrity checks)
+- [ ] Encrypted fields successfully decrypt in DynamoDB
+- [ ] SHA-256 checksums match for all migrated records
+
+### 12.4 Operational Requirements
+
+- [ ] All tests passing (unit, integration, e2e)
+- [ ] Monitoring dashboards operational
+- [ ] Alerting configured for DynamoDB metrics
+- [ ] Runbooks documented and validated
+- [ ] On-call team trained on DynamoDB operations
+- [ ] Backup and restore procedures tested
+
+### 12.5 Cost Requirements
+
+- [ ] Monthly cost within 50% of PostgreSQL baseline (Phase 1)
+- [ ] Monthly cost within 30% of PostgreSQL baseline (steady state)
+- [ ] No unexpected cost spikes from GSI usage
+- [ ] Cost allocation tags configured for chargeback
+
+---
+
+## 13. Open Questions
+
+### 13.1 Architecture Decisions Required
+
+| Question | Options | Recommendation | Decision Owner |
+|----------|---------|----------------|----------------|
+| **GCP Support** | A) Drop GCP support B) Add Firestore C) Use ScyllaDB Alternator | B) Firestore with abstraction layer | Product/Engineering |
+| **Data Retention** | A) Keep forever B) 90-day TTL C) 1-year TTL D) Tiered | C) 1-year for audit, 90-day for telemetry | Compliance/Product |
+| **Search Strategy** | A) Denormalize B) OpenSearch C) Athena | B) OpenSearch for config/audit | Engineering |
+| **Aggregation Model** | A) Real-time compute B) Pre-computed C) Hybrid | C) Hybrid with Streams | Engineering |
+| **Consistency Model** | A) Strong everywhere B) Eventual everywhere C) Mixed | C) Strong for writes, eventual for reads | Engineering |
+
+### 13.2 Technical Questions
+
+1. **Transaction Scope**: Which multi-entity operations require ACID transactions?
+   - Finding + EvidenceArtifact creation?
+   - User + RefreshToken creation?
+   - AgentSession + AgentMessage creation?
+
+2. **Hot Partition Prevention**: How do we handle accounts with >10M audit events?
+   - Time-based partitioning?
+   - Random suffix sharding?
+   - Separate tables per large tenant?
+
+3. **Query Migration**: How do we handle these PostgreSQL-specific patterns?
+   - `SELECT DISTINCT` queries
+   - `GROUP BY` with `HAVING` clauses
+   - Subqueries in WHERE clauses
+   - Self-joins (e.g., identity clustering)
+
+4. **Backup Strategy**: What RPO/RTO requirements?
+   - Point-in-time recovery sufficient?
+   - Cross-region backup needed?
+   - How to handle backup testing?
+
+### 13.3 Organizational Questions
+
+5. **Team Readiness**: What training is needed?
+   - DynamoDB data modeling workshop
+   - NoSQL query pattern training
+   - Operational runbook review
+
+6. **Rollout Strategy**: Which customers go first?
+   - Internal dogfooding first?
+   - Small customers first?
+   - Opt-in beta program?
+
+7. **Documentation Updates**: What needs updating?
+   - API documentation (pagination changes)
+   - SDK documentation
+   - Integration guides
+
+---
+
+## Appendices
 
 ## Appendix A: Entity Relationship Diagram
 
