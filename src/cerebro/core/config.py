@@ -543,12 +543,38 @@ class Settings(BaseSettings):
 
     """Application settings."""
 
-    # Database
+    # Database (legacy PostgreSQL - deprecated, kept for migration)
     database_url: str = Field(
         default="postgresql://user:password@localhost/cerebro",
-        description="PostgreSQL database URL"
+        description="PostgreSQL database URL (deprecated - use DynamoDB tables)"
     )
-    
+
+    # DynamoDB Tables
+    dynamodb_core_table: str = Field(
+        default="cerebro-core",
+        description="DynamoDB table for core entities (orgs, accounts, findings)"
+    )
+    dynamodb_audit_table: str = Field(
+        default="cerebro-audit",
+        description="DynamoDB table for audit events and config snapshots"
+    )
+    dynamodb_agents_table: str = Field(
+        default="cerebro-agents",
+        description="DynamoDB table for agent sessions, messages, and tools"
+    )
+    dynamodb_notifications_table: str = Field(
+        default="cerebro-notifications",
+        description="DynamoDB table for notification configs and delivery logs"
+    )
+    dynamodb_users_table: str = Field(
+        default="cerebro-users",
+        description="DynamoDB table for user auth and API keys"
+    )
+    dynamodb_endpoint_url: Optional[str] = Field(
+        default=None,
+        description="DynamoDB endpoint URL (for local development)"
+    )
+
     # Security
     auth: AuthSettings = Field(default_factory=AuthSettings)
     api: APISettings = Field(default_factory=APISettings)
