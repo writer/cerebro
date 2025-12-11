@@ -13,6 +13,7 @@ from cerebro.core.dynamodb_client import (
     pk,
     put_item,
     query,
+    query_paginated,
     sk,
     update_item,
 )
@@ -127,11 +128,25 @@ class ToolInvocationRepository:
     _table = TableName.AGENTS
     
     async def get(self, invocation_id: UUID, session_id: UUID) -> Optional[ToolInvocation]:
-        """Get tool invocation by ID."""
-        invocations = await self.list_by_session(session_id, limit=10000)
-        for inv in invocations:
-            if inv.id == invocation_id:
-                return inv
+        """Get tool invocation by ID.
+        
+        Note: Invocations use timestamp in SK, so we must scan. Consider adding
+        a GSI on invocation_id for direct lookups if this becomes a bottleneck.
+        """
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("SESSION", str(session_id)),
+                sk_prefix="TOOL#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("id") == str(invocation_id):
+                    return ToolInvocation.from_item(item)
+            if not cursor:
+                break
         return None
     
     async def create(self, invocation: ToolInvocation) -> ToolInvocation:

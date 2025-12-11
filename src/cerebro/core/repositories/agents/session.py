@@ -15,6 +15,7 @@ from cerebro.core.dynamodb_client import (
     pk,
     put_item,
     query,
+    query_paginated,
     sk,
     update_item,
 )
@@ -129,19 +130,26 @@ class AgentSessionRepository:
         return AgentSession.from_item(result) if result else None
     
     async def delete(self, session_id: UUID, org_id: UUID) -> bool:
-        """Delete session and all related items."""
-        # First delete all items under this session
-        session_items = await query(
-            self._table,
-            pk("SESSION", str(session_id)),
-            limit=10000,
-        )
+        """Delete session and all related items (messages, tool invocations)."""
+        delete_keys = []
         
-        delete_keys = [(item["PK"], item["SK"]) for item in session_items]
+        # Paginate through all items under this session
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("SESSION", str(session_id)),
+                limit=100,
+                cursor=cursor,
+            )
+            delete_keys.extend([(item["PK"], item["SK"]) for item in items])
+            if not cursor:
+                break
         
         # Add the session itself
         delete_keys.append((pk("ORG", str(org_id)), sk("SESSION", str(session_id))))
         
+        # Delete in batches
         if delete_keys:
             await batch_write(self._table, delete_keys=delete_keys)
         
