@@ -143,12 +143,13 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra dev
 
-      - name: Run Postgres-backed analytics tests
+      - name: Run Snowflake-backed analytics tests
         env:
           ENVIRONMENT: test
+          SNOWFLAKE_DATABASE_URL: ${{ secrets.SNOWFLAKE_DATABASE_URL }}
         run: |
           set -euo pipefail
-          uv run pytest tests/integration/analytics/test_analytics_tasks_postgres.py
+          uv run pytest tests/integration/analytics/test_analytics_tasks_snowflake.py
 
   e2e-tests:
     runs-on: ubuntu-latest

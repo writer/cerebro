@@ -92,6 +92,8 @@ dev = [
     "ruff>=0.1.0",
     "testcontainers>=4.13.2",
     "fakeredis>=2.21.0",
+    "snowflake-connector-python>=3.6.0",
+    "snowflake-sqlalchemy>=1.5.0",
 ]
 
 [project.scripts]
