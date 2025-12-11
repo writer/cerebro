@@ -297,7 +297,7 @@ class TestAgentSessionRepository:
     @pytest.mark.asyncio
     async def test_create_and_get(self, mock_dynamodb):
         """Test creating and retrieving a session."""
-        from cerebro.agents.repositories.dynamodb.session import (
+        from cerebro.core.repositories.agents import (
             AgentSession,
             AgentSessionRepository,
             AgentType,
@@ -326,7 +326,7 @@ class TestAgentSessionRepository:
     @pytest.mark.asyncio
     async def test_list_by_agent_type(self, mock_dynamodb):
         """Test listing sessions by agent type."""
-        from cerebro.agents.repositories.dynamodb.session import (
+        from cerebro.core.repositories.agents import (
             AgentSession,
             AgentSessionRepository,
             AgentType,
@@ -354,7 +354,7 @@ class TestAgentSessionRepository:
     @pytest.mark.asyncio
     async def test_deactivate(self, mock_dynamodb):
         """Test deactivating a session."""
-        from cerebro.agents.repositories.dynamodb.session import (
+        from cerebro.core.repositories.agents import (
             AgentSession,
             AgentSessionRepository,
             AgentType,
@@ -384,7 +384,7 @@ class TestAgentMessageRepository:
     @pytest.mark.asyncio
     async def test_create_and_list(self, mock_dynamodb):
         """Test creating and listing messages."""
-        from cerebro.agents.repositories.dynamodb.message import (
+        from cerebro.core.repositories.agents import (
             AgentMessage,
             AgentMessageRepository,
             MessageRole,
@@ -415,7 +415,7 @@ class TestAgentMessageRepository:
     @pytest.mark.asyncio
     async def test_token_usage(self, mock_dynamodb):
         """Test getting token usage."""
-        from cerebro.agents.repositories.dynamodb.message import (
+        from cerebro.core.repositories.agents import (
             AgentMessage,
             AgentMessageRepository,
             MessageRole,

@@ -15,10 +15,8 @@ from cerebro.core.repositories import (
     PrincipalRepository,
     ResourceRepository,
     RuleRepository,
-)
-from cerebro.agents.repositories.dynamodb import (
-    AgentMessageRepository,
     AgentSessionRepository,
+    AgentMessageRepository,
     ToolInvocationRepository,
 )
 

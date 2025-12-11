@@ -15,17 +15,13 @@ from cerebro.api.dynamodb_dependencies import (
     session_repository,
     tool_invocation_repository,
 )
-from cerebro.agents.repositories.dynamodb.session import (
+from cerebro.core.repositories.agents import (
     AgentSession,
     AgentSessionRepository,
     AgentType,
-)
-from cerebro.agents.repositories.dynamodb.message import (
     AgentMessage,
     AgentMessageRepository,
     MessageRole,
-)
-from cerebro.agents.repositories.dynamodb.tool_invocation import (
     ToolInvocation,
     ToolInvocationRepository,
     ToolInvocationStatus,

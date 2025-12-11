@@ -175,7 +175,7 @@ async def test_finding_repository():
 
 async def test_agent_session_repository():
     """Test AgentSession repository operations."""
-    from cerebro.agents.repositories.dynamodb.session import (
+    from cerebro.core.repositories.agents import (
         AgentSession,
         AgentSessionRepository,
         AgentType,
@@ -232,12 +232,10 @@ async def test_agent_session_repository():
 
 async def test_agent_message_repository():
     """Test AgentMessage repository operations."""
-    from cerebro.agents.repositories.dynamodb.session import (
+    from cerebro.core.repositories.agents import (
         AgentSession,
         AgentSessionRepository,
         AgentType,
-    )
-    from cerebro.agents.repositories.dynamodb.message import (
         AgentMessage,
         AgentMessageRepository,
         MessageRole,
