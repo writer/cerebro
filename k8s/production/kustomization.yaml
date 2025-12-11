@@ -5,9 +5,13 @@ namespace: cerebro-production
 
 resources:
   - ../base
+  - external-secret.yaml
 
 patchesStrategicMerge:
-  - production-config.yaml
+  - patches/configmap.yaml
+  - patches/ingress.yaml
+  - patches/deployment-api.yaml
+  - patches/deployment-worker.yaml
 
 images:
   - name: cerebro
@@ -16,7 +20,7 @@ images:
 replicas:
   - name: cerebro-api
     count: 4
-  - name: cerebro-worker-collection
+  - name: cerebro-worker
     count: 3
-  - name: cerebro-worker-findings
-    count: 2
+  - name: cerebro-beat
+    count: 1

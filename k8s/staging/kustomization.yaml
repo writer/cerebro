@@ -5,9 +5,11 @@ namespace: cerebro-staging
 
 resources:
   - ../base
+  - external-secret.yaml
 
 patchesStrategicMerge:
-  - staging-config.yaml
+  - patches/configmap.yaml
+  - patches/ingress.yaml
 
 images:
   - name: cerebro
@@ -16,7 +18,7 @@ images:
 replicas:
   - name: cerebro-api
     count: 2
-  - name: cerebro-worker-collection
+  - name: cerebro-worker
     count: 1
-  - name: cerebro-worker-findings
+  - name: cerebro-beat
     count: 1

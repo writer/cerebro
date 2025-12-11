@@ -7,7 +7,9 @@
 - Celery beat must be active so `collect_security_metrics_all_orgs` executes hourly:
   - `celery -A cerebro.tasks.celery_app beat -l info`
 - Environment variables:
-  - `ENVIRONMENT=test` (development/testing), `DATABASE_URL` pointing to Postgres in staging/prod.
+  - `ENVIRONMENT=test` (development/testing)
+  - `DATABASE_URL` (core transactional DB)
+  - `SNOWFLAKE_DATABASE_URL` (analytics warehouse)
 
 ## Metrics Instrumentation
 
@@ -19,6 +21,5 @@
 ## CI Pipeline
 
 - `unit-tests` job runs `uv run pytest -m "not integration"` on every push/PR.
-- `postgres-integration-tests` job runs Testcontainers-backed analytics suite to validate raw SQL against Postgres.
-- Docker must be available in the CI environment; GitHub-hosted runners suffice.
-- To reproduce locally: `uv run pytest tests/integration/analytics/test_analytics_tasks_postgres.py` (requires Docker).
+- `snowflake-integration-tests` job validates Snowflake connectivity for analytics workloads.
+- To reproduce locally: `SNOWFLAKE_DATABASE_URL=... uv run pytest tests/integration/analytics/test_analytics_tasks_snowflake.py`.

@@ -3,6 +3,7 @@ import os
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.pool import NullPool
 
 
 SNOWFLAKE_DATABASE_URL_ENV = "SNOWFLAKE_DATABASE_URL"
@@ -15,7 +16,14 @@ def test_snowflake_connection() -> None:
         pytest.skip("SNOWFLAKE_DATABASE_URL not set; skipping Snowflake integration tests")
 
     url = make_url(url_value)
-    engine = create_engine(url)
+    engine = create_engine(
+        url,
+        poolclass=NullPool,
+        pool_pre_ping=True,
+        connect_args={
+            "client_session_keep_alive": True,
+        },
+    )
 
     try:
         with engine.connect() as conn:
