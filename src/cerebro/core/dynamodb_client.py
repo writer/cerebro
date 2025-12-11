@@ -23,9 +23,32 @@ from uuid import UUID
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Thread pool for running boto3 operations
 _executor = ThreadPoolExecutor(max_workers=10)
+
+
+class DynamoDBError(Exception):
+    """Base exception for DynamoDB operations."""
+    pass
+
+
+class ItemNotFoundError(DynamoDBError):
+    """Raised when an item is not found."""
+    pass
+
+
+class ConditionalCheckFailedError(DynamoDBError):
+    """Raised when a conditional check fails."""
+    pass
+
+
+class ValidationError(DynamoDBError):
+    """Raised when validation fails."""
+    pass
 
 
 def _get_settings():
@@ -224,17 +247,30 @@ async def put_item(
     item: Dict[str, Any],
     condition: Optional[str] = None,
 ) -> None:
-    """Put item into table."""
+    """Put item into table.
+    
+    Raises:
+        ConditionalCheckFailedError: If condition expression fails
+        DynamoDBError: For other DynamoDB errors
+    """
     client = get_client()
+    table_name = get_table_name(table)
     params: Dict[str, Any] = {
-        "TableName": get_table_name(table),
+        "TableName": table_name,
         "Item": serialize_item(item),
     }
     if condition:
         params["ConditionExpression"] = condition
     
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(_executor, partial(client.put_item, **params))
+    try:
+        await loop.run_in_executor(_executor, partial(client.put_item, **params))
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "ConditionalCheckFailedException":
+            raise ConditionalCheckFailedError(f"Condition failed for put_item on {table_name}")
+        logger.error(f"DynamoDB put_item error: {e}", extra={"table": table_name})
+        raise DynamoDBError(f"Failed to put item: {e}")
 
 
 async def get_item(
@@ -494,3 +530,61 @@ def decode_cursor(cursor: str) -> Dict[str, Any]:
     """Decode cursor string to ExclusiveStartKey."""
     import base64
     return json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+
+
+async def health_check() -> Dict[str, Any]:
+    """Check DynamoDB connectivity and table status.
+    
+    Returns:
+        Dict with status, tables info, and any errors
+    """
+    client = get_client()
+    loop = asyncio.get_event_loop()
+    
+    results = {
+        "healthy": True,
+        "tables": {},
+        "errors": [],
+    }
+    
+    for table in TableName:
+        table_name = get_table_name(table)
+        try:
+            response = await loop.run_in_executor(
+                _executor,
+                partial(client.describe_table, TableName=table_name)
+            )
+            table_info = response.get("Table", {})
+            results["tables"][table.value] = {
+                "name": table_name,
+                "status": table_info.get("TableStatus"),
+                "item_count": table_info.get("ItemCount", 0),
+            }
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                results["tables"][table.value] = {
+                    "name": table_name,
+                    "status": "NOT_FOUND",
+                    "error": "Table does not exist",
+                }
+                results["errors"].append(f"Table {table_name} not found")
+            else:
+                results["tables"][table.value] = {
+                    "name": table_name,
+                    "status": "ERROR",
+                    "error": str(e),
+                }
+                results["errors"].append(f"Error checking {table_name}: {e}")
+            results["healthy"] = False
+    
+    return results
+
+
+def get_table_arn(table: TableName) -> str:
+    """Get table ARN for IAM policies."""
+    region = get_region()
+    # Note: In production, get account ID from STS
+    account_id = os.environ.get("AWS_ACCOUNT_ID", "*")
+    table_name = get_table_name(table)
+    return f"arn:aws:dynamodb:{region}:{account_id}:table/{table_name}"

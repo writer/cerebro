@@ -720,28 +720,24 @@ async def health_encryption():
 @app.get("/health/dynamodb")
 async def health_dynamodb():
     """DynamoDB health check endpoint."""
-    from cerebro.core.dynamodb_client import get_client, TableName, get_table_name
+    from cerebro.core.dynamodb_client import health_check
 
     try:
-        client = get_client()
-        table_name = get_table_name(TableName.CORE)
+        result = await health_check()
         
-        # Describe table to verify connectivity
-        response = client.describe_table(TableName=table_name)
-        table_status = response["Table"]["TableStatus"]
-        item_count = response["Table"].get("ItemCount", 0)
-        
-        if table_status != "ACTIVE":
+        if not result["healthy"]:
             raise HTTPException(
                 status_code=503,
-                detail=f"DynamoDB table not active: {table_status}"
+                detail={
+                    "status": "unhealthy",
+                    "tables": result["tables"],
+                    "errors": result["errors"],
+                }
             )
         
         return {
             "status": "healthy",
-            "table": table_name,
-            "table_status": table_status,
-            "item_count": item_count,
+            "tables": result["tables"],
         }
     except HTTPException:
         raise
