@@ -10,6 +10,7 @@ from uuid import UUID
 
 from cerebro.agents.dynamodb_models import (
     AgentMemoryEntry,
+    AgentMessage,
     AgentSession,
     AgentType,
     ToolInvocation,
