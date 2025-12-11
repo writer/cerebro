@@ -8,8 +8,8 @@ import json
 import logging
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
-from typing import Any
+from datetime import date, datetime, timezone
+from typing import Any, Dict, Union
 from uuid import UUID
 
 from cerebro.domain.entities import (
@@ -27,7 +27,7 @@ from cerebro.metrics import (
 logger = logging.getLogger(__name__)
 
 ProducerContext = ProducerRunContext
-ProducerContextInput = ProducerRunContext | Mapping[str, Any]
+ProducerContextInput = Union[ProducerRunContext, Mapping[str, Any]]
 ProducerMetadata = dict[str, Any]
 
 
@@ -148,8 +148,8 @@ class BaseFindingProducer(abc.ABC):
             ),
             severity=severity or self.severity,
             evidence=evidence_dict,
-            first_seen=datetime.now(UTC),
-            last_seen=datetime.now(UTC),
+            first_seen=datetime.now(timezone.utc),
+            last_seen=datetime.now(timezone.utc),
         )
 
         # Generate fingerprint based on rule and resource
