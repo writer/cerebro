@@ -1,0 +1,21 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: cerebro
+  description: Security System of Record with Append-Only History & CEL Rule Support
+  annotations:
+    github.com/project-slug: WriterInternal/cerebro
+    backstage.io/techdocs-ref: dir:.
+    slack.com/channel: security
+  tags:
+    - python
+    - security
+    - compliance
+    - cel
+spec:
+  type: service
+  lifecycle: production
+  owner: security
+  system: security-platform
+  dependsOn:
+    - resource:default/postgres-primary
