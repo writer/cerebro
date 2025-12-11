@@ -560,14 +560,23 @@ class SecurityReviewManager:
         return next_review
     
     async def get_review_dashboard(self, org_id: UUID) -> Dict[str, Any]:
-        """Get dashboard data for security reviews."""
-        # Get review counts by status
-        all_reviews = await self.list_reviews(org_id, limit=1000)
+        """Get dashboard data for security reviews.
         
-        status_counts = {}
-        for review in all_reviews:
-            status = review.status
-            status_counts[status] = status_counts.get(status, 0) + 1
+        Uses SQL aggregation for efficient counting on large datasets.
+        """
+        # Get total count
+        total_stmt = select(func.count()).select_from(SecurityReview).where(
+            SecurityReview.org_id == org_id
+        )
+        total_reviews = await self.db.scalar(total_stmt) or 0
+        
+        # Get counts by status using SQL GROUP BY
+        status_stmt = select(
+            SecurityReview.status,
+            func.count().label('count')
+        ).where(SecurityReview.org_id == org_id).group_by(SecurityReview.status)
+        status_results = await self.db.execute(status_stmt)
+        status_counts = {row.status: row.count for row in status_results}
         
         # Get overdue and upcoming reviews
         overdue = await self.get_overdue_reviews(org_id)
@@ -575,7 +584,7 @@ class SecurityReviewManager:
         
         return {
             "summary": {
-                "total_reviews": len(all_reviews),
+                "total_reviews": total_reviews,
                 "pending_reviews": status_counts.get(ReviewStatus.PENDING.value, 0),
                 "in_progress_reviews": status_counts.get(ReviewStatus.IN_PROGRESS.value, 0),
                 "completed_reviews": status_counts.get(ReviewStatus.COMPLETED.value, 0),

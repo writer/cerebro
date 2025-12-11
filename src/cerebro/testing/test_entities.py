@@ -332,42 +332,61 @@ class TestEntityManager:
         return validation_results
     
     async def get_test_entity_summary(self, org_id: UUID) -> Dict[str, Any]:
-        """Get summary of test entities for an organization."""
-        # Get all entities
-        entities = await self.list_test_entities(org_id, limit=1000)
+        """Get summary of test entities for an organization.
         
-        # Calculate summary statistics
-        summary = {
-            "total_entities": len(entities),
-            "by_type": {},
-            "by_status": {},
-            "by_environment": {},
-            "expiring_soon": 0,
-            "cleanup_pending": 0
-        }
-        
+        Uses SQL aggregation for efficient counting on large datasets.
+        """
         now = datetime.utcnow()
         soon_threshold = now + timedelta(hours=4)
         
-        for entity in entities:
-            # Count by type
-            entity_type = entity.entity_type
-            summary["by_type"][entity_type] = summary["by_type"].get(entity_type, 0) + 1
-            
-            # Count by status
-            status = entity.status
-            summary["by_status"][status] = summary["by_status"].get(status, 0) + 1
-            
-            # Count by environment
-            env = entity.environment
-            summary["by_environment"][env] = summary["by_environment"].get(env, 0) + 1
-            
-            # Check expiration
-            if entity.expires_at and entity.expires_at <= soon_threshold:
-                summary["expiring_soon"] += 1
-            
-            # Check cleanup status
-            if entity.status == TestEntityStatus.CLEANUP_PENDING.value:
-                summary["cleanup_pending"] += 1
+        # Total count
+        total_stmt = select(func.count()).select_from(TestEntity).where(
+            TestEntity.org_id == org_id
+        )
+        total = await self.db.scalar(total_stmt) or 0
         
-        return summary
+        # Count by type
+        type_stmt = select(
+            TestEntity.entity_type,
+            func.count().label('count')
+        ).where(TestEntity.org_id == org_id).group_by(TestEntity.entity_type)
+        type_results = await self.db.execute(type_stmt)
+        by_type = {row.entity_type: row.count for row in type_results}
+        
+        # Count by status
+        status_stmt = select(
+            TestEntity.status,
+            func.count().label('count')
+        ).where(TestEntity.org_id == org_id).group_by(TestEntity.status)
+        status_results = await self.db.execute(status_stmt)
+        by_status = {row.status: row.count for row in status_results}
+        
+        # Count by environment
+        env_stmt = select(
+            TestEntity.environment,
+            func.count().label('count')
+        ).where(TestEntity.org_id == org_id).group_by(TestEntity.environment)
+        env_results = await self.db.execute(env_stmt)
+        by_environment = {row.environment: row.count for row in env_results}
+        
+        # Count expiring soon
+        expiring_stmt = select(func.count()).select_from(TestEntity).where(
+            and_(
+                TestEntity.org_id == org_id,
+                TestEntity.expires_at <= soon_threshold,
+                TestEntity.expires_at > now
+            )
+        )
+        expiring_soon = await self.db.scalar(expiring_stmt) or 0
+        
+        # Cleanup pending is already in by_status
+        cleanup_pending = by_status.get(TestEntityStatus.CLEANUP_PENDING.value, 0)
+        
+        return {
+            "total_entities": total,
+            "by_type": by_type,
+            "by_status": by_status,
+            "by_environment": by_environment,
+            "expiring_soon": expiring_soon,
+            "cleanup_pending": cleanup_pending
+        }
