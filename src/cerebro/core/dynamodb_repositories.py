@@ -20,6 +20,7 @@ from cerebro.core.dynamodb import (
     get_table_name,
     put_item,
     query_by_pk,
+    query_by_pk_paginated,
     update_item,
     deserialize_item,
     serialize_item,
@@ -343,11 +344,26 @@ class FindingRepository:
         org_id: UUID,
         fingerprint: str,
     ) -> Optional[Finding]:
-        """Get finding by fingerprint."""
-        findings = await self.list_by_org(org_id, limit=1000)
-        for finding in findings:
-            if finding.fingerprint == fingerprint:
-                return finding
+        """Get finding by fingerprint.
+        
+        Note: Scans findings. Consider adding GSI on fingerprint for better performance.
+        """
+        from cerebro.core.dynamodb import build_pk
+        pk = build_pk("ORG", org_id)
+        cursor = None
+        while True:
+            items, cursor = await query_by_pk_paginated(
+                self._table,
+                pk,
+                sk_prefix="FINDING#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("fingerprint") == fingerprint:
+                    return Finding.from_dynamodb_item(item)
+            if not cursor:
+                break
         return None
 
     async def bulk_upsert(self, findings: List[Finding]) -> int:
