@@ -255,7 +255,7 @@ class SQLAlchemyRepository:
         clusters: List[IdentityClusterEntity]
     ) -> int:
         """Save identity clusters."""
-        from cerebro.core.repositories import IdentityRepository
+        from cerebro.core.repositories_sqlalchemy import IdentityRepository
         
         identity_repo = IdentityRepository(self.db)
         saved_count = 0

@@ -11,7 +11,7 @@ from sqlalchemy import select, and_, or_, text
 
 from cerebro.core.models import Principal, Resource, IamEdge, ConfigSnapshot, Organization
 from cerebro.core.identity_models import IdentityCluster, IdentityClusterMember
-from cerebro.core.repositories import IdentityRepository
+from cerebro.core.repositories_sqlalchemy import IdentityRepository
 from cerebro.providers.base_edge_harvester import harvest_all_edges
 
 logger = logging.getLogger(__name__)

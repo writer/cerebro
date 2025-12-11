@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, List, Optional, Union
 import inspect
 from uuid import UUID
 
@@ -35,13 +35,13 @@ class AgentToolingManager(AsyncManagerBase):
         super().__init__(db)
         self._repo = ToolingRepository(db, registry=registry)
         self._logger = get_logger(__name__ + ".manager")
-        self._listeners: List[Callable[[ToolInvocationRecord], Awaitable[None] | None]] = []
+        self._listeners: List[Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]] = []
 
-    def register_listener(self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]) -> None:
+    def register_listener(self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]) -> None:
         if listener not in self._listeners:
             self._listeners.append(listener)
 
-    def unregister_listener(self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]) -> None:
+    def unregister_listener(self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]) -> None:
         if listener in self._listeners:
             self._listeners.remove(listener)
 

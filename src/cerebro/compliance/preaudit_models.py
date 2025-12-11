@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
@@ -15,7 +15,7 @@ from sqlalchemy.types import JSON
 from cerebro.core.database import Base, engine
 
 
-def _json_type() -> JSON | JSONB:
+def _json_type() -> Union[JSON, JSONB]:
     """Return a JSON-capable column type that works for both SQLite and Postgres."""
 
     # PostgreSQL engines expose the PGUUID driver name at runtime, but SQLAlchemy
@@ -76,8 +76,8 @@ class ComplianceAuditSchedule(Base):
         Enum(AuditScheduleStatus), default=AuditScheduleStatus.SCHEDULED, nullable=False
     )
     ready_notification_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
@@ -132,14 +132,14 @@ class PreAuditControlFinding(Base):
     status: Mapped[ControlHealthStatus] = mapped_column(
         Enum(ControlHealthStatus), nullable=False
     )
-    pass_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pass_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     evidence_summary: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
-    issue_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    remediation_suggestion: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    priority: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    task_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
-    ticket_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
+    issue_summary: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    remediation_suggestion: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    priority: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    owner: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    task_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
+    ticket_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False

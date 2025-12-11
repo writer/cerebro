@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import inspect
 from dataclasses import dataclass
-from typing import Any, AsyncIterable, AsyncIterator, Awaitable, Callable, Dict, List, Mapping, MutableMapping, Optional
+from typing import Any, AsyncIterable, AsyncIterator, Awaitable, Callable, Dict, List, Mapping, MutableMapping, Optional, Union
 
 from cerebro_sdk.streaming import ServerSentEvent, parse_server_sent_events
 
@@ -29,11 +29,11 @@ class AgentStreamEvent:
     data: Any = None
 
 
-MessageConsumer = Callable[[AgentMessage, AgentStreamEvent], Awaitable[None] | None]
-ToolConsumer = Callable[[ToolCallDelta, AgentStreamEvent], Awaitable[None] | None]
-StatusConsumer = Callable[[CompletionUpdate, AgentStreamEvent], Awaitable[None] | None]
-HeartbeatConsumer = Callable[[AgentStreamEvent], Awaitable[None] | None]
-UnknownConsumer = Callable[[AgentStreamEvent], Awaitable[None] | None]
+MessageConsumer = Callable[[AgentMessage, AgentStreamEvent], Union[Awaitable[None], None]]
+ToolConsumer = Callable[[ToolCallDelta, AgentStreamEvent], Union[Awaitable[None], None]]
+StatusConsumer = Callable[[CompletionUpdate, AgentStreamEvent], Union[Awaitable[None], None]]
+HeartbeatConsumer = Callable[[AgentStreamEvent], Union[Awaitable[None], None]]
+UnknownConsumer = Callable[[AgentStreamEvent], Union[Awaitable[None], None]]
 
 
 @dataclass
@@ -66,24 +66,25 @@ async def parse_agent_event_stream(stream: AsyncIterable[Any]) -> AsyncIterator[
             continue
 
         payload = _parse_json(event.data)
-        match event.event:
-            case "message":
-                if isinstance(payload, Mapping):
-                    yield AgentStreamEvent(type="message", payload=payload, raw=event)
-                else:
-                    yield AgentStreamEvent(type="unknown", payload=None, raw=event, data=payload)
-            case "tool":
-                if isinstance(payload, Mapping):
-                    yield AgentStreamEvent(type="tool", payload=payload, raw=event)
-                else:
-                    yield AgentStreamEvent(type="unknown", payload=None, raw=event, data=payload)
-            case "status":
-                if isinstance(payload, Mapping):
-                    yield AgentStreamEvent(type="status", payload=payload, raw=event)
-                else:
-                    yield AgentStreamEvent(type="unknown", payload=None, raw=event, data=payload)
-            case _:
+        event_type = event.event
+        
+        if event_type == "message":
+            if isinstance(payload, Mapping):
+                yield AgentStreamEvent(type="message", payload=payload, raw=event)
+            else:
                 yield AgentStreamEvent(type="unknown", payload=None, raw=event, data=payload)
+        elif event_type == "tool":
+            if isinstance(payload, Mapping):
+                yield AgentStreamEvent(type="tool", payload=payload, raw=event)
+            else:
+                yield AgentStreamEvent(type="unknown", payload=None, raw=event, data=payload)
+        elif event_type == "status":
+            if isinstance(payload, Mapping):
+                yield AgentStreamEvent(type="status", payload=payload, raw=event)
+            else:
+                yield AgentStreamEvent(type="unknown", payload=None, raw=event, data=payload)
+        else:
+            yield AgentStreamEvent(type="unknown", payload=None, raw=event, data=payload)
 
 
 async def consume_agent_stream(stream: AsyncIterable[Any], consumers: AgentStreamConsumers | None = None) -> None:
@@ -165,7 +166,7 @@ def is_status_event(event: AgentStreamEvent) -> bool:
     return event.type == "status"
 
 
-async def _maybe_call(fn: Callable[..., Awaitable[None] | None], *args: Any) -> None:
+async def _maybe_call(fn: Callable[..., Union[Awaitable[None], None]], *args: Any) -> None:
     result = fn(*args)
     if inspect.isawaitable(result):
         await result

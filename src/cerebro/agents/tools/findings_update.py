@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding, AuditEvent
-from cerebro.core.repositories import FindingRepository
+from cerebro.core.repositories_sqlalchemy import FindingRepository
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 

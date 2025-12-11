@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 from uuid import UUID
 
 from cerebro_sdk.analytics import (
@@ -102,7 +102,7 @@ def compute_coverage_health(record: IntegrationCoverageRecord) -> IntegrationCov
     )
 
 
-ConsumerFn = Callable[..., Awaitable[None] | None]
+ConsumerFn = Callable[..., Union[Awaitable[None], None]]
 
 
 @dataclass

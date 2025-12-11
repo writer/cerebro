@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
 from .models import Principal, Account
-from .repositories import IdentityRepository
+from .repositories_sqlalchemy import IdentityRepository
 
 logger = logging.getLogger(__name__)
 

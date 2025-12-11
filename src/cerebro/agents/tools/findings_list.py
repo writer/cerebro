@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding, Resource
-from cerebro.core.repositories import FindingRepository
+from cerebro.core.repositories_sqlalchemy import FindingRepository
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 
