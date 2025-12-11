@@ -6,14 +6,12 @@ to test rules, create rule templates, and analyze policy effectiveness.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.core.database import get_db
 from cerebro.rules.engine import RuleEngine, EvaluationContext
-from cerebro.rules.exceptions import CompilationError, EvaluationError
+from cerebro.rules.exceptions import CompilationError
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 

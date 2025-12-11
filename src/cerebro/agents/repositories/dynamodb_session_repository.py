@@ -17,11 +17,9 @@ from cerebro.agents.dynamodb_models import (
 from cerebro.core.dynamodb import (
     TableName,
     batch_write_items,
-    delete_item,
     get_item,
     get_table_name,
     put_item,
-    query_by_pk,
     get_dynamodb_client,
     deserialize_item,
 )
@@ -394,7 +392,6 @@ class DynamoDBAgentSessionRepository:
         Returns:
             Created message.
         """
-        from cerebro.agents.dynamodb_models import AgentMessage
 
         await put_item(self._table, message.to_dynamodb_item())
         return message

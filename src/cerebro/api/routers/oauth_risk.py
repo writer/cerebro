@@ -18,7 +18,7 @@ from ...core.models import Organization
 from ...api.auth import require_read_findings
 from ...oauth_risk.registry import get_oauth_registry, AppRiskLevel
 from ...oauth_risk.toxic_combinations import get_toxic_detector
-from ...oauth_risk.quarantine import get_quarantine_manager, QuarantineReason
+from ...oauth_risk.quarantine import get_quarantine_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

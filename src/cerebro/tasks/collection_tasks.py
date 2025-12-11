@@ -5,7 +5,6 @@ from uuid import UUID
 import logging
 import asyncio
 
-from celery import current_task
 
 from cerebro.tasks.celery_app import celery_app
 from cerebro.core.database import async_session_factory

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Dict, Any
 
 from cerebro.tasks.celery_app import celery_app
@@ -49,7 +49,6 @@ def rotate_jwt_keys_task(self=None, *args, **_) -> Dict[str, Any]:
     This task should be scheduled to run periodically (e.g., every hour)
     to check if key rotation is needed and perform it automatically.
     """
-    import asyncio
     
     task_ctx = args[0] if args else self
 

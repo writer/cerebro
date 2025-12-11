@@ -2,13 +2,12 @@
 
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
-from cerebro.core.models import Rule, Policy, Organization
+from cerebro.core.models import Rule, Policy
 from cerebro.rules.library import RuleLibrary
 
 logger = logging.getLogger(__name__)

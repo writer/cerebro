@@ -4,13 +4,13 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Rule, Policy
 from cerebro.api.schemas import RuleCreate, RuleResponse
 from cerebro.rules.engine import rule_engine
-from cerebro.api.auth import get_current_user, require_read_rules, require_write_rules, User
+from cerebro.api.auth import get_current_user, require_write_rules, User
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 

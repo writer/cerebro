@@ -9,9 +9,9 @@ from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import select, desc, text
 
-from cerebro.core.models import Principal, IamEdge, Finding, Account, IdentityRemediationAction
+from cerebro.core.models import IamEdge, Finding, IdentityRemediationAction
 from .dashboard_repository import DashboardRepository
 
 logger = logging.getLogger(__name__)

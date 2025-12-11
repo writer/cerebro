@@ -4,14 +4,13 @@ Time-boxed exception management for access reviews.
 Implements exception workflows with SLAs, auto-expiry, and revalidation.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-from ..auditability.attestation import get_attestation_service, AttestationType
+from ..auditability.attestation import get_attestation_service
 from ..auditability.transparency_log import get_transparency_log, LogEntryType
 
 logger = logging.getLogger(__name__)

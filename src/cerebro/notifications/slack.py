@@ -21,7 +21,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.config import settings
-from cerebro.core.database import async_session_factory
 from cerebro.core.models import SlackWebhook, SlackNotification, Finding, Organization
 from cerebro.integrations.slack.block_kit import findings_summary_blocks
 

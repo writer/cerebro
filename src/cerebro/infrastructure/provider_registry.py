@@ -1,7 +1,6 @@
 """Provider plugin registry system."""
 
 from typing import Dict, Type, List, Any, Optional, Callable
-from abc import ABC
 import logging
 import importlib
 import pkgutil

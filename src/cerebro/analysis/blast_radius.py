@@ -1,6 +1,6 @@
 """Blast radius analysis for compromise scenarios."""
 
-from typing import List, Dict, Set, Any, Optional
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
@@ -11,8 +11,6 @@ from sqlalchemy import select, and_, or_, text
 
 from cerebro.core.models import Principal, Resource, IamEdge, ConfigSnapshot, Organization
 from cerebro.core.identity_models import IdentityCluster, IdentityClusterMember
-from cerebro.core.repositories_sqlalchemy import IdentityRepository
-from cerebro.providers.base_edge_harvester import harvest_all_edges
 
 logger = logging.getLogger(__name__)
 

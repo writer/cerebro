@@ -5,7 +5,6 @@ Automatically discovers vendors through OAuth applications, API integrations,
 and network traffic analysis.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass

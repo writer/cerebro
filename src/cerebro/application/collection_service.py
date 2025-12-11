@@ -2,7 +2,6 @@
 
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime
 import logging
 
 from cerebro.domain.entities import CollectionJobEntity, ResourceEntity, PrincipalEntity, ConfigEntity, IamPermissionEntity

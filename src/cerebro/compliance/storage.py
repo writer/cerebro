@@ -5,10 +5,9 @@ Provides pluggable storage backends that fix the architectural violations
 in the original evidence storage implementations.
 """
 
-import asyncio
 import json
 import logging
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -17,7 +16,7 @@ import hashlib
 
 from .models import (
     BaseEvidenceMetadata, EvidenceRepository, EvidenceBundle,
-    EvidenceStatus, EvidenceCategory
+    EvidenceStatus
 )
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ Provides intelligent remediation suggestions based on:
 - Historical remediation patterns
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -137,7 +137,7 @@ class RemediationTool(StructuredTool):
     ) -> List[RemediationSuggestion]:
         """Get remediation for a specific finding."""
         from cerebro.core.database import async_session_factory
-        from cerebro.core.models import Finding, Resource, Rule
+        from cerebro.core.models import Finding
         from sqlalchemy import select
         from sqlalchemy.orm import joinedload
 

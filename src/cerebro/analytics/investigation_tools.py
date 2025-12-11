@@ -8,7 +8,7 @@ from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 

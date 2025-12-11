@@ -9,7 +9,6 @@ directly to Claude agents for threat modeling and incident response.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 from pydantic import BaseModel, Field
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel

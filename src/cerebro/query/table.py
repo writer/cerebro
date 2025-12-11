@@ -4,9 +4,8 @@ Security table definitions for the query engine.
 Implements the table interface that providers use to expose their data as SQL tables.
 """
 
-import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Callable, AsyncGenerator, Union
+from typing import Any, Dict, List, Optional, AsyncGenerator, Union
 from dataclasses import dataclass
 from datetime import datetime
 

@@ -8,11 +8,10 @@ import json
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from datetime import datetime
 
 import structlog
 
-from cerebro.ocsf.models import OCSFEvent, OCSFFinding, OCSFComplianceFinding
+from cerebro.ocsf.models import OCSFEvent
 
 logger = structlog.get_logger(__name__)
 

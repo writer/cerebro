@@ -5,21 +5,19 @@ Bridges the gap between technical security rules and compliance framework contro
 """
 
 import asyncio
-import hashlib
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
-from uuid import uuid4, UUID
+from uuid import uuid4
 
 # Use TYPE_CHECKING to avoid runtime dependencies
 if TYPE_CHECKING:
     from ..rules.engine import RuleEngine
     from ..query.engine import QueryEngine
 
-from .models import ComplianceEvidenceMetadata
 from .evidence_service import EvidenceService
-from .frameworks import ComplianceControl, EvidenceType
+from .frameworks import ComplianceControl
 
 # Define EvidenceItem locally for backward compatibility
 from dataclasses import dataclass

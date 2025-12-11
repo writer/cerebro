@@ -3,7 +3,6 @@
 This is the DynamoDB version of the agents API.
 """
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 

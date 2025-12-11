@@ -1,7 +1,7 @@
 """CEL rule engine implementation."""
 
 import hashlib
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -12,7 +12,7 @@ from celpy import Environment, CELEvalError
 from cachetools import TTLCache
 
 from cerebro.core.config import settings
-from .exceptions import CompilationError, EvaluationError
+from .exceptions import CompilationError
 
 logger = logging.getLogger(__name__)
 

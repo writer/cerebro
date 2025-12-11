@@ -6,13 +6,12 @@ configuration snapshots, and other temporal data sources.
 """
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.core.database import get_db
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 
@@ -83,7 +82,7 @@ class TimelineTool(Tool):
         
         try:
             import time
-            from sqlalchemy import select, text, and_
+            from sqlalchemy import select, and_
             from cerebro.core.models import AuditEvent, ConfigSnapshot, Finding
             
             start_time = time.time()

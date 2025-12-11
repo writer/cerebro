@@ -5,7 +5,6 @@ Provides high-level interface for attack path analysis with
 CLI integration and what-if simulation capabilities.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ from datetime import datetime
 
 from .graph_model import get_attack_graph
 from .path_analysis import get_path_analyzer, PathQuery, PathType, AttackPath
-from .service_identity import get_service_identity_mapper
 
 logger = logging.getLogger(__name__)
 

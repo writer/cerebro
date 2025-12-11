@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Iterable, List, Mapping, MutableMapping, Optional, Sequence
+from typing import List, Mapping, MutableMapping, Optional, Sequence
 
 
 EntityKind = str

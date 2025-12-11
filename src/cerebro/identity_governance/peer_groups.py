@@ -5,13 +5,11 @@ Implements peer group analysis (engineering vs finance) to highlight
 outlier entitlements and detect privilege creep.
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-import statistics
 
 from ..query.bootstrap import get_query_engine
 

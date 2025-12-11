@@ -5,9 +5,8 @@ Provides standardized column definitions and data types for security resources.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from datetime import datetime
 
 
 class ColumnType(Enum):

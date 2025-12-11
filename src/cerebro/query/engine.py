@@ -5,17 +5,15 @@ Provides a Steampipe-inspired SQL interface for querying security data
 across all providers in real-time.
 """
 
-import asyncio
 import logging
 import sqlparse
-from typing import Any, Dict, List, Optional, AsyncGenerator, Union
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
 from .bootstrap import ensure_tables_registered
 from .registry import get_registry, TableRegistry
-from .table import SecurityTable, QueryContext, QueryFilter
-from .schema import ColumnType
+from .table import QueryContext, QueryFilter
 from ..core.events import emit_event
 
 logger = logging.getLogger(__name__)

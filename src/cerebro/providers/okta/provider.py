@@ -3,7 +3,6 @@
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from datetime import datetime
 import logging
-import asyncio
 
 import httpx
 

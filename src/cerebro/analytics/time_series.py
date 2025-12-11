@@ -8,14 +8,14 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import select, and_, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from cerebro.core.database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import Column, String, DateTime, Float, Integer
+from sqlalchemy import String, DateTime, Float
 
 from cerebro.core.database import Base
-from cerebro.core.models import Finding, Organization
+from cerebro.core.models import Finding
 
 logger = logging.getLogger(__name__)
 

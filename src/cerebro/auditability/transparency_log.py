@@ -7,15 +7,14 @@ Provides an immutable, verifiable log of all security events with cryptographic 
 import hashlib
 import json
 import logging
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
 from ..core.database import async_session_factory
 from ..core.models import AuditEvent

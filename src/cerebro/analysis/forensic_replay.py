@@ -1,16 +1,16 @@
 """Forensic replay engine for historical state reconstruction."""
 
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, text
+from sqlalchemy import select, and_, or_, desc
 
 from cerebro.core.models import (
-    Organization, Account, Resource, Principal, ConfigSnapshot, 
+    Organization, Resource, Principal, ConfigSnapshot, 
     IamEdge, Finding, AuditEvent
 )
 

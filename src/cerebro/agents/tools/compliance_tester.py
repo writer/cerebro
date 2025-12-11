@@ -9,12 +9,11 @@ from weeks to hours while ensuring continuous compliance monitoring.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
-from cerebro.compliance.control_tests import ControlTestRunner, ControlTest, TestStatus
+from cerebro.compliance.control_tests import ControlTestRunner, TestStatus
 from cerebro.compliance.framework_registry import get_framework_registry
 from cerebro.rules.engine import RuleEngine
 from cerebro.query.bootstrap import get_query_engine

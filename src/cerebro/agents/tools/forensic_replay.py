@@ -9,8 +9,7 @@ investigation capabilities directly to Claude agents.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel

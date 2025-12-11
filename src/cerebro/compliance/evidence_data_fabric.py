@@ -22,10 +22,8 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
-import pandas as pd
 from sqlalchemy import (
-    Column, String, DateTime, JSON, Text, Integer, Float, Boolean,
-    ForeignKey, Table, Index, UniqueConstraint
+    Column, String, DateTime, Text, Integer, Float, ForeignKey, Table, Index, UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
@@ -33,7 +31,6 @@ from sqlalchemy.dialects.postgresql import UUID
 from cerebro.core.database_types import JSONType
 
 # Import unified enums from the consolidated models
-from .models import EvidenceStatus, EvidenceCategory
 
 Base = declarative_base()
 

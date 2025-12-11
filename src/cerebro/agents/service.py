@@ -10,18 +10,13 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID, uuid4
 
 import structlog
-from sqlalchemy import select, text
-from sqlalchemy.orm import selectinload
+from sqlalchemy import text
 
-from cerebro.core.database import get_db
 from cerebro.agents.repositories import AgentSessionRepository, ToolApprovalRepository
 from cerebro.agents.models import (
     AgentSession,
-    AgentMessage,
-    AgentMemoryEntry,
     AgentType,
     ReviewTaskStatus,
-    ToolInvocation,
     ToolApproval,
     ToolInvocationStatus,
     ApprovalStatus,

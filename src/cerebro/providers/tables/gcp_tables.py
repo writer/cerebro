@@ -4,7 +4,6 @@ GCP provider table implementations.
 Exposes GCP security resources as SQL tables following Steampipe patterns.
 """
 
-import asyncio
 import logging
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from datetime import datetime

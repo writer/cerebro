@@ -6,14 +6,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import User, require_read_findings
 from cerebro.compliance.pre_audit_service import PreAuditHealthCheckService
 from cerebro.compliance.preaudit_models import ComplianceAuditSchedule, PreAuditRun
 from cerebro.core.database import get_db
-from cerebro.core.models import Finding, Organization
+from cerebro.core.models import Finding
 
 router = APIRouter()
 _pre_audit_service = PreAuditHealthCheckService()

@@ -10,24 +10,24 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, require_read_findings, User
 from cerebro.api.utils import (
-    StandardFilters, get_entity_by_id_or_404, StandardResponses
+    get_entity_by_id_or_404, StandardResponses
 )
 
 # Compliance modules
 from cerebro.compliance.framework_registry import (
-    get_framework_registry, FrameworkDefinition, ControlDefinition
+    get_framework_registry
 )
 from cerebro.compliance.evidence_service import EvidenceService, EvidenceQueryService
 from cerebro.compliance.storage import FileBasedEvidenceRepository
 from cerebro.compliance.models import (
-    EvidenceStatus, EvidenceCategory, create_compliance_evidence
+    EvidenceStatus
 )
 from cerebro.query.bootstrap import get_query_engine
 

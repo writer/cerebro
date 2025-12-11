@@ -4,7 +4,7 @@ Agent Audit Logging System
 Provides structured audit logging for agent operations separate from provider audit events.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
 

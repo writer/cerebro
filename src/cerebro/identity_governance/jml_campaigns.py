@@ -5,18 +5,16 @@ Detects stale access after manager/role changes by integrating with
 HR systems (Okta/AD/Workday) and tracking identity lifecycle events.
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, IamEdge
+from ..core.models import IamEdge
 from ..query.bootstrap import get_query_engine
 from ..auditability.transparency_log import get_transparency_log, LogEntryType
 

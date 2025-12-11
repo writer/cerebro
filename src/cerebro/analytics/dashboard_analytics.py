@@ -4,16 +4,15 @@ import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
 from uuid import UUID
 from time import perf_counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import text
 
 from .time_series import TimeSeriesCollector, TrendAnalyzer, MetricType
 from .risk_scoring import RiskScoringEngine
-from .identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector
+from .identity_analytics import IdentityAnalyzer
 from .dashboard_repository import DashboardRepository
 from .runtime_health import summarize_runtime_health
 from cerebro.integrations.coverage import summarize_integration_coverage

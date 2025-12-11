@@ -1,8 +1,7 @@
 """Collection management endpoints."""
 
-from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import get_db

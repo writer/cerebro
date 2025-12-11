@@ -6,7 +6,7 @@ import dataclasses
 import json
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclasses.dataclass

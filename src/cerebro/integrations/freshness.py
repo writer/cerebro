@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession

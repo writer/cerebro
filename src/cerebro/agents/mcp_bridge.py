@@ -6,7 +6,6 @@ Converts Cerebro Tool objects into SDK-compatible MCP tool functions.
 
 import json
 from typing import Any, Callable, Dict, List
-from functools import wraps
 
 import structlog
 from claude_agent_sdk import tool as sdk_tool, create_sdk_mcp_server

@@ -4,9 +4,8 @@ AWS provider table implementations.
 Exposes AWS security resources as SQL tables following Steampipe patterns.
 """
 
-import asyncio
 import logging
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import AsyncGenerator, Dict, Any, List
 from datetime import datetime
 
 from ...query.table import ProviderSecurityTable, QueryContext
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Production AWS client using boto3
 import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import NoCredentialsError
 
 class AWSClient:
     def __init__(self):

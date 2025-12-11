@@ -3,14 +3,13 @@
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional
-from uuid import UUID
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich import print as rprint
 
 from cerebro.core.database import async_session_factory
-from cerebro.core.models import Organization, Account, Rule, Finding
+from cerebro.core.models import Organization, Rule, Finding
 from cerebro.collectors.manager import CollectorManager
 from cerebro.findings.manager import FindingManager
 from cerebro.findings.evaluator import RuleEvaluator
@@ -163,7 +162,7 @@ def findings(
     """Manage security findings."""
     async def _findings():
         async with async_session_factory() as db:
-            from sqlalchemy import select, and_
+            from sqlalchemy import select
             
             org = None
             if org_name:

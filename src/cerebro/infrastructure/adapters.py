@@ -7,15 +7,13 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from cerebro.domain.entities import (
     ResourceEntity, PrincipalEntity, ConfigEntity, 
     IamPermissionEntity, FindingEntity, RuleEntity, IdentityClusterEntity
 )
-from cerebro.domain.ports import RepositoryPort, RuleEnginePort, IdentityStitcherPort
 from cerebro.core.models import (
-    Resource, Principal, ConfigSnapshot, IamEdge, Finding, Rule
+    Finding
 )
 from cerebro.core.bulk_operations import BulkOperations
 from cerebro.rules.engine import RuleEngine, EvaluationContext

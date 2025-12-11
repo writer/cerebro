@@ -9,7 +9,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import date, datetime, timezone
-from typing import Any, Dict, Union
+from typing import Any, Union
 from uuid import UUID
 
 from cerebro.domain.entities import (

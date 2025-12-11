@@ -4,8 +4,7 @@ Okta provider table implementations.
 Exposes Okta identity resources as SQL tables.
 """
 
-import asyncio
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import AsyncGenerator, Dict, Any, Optional
 from datetime import datetime
 import logging
 

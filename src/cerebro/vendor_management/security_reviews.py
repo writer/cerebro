@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import Column, String, DateTime, Boolean, Text, Integer
+from sqlalchemy import String, DateTime, Boolean, Text
 from sqlalchemy.sql import func
 
 from cerebro.core.database import Base

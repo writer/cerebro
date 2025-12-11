@@ -21,7 +21,7 @@ import structlog
 from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.api.auth import get_current_user, User
-from cerebro.core.models import SlackWebhook, SlackNotification, Organization
+from cerebro.core.models import SlackWebhook, SlackNotification
 from cerebro.integrations.slack import (
     SlackCommandError,
     SlackCommandService,

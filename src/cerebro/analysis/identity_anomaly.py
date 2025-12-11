@@ -5,24 +5,21 @@ Implements ML-based behavioral analysis to detect anomalous identity activities
 across multiple providers using unsupervised learning techniques.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN
-from sklearn.decomposition import PCA
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, IamEdge, AuditEvent, ConfigSnapshot
+from ..core.models import Principal, IamEdge, AuditEvent
 from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Generic, Iterable, MutableMapping, Protocol, Type, TypeVar
+from typing import Generic, Iterable, MutableMapping, Protocol, Type, TypeVar
 
 RecordT = TypeVar("RecordT")
 DomainT = TypeVar("DomainT")

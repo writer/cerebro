@@ -8,14 +8,14 @@ monitoring, and approval workflows.
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Optional
 from uuid import UUID
 
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt, Confirm
 from rich.syntax import Syntax
 from rich.text import Text

@@ -13,10 +13,7 @@ import logging
 
 import requests
 from github import Github, GithubException
-from github.Repository import Repository
 from github.Organization import Organization
-from github.Team import Team
-from github.NamedUser import NamedUser
 
 from cerebro.core.config import settings
 from ..base import (

@@ -6,16 +6,14 @@ Based on GAM patterns and Google Cloud best practices.
 
 import json
 import asyncio
-from typing import Any, Dict, List, Optional, AsyncGenerator, Union
+from typing import List, Optional, AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 import logging
 
 from google.oauth2 import service_account
-from google.auth.transport.requests import Request
-from google.cloud import compute_v1, storage, resourcemanager_v3, iam_v1
+from google.cloud import compute_v1, resourcemanager_v3, iam_v1
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 from cerebro.core.config import settings
 from ..base import (

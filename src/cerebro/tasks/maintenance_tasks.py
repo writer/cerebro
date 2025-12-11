@@ -182,9 +182,7 @@ def update_identity_clusters_task(self, org_id: str):
         
         try:
             from uuid import UUID
-            from sqlalchemy import select
-            from cerebro.core.models import Principal, Organization
-            from cerebro.core.identity import IdentityStitcher
+            from cerebro.core.models import Organization
             
             self.update_state(
                 state='PROGRESS',

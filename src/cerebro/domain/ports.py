@@ -1,7 +1,6 @@
 """Domain ports - interfaces for external dependencies."""
 
 from typing import List, Dict, Any, Optional, AsyncGenerator, Protocol
-from datetime import datetime
 from uuid import UUID
 
 from .entities import (

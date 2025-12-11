@@ -9,17 +9,14 @@ import hmac
 import hashlib
 from datetime import datetime
 from typing import Any, Dict, Literal, Optional
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.api.auth import verify_webhook_signature
 from cerebro.core.database import get_db
 from cerebro.core.models import Finding, Organization, Account, Resource, Rule
 from cerebro.core.config import settings
-from cerebro.findings.manager import FindingManager
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)

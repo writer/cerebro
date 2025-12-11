@@ -1,16 +1,15 @@
 """Risk scoring engine for comprehensive organizational risk assessment."""
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import select, and_, text
 
-from cerebro.core.models import Finding, Principal, Resource, IamEdge
 
 logger = logging.getLogger(__name__)
 

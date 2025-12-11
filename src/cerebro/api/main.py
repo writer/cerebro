@@ -5,14 +5,12 @@ from contextlib import asynccontextmanager, suppress
 from time import perf_counter
 from typing import Dict
 
-from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-import logging
 import structlog
 from fastapi.responses import Response
 
@@ -63,7 +61,6 @@ from .routers.v2 import (
     agents as agents_v2,
 )
 from .routers import jwks
-from .auth import User, get_current_user
 
 # Configure logging
 configure_structlog()

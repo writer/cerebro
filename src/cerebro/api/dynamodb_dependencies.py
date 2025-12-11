@@ -4,9 +4,7 @@ These dependencies provide DynamoDB repository instances for API routes.
 They can be used alongside or instead of the SQLAlchemy-based dependencies.
 """
 
-from typing import AsyncGenerator
 
-from fastapi import Depends
 
 from cerebro.core.repositories import (
     AccountRepository,

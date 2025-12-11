@@ -11,8 +11,6 @@ before full RAG/vector search system is implemented.
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
-import os
-import json
 from pathlib import Path
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel

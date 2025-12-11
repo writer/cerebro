@@ -5,7 +5,6 @@ Maps CI/CD runners, GitHub Actions, OIDC trust boundaries, and
 repository allow-lists for service identity attack path analysis.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass

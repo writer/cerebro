@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from statistics import quantiles
 from threading import Lock
 from time import monotonic
-from typing import Deque, Dict, Iterable, Tuple
+from typing import Deque, Dict, Iterable
 
 from prometheus_client import Counter as PromCounter
 from prometheus_client import Gauge as PromGauge

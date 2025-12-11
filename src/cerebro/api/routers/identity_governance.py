@@ -5,9 +5,9 @@ Provides REST API for JML campaigns, access reviews, peer group analysis,
 and exception management.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -16,7 +16,7 @@ import logging
 from ...core.database import get_db
 from ...core.models import Organization
 from ...api.auth import require_read_findings
-from ...identity_governance.jml_campaigns import get_jml_manager, JMLEventType
+from ...identity_governance.jml_campaigns import get_jml_manager
 from ...identity_governance.access_reviews import get_access_review_manager, ReviewDecision
 from ...identity_governance.peer_groups import get_peer_group_analyzer
 from ...identity_governance.exceptions import get_exception_manager, ExceptionType

@@ -5,7 +5,6 @@ Integrates Claude Code SDK with Cerebro's security architecture, providing
 streaming agent capabilities with tool calling, audit logging, and safety guardrails.
 """
 
-import asyncio
 import inspect
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -21,14 +20,13 @@ from claude_agent_sdk.types import (
     SystemMessage,
 )
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from cerebro.agents.models import (
     AgentSession,
     AgentMessage,
     MessageRole,
     AgentType,
-    ToolInvocation,
 )
 from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.prompts import build_security_agent_prompt
@@ -78,7 +76,6 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         title: Optional[str] = None,
     ) -> AgentSession:
         """Create a new agent session with automatic context injection."""
-        from cerebro.core.database import async_session_factory
 
         prepared_context = await self._prepare_session_context(
             org_id=org_id,

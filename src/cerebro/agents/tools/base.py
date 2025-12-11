@@ -8,21 +8,19 @@ This module provides the foundation for all agent tools, including:
 - Safety guardrails and approval workflows
 """
 
-import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import time
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar
 from uuid import UUID
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from cerebro.rules.engine import RuleEngine
-from cerebro.core.database import get_db
 from cerebro.agents.models import (
     AgentSession,
     ToolInvocation,

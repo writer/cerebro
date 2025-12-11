@@ -5,22 +5,19 @@ Creates tamper-evident evidence bundles with cryptographic signatures,
 timestamps, and chain-of-custody tracking.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
 import zipfile
-from typing import Dict, List, Any, Optional, BinaryIO
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-import tempfile
-import io
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 
-from .timestamping import get_timestamp_service, TimestampToken
+from .timestamping import get_timestamp_service
 from .transparency_log import get_transparency_log, LogEntryType
 from ..query.bootstrap import get_query_engine
 

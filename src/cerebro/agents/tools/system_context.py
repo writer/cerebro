@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 import os
 import sys
 from datetime import datetime
-import asyncio
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.core.database import async_session_factory
@@ -263,7 +262,7 @@ class GetSystemContextTool(StructuredTool):
             async with async_session_factory() as db_session:
                 # Get accounts grouped by provider
                 from cerebro.core.models import ConfigSnapshot
-                from sqlalchemy import func, desc
+                from sqlalchemy import func
 
                 # Query for recent collections per provider
                 provider_query = select(

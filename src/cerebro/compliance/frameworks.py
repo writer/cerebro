@@ -4,8 +4,7 @@ Compliance framework definitions for automated evidence generation.
 Defines control requirements and evidence mapping for major compliance frameworks.
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional
+from typing import List, Optional
 from dataclasses import dataclass
 from enum import Enum
 

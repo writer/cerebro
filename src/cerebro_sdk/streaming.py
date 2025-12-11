@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import AsyncIterable, AsyncIterator, Iterable, Optional, Sequence, Union
+from typing import AsyncIterable, AsyncIterator, Optional, Union
 
 SSEChunk = Union[str, bytes, bytearray]
 

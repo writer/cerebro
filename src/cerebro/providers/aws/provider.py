@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional, AsyncGenerator, Set
 from datetime import datetime
 import json
 import logging
-import asyncio
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 

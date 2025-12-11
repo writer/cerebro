@@ -13,14 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
     AgentMemoryEntry,
-    AgentPolicySuggestion,
     AgentReviewNotification,
     AgentReviewTicket,
     AgentSession,
     ToolApproval,
     ToolInvocation,
     ApprovalStatus,
-    MessageRole,
     NotificationStatus,
     ToolInvocationStatus,
     TicketStatus,

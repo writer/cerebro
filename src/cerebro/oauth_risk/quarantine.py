@@ -5,16 +5,14 @@ Implements automated revocation of risky apps with change tickets
 and approval workflows for restoration.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-from .registry import OAuthApp, AppRiskLevel
 from .toxic_combinations import ToxicCombinationResult, ToxicityLevel
-from ..auditability.attestation import get_attestation_service, AttestationType
+from ..auditability.attestation import get_attestation_service
 from ..auditability.transparency_log import get_transparency_log, LogEntryType
 
 logger = logging.getLogger(__name__)

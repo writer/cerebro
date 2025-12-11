@@ -2,7 +2,6 @@
 
 import time
 from contextlib import contextmanager
-from typing import Dict, Any, Optional
 from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry
 import logging
 

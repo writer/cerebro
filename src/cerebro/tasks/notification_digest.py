@@ -6,11 +6,10 @@ as batched digests instead of individual messages.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
-from uuid import UUID
+from typing import Dict, List
 
 from celery import shared_task
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import async_session_factory

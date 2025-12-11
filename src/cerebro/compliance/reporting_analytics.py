@@ -14,15 +14,11 @@ Key features:
 - Integration with BI tools (Tableau, Power BI)
 """
 
-import json
-import pandas as pd
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
-from uuid import uuid4
 import matplotlib.pyplot as plt
-import seaborn as sns
 from io import BytesIO
 import base64
 
