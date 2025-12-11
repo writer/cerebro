@@ -57,6 +57,11 @@ from .routers import (
     integrations,
     serval,
 )
+from .routers.v2 import (
+    organizations as organizations_v2,
+    findings as findings_v2,
+    agents as agents_v2,
+)
 from .routers import jwks
 from .auth import User, get_current_user
 
@@ -498,6 +503,26 @@ app.include_router(
     tags=["automation", "telemetry"]
 )
 
+# V2 API routers using DynamoDB backend
+# These are parallel to V1 endpoints and can be used for gradual migration
+app.include_router(
+    organizations_v2.router,
+    prefix="/api/v2",
+    tags=["v2", "organizations"]
+)
+
+app.include_router(
+    findings_v2.router,
+    prefix="/api/v2",
+    tags=["v2", "findings"]
+)
+
+app.include_router(
+    agents_v2.router,
+    prefix="/api/v2",
+    tags=["v2", "agents"]
+)
+
 
 _rotation_task: asyncio.Task | None = None
 
@@ -689,6 +714,41 @@ async def health_encryption():
         raise HTTPException(
             status_code=503,
             detail=f"Encryption health check failed: {str(e)}"
+        )
+
+
+@app.get("/health/dynamodb")
+async def health_dynamodb():
+    """DynamoDB health check endpoint."""
+    from cerebro.core.dynamodb_client import get_client, TableName, get_table_name
+
+    try:
+        client = get_client()
+        table_name = get_table_name(TableName.CORE)
+        
+        # Describe table to verify connectivity
+        response = client.describe_table(TableName=table_name)
+        table_status = response["Table"]["TableStatus"]
+        item_count = response["Table"].get("ItemCount", 0)
+        
+        if table_status != "ACTIVE":
+            raise HTTPException(
+                status_code=503,
+                detail=f"DynamoDB table not active: {table_status}"
+            )
+        
+        return {
+            "status": "healthy",
+            "table": table_name,
+            "table_status": table_status,
+            "item_count": item_count,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"DynamoDB health check failed: {str(e)}"
         )
 
 
