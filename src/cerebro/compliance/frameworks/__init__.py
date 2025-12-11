@@ -10,7 +10,6 @@ We re-export key classes from frameworks.py to maintain backwards compatibility.
 
 # First import framework definitions from the sibling frameworks.py module
 # We need to use parent import to avoid circular dependency
-import sys
 import importlib.util
 
 # Load the frameworks.py module explicitly

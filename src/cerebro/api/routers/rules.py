@@ -160,7 +160,7 @@ async def test_rule(
         raise HTTPException(status_code=400, detail="Only CEL rules can be tested")
     
     try:
-        compiled = rule_engine.compile_rule(rule.expression)
+        rule_engine.compile_rule(rule.expression)
         return {
             "rule_id": rule_id,
             "status": "success",

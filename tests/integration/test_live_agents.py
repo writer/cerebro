@@ -14,12 +14,10 @@ Run with: pytest tests/integration/test_live_agents.py -v
 """
 
 import asyncio
-import json
 import pytest
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
-from uuid import uuid4
 from unittest.mock import AsyncMock, Mock, patch
 
 import structlog

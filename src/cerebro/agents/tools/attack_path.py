@@ -227,7 +227,7 @@ class AttackPathSimulatorTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "paths_analyzed": len(paths),
                         "max_severity": most_critical.severity.value
@@ -428,7 +428,7 @@ class BlastRadiusTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={"principal_id": principal_id, "max_hops": max_hops}
                 )
 

@@ -1153,7 +1153,7 @@ async def agent_health():
     Verifies that the agent runtime and SDK integration are operational.
     """
     try:
-        service = AgentSessionService()
+        AgentSessionService()
         # Basic check that service initializes
         return {
             "status": "healthy",

@@ -5,6 +5,8 @@ Each provider implements SecurityTable instances that expose their
 resources as queryable SQL tables.
 """
 
+# ruff: noqa: F401, F403
+
 from .aws_tables import *
 from .okta_tables import *
 from .github_tables import *

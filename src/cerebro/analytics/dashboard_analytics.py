@@ -155,7 +155,7 @@ class DashboardAnalytics:
         # Calculate MTTR
         mttr = await self.repository.calculate_mttr(org_id)
 
-        provider_breakdown = await self.repository.get_findings_by_provider(org_id)
+        provider_breakdown = await self.repository.get_findings_breakdown_by_provider(org_id)
 
         # Recent activity (24 hours)
         new_findings_24h = await self.repository.count_new_findings(org_id)

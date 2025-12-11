@@ -44,7 +44,7 @@ from .evidence import EvidenceCollector, EvidenceItem
 from .generator import ComplianceEvidenceGenerator
 
 # Import framework providers to trigger registration
-from . import frameworks
+from . import frameworks as _frameworks  # noqa: F401
 
 __all__ = [
     # New unified system

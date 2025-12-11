@@ -1,15 +1,16 @@
 """Identity stitching across providers."""
 
+import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Principal
+from .models import Account, Principal
 from .repositories_sqlalchemy import IdentityRepository
 
 logger = logging.getLogger(__name__)
@@ -31,8 +32,13 @@ class IdentityStitcher:
         """Initialize identity stitcher."""
         self.db = db_session
         self.identity_repo = IdentityRepository(db_session)
+
+    @staticmethod
+    def _stable_cluster_name(prefix: str, value: str) -> str:
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+        return f"{prefix}-{digest}"
     
-    async def find_identity_clusters(self, org_id: UUID) -> List[IdentityCluster]:
+    async def find_identity_clusters(self, org_id: UUID, *, persist: bool = True) -> List[IdentityCluster]:
         """Find identity clusters for an organization."""
         # Get all principals for the organization
         stmt = select(Principal).join(Principal.account).where(
@@ -64,7 +70,7 @@ class IdentityStitcher:
                 continue
                 
             cluster = IdentityCluster(
-                cluster_id=f"email-{hash(email)}",
+                cluster_id=self._stable_cluster_name("email", email),
                 principals=email_principals,
                 confidence_score=0.9,  # High confidence for email matches
                 stitching_evidence={"method": "email_match", "email": email}
@@ -82,7 +88,7 @@ class IdentityStitcher:
                 continue
                 
             cluster = IdentityCluster(
-                cluster_id=f"name-{hash(name)}",
+                cluster_id=self._stable_cluster_name("name", name),
                 principals=name_principals,
                 confidence_score=0.6,  # Lower confidence for name matches
                 stitching_evidence={"method": "name_match", "name": name}
@@ -92,8 +98,8 @@ class IdentityStitcher:
         
         logger.info(f"Found {len(clusters)} identity clusters")
         
-        # Save clusters to database
-        await self._save_identity_clusters(org_id, clusters)
+        if persist:
+            await self._save_identity_clusters(org_id, clusters)
         
         return clusters
     
@@ -137,29 +143,57 @@ class IdentityStitcher:
         principal = await self.db.get(Principal, principal_id)
         if not principal:
             return None
-        
-        # Find cluster containing this principal
-        clusters = await self.find_identity_clusters(principal.account.org_id)
-        
-        for cluster in clusters:
-            if any(p.principal_id == principal_id for p in cluster.principals):
-                return {
-                    "cluster_id": cluster.cluster_id,
-                    "confidence_score": cluster.confidence_score,
-                    "stitching_evidence": cluster.stitching_evidence,
-                    "related_principals": [
-                        {
-                            "principal_id": p.principal_id,
-                            "provider": p.provider,
-                            "external_id": p.external_id,
-                            "email": p.email,
-                            "display_name": p.display_name
-                        }
-                        for p in cluster.principals
-                    ]
+
+        from .identity_models import IdentityCluster as DBIdentityCluster
+        from .identity_models import IdentityClusterMember
+
+        org_id = await self.db.scalar(select(Account.org_id).where(Account.account_id == principal.account_id))
+        if not org_id:
+            return None
+
+        db_cluster = await self.db.scalar(
+            select(DBIdentityCluster)
+            .join(IdentityClusterMember, IdentityClusterMember.cluster_id == DBIdentityCluster.cluster_id)
+            .where(
+                and_(
+                    DBIdentityCluster.org_id == org_id,
+                    DBIdentityCluster.is_active.is_(True),
+                    IdentityClusterMember.principal_id == principal_id,
+                )
+            )
+            .order_by(DBIdentityCluster.confidence_score.desc(), DBIdentityCluster.updated_at.desc())
+            .limit(1)
+        )
+
+        if not db_cluster:
+            return None
+
+        related_principals = list(
+            await self.db.scalars(
+                select(Principal)
+                .join(
+                    IdentityClusterMember,
+                    IdentityClusterMember.principal_id == Principal.principal_id,
+                )
+                .where(IdentityClusterMember.cluster_id == db_cluster.cluster_id)
+            )
+        )
+
+        return {
+            "cluster_id": db_cluster.cluster_name,
+            "confidence_score": db_cluster.confidence_score,
+            "stitching_evidence": db_cluster.stitching_evidence,
+            "related_principals": [
+                {
+                    "principal_id": p.principal_id,
+                    "provider": p.provider,
+                    "external_id": p.external_id,
+                    "email": p.email,
+                    "display_name": p.display_name,
                 }
-        
-        return None
+                for p in related_principals
+            ],
+        }
     
     async def _save_identity_clusters(
         self,
@@ -187,7 +221,7 @@ class IdentityStitcher:
                     # Update existing cluster
                     existing_cluster.confidence_score = cluster.confidence_score
                     existing_cluster.stitching_evidence = cluster.stitching_evidence
-                    existing_cluster.updated_at = datetime.utcnow()
+                    existing_cluster.updated_at = datetime.now(timezone.utc)
                     db_cluster = existing_cluster
                 else:
                     # Create new cluster

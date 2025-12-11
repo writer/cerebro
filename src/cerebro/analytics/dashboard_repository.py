@@ -536,7 +536,7 @@ class DashboardRepository:
 
         return findings
 
-    async def get_findings_by_provider(self, org_id: UUID) -> List[Dict[str, Any]]:
+    async def get_findings_breakdown_by_provider(self, org_id: UUID) -> List[Dict[str, Any]]:
         """Aggregate findings by provider with severity and SLA context."""
 
         provider_query = text(

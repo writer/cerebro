@@ -5,7 +5,6 @@ with a mocked DynamoDB backend.
 """
 
 import pytest
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import boto3

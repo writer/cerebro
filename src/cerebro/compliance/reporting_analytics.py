@@ -701,7 +701,7 @@ class ComplianceAnalytics:
             [5, 10, 15, 20, 25]
         ]
         
-        im = ax.imshow(risk_matrix, cmap='RdYlGn_r')
+        ax.imshow(risk_matrix, cmap='RdYlGn_r')
         
         ax.set_xticks(range(len(impact_levels)))
         ax.set_yticks(range(len(probability_levels)))

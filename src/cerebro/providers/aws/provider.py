@@ -1293,7 +1293,6 @@ class AWSProvider(BaseProvider):
     def _analyze_group_permissions(self, iam, group: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze permissions for an IAM group."""
         permissions = []
-        group_arn = group['Arn']
         group_name = group['GroupName']
         
         # Get group members

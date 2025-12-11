@@ -170,10 +170,10 @@ async def receive_forklift_event(
         await db.commit()
         return {"status": "processed", "result": result}
         
-    except Exception as e:
-        logger.exception(f"Failed to process Forklift event: {event_type}")
+    except Exception:
+        logger.exception("Failed to process Forklift event", extra={"event_type": event_type})
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Event processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Event processing failed")
 
 
 async def handle_drift_detected(event_data: Dict[str, Any], db: AsyncSession) -> Dict[str, Any]:
@@ -339,7 +339,6 @@ async def handle_plan_applied(event_data: Dict[str, Any], db: AsyncSession) -> D
     event = PlanAppliedEvent(**event_data)
     
     # Update finding with PR info
-    fingerprint = f"forklift-drift-{event.repository}-{event.planId}"  # Try with planId
     finding_stmt = select(Finding).where(Finding.fingerprint.like(f"forklift-drift-{event.repository}%"))
     finding = await db.scalar(finding_stmt)
     

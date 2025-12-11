@@ -69,7 +69,7 @@ def collect(
             console.print(table)
             
             if result["errors"]:
-                rprint(f"[yellow]Errors encountered:[/yellow]")
+                rprint("[yellow]Errors encountered:[/yellow]")
                 for error in result["errors"]:
                     rprint(f"  - {error}")
     
@@ -228,7 +228,7 @@ def findings(
                 console.print(table)
                 
                 if result.errors:
-                    rprint(f"[yellow]Errors encountered:[/yellow]")
+                    rprint("[yellow]Errors encountered:[/yellow]")
                     for error in result.errors:
                         rprint(f"  - {error}")
                         
@@ -456,7 +456,7 @@ def evidence(
                 output_path = f"{output_dir}/{bundle.metadata.bundle_id}.evb"
                 exported_path = await bundle.export_bundle(output_path)
                 
-                rprint(f"[green]Evidence bundle created successfully[/green]")
+                rprint("[green]Evidence bundle created successfully[/green]")
                 rprint(f"Bundle ID: {bundle.metadata.bundle_id}")
                 rprint(f"Evidence items: {len(bundle.evidence_items)}")
                 rprint(f"Exported to: {exported_path}")
@@ -476,13 +476,13 @@ def evidence(
                 verification_result = await evidence_manager.verify_bundle(bundle_path)
                 
                 if verification_result["valid"]:
-                    rprint(f"[green]✓ Bundle verification PASSED[/green]")
+                    rprint("[green]✓ Bundle verification PASSED[/green]")
                     rprint(f"Bundle ID: {verification_result['bundle_id']}")
                     
                     for check in verification_result["checks"]:
                         rprint(f"  ✓ {check}")
                 else:
-                    rprint(f"[red]✗ Bundle verification FAILED[/red]")
+                    rprint("[red]✗ Bundle verification FAILED[/red]")
                     
                     for error in verification_result["errors"]:
                         rprint(f"  ✗ {error}")

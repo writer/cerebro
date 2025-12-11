@@ -3,7 +3,6 @@ Tests for compliance evidence generation.
 """
 
 import pytest
-import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,7 +12,6 @@ from cerebro.compliance.frameworks import (
     PCIDSSFramework,
     get_framework,
     list_frameworks,
-    ComplianceControl,
     ControlType
 )
 from cerebro.compliance.evidence import EvidenceCollector, EvidenceItem

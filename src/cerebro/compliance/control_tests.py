@@ -6,6 +6,7 @@ Bridges the gap between technical security rules and compliance framework contro
 
 import asyncio
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
@@ -20,12 +21,10 @@ if TYPE_CHECKING:
     from ..query.engine import QueryEngine
 
 from .evidence_service import EvidenceService
+from .storage import FileBasedEvidenceRepository
 from .frameworks import ComplianceControl
 
 # Define EvidenceItem locally for backward compatibility
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, Any
 
 @dataclass
 class EvidenceItem:
@@ -148,25 +147,44 @@ class ControlTestRunner:
     def __init__(self, rule_engine: 'RuleEngine', query_engine: 'QueryEngine', db_session=None):
         self.rule_engine = rule_engine
         self.query_engine = query_engine
-        # Use unified evidence service
-        if not db_session:
-            raise ValueError("Database session is required for ControlTestRunner - deprecated evidence collector has been removed")
-        self.evidence_service = EvidenceService(
-            db_session=db_session,
-            query_service=query_engine
-        )
+        evidence_path = os.getenv("CEREBRO_EVIDENCE_PATH", "/tmp/cerebro_evidence")
+        self.evidence_repository = FileBasedEvidenceRepository(evidence_path)
+        self.evidence_service = EvidenceService(self.evidence_repository, query_engine=query_engine)
     
     async def run_control_test(
-        self, 
-        test: ControlTest,
+        self,
+        test: Optional[ControlTest] = None,
         period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None
+        period_end: Optional[datetime] = None,
+        *,
+        org_id: Optional[Any] = None,
+        framework_id: Optional[str] = None,
+        control_id: Optional[str] = None,
+        collect_evidence: bool = True,
     ) -> ControlTestResult:
         """Execute a single control test."""
         if period_end is None:
             period_end = datetime.now()
+
+        if test is None:
+            if not framework_id or not control_id:
+                raise ValueError("Either 'test' or ('framework_id' and 'control_id') must be provided")
+
+            from cerebro.compliance.framework_registry import get_framework_registry
+
+            registry = get_framework_registry()
+            evidence_queries = registry.get_evidence_queries(framework_id, control_id)
+            test = ControlTest(
+                id=f"{framework_id}:{control_id}",
+                control_id=control_id,
+                framework_name=framework_id,
+                name=f"{framework_id} {control_id}",
+                description="",
+                sql_queries=evidence_queries,
+                enabled=True,
+            )
+
         if period_start is None:
-            # Default to appropriate period based on frequency
             period_start = self._get_default_period_start(test.frequency, period_end)
         
         result = ControlTestResult(
@@ -183,13 +201,40 @@ class ControlTestRunner:
         )
         
         try:
-            # Collect evidence through SQL queries
-            evidence_items = []
-            if test.sql_queries:
-                evidence_items = await self.evidence_collector.collect_evidence(
-                    test.control_id, test.sql_queries
+            evidence_ids: List[str] = []
+            if collect_evidence and test.sql_queries:
+                evidence_ids = await self.evidence_service.collect_compliance_evidence(
+                    control_id=test.control_id,
+                    framework_name=test.framework_name,
+                    queries=test.sql_queries,
+                    collector_id=result.executor or "system",
+                    test_run_id=result.id,
                 )
-                result.evidence_items = [str(uuid4()) for _ in evidence_items]  # Mock IDs
+
+            result.evidence_items = evidence_ids
+
+            # Determine pass/fail based on evidence metadata
+            for evidence_id in evidence_ids:
+                metadata = await self.evidence_repository.get_metadata(evidence_id)
+                if not metadata:
+                    result.error_count += 1
+                    continue
+
+                tags = getattr(metadata, "tags", {}) or {}
+                if tags.get("collection_error") == "true":
+                    result.error_count += 1
+                    continue
+
+                control_status = getattr(metadata, "control_status", None)
+                if control_status == "compliant":
+                    result.pass_count += 1
+                elif control_status == "non_compliant":
+                    result.fail_count += 1
+                else:
+                    result.error_count += 1
+
+            result.total_count = len(evidence_ids)
+            result.pass_rate = result.pass_count / max(result.total_count, 1)
             
             # Execute CEL rules if specified
             rule_results = {}
@@ -204,30 +249,19 @@ class ControlTestRunner:
                         result.error_messages.append(f"Rule {rule_id}: {str(e)}")
             
             result.rule_results = rule_results
-            
-            # Evaluate pass/fail based on assertion or default logic
-            if test.assertion:
-                # Use CEL assertion to determine pass/fail
-                test_passed = await self._evaluate_assertion(test.assertion, evidence_items, rule_results)
-            else:
-                # Default logic: pass if all rules pass and evidence collected successfully
-                test_passed = self._default_pass_logic(evidence_items, rule_results)
-            
-            # Calculate metrics
-            if evidence_items:
-                result.total_count = len([e for e in evidence_items if e.evidence_type != "query_error"])
-                result.error_count = len([e for e in evidence_items if e.evidence_type == "query_error"])
-                result.pass_count = result.total_count - result.error_count if test_passed else 0
-                result.fail_count = result.total_count - result.pass_count
-                result.pass_rate = result.pass_count / max(result.total_count, 1)
-            
-            # Determine final status
-            if result.error_messages:
+
+            rules_pass = all(
+                r.get("status") == "pass" for r in rule_results.values() if isinstance(r, dict) and "status" in r
+            )
+
+            if result.total_count == 0:
+                result.status = TestStatus.SKIP
+            elif result.error_count > 0 or result.error_messages:
                 result.status = TestStatus.ERROR
-            elif test_passed and result.pass_rate >= test.pass_threshold:
-                result.status = TestStatus.PASS
-            else:
+            elif result.fail_count > 0 or not rules_pass or result.pass_rate < test.pass_threshold:
                 result.status = TestStatus.FAIL
+            else:
+                result.status = TestStatus.PASS
                 
         except Exception as e:
             result.status = TestStatus.ERROR
@@ -333,12 +367,12 @@ class ControlTestRunner:
     async def _execute_rule(self, rule_id: str, period_start: datetime, period_end: datetime) -> Dict[str, Any]:
         """Execute a CEL rule and return results."""
         try:
-            from uuid import UUID
+            from uuid import UUID, uuid5, NAMESPACE_URL
             from ..rules.engine import EvaluationContext
 
             # Get rule from database or rule store
             # For now, using a placeholder - in production this would fetch from rule store
-            rule_expression = f"resource.findings_count == 0"  # Default rule
+            rule_expression = "resource.findings_count == 0"  # Default rule
 
             # Create evaluation context
             context = EvaluationContext(
@@ -351,7 +385,7 @@ class ControlTestRunner:
 
             # Execute rule using real CEL engine
             rule_result = self.rule_engine.evaluate_rule(
-                rule_id=UUID(rule_id) if len(rule_id) == 36 else UUID(int=hash(rule_id) & (1<<128)-1),
+                rule_id=UUID(rule_id) if len(rule_id) == 36 else uuid5(NAMESPACE_URL, rule_id),
                 expression=rule_expression,
                 context=context
             )
@@ -384,7 +418,7 @@ class ControlTestRunner:
     ) -> bool:
         """Evaluate CEL assertion to determine pass/fail."""
         try:
-            from uuid import UUID
+            from uuid import uuid5, NAMESPACE_URL
             from ..rules.engine import EvaluationContext
 
             # Prepare evidence data for CEL evaluation
@@ -412,7 +446,7 @@ class ControlTestRunner:
 
             # Execute CEL assertion
             rule_result = self.rule_engine.evaluate_rule(
-                rule_id=UUID(int=hash(assertion) & (1<<128)-1),
+                rule_id=uuid5(NAMESPACE_URL, assertion),
                 expression=assertion,
                 context=context
             )

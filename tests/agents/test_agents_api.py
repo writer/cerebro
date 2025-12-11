@@ -9,7 +9,6 @@ This validates that the deep integration is working end-to-end.
 
 import asyncio
 import httpx
-from uuid import uuid4
 
 import pytest
 

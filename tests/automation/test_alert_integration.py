@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List
 
 import pytest
 
@@ -12,7 +11,6 @@ from cerebro.automation.alerting import (
     RuleComparison,
     RuleSeverity,
     collect_telemetry_alerts,
-    evaluate_rules,
     run_telemetry_alerts,
 )
 from cerebro.automation.telemetry_health import TelemetryHealthSnapshot

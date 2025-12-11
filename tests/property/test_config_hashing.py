@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from uuid import uuid4
 
 from hypothesis import given, strategies as st

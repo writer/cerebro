@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from hypothesis import given, strategies as st
 
-from cerebro.core.bulk_operations import BulkOperations
 
 
 def _edge_strategy():

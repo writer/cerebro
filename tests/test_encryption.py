@@ -11,7 +11,7 @@ Tests cover:
 """
 import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import patch
 from cerebro.core.encryption import SecretEncryptionService, get_encryption_service
 from cerebro.kms.local_kms import LocalKMS
 

@@ -3,7 +3,7 @@
 import pytest
 import asyncio
 import os
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator, Generator, Optional
 
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true")
@@ -16,7 +16,7 @@ from cerebro.agents.models import Base as AgentsBase
 from cerebro.core.models import Organization, Account, Principal, Resource, Rule, Policy
 from cerebro.core.user_models import User
 from cerebro.core import user_service as user_service_module
-from cerebro.core.user_service import UserService, pwd_context
+from cerebro.core.user_service import UserService
 import httpx
 from cerebro.api.main import app
 from cerebro.core.security.key_store import JWTKeyStore

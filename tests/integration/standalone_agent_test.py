@@ -9,7 +9,6 @@ Run with: python tests/integration/standalone_agent_test.py
 """
 
 import asyncio
-import json
 import sys
 import time
 from datetime import datetime, timezone, timedelta
@@ -625,12 +624,12 @@ async def main():
     readiness_items = [
         f"✓ Agent Types: {len([t for t in ['security_analyst', 'incident_responder', 'identity_advisor', 'compliance_advisor', 'attack_path_analyst']])} configured",
         f"✓ Message Roles: {len(['user', 'assistant', 'tool', 'system'])} supported",
-        f"✓ Tool Registry: Simulated with approval workflow",
-        f"✓ Streaming: Real-time response capability",
-        f"✓ Database: Async SQLAlchemy with audit trails",
-        f"✓ Security: Approval workflows for sensitive operations",
-        f"✓ Performance: Sub-second response times",
-        f"✓ CI/CD Ready: Comprehensive test coverage"
+        "✓ Tool Registry: Simulated with approval workflow",
+        "✓ Streaming: Real-time response capability",
+        "✓ Database: Async SQLAlchemy with audit trails",
+        "✓ Security: Approval workflows for sensitive operations",
+        "✓ Performance: Sub-second response times",
+        "✓ CI/CD Ready: Comprehensive test coverage"
     ]
     
     for item in readiness_items:

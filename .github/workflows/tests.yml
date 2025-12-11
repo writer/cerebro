@@ -12,9 +12,42 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install --upgrade uv
+
+      - name: Cache uv environments
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff check
+        run: uv run ruff check --select F src tests
+
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: lint
 
     steps:
       - name: Checkout repository
@@ -50,20 +83,21 @@ jobs:
           set -euo pipefail
           uv run python scripts/smoke_api.py --json
 
-      - name: Run targeted backend tests
+      - name: Run full test suite with coverage
         env:
           ENVIRONMENT: test
           DATABASE_URL: sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true
         run: |
           set -euo pipefail
-          uv run pytest \
-            tests/api/test_dashboard_contract.py \
-            tests/test_identity_anomaly.py \
-            tests/unit/test_ticketing_service.py \
-            tests/unit/test_vendor_metadata.py \
+          uv run pytest tests/ \
             --cov=src/cerebro \
             --cov-report=term \
-            --cov-report=xml
+            --cov-report=xml \
+            --cov-fail-under=60 \
+            -m "not slow and not integration" \
+            --ignore=tests/integration \
+            --ignore=tests/e2e \
+            --ignore=tests/benchmarks
 
       - name: Upload Python coverage
         if: always()
@@ -72,6 +106,12 @@ jobs:
           name: python-coverage
           path: coverage.xml
           if-no-files-found: ignore
+
+      - name: Coverage report summary
+        if: always()
+        run: |
+          echo "## Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          uv run coverage report --format=markdown >> $GITHUB_STEP_SUMMARY || true
 
   postgres-integration-tests:
     runs-on: ubuntu-latest
@@ -109,6 +149,43 @@ jobs:
         run: |
           set -euo pipefail
           uv run pytest tests/integration/analytics/test_analytics_tasks_postgres.py
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install --upgrade uv
+
+      - name: Cache uv environments
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Run E2E tests (in-process ASGI)
+        env:
+          ENVIRONMENT: test
+        run: |
+          set -euo pipefail
+          uv run pytest tests/e2e -m "e2e and not e2e_slow"
 
   ts-sdk:
     runs-on: ubuntu-latest

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, require_read_findings, User
+from cerebro.api.org_access import require_org_access
 from cerebro.api.utils import (
     get_entity_by_id_or_404, StandardResponses
 )
@@ -280,10 +281,10 @@ async def collect_compliance_evidence(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     evidence_service: EvidenceService = Depends(get_evidence_service),
-    current_user: User = Depends(require_scopes("compliance:collect"))
+    current_user: User = Depends(require_org_access(require_scopes("compliance:collect"))),
 ) -> Dict[str, Any]:
     """Collect evidence for specified controls."""
-    org = await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
+    await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
     try:
         registry = get_framework_registry()
@@ -336,10 +337,10 @@ async def list_evidence(
     status: Optional[str] = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
     query_service: EvidenceQueryService = Depends(get_evidence_query_service),
-    current_user: User = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ) -> List[Dict[str, Any]]:
     """List evidence items for organization."""
-    org = await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
+    await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
     try:
         # Build search filters
@@ -381,10 +382,10 @@ async def get_evidence_details(
     include_content: bool = Query(False, description="Include evidence content"),
     db: AsyncSession = Depends(get_db),
     repository = Depends(get_evidence_repository),
-    current_user: User = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ) -> Dict[str, Any]:
     """Get detailed evidence information."""
-    org = await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
+    await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
     try:
         if include_content:
@@ -429,10 +430,10 @@ async def create_evidence_bundle(
     request: EvidenceBundleRequest,
     db: AsyncSession = Depends(get_db),
     evidence_service: EvidenceService = Depends(get_evidence_service),
-    current_user: User = Depends(require_scopes("compliance:bundle"))
+    current_user: User = Depends(require_org_access(require_scopes("compliance:bundle"))),
 ) -> Dict[str, str]:
     """Create evidence bundle for audit delivery."""
-    org = await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
+    await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
     try:
         # Validate framework
@@ -486,10 +487,10 @@ async def get_compliance_status(
     framework_id: str,
     db: AsyncSession = Depends(get_db),
     query_service: EvidenceQueryService = Depends(get_evidence_query_service),
-    current_user: User = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ) -> ComplianceStatusResponse:
     """Get current compliance status for organization and framework."""
-    org = await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
+    await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
     try:
         registry = get_framework_registry()

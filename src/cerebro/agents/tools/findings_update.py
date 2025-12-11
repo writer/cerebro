@@ -106,7 +106,6 @@ class FindingStatusUpdateTool(Tool):
                 )
             
             # Enforce provider scope if specified
-            provider_allowed = True
             if context.provider_scope:
                 # Need to check finding's provider is in scope
                 async with async_session_factory() as session:

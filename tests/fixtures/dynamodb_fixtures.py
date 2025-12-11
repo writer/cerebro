@@ -3,10 +3,9 @@
 Provides pytest fixtures for testing with DynamoDB Local or moto mock.
 """
 
-import os
 import pytest
 from datetime import datetime, timezone
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, List
 from uuid import UUID, uuid4
 
 import boto3

@@ -10,6 +10,7 @@ from sqlalchemy import text
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.api.org_access import require_org_access
 from cerebro.analytics.risk_scoring import RiskScoringEngine
 from cerebro.analytics.identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector
 
@@ -20,7 +21,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def get_organization_risk_score(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get detailed organizational risk score analysis."""
 
@@ -70,7 +71,7 @@ async def get_organization_risk_score(
 async def get_risk_heatmap(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get risk heatmap data for visualization."""
 
@@ -93,7 +94,7 @@ async def get_risk_heatmap(
 async def get_identity_analytics(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:principals"))
+    current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
 ) -> Dict[str, Any]:
     """Get identity-centric analytics and privilege sprawl data."""
 
@@ -112,7 +113,7 @@ async def get_risky_identities(
     org_id: UUID,
     limit: int = Query(default=20, description="Maximum number of risky identities to return"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:principals"))
+    current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
 ) -> List[Dict[str, Any]]:
     """Get identities with highest risk profiles."""
 
@@ -147,7 +148,7 @@ async def get_risky_identities(
 async def get_privilege_sprawl_analysis(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:principals"))
+    current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
 ) -> Dict[str, Any]:
     """Get privilege sprawl analysis for the organization."""
 
@@ -188,7 +189,7 @@ async def get_top_organizational_risks(
     org_id: UUID,
     limit: int = Query(default=10, description="Number of top risks to return"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> List[Dict[str, Any]]:
     """Get top organizational risks with context and remediation guidance."""
 

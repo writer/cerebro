@@ -242,9 +242,7 @@ def batch_collect_resources(
             collected = 0
             errors = []
             
-            async with async_session_factory() as db:
-                repository = SQLAlchemyRepository(db)
-                
+            async with async_session_factory():
                 for i, external_id in enumerate(resource_external_ids):
                     try:
                         # Create resource entity (simplified)
@@ -256,7 +254,7 @@ def batch_collect_resources(
                         )
                         
                         # Get configuration
-                        config = await provider.get_resource_configuration(resource)
+                        await provider.get_resource_configuration(resource)
                         
                         # Save configuration (simplified)
                         # In real implementation, would need resource ID mapping

@@ -112,10 +112,6 @@ class EnhancedGCPProvider(BaseProvider):
             if not self.service_account_file or not Path(self.service_account_file).exists():
                 raise ProviderError(f"Service account file not found: {self.service_account_file}")
             
-            # Load service account credentials
-            with open(self.service_account_file, 'r') as f:
-                service_account_info = json.load(f)
-            
             # Create credentials for Google Cloud APIs
             self._credentials = service_account.Credentials.from_service_account_file(
                 self.service_account_file,

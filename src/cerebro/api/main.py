@@ -618,12 +618,12 @@ async def health_celery():
 
             try:
                 reserved_tasks = inspect.reserved() or {}
-            except Exception as exc:  # pragma: no cover
+            except Exception:  # pragma: no cover
                 reserved_tasks = {}
 
             try:
                 worker_stats = inspect.stats() or {}
-            except Exception as exc:  # pragma: no cover
+            except Exception:  # pragma: no cover
                 worker_stats = {}
 
             total_active = sum(len(tasks) for tasks in active_tasks.values())

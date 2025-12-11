@@ -57,6 +57,10 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Local Cerebro SQLite artifacts
+cerebro_test.db*
+cerebro_smoke_*.db*
+
 # Flask stuff:
 instance/
 .webassets-cache

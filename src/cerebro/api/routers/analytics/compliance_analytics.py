@@ -9,6 +9,7 @@ from sqlalchemy import text
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.api.org_access import require_org_access
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -17,7 +18,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def get_severity_breakdown_chips(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get severity breakdown chips with SLA breach counts for dashboard badges."""
 
@@ -124,7 +125,7 @@ async def get_compliance_evidence_status(
     org_id: UUID,
     framework: Optional[str] = Query(None, description="Filter by compliance framework"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get compliance evidence freshness and ownership status."""
 
@@ -204,7 +205,7 @@ async def get_compliance_evidence_status(
 async def get_evidence_freshness_donut(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get evidence freshness donut chart data with click-through URLs."""
 

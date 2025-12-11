@@ -15,7 +15,8 @@ import logging
 
 from ...core.database import get_db
 from ...core.models import Organization
-from ...api.auth import require_read_findings
+from ...api.auth import User, require_read_findings
+from ...api.org_access import require_org_access
 from ...oauth_risk.registry import get_oauth_registry, AppRiskLevel
 from ...oauth_risk.toxic_combinations import get_toxic_detector
 from ...oauth_risk.quarantine import get_quarantine_manager
@@ -52,7 +53,7 @@ async def list_oauth_apps(
     unused_days: Optional[int] = Query(None, description="Filter apps unused for X days"),
     without_owner: bool = Query(False, description="Filter apps without owners"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """List OAuth applications across all providers."""
     org = await db.get(Organization, org_id)
@@ -110,9 +111,9 @@ async def list_oauth_apps(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"OAuth app listing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"OAuth app listing failed: {str(e)}")
+    except Exception:
+        logger.exception("OAuth app listing failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="OAuth app listing failed")
 
 
 @router.get("/organizations/{org_id}/oauth-apps/{app_id}")
@@ -120,7 +121,7 @@ async def get_oauth_app_details(
     org_id: UUID,
     app_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get detailed information about specific OAuth app."""
     org = await db.get(Organization, org_id)
@@ -177,9 +178,9 @@ async def get_oauth_app_details(
         
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"OAuth app details failed: {e}")
-        raise HTTPException(status_code=500, detail=f"App details failed: {str(e)}")
+    except Exception:
+        logger.exception("OAuth app details failed", extra={"org_id": str(org_id), "app_id": app_id})
+        raise HTTPException(status_code=500, detail="App details failed")
 
 
 @router.get("/organizations/{org_id}/oauth-apps/toxic-combinations")
@@ -187,7 +188,7 @@ async def detect_toxic_combinations(
     org_id: UUID,
     min_toxicity_score: float = Query(0.5, description="Minimum toxicity score", ge=0.0, le=1.0),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Detect toxic OAuth app combinations."""
     org = await db.get(Organization, org_id)
@@ -233,9 +234,9 @@ async def detect_toxic_combinations(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"Toxic combination detection failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Toxic detection failed: {str(e)}")
+    except Exception:
+        logger.exception("Toxic combination detection failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Toxic detection failed")
 
 
 @router.post("/organizations/{org_id}/oauth-apps/quarantine")
@@ -243,7 +244,7 @@ async def quarantine_oauth_app(
     org_id: UUID,
     request: QuarantineRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Manually quarantine OAuth application."""
     org = await db.get(Organization, org_id)
@@ -251,8 +252,6 @@ async def quarantine_oauth_app(
         raise HTTPException(status_code=404, detail="Organization not found")
     
     try:
-        quarantine_manager = get_quarantine_manager()
-        
         # Create manual quarantine action
         # Would create proper QuarantineAction in production
         action_result = {
@@ -271,9 +270,9 @@ async def quarantine_oauth_app(
             "data": action_result
         }
         
-    except Exception as e:
-        logger.error(f"OAuth app quarantine failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Quarantine failed: {str(e)}")
+    except Exception:
+        logger.exception("OAuth app quarantine failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Quarantine failed")
 
 
 @router.post("/organizations/{org_id}/oauth-apps/restore")
@@ -281,7 +280,7 @@ async def request_oauth_app_restoration(
     org_id: UUID,
     request: RestorationRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Request restoration of quarantined OAuth app."""
     org = await db.get(Organization, org_id)
@@ -304,9 +303,9 @@ async def request_oauth_app_restoration(
             "data": restoration_request
         }
         
-    except Exception as e:
-        logger.error(f"OAuth app restoration request failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Restoration request failed: {str(e)}")
+    except Exception:
+        logger.exception("OAuth app restoration request failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Restoration request failed")
 
 
 @router.post("/organizations/{org_id}/oauth-apps/restore/{restoration_id}/approve")
@@ -315,7 +314,7 @@ async def approve_oauth_app_restoration(
     restoration_id: str,
     request: RestorationApproval,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Approve restoration of quarantined OAuth app."""
     org = await db.get(Organization, org_id)
@@ -337,16 +336,19 @@ async def approve_oauth_app_restoration(
             "data": approval_result
         }
         
-    except Exception as e:
-        logger.error(f"OAuth app restoration approval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Restoration approval failed: {str(e)}")
+    except Exception:
+        logger.exception(
+            "OAuth app restoration approval failed",
+            extra={"org_id": str(org_id), "restoration_id": restoration_id},
+        )
+        raise HTTPException(status_code=500, detail="Restoration approval failed")
 
 
 @router.get("/organizations/{org_id}/oauth-apps/risk-report")
 async def get_oauth_risk_report(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get comprehensive OAuth risk assessment report."""
     org = await db.get(Organization, org_id)
@@ -370,16 +372,16 @@ async def get_oauth_risk_report(
             "data": risk_report
         }
         
-    except Exception as e:
-        logger.error(f"OAuth risk report failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Risk report failed: {str(e)}")
+    except Exception:
+        logger.exception("OAuth risk report failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Risk report failed")
 
 
 @router.get("/organizations/{org_id}/oauth-apps/quarantine/summary")
 async def get_quarantine_summary(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get summary of OAuth app quarantine actions."""
     org = await db.get(Organization, org_id)
@@ -396,9 +398,9 @@ async def get_quarantine_summary(
             "data": summary
         }
         
-    except Exception as e:
-        logger.error(f"Quarantine summary failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Quarantine summary failed: {str(e)}")
+    except Exception:
+        logger.exception("Quarantine summary failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Quarantine summary failed")
 
 
 # Convenience endpoints for common queries
@@ -407,7 +409,7 @@ async def get_high_risk_oauth_apps(
     org_id: UUID,
     limit: int = Query(20, description="Maximum apps to return", ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get high-risk OAuth applications requiring immediate attention."""
     org = await db.get(Organization, org_id)
@@ -442,16 +444,16 @@ async def get_high_risk_oauth_apps(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"High-risk OAuth apps failed: {e}")
-        raise HTTPException(status_code=500, detail=f"High-risk apps failed: {str(e)}")
+    except Exception:
+        logger.exception("High-risk OAuth apps failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="High-risk apps failed")
 
 
 @router.get("/organizations/{org_id}/oauth-apps/without-owners")
 async def get_oauth_apps_without_owners(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get OAuth apps without designated owners."""
     org = await db.get(Organization, org_id)
@@ -480,6 +482,6 @@ async def get_oauth_apps_without_owners(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"Apps without owners query failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+    except Exception:
+        logger.exception("Apps without owners query failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Query failed")

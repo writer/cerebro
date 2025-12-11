@@ -498,7 +498,7 @@ class SlackNotificationService:
             if not webhook_url:
                 raise ValueError("Failed to decrypt webhook URL")
             if not webhook_url.startswith('https://hooks.slack.com/'):
-                raise ValueError(f"Invalid Slack webhook URL format")
+                raise ValueError("Invalid Slack webhook URL format")
         except Exception as e:
             logger.error(
                 "webhook_url_decryption_failed",

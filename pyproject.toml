@@ -83,6 +83,7 @@ dev = [
     "pytest-asyncio>=0.21.1",
     "pytest-cov>=4.1.0",
     "hypothesis>=6.100.0",
+    "moto>=5.0.0",
     "black>=23.11.0",
     "isort>=5.12.0",
     "mypy>=1.7.1",
@@ -195,6 +196,9 @@ asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "e2e: marks tests as end-to-end tests (in-process ASGI)",
+    "e2e_slow: marks tests as slow end-to-end tests",
+    "e2e_agent: marks tests as agent-focused end-to-end tests",
     "security: marks tests as security tests",
     "performance: marks tests as performance tests",
 ]

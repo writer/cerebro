@@ -11,11 +11,11 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
-from cerebro.core.database import async_session_factory
-from cerebro.core.models import Organization, Account
+from cerebro.core.database import async_session_factory, engine
+from cerebro.core.models import Organization, Account, Resource, ConfigSnapshot
 from sqlalchemy import func, select, text
 import structlog
 
@@ -172,17 +172,20 @@ class GetSystemContextTool(StructuredTool):
 
             return ToolResult(
                 success=True,
-                data=output.dict(),
+                data=output.model_dump(),
                 metadata={
                     "timestamp": output_data["timestamp"],
                 }
             )
 
-        except Exception as e:
-            logger.error("Failed to get system context", error=str(e), exc_info=True)
+        except Exception:
+            logger.exception(
+                "Failed to get system context",
+                session_id=context.session_id,
+            )
             return ToolResult(
                 success=False,
-                error=f"Failed to retrieve system context: {str(e)}"
+                error="Failed to retrieve system context",
             )
 
     async def _get_database_info(self) -> Dict[str, Any]:
@@ -190,19 +193,26 @@ class GetSystemContextTool(StructuredTool):
 
         try:
             async with async_session_factory() as db_session:
+                dialect = engine.url.get_backend_name()
+
                 # Test connection
                 await db_session.execute(text("SELECT 1"))
 
-                # Get PostgreSQL version
-                pg_version_result = await db_session.execute(text("SELECT version()"))
-                pg_version_row = pg_version_result.fetchone()
-                pg_version = pg_version_row[0] if pg_version_row else None
+                pg_version: Optional[str] = None
+                extensions: Optional[List[str]] = None
+                if dialect == "postgresql":
+                    pg_version_result = await db_session.execute(text("SELECT version()"))
+                    pg_version_row = pg_version_result.fetchone()
+                    pg_version = pg_version_row[0] if pg_version_row else None
 
-                # Get installed extensions
-                ext_result = await db_session.execute(text(
-                    "SELECT extname FROM pg_extension ORDER BY extname"
-                ))
-                extensions = [row[0] for row in ext_result.fetchall()]
+                    ext_result = await db_session.execute(
+                        text("SELECT extname FROM pg_extension ORDER BY extname")
+                    )
+                    extensions = [row[0] for row in ext_result.fetchall()]
+                elif dialect == "sqlite":
+                    sqlite_version_result = await db_session.execute(text("select sqlite_version()"))
+                    sqlite_row = sqlite_version_result.fetchone()
+                    pg_version = f"sqlite {sqlite_row[0]}" if sqlite_row else "sqlite"
 
                 # Mask database URL for security
                 db_url = os.getenv("DATABASE_URL", "")
@@ -216,8 +226,8 @@ class GetSystemContextTool(StructuredTool):
                 return {
                     "connected": True,
                     "database_url_masked": masked_url,
-                    "pg_version": pg_version.split()[1] if pg_version else None,
-                    "connection_pool_size": 10,  # From settings
+                    "pg_version": pg_version,
+                    "connection_pool_size": None,
                     "extensions": extensions
                 }
 
@@ -260,24 +270,17 @@ class GetSystemContextTool(StructuredTool):
 
         try:
             async with async_session_factory() as db_session:
-                # Get accounts grouped by provider
-                from cerebro.core.models import ConfigSnapshot
-                from sqlalchemy import func
-
-                # Query for recent collections per provider
-                provider_query = select(
-                    Account.provider,
-                    func.count(Account.account_id).label("account_count"),
-                    func.max(ConfigSnapshot.captured_at).label("last_collection")
-                ).outerjoin(
-                    ConfigSnapshot,
-                    ConfigSnapshot.resource_id.in_(
-                        select(Account.account_id)
+                provider_query = (
+                    select(
+                        Account.provider,
+                        func.count(func.distinct(Account.account_id)).label("account_count"),
+                        func.max(ConfigSnapshot.captured_at).label("last_collection"),
                     )
-                ).where(
-                    Account.org_id == org_id
-                ).group_by(
-                    Account.provider
+                    .select_from(Account)
+                    .outerjoin(Resource, Resource.account_id == Account.account_id)
+                    .outerjoin(ConfigSnapshot, ConfigSnapshot.resource_id == Resource.resource_id)
+                    .where(Account.org_id == org_id)
+                    .group_by(Account.provider)
                 )
 
                 result = await db_session.execute(provider_query)
@@ -288,7 +291,12 @@ class GetSystemContextTool(StructuredTool):
                     if not row.last_collection:
                         status = "offline"
                     else:
-                        time_since_collection = datetime.utcnow() - row.last_collection
+                        now = datetime.now(timezone.utc)
+                        last_collection = row.last_collection
+                        if last_collection.tzinfo is None:
+                            last_collection = last_collection.replace(tzinfo=timezone.utc)
+
+                        time_since_collection = now - last_collection
                         if time_since_collection.days > 1:
                             status = "degraded"
 
@@ -313,9 +321,7 @@ class GetSystemContextTool(StructuredTool):
                 from cerebro.agents.models import AgentSession
 
                 active_sessions = await db_session.scalar(
-                    select(func.count(AgentSession.session_id)).where(
-                        AgentSession.status == "active"
-                    )
+                    select(func.count(AgentSession.id)).where(AgentSession.is_active.is_(True))
                 )
 
                 # Count total organizations

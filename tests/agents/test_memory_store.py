@@ -2,7 +2,6 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-import pytest
 from sqlalchemy import func, select, update
 
 from cerebro.agents.memory_store import AgentMemoryStore

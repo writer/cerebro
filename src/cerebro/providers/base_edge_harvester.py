@@ -83,11 +83,6 @@ class AWSEdgeHarvester(BaseEdgeHarvester):
                         policy_paginator = iam.get_paginator('list_user_policies')
                         for policy_page in policy_paginator.paginate(UserName=user_name):
                             for policy_name in policy_page['PolicyNames']:
-                                policy_doc = iam.get_user_policy(
-                                    UserName=user_name,
-                                    PolicyName=policy_name
-                                )
-                                
                                 yield IamPermission(
                                     principal_id=user['Arn'],
                                     principal_type='user',
