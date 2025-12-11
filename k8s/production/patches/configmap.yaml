@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cerebro-config
+data:
+  LOG_LEVEL: "INFO"
+  ENVIRONMENT: "production"
+  ENABLE_AGENT_TELEMETRY: "true"
+  ENABLE_DEBUG_ENDPOINTS: "false"
+  AGENT_OTEL_ENDPOINT: "https://otel-collector.internal.example.com:4318/v1/traces"
