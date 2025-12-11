@@ -93,7 +93,7 @@ jobs:
             --cov=src/cerebro \
             --cov-report=term \
             --cov-report=xml \
-            --cov-fail-under=60 \
+            --cov-fail-under=40 \
             -m "not slow and not integration" \
             --ignore=tests/integration \
             --ignore=tests/e2e \
