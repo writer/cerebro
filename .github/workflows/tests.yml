@@ -113,7 +113,7 @@ jobs:
           echo "## Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
           uv run coverage report --format=markdown >> $GITHUB_STEP_SUMMARY || true
 
-  postgres-integration-tests:
+  snowflake-integration-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: unit-tests
