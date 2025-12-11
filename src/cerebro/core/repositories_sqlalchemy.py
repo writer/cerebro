@@ -1,14 +1,17 @@
 """Repository facade pattern for data access abstraction."""
 
-from typing import Optional, List
+from typing import List, Optional
 from uuid import UUID
+
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
-from .models import (
-    Organization, Account, Resource, Principal, Finding, Rule,
-    IdentityCluster, IdentityClusterMember, IdentityStitchingLog
+from .models import Finding, Resource
+from .identity_models import (
+    IdentityCluster,
+    IdentityClusterMember,
+    IdentityStitchingLog,
 )
 
 
