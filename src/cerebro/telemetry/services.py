@@ -86,7 +86,10 @@ class TelemetryIngestionService:
                         findings.append(finding)
 
             for structured_payload, hint in [
-                (payload.dependencies.dict() if payload.dependencies else None, "dependency_scan"),
+                (
+                    payload.dependencies.model_dump() if payload.dependencies else None,
+                    "dependency_scan",
+                ),
                 (payload.sbom, "sbom"),
                 (payload.code_metrics, "code_metrics"),
             ]:

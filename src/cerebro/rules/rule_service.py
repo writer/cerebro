@@ -249,6 +249,7 @@ class RuleService:
                     policy.policy_id,
                     cel_expression
                 )
+                _rule_name_cache[rule_name_key] = new_rule.rule_id
                 created += 1
         
         await self.db.commit()

@@ -109,7 +109,7 @@ class RemediationTool(StructuredTool):
             return ToolResult(
                 success=True,
                 data={
-                    "suggestions": [s.dict() for s in suggestions[:limit]],
+                    "suggestions": [s.model_dump() for s in suggestions[:limit]],
                     "count": len(suggestions),
                 },
                 metadata={

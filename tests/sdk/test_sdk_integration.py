@@ -4,15 +4,13 @@ Quick test to verify Claude SDK integration works correctly.
 Tests MCP bridge and runtime initialization without requiring database.
 """
 
-import asyncio
 from uuid import uuid4
-from datetime import datetime, timezone
 
 # Test 1: Verify imports work
 print("Test 1: Verifying imports...")
 try:
     from cerebro.agents.runtime import CerebroClaudeRuntime
-    from cerebro.agents.models import AgentSession, AgentType
+    from cerebro.agents.models import AgentType
     from cerebro.agents.tools import tool_registry, AgentContext, ToolPermissionLevel
     from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
     print("✅ All imports successful")
@@ -46,7 +44,7 @@ try:
         context=context,
         executor=executor,
     )
-    print(f"✅ MCP server created successfully")
+    print("✅ MCP server created successfully")
     print(f"   Server type: {type(mcp_server)}")
 
 except Exception as e:

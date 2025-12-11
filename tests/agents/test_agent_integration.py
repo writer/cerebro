@@ -4,12 +4,11 @@ Integration tests for Cerebro agent system.
 Tests the complete flow from runtime through tools with real database interactions.
 """
 
-import asyncio
 from typing import Any, List
 
 import pytest
 from datetime import datetime, timezone
-from uuid import uuid4, UUID
+from uuid import uuid4
 
 from cerebro.agents.runtime import CerebroClaudeRuntime
 from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
@@ -478,10 +477,8 @@ class TestEndToEnd:
 
     async def test_cel_policy_evaluation(self):
         """Test CEL policy evaluation in tool executor."""
-        from cerebro.agents.tools.base import ToolExecutor
         from cerebro.agents.tools.findings_list import FindingsListTool
 
-        executor = ToolExecutor()
         tool = FindingsListTool()
 
         # Tool has CEL policy defined

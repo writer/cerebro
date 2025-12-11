@@ -351,16 +351,6 @@ class BlastRadiusAnalyzer:
             from sqlalchemy import select, and_
             from ..core.models import IamEdge, Principal
 
-            # Find principals (users, services) that can assume this role
-            role_principals_stmt = select(Principal).join(IamEdge).where(
-                and_(
-                    IamEdge.resource_id == role_resource.resource_id,
-                    Principal.principal_id == IamEdge.principal_id,
-                    # Look for assume role permissions
-                    IamEdge.permission.in_(['sts:AssumeRole', 'assume_role', 'AssumeRole'])
-                )
-            )
-
             # Get resources this role can access through IAM edges
             accessible_resources_stmt = select(Resource).join(IamEdge).join(Principal).where(
                 and_(

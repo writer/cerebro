@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cerebro-config
+data:
+  LOG_LEVEL: "DEBUG"
+  ENVIRONMENT: "staging"
+  ENABLE_AGENT_TELEMETRY: "true"
+  ENABLE_DEBUG_ENDPOINTS: "true"

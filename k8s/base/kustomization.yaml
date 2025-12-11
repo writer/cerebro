@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cerebro
+
+commonLabels:
+  app.kubernetes.io/name: cerebro
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - serviceaccount.yaml
+  - deployment-api.yaml
+  - deployment-worker.yaml
+  - deployment-beat.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+images:
+  - name: cerebro
+    newName: ghcr.io/writerinternal/cerebro
+    newTag: latest

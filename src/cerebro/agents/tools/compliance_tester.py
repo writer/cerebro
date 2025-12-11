@@ -147,7 +147,7 @@ class ComplianceControlTesterTool(StructuredTool):
                     controls_to_test = [control]
                 else:
                     # Test all controls
-                    controls_to_test = framework.get_all_controls()
+                    controls_to_test = list(framework.controls)
 
                 # Calculate audit period
                 period_end = datetime.utcnow()
@@ -159,14 +159,14 @@ class ComplianceControlTesterTool(StructuredTool):
                 gaps = []
 
                 for control in controls_to_test:
-                    logger.info(f"Testing control {control.id}: {control.title}")
+                    logger.info(f"Testing control {control.control_id}: {control.title}")
 
                     try:
                         # Execute control test
                         result = await test_runner.run_control_test(
                             org_id=context.org_id,
                             framework_id=framework_id,
-                            control_id=control.id,
+                            control_id=control.control_id,
                             period_start=period_start,
                             period_end=period_end,
                             collect_evidence=collect_evidence
@@ -174,7 +174,7 @@ class ComplianceControlTesterTool(StructuredTool):
 
                         # Format result for output
                         test_result = {
-                            "control_id": control.id,
+                            "control_id": control.control_id,
                             "control_title": control.title,
                             "status": result.status.value,
                             "passed": result.passed,
@@ -193,29 +193,29 @@ class ComplianceControlTesterTool(StructuredTool):
                         # Track gaps
                         if result.status == TestStatus.FAIL:
                             gaps.append(
-                                f"{control.id} - {control.title}: "
+                                f"{control.control_id} - {control.title}: "
                                 f"{result.fail_count}/{result.total_count} checks failed"
                             )
                         elif result.status == TestStatus.ERROR:
                             gaps.append(
-                                f"{control.id} - {control.title}: "
+                                f"{control.control_id} - {control.title}: "
                                 f"Test execution error"
                             )
 
                     except Exception as e:
                         logger.error(
-                            f"Control test failed",
-                            control_id=control.id,
+                            "Control test failed",
+                            control_id=control.control_id,
                             error=str(e)
                         )
                         test_results.append({
-                            "control_id": control.id,
+                            "control_id": control.control_id,
                             "control_title": control.title,
                             "status": "error",
                             "passed": False,
                             "error_message": str(e)
                         })
-                        gaps.append(f"{control.id}: Test execution failed - {str(e)}")
+                        gaps.append(f"{control.control_id}: Test execution failed")
 
                 # Calculate overall metrics
                 controls_tested = len(test_results)
@@ -264,7 +264,7 @@ class ComplianceControlTesterTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "framework_id": framework_id,
                         "compliance_score": overall_score,
@@ -431,7 +431,7 @@ class EvidenceBundleBuilderTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={"bundle_id": str(bundle.bundle_id)}
                 )
 

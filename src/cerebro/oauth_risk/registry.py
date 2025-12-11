@@ -318,7 +318,7 @@ class OAuthAppRegistry:
                     scope_name = self._map_graph_permission_to_scope(perm.get("id", ""))
                     scope_obj = OAuthScope(
                         scope=scope_name,
-                        description=f"Microsoft Graph permission",
+                        description="Microsoft Graph permission",
                         risk_level=self._assess_graph_permission_risk(scope_name),
                         sensitive_data_access="User" in scope_name or "Mail" in scope_name,
                         write_permissions="Write" in scope_name or "Create" in scope_name
@@ -426,7 +426,6 @@ class OAuthAppRegistry:
         sensitive_data_access = any(s.sensitive_data_access for s in scopes)
         write_permissions = any(s.write_permissions for s in scopes)
         unverified_publisher = not app_data.get("is_verified", False)
-        external_domain = not app_data.get("publisher_domain", "").endswith(".com")  # Simplified
         
         # Calculate risk score
         risk_score = 0

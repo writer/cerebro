@@ -230,7 +230,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
 
             return ToolResult(
                 success=True,
-                data=output.dict(),
+                data=output.model_dump(),
                 metadata={
                     "lookback_days": lookback_days,
                     "principals_analyzed": principals_analyzed,

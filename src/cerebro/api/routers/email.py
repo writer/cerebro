@@ -201,7 +201,7 @@ async def create_email_config(
     await db.refresh(email_config)
 
     # Mask password in response
-    response_config = EmailConfigResponse.from_orm(email_config)
+    response_config = EmailConfigResponse.model_validate(email_config)
     if response_config.smtp_password:
         response_config.smtp_password = "********"
 
@@ -234,7 +234,7 @@ async def list_email_configs(
     configs = result.scalars().all()
 
     # Mask passwords in response
-    response_configs = [EmailConfigResponse.from_orm(config) for config in configs]
+    response_configs = [EmailConfigResponse.model_validate(config) for config in configs]
     for response_config in response_configs:
         if response_config.smtp_password:
             response_config.smtp_password = "********"
@@ -270,7 +270,7 @@ async def get_email_config(
         raise HTTPException(status_code=404, detail="Email configuration not found")
 
     # Mask password in response
-    response_config = EmailConfigResponse.from_orm(config)
+    response_config = EmailConfigResponse.model_validate(config)
     if response_config.smtp_password:
         response_config.smtp_password = "********"
 
@@ -335,7 +335,7 @@ async def update_email_config(
     await db.refresh(config)
 
     # Mask password in response
-    response_config = EmailConfigResponse.from_orm(config)
+    response_config = EmailConfigResponse.model_validate(config)
     if response_config.smtp_password:
         response_config.smtp_password = "********"
 
@@ -420,9 +420,9 @@ async def test_email_config(
 
         return {"message": "Test email sent successfully"}
 
-    except Exception as e:
-        logger.error(f"Failed to send test email: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to send test email: {str(e)}")
+    except Exception:
+        logger.exception("Failed to send test email", extra={"config_id": str(config_id)})
+        raise HTTPException(status_code=500, detail="Failed to send test email")
 
 
 @router.get("/notifications", response_model=List[EmailNotificationResponse])
@@ -460,7 +460,7 @@ async def list_email_notifications(
     )
     notifications = result.scalars().all()
 
-    return [EmailNotificationResponse.from_orm(notif) for notif in notifications]
+    return [EmailNotificationResponse.model_validate(notif) for notif in notifications]
 
 
 @router.get("/notifications/stats", response_model=EmailNotificationStatsResponse)

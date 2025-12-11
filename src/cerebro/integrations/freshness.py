@@ -118,7 +118,6 @@ class IntegrationFreshnessService:
     async def provider_freshness(self, providers: Iterable[str]) -> Dict[str, ProviderFreshness]:
         integration_freshness = await self.list_freshness()
         provider_map: Dict[str, ProviderFreshness] = {}
-        now = datetime.now(timezone.utc)
 
         for provider in providers:
             hints = PROVIDER_HINTS.get(provider.lower(), (provider.lower(),))

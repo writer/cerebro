@@ -111,7 +111,7 @@ class RulesTool(Tool):
             start_time = time.time()
             
             # Attempt to compile the rule
-            compiled_ast = self.rule_engine.compile_rule(inputs.expression)
+            self.rule_engine.compile_rule(inputs.expression)
             
             compilation_time = (time.time() - start_time) * 1000
             

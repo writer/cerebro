@@ -72,7 +72,7 @@ def cerebro_tool_to_mcp(
                     content_text = "Tool executed successfully"
 
                 if result.warnings:
-                    content_text += f"\n\n**Warnings:**\n" + "\n".join(f"- {w}" for w in result.warnings)
+                    content_text += "\n\n**Warnings:**\n" + "\n".join(f"- {w}" for w in result.warnings)
 
                 if result.requires_approval:
                     content_text += f"\n\n**Approval Required**: {result.approval_id}"

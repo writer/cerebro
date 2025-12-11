@@ -35,7 +35,7 @@ class GCPProvider(BaseProvider):
             credentials, project = default()
             
             # Test authentication with a simple API call
-            client = compute_v1.InstancesClient(credentials=credentials)
+            compute_v1.InstancesClient(credentials=credentials)
             
             # If we get here, authentication is working
             logger.info(f"Successfully authenticated with GCP project: {project or self.project_id}")
@@ -208,7 +208,6 @@ class GCPProvider(BaseProvider):
         """Discover GCP IAM permissions."""
         try:
             from google.cloud import resourcemanager_v1
-            from google.cloud import iam_v1
             from google.auth import default
 
             credentials, _ = default()

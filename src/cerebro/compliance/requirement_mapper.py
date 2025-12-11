@@ -244,7 +244,6 @@ class RequirementMappingService:
                 }
                 continue
             
-            requirement = self._requirements[req_key]
             evidence_mappings = self._evidence_mappings.get(req_key, [])
             
             if not evidence_mappings:

@@ -168,7 +168,7 @@ class SmartFindingSummarizerTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "finding_id": finding_id,
                         "severity": finding.severity,

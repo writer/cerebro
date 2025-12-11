@@ -108,7 +108,7 @@ class SecurityAnalysisTool(StructuredTool):
 
             return ToolResult(
                 success=True,
-                data=result.dict(),
+                data=result.model_dump(),
                 metadata={
                     "analysis_type": analysis_type,
                     "scope": scope,

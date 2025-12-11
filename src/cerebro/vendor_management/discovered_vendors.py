@@ -271,9 +271,7 @@ class DiscoveredVendorTracker:
         """Analyze repository for vendor integration indicators."""
         indicators = []
         
-        repo_name = repo.get("repository", "")
         topics = repo.get("topics", [])
-        language = repo.get("language", "")
         
         # Look for integration patterns in topics
         integration_topics = [topic for topic in topics if any(

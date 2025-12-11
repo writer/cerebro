@@ -183,7 +183,7 @@ class ForensicReplayTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "timestamp": timestamp,
                         "scope": scope,
@@ -324,7 +324,7 @@ class ChangeReplayTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "start_time": start_time,
                         "end_time": end_time,

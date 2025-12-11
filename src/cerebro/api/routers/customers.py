@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from ...core.database import get_db
 from ...core.models import Organization
-from ...api.auth import require_read_findings
+from ...api.auth import User, require_read_findings
+from ...api.org_access import require_org_access
 from ...customer_management.customer_registry import (
     CustomerRegistry,
     CustomerSegment,
@@ -99,7 +100,7 @@ async def register_customer(
     org_id: UUID,
     request: CustomerCreateRequest,
     db = Depends(get_db),
-    current_user = Depends(require_read_findings),
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Register a customer in the success registry."""
 
@@ -146,7 +147,7 @@ async def register_customer(
 async def list_customers(
     org_id: UUID,
     db = Depends(get_db),
-    current_user = Depends(require_read_findings),
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """List customers with health summaries."""
 
@@ -170,7 +171,7 @@ async def get_customer(
     org_id: UUID,
     customer_id: str,
     db = Depends(get_db),
-    current_user = Depends(require_read_findings),
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Retrieve a single customer record."""
 

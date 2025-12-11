@@ -25,7 +25,7 @@ class GitHubClient:
         """Authenticate with GitHub API."""
         try:
             import asyncio
-            from github import Github, GithubException
+            from github import Github
             from cerebro.core.config import settings
             
             # Use provided credentials or fall back to settings

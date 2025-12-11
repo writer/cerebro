@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.api.org_access import require_org_access
 from cerebro.analytics.operations import gather_celery_status, collect_operational_health
 from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.core.database import get_db
@@ -21,7 +22,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def get_sla_breach_analysis(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get detailed SLA breach analysis with ownership."""
 

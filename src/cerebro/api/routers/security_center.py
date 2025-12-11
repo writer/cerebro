@@ -11,7 +11,8 @@ from pydantic import BaseModel
 
 from ...core.database import get_db
 from ...core.models import Organization
-from ...api.auth import require_read_findings
+from ...api.auth import User, require_read_findings
+from ...api.org_access import require_org_access
 from ...vendor_management.vendor_registry import get_vendor_registry, Vendor, VendorRiskLevel
 from ...customer_management.customer_registry import (
     get_customer_registry,
@@ -117,9 +118,6 @@ def _format_timestamp(dt: Optional[datetime]) -> Optional[str]:
 def _build_metrics(vendors: List[Vendor], customers: List[Customer]) -> List[DashboardMetric]:
     critically_scored = sum(1 for vendor in vendors if vendor.risk_level in {VendorRiskLevel.HIGH, VendorRiskLevel.CRITICAL})
     overdue_reviews = sum(1 for vendor in vendors if vendor.next_review_due < datetime.now())
-    upcoming_reviews = sum(
-        1 for vendor in vendors if 0 <= (vendor.next_review_due - datetime.now()).days <= 14
-    )
 
     at_risk_customers = sum(1 for customer in customers if customer.health_band == CustomerHealthBand.AT_RISK)
     qbr_soon = sum(
@@ -267,7 +265,6 @@ def _serialize_vendor(vendor: Vendor) -> VendorInsight:
 
 def _serialize_customer(customer: Customer) -> CustomerInsight:
     metadata = customer.metadata or {}
-    engagement = metadata.get("engagement", {})
     return CustomerInsight(
         customerId=customer.customer_id,
         name=customer.name,
@@ -287,7 +284,7 @@ def _serialize_customer(customer: Customer) -> CustomerInsight:
 async def get_security_center_overview(
     org_id: UUID,
     db = Depends(get_db),
-    current_user = Depends(require_read_findings),
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Return aggregated dashboard data for the Writer Security Center."""
 
@@ -318,7 +315,7 @@ async def get_security_center_overview(
 async def list_security_center_vendors(
     org_id: UUID,
     db = Depends(get_db),
-    current_user = Depends(require_read_findings),
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     organization = await db.get(Organization, org_id)
     if not organization:
@@ -336,7 +333,7 @@ async def list_security_center_vendors(
 async def list_security_center_customers(
     org_id: UUID,
     db = Depends(get_db),
-    current_user = Depends(require_read_findings),
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     organization = await db.get(Organization, org_id)
     if not organization:

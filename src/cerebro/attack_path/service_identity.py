@@ -189,7 +189,7 @@ class ServiceIdentityMapper:
                 # Simulate workload identity mapping
                 edge = ServiceIdentityEdge(
                     edge_id=f"gcp_workload_{binding['member']}_{binding['resource']}",
-                    source_service=f"k8s_service_account",
+                    source_service="k8s_service_account",
                     target_service=binding['member'],
                     trust_mechanism=TrustMechanism.WORKLOAD_IDENTITY,
                     provider_source="kubernetes",

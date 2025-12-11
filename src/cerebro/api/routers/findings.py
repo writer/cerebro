@@ -17,6 +17,7 @@ from cerebro_sdk.findings import FindingService
 from cerebro_sdk.pagination import PageRequest
 
 from cerebro.integrations.freshness import IntegrationFreshnessService
+from cerebro.api.org_access import enforce_org_access, require_org_access
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -29,13 +30,19 @@ async def list_findings(
     provider: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_read_findings),
 ):
     """List findings."""
-    stmt = select(Finding)
-    
-    if org_id:
-        stmt = stmt.where(Finding.org_id == org_id)
+
+    target_org = org_id or current_user.org_id
+    if target_org is None:
+        raise HTTPException(status_code=400, detail="Organization context required")
+
+    enforce_org_access(target_org, current_user)
+
+    stmt = select(Finding).where(Finding.org_id == target_org)
+
     if status:
         stmt = stmt.where(Finding.status == status)
     if severity:
@@ -97,12 +104,16 @@ async def list_findings_page(
 @router.get("/{finding_id}", response_model=FindingResponse)
 async def get_finding(
     finding_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_read_findings),
 ):
     """Get finding by ID."""
     finding = await db.get(Finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+
+    if finding.org_id is not None and current_user.org_id is not None:
+        enforce_org_access(finding.org_id, current_user)
     return finding
 
 
@@ -111,12 +122,15 @@ async def update_finding(
     finding_id: UUID,
     finding_update: FindingUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_write_findings)
+    current_user: User = Depends(require_write_findings),
 ):
     """Update finding status."""
     finding = await db.get(Finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+
+    if finding.org_id is not None and current_user.org_id is not None:
+        enforce_org_access(finding.org_id, current_user)
     
     if finding_update.status:
         if finding_update.status not in ["open", "suppressed", "accepted_risk", "fixed"]:
@@ -133,9 +147,17 @@ async def suppress_finding(
     finding_id: UUID,
     reason: str,
     finding_manager: FindingManager = Depends(get_finding_manager),
-    current_user: User = Depends(require_write_findings)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_findings),
 ):
     """Suppress a finding."""
+
+    finding = await db.get(Finding, finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if finding.org_id is not None and current_user.org_id is not None:
+        enforce_org_access(finding.org_id, current_user)
+
     success = await finding_manager.suppress_finding(finding_id, reason)
     if not success:
         raise HTTPException(status_code=404, detail="Finding not found")
@@ -148,9 +170,17 @@ async def accept_risk(
     finding_id: UUID,
     reason: str,
     finding_manager: FindingManager = Depends(get_finding_manager),
-    current_user: User = Depends(require_write_findings)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_findings),
 ):
     """Accept risk for a finding."""
+
+    finding = await db.get(Finding, finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if finding.org_id is not None and current_user.org_id is not None:
+        enforce_org_access(finding.org_id, current_user)
+
     success = await finding_manager.accept_risk(finding_id, reason)
     if not success:
         raise HTTPException(status_code=404, detail="Finding not found")
@@ -162,7 +192,8 @@ async def accept_risk(
 async def get_finding_stats(
     org_id: UUID,
     finding_manager: FindingManager = Depends(get_finding_manager),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get finding statistics for an organization."""
     # Verify organization exists
@@ -179,7 +210,8 @@ async def generate_findings(
     org_id: UUID,
     provider: Optional[str] = None,
     resource_types: Optional[List[str]] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_org_access(require_write_findings)),
 ):
     """Generate findings for an organization using Celery."""
     from cerebro.tasks.finding_tasks import generate_findings_task
@@ -209,12 +241,18 @@ async def get_mttr_metrics(
     severity: Optional[str] = None,
     provider: Optional[str] = None,
     timeframe_days: int = 30,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_read_findings),
 ):
     """Get Mean Time to Resolution (MTTR) metrics for findings."""
+
+    if current_user.org_id is None and not current_user.is_admin:
+        raise HTTPException(status_code=400, detail="Organization context required")
     
     # Base query for resolved findings
     stmt = select(Finding).where(Finding.status.in_(["resolved", "fixed"]))
+    if current_user.org_id is not None:
+        stmt = stmt.where(Finding.org_id == current_user.org_id)
     
     if severity:
         stmt = stmt.where(Finding.severity == severity)

@@ -199,7 +199,7 @@ class GetOrgContextTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "org_id": str(context.org_id),
                         "context_complete": True,

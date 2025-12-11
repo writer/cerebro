@@ -260,22 +260,6 @@ class DynamoDBAgentSessionRepository:
         if not session:
             return None
 
-        # Query messages and tools for this session
-        client = get_dynamodb_client()
-        table_name = get_table_name(self._table)
-
-        # Get all items under this session (messages, tools)
-        response = client.query(
-            TableName=table_name,
-            KeyConditionExpression="PK = :pk",
-            ExpressionAttributeValues={
-                ":pk": {"S": f"SESSION#{session_id}"},
-            },
-            ScanIndexForward=True,
-        )
-
-        items = [deserialize_item(item) for item in response.get("Items", [])]
-
         # Note: The AgentSession model doesn't have messages/tool_invocations
         # as direct attributes in DynamoDB model. They would need to be
         # queried separately. For compatibility, we return the session

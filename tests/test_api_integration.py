@@ -1,14 +1,10 @@
 """Test API integration with authentication and authorization."""
 
 import asyncio
-import json
 from importlib import import_module
 
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
 
-from cerebro.api.main import app
 from cerebro.core.user_service import UserService
 
 
