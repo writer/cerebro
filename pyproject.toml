@@ -23,6 +23,8 @@ dependencies = [
     "sqlalchemy>=2.0.23",
     "alembic>=1.12.1",
     "asyncpg>=0.29.0",
+    "snowflake-connector-python>=3.6.0",
+    "snowflake-sqlalchemy>=1.5.0",
     "pydantic[email]>=2.5.0",
     "pydantic-settings>=2.1.0",
     "cel-python>=0.4.0",
@@ -91,8 +93,6 @@ dev = [
     "pre-commit>=3.5.0",
     "ruff>=0.1.0",
     "fakeredis>=2.21.0",
-    "snowflake-connector-python>=3.6.0",
-    "snowflake-sqlalchemy>=1.5.0",
 ]
 
 [project.scripts]

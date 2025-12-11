@@ -550,6 +550,12 @@ class Settings(BaseSettings):
         description="PostgreSQL database URL (deprecated - use DynamoDB tables)"
     )
 
+    # Analytics warehouse
+    snowflake_database_url: Optional[str] = Field(
+        default=None,
+        description="Snowflake SQLAlchemy database URL for analytics workloads",
+    )
+
     # DynamoDB Tables
     dynamodb_core_table: str = Field(
         default="cerebro-core",

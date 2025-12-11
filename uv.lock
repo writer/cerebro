@@ -608,6 +608,8 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "slack-sdk" },
     { name = "slowapi" },
+    { name = "snowflake-connector-python" },
+    { name = "snowflake-sqlalchemy" },
     { name = "sqlalchemy" },
     { name = "sqlparse" },
     { name = "sse-starlette" },
@@ -630,8 +632,6 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
-    { name = "snowflake-connector-python" },
-    { name = "snowflake-sqlalchemy" },
 ]
 
 [package.metadata]
@@ -698,8 +698,8 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.3.0" },
     { name = "slack-sdk", specifier = ">=3.37.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
-    { name = "snowflake-connector-python", marker = "extra == 'dev'", specifier = ">=3.6.0" },
-    { name = "snowflake-sqlalchemy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
+    { name = "snowflake-connector-python", specifier = ">=3.6.0" },
+    { name = "snowflake-sqlalchemy", specifier = ">=1.5.0" },
     { name = "sqlalchemy", specifier = ">=2.0.23" },
     { name = "sqlparse", specifier = ">=0.4.4" },
     { name = "sse-starlette", specifier = ">=1.8.2" },
