@@ -137,6 +137,9 @@ def to_dynamodb(value: Any) -> Dict[str, Any]:
         return {"NULL": True}
     if isinstance(value, bool):
         return {"BOOL": value}
+    # Check Enum before str because str Enums inherit from str
+    if isinstance(value, Enum):
+        return {"S": value.value}
     if isinstance(value, str):
         return {"S": value}
     if isinstance(value, bytes):
@@ -147,8 +150,6 @@ def to_dynamodb(value: Any) -> Dict[str, Any]:
         return {"S": str(value)}
     if isinstance(value, datetime):
         return {"S": value.isoformat()}
-    if isinstance(value, Enum):
-        return {"S": value.value}
     if isinstance(value, (list, tuple)):
         return {"L": [to_dynamodb(v) for v in value]}
     if isinstance(value, dict):
@@ -286,8 +287,12 @@ async def update_item(
     sk_val: str,
     updates: Dict[str, Any],
     condition: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Update item attributes."""
+) -> Optional[Dict[str, Any]]:
+    """Update item attributes. Returns None if updates dict is empty."""
+    if not updates:
+        # No updates to apply, return current item
+        return await get_item(table, pk_val, sk_val)
+    
     client = get_client()
     
     set_parts = []
