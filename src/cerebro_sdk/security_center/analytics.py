@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterable, Literal, Sequence, cast
+from typing import Iterable, Literal, Mapping, Sequence, cast
 
 from .models import SecurityCenterCustomerInsight, SecurityCenterVendorInsight
 

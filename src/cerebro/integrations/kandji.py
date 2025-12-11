@@ -424,8 +424,6 @@ class KandjiIngestion:
 
         return grouped, count
 
-        return {"devices": device_count, "events_ingested": total_events, "hosts": len(grouped_events)}
-
     async def _collect_device_enrichment(
         self,
         device: Dict[str, Any],

@@ -524,8 +524,7 @@ def approve(
                 return
         
         # Get reason if not provided
-        if not reason:
-            reason = Prompt.ask("Approval reason", default="Approved by CLI user")
+        approval_reason = reason if reason else Prompt.ask("Approval reason", default="Approved by CLI user")
         
         # Approve the tool
         try:
@@ -533,13 +532,13 @@ def approve(
                 approval_id=approval_uuid,
                 org_id=org.org_id,
                 approved_by=approved_by,
-                decision_reason=reason
+                decision_reason=approval_reason
             )
             
             if updated_approval:
                 rprint(f"[green]✅ Tool invocation approved successfully[/green]")
                 rprint(f"[dim]Approved by: {approved_by}[/dim]")
-                rprint(f"[dim]Reason: {reason}[/dim]")
+                rprint(f"[dim]Reason: {approval_reason}[/dim]")
             else:
                 rprint(f"[red]Failed to approve tool invocation[/red]")
                 

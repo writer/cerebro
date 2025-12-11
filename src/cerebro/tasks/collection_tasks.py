@@ -61,7 +61,7 @@ def collect_account_task(
                 
                 # Initialize identity stitcher if needed
                 identity_stitcher = None
-                if collection_config.get("enable_identity_stitching", False):
+                if provider_config.get("enable_identity_stitching", False):
                     from cerebro.infrastructure.adapters import IdentityStitcherAdapter
                     identity_stitcher = IdentityStitcherAdapter(db)
                 

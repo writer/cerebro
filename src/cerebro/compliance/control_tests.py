@@ -5,6 +5,9 @@ Bridges the gap between technical security rules and compliance framework contro
 """
 
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field

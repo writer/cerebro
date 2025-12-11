@@ -18,8 +18,11 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from cerebro.core.config import Settings
 
 import boto3
 from botocore.config import Config

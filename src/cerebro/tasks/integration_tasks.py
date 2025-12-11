@@ -200,7 +200,7 @@ def sync_kandji(self) -> Any:
     async def _run() -> Any:
         started_at = datetime.now(timezone.utc)
         integration_scope = settings.kandji_org_name or "kandji"
-        integration_id = _DETECTIONS_SCOPE
+        integration_id = "kandji.detections"
         if not settings.kandji_enabled:
             logger.info("Kandji integration disabled; skipping sync")
             payload = {"status": "disabled"}

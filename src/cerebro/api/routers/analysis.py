@@ -14,7 +14,13 @@ from cerebro.api.auth import require_read_findings
 from cerebro.analysis.blast_radius import BlastRadiusAnalyzer
 from cerebro.analysis.forensic_replay import ForensicReplayEngine
 from cerebro.analysis.change_replay import ChangeReplayEngine
-# from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult  # Requires sklearn
+try:
+    from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult
+    IDENTITY_ANOMALY_AVAILABLE = True
+except ImportError:
+    IdentityAnomalyDetector = None
+    AnomalyResult = None
+    IDENTITY_ANOMALY_AVAILABLE = False
 from cerebro.compliance.generator import ComplianceEvidenceGenerator
 from cerebro.compliance.frameworks import list_frameworks, get_framework
 from cerebro.rules.engine import rule_engine
@@ -283,6 +289,9 @@ async def get_identity_anomalies(
     current_user = Depends(require_read_findings)
 ):
     """Detect identity anomalies using machine learning."""
+    if not IDENTITY_ANOMALY_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Identity anomaly detection requires sklearn")
+    
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -330,6 +339,9 @@ async def get_identity_anomaly_summary(
     current_user = Depends(require_read_findings)
 ):
     """Get summary of identity anomalies for organization."""
+    if not IDENTITY_ANOMALY_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Identity anomaly detection requires sklearn")
+    
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -366,6 +378,9 @@ async def analyze_identity_anomalies_post(
     current_user = Depends(require_read_findings)
 ):
     """Run identity anomaly analysis with custom parameters."""
+    if not IDENTITY_ANOMALY_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Identity anomaly detection requires sklearn")
+    
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")

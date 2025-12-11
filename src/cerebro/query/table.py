@@ -4,7 +4,10 @@ Security table definitions for the query engine.
 Implements the table interface that providers use to expose their data as SQL tables.
 """
 
+import logging
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
 from typing import Any, Dict, List, Optional, AsyncGenerator, Union
 from dataclasses import dataclass
 from datetime import datetime

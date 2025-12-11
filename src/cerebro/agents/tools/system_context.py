@@ -16,7 +16,7 @@ from datetime import datetime
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization, Account
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 import structlog
 
 logger = structlog.get_logger(__name__)

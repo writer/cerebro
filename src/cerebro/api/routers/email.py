@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

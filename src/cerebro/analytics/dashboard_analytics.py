@@ -228,29 +228,7 @@ class DashboardAnalytics:
             risk_score_change_7d=risk_change_7d,
             recommended_investments=investment_recommendations
         )
-    
-        result = await self.db.execute(total_compliance_query)
-        total_compliance_rules = result.scalar() or 1
-        
-        # Get compliant rules (no open findings)
-        compliant_query = text("""
-            SELECT COUNT(DISTINCT r.rule_id)
-            FROM rules r
-            WHERE (r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL)
-                AND r.rule_id NOT IN (
-                    SELECT DISTINCT f.rule_id
-                    FROM findings f
-                    JOIN accounts a ON f.account_id = a.account_id
-                    WHERE a.org_id = :org_id AND f.status = 'open'
-                )
-        """)
-        
-        result = await self.db.execute(compliant_query, {"org_id": org_id})
-        compliant_rules = result.scalar() or 0
-        
-        compliance_score = (compliant_rules / total_compliance_rules) * 100
-        return compliance_score
-    
+
     async def _generate_top_5_risks(self, org_id: UUID) -> List[str]:
         """Generate top 5 risks in board-friendly language."""
         

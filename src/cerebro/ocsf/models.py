@@ -4,6 +4,8 @@ OCSF Data Models
 Pydantic models representing OCSF v1.4.0 schema for security events.
 """
 
+from __future__ import annotations
+
 from enum import IntEnum
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel

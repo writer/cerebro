@@ -32,6 +32,7 @@ from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.prompts import build_security_agent_prompt
 from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
 from cerebro.agents.tools import tool_registry, ToolExecutor
+from cerebro.agents.tools.base import AgentContext
 from cerebro.agents.tool_stats import performance_tracker
 from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
 from cerebro.agents.metrics import record_runtime_metadata_event

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import AuditEvent, ConfigSnapshot, IamEdge

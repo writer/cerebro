@@ -247,13 +247,13 @@ def findings(
                 
                 if stats['by_status']:
                     rprint("\nBy Status:")
-                    for status, count in stats['by_status'].items():
-                        rprint(f"  {status}: {count}")
+                    for status_key, count in stats['by_status'].items():
+                        rprint(f"  {status_key}: {count}")
                 
                 if stats['by_severity']:
                     rprint("\nBy Severity:")
-                    for severity, count in stats['by_severity'].items():
-                        rprint(f"  {severity}: {count}")
+                    for severity_key, count in stats['by_severity'].items():
+                        rprint(f"  {severity_key}: {count}")
     
     asyncio.run(_findings())
 
