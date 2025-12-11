@@ -11,19 +11,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import UUID
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-import logging
 
 logger = logging.getLogger(__name__)
 

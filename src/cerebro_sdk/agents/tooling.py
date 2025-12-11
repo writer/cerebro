@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, List, Optional, Union
-import inspect
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.agents.models import AgentPolicySuggestion, ToolApproval, ToolInvocation
-
+from cerebro.agents.models import (
+    AgentPolicySuggestion,
+    ApprovalStatus,
+    ToolApproval,
+    ToolInvocation,
+    ToolInvocationStatus,
+)
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.repositories import ToolingRepository
 from cerebro_sdk.agents.types import (
@@ -24,8 +29,6 @@ from cerebro_sdk.agents.types import (
     ToolInvocationSummary,
 )
 from cerebro_sdk.telemetry import get_logger
-
-from cerebro.agents.models import ApprovalStatus, ToolInvocationStatus
 
 
 class AgentToolingManager(AsyncManagerBase):

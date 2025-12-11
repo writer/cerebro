@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import inspect
+import json
 from dataclasses import dataclass
-from typing import Any, AsyncIterable, AsyncIterator, Awaitable, Callable, Dict, List, Mapping, MutableMapping, Optional, Union
+from typing import (
+    Any,
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    List,
+    Mapping,
+    Optional,
+    Union,
+)
 
 from cerebro_sdk.streaming import ServerSentEvent, parse_server_sent_events
 

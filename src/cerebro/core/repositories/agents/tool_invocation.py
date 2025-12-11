@@ -9,12 +9,10 @@ from pydantic import BaseModel, Field
 
 from cerebro.core.dynamodb_client import (
     TableName,
-    get_item,
     pk,
     put_item,
     query,
     query_paginated,
-    sk,
     update_item,
 )
 

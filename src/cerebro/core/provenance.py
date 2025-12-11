@@ -2,17 +2,16 @@
 
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
+import logging
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 from uuid import UUID
-import logging
 
+from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, text
-from sqlalchemy.dialects.postgresql import JSONB
 
-from .models import ConfigSnapshot, IamEdge, AuditEvent
+from .models import AuditEvent, ConfigSnapshot, IamEdge
 
 logger = logging.getLogger(__name__)
 

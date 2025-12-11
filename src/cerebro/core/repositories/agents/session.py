@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from cerebro.core.dynamodb_client import (
     TableName,
     batch_write,
-    delete_item,
     get_item,
     pk,
     put_item,

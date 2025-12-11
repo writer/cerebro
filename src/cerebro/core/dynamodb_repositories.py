@@ -12,9 +12,9 @@ from uuid import UUID
 
 from cerebro.core.dynamodb import (
     TableName,
-    batch_get_items,
     batch_write_items,
     delete_item,
+    deserialize_item,
     get_dynamodb_client,
     get_item,
     get_table_name,
@@ -22,19 +22,14 @@ from cerebro.core.dynamodb import (
     query_by_pk,
     query_by_pk_paginated,
     update_item,
-    deserialize_item,
-    serialize_item,
 )
 from cerebro.core.dynamodb_models import (
     Account,
     AuditEvent,
     ConfigSnapshot,
-    EntityType,
     Finding,
     FindingStatus,
-    IamEdge,
     Organization,
-    Policy,
     Principal,
     Provider,
     Resource,

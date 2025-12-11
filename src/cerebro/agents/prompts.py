@@ -66,8 +66,9 @@ def build_security_agent_prompt(
     if session and session.context:
         org_context = session.context.get("_auto_loaded_org_context")
         system_context = session.context.get("_auto_loaded_system_context")
+        session_memory = session.context.get("_auto_loaded_session_memory", [])
 
-        if org_context or system_context:
+        if org_context or system_context or session_memory:
             context_lines: list[str] = ["", "=== YOUR ENVIRONMENT (YOU ALREADY KNOW THIS) ==="]
 
             if org_context:
@@ -145,6 +146,52 @@ def build_security_agent_prompt(
                                 f"  - {entry.get('provider', 'unknown').upper()}:"
                                 f" {entry.get('status', 'unknown')}"
                             )
+
+            # Include learned session memory (cross-session context)
+            if session_memory:
+                context_lines.append("")
+                context_lines.append("=== REMEMBERED CONTEXT (from previous sessions) ===")
+                
+                # Group by context type
+                preferences = [m for m in session_memory if m.get("type") == "user_preference"]
+                facts = [m for m in session_memory if m.get("type") == "learned_fact"]
+                corrections = [m for m in session_memory if m.get("type") == "correction"]
+                environment = [m for m in session_memory if m.get("type") == "environment"]
+                
+                if preferences:
+                    context_lines.append("")
+                    context_lines.append("User Preferences:")
+                    for pref in preferences[:5]:
+                        context_lines.append(f"  - {pref.get('key')}: {pref.get('value')}")
+                
+                if facts:
+                    context_lines.append("")
+                    context_lines.append("Learned Facts:")
+                    for fact in facts[:5]:
+                        confidence = fact.get("confidence", 1.0)
+                        conf_str = f" (confidence: {confidence:.0%})" if confidence < 1.0 else ""
+                        context_lines.append(f"  - {fact.get('key')}: {fact.get('value')}{conf_str}")
+                
+                if corrections:
+                    context_lines.append("")
+                    context_lines.append("Corrections/Feedback:")
+                    for corr in corrections[:3]:
+                        context_lines.append(f"  - {corr.get('key')}: {corr.get('value')}")
+                
+                if environment:
+                    context_lines.append("")
+                    context_lines.append("Environment Mappings:")
+                    for env in environment[:5]:
+                        context_lines.append(f"  - {env.get('key')}: {env.get('value')}")
+                
+                context_lines.append("")
+                context_lines.append(
+                    "IMPORTANT: This is information you learned from previous conversations."
+                )
+                context_lines.append(
+                    "Apply this context automatically - don't ask about things you already know."
+                )
+                context_lines.append("=== END REMEMBERED CONTEXT ===")
 
             context_lines.extend(
                 [

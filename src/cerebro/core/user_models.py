@@ -1,9 +1,10 @@
 """User management models for authentication and authorization."""
 
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 from uuid import UUID, uuid4
-from sqlalchemy import String, Boolean, DateTime, ForeignKey
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func

@@ -1,12 +1,12 @@
 """Core interfaces to break circular dependencies."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from ..rules.models import Rule
     from ..findings.models import Finding
+    from ..rules.models import Rule
 
 
 class RuleInterface(ABC):

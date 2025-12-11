@@ -1,14 +1,14 @@
 """Identity stitching across providers."""
 
-from typing import Dict, List, Optional, Set
-from dataclasses import dataclass
-from uuid import UUID
 import logging
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+from uuid import UUID
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
 
-from .models import Principal, Account
+from .models import Principal
 from .repositories_sqlalchemy import IdentityRepository
 
 logger = logging.getLogger(__name__)
@@ -166,7 +166,8 @@ class IdentityStitcher:
         clusters: List[IdentityCluster]
     ) -> None:
         """Save identity clusters to database."""
-        from .identity_models import IdentityCluster as DBIdentityCluster, IdentityClusterMember, IdentityStitchingLog
+        from .identity_models import IdentityCluster as DBIdentityCluster
+        from .identity_models import IdentityClusterMember, IdentityStitchingLog
         
         saved_clusters = 0
         

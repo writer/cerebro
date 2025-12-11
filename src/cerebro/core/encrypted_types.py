@@ -23,11 +23,13 @@ Recommended pattern:
             self.smtp_password, self.smtp_password_dek = await service.encrypt_secret(password)
 """
 import asyncio
-from typing import Any, Optional
-from sqlalchemy import LargeBinary, TypeDecorator
-from sqlalchemy.ext.hybrid import hybrid_property
+from typing import Optional
 
-from cerebro.core.encryption import get_encryption_service, get_fallback_encryption_service
+from sqlalchemy import LargeBinary, TypeDecorator
+
+from cerebro.core.encryption import (
+    get_encryption_service,
+)
 
 
 class EncryptedString(TypeDecorator):

@@ -6,17 +6,17 @@ making it easy to switch between implementations or mock for testing.
 
 from typing import Optional
 
-from cerebro.core.repositories.organization import OrganizationRepository
 from cerebro.core.repositories.account import AccountRepository
-from cerebro.core.repositories.finding import FindingRepository
-from cerebro.core.repositories.rule import RuleRepository
-from cerebro.core.repositories.principal import PrincipalRepository
-from cerebro.core.repositories.resource import ResourceRepository
 from cerebro.core.repositories.agents import (
-    AgentSessionRepository,
     AgentMessageRepository,
+    AgentSessionRepository,
     ToolInvocationRepository,
 )
+from cerebro.core.repositories.finding import FindingRepository
+from cerebro.core.repositories.organization import OrganizationRepository
+from cerebro.core.repositories.principal import PrincipalRepository
+from cerebro.core.repositories.resource import ResourceRepository
+from cerebro.core.repositories.rule import RuleRepository
 
 
 class RepositoryFactory:

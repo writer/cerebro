@@ -1,7 +1,7 @@
 """Organization repository for DynamoDB."""
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -10,7 +10,6 @@ from cerebro.core.dynamodb_client import (
     TableName,
     delete_item,
     get_item,
-    now_iso,
     pk,
     put_item,
     query,

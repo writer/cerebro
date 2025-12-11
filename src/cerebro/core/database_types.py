@@ -1,9 +1,10 @@
 """Database type compatibility layer for cross-database support."""
 
-from sqlalchemy import TypeDecorator, JSON, String
-from sqlalchemy.dialects.postgresql import JSONB, ARRAY
-from sqlalchemy.engine import Dialect
 import json
+
+from sqlalchemy import JSON, String, TypeDecorator
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.engine import Dialect
 
 
 class JSONType(TypeDecorator):

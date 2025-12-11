@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from typing import Any, Literal, Optional, Union
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Optional, Union
 from uuid import UUID
 
-from cerebro_sdk.analytics import (
-    IntegrationAccountSummary,
-    IntegrationCoverageRecord,
-    IntegrationScopeBreakdown,
-)
-from cerebro_sdk.findings import FindingRecord
 from cerebro_sdk.agents.streaming import (
     AgentMessage,
     AgentStreamConsumers,
@@ -22,6 +16,12 @@ from cerebro_sdk.agents.streaming import (
     CompletionUpdate,
     ToolCallDelta,
 )
+from cerebro_sdk.analytics import (
+    IntegrationAccountSummary,
+    IntegrationCoverageRecord,
+    IntegrationScopeBreakdown,
+)
+from cerebro_sdk.findings import FindingRecord
 
 from .analytics import (
     CustomerRiskDashboard,

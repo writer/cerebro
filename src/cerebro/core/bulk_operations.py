@@ -2,17 +2,17 @@
 
 import hashlib
 import logging
-from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+from typing import Any, Dict, List
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import ConfigSnapshot, IamEdge, Resource, Principal
 from .config import settings
+from .models import ConfigSnapshot, IamEdge, Principal, Resource
 
 logger = logging.getLogger(__name__)
 

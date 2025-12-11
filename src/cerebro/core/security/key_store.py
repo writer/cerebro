@@ -1,23 +1,32 @@
 """JWT key store for managing signing keys and rotation."""
 
 import logging
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
-from cryptography.hazmat.primitives import serialization, hashes
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID, uuid4
+
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from sqlalchemy import Column, String, DateTime, LargeBinary, Boolean, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    LargeBinary,
+    String,
+    Text,
+    and_,
+    or_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
-from sqlalchemy import select, and_, or_
-from uuid import UUID
 
-from cerebro.core.database import Base
 from cerebro.core.config import settings
-from cerebro.kms import BaseKMS as _BaseKMS, get_kms as _get_kms_factory
+from cerebro.core.database import Base
+from cerebro.kms import BaseKMS as _BaseKMS
+from cerebro.kms import get_kms as _get_kms_factory
 
 logger = logging.getLogger(__name__)
 
