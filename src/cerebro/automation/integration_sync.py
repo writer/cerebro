@@ -14,7 +14,7 @@ from cerebro.core.models import IntegrationSyncState
 logger = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass
 class IntegrationIssue:
     integration: str
     scope: str

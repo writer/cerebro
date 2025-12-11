@@ -27,7 +27,7 @@ class RuleComparison(str, Enum):
 DEFAULT_CHANNELS: Tuple[str, ...] = ("slack",)
 
 
-@dataclass(slots=True)
+@dataclass
 class AlertRule:
     """Configuration describing when an alert should fire."""
 

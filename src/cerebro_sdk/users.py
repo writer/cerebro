@@ -12,7 +12,7 @@ from cerebro.core.user_models import User
 from cerebro.core.user_service import UserService
 
 
-@dataclass(slots=True)
+@dataclass
 class UserRecord:
     user_id: UUID
     username: str

@@ -9,7 +9,7 @@ from statistics import mean
 from typing import Any, Dict, Iterable, List, Optional
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass
 class BenchmarkCaseSummary:
     case_id: str
     passed: bool
@@ -34,7 +34,7 @@ class BenchmarkCaseSummary:
         )
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass
 class BenchmarkSummary:
     cases: List[BenchmarkCaseSummary]
 

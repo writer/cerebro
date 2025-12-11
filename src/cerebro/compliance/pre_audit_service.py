@@ -32,7 +32,7 @@ from cerebro.query.engine import QueryEngine, QueryResult
 logger = structlog.get_logger(__name__)
 
 
-@dataclass(slots=True)
+@dataclass
 class ControlEvaluation:
     """In-memory representation for a control's outcome prior to persistence."""
 

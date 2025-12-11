@@ -12,7 +12,7 @@ from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.integrations.coverage import summarize_integration_coverage
 
 
-@dataclass(slots=True)
+@dataclass
 class RuntimeEventAggregate:
     """Aggregated event counts for a runtime channel."""
 
@@ -20,7 +20,7 @@ class RuntimeEventAggregate:
     last_seen: Optional[datetime]
 
 
-@dataclass(slots=True)
+@dataclass
 class RuntimeMetadataSnapshot:
     """Latest metadata payload emitted by a runtime backend."""
 
@@ -28,7 +28,7 @@ class RuntimeMetadataSnapshot:
     captured_at: datetime
 
 
-@dataclass(slots=True)
+@dataclass
 class RuntimeHealthRecord:
     """Summarized runtime health diagnostics for a backend."""
 
@@ -95,7 +95,7 @@ class RuntimeHealthClient:
         return summary
 
 
-@dataclass(slots=True)
+@dataclass
 class IntegrationScopeBreakdown:
     total: int
     healthy: int
@@ -103,12 +103,12 @@ class IntegrationScopeBreakdown:
     critical: int
 
 
-@dataclass(slots=True)
+@dataclass
 class IntegrationAccountSummary:
     total: int
 
 
-@dataclass(slots=True)
+@dataclass
 class IntegrationCoverageRecord:
     integration: str
     providers: list[str]

@@ -57,7 +57,7 @@ async def _resolve(source: Callable[..., Iterable[object] | Awaitable[Iterable[o
     raise TypeError("Unsupported source callable return type")
 
 
-@dataclass(slots=True)
+@dataclass
 class IntegrationCoverageHealth:
     integration: str
     providers: list[str]
@@ -105,7 +105,7 @@ def compute_coverage_health(record: IntegrationCoverageRecord) -> IntegrationCov
 ConsumerFn = Callable[..., Awaitable[None] | None]
 
 
-@dataclass(slots=True)
+@dataclass
 class RelationsContext:
     fetch_vendors: Callable[[str], Iterable[SecurityCenterVendorInsight] | Awaitable[Iterable[SecurityCenterVendorInsight]]]
     fetch_customers: Callable[[str], Iterable[SecurityCenterCustomerInsight] | Awaitable[Iterable[SecurityCenterCustomerInsight]]]
@@ -114,7 +114,7 @@ class RelationsContext:
     provider_aliases: Mapping[str, Sequence[str]] | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class RelationsIndex:
     org_id: str
     vendors: list[SecurityCenterVendorInsight]
@@ -131,7 +131,7 @@ class RelationsIndex:
     providers_to_customer_ids: dict[str, set[str]]
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorExposure:
     vendor: SecurityCenterVendorInsight
     related_integrations: list[IntegrationCoverageRecord]
@@ -140,7 +140,7 @@ class VendorExposure:
     dashboard: VendorRiskDashboard
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerEngagement:
     customer: SecurityCenterCustomerInsight
     related_integrations: list[IntegrationCoverageRecord]
@@ -148,7 +148,7 @@ class CustomerEngagement:
     dashboard: CustomerRiskDashboard
 
 
-@dataclass(slots=True)
+@dataclass
 class IntegrationSummary:
     total: int
     degraded: int
@@ -156,7 +156,7 @@ class IntegrationSummary:
     coverage_health: list[IntegrationCoverageHealth]
 
 
-@dataclass(slots=True)
+@dataclass
 class FindingsSummary:
     total: int
     by_severity: dict[str, int]
@@ -164,13 +164,13 @@ class FindingsSummary:
     linked_to_customers: int
 
 
-@dataclass(slots=True)
+@dataclass
 class ExposureCollections:
     top_vendors: list[VendorExposure]
     top_customers: list[CustomerEngagement]
 
 
-@dataclass(slots=True)
+@dataclass
 class OrgExposureDashboard:
     org_id: str
     vendor_dashboard: VendorRiskDashboard
@@ -402,13 +402,13 @@ async def build_org_exposure_dashboard(
     )
 
 
-@dataclass(slots=True)
+@dataclass
 class EntityAnnotationSummary:
     vendors: list[dict[str, Any]]
     customers: list[dict[str, Any]]
 
 
-@dataclass(slots=True)
+@dataclass
 class EntityAnnotation:
     event: AgentStreamEvent
     vendors: list[SecurityCenterVendorInsight]

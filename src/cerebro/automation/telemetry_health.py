@@ -13,7 +13,7 @@ from cerebro.core.database import async_session_factory
 from cerebro.core.models import FrontendObservationEvent
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass
 class TelemetryHealthSnapshot:
     generated_at: datetime
     window_start: Optional[datetime]

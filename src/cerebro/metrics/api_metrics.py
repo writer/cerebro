@@ -55,7 +55,7 @@ _API_TOTAL_SAMPLES = PromGauge(
 )
 
 
-@dataclass(slots=True)
+@dataclass
 class _RequestSample:
     timestamp: float
     duration_ms: float

@@ -18,7 +18,7 @@ from cerebro.integrations.serval_service import (
 from cerebro.agents.models import AgentReviewTicket, TicketStatus
 
 
-@dataclass(slots=True)
+@dataclass
 class ServalTicketResult:
     ticket_id: str
     payload: Dict[str, Any]

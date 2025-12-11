@@ -26,7 +26,7 @@ class SelfPlaySpeaker(str, Enum):
     RESPONDER = "responder"
 
 
-@dataclass(slots=True)
+@dataclass
 class TranscriptEntry:
     """Single turn transcript entry."""
 
@@ -46,7 +46,7 @@ class TranscriptEntry:
         return payload
 
 
-@dataclass(slots=True)
+@dataclass
 class SelfPlayScenario:
     """Configuration describing how to run a self-play match."""
 
@@ -72,7 +72,7 @@ class SelfPlayScenario:
             self.responder_agent_type = AgentType(self.responder_agent_type)
 
 
-@dataclass(slots=True)
+@dataclass
 class TurnOutcome:
     """Normalized data produced from a single turn."""
 
@@ -86,7 +86,7 @@ class TurnOutcome:
     duration_ms: Optional[float] = None
 
 
-@dataclass(slots=True)
+@dataclass
 class SelfPlayResult:
     """Summary produced after a self-play match completes."""
 

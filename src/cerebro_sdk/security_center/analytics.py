@@ -51,7 +51,7 @@ def _classify_review_status(days: int | None) -> Literal["on_track", "due_soon",
     return "on_track"
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorHealthAssessment:
     vendor_id: str
     name: str
@@ -65,7 +65,7 @@ class VendorHealthAssessment:
     warnings: list[str] = field(default_factory=list)
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorPortfolioSummary:
     total: int
     by_risk_level: dict[str, int]
@@ -74,7 +74,7 @@ class VendorPortfolioSummary:
     average_residual_risk: float | None
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerHealthAssessment:
     customer_id: str
     name: str
@@ -87,7 +87,7 @@ class CustomerHealthAssessment:
     warnings: list[str] = field(default_factory=list)
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerPortfolioSummary:
     total: int
     average_health_score: float | None
@@ -96,13 +96,13 @@ class CustomerPortfolioSummary:
     at_risk_count: int
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorPortfolioSnapshot:
     timestamp: datetime
     vendors: Sequence[SecurityCenterVendorInsight]
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorTrendPoint:
     timestamp: datetime
     total: int
@@ -111,20 +111,20 @@ class VendorTrendPoint:
     average_residual_risk: float | None
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorTrendSummary:
     points: list[VendorTrendPoint]
     residual_risk_change: float | None
     direction: Literal["improving", "declining", "steady", None]
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerHealthSnapshot:
     timestamp: datetime
     customers: Sequence[SecurityCenterCustomerInsight]
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerTrendPoint:
     timestamp: datetime
     total: int
@@ -133,21 +133,21 @@ class CustomerTrendPoint:
     average_churn_risk: float | None
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerTrendSummary:
     points: list[CustomerTrendPoint]
     health_score_change: float | None
     direction: Literal["improving", "declining", "steady", None]
 
 
-@dataclass(slots=True)
+@dataclass
 class TrendAlert:
     severity: Literal["info", "warning", "critical"]
     metric: str
     message: str
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorTrendWindow:
     window: Literal["7d", "30d"]
     residual_risk_change: float | None
@@ -155,7 +155,7 @@ class VendorTrendWindow:
     direction: Literal["improving", "declining", "steady", None]
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerTrendWindow:
     window: Literal["7d", "30d"]
     health_score_change: float | None
@@ -163,21 +163,21 @@ class CustomerTrendWindow:
     direction: Literal["improving", "declining", "steady", None]
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorTrendAnalysis:
     summary: VendorTrendSummary
     windows: list[VendorTrendWindow]
     alerts: list[TrendAlert]
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerTrendAnalysis:
     summary: CustomerTrendSummary
     windows: list[CustomerTrendWindow]
     alerts: list[TrendAlert]
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorRiskKpis:
     total_vendors: int
     high_risk_vendors: int
@@ -188,7 +188,7 @@ class VendorRiskKpis:
     average_residual_risk: float | None
 
 
-@dataclass(slots=True)
+@dataclass
 class VendorRiskDashboard:
     kpis: VendorRiskKpis
     by_risk_level: dict[str, int]
@@ -197,7 +197,7 @@ class VendorRiskDashboard:
     warnings: list[str]
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerRiskKpis:
     total_customers: int
     healthy_customers: int
@@ -207,7 +207,7 @@ class CustomerRiskKpis:
     average_churn_risk: float | None
 
 
-@dataclass(slots=True)
+@dataclass
 class CustomerRiskDashboard:
     kpis: CustomerRiskKpis
     by_health_band: dict[str, int]

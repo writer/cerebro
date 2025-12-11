@@ -10,7 +10,7 @@ from typing import Iterable, List, Mapping, MutableMapping, Optional, Sequence
 EntityKind = str
 
 
-@dataclass(slots=True)
+@dataclass
 class EntityProfile:
     kind: EntityKind
     entity_id: str
@@ -20,7 +20,7 @@ class EntityProfile:
     metadata: Mapping[str, object] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class EvidenceArtifact:
     artifact_id: str
     entity_id: str
@@ -35,7 +35,7 @@ class EvidenceArtifact:
 EvidenceLifecycleStatus = str
 
 
-@dataclass(slots=True)
+@dataclass
 class EvidenceLifecycle:
     status: EvidenceLifecycleStatus
     age_days: Optional[int]
@@ -44,14 +44,14 @@ class EvidenceLifecycle:
     requires_action: bool
 
 
-@dataclass(slots=True)
+@dataclass
 class LifecyclePolicy:
     max_age_days: Optional[int] = None
     refresh_window_days: Optional[int] = None
     hard_expiry_days: Optional[int] = None
 
 
-@dataclass(slots=True)
+@dataclass
 class EvidenceSetSummary:
     status: EvidenceLifecycleStatus
     lifecycle: Sequence[EvidenceLifecycle]

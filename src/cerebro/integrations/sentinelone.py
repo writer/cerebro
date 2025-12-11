@@ -48,7 +48,7 @@ class SentinelOneError(RuntimeError):
     """Raised when SentinelOne API responses are invalid."""
 
 
-@dataclass(slots=True)
+@dataclass
 class SentinelOneConfig:
     base_url: str
     api_token: str
@@ -59,7 +59,7 @@ class SentinelOneConfig:
     page_size: int = 200
 
 
-@dataclass(slots=True)
+@dataclass
 class _NormalizedThreat:
     host_id: str
     hostname: Optional[str]

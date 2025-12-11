@@ -12,7 +12,7 @@ from ..telemetry_health import TelemetryHealthSnapshot
 from .results import AlertResult
 
 
-@dataclass(slots=True)
+@dataclass
 class NotificationContext:
     snapshot: TelemetryHealthSnapshot
     alerts: Sequence[AlertResult]

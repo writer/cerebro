@@ -30,7 +30,7 @@ class DomainDtoAdapter(Protocol[DomainT, DtoT]):
         """Rehydrate a domain entity from a DTO payload."""
 
 
-@dataclass(slots=True)
+@dataclass
 class MapperRegistry(Generic[RecordT, DomainT]):
     """Registry coordinating mapper lookups by record type."""
 

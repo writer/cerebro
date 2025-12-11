@@ -13,7 +13,7 @@ AgentMessage = Mapping[str, Any]
 ToolCallDelta = Mapping[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class CompletionUpdate:
     status: str
     detail: Optional[str]
@@ -21,7 +21,7 @@ class CompletionUpdate:
     raw: Mapping[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentStreamEvent:
     type: str
     payload: Optional[Mapping[str, Any]]
@@ -36,7 +36,7 @@ HeartbeatConsumer = Callable[[AgentStreamEvent], Awaitable[None] | None]
 UnknownConsumer = Callable[[AgentStreamEvent], Awaitable[None] | None]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentStreamConsumers:
     on_message: Optional[MessageConsumer] = None
     on_tool: Optional[ToolConsumer] = None
@@ -105,7 +105,7 @@ async def consume_agent_stream(stream: AsyncIterable[Any], consumers: AgentStrea
                 await _maybe_call(handlers.on_unknown, event)
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentStreamConsumption:
     messages: List[AgentMessage]
     tool_calls: List[ToolCallDelta]

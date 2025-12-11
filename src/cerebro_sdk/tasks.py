@@ -11,7 +11,7 @@ from celery import Celery
 from cerebro.tasks import celery_app
 
 
-@dataclass(slots=True)
+@dataclass
 class TaskSubmission:
     """Response when a task is enqueued."""
 
@@ -19,7 +19,7 @@ class TaskSubmission:
     status: str
 
 
-@dataclass(slots=True)
+@dataclass
 class TaskStatus:
     """Snapshot of task execution state."""
 

@@ -11,7 +11,7 @@ from typing import Generic, Optional, Sequence, TypeVar
 T = TypeVar("T")
 
 
-@dataclass(slots=True)
+@dataclass
 class PageRequest:
     """Pagination request parameters passed to list operations."""
 
@@ -19,7 +19,7 @@ class PageRequest:
     cursor: Optional[str] = None
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class Cursor:
     """Parsed cursor payload supporting strongly typed lookups."""
 
@@ -30,7 +30,7 @@ class Cursor:
         return self.payload.get(key, default)
 
 
-@dataclass(slots=True)
+@dataclass
 class CursorPage(Generic[T]):
     """Generic cursor page representation returned by SDK helpers."""
 

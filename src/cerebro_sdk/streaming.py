@@ -8,7 +8,7 @@ from typing import AsyncIterable, AsyncIterator, Iterable, Optional, Sequence, U
 SSEChunk = Union[str, bytes, bytearray]
 
 
-@dataclass(slots=True)
+@dataclass
 class ServerSentEvent:
     """Represents a parsed server-sent event."""
 

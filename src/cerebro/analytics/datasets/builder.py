@@ -16,7 +16,7 @@ from cerebro.agents.models import AgentReviewTask, AgentRuntimeEvent
 from cerebro.core.models import FrontendObservationEvent
 
 
-@dataclass(slots=True)
+@dataclass
 class DatasetRecord:
     """Normalized observation used for supervised fine-tuning."""
 

@@ -15,7 +15,7 @@ from cerebro.core.user_service import UserService
 from cerebro.metrics.jwt_metrics import jwt_metrics
 
 
-@dataclass(slots=True)
+@dataclass
 class TokenPair:
     access_token: str
     refresh_token: Optional[str] = None
