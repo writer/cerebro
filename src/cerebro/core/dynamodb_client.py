@@ -279,19 +279,27 @@ async def get_item(
     sk_val: str,
     consistent: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """Get single item by key."""
+    """Get single item by key.
+    
+    Raises:
+        DynamoDBError: For DynamoDB errors
+    """
     client = get_client()
+    table_name = get_table_name(table)
     params = {
-        "TableName": get_table_name(table),
+        "TableName": table_name,
         "Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}},
         "ConsistentRead": consistent,
     }
     
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(_executor, partial(client.get_item, **params))
-    
-    item = response.get("Item")
-    return deserialize_item(item) if item else None
+    try:
+        response = await loop.run_in_executor(_executor, partial(client.get_item, **params))
+        item = response.get("Item")
+        return deserialize_item(item) if item else None
+    except ClientError as e:
+        logger.error(f"DynamoDB get_item error: {e}", extra={"table": table_name, "pk": pk_val})
+        raise DynamoDBError(f"Failed to get item: {e}")
 
 
 async def delete_item(
@@ -324,12 +332,18 @@ async def update_item(
     updates: Dict[str, Any],
     condition: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Update item attributes. Returns None if updates dict is empty."""
+    """Update item attributes. Returns None if updates dict is empty.
+    
+    Raises:
+        ConditionalCheckFailedError: If condition expression fails
+        DynamoDBError: For other DynamoDB errors
+    """
     if not updates:
         # No updates to apply, return current item
         return await get_item(table, pk_val, sk_val)
     
     client = get_client()
+    table_name = get_table_name(table)
     
     set_parts = []
     names = {}
@@ -343,7 +357,7 @@ async def update_item(
         values[val_key] = to_dynamodb(val)
     
     params: Dict[str, Any] = {
-        "TableName": get_table_name(table),
+        "TableName": table_name,
         "Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}},
         "UpdateExpression": "SET " + ", ".join(set_parts),
         "ExpressionAttributeNames": names,
@@ -354,9 +368,15 @@ async def update_item(
         params["ConditionExpression"] = condition
     
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(_executor, partial(client.update_item, **params))
-    
-    return deserialize_item(response.get("Attributes", {}))
+    try:
+        response = await loop.run_in_executor(_executor, partial(client.update_item, **params))
+        return deserialize_item(response.get("Attributes", {}))
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "ConditionalCheckFailedException":
+            raise ConditionalCheckFailedError(f"Condition failed for update on {table_name}")
+        logger.error(f"DynamoDB update_item error: {e}", extra={"table": table_name, "pk": pk_val})
+        raise DynamoDBError(f"Failed to update item: {e}")
 
 
 async def query(
@@ -369,9 +389,30 @@ async def query(
     forward: bool = True,
     filter_expr: Optional[str] = None,
     filter_values: Optional[Dict[str, Any]] = None,
+    cursor: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Query items by partition key."""
+    """Query items by partition key.
+    
+    Args:
+        table: Table to query
+        pk_val: Partition key value
+        sk_prefix: Optional sort key prefix filter
+        sk_between: Optional (start, end) tuple for sort key range
+        index: Optional GSI name (GSI1, GSI2, GSI3)
+        limit: Maximum items to return
+        forward: Sort order (True=ascending, False=descending)
+        filter_expr: Optional filter expression
+        filter_values: Values for filter expression
+        cursor: Optional pagination cursor from previous query
+    
+    Returns:
+        List of deserialized items
+        
+    Raises:
+        DynamoDBError: For DynamoDB errors
+    """
     client = get_client()
+    table_name = get_table_name(table)
     
     pk_attr = "GSI1PK" if index == "GSI1" else ("GSI2PK" if index == "GSI2" else ("GSI3PK" if index == "GSI3" else "PK"))
     sk_attr = "GSI1SK" if index == "GSI1" else ("GSI2SK" if index == "GSI2" else ("GSI3SK" if index == "GSI3" else "SK"))
@@ -388,7 +429,7 @@ async def query(
         expr_values[":sk_end"] = {"S": sk_between[1]}
     
     params: Dict[str, Any] = {
-        "TableName": get_table_name(table),
+        "TableName": table_name,
         "KeyConditionExpression": key_expr,
         "ExpressionAttributeValues": expr_values,
         "ScanIndexForward": forward,
@@ -403,21 +444,83 @@ async def query(
         if filter_values:
             for k, v in filter_values.items():
                 params["ExpressionAttributeValues"][k] = to_dynamodb(v)
+    if cursor:
+        params["ExclusiveStartKey"] = decode_cursor(cursor)
     
     loop = asyncio.get_event_loop()
     
-    items: List[Dict[str, Any]] = []
-    while True:
-        response = await loop.run_in_executor(_executor, partial(client.query, **params))
-        items.extend([deserialize_item(item) for item in response.get("Items", [])])
+    try:
+        items: List[Dict[str, Any]] = []
+        while True:
+            response = await loop.run_in_executor(_executor, partial(client.query, **params))
+            items.extend([deserialize_item(item) for item in response.get("Items", [])])
+            
+            if limit and len(items) >= limit:
+                break
+            if "LastEvaluatedKey" not in response:
+                break
+            params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
         
-        if limit and len(items) >= limit:
-            break
-        if "LastEvaluatedKey" not in response:
-            break
-        params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+        return items[:limit] if limit else items
+    except ClientError as e:
+        logger.error(f"DynamoDB query error: {e}", extra={"table": table_name, "pk": pk_val})
+        raise DynamoDBError(f"Failed to query items: {e}")
+
+
+async def query_paginated(
+    table: TableName,
+    pk_val: str,
+    sk_prefix: Optional[str] = None,
+    index: Optional[str] = None,
+    limit: int = 50,
+    forward: bool = True,
+    cursor: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Query with pagination support.
     
-    return items[:limit] if limit else items
+    Returns:
+        Tuple of (items, next_cursor). next_cursor is None if no more pages.
+    """
+    client = get_client()
+    table_name = get_table_name(table)
+    
+    pk_attr = "GSI1PK" if index == "GSI1" else ("GSI2PK" if index == "GSI2" else ("GSI3PK" if index == "GSI3" else "PK"))
+    sk_attr = "GSI1SK" if index == "GSI1" else ("GSI2SK" if index == "GSI2" else ("GSI3SK" if index == "GSI3" else "SK"))
+    
+    key_expr = f"{pk_attr} = :pk"
+    expr_values: Dict[str, Any] = {":pk": {"S": pk_val}}
+    
+    if sk_prefix:
+        key_expr += f" AND begins_with({sk_attr}, :sk)"
+        expr_values[":sk"] = {"S": sk_prefix}
+    
+    params: Dict[str, Any] = {
+        "TableName": table_name,
+        "KeyConditionExpression": key_expr,
+        "ExpressionAttributeValues": expr_values,
+        "ScanIndexForward": forward,
+        "Limit": limit,
+    }
+    
+    if index:
+        params["IndexName"] = index
+    if cursor:
+        params["ExclusiveStartKey"] = decode_cursor(cursor)
+    
+    loop = asyncio.get_event_loop()
+    
+    try:
+        response = await loop.run_in_executor(_executor, partial(client.query, **params))
+        items = [deserialize_item(item) for item in response.get("Items", [])]
+        
+        next_cursor = None
+        if "LastEvaluatedKey" in response:
+            next_cursor = encode_cursor(response["LastEvaluatedKey"])
+        
+        return items, next_cursor
+    except ClientError as e:
+        logger.error(f"DynamoDB query_paginated error: {e}", extra={"table": table_name})
+        raise DynamoDBError(f"Failed to query items: {e}")
 
 
 async def batch_get(
