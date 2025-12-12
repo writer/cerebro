@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import IdentityRemediationAction
 
-from .sql_dialect import get_dialect_name, hours_between_expr, timestamp_minus_days_expr
+from .sql_dialect import (
+    get_dialect_name,
+    hours_between_expr,
+    select_array_elements_subquery,
+    split_part_expr,
+    timestamp_minus_days_expr,
+)
 
 from .orientation import generate_orientation_summary
 
@@ -189,21 +195,29 @@ class DashboardRepository:
     async def get_compliance_by_framework(self, org_id: UUID) -> Dict[str, Dict[str, float]]:
         """Return compliance counts grouped by framework."""
 
+        dialect = get_dialect_name(self._db)
+        cis_controls = select_array_elements_subquery(array_column="cis", dialect=dialect)
+        nist_controls = select_array_elements_subquery(array_column="nist_800_53", dialect=dialect)
+        framework_expr = split_part_expr(
+            column_expr="controls.control",
+            delimiter=".",
+            part=1,
+            dialect=dialect,
+        )
+
         frameworks_query = text(
-            """
+            f"""
             SELECT
                 framework,
                 SUM(total_controls) as total_controls,
                 SUM(compliant_controls) as compliant_controls
             FROM (
                 SELECT 
-                    SPLIT_PART(control, '.', 1) as framework,
+                    {framework_expr} as framework,
                     COUNT(*) as total_controls,
                     COUNT(CASE WHEN f.finding_id IS NULL THEN 1 END) as compliant_controls
                 FROM (
-                    SELECT UNNEST(r.cis) as control, r.rule_id
-                    FROM rules r
-                    WHERE r.cis IS NOT NULL
+                    {cis_controls}
                 ) controls
                 JOIN rules r ON r.rule_id = controls.rule_id
                 LEFT JOIN findings f ON r.rule_id = f.rule_id
@@ -216,13 +230,11 @@ class DashboardRepository:
                 UNION ALL
 
                 SELECT 
-                    SPLIT_PART(control, '.', 1) as framework,
+                    {framework_expr} as framework,
                     COUNT(*) as total_controls,
                     COUNT(CASE WHEN f.finding_id IS NULL THEN 1 END) as compliant_controls
                 FROM (
-                    SELECT UNNEST(r.nist_800_53) as control, r.rule_id
-                    FROM rules r
-                    WHERE r.nist_800_53 IS NOT NULL
+                    {nist_controls}
                 ) controls
                 JOIN rules r ON r.rule_id = controls.rule_id
                 LEFT JOIN findings f ON r.rule_id = f.rule_id

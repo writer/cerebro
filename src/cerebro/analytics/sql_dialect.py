@@ -63,3 +63,42 @@ def array_agg_ordered_expr(*, value_expr: str, order_by_expr: str, dialect: str)
     if dialect == "snowflake":
         return f"ARRAY_AGG({value_expr}) WITHIN GROUP (ORDER BY {order_by_expr})"
     return f"ARRAY_AGG({value_expr} ORDER BY {order_by_expr})"
+
+
+def split_part_expr(*, column_expr: str, delimiter: str, part: int, dialect: str) -> str:
+    part_value = int(part)
+    if dialect in {"postgresql", "snowflake"}:
+        return f"SPLIT_PART({column_expr}, '{delimiter}', {part_value})"
+    if dialect == "sqlite":
+        if part_value != 1:
+            raise ValueError("sqlite split_part_expr currently only supports part=1")
+        return (
+            f"CASE WHEN instr({column_expr}, '{delimiter}') > 0 "
+            f"THEN substr({column_expr}, 1, instr({column_expr}, '{delimiter}') - 1) "
+            f"ELSE {column_expr} END"
+        )
+    return f"SPLIT_PART({column_expr}, '{delimiter}', {part_value})"
+
+
+def select_array_elements_subquery(*, array_column: str, dialect: str) -> str:
+    """Return a subquery that yields (control, rule_id) rows from a rules array column."""
+
+    if dialect == "snowflake":
+        return (
+            "SELECT elem.value::string as control, r.rule_id "
+            "FROM rules r, LATERAL FLATTEN(input => r." + array_column + ") elem "
+            "WHERE r." + array_column + " IS NOT NULL"
+        )
+
+    if dialect == "sqlite":
+        return (
+            "SELECT elem.value as control, r.rule_id "
+            "FROM rules r, json_each(r." + array_column + ") elem "
+            "WHERE r." + array_column + " IS NOT NULL"
+        )
+
+    return (
+        "SELECT UNNEST(r." + array_column + ") as control, r.rule_id "
+        "FROM rules r "
+        "WHERE r." + array_column + " IS NOT NULL"
+    )
