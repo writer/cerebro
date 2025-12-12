@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import IdentityRemediationAction
 
+from .sql_dialect import get_dialect_name, hours_between_expr, timestamp_minus_days_expr
+
 from .orientation import generate_orientation_summary
 
 
@@ -58,17 +60,21 @@ class DashboardRepository:
         return result.scalar() or 0
 
     async def count_sla_breaches(self, org_id: UUID) -> int:
+        dialect = get_dialect_name(self._db)
+        critical_cutoff = timestamp_minus_days_expr(days=7, dialect=dialect)
+        high_cutoff = timestamp_minus_days_expr(days=14, dialect=dialect)
+        medium_cutoff = timestamp_minus_days_expr(days=30, dialect=dialect)
         query = text(
-            """
+            f"""
             SELECT COUNT(*)
             FROM findings f
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND f.status = 'open'
                 AND (
-                    (f.severity = 'critical' AND f.first_seen <= NOW() - INTERVAL '7 days') OR
-                    (f.severity = 'high' AND f.first_seen <= NOW() - INTERVAL '14 days') OR
-                    (f.severity = 'medium' AND f.first_seen <= NOW() - INTERVAL '30 days')
+                    (f.severity = 'critical' AND f.first_seen <= {critical_cutoff}) OR
+                    (f.severity = 'high' AND f.first_seen <= {high_cutoff}) OR
+                    (f.severity = 'medium' AND f.first_seen <= {medium_cutoff})
                 )
             """
         )
@@ -76,41 +82,52 @@ class DashboardRepository:
         return result.scalar() or 0
 
     async def calculate_mttr(self, org_id: UUID) -> float:
+        dialect = get_dialect_name(self._db)
+        cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
+        diff_hours_expr = hours_between_expr(
+            start_expr="f.first_seen",
+            end_expr="f.last_seen",
+            dialect=dialect,
+        )
         query = text(
-            """
-            SELECT AVG(EXTRACT(EPOCH FROM (last_seen - first_seen)) / 3600) as mttr_hours
+            f"""
+            SELECT AVG({diff_hours_expr}) as mttr_hours
             FROM findings f
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND f.status IN ('fixed', 'accepted_risk')
-                AND f.first_seen >= NOW() - INTERVAL '90 days'
+                AND f.first_seen >= {cutoff}
             """
         )
         result = await self._db.execute(query, {"org_id": org_id})
         return result.scalar() or 0.0
 
     async def count_new_findings(self, org_id: UUID) -> int:
+        dialect = get_dialect_name(self._db)
+        cutoff = timestamp_minus_days_expr(days=1, dialect=dialect)
         query = text(
-            """
+            f"""
             SELECT COUNT(*)
             FROM findings f
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id
-                AND f.first_seen >= NOW() - INTERVAL '24 hours'
+                AND f.first_seen >= {cutoff}
             """
         )
         result = await self._db.execute(query, {"org_id": org_id})
         return result.scalar() or 0
 
     async def count_resolved_findings(self, org_id: UUID) -> int:
+        dialect = get_dialect_name(self._db)
+        cutoff = timestamp_minus_days_expr(days=1, dialect=dialect)
         query = text(
-            """
+            f"""
             SELECT COUNT(*)
             FROM findings f
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND f.status IN ('fixed', 'accepted_risk')
-                AND f.last_seen >= NOW() - INTERVAL '24 hours'
+                AND f.last_seen >= {cutoff}
             """
         )
         result = await self._db.execute(query, {"org_id": org_id})

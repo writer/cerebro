@@ -1,11 +1,18 @@
 """Compliance analytics API endpoints."""
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from cerebro.analytics.sql_dialect import (
+    array_agg_ordered_expr,
+    days_since_expr,
+    get_dialect_name,
+    timestamp_minus_days_expr,
+)
+from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
@@ -18,6 +25,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def get_severity_breakdown_chips(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get severity breakdown chips with SLA breach counts for dashboard badges."""
@@ -25,6 +33,12 @@ async def get_severity_breakdown_chips(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+
+    dialect = get_dialect_name(analytics_db)
+    critical_cutoff = timestamp_minus_days_expr(days=7, dialect=dialect)
+    high_cutoff = timestamp_minus_days_expr(days=14, dialect=dialect)
+    medium_cutoff = timestamp_minus_days_expr(days=30, dialect=dialect)
+    low_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
 
     # Get counts by severity and SLA breach status
     severity_query = text("""
@@ -78,9 +92,21 @@ async def get_severity_breakdown_chips(
                 WHEN 'medium' THEN 3
                 WHEN 'low' THEN 4
             END
-    """)
+    """.replace(
+        "NOW() - INTERVAL '7 days'",
+        critical_cutoff,
+    ).replace(
+        "NOW() - INTERVAL '14 days'",
+        high_cutoff,
+    ).replace(
+        "NOW() - INTERVAL '30 days'",
+        medium_cutoff,
+    ).replace(
+        "NOW() - INTERVAL '90 days'",
+        low_cutoff,
+    ))
 
-    result = await db.execute(severity_query, {"org_id": org_id})
+    result = await analytics_db.execute(severity_query, {"org_id": org_id})
     severity_data = result.fetchall()
 
     chips = []
@@ -125,6 +151,7 @@ async def get_compliance_evidence_status(
     org_id: UUID,
     framework: Optional[str] = Query(None, description="Filter by compliance framework"),
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get compliance evidence freshness and ownership status."""
@@ -133,8 +160,11 @@ async def get_compliance_evidence_status(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    dialect = get_dialect_name(analytics_db)
+    evidence_age_expr = days_since_expr(column_expr="MAX(cs.captured_at)", dialect=dialect)
+
     # Get evidence freshness by framework
-    evidence_query = text("""
+    evidence_query = text(f"""
         WITH evidence_freshness AS (
             SELECT
                 CASE
@@ -146,7 +176,7 @@ async def get_compliance_evidence_status(
                 r.name as control_name,
                 MAX(cs.captured_at) as last_evidence_collected,
                 COUNT(DISTINCT f.finding_id) as open_violations,
-                EXTRACT(EPOCH FROM (NOW() - MAX(cs.captured_at))) / 86400 as evidence_age_days
+                {evidence_age_expr} as evidence_age_days
             FROM rules r
             LEFT JOIN findings f ON r.rule_id = f.rule_id
                 AND f.status = 'open'
@@ -172,7 +202,7 @@ async def get_compliance_evidence_status(
         ORDER BY framework
     """)
 
-    result = await db.execute(evidence_query, {
+    result = await analytics_db.execute(evidence_query, {
         "org_id": org_id,
         "framework": framework.upper() if framework else None
     })
@@ -205,6 +235,7 @@ async def get_compliance_evidence_status(
 async def get_evidence_freshness_donut(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get evidence freshness donut chart data with click-through URLs."""
@@ -213,8 +244,16 @@ async def get_evidence_freshness_donut(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    dialect = get_dialect_name(analytics_db)
+    evidence_age_expr = days_since_expr(column_expr="MAX(cs.captured_at)", dialect=dialect)
+    sample_controls_expr = array_agg_ordered_expr(
+        value_expr="control_name",
+        order_by_expr="evidence_age_days DESC",
+        dialect=dialect,
+    )
+
     # Get evidence freshness categorization
-    freshness_query = text("""
+    freshness_query = text(f"""
         WITH evidence_analysis AS (
             SELECT
                 r.rule_id,
@@ -222,7 +261,7 @@ async def get_evidence_freshness_donut(
                 r.cis,
                 r.nist_800_53,
                 MAX(cs.captured_at) as last_evidence_collected,
-                EXTRACT(EPOCH FROM (NOW() - MAX(cs.captured_at))) / 86400 as evidence_age_days
+                {evidence_age_expr} as evidence_age_days
             FROM rules r
             LEFT JOIN findings f ON r.rule_id = f.rule_id
                 AND f.account_id IN (SELECT account_id FROM accounts WHERE org_id = :org_id)
@@ -238,7 +277,7 @@ async def get_evidence_freshness_donut(
                 ELSE 'stale'
             END as freshness_status,
             COUNT(*) as control_count,
-            ARRAY_AGG(control_name ORDER BY evidence_age_days DESC) as sample_controls
+            {sample_controls_expr} as sample_controls
         FROM evidence_analysis
         GROUP BY
             CASE
@@ -256,7 +295,7 @@ async def get_evidence_freshness_donut(
             END
     """)
 
-    result = await db.execute(freshness_query, {"org_id": org_id})
+    result = await analytics_db.execute(freshness_query, {"org_id": org_id})
     freshness_data = result.fetchall()
 
     # Donut chart configuration with colors and click-through
