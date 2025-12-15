@@ -9,14 +9,18 @@ This module provides the foundation for all agent tools, including:
 """
 
 from abc import ABC, abstractmethod
+import asyncio
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 import time
 from enum import Enum
 from functools import wraps
 from typing import Any, Dict, List, Optional, Type, TypeVar
 from uuid import UUID
 
+import anyio
 import structlog
 from pydantic import BaseModel
 
@@ -345,6 +349,53 @@ class ToolExecutor:
     
     def __init__(self, rule_engine: Optional[RuleEngine] = None):
         self.rule_engine = rule_engine or RuleEngine()
+
+        # Process-local rate limiter (best-effort guardrail).
+        if not hasattr(self.__class__, "_rate_lock"):
+            self.__class__._rate_lock = asyncio.Lock()
+            self.__class__._rate_buckets = {}
+
+    @staticmethod
+    def _resolve_timeout_seconds(tool: Tool) -> float:
+        override = os.getenv("AGENT_TOOL_TIMEOUT_SECONDS")
+        if override:
+            try:
+                return float(override)
+            except ValueError:
+                return 60.0
+
+        if tool.permission_level == ToolPermissionLevel.READ_ONLY:
+            return float(os.getenv("AGENT_TOOL_TIMEOUT_SECONDS_READ_ONLY", "30"))
+        if tool.permission_level == ToolPermissionLevel.WRITE_SAFE:
+            return float(os.getenv("AGENT_TOOL_TIMEOUT_SECONDS_WRITE_SAFE", "60"))
+        return float(os.getenv("AGENT_TOOL_TIMEOUT_SECONDS_WRITE_DESTRUCTIVE", "120"))
+
+    @staticmethod
+    def _resolve_rate_limit_per_minute() -> int:
+        value = os.getenv("AGENT_TOOL_RATE_LIMIT_PER_MINUTE", "120")
+        try:
+            return max(0, int(value))
+        except ValueError:
+            return 120
+
+    async def _enforce_rate_limit(self, context: AgentContext) -> bool:
+        limit = self._resolve_rate_limit_per_minute()
+        if limit <= 0:
+            return True
+
+        now = time.monotonic()
+        window_seconds = 60.0
+        bucket_key = str(context.session_id)
+
+        async with self.__class__._rate_lock:
+            bucket = self.__class__._rate_buckets.setdefault(bucket_key, deque())
+            cutoff = now - window_seconds
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if len(bucket) >= limit:
+                return False
+            bucket.append(now)
+            return True
     
     async def execute_tool(
         self,
@@ -468,6 +519,35 @@ class ToolExecutor:
             if tool.permission_level == ToolPermissionLevel.WRITE_DESTRUCTIVE:
                 dry_run = dry_run or not cel_result.explicitly_approved
 
+            if not await self._enforce_rate_limit(context):
+                failure = await self._fail_invocation(
+                    invocation,
+                    "Tool execution rate limit exceeded",
+                    "TOOL_RATE_LIMITED",
+                )
+                duration = time.perf_counter() - started_at
+                record_tool_metrics(
+                    tool_name=tool.name,
+                    agent_type=context.agent_type,
+                    success=False,
+                    duration_seconds=duration,
+                    error_code="TOOL_RATE_LIMITED",
+                )
+                await performance_tracker.record(
+                    tool_name=tool.name,
+                    success=False,
+                    duration_seconds=duration,
+                )
+                await self._record_tool_event(
+                    context=context,
+                    invocation=invocation,
+                    tool=tool,
+                    outcome="rate_limited",
+                    duration=duration,
+                    metadata={"error_code": "TOOL_RATE_LIMITED"},
+                )
+                return failure
+
             # CRITICAL: Set dry_run in context BEFORE execution
             execution_context = AgentContext(
                 session_id=context.session_id,
@@ -488,7 +568,38 @@ class ToolExecutor:
             invocation.status = ToolInvocationStatus.RUNNING
             await self._update_invocation(invocation)
 
-            result = await tool.execute(inputs, execution_context)
+            timeout_seconds = self._resolve_timeout_seconds(tool)
+            try:
+                with anyio.fail_after(timeout_seconds):
+                    result = await tool.execute(inputs, execution_context)
+            except TimeoutError:
+                failure = await self._fail_invocation(
+                    invocation,
+                    f"Tool execution exceeded timeout of {timeout_seconds:.0f}s",
+                    "TOOL_TIMEOUT",
+                )
+                duration = time.perf_counter() - started_at
+                record_tool_metrics(
+                    tool_name=tool.name,
+                    agent_type=context.agent_type,
+                    success=False,
+                    duration_seconds=duration,
+                    error_code="TOOL_TIMEOUT",
+                )
+                await performance_tracker.record(
+                    tool_name=tool.name,
+                    success=False,
+                    duration_seconds=duration,
+                )
+                await self._record_tool_event(
+                    context=context,
+                    invocation=invocation,
+                    tool=tool,
+                    outcome="timeout",
+                    duration=duration,
+                    metadata={"error_code": "TOOL_TIMEOUT"},
+                )
+                return failure
 
             # ENFORCE: Mark result as dry-run and validate tool respected it
             result.dry_run = dry_run

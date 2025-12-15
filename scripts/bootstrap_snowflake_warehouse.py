@@ -35,10 +35,13 @@ def _get_int_env(name: str) -> int | None:
 
 def _default_query_tag() -> str:
     base = "cerebro"
-    component = os.getenv("CEREBRO_PROCESS_ROLE") or os.getenv("CEREBRO_COMPONENT")
-    if not component:
-        return base
-    return f"{base}:{component}"
+    environment = (os.getenv("ENVIRONMENT") or "unknown").strip().lower()
+    component = (os.getenv("CEREBRO_PROCESS_ROLE") or os.getenv("CEREBRO_COMPONENT") or "bootstrap").strip().lower()
+
+    def sanitize(value: str) -> str:
+        return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in value).strip("-")
+
+    return f"{base}:{sanitize(environment)}:{sanitize(component)}"
 
 
 def _quote_ident(identifier: str) -> str:
@@ -144,6 +147,20 @@ def _build_ddl() -> List[str]:
             control_id STRING NOT NULL,
             created_at TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
             PRIMARY KEY (rule_id, framework, control_id)
+        )
+        """.strip(),
+        """
+        CREATE TABLE IF NOT EXISTS warehouse_job_runs (
+            job_run_id STRING NOT NULL,
+            job_name STRING NOT NULL,
+            component STRING,
+            status STRING NOT NULL,
+            started_at TIMESTAMP_TZ,
+            finished_at TIMESTAMP_TZ,
+            row_count INTEGER,
+            details VARIANT,
+            created_at TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+            PRIMARY KEY (job_run_id)
         )
         """.strip(),
         """
@@ -572,22 +589,43 @@ def main(argv: Optional[List[str]] = None) -> int:
     url = make_url(args.url)
     query_tag = os.getenv(SNOWFLAKE_QUERY_TAG_ENV) or _default_query_tag()
     application = os.getenv(SNOWFLAKE_APPLICATION_ENV, "cerebro")
+    component = (os.getenv("CEREBRO_PROCESS_ROLE") or os.getenv("CEREBRO_COMPONENT") or "bootstrap").strip().upper()
     session_parameters: dict[str, object] = {
         "QUERY_TAG": query_tag,
         "TIMEZONE": os.getenv(SNOWFLAKE_TIMEZONE_ENV, "UTC"),
     }
-    if (statement_timeout := _get_int_env(SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV)) is not None:
-        session_parameters["STATEMENT_TIMEOUT_IN_SECONDS"] = statement_timeout
+
+    per_component_timeout = _get_int_env(f"{SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV}_{component}")
+    statement_timeout = (
+        per_component_timeout
+        if per_component_timeout is not None
+        else _get_int_env(SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV)
+    )
+    if statement_timeout is None:
+        # Prefer a bounded default even for bootstrap to prevent runaway DDL.
+        statement_timeout = 900
+    session_parameters["STATEMENT_TIMEOUT_IN_SECONDS"] = statement_timeout
 
     connect_args: dict[str, object] = {
         "client_session_keep_alive": True,
         "application": application,
         "session_parameters": session_parameters,
     }
-    if args.role:
-        connect_args["role"] = args.role
-    if args.warehouse:
-        connect_args["warehouse"] = args.warehouse
+
+    role = (
+        args.role
+        or os.getenv(f"{SNOWFLAKE_ROLE_ENV}_{component}")
+        or os.getenv(SNOWFLAKE_ROLE_ENV)
+    )
+    warehouse = (
+        args.warehouse
+        or os.getenv(f"{SNOWFLAKE_WAREHOUSE_ENV}_{component}")
+        or os.getenv(SNOWFLAKE_WAREHOUSE_ENV)
+    )
+    if role:
+        connect_args["role"] = role
+    if warehouse:
+        connect_args["warehouse"] = warehouse
     engine = create_engine(
         url,
         poolclass=NullPool,

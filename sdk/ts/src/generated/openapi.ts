@@ -1379,6 +1379,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/warehouse/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Warehouse Health
+         * @description Get Snowflake warehouse operational health (jobs + derived table freshness).
+         */
+        get: operations["get_warehouse_health_api_v1_analytics_warehouse_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attack-path/organizations/{org_id}/attack-graph/summary": {
         parameters: {
             query?: never;
@@ -11624,6 +11644,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_warehouse_health_api_v1_analytics_warehouse_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

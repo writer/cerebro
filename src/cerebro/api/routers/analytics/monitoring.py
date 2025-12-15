@@ -20,6 +20,8 @@ from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
+from cerebro.core.warehouse import resolve_snowflake_database_url
+from cerebro.core.warehouse_async import warehouse_async_session
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -214,6 +216,89 @@ async def get_heartbeat_chips(
         "worker_details": celery_status["workers"],
         "error": celery_status.get("error")
     }
+
+
+@router.get("/warehouse/health")
+async def get_warehouse_health(
+    current_user: User = Depends(require_scopes("read:findings")),
+) -> Dict[str, Any]:
+    """Get Snowflake warehouse operational health (jobs + derived table freshness)."""
+
+    if not resolve_snowflake_database_url():
+        return {
+            "configured": False,
+            "error": "SNOWFLAKE_DATABASE_URL not configured",
+        }
+
+    try:
+        async with warehouse_async_session() as warehouse:
+            job_status_query = text(
+                """
+                SELECT
+                    job_name,
+                    component,
+                    status,
+                    started_at,
+                    finished_at,
+                    row_count,
+                    details
+                FROM warehouse_job_runs
+                WHERE job_name = :job_name
+                ORDER BY started_at DESC
+                LIMIT 1
+                """
+            )
+
+            job_names = ["refresh_rule_controls", "warehouse_data_quality_checks"]
+            jobs: Dict[str, Any] = {}
+            for job_name in job_names:
+                row = (await warehouse.execute(job_status_query, {"job_name": job_name})).mappings().first()
+                if row:
+                    jobs[job_name] = {
+                        "status": row.get("status"),
+                        "component": row.get("component"),
+                        "started_at": row.get("started_at").isoformat() if row.get("started_at") else None,
+                        "finished_at": row.get("finished_at").isoformat() if row.get("finished_at") else None,
+                        "row_count": row.get("row_count"),
+                        "details": row.get("details"),
+                    }
+                else:
+                    jobs[job_name] = None
+
+            rule_controls_row = (
+                await warehouse.execute(
+                    text(
+                        """
+                        SELECT MAX(created_at) AS last_refreshed_at, COUNT(*) AS row_count
+                        FROM rule_controls
+                        """
+                    )
+                )
+            ).mappings().first()
+
+            rule_controls = {
+                "last_refreshed_at": (
+                    rule_controls_row.get("last_refreshed_at").isoformat()
+                    if rule_controls_row and rule_controls_row.get("last_refreshed_at")
+                    else None
+                ),
+                "row_count": int(rule_controls_row.get("row_count") or 0) if rule_controls_row else 0,
+            }
+
+            return {
+                "configured": True,
+                "dialect": getattr(warehouse, "dialect_name", "snowflake"),
+                "jobs": jobs,
+                "derived_tables": {
+                    "rule_controls": rule_controls,
+                },
+            }
+
+    except Exception as exc:
+        return {
+            "configured": True,
+            "error": f"Failed to query warehouse health: {exc}",
+        }
 
 
 @router.get("/operations/health")

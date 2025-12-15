@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -46,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           cd sdk/ts
-          if git diff --quiet origin/main -- sdk/ts; then
+          if git diff --quiet origin/main -- .; then
             echo "No SDK changes detected; skipping changeset enforcement."
             exit 0
           fi
