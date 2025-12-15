@@ -226,7 +226,7 @@ class SQLParser:
                 if f' {operator} ' in condition:
                     parts = condition.split(f' {operator} ', 1)
                     if len(parts) == 2:
-                        column = parts[0].strip()
+                        column = self._normalize_filter_column(parts[0])
                         value_str = parts[1].strip().strip("'\"")
                         
                         # Convert value to appropriate type
@@ -236,6 +236,29 @@ class SQLParser:
                         break
         
         return filters
+
+    def _normalize_filter_column(self, column_expr: str) -> str:
+        """Normalize a WHERE clause column expression into a table column name."""
+
+        import re
+
+        column = column_expr.strip().strip('"`')
+        column = column.lstrip('(').rstrip(')')
+
+        # Drop casts like "permissions::text" -> "permissions"
+        if "::" in column:
+            column = column.split("::", 1)[0].strip()
+
+        # Drop common wrappers like LOWER(column)
+        func_match = re.match(r"(?i)^(lower|upper)\((.+)\)$", column)
+        if func_match:
+            column = func_match.group(2).strip()
+
+        # Drop table qualifiers like "t.column" -> "column"
+        if "." in column:
+            column = column.split(".")[-1].strip()
+
+        return column
     
     def _parse_filter_value(self, value_str: str, operator: str) -> Any:
         """Parse and convert filter value to appropriate type."""

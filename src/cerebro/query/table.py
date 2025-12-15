@@ -226,7 +226,18 @@ class SecurityTable(ABC):
         elif operator == "<=":
             return resource_value <= filter_value
         elif operator in {"LIKE", "ILIKE"}:
-            return str(filter_value).lower() in str(resource_value).lower()
+            pattern = str(filter_value).lower()
+            value = str(resource_value).lower()
+
+            # Minimal LIKE support for % wildcards.
+            if pattern.startswith("%") and pattern.endswith("%"):
+                return pattern.strip("%") in value
+            if pattern.startswith("%"):
+                return value.endswith(pattern[1:])
+            if pattern.endswith("%"):
+                return value.startswith(pattern[:-1])
+
+            return pattern in value
         elif operator == "IN":
             return resource_value in filter_value
         elif operator == "IS NOT NULL":
