@@ -6,6 +6,7 @@ across all providers in real-time.
 """
 
 import logging
+import os
 import sqlparse
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
@@ -80,6 +81,13 @@ class SQLParser:
                 matching_tables = registry.find_tables_by_pattern(table_name)
                 if not matching_tables:
                     raise QueryError(f"No tables match pattern '{table_name}'")
+
+                max_tables = int(os.getenv("QUERY_ENGINE_MAX_WILDCARD_TABLES", "25"))
+                if max_tables > 0 and len(matching_tables) > max_tables:
+                    raise QueryError(
+                        f"Wildcard pattern '{table_name}' expanded to {len(matching_tables)} tables, "
+                        f"exceeding QUERY_ENGINE_MAX_WILDCARD_TABLES={max_tables}."
+                    )
                 logger.info(f"Expanded wildcard pattern '{table_name}' to {len(matching_tables)} tables: {matching_tables}")
                 
                 # For multiple tables, we'll handle UNION ALL in execution
@@ -112,17 +120,32 @@ class SQLParser:
     def _extract_table_name(self, parsed) -> str:
         """Extract table name from parsed SQL."""
         from_seen = False
+        table_parts: List[str] = []
+        stop_keywords = {'WHERE', 'ORDER', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET'}
+
         for token in parsed.flatten():
             if token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'FROM':
                 from_seen = True
-            elif from_seen and not token.is_whitespace:
-                # Skip keywords after FROM
-                if token.ttype is sqlparse.tokens.Keyword and token.value.upper() in ['WHERE', 'ORDER', 'GROUP', 'HAVING', 'LIMIT']:
+                continue
+
+            if not from_seen:
+                continue
+
+            # Stop once we hit whitespace after collecting the identifier (to avoid aliases).
+            if token.is_whitespace:
+                if table_parts:
                     break
-                # Return first non-whitespace, non-keyword token after FROM
-                elif token.ttype is None or token.ttype in [sqlparse.tokens.Name]:
-                    table_name = token.value.strip('"\'`')
-                    return table_name
+                continue
+
+            if token.ttype is sqlparse.tokens.Keyword and token.value.upper() in stop_keywords:
+                break
+            if token.value == ';':
+                break
+
+            table_parts.append(token.value)
+
+        if table_parts:
+            return ''.join(table_parts).strip('"\'`')
         
         # Fallback: look for identifier patterns
         tokens = list(parsed.flatten())
@@ -214,6 +237,13 @@ class SQLParser:
     def _parse_filter_conditions(self, filter_text: str) -> List[QueryFilter]:
         """Parse individual filter conditions."""
         filters = []
+
+        lowered = filter_text.lower()
+        if " or " in lowered:
+            raise QueryError(
+                "OR conditions are not supported by the query engine. "
+                "Split the query into multiple AND-only queries and merge results client-side."
+            )
         
         # Split by AND (simplified - doesn't handle OR, nested conditions)
         conditions = filter_text.split(' AND ')

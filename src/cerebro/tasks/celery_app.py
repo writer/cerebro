@@ -91,6 +91,11 @@ beat_schedule = {
         'schedule': 3600.0,
         'options': {'queue': 'analytics'},
     },
+    'warehouse-data-quality-daily': {
+        'task': 'cerebro.tasks.warehouse_tasks.run_warehouse_data_quality_checks',
+        'schedule': crontab(hour=6, minute=0),
+        'options': {'queue': 'analytics'},
+    },
     'sync-sentinelone-activities': {
         'task': 'cerebro.tasks.integration.sync_sentinelone',
         'schedule': 600.0,

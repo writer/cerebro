@@ -9,8 +9,9 @@ from cerebro.core import warehouse
 
 def test_default_query_tag_includes_celery_role(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(warehouse.SNOWFLAKE_QUERY_TAG_ENV, raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("CELERY_PROCESS_ROLE", "analytics")
-    assert warehouse._default_query_tag() == "cerebro:analytics"
+    assert warehouse._default_query_tag() == "cerebro:test:analytics"
 
 
 def test_env_query_tag_overrides_default(monkeypatch: pytest.MonkeyPatch) -> None:
