@@ -59,45 +59,86 @@ class ComplianceAnalyzer:
         dialect = get_dialect_name(self.db)
         age_days_expr = days_since_expr(column_expr="MAX(cs.captured_at)", dialect=dialect)
         
-        evidence_query = text(
-            f"""
-            WITH control_evidence AS (
-                SELECT 
-                    r.rule_id,
-                    r.name as control_name,
-                    CASE 
-                        WHEN r.cis IS NOT NULL THEN 'CIS'
-                        WHEN r.nist_800_53 IS NOT NULL THEN 'NIST_800_53'
-                        ELSE 'OTHER'
-                    END as framework,
-                    MAX(cs.captured_at) as last_evidence_collected,
-                    {age_days_expr} as age_days
-                FROM rules r
-                LEFT JOIN findings f ON r.rule_id = f.rule_id
-                    AND f.account_id IN (SELECT account_id FROM accounts WHERE org_id = :org_id)
-                LEFT JOIN config_snapshots cs ON f.resource_id = cs.resource_id
-                WHERE (r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL)
-                    AND (:framework IS NULL OR 
-                         (:framework = 'CIS' AND r.cis IS NOT NULL) OR
-                         (:framework = 'NIST' AND r.nist_800_53 IS NOT NULL))
-                GROUP BY r.rule_id, r.name, framework
+        if dialect == "snowflake":
+            evidence_query = text(
+                f"""
+                WITH rule_frameworks AS (
+                    SELECT DISTINCT rule_id, framework
+                    FROM rule_controls
+                ),
+                control_evidence AS (
+                    SELECT
+                        r.rule_id,
+                        r.name as control_name,
+                        rf.framework as framework,
+                        MAX(cs.captured_at) as last_evidence_collected,
+                        {age_days_expr} as age_days
+                    FROM rules r
+                    JOIN rule_frameworks rf ON r.rule_id = rf.rule_id
+                    LEFT JOIN findings f ON r.rule_id = f.rule_id
+                        AND f.account_id IN (SELECT account_id FROM accounts WHERE org_id = :org_id)
+                    LEFT JOIN config_snapshots cs ON f.resource_id = cs.resource_id
+                    WHERE (:framework IS NULL OR rf.framework = :framework)
+                    GROUP BY r.rule_id, r.name, rf.framework
+                )
+                SELECT
+                    rule_id,
+                    control_name,
+                    framework,
+                    last_evidence_collected,
+                    COALESCE(age_days, 999) as age_days,
+                    CASE
+                        WHEN last_evidence_collected IS NULL THEN 'missing'
+                        WHEN age_days <= 7 THEN 'fresh'
+                        WHEN age_days <= 30 THEN 'aging'
+                        ELSE 'stale'
+                    END as freshness_status
+                FROM control_evidence
+                ORDER BY age_days DESC, framework, control_name
+                """
             )
-            SELECT 
-                rule_id,
-                control_name,
-                framework,
-                last_evidence_collected,
-                COALESCE(age_days, 999) as age_days,
-                CASE 
-                    WHEN last_evidence_collected IS NULL THEN 'missing'
-                    WHEN age_days <= 7 THEN 'fresh'
-                    WHEN age_days <= 30 THEN 'aging'
-                    ELSE 'stale'
-                END as freshness_status
-            FROM control_evidence
-            ORDER BY age_days DESC, framework, control_name
-            """
-        )
+        else:
+            evidence_query = text(
+                f"""
+                WITH control_evidence AS (
+                    SELECT 
+                        r.rule_id,
+                        r.name as control_name,
+                        CASE 
+                            WHEN r.cis IS NOT NULL THEN 'CIS'
+                            WHEN r.nist_800_53 IS NOT NULL THEN 'NIST_800_53'
+                            ELSE 'OTHER'
+                        END as framework,
+                        MAX(cs.captured_at) as last_evidence_collected,
+                        {age_days_expr} as age_days
+                    FROM rules r
+                    LEFT JOIN findings f ON r.rule_id = f.rule_id
+                        AND f.account_id IN (SELECT account_id FROM accounts WHERE org_id = :org_id)
+                    LEFT JOIN config_snapshots cs ON f.resource_id = cs.resource_id
+                    WHERE (r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL)
+                        AND (
+                            :framework IS NULL OR
+                            (:framework = 'CIS' AND r.cis IS NOT NULL) OR
+                            (:framework = 'NIST_800_53' AND r.nist_800_53 IS NOT NULL)
+                        )
+                    GROUP BY r.rule_id, r.name, framework
+                )
+                SELECT 
+                    rule_id,
+                    control_name,
+                    framework,
+                    last_evidence_collected,
+                    COALESCE(age_days, 999) as age_days,
+                    CASE 
+                        WHEN last_evidence_collected IS NULL THEN 'missing'
+                        WHEN age_days <= 7 THEN 'fresh'
+                        WHEN age_days <= 30 THEN 'aging'
+                        ELSE 'stale'
+                    END as freshness_status
+                FROM control_evidence
+                ORDER BY age_days DESC, framework, control_name
+                """
+            )
         
         result = await self.db.execute(evidence_query, {
             "org_id": org_id,
@@ -146,14 +187,30 @@ class ComplianceAnalyzer:
         
         ownership_data = []
         
-        # Get all compliance rules
-        rules_query = text("""
-            SELECT rule_id, name, description
-            FROM rules
-            WHERE (cis IS NOT NULL OR nist_800_53 IS NOT NULL)
-                AND is_active = true
-            ORDER BY name
-        """)
+        dialect = get_dialect_name(self.db)
+        if dialect == "snowflake":
+            rules_query = text(
+                """
+                SELECT r.rule_id, r.name, r.description
+                FROM rules r
+                WHERE EXISTS (
+                    SELECT 1 FROM rule_controls rc WHERE rc.rule_id = r.rule_id
+                )
+                    AND r.is_active = true
+                ORDER BY r.name
+                """
+            )
+        else:
+            # Get all compliance rules
+            rules_query = text(
+                """
+                SELECT rule_id, name, description
+                FROM rules
+                WHERE (cis IS NOT NULL OR nist_800_53 IS NOT NULL)
+                    AND is_active = true
+                ORDER BY name
+                """
+            )
         
         result = await self.db.execute(rules_query)
         
