@@ -1,12 +1,13 @@
 """Risk analytics API endpoints."""
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
@@ -21,6 +22,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def get_organization_risk_score(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get detailed organizational risk score analysis."""
@@ -29,7 +31,7 @@ async def get_organization_risk_score(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    risk_engine = RiskScoringEngine(db)
+    risk_engine = RiskScoringEngine(analytics_db)
     risk_score = await risk_engine.calculate_organization_risk_score(org_id)
 
     return {
@@ -71,6 +73,7 @@ async def get_organization_risk_score(
 async def get_risk_heatmap(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get risk heatmap data for visualization."""
@@ -79,7 +82,7 @@ async def get_risk_heatmap(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    risk_engine = RiskScoringEngine(db)
+    risk_engine = RiskScoringEngine(analytics_db)
     heatmap = await risk_engine.generate_risk_heatmap(org_id)
 
     return {
@@ -94,6 +97,7 @@ async def get_risk_heatmap(
 async def get_identity_analytics(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
 ) -> Dict[str, Any]:
     """Get identity-centric analytics and privilege sprawl data."""
@@ -102,7 +106,7 @@ async def get_identity_analytics(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    identity_analyzer = IdentityAnalyzer(db)
+    identity_analyzer = IdentityAnalyzer(analytics_db)
     identity_data = await identity_analyzer.generate_identity_dashboard_data(org_id)
 
     return identity_data
@@ -113,6 +117,7 @@ async def get_risky_identities(
     org_id: UUID,
     limit: int = Query(default=20, description="Maximum number of risky identities to return"),
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
 ) -> List[Dict[str, Any]]:
     """Get identities with highest risk profiles."""
@@ -121,7 +126,7 @@ async def get_risky_identities(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    identity_analyzer = IdentityAnalyzer(db)
+    identity_analyzer = IdentityAnalyzer(analytics_db)
     risky_identities = await identity_analyzer.analyze_risky_identities(org_id, limit=limit)
 
     return [
@@ -148,6 +153,7 @@ async def get_risky_identities(
 async def get_privilege_sprawl_analysis(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
 ) -> Dict[str, Any]:
     """Get privilege sprawl analysis for the organization."""
@@ -156,7 +162,7 @@ async def get_privilege_sprawl_analysis(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    sprawl_detector = PrivilegeSprawlDetector(db)
+    sprawl_detector = PrivilegeSprawlDetector(analytics_db)
     sprawl_analysis = await sprawl_detector.analyze_privilege_sprawl(org_id)
 
     return {
@@ -189,6 +195,7 @@ async def get_top_organizational_risks(
     org_id: UUID,
     limit: int = Query(default=10, description="Number of top risks to return"),
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> List[Dict[str, Any]]:
     """Get top organizational risks with context and remediation guidance."""
@@ -229,7 +236,7 @@ async def get_top_organizational_risks(
         LIMIT :limit
     """)
 
-    result = await db.execute(top_risks_query, {"org_id": org_id, "limit": limit})
+    result = await analytics_db.execute(top_risks_query, {"org_id": org_id, "limit": limit})
 
     top_risks = []
     for i, row in enumerate(result.fetchall(), 1):
@@ -240,7 +247,13 @@ async def get_top_organizational_risks(
             impact_desc += f" and {row.affected_identities} identities"
 
         # Generate remediation urgency
-        days_since_first = (datetime.utcnow() - row.first_occurrence).days
+        first_occurrence = row.first_occurrence
+        if first_occurrence is not None and first_occurrence.tzinfo is None:
+            first_occurrence = first_occurrence.replace(tzinfo=timezone.utc)
+
+        days_since_first = 0
+        if first_occurrence is not None:
+            days_since_first = (datetime.now(timezone.utc) - first_occurrence).days
         if row.severity == "critical" and days_since_first > 7:
             urgency = "immediate"
         elif row.severity == "high" and days_since_first > 14:
