@@ -43,6 +43,22 @@ def timestamp_minus_days_expr(*, days: int, dialect: str) -> str:
     return f"CURRENT_TIMESTAMP - INTERVAL '{int(days)} days'"
 
 
+def timestamp_minus_hours_expr(*, hours: int, dialect: str) -> str:
+    if dialect == "snowflake":
+        return f"DATEADD(hour, -{int(hours)}, CURRENT_TIMESTAMP())"
+    if dialect == "sqlite":
+        return f"datetime('now', '-{int(hours)} hours')"
+    return f"CURRENT_TIMESTAMP - INTERVAL '{int(hours)} hours'"
+
+
+def case_insensitive_like_expr(*, column_expr: str, pattern_expr: str, dialect: str) -> str:
+    if dialect in {"postgresql", "snowflake"}:
+        return f"({column_expr} ILIKE {pattern_expr})"
+    if dialect == "sqlite":
+        return f"(LOWER({column_expr}) LIKE LOWER({pattern_expr}))"
+    return f"({column_expr} ILIKE {pattern_expr})"
+
+
 def days_since_expr(*, column_expr: str, dialect: str) -> str:
     if dialect == "snowflake":
         return f"DATEDIFF('second', {column_expr}, CURRENT_TIMESTAMP()) / 86400"
@@ -102,3 +118,19 @@ def select_array_elements_subquery(*, array_column: str, dialect: str) -> str:
         "FROM rules r "
         "WHERE r." + array_column + " IS NOT NULL"
     )
+
+
+def json_object_function(*, dialect: str) -> str:
+    if dialect == "snowflake":
+        return "OBJECT_CONSTRUCT"
+    if dialect == "sqlite":
+        return "json_object"
+    return "jsonb_build_object"
+
+
+def cast_to_string_expr(*, column_expr: str, dialect: str) -> str:
+    if dialect == "snowflake":
+        return f"TO_VARCHAR({column_expr})"
+    if dialect == "sqlite":
+        return f"CAST({column_expr} AS TEXT)"
+    return f"({column_expr})::text"
