@@ -411,7 +411,7 @@ class DashboardAnalytics:
                 provider,
                 finding_count,
                 high_risk_count,
-                (high_risk_count::float / finding_count * 100) as risk_percentage
+                (CAST(high_risk_count AS FLOAT) / finding_count * 100) as risk_percentage
             FROM provider_risk
             WHERE finding_count > 5
             ORDER BY risk_percentage DESC, finding_count DESC
