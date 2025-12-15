@@ -17,6 +17,8 @@ from sqlalchemy.pool import NullPool
 
 SNOWFLAKE_QUERY_TAG_ENV = "SNOWFLAKE_QUERY_TAG"
 SNOWFLAKE_APPLICATION_ENV = "SNOWFLAKE_APPLICATION"
+SNOWFLAKE_ROLE_ENV = "SNOWFLAKE_ROLE"
+SNOWFLAKE_WAREHOUSE_ENV = "SNOWFLAKE_WAREHOUSE"
 SNOWFLAKE_TIMEZONE_ENV = "SNOWFLAKE_TIMEZONE"
 SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV = "SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS"
 
@@ -518,6 +520,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Optional schema to CREATE/USE (overrides whatever the URL default is)",
     )
     parser.add_argument(
+        "--role",
+        default=os.getenv(SNOWFLAKE_ROLE_ENV),
+        help="Optional role to use (overrides URL default, or env SNOWFLAKE_ROLE)",
+    )
+    parser.add_argument(
+        "--warehouse",
+        default=os.getenv(SNOWFLAKE_WAREHOUSE_ENV),
+        help="Optional warehouse to use (overrides URL default, or env SNOWFLAKE_WAREHOUSE)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print DDL instead of executing",
@@ -566,15 +578,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     }
     if (statement_timeout := _get_int_env(SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV)) is not None:
         session_parameters["STATEMENT_TIMEOUT_IN_SECONDS"] = statement_timeout
+
+    connect_args: dict[str, object] = {
+        "client_session_keep_alive": True,
+        "application": application,
+        "session_parameters": session_parameters,
+    }
+    if args.role:
+        connect_args["role"] = args.role
+    if args.warehouse:
+        connect_args["warehouse"] = args.warehouse
     engine = create_engine(
         url,
         poolclass=NullPool,
         pool_pre_ping=True,
-        connect_args={
-            "client_session_keep_alive": True,
-            "application": application,
-            "session_parameters": session_parameters,
-        },
+        connect_args=connect_args,
     )
 
     try:
