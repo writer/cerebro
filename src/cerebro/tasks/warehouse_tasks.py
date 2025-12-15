@@ -41,11 +41,14 @@ def refresh_rule_controls(self) -> dict[str, object]:
                 """
             )
         )
-        session.execute(text("TRUNCATE TABLE rule_controls"))
+
+        # Build into a staging table then atomically swap, so readers never observe an empty table.
+        session.execute(text("CREATE OR REPLACE TABLE rule_controls_staging CLONE rule_controls"))
+        session.execute(text("TRUNCATE TABLE rule_controls_staging"))
         session.execute(
             text(
                 """
-                INSERT INTO rule_controls (rule_id, framework, control_id)
+                INSERT INTO rule_controls_staging (rule_id, framework, control_id)
                 SELECT DISTINCT r.rule_id, 'CIS' AS framework, elem.value::string AS control_id
                 FROM rules r, LATERAL FLATTEN(input => r.cis) elem
                 WHERE r.cis IS NOT NULL
@@ -58,6 +61,8 @@ def refresh_rule_controls(self) -> dict[str, object]:
                 """
             )
         )
+        session.execute(text("ALTER TABLE rule_controls SWAP WITH rule_controls_staging"))
+        session.execute(text("DROP TABLE IF EXISTS rule_controls_staging"))
         session.commit()
 
     payload = {"status": "Completed", "skipped": False}

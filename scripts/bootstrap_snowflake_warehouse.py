@@ -452,11 +452,13 @@ def _refresh_rule_controls(conn) -> None:
         )
     )
 
-    conn.execute(text("TRUNCATE TABLE rule_controls"))
+    # Build into a staging table then atomically swap, so readers never observe an empty table.
+    conn.execute(text("CREATE OR REPLACE TABLE rule_controls_staging CLONE rule_controls"))
+    conn.execute(text("TRUNCATE TABLE rule_controls_staging"))
     conn.execute(
         text(
             """
-            INSERT INTO rule_controls (rule_id, framework, control_id)
+            INSERT INTO rule_controls_staging (rule_id, framework, control_id)
             SELECT DISTINCT r.rule_id, 'CIS' AS framework, elem.value::string AS control_id
             FROM rules r, LATERAL FLATTEN(input => r.cis) elem
             WHERE r.cis IS NOT NULL
@@ -469,6 +471,8 @@ def _refresh_rule_controls(conn) -> None:
             """
         )
     )
+    conn.execute(text("ALTER TABLE rule_controls SWAP WITH rule_controls_staging"))
+    conn.execute(text("DROP TABLE IF EXISTS rule_controls_staging"))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
