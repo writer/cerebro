@@ -20,10 +20,20 @@ from cerebro.core.config import settings
 
 
 SNOWFLAKE_DATABASE_URL_ENV = "SNOWFLAKE_DATABASE_URL"
+SNOWFLAKE_QUERY_TAG_ENV = "SNOWFLAKE_QUERY_TAG"
+SNOWFLAKE_APPLICATION_ENV = "SNOWFLAKE_APPLICATION"
 
 
 def resolve_snowflake_database_url() -> str | None:
     return settings.snowflake_database_url or os.getenv(SNOWFLAKE_DATABASE_URL_ENV)
+
+
+def _resolve_snowflake_query_tag() -> str:
+    return os.getenv(SNOWFLAKE_QUERY_TAG_ENV, "cerebro")
+
+
+def _resolve_snowflake_application_name() -> str:
+    return os.getenv(SNOWFLAKE_APPLICATION_ENV, "cerebro")
 
 
 @lru_cache
@@ -39,6 +49,10 @@ def get_warehouse_engine() -> Engine:
         pool_pre_ping=True,
         connect_args={
             "client_session_keep_alive": True,
+            "application": _resolve_snowflake_application_name(),
+            "session_parameters": {
+                "QUERY_TAG": _resolve_snowflake_query_tag(),
+            },
         },
     )
 
