@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Callable, Dict, List
+from typing import Any, AsyncGenerator, Callable, Dict, List
 from uuid import UUID
 
 from celery import states
@@ -13,6 +14,8 @@ from celery import states
 from cerebro.tasks.celery_app import celery_app
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization
+from cerebro.core.warehouse import resolve_snowflake_database_url
+from cerebro.core.warehouse_async import warehouse_async_session
 from cerebro.analytics.time_series import (
     AggregationPeriod,
     MetricSnapshot,
@@ -23,6 +26,16 @@ from cerebro.analytics.risk_scoring import RiskScoringEngine, RiskFactor, Organi
 from cerebro.analytics.dashboard_repository import DashboardRepository
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _analytics_read_session(db: Any) -> AsyncGenerator[Any, None]:
+    if not resolve_snowflake_database_url():
+        yield db
+        return
+
+    async with warehouse_async_session() as warehouse:
+        yield warehouse
 
 
 def _serialize_risk_factor(factor: RiskFactor) -> Dict[str, object]:
@@ -63,20 +76,27 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
         if not org:
             raise ValueError("Organization not found")
 
-        collector = TimeSeriesCollector(db)
-        snapshots = await collector.collect_finding_metrics(org.org_id)
+        async with _analytics_read_session(db) as analytics_db:
+            collector_reader = TimeSeriesCollector(analytics_db)
+            snapshots = await collector_reader.collect_finding_metrics(org.org_id)
+
+            risk_engine = RiskScoringEngine(analytics_db)
+            risk_score = await risk_engine.calculate_organization_risk_score(org.org_id)
+
+            repository = DashboardRepository(analytics_db)
+            compliance_score = await repository.calculate_compliance_score(org.org_id)
+            framework_compliance = await repository.get_compliance_by_framework(org.org_id)
+
+        collector_writer = TimeSeriesCollector(db)
 
         stored_snapshots: List[str] = []
         for snapshot in snapshots:
-            db_snapshot = await collector.store_snapshot(
+            db_snapshot = await collector_writer.store_snapshot(
                 org.org_id,
                 snapshot,
                 aggregation_period=AggregationPeriod.DAILY,
             )
             stored_snapshots.append(str(db_snapshot.snapshot_id))
-
-        risk_engine = RiskScoringEngine(db)
-        risk_score = await risk_engine.calculate_organization_risk_score(org.org_id)
 
         risk_snapshot = MetricSnapshot(
             timestamp=risk_score.calculation_date,
@@ -88,16 +108,12 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
             },
         )
 
-        db_risk_snapshot = await collector.store_snapshot(
+        db_risk_snapshot = await collector_writer.store_snapshot(
             org.org_id,
             risk_snapshot,
             aggregation_period=AggregationPeriod.DAILY,
         )
         stored_snapshots.append(str(db_risk_snapshot.snapshot_id))
-
-        repository = DashboardRepository(db)
-        compliance_score = await repository.calculate_compliance_score(org.org_id)
-        framework_compliance = await repository.get_compliance_by_framework(org.org_id)
 
         compliance_snapshot = MetricSnapshot(
             timestamp=datetime.utcnow(),
@@ -109,7 +125,7 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
             },
         )
 
-        db_compliance_snapshot = await collector.store_snapshot(
+        db_compliance_snapshot = await collector_writer.store_snapshot(
             org.org_id,
             compliance_snapshot,
             aggregation_period=AggregationPeriod.DAILY,
