@@ -208,14 +208,19 @@ class OAuthAppRegistry:
             # Query GitHub apps (would need GitHub Apps API integration)
             # For now, simulate based on repository integrations
             
-            result = await self.query_engine.execute_query("""
-                SELECT repository, topics, created_at
-                FROM github_repository
-                WHERE topics LIKE '%ci%' OR topics LIKE '%deployment%'
-            """)
+            repos_by_name: Dict[str, Dict[str, Any]] = {}
+            for query in [
+                "SELECT repository, topics, created_at FROM github_repository WHERE topics LIKE '%ci%'",
+                "SELECT repository, topics, created_at FROM github_repository WHERE topics LIKE '%deployment%'",
+            ]:
+                result = await self.query_engine.execute_query(query)
+                for row in result.rows:
+                    repo_name = row.get("repository")
+                    if repo_name:
+                        repos_by_name[repo_name] = row
             
             # Infer OAuth apps from CI/CD integrations
-            for repo in result.rows:
+            for repo in repos_by_name.values():
                 if repo.get("topics"):
                     topics = repo["topics"]
                     if "ci" in topics or "deployment" in topics:

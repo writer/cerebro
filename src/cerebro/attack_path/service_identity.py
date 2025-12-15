@@ -112,11 +112,16 @@ class ServiceIdentityMapper:
         
         try:
             # Query GitHub repositories with Actions workflows
-            github_result = await self.query_engine.execute_query("""
-                SELECT repository, topics, default_branch
-                FROM github_repository
-                WHERE topics LIKE '%ci%' OR topics LIKE '%deployment%'
-            """)
+            repos_by_name: Dict[str, Dict[str, Any]] = {}
+            for query in [
+                "SELECT repository, topics, default_branch FROM github_repository WHERE topics LIKE '%ci%'",
+                "SELECT repository, topics, default_branch FROM github_repository WHERE topics LIKE '%deployment%'",
+            ]:
+                github_result = await self.query_engine.execute_query(query)
+                for row in github_result.rows:
+                    repo_name = row.get("repository")
+                    if repo_name:
+                        repos_by_name[repo_name] = row
             
             # Query AWS IAM roles that trust GitHub OIDC
             aws_result = await self.query_engine.execute_query("""
@@ -126,7 +131,7 @@ class ServiceIdentityMapper:
             """)
             
             # Map GitHub repos to AWS roles (simplified mapping)
-            for repo in github_result.rows:
+            for repo in repos_by_name.values():
                 for aws_role in aws_result.rows:
                     # Simulate OIDC trust relationship detection
                     edge = ServiceIdentityEdge(

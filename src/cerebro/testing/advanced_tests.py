@@ -377,20 +377,22 @@ class AdvancedSecurityTester:
     async def _identify_admin_groups(self, org_id: str) -> Dict[str, Any]:
         """Identify admin groups and analyze membership patterns."""
         try:
-            # Look for groups with admin-like names or permissions
-            query = """
-            SELECT DISTINCT email, display_name
-            FROM *_user
-            WHERE (display_name ILIKE '%admin%' OR display_name ILIKE '%super%' OR 
-                   display_name ILIKE '%root%' OR display_name ILIKE '%owner%')
-            """
-            
-            result = await self.query_engine.execute_query(query)
+            admin_rows_by_key: Dict[tuple, Dict[str, Any]] = {}
+
+            for keyword in ["admin", "super", "root", "owner"]:
+                result = await self.query_engine.execute_query(
+                    f"SELECT email, display_name FROM *_user WHERE display_name ILIKE '%{keyword}%'"
+                )
+                for row in result.rows:
+                    key = (row.get("email"), row.get("display_name"))
+                    admin_rows_by_key[key] = row
+
+            rows = list(admin_rows_by_key.values())
             
             admin_groups = []
             vulnerabilities = []
             
-            for row in result.rows:
+            for row in rows:
                 group_name = row.get("display_name", "")
                 email = row.get("email", "")
                 
@@ -469,20 +471,25 @@ class AdvancedSecurityTester:
     async def _identify_oauth_tokens(self, org_id: str) -> Dict[str, Any]:
         """Identify potentially dangerous OAuth tokens and applications."""
         try:
-            # Query for OAuth applications with broad permissions
-            query = """
-            SELECT app_id, display_name, sign_in_audience, permission_count
-            FROM *_application
-            WHERE permission_count > 10 OR sign_in_audience = 'AzureADMultipleOrgs'
-            ORDER BY permission_count DESC
-            """
-            
-            result = await self.query_engine.execute_query(query)
+            rows_by_app_id: Dict[str, Dict[str, Any]] = {}
+
+            for query in [
+                "SELECT app_id, display_name, sign_in_audience, permission_count FROM *_application WHERE permission_count > 10",
+                "SELECT app_id, display_name, sign_in_audience, permission_count FROM *_application WHERE sign_in_audience = 'AzureADMultipleOrgs'",
+            ]:
+                result = await self.query_engine.execute_query(query)
+                for row in result.rows:
+                    app_id = row.get("app_id")
+                    if app_id:
+                        rows_by_app_id[app_id] = row
+
+            rows = list(rows_by_app_id.values())
+            rows.sort(key=lambda r: r.get("permission_count", 0), reverse=True)
             
             risky_tokens = []
             vulnerabilities = []
             
-            for row in result.rows:
+            for row in rows:
                 app_name = row.get("display_name", "Unknown")
                 audience = row.get("sign_in_audience", "")
                 permission_count = row.get("permission_count", 0)
@@ -574,19 +581,24 @@ class AdvancedSecurityTester:
     ) -> Dict[str, Any]:
         """Discover resources accessible from compromised position."""
         try:
-            # Query for storage buckets and databases accessible from instances
-            query = """
-            SELECT bucket_name, is_public, iam_bindings
-            FROM *_storage_bucket
-            WHERE is_public = true OR iam_bindings::text ILIKE '%allUsers%'
-            """
-            
-            result = await self.query_engine.execute_query(query)
+            rows_by_bucket: Dict[str, Dict[str, Any]] = {}
+
+            for query in [
+                "SELECT bucket_name, is_public, iam_bindings FROM *_storage_bucket WHERE is_public = true",
+                "SELECT bucket_name, is_public, iam_bindings FROM *_storage_bucket WHERE iam_bindings::text ILIKE '%allUsers%'",
+            ]:
+                result = await self.query_engine.execute_query(query)
+                for row in result.rows:
+                    bucket_name = row.get("bucket_name")
+                    if bucket_name:
+                        rows_by_bucket[bucket_name] = row
+
+            rows = list(rows_by_bucket.values())
             
             accessible_resources = []
             vulnerabilities = []
             
-            for row in result.rows:
+            for row in rows:
                 bucket_name = row.get("bucket_name", "")
                 is_public = row.get("is_public", False)
                 
@@ -598,6 +610,14 @@ class AdvancedSecurityTester:
                         "risk": "critical"
                     })
                     vulnerabilities.append(f"PUBLIC_STORAGE_BUCKET_{bucket_name}")
+                else:
+                    accessible_resources.append({
+                        "resource": bucket_name,
+                        "type": "storage_bucket",
+                        "access_method": "iam_binding_allUsers",
+                        "risk": "critical"
+                    })
+                    vulnerabilities.append(f"ALLUSERS_STORAGE_BUCKET_{bucket_name}")
             
             return {
                 "status": "completed",

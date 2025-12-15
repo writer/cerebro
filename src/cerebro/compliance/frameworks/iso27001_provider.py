@@ -86,7 +86,8 @@ class ISO27001FrameworkProvider(FrameworkProvider):
                 automation_level=AutomationLevel.MANUAL,
                 testing_frequency=TestingFrequency.ANNUALLY,
                 evidence_queries=[
-                    "SELECT repository_name, file_path FROM github_repository WHERE file_path LIKE '%policy%' OR file_path LIKE '%security%'",
+                    "SELECT repository_name, file_path FROM github_repository WHERE file_path LIKE '%policy%'",
+                    "SELECT repository_name, file_path FROM github_repository WHERE file_path LIKE '%security%'",
                     "SELECT document_name, last_updated, approval_status FROM policy_documents WHERE category = 'information_security'"
                 ],
                 evidence_collection_methods=["document_review", "sql_query"],
@@ -142,7 +143,8 @@ class ISO27001FrameworkProvider(FrameworkProvider):
                 automation_level=AutomationLevel.AUTOMATED,
                 testing_frequency=TestingFrequency.QUARTERLY,
                 evidence_queries=[
-                    "SELECT username, created_at, status, last_status_change FROM okta_user WHERE created_at >= NOW() - INTERVAL '90 days' OR last_status_change >= NOW() - INTERVAL '90 days'",
+                    "SELECT username, created_at, status, last_status_change FROM okta_user WHERE created_at >= NOW() - INTERVAL '90 days'",
+                    "SELECT username, created_at, status, last_status_change FROM okta_user WHERE last_status_change >= NOW() - INTERVAL '90 days'",
                     "SELECT user_name, create_date, password_last_used FROM aws_iam_user WHERE create_date >= NOW() - INTERVAL '90 days'",
                     "SELECT username, account_status, last_activity FROM github_organization_members"
                 ],
@@ -200,7 +202,8 @@ class ISO27001FrameworkProvider(FrameworkProvider):
                 automation_level=AutomationLevel.MANUAL,
                 testing_frequency=TestingFrequency.ANNUALLY,
                 evidence_queries=[
-                    "SELECT repository_name, file_path, last_updated FROM github_repository WHERE file_path LIKE '%procedure%' OR file_path LIKE '%runbook%'",
+                    "SELECT repository_name, file_path, last_updated FROM github_repository WHERE file_path LIKE '%procedure%'",
+                    "SELECT repository_name, file_path, last_updated FROM github_repository WHERE file_path LIKE '%runbook%'",
                     "SELECT document_name, category, last_reviewed FROM operational_documents WHERE category IN ('procedure', 'runbook', 'manual')"
                 ],
                 evidence_collection_methods=["document_review", "sql_query"],
@@ -283,7 +286,8 @@ class ISO27001FrameworkProvider(FrameworkProvider):
                 automation_level=AutomationLevel.SEMI_AUTOMATED,
                 testing_frequency=TestingFrequency.ANNUALLY,
                 evidence_queries=[
-                    "SELECT repository_name, visibility, topics FROM github_repository WHERE visibility = 'public' OR topics LIKE '%compliance%'",
+                    "SELECT repository_name, visibility, topics FROM github_repository WHERE visibility = 'public'",
+                    "SELECT repository_name, visibility, topics FROM github_repository WHERE topics LIKE '%compliance%'",
                     "SELECT resource_id, tags, compliance_status FROM aws_resources WHERE tags LIKE '%compliance%'",
                     "SELECT framework_name, controls_count, last_assessment FROM compliance_frameworks"
                 ],
