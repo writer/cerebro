@@ -19,7 +19,7 @@ from .schema import SecurityColumn, SecuritySchema
 class QueryFilter:
     """Represents a filter condition in a SQL query."""
     column: str
-    operator: str  # =, >, <, >=, <=, LIKE, IN
+    operator: str  # =, >, <, >=, <=, LIKE, ILIKE, IN
     value: Union[str, int, bool, datetime, List[Any]]
 
 
@@ -225,7 +225,7 @@ class SecurityTable(ABC):
             return resource_value < filter_value
         elif operator == "<=":
             return resource_value <= filter_value
-        elif operator == "LIKE":
+        elif operator in {"LIKE", "ILIKE"}:
             return str(filter_value).lower() in str(resource_value).lower()
         elif operator == "IN":
             return resource_value in filter_value
