@@ -55,3 +55,11 @@ def test_pool_kwargs_invalid_type_raises(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv(warehouse.SNOWFLAKE_POOL_TYPE_ENV, "nope")
     with pytest.raises(RuntimeError):
         warehouse._resolve_warehouse_pool_kwargs()
+
+
+def test_connect_args_include_role_and_warehouse_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(warehouse.SNOWFLAKE_ROLE_ENV, "ANALYTICS_ROLE")
+    monkeypatch.setenv(warehouse.SNOWFLAKE_WAREHOUSE_ENV, "ANALYTICS_WH")
+    connect_args = warehouse._build_warehouse_connect_args()
+    assert connect_args["role"] == "ANALYTICS_ROLE"
+    assert connect_args["warehouse"] == "ANALYTICS_WH"

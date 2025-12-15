@@ -20,6 +20,8 @@ from cerebro.core.config import settings
 
 
 SNOWFLAKE_DATABASE_URL_ENV = "SNOWFLAKE_DATABASE_URL"
+SNOWFLAKE_ROLE_ENV = "SNOWFLAKE_ROLE"
+SNOWFLAKE_WAREHOUSE_ENV = "SNOWFLAKE_WAREHOUSE"
 SNOWFLAKE_QUERY_TAG_ENV = "SNOWFLAKE_QUERY_TAG"
 SNOWFLAKE_APPLICATION_ENV = "SNOWFLAKE_APPLICATION"
 SNOWFLAKE_TIMEZONE_ENV = "SNOWFLAKE_TIMEZONE"
@@ -102,11 +104,20 @@ def _resolve_warehouse_pool_kwargs() -> dict[str, object]:
 
 
 def _build_warehouse_connect_args() -> dict[str, object]:
-    return {
+    connect_args: dict[str, object] = {
         "client_session_keep_alive": True,
         "application": _resolve_snowflake_application_name(),
         "session_parameters": _resolve_snowflake_session_parameters(),
     }
+
+    role = os.getenv(SNOWFLAKE_ROLE_ENV)
+    if role:
+        connect_args["role"] = role
+    warehouse = os.getenv(SNOWFLAKE_WAREHOUSE_ENV)
+    if warehouse:
+        connect_args["warehouse"] = warehouse
+
+    return connect_args
 
 
 @lru_cache
