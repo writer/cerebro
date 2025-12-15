@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-from .sql_dialect import days_since_expr, get_dialect_name
+from .sql_dialect import array_has_elements_expr, days_since_expr, get_dialect_name
 
 logger = logging.getLogger(__name__)
 
@@ -98,28 +98,32 @@ class ComplianceAnalyzer:
                 """
             )
         else:
+            cis_nonempty = array_has_elements_expr(column_expr="r.cis", dialect=dialect)
+            nist_nonempty = array_has_elements_expr(column_expr="r.nist_800_53", dialect=dialect)
+            compliance_rule_predicate = f"({cis_nonempty} OR {nist_nonempty})"
+            framework_expr = (
+                f"CASE WHEN {cis_nonempty} THEN 'CIS' "
+                f"WHEN {nist_nonempty} THEN 'NIST_800_53' "
+                f"ELSE 'OTHER' END"
+            )
             evidence_query = text(
                 f"""
                 WITH control_evidence AS (
                     SELECT 
                         r.rule_id,
                         r.name as control_name,
-                        CASE 
-                            WHEN r.cis IS NOT NULL THEN 'CIS'
-                            WHEN r.nist_800_53 IS NOT NULL THEN 'NIST_800_53'
-                            ELSE 'OTHER'
-                        END as framework,
+                        {framework_expr} as framework,
                         MAX(cs.captured_at) as last_evidence_collected,
                         {age_days_expr} as age_days
                     FROM rules r
                     LEFT JOIN findings f ON r.rule_id = f.rule_id
                         AND f.account_id IN (SELECT account_id FROM accounts WHERE org_id = :org_id)
                     LEFT JOIN config_snapshots cs ON f.resource_id = cs.resource_id
-                    WHERE (r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL)
+                    WHERE {compliance_rule_predicate}
                         AND (
                             :framework IS NULL OR
-                            (:framework = 'CIS' AND r.cis IS NOT NULL) OR
-                            (:framework = 'NIST_800_53' AND r.nist_800_53 IS NOT NULL)
+                            (:framework = 'CIS' AND {cis_nonempty}) OR
+                            (:framework = 'NIST_800_53' AND {nist_nonempty})
                         )
                     GROUP BY r.rule_id, r.name, framework
                 )
@@ -202,11 +206,13 @@ class ComplianceAnalyzer:
             )
         else:
             # Get all compliance rules
+            cis_nonempty = array_has_elements_expr(column_expr="cis", dialect=dialect)
+            nist_nonempty = array_has_elements_expr(column_expr="nist_800_53", dialect=dialect)
             rules_query = text(
-                """
+                f"""
                 SELECT rule_id, name, description
                 FROM rules
-                WHERE (cis IS NOT NULL OR nist_800_53 IS NOT NULL)
+                WHERE ({cis_nonempty} OR {nist_nonempty})
                     AND is_active = true
                 ORDER BY name
                 """

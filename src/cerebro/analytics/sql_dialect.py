@@ -152,3 +152,22 @@ def json_text_extract_expr(*, column_expr: str, key: str, dialect: str) -> str:
     if dialect == "postgresql":
         return f"{column_expr} ->> '{key}'"
     return f"{column_expr} ->> '{key}'"
+
+
+def array_length_expr(*, column_expr: str, dialect: str) -> str:
+    """Return an expression that yields the length of an array/JSON array column."""
+
+    if dialect == "snowflake":
+        return f"ARRAY_SIZE({column_expr})"
+    if dialect == "sqlite":
+        return f"json_array_length({column_expr})"
+    if dialect == "postgresql":
+        return f"CARDINALITY({column_expr})"
+    return f"CARDINALITY({column_expr})"
+
+
+def array_has_elements_expr(*, column_expr: str, dialect: str) -> str:
+    """Return a boolean predicate that is true when the array has >= 1 element."""
+
+    length = array_length_expr(column_expr=column_expr, dialect=dialect)
+    return f"(COALESCE({length}, 0) > 0)"
