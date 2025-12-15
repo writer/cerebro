@@ -17,6 +17,8 @@ from sqlalchemy import String, DateTime, Float
 from cerebro.core.database import Base
 from cerebro.core.models import Finding
 
+from .sql_dialect import get_dialect_name, hours_between_expr
+
 logger = logging.getLogger(__name__)
 
 
@@ -232,22 +234,32 @@ class TimeSeriesCollector:
         """Calculate mean time to remediation in hours."""
         # Get resolved findings from last 90 days
         since_date = datetime.utcnow() - timedelta(days=90)
+
+        dialect = get_dialect_name(self.db)
+        resolved_timestamp_expr = (
+            "CASE "
+            "WHEN status = 'fixed' THEN last_seen "
+            "WHEN status = 'accepted_risk' THEN last_seen "
+            "ELSE NULL "
+            "END"
+        )
+        duration_hours_expr = hours_between_expr(
+            start_expr="first_seen",
+            end_expr=resolved_timestamp_expr,
+            dialect=dialect,
+        )
         
         # Query for resolved findings with time difference
-        query = text("""
-            SELECT AVG(EXTRACT(EPOCH FROM (
-                CASE 
-                    WHEN status = 'fixed' THEN last_seen
-                    WHEN status = 'accepted_risk' THEN last_seen
-                    ELSE NULL
-                END - first_seen
-            )) / 3600) as mttr_hours
-            FROM findings 
-            WHERE org_id = :org_id 
+        query = text(
+            f"""
+            SELECT AVG({duration_hours_expr}) as mttr_hours
+            FROM findings
+            WHERE org_id = :org_id
                 AND status IN ('fixed', 'accepted_risk')
                 AND first_seen >= :since_date
                 AND last_seen IS NOT NULL
-        """)
+            """
+        )
         
         result = await self.db.execute(query, {
             "org_id": org_id,
