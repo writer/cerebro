@@ -16,7 +16,7 @@ Cerebro is Writer's internal security data platform. It tracks cloud and SaaS co
 | --- | --- |
 | Interfaces | Typer CLI, FastAPI REST service, conversational agents |
 | Core services | Rule engine (CEL), findings pipeline, analytics engine, observability hooks |
-| Data tier | PostgreSQL (immutable audit tables) and Redis for coordination |
+| Data tier | PostgreSQL (immutable audit tables), Redis for coordination, optional Snowflake analytics warehouse |
 
 ## Quickstart
 
@@ -25,6 +25,7 @@ Cerebro is Writer's internal security data platform. It tracks cloud and SaaS co
 - Python 3.11+ (repo pins 3.11.8 via `.python-version`)
 - PostgreSQL 14+
 - Redis 6+
+- Optional: Snowflake account / connection string for warehouse-backed analytics
 - Optional: Anthropic and/or OpenAI API keys for agent runtimes
 
 ### Local Setup
@@ -64,11 +65,16 @@ Access points:
 DATABASE_URL=postgresql://user:password@localhost/cerebro
 REDIS_URL=redis://localhost:6379/0
 SECRET_KEY=generate-a-secure-value
+SNOWFLAKE_DATABASE_URL=snowflake://user:password@account/db/schema?warehouse=WH
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-openai-...
 ```
 
 Place additional settings in `.env` or export them before launching the API.
+
+### Analytics Warehouse (Optional)
+
+When `SNOWFLAKE_DATABASE_URL` is set, analytics endpoints and services that depend on the analytics DB will route queries to Snowflake; otherwise they fall back to the core DB session (`DATABASE_URL`).
 
 ## Interacting with Cerebro
 
