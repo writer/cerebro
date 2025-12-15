@@ -130,6 +130,8 @@ In running stacks, Celery beat schedules an hourly refresh:
 - Task: `cerebro.tasks.warehouse_tasks.refresh_rule_controls`
 - Beat entry: `refresh-rule-controls-hourly`
 
+The refresh is implemented as a staging rebuild + atomic table swap (so readers should not observe an empty `rule_controls`).
+
 ## Interacting with Cerebro
 
 ### CLI
