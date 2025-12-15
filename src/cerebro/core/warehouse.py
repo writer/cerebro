@@ -14,7 +14,7 @@ from typing import Iterator
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, QueuePool
 
 from cerebro.core.config import settings
 
@@ -22,18 +22,91 @@ from cerebro.core.config import settings
 SNOWFLAKE_DATABASE_URL_ENV = "SNOWFLAKE_DATABASE_URL"
 SNOWFLAKE_QUERY_TAG_ENV = "SNOWFLAKE_QUERY_TAG"
 SNOWFLAKE_APPLICATION_ENV = "SNOWFLAKE_APPLICATION"
+SNOWFLAKE_TIMEZONE_ENV = "SNOWFLAKE_TIMEZONE"
+SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV = "SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS"
+
+SNOWFLAKE_POOL_TYPE_ENV = "SNOWFLAKE_POOL_TYPE"  # null | queue
+SNOWFLAKE_POOL_SIZE_ENV = "SNOWFLAKE_POOL_SIZE"
+SNOWFLAKE_POOL_MAX_OVERFLOW_ENV = "SNOWFLAKE_POOL_MAX_OVERFLOW"
+SNOWFLAKE_POOL_TIMEOUT_ENV = "SNOWFLAKE_POOL_TIMEOUT"
+SNOWFLAKE_POOL_RECYCLE_ENV = "SNOWFLAKE_POOL_RECYCLE"
 
 
 def resolve_snowflake_database_url() -> str | None:
     return settings.snowflake_database_url or os.getenv(SNOWFLAKE_DATABASE_URL_ENV)
 
 
+def _get_int_env(name: str) -> int | None:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid integer for {name}: {value!r}") from exc
+
+
+def _default_query_tag() -> str:
+    base = "cerebro"
+    component = (
+        os.getenv("CELERY_PROCESS_ROLE")
+        or os.getenv("CEREBRO_PROCESS_ROLE")
+        or os.getenv("CEREBRO_COMPONENT")
+    )
+    if not component:
+        return base
+    return f"{base}:{component}"
+
+
 def _resolve_snowflake_query_tag() -> str:
-    return os.getenv(SNOWFLAKE_QUERY_TAG_ENV, "cerebro")
+    return os.getenv(SNOWFLAKE_QUERY_TAG_ENV) or _default_query_tag()
 
 
 def _resolve_snowflake_application_name() -> str:
     return os.getenv(SNOWFLAKE_APPLICATION_ENV, "cerebro")
+
+
+def _resolve_snowflake_session_parameters() -> dict[str, object]:
+    session_parameters: dict[str, object] = {
+        "QUERY_TAG": _resolve_snowflake_query_tag(),
+        "TIMEZONE": os.getenv(SNOWFLAKE_TIMEZONE_ENV, "UTC"),
+    }
+
+    statement_timeout_seconds = _get_int_env(SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV)
+    if statement_timeout_seconds is not None:
+        session_parameters["STATEMENT_TIMEOUT_IN_SECONDS"] = statement_timeout_seconds
+
+    return session_parameters
+
+
+def _resolve_warehouse_pool_kwargs() -> dict[str, object]:
+    pool_type = (os.getenv(SNOWFLAKE_POOL_TYPE_ENV) or "null").strip().lower()
+    if pool_type in {"null", "none"}:
+        return {"poolclass": NullPool}
+    if pool_type != "queue":
+        raise RuntimeError(
+            f"Invalid {SNOWFLAKE_POOL_TYPE_ENV}={pool_type!r}; expected 'null' or 'queue'"
+        )
+
+    kwargs: dict[str, object] = {"poolclass": QueuePool}
+    if (pool_size := _get_int_env(SNOWFLAKE_POOL_SIZE_ENV)) is not None:
+        kwargs["pool_size"] = pool_size
+    if (max_overflow := _get_int_env(SNOWFLAKE_POOL_MAX_OVERFLOW_ENV)) is not None:
+        kwargs["max_overflow"] = max_overflow
+    if (timeout := _get_int_env(SNOWFLAKE_POOL_TIMEOUT_ENV)) is not None:
+        kwargs["pool_timeout"] = timeout
+    if (recycle := _get_int_env(SNOWFLAKE_POOL_RECYCLE_ENV)) is not None:
+        kwargs["pool_recycle"] = recycle
+
+    return kwargs
+
+
+def _build_warehouse_connect_args() -> dict[str, object]:
+    return {
+        "client_session_keep_alive": True,
+        "application": _resolve_snowflake_application_name(),
+        "session_parameters": _resolve_snowflake_session_parameters(),
+    }
 
 
 @lru_cache
@@ -45,15 +118,9 @@ def get_warehouse_engine() -> Engine:
     url = make_url(url_value)
     return create_engine(
         url,
-        poolclass=NullPool,
         pool_pre_ping=True,
-        connect_args={
-            "client_session_keep_alive": True,
-            "application": _resolve_snowflake_application_name(),
-            "session_parameters": {
-                "QUERY_TAG": _resolve_snowflake_query_tag(),
-            },
-        },
+        connect_args=_build_warehouse_connect_args(),
+        **_resolve_warehouse_pool_kwargs(),
     )
 
 
