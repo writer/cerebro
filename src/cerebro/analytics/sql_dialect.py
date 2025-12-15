@@ -75,6 +75,14 @@ def hours_between_expr(*, start_expr: str, end_expr: str, dialect: str) -> str:
     return f"EXTRACT(EPOCH FROM ({end_expr} - {start_expr})) / 3600"
 
 
+def minutes_between_expr(*, start_expr: str, end_expr: str, dialect: str) -> str:
+    if dialect == "snowflake":
+        return f"DATEDIFF('second', {start_expr}, {end_expr}) / 60"
+    if dialect == "sqlite":
+        return f"(strftime('%s', {end_expr}) - strftime('%s', {start_expr})) / 60.0"
+    return f"EXTRACT(EPOCH FROM ({end_expr} - {start_expr})) / 60"
+
+
 def array_agg_ordered_expr(*, value_expr: str, order_by_expr: str, dialect: str) -> str:
     if dialect == "snowflake":
         return f"ARRAY_AGG({value_expr}) WITHIN GROUP (ORDER BY {order_by_expr})"
@@ -134,3 +142,13 @@ def cast_to_string_expr(*, column_expr: str, dialect: str) -> str:
     if dialect == "sqlite":
         return f"CAST({column_expr} AS TEXT)"
     return f"({column_expr})::text"
+
+
+def json_text_extract_expr(*, column_expr: str, key: str, dialect: str) -> str:
+    if dialect == "snowflake":
+        return f"{column_expr}:\"{key}\"::string"
+    if dialect == "sqlite":
+        return f"json_extract({column_expr}, '$.{key}')"
+    if dialect == "postgresql":
+        return f"{column_expr} ->> '{key}'"
+    return f"{column_expr} ->> '{key}'"

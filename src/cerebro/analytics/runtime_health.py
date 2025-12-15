@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
-from cerebro.agents.models import AgentRuntimeEvent
+from cerebro.analytics.sql_dialect import get_dialect_name, json_text_extract_expr
 
 
 async def summarize_runtime_health(
-    db: AsyncSession,
+    db: Any,
     *,
     hours: int = 24,
 ) -> List[Dict[str, Any]]:
@@ -29,32 +29,24 @@ async def summarize_runtime_health(
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=max(hours, 1))
 
-    bind = db.get_bind()  # AsyncEngine
-    dialect_name = getattr(bind, "dialect", None)
-    dialect_name = getattr(dialect_name, "name", None)
+    dialect = get_dialect_name(db)
+    runtime_expr = json_text_extract_expr(column_expr="payload", key="runtime", dialect=dialect)
 
-    if dialect_name == "postgresql":
-        runtime_expr = func.jsonb_extract_path_text(AgentRuntimeEvent.payload, "runtime")
-    else:
-        runtime_expr = func.json_extract(AgentRuntimeEvent.payload, "$.runtime")
-
-    base_stmt = (
-        select(
-            runtime_expr.label("runtime"),
-            AgentRuntimeEvent.event_type.label("event_type"),
-            func.count().label("event_count"),
-            func.max(AgentRuntimeEvent.created_at).label("last_seen"),
-        )
-        .where(
-            AgentRuntimeEvent.created_at >= cutoff,
-            AgentRuntimeEvent.event_type.in_(
-                ("runtime_metadata", "runtime_warning", "runtime_error")
-            ),
-        )
-        .group_by(runtime_expr, AgentRuntimeEvent.event_type)
+    base_stmt = text(
+        f"""
+        SELECT
+            {runtime_expr} AS runtime,
+            event_type,
+            COUNT(*) AS event_count,
+            MAX(created_at) AS last_seen
+        FROM agent_runtime_events
+        WHERE created_at >= :cutoff
+            AND event_type IN ('runtime_metadata', 'runtime_warning', 'runtime_error')
+        GROUP BY 1, 2
+        """
     )
 
-    base_rows = await db.execute(base_stmt)
+    base_rows = await db.execute(base_stmt, {"cutoff": cutoff})
 
     summary: Dict[str, Dict[str, Any]] = {}
     for runtime, event_type, count, last_seen in base_rows:
@@ -74,26 +66,23 @@ async def summarize_runtime_health(
             "last_seen": last_seen,
         }
 
-    if dialect_name == "postgresql":
-        reason_expr = func.jsonb_extract_path_text(AgentRuntimeEvent.payload, "reason")
-    else:
-        reason_expr = func.json_extract(AgentRuntimeEvent.payload, "$.reason")
+    reason_expr = json_text_extract_expr(column_expr="payload", key="reason", dialect=dialect)
 
-    warning_stmt = (
-        select(
-            runtime_expr.label("runtime"),
-            reason_expr.label("reason"),
-            func.count().label("event_count"),
-            func.max(AgentRuntimeEvent.created_at).label("last_seen"),
-        )
-        .where(
-            AgentRuntimeEvent.created_at >= cutoff,
-            AgentRuntimeEvent.event_type == "runtime_warning",
-        )
-        .group_by(runtime_expr, reason_expr)
+    warning_stmt = text(
+        f"""
+        SELECT
+            {runtime_expr} AS runtime,
+            {reason_expr} AS reason,
+            COUNT(*) AS event_count,
+            MAX(created_at) AS last_seen
+        FROM agent_runtime_events
+        WHERE created_at >= :cutoff
+            AND event_type = 'runtime_warning'
+        GROUP BY 1, 2
+        """
     )
 
-    warning_rows = await db.execute(warning_stmt)
+    warning_rows = await db.execute(warning_stmt, {"cutoff": cutoff})
     for runtime, reason, count, last_seen in warning_rows:
         bucket = summary.setdefault(
             runtime or "unknown",
@@ -111,36 +100,34 @@ async def summarize_runtime_health(
             "last_seen": last_seen,
         }
 
-    metadata_subquery = (
-        select(
-            runtime_expr.label("runtime"),
-            AgentRuntimeEvent.payload.label("payload"),
-            AgentRuntimeEvent.created_at.label("created_at"),
-            func.row_number()
-            .over(
-                partition_by=runtime_expr,
-                order_by=AgentRuntimeEvent.created_at.desc(),
-            )
-            .label("rn"),
-        )
-        .where(
-            AgentRuntimeEvent.created_at >= cutoff,
-            AgentRuntimeEvent.event_type == "runtime_metadata",
-        )
-        .subquery()
+    latest_stmt = text(
+        f"""
+        SELECT runtime, payload, created_at
+        FROM (
+            SELECT
+                {runtime_expr} AS runtime,
+                payload,
+                created_at,
+                ROW_NUMBER() OVER (
+                    PARTITION BY {runtime_expr}
+                    ORDER BY created_at DESC
+                ) AS rn
+            FROM agent_runtime_events
+            WHERE created_at >= :cutoff
+                AND event_type = 'runtime_metadata'
+        ) AS latest
+        WHERE rn = 1
+        """
     )
 
-    latest_stmt = (
-        select(
-            metadata_subquery.c.runtime,
-            metadata_subquery.c.payload,
-            metadata_subquery.c.created_at,
-        )
-        .where(metadata_subquery.c.rn == 1)
-    )
-
-    latest_rows = await db.execute(latest_stmt)
+    latest_rows = await db.execute(latest_stmt, {"cutoff": cutoff})
     for runtime, payload, created_at in latest_rows:
+        payload_value = payload
+        if isinstance(payload_value, str):
+            try:
+                payload_value = json.loads(payload_value)
+            except json.JSONDecodeError:
+                pass
         bucket = summary.setdefault(
             runtime or "unknown",
             {
@@ -153,7 +140,7 @@ async def summarize_runtime_health(
             },
         )
         bucket["latest_metadata"] = {
-            "payload": payload,
+            "payload": payload_value,
             "captured_at": created_at,
         }
 
