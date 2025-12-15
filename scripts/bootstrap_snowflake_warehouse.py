@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Mapping, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -109,6 +109,15 @@ def _build_ddl() -> List[str]:
             is_active BOOLEAN NOT NULL,
             created_at TIMESTAMP_TZ,
             PRIMARY KEY (rule_id)
+        )
+        """.strip(),
+        """
+        CREATE TABLE IF NOT EXISTS rule_controls (
+            rule_id STRING NOT NULL,
+            framework STRING NOT NULL,
+            control_id STRING NOT NULL,
+            created_at TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+            PRIMARY KEY (rule_id, framework, control_id)
         )
         """.strip(),
         """
@@ -216,6 +225,252 @@ def _execute_all(conn, statements: Iterable[str]) -> None:
         conn.execute(text(stmt))
 
 
+def _show_table(conn, table_name: str) -> Optional[Mapping[str, object]]:
+    rows = conn.execute(text(f"SHOW TABLES LIKE '{table_name.upper()}'")).mappings().all()
+    if not rows:
+        return None
+    return rows[0]
+
+
+def _existing_constraints(conn, table_name: str) -> set[str]:
+    rows = conn.execute(
+        text(
+            """
+            SELECT constraint_name
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+            WHERE table_name = UPPER(:table_name)
+            """
+        ),
+        {"table_name": table_name},
+    ).fetchall()
+    return {str(row[0]).upper() for row in rows if row and row[0]}
+
+
+def _get_primary_key_constraint_name(conn, table_name: str) -> Optional[str]:
+    row = conn.execute(
+        text(
+            """
+            SELECT constraint_name
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+            WHERE table_name = UPPER(:table_name)
+                AND constraint_type = 'PRIMARY KEY'
+            """
+        ),
+        {"table_name": table_name},
+    ).fetchone()
+    if not row:
+        return None
+    return str(row[0])
+
+
+def _apply_constraints(conn) -> None:
+    pk_tables = [
+        "orgs",
+        "accounts",
+        "principals",
+        "resources",
+        "policies",
+        "rules",
+        "rule_controls",
+        "config_snapshots",
+        "iam_edges",
+        "findings",
+        "identity_remediation_actions",
+        "security_metric_snapshots",
+        "agent_runtime_events",
+        "assessment_results",
+    ]
+
+    for table_name in pk_tables:
+        pk_name = _get_primary_key_constraint_name(conn, table_name)
+        if not pk_name:
+            continue
+        conn.execute(
+            text(f"ALTER TABLE {table_name} MODIFY CONSTRAINT {_quote_ident(pk_name)} RELY")
+        )
+
+    foreign_keys = [
+        (
+            "accounts",
+            "fk_accounts_org",
+            "ALTER TABLE accounts ADD CONSTRAINT fk_accounts_org FOREIGN KEY (org_id) REFERENCES orgs(org_id) NOT ENFORCED RELY",
+        ),
+        (
+            "principals",
+            "fk_principals_account",
+            "ALTER TABLE principals ADD CONSTRAINT fk_principals_account FOREIGN KEY (account_id) REFERENCES accounts(account_id) NOT ENFORCED RELY",
+        ),
+        (
+            "resources",
+            "fk_resources_account",
+            "ALTER TABLE resources ADD CONSTRAINT fk_resources_account FOREIGN KEY (account_id) REFERENCES accounts(account_id) NOT ENFORCED RELY",
+        ),
+        (
+            "policies",
+            "fk_policies_org",
+            "ALTER TABLE policies ADD CONSTRAINT fk_policies_org FOREIGN KEY (org_id) REFERENCES orgs(org_id) NOT ENFORCED RELY",
+        ),
+        (
+            "rules",
+            "fk_rules_policy",
+            "ALTER TABLE rules ADD CONSTRAINT fk_rules_policy FOREIGN KEY (policy_id) REFERENCES policies(policy_id) NOT ENFORCED RELY",
+        ),
+        (
+            "rule_controls",
+            "fk_rule_controls_rule",
+            "ALTER TABLE rule_controls ADD CONSTRAINT fk_rule_controls_rule FOREIGN KEY (rule_id) REFERENCES rules(rule_id) NOT ENFORCED RELY",
+        ),
+        (
+            "config_snapshots",
+            "fk_config_snapshots_resource",
+            "ALTER TABLE config_snapshots ADD CONSTRAINT fk_config_snapshots_resource FOREIGN KEY (resource_id) REFERENCES resources(resource_id) NOT ENFORCED RELY",
+        ),
+        (
+            "iam_edges",
+            "fk_iam_edges_account",
+            "ALTER TABLE iam_edges ADD CONSTRAINT fk_iam_edges_account FOREIGN KEY (account_id) REFERENCES accounts(account_id) NOT ENFORCED RELY",
+        ),
+        (
+            "iam_edges",
+            "fk_iam_edges_principal",
+            "ALTER TABLE iam_edges ADD CONSTRAINT fk_iam_edges_principal FOREIGN KEY (principal_id) REFERENCES principals(principal_id) NOT ENFORCED RELY",
+        ),
+        (
+            "iam_edges",
+            "fk_iam_edges_resource",
+            "ALTER TABLE iam_edges ADD CONSTRAINT fk_iam_edges_resource FOREIGN KEY (resource_id) REFERENCES resources(resource_id) NOT ENFORCED RELY",
+        ),
+        (
+            "findings",
+            "fk_findings_org",
+            "ALTER TABLE findings ADD CONSTRAINT fk_findings_org FOREIGN KEY (org_id) REFERENCES orgs(org_id) NOT ENFORCED RELY",
+        ),
+        (
+            "findings",
+            "fk_findings_account",
+            "ALTER TABLE findings ADD CONSTRAINT fk_findings_account FOREIGN KEY (account_id) REFERENCES accounts(account_id) NOT ENFORCED RELY",
+        ),
+        (
+            "findings",
+            "fk_findings_rule",
+            "ALTER TABLE findings ADD CONSTRAINT fk_findings_rule FOREIGN KEY (rule_id) REFERENCES rules(rule_id) NOT ENFORCED RELY",
+        ),
+        (
+            "findings",
+            "fk_findings_resource",
+            "ALTER TABLE findings ADD CONSTRAINT fk_findings_resource FOREIGN KEY (resource_id) REFERENCES resources(resource_id) NOT ENFORCED RELY",
+        ),
+        (
+            "findings",
+            "fk_findings_principal",
+            "ALTER TABLE findings ADD CONSTRAINT fk_findings_principal FOREIGN KEY (principal_id) REFERENCES principals(principal_id) NOT ENFORCED RELY",
+        ),
+        (
+            "identity_remediation_actions",
+            "fk_identity_remediation_org",
+            "ALTER TABLE identity_remediation_actions ADD CONSTRAINT fk_identity_remediation_org FOREIGN KEY (org_id) REFERENCES orgs(org_id) NOT ENFORCED RELY",
+        ),
+        (
+            "identity_remediation_actions",
+            "fk_identity_remediation_principal",
+            "ALTER TABLE identity_remediation_actions ADD CONSTRAINT fk_identity_remediation_principal FOREIGN KEY (principal_id) REFERENCES principals(principal_id) NOT ENFORCED RELY",
+        ),
+        (
+            "security_metric_snapshots",
+            "fk_security_metric_snapshots_org",
+            "ALTER TABLE security_metric_snapshots ADD CONSTRAINT fk_security_metric_snapshots_org FOREIGN KEY (org_id) REFERENCES orgs(org_id) NOT ENFORCED RELY",
+        ),
+        (
+            "agent_runtime_events",
+            "fk_agent_runtime_events_org",
+            "ALTER TABLE agent_runtime_events ADD CONSTRAINT fk_agent_runtime_events_org FOREIGN KEY (org_id) REFERENCES orgs(org_id) NOT ENFORCED RELY",
+        ),
+    ]
+
+    for table_name, constraint_name, statement in foreign_keys:
+        existing = _existing_constraints(conn, table_name)
+        if constraint_name.upper() in existing:
+            continue
+        conn.execute(text(statement))
+
+
+def _apply_clustering(conn) -> None:
+    cluster_keys = {
+        "findings": "org_id, TO_DATE(last_seen)",
+        "iam_edges": "account_id, TO_DATE(effective_at)",
+        "security_metric_snapshots": "org_id, metric_type, TO_DATE(captured_at)",
+        "agent_runtime_events": "org_id, event_type, TO_DATE(created_at)",
+        "config_snapshots": "resource_id, TO_DATE(captured_at)",
+    }
+
+    for table_name, key_expr in cluster_keys.items():
+        table_info = _show_table(conn, table_name)
+        if not table_info:
+            continue
+
+        current_key = str(table_info.get("cluster_by") or "").strip().upper()
+        desired_key = f"LINEAR({key_expr.upper()})"
+        if current_key == desired_key:
+            continue
+
+        conn.execute(text(f"ALTER TABLE {table_name} CLUSTER BY ({key_expr})"))
+
+
+def _apply_search_optimization(conn) -> None:
+    configs = {
+        "findings": "EQUALITY(org_id, account_id, finding_id, fingerprint, rule_id, resource_id, principal_id)",
+        "iam_edges": "EQUALITY(account_id, principal_id, resource_id, edge_id)",
+        "rules": "EQUALITY(rule_id)",
+        "security_metric_snapshots": "EQUALITY(org_id, metric_type, captured_at)",
+        "agent_runtime_events": "EQUALITY(org_id, event_type, session_id, id)",
+    }
+
+    for table_name, config in configs.items():
+        table_info = _show_table(conn, table_name)
+        if not table_info:
+            continue
+
+        enabled = str(table_info.get("search_optimization") or "").strip().upper()
+        if enabled == "ON":
+            continue
+
+        conn.execute(text(f"ALTER TABLE {table_name} ADD SEARCH OPTIMIZATION ON {config}"))
+
+
+def _refresh_rule_controls(conn) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS rule_controls (
+                rule_id STRING NOT NULL,
+                framework STRING NOT NULL,
+                control_id STRING NOT NULL,
+                created_at TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+                PRIMARY KEY (rule_id, framework, control_id)
+            )
+            """
+        )
+    )
+
+    conn.execute(text("TRUNCATE TABLE rule_controls"))
+    conn.execute(
+        text(
+            """
+            INSERT INTO rule_controls (rule_id, framework, control_id)
+            SELECT DISTINCT r.rule_id, 'CIS' AS framework, elem.value::string AS control_id
+            FROM rules r, LATERAL FLATTEN(input => r.cis) elem
+            WHERE r.cis IS NOT NULL
+
+            UNION ALL
+
+            SELECT DISTINCT r.rule_id, 'NIST_800_53' AS framework, elem.value::string AS control_id
+            FROM rules r, LATERAL FLATTEN(input => r.nist_800_53) elem
+            WHERE r.nist_800_53 IS NOT NULL
+            """
+        )
+    )
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Bootstrap the Cerebro Snowflake warehouse schema")
     parser.add_argument(
@@ -237,6 +492,31 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--dry-run",
         action="store_true",
         help="Print DDL instead of executing",
+    )
+    parser.add_argument(
+        "--best",
+        action="store_true",
+        help="Apply recommended best-practice steps (constraints, clustering, derived table refresh)",
+    )
+    parser.add_argument(
+        "--apply-constraints",
+        action="store_true",
+        help="Add RELY NOT ENFORCED PK/FK constraints (enables join elimination)",
+    )
+    parser.add_argument(
+        "--apply-clustering",
+        action="store_true",
+        help="Apply recommended CLUSTER BY keys for large-table pruning",
+    )
+    parser.add_argument(
+        "--apply-search-optimization",
+        action="store_true",
+        help="Enable Search Optimization Service for common lookup predicates (may incur extra cost)",
+    )
+    parser.add_argument(
+        "--refresh-rule-controls",
+        action="store_true",
+        help="Rebuild derived rule_controls table from rules.cis and rules.nist_800_53",
     )
     args = parser.parse_args(argv)
 
@@ -272,6 +552,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Using Snowflake database={current['db']} schema={current['schema']}")
 
             _execute_all(conn, ddl)
+
+            apply_constraints = args.apply_constraints or args.best
+            apply_clustering = args.apply_clustering or args.best
+            refresh_rule_controls = args.refresh_rule_controls or args.best
+
+            if apply_constraints:
+                _apply_constraints(conn)
+            if apply_clustering:
+                _apply_clustering(conn)
+            if args.apply_search_optimization:
+                _apply_search_optimization(conn)
+            if refresh_rule_controls:
+                _refresh_rule_controls(conn)
 
         print("Snowflake warehouse schema bootstrap complete.")
         return 0

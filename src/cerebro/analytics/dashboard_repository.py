@@ -16,7 +16,6 @@ from .sql_dialect import (
     get_dialect_name,
     hours_between_expr,
     select_array_elements_subquery,
-    split_part_expr,
     timestamp_minus_days_expr,
 )
 
@@ -196,57 +195,62 @@ class DashboardRepository:
         """Return compliance counts grouped by framework."""
 
         dialect = get_dialect_name(self._db)
-        cis_controls = select_array_elements_subquery(array_column="cis", dialect=dialect)
-        nist_controls = select_array_elements_subquery(array_column="nist_800_53", dialect=dialect)
-        framework_expr = split_part_expr(
-            column_expr="controls.control",
-            delimiter=".",
-            part=1,
-            dialect=dialect,
-        )
+        if dialect == "snowflake":
+            frameworks_query = text(
+                """
+                WITH open_rules AS (
+                    SELECT f.rule_id
+                    FROM findings f
+                    JOIN accounts a ON f.account_id = a.account_id
+                    WHERE a.org_id = :org_id
+                        AND f.status = 'open'
+                    GROUP BY f.rule_id
+                )
+                SELECT
+                    rc.framework AS framework,
+                    COUNT(*) AS total_controls,
+                    SUM(CASE WHEN open_rules.rule_id IS NULL THEN 1 ELSE 0 END) AS compliant_controls
+                FROM rule_controls rc
+                LEFT JOIN open_rules ON rc.rule_id = open_rules.rule_id
+                GROUP BY rc.framework
+                """
+            )
+        else:
+            cis_controls = select_array_elements_subquery(array_column="cis", dialect=dialect)
+            nist_controls = select_array_elements_subquery(array_column="nist_800_53", dialect=dialect)
 
-        frameworks_query = text(
-            f"""
-            SELECT
-                framework,
-                SUM(total_controls) as total_controls,
-                SUM(compliant_controls) as compliant_controls
-            FROM (
-                SELECT 
-                    {framework_expr} as framework,
-                    COUNT(*) as total_controls,
-                    COUNT(CASE WHEN f.finding_id IS NULL THEN 1 END) as compliant_controls
-                FROM (
-                    {cis_controls}
-                ) controls
-                JOIN rules r ON r.rule_id = controls.rule_id
-                LEFT JOIN findings f ON r.rule_id = f.rule_id
-                    AND f.status = 'open'
-                    AND f.account_id IN (
-                        SELECT account_id FROM accounts WHERE org_id = :org_id
-                    )
-                GROUP BY framework
+            frameworks_query = text(
+                f"""
+                WITH controls AS (
+                    SELECT 'CIS' AS framework, rule_id
+                    FROM (
+                        {cis_controls}
+                    ) cis
 
-                UNION ALL
+                    UNION ALL
 
-                SELECT 
-                    {framework_expr} as framework,
-                    COUNT(*) as total_controls,
-                    COUNT(CASE WHEN f.finding_id IS NULL THEN 1 END) as compliant_controls
-                FROM (
-                    {nist_controls}
-                ) controls
-                JOIN rules r ON r.rule_id = controls.rule_id
-                LEFT JOIN findings f ON r.rule_id = f.rule_id
-                    AND f.status = 'open'
-                    AND f.account_id IN (
-                        SELECT account_id FROM accounts WHERE org_id = :org_id
-                    )
-                GROUP BY framework
-            ) aggregated
-            GROUP BY framework
-            """
-        )
+                    SELECT 'NIST_800_53' AS framework, rule_id
+                    FROM (
+                        {nist_controls}
+                    ) nist
+                ),
+                open_rules AS (
+                    SELECT f.rule_id
+                    FROM findings f
+                    JOIN accounts a ON f.account_id = a.account_id
+                    WHERE a.org_id = :org_id
+                        AND f.status = 'open'
+                    GROUP BY f.rule_id
+                )
+                SELECT
+                    controls.framework AS framework,
+                    COUNT(*) AS total_controls,
+                    SUM(CASE WHEN open_rules.rule_id IS NULL THEN 1 ELSE 0 END) AS compliant_controls
+                FROM controls
+                LEFT JOIN open_rules ON controls.rule_id = open_rules.rule_id
+                GROUP BY controls.framework
+                """
+            )
 
         result = await self._db.execute(frameworks_query, {"org_id": org_id})
 

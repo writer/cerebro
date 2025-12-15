@@ -31,6 +31,7 @@ celery_kwargs = {
         'cerebro.tasks.notification_digest',
         'cerebro.tasks.self_play_tasks',
         'cerebro.tasks.analytics_tasks',
+        'cerebro.tasks.warehouse_tasks',
         'cerebro.tasks.integration_tasks',
         'cerebro.tasks.integration_monitor',
         'cerebro.tasks.runtime_monitor',
@@ -49,6 +50,7 @@ task_routes = {
     'cerebro.tasks.finding_tasks.generate_findings_task': {'queue': 'findings'},
     'cerebro.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
     'cerebro.tasks.analytics_tasks.*': {'queue': 'analytics'},
+    'cerebro.tasks.warehouse_tasks.*': {'queue': 'analytics'},
     'cerebro.tasks.runtime_monitor.*': {'queue': 'analytics'},
     'cerebro.tasks.agent_self_service.*': {'queue': 'analytics'},
     'cerebro.tasks.operational.*': {'queue': 'analytics'},
@@ -83,6 +85,11 @@ beat_schedule = {
     'collect-security-metrics-hourly': {
         'task': 'cerebro.tasks.analytics_tasks.collect_security_metrics_all_orgs',
         'schedule': 3600.0,
+    },
+    'refresh-rule-controls-hourly': {
+        'task': 'cerebro.tasks.warehouse_tasks.refresh_rule_controls',
+        'schedule': 3600.0,
+        'options': {'queue': 'analytics'},
     },
     'sync-sentinelone-activities': {
         'task': 'cerebro.tasks.integration.sync_sentinelone',
