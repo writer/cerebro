@@ -28,7 +28,11 @@ class JSONType(TypeDecorator):
 
 class ArrayType(TypeDecorator):
     """
-    Cross-database array type that uses ARRAY for PostgreSQL and JSON for others.
+    Cross-database array type.
+
+    - PostgreSQL: native ARRAY
+    - Snowflake: native ARRAY
+    - SQLite/others: JSON stored as text
 
     For SQLite and other databases that don't support native arrays,
     arrays are stored as JSON and converted back to lists on retrieval.
@@ -45,18 +49,23 @@ class ArrayType(TypeDecorator):
         """Load the appropriate type for the dialect."""
         if dialect.name == 'postgresql':
             return dialect.type_descriptor(ARRAY(self.item_type))
-        else:
-            return dialect.type_descriptor(JSON())
+        if dialect.name == "snowflake":
+            from snowflake.sqlalchemy.custom_types import ARRAY as SnowflakeArray
+
+            item_type = self.item_type() if isinstance(self.item_type, type) else self.item_type
+            return dialect.type_descriptor(SnowflakeArray(item_type))
+
+        return dialect.type_descriptor(JSON())
 
     def process_bind_param(self, value, dialect):
         """Process values being sent to the database."""
         if value is None:
             return None
-        if dialect.name == 'postgresql':
+        if dialect.name in {"postgresql", "snowflake"}:
             return value
-        else:
-            # For non-PostgreSQL, store as JSON
-            return json.dumps(value) if value is not None else None
+
+        # For non-PostgreSQL, store as JSON
+        return json.dumps(value)
 
     def process_result_value(self, value, dialect):
         """Process values being returned from the database."""
@@ -64,8 +73,16 @@ class ArrayType(TypeDecorator):
             return None
         if dialect.name == 'postgresql':
             return value
-        else:
-            # For non-PostgreSQL, parse from JSON
+
+        if dialect.name == "snowflake":
             if isinstance(value, str):
-                return json.loads(value)
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return value
             return value
+
+        # For non-PostgreSQL, parse from JSON
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
