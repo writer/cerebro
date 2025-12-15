@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.core.models import IdentityRemediationAction
 
 from .sql_dialect import (
+    array_has_elements_expr,
     get_dialect_name,
     hours_between_expr,
     select_array_elements_subquery,
@@ -163,21 +164,29 @@ class DashboardRepository:
         return result.scalar() or 0
 
     async def calculate_compliance_score(self, org_id: UUID) -> float:
+        dialect = get_dialect_name(self._db)
+        if dialect == "snowflake":
+            compliance_rule_predicate = "EXISTS (SELECT 1 FROM rule_controls rc WHERE rc.rule_id = r.rule_id)"
+        else:
+            cis_nonempty = array_has_elements_expr(column_expr="r.cis", dialect=dialect)
+            nist_nonempty = array_has_elements_expr(column_expr="r.nist_800_53", dialect=dialect)
+            compliance_rule_predicate = f"({cis_nonempty} OR {nist_nonempty})"
+
         total_query = text(
-            """
+            f"""
             SELECT COUNT(DISTINCT r.rule_id)
             FROM rules r
-            WHERE r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL
+            WHERE {compliance_rule_predicate}
             """
         )
         compliant_query = text(
-            """
+            f"""
             SELECT COUNT(DISTINCT r.rule_id)
             FROM assessment_results ar
             JOIN rules r ON ar.rule_id = r.rule_id
             WHERE ar.org_id = :org_id
                 AND ar.status = 'passed'
-                AND (r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL)
+                AND {compliance_rule_predicate}
             """
         )
 

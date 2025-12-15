@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, text
 
-from .sql_dialect import current_timestamp_expr, get_dialect_name
+from .sql_dialect import array_has_elements_expr, current_timestamp_expr, get_dialect_name
 
 
 logger = logging.getLogger(__name__)
@@ -296,17 +296,27 @@ class RiskScoringEngine:
     
     async def _calculate_compliance_score(self, org_id: UUID) -> float:
         """Calculate compliance posture score (0-100, lower is better)."""
-        
+
+        dialect = get_dialect_name(self.db)
+        if dialect == "snowflake":
+            compliance_rule_predicate = "EXISTS (SELECT 1 FROM rule_controls rc WHERE rc.rule_id = r.rule_id)"
+        else:
+            cis_nonempty = array_has_elements_expr(column_expr="r.cis", dialect=dialect)
+            nist_nonempty = array_has_elements_expr(column_expr="r.nist_800_53", dialect=dialect)
+            compliance_rule_predicate = f"({cis_nonempty} OR {nist_nonempty})"
+
         # Count policy violations
-        policy_violations_query = text("""
+        policy_violations_query = text(
+            f"""
             SELECT COUNT(*)
             FROM findings f
             JOIN rules r ON f.rule_id = r.rule_id
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND f.status = 'open'
-                AND (r.cis IS NOT NULL OR r.nist_800_53 IS NOT NULL)
-        """)
+                AND {compliance_rule_predicate}
+            """
+        )
         
         result = await self.db.execute(policy_violations_query, {"org_id": org_id})
         policy_violations = result.scalar() or 0
