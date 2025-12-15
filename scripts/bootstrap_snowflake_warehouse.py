@@ -17,6 +17,26 @@ from sqlalchemy.pool import NullPool
 
 SNOWFLAKE_QUERY_TAG_ENV = "SNOWFLAKE_QUERY_TAG"
 SNOWFLAKE_APPLICATION_ENV = "SNOWFLAKE_APPLICATION"
+SNOWFLAKE_TIMEZONE_ENV = "SNOWFLAKE_TIMEZONE"
+SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV = "SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS"
+
+
+def _get_int_env(name: str) -> int | None:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid integer for {name}: {value!r}") from exc
+
+
+def _default_query_tag() -> str:
+    base = "cerebro"
+    component = os.getenv("CEREBRO_PROCESS_ROLE") or os.getenv("CEREBRO_COMPONENT")
+    if not component:
+        return base
+    return f"{base}:{component}"
 
 
 def _quote_ident(identifier: str) -> str:
@@ -537,8 +557,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     url = make_url(args.url)
-    query_tag = os.getenv(SNOWFLAKE_QUERY_TAG_ENV, "cerebro")
+    query_tag = os.getenv(SNOWFLAKE_QUERY_TAG_ENV) or _default_query_tag()
     application = os.getenv(SNOWFLAKE_APPLICATION_ENV, "cerebro")
+    session_parameters: dict[str, object] = {
+        "QUERY_TAG": query_tag,
+        "TIMEZONE": os.getenv(SNOWFLAKE_TIMEZONE_ENV, "UTC"),
+    }
+    if (statement_timeout := _get_int_env(SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV)) is not None:
+        session_parameters["STATEMENT_TIMEOUT_IN_SECONDS"] = statement_timeout
     engine = create_engine(
         url,
         poolclass=NullPool,
@@ -546,9 +572,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         connect_args={
             "client_session_keep_alive": True,
             "application": application,
-            "session_parameters": {
-                "QUERY_TAG": query_tag,
-            },
+            "session_parameters": session_parameters,
         },
     )
 
