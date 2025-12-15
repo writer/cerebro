@@ -453,7 +453,7 @@ def _refresh_rule_controls(conn) -> None:
     )
 
     # Build into a staging table then atomically swap, so readers never observe an empty table.
-    conn.execute(text("CREATE OR REPLACE TABLE rule_controls_staging CLONE rule_controls"))
+    conn.execute(text("CREATE OR REPLACE TABLE rule_controls_staging LIKE rule_controls"))
     conn.execute(text("TRUNCATE TABLE rule_controls_staging"))
     conn.execute(
         text(

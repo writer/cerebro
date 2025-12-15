@@ -43,7 +43,7 @@ def refresh_rule_controls(self) -> dict[str, object]:
         )
 
         # Build into a staging table then atomically swap, so readers never observe an empty table.
-        session.execute(text("CREATE OR REPLACE TABLE rule_controls_staging CLONE rule_controls"))
+        session.execute(text("CREATE OR REPLACE TABLE rule_controls_staging LIKE rule_controls"))
         session.execute(text("TRUNCATE TABLE rule_controls_staging"))
         session.execute(
             text(
