@@ -76,7 +76,7 @@ def _deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any
     return merged
 
 
-@dataclass(slots=True)
+@dataclass
 class AttackGraphScoring:
     config: Optional[Dict[str, Any]] = None
     _edge_config: Dict[str, Any] = field(init=False, repr=False, default_factory=dict)

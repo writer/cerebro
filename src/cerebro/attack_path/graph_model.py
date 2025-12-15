@@ -5,9 +5,8 @@ Models principals → roles → resources across providers with weighted edges
 for attack path analysis and blast radius calculations.
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Set, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum

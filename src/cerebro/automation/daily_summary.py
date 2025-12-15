@@ -17,7 +17,7 @@ from cerebro.core.models import Account, Finding, Organization
 SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
 
 
-@dataclass(slots=True)
+@dataclass
 class FindingDigest:
     """Lightweight representation of a finding for summaries."""
 
@@ -37,7 +37,7 @@ class FindingDigest:
         return payload
 
 
-@dataclass(slots=True)
+@dataclass
 class DailySummaryResult:
     """Result payload produced after generating the daily summary."""
 

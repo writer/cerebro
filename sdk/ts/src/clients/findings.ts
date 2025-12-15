@@ -5,10 +5,10 @@ import { CursorPage, PageRequest } from "../pagination.js";
 import { parseDate } from "../serialization.js";
 import { FindingRecord } from "../types.js";
 
-type FindingPayload = components["schemas"]["FindingResponse"];
+type FindingPayload = components["schemas"]["cerebro__api__schemas__main__FindingResponse"];
 type FindingPageResponse = components["schemas"]["FindingPageResponse"];
 
-const adaptFinding = createSchemaAdapter("FindingResponse");
+const adaptFinding = createSchemaAdapter("cerebro__api__schemas__main__FindingResponse");
 
 export interface ListFindingsOptions {
   orgId?: string;

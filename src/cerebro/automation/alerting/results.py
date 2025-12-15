@@ -9,7 +9,7 @@ from typing import Any, Mapping, Tuple
 from .rules import AlertRule, RuleSeverity
 
 
-@dataclass(slots=True)
+@dataclass
 class AlertResult:
     """Represents a fired alert after rule evaluation."""
 

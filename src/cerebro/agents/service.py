@@ -10,18 +10,13 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID, uuid4
 
 import structlog
-from sqlalchemy import select, text
-from sqlalchemy.orm import selectinload
+from sqlalchemy import text
 
-from cerebro.core.database import get_db
 from cerebro.agents.repositories import AgentSessionRepository, ToolApprovalRepository
 from cerebro.agents.models import (
     AgentSession,
-    AgentMessage,
-    AgentMemoryEntry,
     AgentType,
     ReviewTaskStatus,
-    ToolInvocation,
     ToolApproval,
     ToolInvocationStatus,
     ApprovalStatus,
@@ -833,25 +828,38 @@ class AgentAnalyticsService:
         
         from cerebro.core.database import async_session_factory
         async with async_session_factory() as db_session:
+            from cerebro.analytics.sql_dialect import get_dialect_name, minutes_between_expr
+
+            cutoff = datetime.now(timezone.utc) - timedelta(days=max(days, 0))
+            dialect = get_dialect_name(db_session)
+            decision_minutes_expr = minutes_between_expr(
+                start_expr="requested_at",
+                end_expr="decided_at",
+                dialect=dialect,
+            )
+
             # Sessions by agent type with proper parameterization
             agent_type_stats = await db_session.execute(
-                text("""
+                text(
+                    """
                 SELECT 
                     agent_type,
                     COUNT(*) as session_count,
                     COUNT(DISTINCT created_by) as unique_users
                 FROM agent_sessions 
                 WHERE org_id = :org_id
-                    AND created_at >= NOW() - (:days || ' days')::interval
+                    AND created_at >= :cutoff
                 GROUP BY agent_type
                 ORDER BY session_count DESC
-                """),
-                {"org_id": org_id, "days": days}
+                    """
+                ),
+                {"org_id": org_id, "cutoff": cutoff},
             )
             
             # Tool usage stats
             tool_stats = await db_session.execute(
-                text("""
+                text(
+                    """
                 SELECT 
                     ti.tool_name,
                     ti.status,
@@ -859,16 +867,18 @@ class AgentAnalyticsService:
                 FROM tool_invocations ti
                 JOIN agent_sessions s ON ti.session_id = s.id
                 WHERE s.org_id = :org_id
-                    AND ti.started_at >= NOW() - (:days || ' days')::interval
+                    AND ti.started_at >= :cutoff
                 GROUP BY ti.tool_name, ti.status
                 ORDER BY invocation_count DESC
-                """),
-                {"org_id": org_id, "days": days}
+                    """
+                ),
+                {"org_id": org_id, "cutoff": cutoff},
             )
             
             # Token usage stats  
             token_stats = await db_session.execute(
-                text("""
+                text(
+                    """
                 SELECT 
                     s.agent_type,
                     SUM(COALESCE(m.input_tokens, 0)) as total_input_tokens,
@@ -878,25 +888,27 @@ class AgentAnalyticsService:
                 FROM agent_messages m
                 JOIN agent_sessions s ON m.session_id = s.id
                 WHERE s.org_id = :org_id
-                    AND m.created_at >= NOW() - (:days || ' days')::interval
+                    AND m.created_at >= :cutoff
                 GROUP BY s.agent_type
-                """),
-                {"org_id": org_id, "days": days}
+                    """
+                ),
+                {"org_id": org_id, "cutoff": cutoff},
             )
             
             # Approval workflow stats
             approval_stats = await db_session.execute(
-                text("""
+                text(
+                    f"""
                 SELECT 
                     status,
                     COUNT(*) as count,
-                    AVG(EXTRACT(EPOCH FROM (decided_at - requested_at))/60) as avg_decision_time_minutes
+                    AVG({decision_minutes_expr}) as avg_decision_time_minutes
                 FROM tool_approvals
                 WHERE org_id = :org_id
-                    AND requested_at >= NOW() - (:days || ' days')::interval
+                    AND requested_at >= :cutoff
                 GROUP BY status
-                """),
-                {"org_id": org_id, "days": days}
+                    """),
+                {"org_id": org_id, "cutoff": cutoff},
             )
             
             return {

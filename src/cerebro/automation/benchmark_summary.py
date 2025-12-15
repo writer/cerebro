@@ -6,10 +6,10 @@ import dataclasses
 import json
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass
 class BenchmarkCaseSummary:
     case_id: str
     passed: bool
@@ -34,7 +34,7 @@ class BenchmarkCaseSummary:
         )
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass
 class BenchmarkSummary:
     cases: List[BenchmarkCaseSummary]
 

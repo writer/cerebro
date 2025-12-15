@@ -9,17 +9,13 @@ that may indicate compromised accounts or insider threats.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
-from datetime import datetime
 from pydantic import BaseModel, Field
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.analysis.identity_anomaly import (
     IdentityAnomalyDetector,
-    AnomalyType,
     RiskLevel,
 )
-from cerebro.core.database import async_session_factory
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -234,7 +230,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
 
             return ToolResult(
                 success=True,
-                data=output.dict(),
+                data=output.model_dump(),
                 metadata={
                     "lookback_days": lookback_days,
                     "principals_analyzed": principals_analyzed,

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.core.database import get_db
 from cerebro.core.models import Principal
 from cerebro.api.schemas import PrincipalResponse
-from cerebro.api.auth import get_current_user, User
+from cerebro.api.auth import get_current_user
 from cerebro.api.utils import (
     StandardFilters, get_entity_by_id_or_404, paginated_list
 )

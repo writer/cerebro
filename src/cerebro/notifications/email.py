@@ -14,7 +14,7 @@ import smtplib
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Dict, List, Optional
+from typing import Optional
 from uuid import UUID, uuid4
 
 import structlog
@@ -22,7 +22,6 @@ from jinja2 import Template
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.core.database import async_session_factory
 from cerebro.core.models import EmailConfig, EmailNotification, Finding, Organization
 
 logger = structlog.get_logger(__name__)

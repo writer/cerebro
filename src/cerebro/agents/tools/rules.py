@@ -6,14 +6,12 @@ to test rules, create rule templates, and analyze policy effectiveness.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.core.database import get_db
 from cerebro.rules.engine import RuleEngine, EvaluationContext
-from cerebro.rules.exceptions import CompilationError, EvaluationError
+from cerebro.rules.exceptions import CompilationError
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 
@@ -113,7 +111,7 @@ class RulesTool(Tool):
             start_time = time.time()
             
             # Attempt to compile the rule
-            compiled_ast = self.rule_engine.compile_rule(inputs.expression)
+            self.rule_engine.compile_rule(inputs.expression)
             
             compilation_time = (time.time() - start_time) * 1000
             

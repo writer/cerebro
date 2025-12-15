@@ -37,10 +37,10 @@ type ReviewQueuePriorityPayload = components["schemas"]["ReviewQueuePrioritySumm
 type ReviewQueueSummaryPayload = components["schemas"]["ReviewQueueSummary"];
 type ReviewTaskPayload = components["schemas"]["ReviewTaskResponse"];
 type ReviewTaskPageResponse = components["schemas"]["ReviewTaskPageResponse"];
-type SessionPayload = components["schemas"]["SessionResponse"];
-type SessionListResponsePayload = components["schemas"]["SessionListResponse"];
-type MessagePayload = components["schemas"]["MessageResponse"];
-type ToolInvocationPayload = components["schemas"]["ToolInvocationResponse"] & {
+type SessionPayload = components["schemas"]["cerebro__api__routers__agents__SessionResponse"];
+type SessionListResponsePayload = components["schemas"]["cerebro__api__routers__agents__SessionListResponse"];
+type MessagePayload = components["schemas"]["cerebro__api__routers__agents__MessageResponse"];
+type ToolInvocationPayload = components["schemas"]["cerebro__api__routers__agents__ToolInvocationResponse"] & {
   session_id?: string | null;
   tool_version?: string | null;
   error_code?: string | null;
@@ -60,9 +60,9 @@ const adaptReviewTask = createSchemaAdapter("ReviewTaskResponse");
 const adaptReviewNotification = createSchemaAdapter("ReviewNotificationResponse");
 const adaptRuntimeEvent = createSchemaAdapter("RuntimeEventResponse");
 const adaptRuntimeSummary = createSchemaAdapter("RuntimeEventSummaryResponse");
-const adaptSession = createSchemaAdapter("SessionResponse");
-const adaptMessage = createSchemaAdapter("MessageResponse");
-const adaptToolInvocation = createSchemaAdapter("ToolInvocationResponse");
+const adaptSession = createSchemaAdapter("cerebro__api__routers__agents__SessionResponse");
+const adaptMessage = createSchemaAdapter("cerebro__api__routers__agents__MessageResponse");
+const adaptToolInvocation = createSchemaAdapter("cerebro__api__routers__agents__ToolInvocationResponse");
 const adaptMemoryEntry = createSchemaAdapter("MemoryEntryResponse");
 const adaptMemoryHighlight = createSchemaAdapter("MemoryHighlightResponse");
 const adaptPolicySuggestion = createSchemaAdapter("PolicySuggestionResponse");

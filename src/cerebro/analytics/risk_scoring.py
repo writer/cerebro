@@ -1,16 +1,17 @@
 """Risk scoring engine for comprehensive organizational risk assessment."""
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import select, and_, text
 
-from cerebro.core.models import Finding, Principal, Resource, IamEdge
+from .sql_dialect import current_timestamp_expr, get_dialect_name
+
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,9 @@ class RiskScoringEngine:
     
     async def _calculate_identity_score(self, org_id: UUID) -> float:
         """Calculate identity hygiene score (0-100, lower is better)."""
+
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
         
         # Count various identity risks
         risk_factors = {}
@@ -217,14 +221,14 @@ class RiskScoringEngine:
         risk_factors["no_mfa_users"] = no_mfa_count
         
         # Stale admin accounts (high risk)
-        stale_admin_query = text("""
+        stale_admin_query = text(f"""
             SELECT COUNT(DISTINCT ie.principal_id)
             FROM iam_edges ie
             JOIN accounts a ON ie.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND ie.is_admin = true
                 AND ie.effective_at < :stale_threshold
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
         """)
         
         stale_threshold = datetime.utcnow() - timedelta(days=90)
@@ -248,16 +252,19 @@ class RiskScoringEngine:
     
     async def _calculate_access_control_score(self, org_id: UUID) -> float:
         """Calculate access control risk score (0-100, lower is better)."""
+
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
         
         # Excessive permissions (privilege sprawl)
-        privilege_sprawl_query = text("""
+        privilege_sprawl_query = text(f"""
             SELECT p.principal_id, COUNT(DISTINCT ie.permission) as permission_count
             FROM principals p
             JOIN iam_edges ie ON p.principal_id = ie.principal_id
             JOIN accounts a ON p.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND p.is_human = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id
             HAVING COUNT(DISTINCT ie.permission) > 50  -- Threshold for excessive permissions
         """)

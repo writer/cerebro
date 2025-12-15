@@ -4,9 +4,8 @@ Microsoft 365 provider table implementations.
 Exposes Microsoft 365 security resources as SQL tables following Steampipe patterns.
 """
 
-import asyncio
 import logging
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import AsyncGenerator, Dict, Any, Optional
 from datetime import datetime
 
 from ...query.table import ProviderSecurityTable, QueryContext

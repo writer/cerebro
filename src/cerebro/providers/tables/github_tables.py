@@ -4,8 +4,7 @@ GitHub provider table implementations.
 Exposes GitHub security resources as SQL tables.
 """
 
-import asyncio
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import AsyncGenerator, Dict, Any, Optional
 from datetime import datetime
 import logging
 
@@ -26,7 +25,7 @@ class GitHubClient:
         """Authenticate with GitHub API."""
         try:
             import asyncio
-            from github import Github, GithubException
+            from github import Github
             from cerebro.core.config import settings
             
             # Use provided credentials or fall back to settings

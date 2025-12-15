@@ -13,6 +13,10 @@ Usage:
     
     # Run tests
     python scripts/test_dynamodb_integration.py
+    
+    # Or with docker-compose
+    docker-compose up dynamodb-local dynamodb-setup
+    python scripts/test_dynamodb_integration.py
 """
 
 import asyncio
@@ -358,6 +362,70 @@ async def test_dynamodb_client():
     return results
 
 
+async def test_health_check():
+    """Test DynamoDB health check."""
+    from cerebro.core.dynamodb_client import health_check
+    
+    results = []
+    
+    try:
+        health = await health_check()
+        results.append(("health_check returns", health is not None, None))
+        results.append(("has tables info", "tables" in health, None))
+        results.append(("has healthy flag", "healthy" in health, None))
+        
+        # Check core table
+        if "core" in health.get("tables", {}):
+            core_status = health["tables"]["core"].get("status")
+            results.append(("core table status", core_status == "ACTIVE", f"status={core_status}"))
+        else:
+            results.append(("core table exists", False, "Not found in health check"))
+            
+    except Exception as e:
+        results.append(("health_check", False, str(e)))
+    
+    return results
+
+
+async def test_repository_factory():
+    """Test repository factory pattern."""
+    from cerebro.core.repositories import (
+        get_repositories,
+        get_org_repo,
+        get_finding_repo,
+        RepositoryFactory,
+    )
+    
+    results = []
+    
+    try:
+        # Test factory singleton
+        factory1 = get_repositories()
+        factory2 = get_repositories()
+        results.append(("factory singleton", factory1 is factory2, None))
+        
+        # Test repository access
+        org_repo = get_org_repo()
+        results.append(("get_org_repo", org_repo is not None, None))
+        
+        finding_repo = get_finding_repo()
+        results.append(("get_finding_repo", finding_repo is not None, None))
+        
+        # Test property access
+        results.append(("factory.organizations", factory1.organizations is not None, None))
+        results.append(("factory.findings", factory1.findings is not None, None))
+        
+        # Test reset
+        RepositoryFactory.reset()
+        factory3 = get_repositories()
+        results.append(("factory reset", factory3 is not factory1, None))
+        
+    except Exception as e:
+        results.append(("repository factory", False, str(e)))
+    
+    return results
+
+
 async def run_all_tests():
     """Run all integration tests."""
     print_section("DynamoDB Integration Tests")
@@ -365,6 +433,20 @@ async def run_all_tests():
     print(f"Time: {datetime.now().isoformat()}")
     
     all_results = []
+    
+    # Test health check first
+    print_section("Health Check")
+    results = await test_health_check()
+    for name, passed, error in results:
+        print_result(name, passed, error)
+    all_results.extend(results)
+    
+    # Test repository factory
+    print_section("Repository Factory")
+    results = await test_repository_factory()
+    for name, passed, error in results:
+        print_result(name, passed, error)
+    all_results.extend(results)
     
     # Test DynamoDB client
     print_section("DynamoDB Client")

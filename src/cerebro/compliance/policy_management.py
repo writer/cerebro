@@ -5,11 +5,10 @@ Handles policy templates, versioning, approvals, publication, and employee ackno
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
-import json
 
 from .evidence_store import EvidenceStore, EvidenceMetadata, EvidenceCategory
 

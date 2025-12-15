@@ -6,16 +6,14 @@ Based on GAM patterns and Google Cloud best practices.
 
 import json
 import asyncio
-from typing import Any, Dict, List, Optional, AsyncGenerator, Union
+from typing import List, Optional, AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 import logging
 
 from google.oauth2 import service_account
-from google.auth.transport.requests import Request
-from google.cloud import compute_v1, storage, resourcemanager_v3, iam_v1
+from google.cloud import compute_v1, resourcemanager_v3, iam_v1
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 from cerebro.core.config import settings
 from ..base import (
@@ -113,10 +111,6 @@ class EnhancedGCPProvider(BaseProvider):
         try:
             if not self.service_account_file or not Path(self.service_account_file).exists():
                 raise ProviderError(f"Service account file not found: {self.service_account_file}")
-            
-            # Load service account credentials
-            with open(self.service_account_file, 'r') as f:
-                service_account_info = json.load(f)
             
             # Create credentials for Google Cloud APIs
             self._credentials = service_account.Credentials.from_service_account_file(

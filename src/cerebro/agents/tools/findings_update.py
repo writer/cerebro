@@ -6,16 +6,15 @@ dry-run support, and audit trail creation.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
-from uuid import UUID, uuid4
+from typing import Optional
+from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from cerebro.core.database import async_session_factory
-from cerebro.core.models import Finding, AuditEvent
-from cerebro.core.repositories import FindingRepository
+from cerebro.core.models import Finding
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 
@@ -107,7 +106,6 @@ class FindingStatusUpdateTool(Tool):
                 )
             
             # Enforce provider scope if specified
-            provider_allowed = True
             if context.provider_scope:
                 # Need to check finding's provider is in scope
                 async with async_session_factory() as session:

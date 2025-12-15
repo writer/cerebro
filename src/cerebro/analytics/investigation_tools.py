@@ -8,7 +8,16 @@ from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import text
+
+from .sql_dialect import (
+    cast_to_string_expr,
+    current_timestamp_expr,
+    get_dialect_name,
+    json_object_function,
+    timestamp_minus_days_expr,
+    timestamp_minus_hours_expr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +136,12 @@ class InvestigationEngine:
     
     async def _get_resource_config_timeline(self, resource_id: UUID) -> List[SecurityEvent]:
         """Get configuration change timeline for a resource."""
+
+        dialect = get_dialect_name(self.db)
+        lookback_90_days = timestamp_minus_days_expr(days=90, dialect=dialect)
         
-        config_timeline_query = text("""
+        config_timeline_query = text(
+            f"""
             SELECT 
                 cs.snapshot_id,
                 cs.captured_at,
@@ -136,9 +149,10 @@ class InvestigationEngine:
                 LAG(cs.normalized_config) OVER (ORDER BY cs.captured_at) as previous_config
             FROM config_snapshots cs
             WHERE cs.resource_id = :resource_id
-                AND cs.captured_at >= NOW() - INTERVAL '90 days'
+                AND cs.captured_at >= {lookback_90_days}
             ORDER BY cs.captured_at
-        """)
+            """
+        )
         
         result = await self.db.execute(config_timeline_query, {"resource_id": resource_id})
         
@@ -168,8 +182,12 @@ class InvestigationEngine:
     
     async def _get_principal_permission_timeline(self, principal_id: UUID) -> List[SecurityEvent]:
         """Get permission change timeline for a principal."""
+
+        dialect = get_dialect_name(self.db)
+        lookback_90_days = timestamp_minus_days_expr(days=90, dialect=dialect)
         
-        permission_timeline_query = text("""
+        permission_timeline_query = text(
+            f"""
             SELECT 
                 ie.edge_id,
                 ie.permission,
@@ -180,9 +198,10 @@ class InvestigationEngine:
                 ie.resource_id
             FROM iam_edges ie
             WHERE ie.principal_id = :principal_id
-                AND ie.effective_at >= NOW() - INTERVAL '90 days'
+                AND ie.effective_at >= {lookback_90_days}
             ORDER BY ie.effective_at
-        """)
+            """
+        )
         
         result = await self.db.execute(permission_timeline_query, {"principal_id": principal_id})
         
@@ -208,15 +227,20 @@ class InvestigationEngine:
     
     async def _get_related_finding_events(self, finding_id: UUID, rule_id: UUID) -> List[SecurityEvent]:
         """Get events from related findings (same rule)."""
+
+        dialect = get_dialect_name(self.db)
+        lookback_90_days = timestamp_minus_days_expr(days=90, dialect=dialect)
         
-        related_findings_query = text("""
+        related_findings_query = text(
+            f"""
             SELECT f.finding_id, f.title, f.first_seen, f.last_seen, f.status
             FROM findings f
             WHERE f.rule_id = :rule_id
                 AND f.finding_id != :finding_id
-                AND f.first_seen >= NOW() - INTERVAL '90 days'
+                AND f.first_seen >= {lookback_90_days}
             ORDER BY f.first_seen
-        """)
+            """
+        )
         
         result = await self.db.execute(related_findings_query, {
             "rule_id": rule_id,
@@ -323,7 +347,11 @@ class InvestigationEngine:
             return []
         
         # Get principal details and related identities
-        identity_query = text("""
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
+        identity_query = text(
+            f"""
             SELECT 
                 p.principal_id,
                 p.display_name,
@@ -334,11 +362,12 @@ class InvestigationEngine:
                 COUNT(CASE WHEN ie.is_admin THEN 1 END) as admin_permissions
             FROM principals p
             LEFT JOIN iam_edges ie ON p.principal_id = ie.principal_id
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             WHERE p.principal_id = :principal_id
                 OR p.email = (SELECT email FROM principals WHERE principal_id = :principal_id)
             GROUP BY p.principal_id, p.display_name, p.email, p.principal_type, p.provider
-        """)
+            """
+        )
         
         result = await self.db.execute(identity_query, {"principal_id": principal_id})
         
@@ -364,19 +393,25 @@ class InvestigationEngine:
         """Correlate security events to identify patterns and incidents."""
         
         since_time = datetime.utcnow() - timedelta(hours=time_window_hours)
+
+        dialect = get_dialect_name(self.db)
+        json_object = json_object_function(dialect=dialect)
+        finding_id_str = cast_to_string_expr(column_expr="f.finding_id", dialect=dialect)
+        edge_id_str = cast_to_string_expr(column_expr="ie.edge_id", dialect=dialect)
         
         # Get recent security events
-        events_query = text("""
+        events_query = text(
+            f"""
             WITH recent_events AS (
                 -- Findings created
                 SELECT 
-                    f.finding_id::text as event_id,
+                    {finding_id_str} as event_id,
                     'finding_created' as event_type,
                     f.first_seen as timestamp,
                     f.principal_id,
                     f.resource_id,
                     f.title as description,
-                    jsonb_build_object(
+                    {json_object}(
                         'severity', f.severity,
                         'rule_id', f.rule_id,
                         'provider', a.provider
@@ -389,13 +424,13 @@ class InvestigationEngine:
                 
                 -- Permission grants (recent IAM edges)
                 SELECT 
-                    ie.edge_id::text as event_id,
+                    {edge_id_str} as event_id,
                     'permission_granted' as event_type,
                     ie.effective_at as timestamp,
                     ie.principal_id,
                     ie.resource_id,
                     'Permission granted: ' || ie.permission as description,
-                    jsonb_build_object(
+                    {json_object}(
                         'permission', ie.permission,
                         'via', ie.via,
                         'is_admin', ie.is_admin,
@@ -407,7 +442,8 @@ class InvestigationEngine:
             )
             SELECT * FROM recent_events
             ORDER BY timestamp
-        """)
+            """
+        )
         
         result = await self.db.execute(events_query, {
             "org_id": org_id,
@@ -526,6 +562,9 @@ class InvestigationEngine:
     
     async def get_temporal_query_interface(self, org_id: UUID) -> Dict[str, Any]:
         """Get interface for temporal security queries."""
+
+        dialect = get_dialect_name(self.db)
+        last_24_hours_expr = timestamp_minus_hours_expr(hours=24, dialect=dialect)
         
         # Provide common temporal query templates
         query_templates = [
@@ -547,20 +586,20 @@ class InvestigationEngine:
             {
                 "name": "What changed in the last 24 hours?",
                 "description": "Show all security-relevant changes in the last day",
-                "template": """
+                "template": f"""
                     SELECT 'config_change' as event_type, cs.captured_at, r.name as resource_name
                     FROM config_snapshots cs
                     JOIN resources r ON cs.resource_id = r.resource_id
                     JOIN accounts a ON r.account_id = a.account_id
-                    WHERE a.org_id = '{org_id}' AND cs.captured_at >= NOW() - INTERVAL '24 hours'
-                    
+                    WHERE a.org_id = '{{org_id}}' AND cs.captured_at >= {last_24_hours_expr}
+
                     UNION ALL
-                    
+
                     SELECT 'new_finding' as event_type, f.first_seen, f.title
                     FROM findings f
                     JOIN accounts a ON f.account_id = a.account_id
-                    WHERE a.org_id = '{org_id}' AND f.first_seen >= NOW() - INTERVAL '24 hours'
-                    
+                    WHERE a.org_id = '{{org_id}}' AND f.first_seen >= {last_24_hours_expr}
+
                     ORDER BY captured_at DESC
                 """,
                 "parameters": []

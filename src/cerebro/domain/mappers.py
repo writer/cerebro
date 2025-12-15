@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Generic, Iterable, MutableMapping, Protocol, Type, TypeVar
+from typing import Generic, Iterable, MutableMapping, Protocol, Type, TypeVar
 
 RecordT = TypeVar("RecordT")
 DomainT = TypeVar("DomainT")
@@ -30,7 +30,7 @@ class DomainDtoAdapter(Protocol[DomainT, DtoT]):
         """Rehydrate a domain entity from a DTO payload."""
 
 
-@dataclass(slots=True)
+@dataclass
 class MapperRegistry(Generic[RecordT, DomainT]):
     """Registry coordinating mapper lookups by record type."""
 

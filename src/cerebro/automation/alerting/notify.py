@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Awaitable, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Awaitable, Callable, Optional, Sequence
 
 import httpx
 
@@ -12,7 +11,7 @@ from ..telemetry_health import TelemetryHealthSnapshot
 from .results import AlertResult
 
 
-@dataclass(slots=True)
+@dataclass
 class NotificationContext:
     snapshot: TelemetryHealthSnapshot
     alerts: Sequence[AlertResult]

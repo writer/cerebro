@@ -9,7 +9,6 @@ Provides comprehensive security analysis capabilities including:
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 from pydantic import BaseModel, Field
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
@@ -109,7 +108,7 @@ class SecurityAnalysisTool(StructuredTool):
 
             return ToolResult(
                 success=True,
-                data=result.dict(),
+                data=result.model_dump(),
                 metadata={
                     "analysis_type": analysis_type,
                     "scope": scope,
@@ -267,7 +266,7 @@ class SecurityAnalysisTool(StructuredTool):
     ) -> SecurityAnalysisOutput:
         """Analyze compliance gaps."""
         from cerebro.core.database import async_session_factory
-        from cerebro.core.models import Finding, Rule
+        from cerebro.core.models import Finding
         from sqlalchemy import select
 
         async with async_session_factory() as db:

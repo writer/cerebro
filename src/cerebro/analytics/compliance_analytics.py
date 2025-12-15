@@ -7,7 +7,9 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import text
+
+from .sql_dialect import days_since_expr, get_dialect_name
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +55,12 @@ class ComplianceAnalyzer:
         """Analyze evidence freshness across compliance controls."""
         
         logger.info(f"Analyzing evidence freshness for org {org_id}")
+
+        dialect = get_dialect_name(self.db)
+        age_days_expr = days_since_expr(column_expr="MAX(cs.captured_at)", dialect=dialect)
         
-        evidence_query = text("""
+        evidence_query = text(
+            f"""
             WITH control_evidence AS (
                 SELECT 
                     r.rule_id,
@@ -65,7 +71,7 @@ class ComplianceAnalyzer:
                         ELSE 'OTHER'
                     END as framework,
                     MAX(cs.captured_at) as last_evidence_collected,
-                    EXTRACT(EPOCH FROM (NOW() - MAX(cs.captured_at))) / 86400 as age_days
+                    {age_days_expr} as age_days
                 FROM rules r
                 LEFT JOIN findings f ON r.rule_id = f.rule_id
                     AND f.account_id IN (SELECT account_id FROM accounts WHERE org_id = :org_id)
@@ -90,7 +96,8 @@ class ComplianceAnalyzer:
                 END as freshness_status
             FROM control_evidence
             ORDER BY age_days DESC, framework, control_name
-        """)
+            """
+        )
         
         result = await self.db.execute(evidence_query, {
             "org_id": org_id,

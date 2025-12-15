@@ -15,6 +15,7 @@ from cerebro.core.dynamodb_client import (
     pk,
     put_item,
     query,
+    query_paginated,
     sk,
     update_item,
 )
@@ -154,19 +155,45 @@ class PrincipalRepository:
         provider: str,
         external_id: str,
     ) -> Optional[Principal]:
-        """Get principal by external ID."""
-        principals = await self.list_by_org(org_id, limit=10000)
-        for principal in principals:
-            if principal.provider == provider and principal.external_id == external_id:
-                return principal
+        """Get principal by external ID.
+        
+        Note: Scans principals. Consider adding GSI on external_id for better performance.
+        """
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("ORG", str(org_id)),
+                sk_prefix="PRINCIPAL#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("provider") == provider and item.get("external_id") == external_id:
+                    return Principal.from_item(item)
+            if not cursor:
+                break
         return None
     
     async def get_by_email(self, org_id: UUID, email: str) -> Optional[Principal]:
-        """Get principal by email."""
-        principals = await self.list_by_org(org_id, limit=10000)
-        for principal in principals:
-            if principal.email == email:
-                return principal
+        """Get principal by email.
+        
+        Note: Scans principals. Consider adding GSI on email for better performance.
+        """
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("ORG", str(org_id)),
+                sk_prefix="PRINCIPAL#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("email") == email:
+                    return Principal.from_item(item)
+            if not cursor:
+                break
         return None
     
     async def bulk_upsert(self, principals: List[Principal]) -> int:

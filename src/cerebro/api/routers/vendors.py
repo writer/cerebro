@@ -15,7 +15,8 @@ import logging
 
 from ...core.database import get_db
 from ...core.models import Organization
-from ...api.auth import require_read_findings
+from ...api.auth import User, require_read_findings
+from ...api.org_access import require_org_access
 from ...vendor_management.vendor_registry import get_vendor_registry, VendorCategory, VendorRiskLevel
 from ...vendor_management.discovered_vendors import get_discovered_vendor_tracker
 from ...compliance.evidence_data_fabric import EvidenceDataFabric, EvidenceQuery, EvidenceEntityType
@@ -53,7 +54,7 @@ async def create_vendor(
     org_id: UUID,
     request: VendorCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Create new vendor in registry."""
     org = await db.get(Organization, org_id)
@@ -95,9 +96,9 @@ async def create_vendor(
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Vendor creation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Vendor creation failed: {str(e)}")
+    except Exception:
+        logger.exception("Vendor creation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Vendor creation failed")
 
 
 @router.get("/organizations/{org_id}/vendors")
@@ -108,7 +109,7 @@ async def list_vendors(
     overdue_reviews: bool = Query(False, description="Show only vendors with overdue reviews"),
     limit: int = Query(50, description="Maximum vendors to return", ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """List vendors with filtering options."""
     org = await db.get(Organization, org_id)
@@ -167,9 +168,9 @@ async def list_vendors(
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Vendor listing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Vendor listing failed: {str(e)}")
+    except Exception:
+        logger.exception("Vendor listing failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Vendor listing failed")
 
 
 @router.get("/organizations/{org_id}/vendors/{vendor_id}")
@@ -178,7 +179,7 @@ async def get_vendor_details(
     vendor_id: str,
     include_evidence: bool = Query(False, description="Include compliance evidence"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get detailed vendor information with optional evidence."""
     org = await db.get(Organization, org_id)
@@ -265,9 +266,9 @@ async def get_vendor_details(
         
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Vendor details retrieval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Vendor details failed: {str(e)}")
+    except Exception:
+        logger.exception("Vendor details retrieval failed", extra={"org_id": str(org_id), "vendor_id": vendor_id})
+        raise HTTPException(status_code=500, detail="Vendor details failed")
 
 
 @router.get("/organizations/{org_id}/vendors/discovered")
@@ -277,7 +278,7 @@ async def list_discovered_vendors(
     confidence_threshold: float = Query(0.7, description="Minimum confidence score", ge=0.0, le=1.0),
     discovery_method: Optional[str] = Query(None, description="Filter by discovery method"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """List automatically discovered vendors."""
     org = await db.get(Organization, org_id)
@@ -334,16 +335,16 @@ async def list_discovered_vendors(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"Discovered vendors listing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Discovered vendors failed: {str(e)}")
+    except Exception:
+        logger.exception("Discovered vendors listing failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Discovered vendors failed")
 
 
 @router.get("/organizations/{org_id}/vendors/risk-report")
 async def get_vendor_risk_report(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get comprehensive vendor risk assessment report."""
     org = await db.get(Organization, org_id)
@@ -360,9 +361,9 @@ async def get_vendor_risk_report(
             "data": risk_report
         }
         
-    except Exception as e:
-        logger.error(f"Vendor risk report failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Risk report failed: {str(e)}")
+    except Exception:
+        logger.exception("Vendor risk report failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Risk report failed")
 
 
 @router.post("/organizations/{org_id}/vendors/discovered/{discovered_vendor_id}/review")
@@ -372,7 +373,7 @@ async def review_discovered_vendor(
     promote_to_vendor: bool = Query(..., description="Whether to promote to full vendor"),
     suppression_reason: Optional[str] = Query(None, description="Reason for suppression if not promoting"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Review discovered vendor and decide on promotion or suppression."""
     org = await db.get(Organization, org_id)
@@ -397,9 +398,12 @@ async def review_discovered_vendor(
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Discovered vendor review failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Review failed: {str(e)}")
+    except Exception:
+        logger.exception(
+            "Discovered vendor review failed",
+            extra={"org_id": str(org_id), "discovered_vendor_id": discovered_vendor_id},
+        )
+        raise HTTPException(status_code=500, detail="Review failed")
 
 
 # Vendor evidence queries (leveraging the evidence data fabric)
@@ -410,7 +414,7 @@ async def get_vendor_evidence(
     evidence_type: Optional[str] = Query(None, description="Filter by evidence type"),
     since_days: int = Query(90, description="Evidence age limit in days", ge=1, le=365),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get compliance evidence related to vendor."""
     org = await db.get(Organization, org_id)
@@ -487,6 +491,6 @@ async def get_vendor_evidence(
                 "error": f"Evidence query failed: {str(e)}"
             }
         
-    except Exception as e:
-        logger.error(f"Vendor evidence retrieval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Evidence retrieval failed: {str(e)}")
+    except Exception:
+        logger.exception("Vendor evidence retrieval failed", extra={"org_id": str(org_id), "vendor_id": vendor_id})
+        raise HTTPException(status_code=500, detail="Evidence retrieval failed")

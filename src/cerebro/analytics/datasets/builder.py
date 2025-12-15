@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional
+from typing import Dict, Iterable, List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,7 +16,7 @@ from cerebro.agents.models import AgentReviewTask, AgentRuntimeEvent
 from cerebro.core.models import FrontendObservationEvent
 
 
-@dataclass(slots=True)
+@dataclass
 class DatasetRecord:
     """Normalized observation used for supervised fine-tuning."""
 

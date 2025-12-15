@@ -54,13 +54,23 @@ def auto_discover_producers(package_name: str = "cerebro.findings.producers") ->
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
 
-                    if (
-                        isinstance(attr, type)
-                        and issubclass(attr, BaseFindingProducer)
-                        and attr is not BaseFindingProducer
-                        and not attr.__name__.startswith("Base")
-                    ):
+                    # Skip non-class attributes
+                    if not isinstance(attr, type):
+                        continue
+                    
+                    # Check if it's a subclass of BaseFindingProducer
+                    # Use try-except because some type-like objects fail issubclass()
+                    try:
+                        is_producer = (
+                            issubclass(attr, BaseFindingProducer)
+                            and attr is not BaseFindingProducer
+                            and not attr.__name__.startswith("Base")
+                        )
+                    except TypeError:
+                        # Not a valid class for issubclass (e.g., generic alias)
+                        continue
 
+                    if is_producer:
                         try:
                             # Register the producer
                             register_producer(attr)

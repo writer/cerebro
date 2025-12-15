@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Iterable, Optional, List
 from uuid import UUID
@@ -25,14 +24,12 @@ from cerebro.core.models import (
 )
 from cerebro.telemetry.models import (
     ArtifactPack,
-    ArtifactPackTask,
     ArtifactPackTrigger,
     ArtifactPackTarget,
     HostContext,
     HostTelemetryEvent,
     RepositoryContext,
     RuntimeContext,
-    TelemetryResult,
 )
 from cerebro.telemetry.schemas import (
     ArtifactPackDefinition,
@@ -89,7 +86,10 @@ class TelemetryIngestionService:
                         findings.append(finding)
 
             for structured_payload, hint in [
-                (payload.dependencies.dict() if payload.dependencies else None, "dependency_scan"),
+                (
+                    payload.dependencies.model_dump() if payload.dependencies else None,
+                    "dependency_scan",
+                ),
                 (payload.sbom, "sbom"),
                 (payload.code_metrics, "code_metrics"),
             ]:

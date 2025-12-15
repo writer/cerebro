@@ -6,7 +6,6 @@ and validation using the pluggable framework system.
 """
 
 from typing import List, Optional, Any
-from datetime import datetime
 
 from ..framework_registry import (
     FrameworkProvider, FrameworkDefinition, ControlDefinition,
@@ -343,7 +342,7 @@ class SOC2FrameworkProvider(FrameworkProvider):
             recent_alerts = [a for a in alerts if a.get("state") == "open"]
             recent_logs = [l for l in logs if "security" in l.get("event_type", "").lower()]
 
-            return len(alerts) > 0 or len(recent_logs) > 0
+            return len(recent_alerts) > 0 or len(recent_logs) > 0
 
         except Exception:
             return False

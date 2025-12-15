@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
-from cerebro.agents.models import ReviewTaskStatus
 
 
 @dataclass

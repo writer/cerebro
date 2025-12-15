@@ -17,7 +17,7 @@ from cerebro.rules.engine import rule_engine
 from cerebro_sdk.pagination import CursorPage, PageRequest, decode_cursor, encode_cursor
 
 
-@dataclass(slots=True)
+@dataclass
 class FindingRecord:
     finding_id: UUID
     org_id: UUID

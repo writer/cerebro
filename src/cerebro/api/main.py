@@ -5,14 +5,12 @@ from contextlib import asynccontextmanager, suppress
 from time import perf_counter
 from typing import Dict
 
-from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-import logging
 import structlog
 from fastapi.responses import Response
 
@@ -63,7 +61,6 @@ from .routers.v2 import (
     agents as agents_v2,
 )
 from .routers import jwks
-from .auth import User, get_current_user
 
 # Configure logging
 configure_structlog()
@@ -621,12 +618,12 @@ async def health_celery():
 
             try:
                 reserved_tasks = inspect.reserved() or {}
-            except Exception as exc:  # pragma: no cover
+            except Exception:  # pragma: no cover
                 reserved_tasks = {}
 
             try:
                 worker_stats = inspect.stats() or {}
-            except Exception as exc:  # pragma: no cover
+            except Exception:  # pragma: no cover
                 worker_stats = {}
 
             total_active = sum(len(tasks) for tasks in active_tasks.values())
@@ -720,28 +717,24 @@ async def health_encryption():
 @app.get("/health/dynamodb")
 async def health_dynamodb():
     """DynamoDB health check endpoint."""
-    from cerebro.core.dynamodb_client import get_client, TableName, get_table_name
+    from cerebro.core.dynamodb_client import health_check
 
     try:
-        client = get_client()
-        table_name = get_table_name(TableName.CORE)
+        result = await health_check()
         
-        # Describe table to verify connectivity
-        response = client.describe_table(TableName=table_name)
-        table_status = response["Table"]["TableStatus"]
-        item_count = response["Table"].get("ItemCount", 0)
-        
-        if table_status != "ACTIVE":
+        if not result["healthy"]:
             raise HTTPException(
                 status_code=503,
-                detail=f"DynamoDB table not active: {table_status}"
+                detail={
+                    "status": "unhealthy",
+                    "tables": result["tables"],
+                    "errors": result["errors"],
+                }
             )
         
         return {
             "status": "healthy",
-            "table": table_name,
-            "table_status": table_status,
-            "item_count": item_count,
+            "tables": result["tables"],
         }
     except HTTPException:
         raise

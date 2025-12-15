@@ -21,7 +21,7 @@ import structlog
 from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.api.auth import get_current_user, User
-from cerebro.core.models import SlackWebhook, SlackNotification, Organization
+from cerebro.core.models import SlackWebhook, SlackNotification
 from cerebro.integrations.slack import (
     SlackCommandError,
     SlackCommandService,
@@ -176,7 +176,7 @@ async def create_slack_webhook(
         )
 
         # Mask webhook URL in response
-        response_webhook = SlackWebhookResponse.from_orm(webhook)
+        response_webhook = SlackWebhookResponse.model_validate(webhook)
         response_webhook.webhook_url = _mask_url(webhook.webhook_url)
 
         return response_webhook
@@ -210,7 +210,7 @@ async def list_slack_webhooks(
         # Mask webhook URLs
         response_webhooks = []
         for webhook in webhooks:
-            response_webhook = SlackWebhookResponse.from_orm(webhook)
+            response_webhook = SlackWebhookResponse.model_validate(webhook)
             response_webhook.webhook_url = _mask_url(webhook.webhook_url)
             response_webhooks.append(response_webhook)
 
@@ -250,7 +250,7 @@ async def get_slack_webhook(
                 detail="Slack webhook not found",
             )
 
-        response_webhook = SlackWebhookResponse.from_orm(webhook)
+        response_webhook = SlackWebhookResponse.model_validate(webhook)
         response_webhook.webhook_url = _mask_url(webhook.webhook_url)
 
         return response_webhook
@@ -319,7 +319,7 @@ async def update_slack_webhook(
             org_id=str(current_user.org_id),
         )
 
-        response_webhook = SlackWebhookResponse.from_orm(webhook)
+        response_webhook = SlackWebhookResponse.model_validate(webhook)
         response_webhook.webhook_url = _mask_url(webhook.webhook_url)
 
         return response_webhook
@@ -410,7 +410,7 @@ async def list_slack_notifications(
         result = await db.execute(query)
         notifications = result.scalars().all()
 
-        return [SlackNotificationResponse.from_orm(n) for n in notifications]
+        return [SlackNotificationResponse.model_validate(n) for n in notifications]
 
     except Exception as e:
         logger.error("list_slack_notifications_failed", error=str(e))

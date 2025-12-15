@@ -29,7 +29,7 @@ from cerebro_sdk.tasks import TaskManager
 from cerebro_sdk.users import UserManager
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentFacades:
     manager: AgentManager
     review: AgentReviewManager
@@ -39,7 +39,7 @@ class AgentFacades:
     playbooks: AgentPlaybook
 
 
-@dataclass(slots=True)
+@dataclass
 class AnalyticsFacades:
     runtime_health: RuntimeHealthClient
     integration_coverage: IntegrationCoverageClient

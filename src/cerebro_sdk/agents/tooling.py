@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, List, Optional
 import inspect
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable, List, Optional, Union
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.agents.models import AgentPolicySuggestion, ToolApproval, ToolInvocation
-
+from cerebro.agents.models import (
+    AgentPolicySuggestion,
+    ApprovalStatus,
+    ToolApproval,
+    ToolInvocation,
+    ToolInvocationStatus,
+)
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.repositories import ToolingRepository
 from cerebro_sdk.agents.types import (
@@ -25,8 +30,6 @@ from cerebro_sdk.agents.types import (
 )
 from cerebro_sdk.telemetry import get_logger
 
-from cerebro.agents.models import ApprovalStatus, ToolInvocationStatus
-
 
 class AgentToolingManager(AsyncManagerBase):
     """Inspect and manage tool invocations and approvals."""
@@ -35,13 +38,13 @@ class AgentToolingManager(AsyncManagerBase):
         super().__init__(db)
         self._repo = ToolingRepository(db, registry=registry)
         self._logger = get_logger(__name__ + ".manager")
-        self._listeners: List[Callable[[ToolInvocationRecord], Awaitable[None] | None]] = []
+        self._listeners: List[Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]] = []
 
-    def register_listener(self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]) -> None:
+    def register_listener(self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]) -> None:
         if listener not in self._listeners:
             self._listeners.append(listener)
 
-    def unregister_listener(self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]) -> None:
+    def unregister_listener(self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]) -> None:
         if listener in self._listeners:
             self._listeners.remove(listener)
 

@@ -5,7 +5,6 @@ Automatically discovers vendors through OAuth applications, API integrations,
 and network traffic analysis.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
@@ -151,13 +150,18 @@ class DiscoveredVendorTracker:
         
         try:
             # Query GitHub repositories for external integrations
-            github_result = await self.query_engine.execute_query("""
-                SELECT repository, topics, language, created_at
-                FROM github_repository
-                WHERE topics LIKE '%integration%' OR topics LIKE '%api%'
-            """)
+            github_repos_by_name: Dict[str, Dict[str, Any]] = {}
+            for query in [
+                "SELECT repository, topics, language, created_at FROM github_repository WHERE topics LIKE '%integration%'",
+                "SELECT repository, topics, language, created_at FROM github_repository WHERE topics LIKE '%api%'",
+            ]:
+                github_result = await self.query_engine.execute_query(query)
+                for row in github_result.rows:
+                    repo_name = row.get("repository")
+                    if repo_name:
+                        github_repos_by_name[repo_name] = row
             
-            for repo in github_result.rows:
+            for repo in github_repos_by_name.values():
                 # Analyze repository for vendor integrations
                 vendor_indicators = self._analyze_repo_for_vendors(repo)
                 
@@ -272,9 +276,7 @@ class DiscoveredVendorTracker:
         """Analyze repository for vendor integration indicators."""
         indicators = []
         
-        repo_name = repo.get("repository", "")
         topics = repo.get("topics", [])
-        language = repo.get("language", "")
         
         # Look for integration patterns in topics
         integration_topics = [topic for topic in topics if any(

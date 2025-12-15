@@ -1,7 +1,7 @@
 """Finding service interface and implementation."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Protocol
+from typing import List, Dict, Optional
 from uuid import UUID
 
 from cerebro.findings.producers import ProducerBasedFindingService as ProducerService, producer_registry

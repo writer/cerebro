@@ -20,7 +20,7 @@ class ScenarioProvider:
         raise NotImplementedError
 
 
-@dataclass(slots=True)
+@dataclass
 class TournamentScenarioConfig:
     scenario_id: str
     repetitions: int = 1
@@ -28,7 +28,7 @@ class TournamentScenarioConfig:
     max_allowed_turns: Optional[int] = None
 
 
-@dataclass(slots=True)
+@dataclass
 class ScenarioRunResult:
     scenario_id: str
     matches: List[SelfPlayResult]
@@ -40,14 +40,14 @@ class ScenarioRunResult:
         return self.drift_alert is None
 
 
-@dataclass(slots=True)
+@dataclass
 class TournamentConfig:
     name: str
     scenarios: List[TournamentScenarioConfig]
     metadata: Dict[str, object]
 
 
-@dataclass(slots=True)
+@dataclass
 class TournamentResult:
     name: str
     scenarios: List[ScenarioRunResult]

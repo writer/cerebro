@@ -22,10 +22,8 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
-import pandas as pd
 from sqlalchemy import (
-    Column, String, DateTime, JSON, Text, Integer, Float, Boolean,
-    ForeignKey, Table, Index, UniqueConstraint
+    Column, String, DateTime, Text, Integer, Float, ForeignKey, Table, Index, UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
@@ -33,7 +31,6 @@ from sqlalchemy.dialects.postgresql import UUID
 from cerebro.core.database_types import JSONType
 
 # Import unified enums from the consolidated models
-from .models import EvidenceStatus, EvidenceCategory
 
 Base = declarative_base()
 
@@ -494,12 +491,12 @@ class EvidenceDataFabric:
         normalization_rules = schema.get("normalization_rules", {})
         normalized = {}
         
-        for field, rule in normalization_rules.items():
+        for field_name, rule in normalization_rules.items():
             if rule["type"] == "direct":
                 # Direct field mapping
                 source_field = rule["source_field"]
                 if source_field in raw_data:
-                    normalized[field] = raw_data[source_field]
+                    normalized[field_name] = raw_data[source_field]
             elif rule["type"] == "computed":
                 # Computed field
                 if rule["compute"] == "timestamp":
@@ -507,7 +504,7 @@ class EvidenceDataFabric:
                     source_field = rule["source_field"]
                     if source_field in raw_data:
                         # Add timestamp parsing logic here
-                        normalized[field] = raw_data[source_field]
+                        normalized[field_name] = raw_data[source_field]
         
         return normalized
     
@@ -525,9 +522,9 @@ class EvidenceDataFabric:
         
         fields = name_fields.get(entity_type, ["name", "title", "id"])
         
-        for field in fields:
-            if field in raw_data and raw_data[field]:
-                return str(raw_data[field])
+        for field_name in fields:
+            if field_name in raw_data and raw_data[field_name]:
+                return str(raw_data[field_name])
         
         return None
     

@@ -10,6 +10,7 @@ from uuid import UUID
 
 from cerebro.agents.dynamodb_models import (
     AgentMemoryEntry,
+    AgentMessage,
     AgentSession,
     AgentType,
     ToolInvocation,
@@ -17,11 +18,9 @@ from cerebro.agents.dynamodb_models import (
 from cerebro.core.dynamodb import (
     TableName,
     batch_write_items,
-    delete_item,
     get_item,
     get_table_name,
     put_item,
-    query_by_pk,
     get_dynamodb_client,
     deserialize_item,
 )
@@ -261,22 +260,6 @@ class DynamoDBAgentSessionRepository:
         if not session:
             return None
 
-        # Query messages and tools for this session
-        client = get_dynamodb_client()
-        table_name = get_table_name(self._table)
-
-        # Get all items under this session (messages, tools)
-        response = client.query(
-            TableName=table_name,
-            KeyConditionExpression="PK = :pk",
-            ExpressionAttributeValues={
-                ":pk": {"S": f"SESSION#{session_id}"},
-            },
-            ScanIndexForward=True,
-        )
-
-        items = [deserialize_item(item) for item in response.get("Items", [])]
-
         # Note: The AgentSession model doesn't have messages/tool_invocations
         # as direct attributes in DynamoDB model. They would need to be
         # queried separately. For compatibility, we return the session
@@ -394,7 +377,6 @@ class DynamoDBAgentSessionRepository:
         Returns:
             Created message.
         """
-        from cerebro.agents.dynamodb_models import AgentMessage
 
         await put_item(self._table, message.to_dynamodb_item())
         return message

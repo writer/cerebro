@@ -18,7 +18,7 @@ from .primitives import (
 ControlStatus = str
 
 
-@dataclass(slots=True)
+@dataclass
 class EvidenceBundle:
     exported_at: datetime
     control_id: str
@@ -29,7 +29,7 @@ class EvidenceBundle:
     customer_summary: EvidenceSetSummary
 
 
-@dataclass(slots=True)
+@dataclass
 class ControlDefinition:
     name: str
     policies: Sequence[str]
@@ -39,19 +39,19 @@ class ControlDefinition:
     tolerance: "ControlTolerance" | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class ControlTolerance:
     residual_risk_max: float | None = None
     churn_risk_max: float | None = None
     overdue_review_max: int | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class ControlCatalog:
     frameworks: Mapping[str, Mapping[str, ControlDefinition]]
 
 
-@dataclass(slots=True)
+@dataclass
 class ControlMapping:
     control_id: str
     control_name: str
@@ -64,7 +64,7 @@ class ControlMapping:
     evidence_report: EvidenceBundle
 
 
-@dataclass(slots=True)
+@dataclass
 class ControlMappingOptions:
     catalog: ControlCatalog
     vendor_tags: Callable[[SecurityCenterVendorInsight], Sequence[str]] | None = None

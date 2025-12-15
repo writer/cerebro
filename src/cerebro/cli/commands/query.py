@@ -4,11 +4,8 @@ SQL query commands for Cerebro CLI.
 Provides interactive SQL querying capabilities for security data.
 """
 
-import asyncio
 from typing import Optional, List, TYPE_CHECKING
 import click
-import json
-from datetime import datetime
 
 from ...core.database import async_session_factory
 from ...integrations.freshness import IntegrationFreshnessService

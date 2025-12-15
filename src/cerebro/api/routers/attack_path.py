@@ -5,9 +5,8 @@ Provides REST API for attack path queries, blast radius analysis,
 and service identity mapping.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -15,7 +14,8 @@ import logging
 
 from ...core.database import get_db
 from ...core.models import Organization
-from ...api.auth import require_read_findings
+from ...api.auth import User, require_read_findings
+from ...api.org_access import require_org_access
 from ...attack_path.reachability import get_reachability_analyzer
 from ...attack_path.path_analysis import get_path_analyzer, PathQuery, PathType
 from ...attack_path.graph_model import get_attack_graph
@@ -52,7 +52,7 @@ async def analyze_attack_paths(
     org_id: UUID,
     query: AttackPathQuery,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Analyze attack paths based on query parameters."""
     org = await db.get(Organization, org_id)
@@ -119,9 +119,9 @@ async def analyze_attack_paths(
             }
         }
         
-    except Exception as e:
-        logger.error(f"Attack path analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Attack path analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Attack path analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Attack path analysis failed")
 
 
 @router.post("/organizations/{org_id}/blast-radius")  
@@ -129,7 +129,7 @@ async def analyze_blast_radius(
     org_id: UUID,
     query: BlastRadiusQuery,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Analyze blast radius for principal compromise."""
     org = await db.get(Organization, org_id)
@@ -176,9 +176,9 @@ async def analyze_blast_radius(
             }
         }
         
-    except Exception as e:
-        logger.error(f"Blast radius analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Blast radius analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Blast radius analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Blast radius analysis failed")
 
 
 @router.get("/organizations/{org_id}/attack-graph/summary")
@@ -186,7 +186,7 @@ async def get_attack_graph_summary(
     org_id: UUID,
     rebuild: bool = Query(False, description="Rebuild graph from current data"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get attack graph summary statistics."""
     org = await db.get(Organization, org_id)
@@ -203,9 +203,9 @@ async def get_attack_graph_summary(
             "data": summary
         }
         
-    except Exception as e:
-        logger.error(f"Attack graph summary failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Graph summary failed: {str(e)}")
+    except Exception:
+        logger.exception("Attack graph summary failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Graph summary failed")
 
 
 @router.get("/organizations/{org_id}/service-identities")
@@ -214,7 +214,7 @@ async def get_service_identities(
     risk_level: Optional[str] = Query(None, description="Filter by risk level"),
     trust_mechanism: Optional[str] = Query(None, description="Filter by trust mechanism"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get service identity mappings and risk analysis."""
     org = await db.get(Organization, org_id)
@@ -266,9 +266,9 @@ async def get_service_identities(
             "risk_analysis": risk_analysis
         }
         
-    except Exception as e:
-        logger.error(f"Service identity analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Service identity analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Service identity analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Service identity analysis failed")
 
 
 @router.post("/organizations/{org_id}/what-if")
@@ -276,7 +276,7 @@ async def what_if_simulation(
     org_id: UUID,
     scenario: WhatIfScenario,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Perform what-if attack simulation."""
     org = await db.get(Organization, org_id)
@@ -297,9 +297,9 @@ async def what_if_simulation(
             "data": simulation_result
         }
         
-    except Exception as e:
-        logger.error(f"What-if simulation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
+    except Exception:
+        logger.exception("What-if simulation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Simulation failed")
 
 
 @router.get("/organizations/{org_id}/high-value-targets")
@@ -307,7 +307,7 @@ async def get_high_value_targets(
     org_id: UUID,
     limit: int = Query(20, description="Number of targets to return", ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get high-value targets for attack path analysis."""
     org = await db.get(Organization, org_id)
@@ -335,9 +335,9 @@ async def get_high_value_targets(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"High-value targets query failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Target query failed: {str(e)}")
+    except Exception:
+        logger.exception("High-value targets query failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Target query failed")
 
 
 @router.get("/organizations/{org_id}/high-privilege-principals")
@@ -345,7 +345,7 @@ async def get_high_privilege_principals(
     org_id: UUID,
     limit: int = Query(20, description="Number of principals to return", ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get high-privilege principals for attack path analysis."""
     org = await db.get(Organization, org_id)
@@ -373,6 +373,6 @@ async def get_high_privilege_principals(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"High-privilege principals query failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Principals query failed: {str(e)}")
+    except Exception:
+        logger.exception("High-privilege principals query failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Principals query failed")

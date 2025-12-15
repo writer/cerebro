@@ -10,11 +10,18 @@ from pydantic import BaseModel
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization, Principal
-from cerebro.api.auth import require_read_findings
+from cerebro.api.auth import User, require_read_findings
+from cerebro.api.org_access import require_org_access
 from cerebro.analysis.blast_radius import BlastRadiusAnalyzer
 from cerebro.analysis.forensic_replay import ForensicReplayEngine
 from cerebro.analysis.change_replay import ChangeReplayEngine
-# from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult  # Requires sklearn
+try:
+    from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult
+    IDENTITY_ANOMALY_AVAILABLE = True
+except ImportError:
+    IdentityAnomalyDetector = None
+    AnomalyResult = None
+    IDENTITY_ANOMALY_AVAILABLE = False
 from cerebro.compliance.generator import ComplianceEvidenceGenerator
 from cerebro.compliance.frameworks import list_frameworks, get_framework
 from cerebro.rules.engine import rule_engine
@@ -52,7 +59,7 @@ async def analyze_blast_radius(
     org_id: UUID,
     request: BlastRadiusRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Analyze blast radius for principal compromise."""
     # Verify organization exists
@@ -105,16 +112,16 @@ async def analyze_blast_radius(
             }
         }
         
-    except Exception as e:
-        logger.error(f"Blast radius analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Blast radius analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Analysis failed")
 
 
 @router.get("/organizations/{org_id}/blast-radius/report")
 async def generate_blast_radius_report(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Generate organization-wide blast radius report."""
     org = await db.get(Organization, org_id)
@@ -126,9 +133,9 @@ async def generate_blast_radius_report(
         report = await analyzer.generate_blast_radius_report(org_id)
         return report
         
-    except Exception as e:
-        logger.error(f"Blast radius report generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+    except Exception:
+        logger.exception("Blast radius report generation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Report generation failed")
 
 
 @router.post("/organizations/{org_id}/forensic-replay")
@@ -136,7 +143,7 @@ async def forensic_replay(
     org_id: UUID,
     request: ForensicReplayRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Reconstruct system state at a historical point in time."""
     org = await db.get(Organization, org_id)
@@ -179,9 +186,9 @@ async def forensic_replay(
             "active_findings": historical_state.active_findings[:50]
         }
         
-    except Exception as e:
-        logger.error(f"Forensic replay failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Forensic replay failed: {str(e)}")
+    except Exception:
+        logger.exception("Forensic replay failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Forensic replay failed")
 
 
 @router.post("/organizations/{org_id}/change-replay")
@@ -189,7 +196,7 @@ async def change_replay(
     org_id: UUID,
     request: ChangeReplayRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Replay rule changes against historical data."""
     org = await db.get(Organization, org_id)
@@ -221,9 +228,9 @@ async def change_replay(
             "sample_findings": result.findings_that_would_exist[:10]
         }
         
-    except Exception as e:
-        logger.error(f"Change replay failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Change replay failed: {str(e)}")
+    except Exception:
+        logger.exception("Change replay failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Change replay failed")
 
 
 @router.get("/organizations/{org_id}/rule-effectiveness")
@@ -231,7 +238,7 @@ async def get_rule_effectiveness(
     org_id: UUID,
     lookback_days: int = Query(default=90, description="Days to look back"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get rule effectiveness analysis."""
     org = await db.get(Organization, org_id)
@@ -243,9 +250,9 @@ async def get_rule_effectiveness(
         report = await replay_engine.generate_rule_effectiveness_report(org_id, lookback_days)
         return report
         
-    except Exception as e:
-        logger.error(f"Rule effectiveness analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Rule effectiveness analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Analysis failed")
 
 
 @router.post("/organizations/{org_id}/what-if-rule")
@@ -255,7 +262,7 @@ async def what_if_rule_analysis(
     providers: List[str],
     time_period_days: int = Query(default=30, description="Days to analyze"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Analyze what would happen if a rule had been active."""
     org = await db.get(Organization, org_id)
@@ -269,9 +276,9 @@ async def what_if_rule_analysis(
         )
         return result
         
-    except Exception as e:
-        logger.error(f"What-if rule analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("What-if rule analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Analysis failed")
 
 
 @router.get("/organizations/{org_id}/identity/anomalies")
@@ -280,9 +287,12 @@ async def get_identity_anomalies(
     principal_id: Optional[UUID] = Query(None, description="Specific principal to analyze"),
     lookback_days: int = Query(default=30, description="Days to look back for baseline"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Detect identity anomalies using machine learning."""
+    if not IDENTITY_ANOMALY_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Identity anomaly detection requires sklearn")
+    
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -317,9 +327,9 @@ async def get_identity_anomalies(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"Identity anomaly detection failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Anomaly detection failed: {str(e)}")
+    except Exception:
+        logger.exception("Identity anomaly detection failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Anomaly detection failed")
 
 
 @router.get("/organizations/{org_id}/identity/anomalies/summary")
@@ -327,9 +337,12 @@ async def get_identity_anomaly_summary(
     org_id: UUID,
     lookback_days: int = Query(default=30, description="Days to look back for baseline"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get summary of identity anomalies for organization."""
+    if not IDENTITY_ANOMALY_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Identity anomaly detection requires sklearn")
+    
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -353,9 +366,9 @@ async def get_identity_anomaly_summary(
             }
         }
         
-    except Exception as e:
-        logger.error(f"Identity anomaly summary failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Summary generation failed: {str(e)}")
+    except Exception:
+        logger.exception("Identity anomaly summary failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Summary generation failed")
 
 
 @router.post("/organizations/{org_id}/identity/anomalies/analyze")
@@ -363,9 +376,12 @@ async def analyze_identity_anomalies_post(
     org_id: UUID,
     request: IdentityAnomalyRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Run identity anomaly analysis with custom parameters."""
+    if not IDENTITY_ANOMALY_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Identity anomaly detection requires sklearn")
+    
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -407,15 +423,15 @@ async def analyze_identity_anomalies_post(
             }
         }
         
-    except Exception as e:
-        logger.error(f"Identity anomaly analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Identity anomaly analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Analysis failed")
 
 
 # Compliance Evidence Generation Endpoints
 @router.get("/compliance/frameworks")
 async def list_compliance_frameworks(
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_read_findings),
 ):
     """List all available compliance frameworks."""
     frameworks = list_frameworks()
@@ -445,7 +461,7 @@ async def list_compliance_frameworks(
 @router.get("/compliance/frameworks/{framework_name}")
 async def get_compliance_framework(
     framework_name: str,
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_read_findings),
 ):
     """Get detailed information about a specific compliance framework."""
     framework = get_framework(framework_name)
@@ -493,7 +509,7 @@ async def generate_compliance_evidence(
     period_start: Optional[str] = Query(None, description="Evidence period start (ISO format)"),
     period_end: Optional[str] = Query(None, description="Evidence period end (ISO format)"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Generate compliance evidence report for an organization."""
     org = await db.get(Organization, org_id)
@@ -525,9 +541,9 @@ async def generate_compliance_evidence(
             "generated_at": datetime.now().isoformat()
         }
         
-    except Exception as e:
-        logger.error(f"Compliance evidence generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Evidence generation failed: {str(e)}")
+    except Exception:
+        logger.exception("Compliance evidence generation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Evidence generation failed")
 
 
 @router.get("/organizations/{org_id}/compliance/{framework_name}/status")
@@ -535,7 +551,7 @@ async def get_compliance_status(
     org_id: UUID,
     framework_name: str,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get current compliance status for an organization and framework."""
     org = await db.get(Organization, org_id)
@@ -570,6 +586,6 @@ async def get_compliance_status(
             "assessment_period_days": 30
         }
         
-    except Exception as e:
-        logger.error(f"Compliance status check failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+    except Exception:
+        logger.exception("Compliance status check failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Status check failed")

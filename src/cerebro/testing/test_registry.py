@@ -5,7 +5,6 @@ Manages security tests, control validation, and test scheduling
 following Vanta's test management patterns.
 """
 
-import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass

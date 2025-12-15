@@ -2,11 +2,9 @@
 
 import importlib
 import importlib.util
-import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Type, Union
 import logging
-import inspect
 
 from cerebro.providers.base import BaseProvider
 from cerebro.findings.producers.base import BaseFindingProducer

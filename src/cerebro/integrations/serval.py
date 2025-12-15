@@ -22,7 +22,7 @@ def _serialize_datetime(value: Any) -> str:
     return str(value)
 
 
-@dataclass(slots=True)
+@dataclass
 class ServalConfig:
     base_url: str
     client_id: str
@@ -41,7 +41,7 @@ class ServalError(RuntimeError):
     """Raised when Serval API interactions fail."""
 
 
-@dataclass(slots=True)
+@dataclass
 class _Token:
     value: str
     token_type: str

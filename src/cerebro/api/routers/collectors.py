@@ -1,8 +1,7 @@
 """Collection management endpoints."""
 
-from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import get_db
@@ -11,6 +10,7 @@ from cerebro.api.schemas import CollectionRequest, CollectionResponse
 from cerebro.api.dependencies import get_collector_manager
 from cerebro.collectors.manager import CollectorManager
 from cerebro.api.auth import get_current_user, require_collect, User
+from cerebro.api.org_access import require_org_access
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -21,7 +21,7 @@ async def collect_organization(
     request: CollectionRequest,
     collector_manager: CollectorManager = Depends(get_collector_manager),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_collect)
+    current_user: User = Depends(require_org_access(require_collect)),
 ):
     """Collect configuration data for an organization."""
     # Verify organization exists
@@ -38,8 +38,14 @@ async def collect_organization(
         return CollectionResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Collection failed: {str(e)}")
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Collection failed",
+            extra={"org_id": str(org_id)},
+        )
+        raise HTTPException(status_code=500, detail="Collection failed")
 
 
 @router.post("/organizations/{org_id}/collect/background")
@@ -47,7 +53,7 @@ async def collect_organization_background(
     org_id: UUID,
     request: CollectionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_collect)
+    current_user: User = Depends(require_org_access(require_collect)),
 ):
     """Start background collection for an organization using Celery."""
     from cerebro.tasks.collection_tasks import collect_organization_task

@@ -14,6 +14,7 @@ from cerebro.core.dynamodb_client import (
     pk,
     put_item,
     query,
+    query_paginated,
     sk,
     update_item,
 )
@@ -175,11 +176,24 @@ class ResourceRepository:
         resource_type: str,
         external_id: str,
     ) -> Optional[Resource]:
-        """Get resource by external ID."""
-        resources = await self.list_by_type(org_id, resource_type, limit=10000)
-        for resource in resources:
-            if resource.provider == provider and resource.external_id == external_id:
-                return resource
+        """Get resource by external ID.
+        
+        Note: Scans resources of given type. Consider adding GSI on external_id.
+        """
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                f"ORG#{org_id}#TYPE#{resource_type}",
+                index="GSI2",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("provider") == provider and item.get("external_id") == external_id:
+                    return Resource.from_item(item)
+            if not cursor:
+                break
         return None
     
     async def bulk_upsert(self, resources: List[Resource]) -> int:
@@ -189,9 +203,23 @@ class ResourceRepository:
         return len(resources)
     
     async def count_by_type(self, org_id: UUID) -> Dict[str, int]:
-        """Count resources by type."""
-        resources = await self.list_by_org(org_id, limit=100000)
+        """Count resources by type.
+        
+        Uses paginated queries to handle large datasets efficiently.
+        """
         counts: Dict[str, int] = {}
-        for resource in resources:
-            counts[resource.resource_type] = counts.get(resource.resource_type, 0) + 1
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("ORG", str(org_id)),
+                sk_prefix="RESOURCE#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                rt = item.get("resource_type", "unknown")
+                counts[rt] = counts.get(rt, 0) + 1
+            if not cursor:
+                break
         return counts

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.api.org_access import require_org_access
 from cerebro.analytics.time_series import TrendAnalyzer, MetricType
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -19,7 +20,7 @@ async def get_metric_trends(
     metric_type: str = Query(..., description="Metric type to analyze"),
     days_back: int = Query(default=30, description="Days of historical data"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get trend analysis for a specific metric."""
 
@@ -53,7 +54,7 @@ async def get_metrics_sparklines(
     org_id: UUID,
     days_back: int = Query(default=7, description="Days of data for sparklines"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, List[float]]:
     """Get sparkline data for key metrics."""
 
@@ -87,7 +88,7 @@ async def get_card_sparkline(
     card_type: str,
     days_back: int = Query(default=7, description="Days of historical data"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get sparkline data for specific dashboard cards."""
 

@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cerebro-api
+  annotations:
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/STAGING_CERT_ID
+spec:
+  rules:
+    - host: cerebro-staging.internal.writer.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cerebro-api
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - cerebro-staging.internal.writer.com

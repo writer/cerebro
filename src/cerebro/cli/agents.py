@@ -8,14 +8,14 @@ monitoring, and approval workflows.
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Optional
 from uuid import UUID
 
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt, Confirm
 from rich.syntax import Syntax
 from rich.text import Text
@@ -85,7 +85,7 @@ def create(
                     progress.update(task, completed=1)
                     
                     # Display success
-                    rprint(f"[green]✓ Agent session created successfully[/green]")
+                    rprint("[green]✓ Agent session created successfully[/green]")
                     
                     table = Table(title="Session Details")
                     table.add_column("Property", style="cyan")
@@ -315,7 +315,7 @@ def chat(
                         if result.get("is_error"):
                             rprint(f"[red]❌ Tool error: {result.get('content')}[/red]")
                         else:
-                            rprint(f"[green]✅ Tool completed[/green]")
+                            rprint("[green]✅ Tool completed[/green]")
                     
                     elif response["type"] == "approval_required":
                         approval_info = response["content"]
@@ -519,13 +519,12 @@ def approve(
         
         # Confirmation
         if not auto_confirm:
-            if not Confirm.ask(f"\n[yellow]Approve this tool invocation?[/yellow]"):
+            if not Confirm.ask("\n[yellow]Approve this tool invocation?[/yellow]"):
                 rprint("[blue]Approval cancelled[/blue]")
                 return
         
         # Get reason if not provided
-        if not reason:
-            reason = Prompt.ask("Approval reason", default="Approved by CLI user")
+        approval_reason = reason if reason else Prompt.ask("Approval reason", default="Approved by CLI user")
         
         # Approve the tool
         try:
@@ -533,15 +532,15 @@ def approve(
                 approval_id=approval_uuid,
                 org_id=org.org_id,
                 approved_by=approved_by,
-                decision_reason=reason
+                decision_reason=approval_reason
             )
             
             if updated_approval:
-                rprint(f"[green]✅ Tool invocation approved successfully[/green]")
+                rprint("[green]✅ Tool invocation approved successfully[/green]")
                 rprint(f"[dim]Approved by: {approved_by}[/dim]")
-                rprint(f"[dim]Reason: {reason}[/dim]")
+                rprint(f"[dim]Reason: {approval_reason}[/dim]")
             else:
-                rprint(f"[red]Failed to approve tool invocation[/red]")
+                rprint("[red]Failed to approve tool invocation[/red]")
                 
         except Exception as e:
             rprint(f"[red]Error approving tool: {e}[/red]")
@@ -593,7 +592,7 @@ def reject(
         
         # Confirmation
         if not auto_confirm:
-            if not Confirm.ask(f"\n[red]Reject this tool invocation?[/red]"):
+            if not Confirm.ask("\n[red]Reject this tool invocation?[/red]"):
                 rprint("[blue]Rejection cancelled[/blue]")
                 return
         
@@ -607,11 +606,11 @@ def reject(
             )
             
             if updated_approval:
-                rprint(f"[red]❌ Tool invocation rejected[/red]")
+                rprint("[red]❌ Tool invocation rejected[/red]")
                 rprint(f"[dim]Rejected by: {rejected_by}[/dim]")
                 rprint(f"[dim]Reason: {reason}[/dim]")
             else:
-                rprint(f"[red]Failed to reject tool invocation[/red]")
+                rprint("[red]Failed to reject tool invocation[/red]")
                 
         except Exception as e:
             rprint(f"[red]Error rejecting tool: {e}[/red]")
@@ -685,7 +684,7 @@ def pending(
                 
                 # Check if expired
                 if approval.expires_at and approval.expires_at < datetime.now(timezone.utc):
-                    expires_str = f"[red]EXPIRED[/red]"
+                    expires_str = "[red]EXPIRED[/red]"
                 
                 justification = approval.justification or "[dim]No justification[/dim]"
                 if len(justification) > 40:
@@ -705,7 +704,7 @@ def pending(
             
             # Show actions
             if approvals:
-                rprint(f"\n[blue]💡 Actions:[/blue]")
+                rprint("\n[blue]💡 Actions:[/blue]")
                 rprint(f"  Approve: [cyan]cerebro agents approve <approval-id> {org_name}[/cyan]")
                 rprint(f"  Reject:  [cyan]cerebro agents reject <approval-id> {org_name} --reason \"<reason>\"[/cyan]")
             
@@ -869,7 +868,7 @@ def delete(
         
         # Confirmation
         if not auto_confirm:
-            if not Confirm.ask(f"\n[red]Permanently delete this session?[/red]"):
+            if not Confirm.ask("\n[red]Permanently delete this session?[/red]"):
                 rprint("[blue]Deletion cancelled[/blue]")
                 return
         
@@ -882,9 +881,9 @@ def delete(
             )
             
             if success:
-                rprint(f"[green]✅ Session deleted successfully[/green]")
+                rprint("[green]✅ Session deleted successfully[/green]")
             else:
-                rprint(f"[red]Failed to delete session[/red]")
+                rprint("[red]Failed to delete session[/red]")
                 
         except Exception as e:
             rprint(f"[red]Error deleting session: {e}[/red]")

@@ -1,16 +1,16 @@
 """Identity stitching database models."""
 
-from typing import Dict, Any, List
 from datetime import datetime
+from typing import Any, Dict, List
 from uuid import UUID, uuid4
 
-from sqlalchemy import String, Text, Boolean, DateTime, Float, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from .database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .database import Base
+from .database_types import JSONType
 
 
 class IdentityCluster(Base):

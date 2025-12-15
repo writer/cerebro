@@ -5,7 +5,6 @@ from uuid import UUID
 import logging
 import asyncio
 
-from celery import current_task
 
 from cerebro.tasks.celery_app import celery_app
 from cerebro.core.database import async_session_factory
@@ -62,7 +61,7 @@ def collect_account_task(
                 
                 # Initialize identity stitcher if needed
                 identity_stitcher = None
-                if collection_config.get("enable_identity_stitching", False):
+                if provider_config.get("enable_identity_stitching", False):
                     from cerebro.infrastructure.adapters import IdentityStitcherAdapter
                     identity_stitcher = IdentityStitcherAdapter(db)
                 
@@ -243,9 +242,7 @@ def batch_collect_resources(
             collected = 0
             errors = []
             
-            async with async_session_factory() as db:
-                repository = SQLAlchemyRepository(db)
-                
+            async with async_session_factory():
                 for i, external_id in enumerate(resource_external_ids):
                     try:
                         # Create resource entity (simplified)
@@ -257,7 +254,7 @@ def batch_collect_resources(
                         )
                         
                         # Get configuration
-                        config = await provider.get_resource_configuration(resource)
+                        await provider.get_resource_configuration(resource)
                         
                         # Save configuration (simplified)
                         # In real implementation, would need resource ID mapping

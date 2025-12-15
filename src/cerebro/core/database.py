@@ -4,7 +4,7 @@ from typing import AsyncGenerator, Tuple
 
 from sqlalchemy import event
 from sqlalchemy.engine.url import URL, make_url
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from cerebro.core.config import settings

@@ -9,10 +9,16 @@ from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func, text
+from sqlalchemy import select, desc, text
 
-from cerebro.core.models import Principal, IamEdge, Finding, Account, IdentityRemediationAction
+from cerebro.core.models import IamEdge, Finding, IdentityRemediationAction
 from .dashboard_repository import DashboardRepository
+from .sql_dialect import (
+    case_insensitive_like_expr,
+    current_timestamp_expr,
+    get_dialect_name,
+    timestamp_minus_days_expr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +102,12 @@ class IdentityAnalyzer:
         
         logger.info(f"Analyzing risky identities for org {org_id}")
         
+        dialect = get_dialect_name(self.db)
+        stale_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
         # Get all human identities with their privilege data
-        identity_risk_query = text("""
+        identity_risk_query = text(f"""
             WITH identity_stats AS (
                 SELECT 
                     p.principal_id,
@@ -106,14 +116,14 @@ class IdentityAnalyzer:
                     COUNT(DISTINCT ie.provider) as provider_count,
                     COUNT(DISTINCT ie.permission) as permission_count,
                     COUNT(CASE WHEN ie.is_admin THEN 1 END) as admin_count,
-                    COUNT(CASE WHEN ie.effective_at < NOW() - INTERVAL '90 days' THEN 1 END) as stale_count,
+                    COUNT(CASE WHEN ie.effective_at < {stale_cutoff} THEN 1 END) as stale_count,
                     MAX(ie.effective_at) as last_permission_grant
                 FROM principals p
                 JOIN accounts a ON p.account_id = a.account_id
                 LEFT JOIN iam_edges ie ON p.principal_id = ie.principal_id
                 WHERE a.org_id = :org_id 
                     AND p.is_human = true
-                    AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                    AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id, p.display_name, p.email
             )
             SELECT *,
@@ -196,15 +206,27 @@ class IdentityAnalyzer:
     
     async def _get_mfa_status(self, principal_id: UUID) -> str:
         """Get MFA status for a principal."""
+
+        dialect = get_dialect_name(self.db)
+        name_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%mfa%'",
+            dialect=dialect,
+        )
+        desc_match = case_insensitive_like_expr(
+            column_expr="r.description",
+            pattern_expr="'%multi-factor%'",
+            dialect=dialect,
+        )
         
         # Check if there are any MFA-related findings for this principal
-        mfa_finding_query = text("""
+        mfa_finding_query = text(f"""
             SELECT COUNT(*)
             FROM findings f
             JOIN rules r ON f.rule_id = r.rule_id
             WHERE f.principal_id = :principal_id
                 AND f.status = 'open'
-                AND (r.name ILIKE '%mfa%' OR r.description ILIKE '%multi-factor%')
+                AND ({name_match} OR {desc_match})
         """)
         
         result = await self.db.execute(mfa_finding_query, {"principal_id": principal_id})
@@ -214,8 +236,11 @@ class IdentityAnalyzer:
     
     async def _get_provider_access_breakdown(self, principal_id: UUID) -> Dict[str, Dict[str, Any]]:
         """Get detailed provider access breakdown for a principal."""
+
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
         
-        provider_query = text("""
+        provider_query = text(f"""
             SELECT 
                 ie.provider,
                 COUNT(DISTINCT ie.permission) as permission_count,
@@ -224,7 +249,7 @@ class IdentityAnalyzer:
                 MAX(ie.effective_at) as last_access
             FROM iam_edges ie
             WHERE ie.principal_id = :principal_id
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
         """)
         
@@ -299,16 +324,20 @@ class PrivilegeSprawlDetector:
     
     async def _count_high_privilege_identities(self, org_id: UUID) -> int:
         """Count identities with high privileges (admin or >20 permissions)."""
-        query = text("""
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
+        query = text(f"""
             SELECT COUNT(DISTINCT p.principal_id)
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
             JOIN iam_edges ie ON p.principal_id = ie.principal_id
             WHERE a.org_id = :org_id 
                 AND p.is_human = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id
-            HAVING COUNT(DISTINCT ie.permission) > 20 OR bool_or(ie.is_admin)
+            HAVING COUNT(DISTINCT ie.permission) > 20
+                OR MAX(CASE WHEN ie.is_admin THEN 1 ELSE 0 END) = 1
         """)
         
         result = await self.db.execute(query, {"org_id": org_id})
@@ -316,14 +345,17 @@ class PrivilegeSprawlDetector:
     
     async def _count_cross_provider_identities(self, org_id: UUID) -> int:
         """Count identities with access across multiple providers."""
-        query = text("""
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
+        query = text(f"""
             SELECT COUNT(DISTINCT p.principal_id)
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
             JOIN iam_edges ie ON p.principal_id = ie.principal_id
             WHERE a.org_id = :org_id 
                 AND p.is_human = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id
             HAVING COUNT(DISTINCT ie.provider) > 1
         """)
@@ -333,8 +365,11 @@ class PrivilegeSprawlDetector:
     
     async def _calculate_avg_permissions_per_identity(self, org_id: UUID) -> float:
         """Calculate average permissions per identity."""
-        query = text("""
-            SELECT AVG(permission_count::float)
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
+        query = text(f"""
+            SELECT AVG(CAST(permission_count AS FLOAT))
             FROM (
                 SELECT COUNT(DISTINCT ie.permission) as permission_count
                 FROM principals p
@@ -342,7 +377,7 @@ class PrivilegeSprawlDetector:
                 JOIN iam_edges ie ON p.principal_id = ie.principal_id
                 WHERE a.org_id = :org_id 
                     AND p.is_human = true
-                    AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                    AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
             ) subq
         """)
@@ -352,7 +387,10 @@ class PrivilegeSprawlDetector:
     
     async def _get_max_permissions_per_identity(self, org_id: UUID) -> int:
         """Get maximum permissions held by any single identity."""
-        query = text("""
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
+        query = text(f"""
             SELECT MAX(permission_count)
             FROM (
                 SELECT COUNT(DISTINCT ie.permission) as permission_count
@@ -361,7 +399,7 @@ class PrivilegeSprawlDetector:
                 JOIN iam_edges ie ON p.principal_id = ie.principal_id
                 WHERE a.org_id = :org_id 
                     AND p.is_human = true
-                    AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                    AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
             ) subq
         """)
@@ -371,23 +409,26 @@ class PrivilegeSprawlDetector:
     
     async def _get_privilege_distribution(self, org_id: UUID) -> Dict[str, int]:
         """Get distribution of privilege levels."""
-        query = text("""
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
+        query = text(f"""
             WITH identity_privilege_counts AS (
                 SELECT 
                     p.principal_id,
                     COUNT(DISTINCT ie.permission) as permission_count,
-                    bool_or(ie.is_admin) as has_admin
+                    MAX(CASE WHEN ie.is_admin THEN 1 ELSE 0 END) as has_admin
                 FROM principals p
                 JOIN accounts a ON p.account_id = a.account_id
                 JOIN iam_edges ie ON p.principal_id = ie.principal_id
                 WHERE a.org_id = :org_id 
                     AND p.is_human = true
-                    AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                    AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
             )
             SELECT 
                 CASE 
-                    WHEN has_admin THEN 'admin'
+                    WHEN has_admin = 1 THEN 'admin'
                     WHEN permission_count > 50 THEN 'high_privilege'
                     WHEN permission_count > 20 THEN 'medium_privilege'
                     WHEN permission_count > 5 THEN 'low_privilege'
@@ -397,7 +438,7 @@ class PrivilegeSprawlDetector:
             FROM identity_privilege_counts
             GROUP BY 
                 CASE 
-                    WHEN has_admin THEN 'admin'
+                    WHEN has_admin = 1 THEN 'admin'
                     WHEN permission_count > 50 THEN 'high_privilege'
                     WHEN permission_count > 20 THEN 'medium_privilege'
                     WHEN permission_count > 5 THEN 'low_privilege'
@@ -410,14 +451,18 @@ class PrivilegeSprawlDetector:
     
     async def _analyze_provider_privilege_breakdown(self, org_id: UUID) -> Dict[str, Dict[str, Any]]:
         """Analyze privilege distribution by provider."""
-        query = text("""
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+        last_30_days = timestamp_minus_days_expr(days=30, dialect=dialect)
+
+        query = text(f"""
             SELECT 
                 ie.provider,
                 COUNT(DISTINCT ie.principal_id) as identity_count,
                 COUNT(DISTINCT ie.permission) as unique_permissions,
                 COUNT(CASE WHEN ie.is_admin THEN 1 END) as admin_grants,
                 AVG(CASE 
-                    WHEN ie.effective_at > NOW() - INTERVAL '30 days' THEN 1.0
+                    WHEN ie.effective_at > {last_30_days} THEN 1.0
                     ELSE 0.0
                 END) as recent_activity_ratio
             FROM iam_edges ie
@@ -425,7 +470,7 @@ class PrivilegeSprawlDetector:
             JOIN principals p ON ie.principal_id = p.principal_id
             WHERE a.org_id = :org_id 
                 AND p.is_human = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
             ORDER BY identity_count DESC
         """)
@@ -446,11 +491,14 @@ class PrivilegeSprawlDetector:
     
     async def identify_privilege_anomalies(self, org_id: UUID) -> List[Dict[str, Any]]:
         """Identify privilege anomalies requiring investigation."""
+
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
         
         anomalies = []
         
         # Orphaned permissions (identities with permissions but no recent activity)
-        orphaned_query = text("""
+        orphaned_query = text(f"""
             SELECT 
                 p.principal_id,
                 p.display_name,
@@ -463,7 +511,7 @@ class PrivilegeSprawlDetector:
             WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND ie.effective_at < :stale_threshold
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id, p.display_name, p.email
             HAVING COUNT(ie.permission) > 10
             ORDER BY permission_count DESC
@@ -487,7 +535,7 @@ class PrivilegeSprawlDetector:
             })
         
         # Unusual cross-provider admin access
-        cross_admin_query = text("""
+        cross_admin_query = text(f"""
             SELECT 
                 p.principal_id,
                 p.display_name,
@@ -499,12 +547,11 @@ class PrivilegeSprawlDetector:
             WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND ie.is_admin = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id, p.display_name
             HAVING COUNT(DISTINCT ie.provider) > 2
             ORDER BY admin_provider_count DESC
         """)
-        
         result = await self.db.execute(cross_admin_query, {"org_id": org_id})
         
         for row in result.fetchall():
@@ -561,9 +608,22 @@ class PrivilegeSprawlDetector:
     
     async def _get_mfa_compliance_by_provider(self, org_id: UUID) -> Dict[str, Dict[str, Any]]:
         """Get MFA compliance status by provider."""
+
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+        name_match = case_insensitive_like_expr(
+            column_expr="name",
+            pattern_expr="'%mfa%'",
+            dialect=dialect,
+        )
+        desc_match = case_insensitive_like_expr(
+            column_expr="description",
+            pattern_expr="'%multi-factor%'",
+            dialect=dialect,
+        )
         
         # This is a simplified implementation - in practice you'd check provider-specific MFA settings
-        mfa_query = text("""
+        mfa_query = text(f"""
             SELECT 
                 ie.provider,
                 COUNT(DISTINCT p.principal_id) as total_users,
@@ -576,12 +636,12 @@ class PrivilegeSprawlDetector:
             LEFT JOIN findings f ON p.principal_id = f.principal_id 
                 AND f.rule_id IN (
                     SELECT rule_id FROM rules 
-                    WHERE name ILIKE '%mfa%' OR description ILIKE '%multi-factor%'
+                    WHERE {name_match} OR {desc_match}
                 )
                 AND f.status = 'open'
             WHERE a.org_id = :org_id
                 AND p.is_human = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
         """)
         
@@ -607,10 +667,13 @@ if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
     async def _identify_privilege_anomalies(self: IdentityAnalyzer, org_id: UUID) -> List[Dict[str, Any]]:
         """Identify privilege anomalies requiring investigation."""
 
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+
         anomalies: List[Dict[str, Any]] = []
 
         orphaned_query = text(
-            """
+            f"""
             SELECT
                 p.principal_id,
                 p.display_name,
@@ -623,7 +686,7 @@ if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
             WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND ie.effective_at < :stale_threshold
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id, p.display_name, p.email
             HAVING COUNT(ie.permission) > 10
             ORDER BY permission_count DESC
@@ -653,7 +716,7 @@ if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
             )
 
         cross_admin_query = text(
-            """
+            f"""
             SELECT
                 p.principal_id,
                 p.display_name,
@@ -665,7 +728,7 @@ if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
             WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND ie.is_admin = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id, p.display_name
             HAVING COUNT(DISTINCT ie.provider) > 2
             ORDER BY admin_provider_count DESC
@@ -698,8 +761,21 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
     async def _get_mfa_compliance_by_provider(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Dict[str, Any]]:
         """Get MFA compliance status by provider."""
 
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+        name_match = case_insensitive_like_expr(
+            column_expr="name",
+            pattern_expr="'%mfa%'",
+            dialect=dialect,
+        )
+        desc_match = case_insensitive_like_expr(
+            column_expr="description",
+            pattern_expr="'%multi-factor%'",
+            dialect=dialect,
+        )
+
         mfa_query = text(
-            """
+            f"""
             SELECT
                 ie.provider,
                 COUNT(DISTINCT p.principal_id) as total_users,
@@ -710,12 +786,12 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
             LEFT JOIN findings f ON p.principal_id = f.principal_id
                 AND f.rule_id IN (
                     SELECT rule_id FROM rules
-                    WHERE name ILIKE '%mfa%' OR description ILIKE '%multi-factor%'
+                    WHERE {name_match} OR {desc_match}
                 )
                 AND f.status = 'open'
             WHERE a.org_id = :org_id
                 AND p.is_human = true
-                AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
             """
         )
@@ -750,8 +826,12 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
     async def _get_risk_level_breakdown(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, int]:
         """Return identity counts grouped by risk level."""
 
+        dialect = get_dialect_name(self.db)
+        now_expr = current_timestamp_expr(dialect=dialect)
+        stale_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
+
         risk_level_query = text(
-            """
+            f"""
             WITH identity_stats AS (
                 SELECT 
                     p.principal_id,
@@ -760,7 +840,7 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
                     SUM(CASE WHEN ie.is_admin THEN 1 ELSE 0 END) AS admin_count,
                     SUM(
                         CASE 
-                            WHEN ie.effective_at < NOW() - INTERVAL '90 days' THEN 1 
+                            WHEN ie.effective_at < {stale_cutoff} THEN 1 
                             ELSE 0 
                         END
                     ) AS stale_count
@@ -769,7 +849,7 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
                 LEFT JOIN iam_edges ie ON p.principal_id = ie.principal_id
                 WHERE a.org_id = :org_id
                     AND p.is_human = true
-                    AND (ie.expires_at IS NULL OR ie.expires_at > NOW())
+                    AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
             ),
             scored_identities AS (

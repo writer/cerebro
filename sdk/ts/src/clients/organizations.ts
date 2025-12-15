@@ -4,9 +4,9 @@ import { createSchemaAdapter } from "../generated/adapters/schemaAdapters.js";
 import { parseDate } from "../serialization.js";
 import { OrganizationSummary } from "../types.js";
 
-type OrganizationPayload = components["schemas"]["OrganizationResponse"];
+type OrganizationPayload = components["schemas"]["cerebro__api__schemas__main__OrganizationResponse"];
 
-const adaptOrganization = createSchemaAdapter("OrganizationResponse");
+const adaptOrganization = createSchemaAdapter("cerebro__api__schemas__main__OrganizationResponse");
 
 export interface ListOrganizationsOptions {
   skip?: number;

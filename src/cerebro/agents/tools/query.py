@@ -5,14 +5,13 @@ Provides secure access to Cerebro's temporal query capabilities for investigatin
 configuration changes and audit trails over time.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from datetime import datetime, timezone
 from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.core.database import get_db
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 

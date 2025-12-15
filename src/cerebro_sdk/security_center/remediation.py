@@ -12,7 +12,7 @@ from .models import SecurityCenterCustomerInsight, SecurityCenterVendorInsight
 RemediationSeverity = str
 
 
-@dataclass(slots=True)
+@dataclass
 class RemediationAction:
     id: str
     entity_type: str
@@ -26,13 +26,13 @@ class RemediationAction:
     evidence_ids: Sequence[str]
 
 
-@dataclass(slots=True)
+@dataclass
 class RemediationQueue:
     actions: Sequence[RemediationAction]
     generated_at: datetime
 
 
-@dataclass(slots=True)
+@dataclass
 class RemediationPolicy:
     risk_threshold: float
     overdue_review_days: int | None = None
@@ -40,7 +40,7 @@ class RemediationPolicy:
     owner_resolver: Callable[[SecurityCenterVendorInsight | SecurityCenterCustomerInsight], str] | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class GenerateRemediationOptions:
     vendor_policy: RemediationPolicy
     customer_policy: RemediationPolicy

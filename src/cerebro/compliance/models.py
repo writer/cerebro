@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from enum import Enum
-from uuid import uuid4, UUID
+from uuid import uuid4
 import hashlib
 import json
 

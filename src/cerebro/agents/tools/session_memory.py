@@ -6,7 +6,6 @@ Enables agents to remember context across sessions and retrieve conversation his
 
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
@@ -19,7 +18,7 @@ from cerebro.agents.tools.base import (
     AgentContext,
     ToolPermissionLevel,
 )
-from cerebro.agents.models import AgentSessionContext, AgentSession, AgentMessage
+from cerebro.agents.models import AgentSessionContext, AgentSession
 from cerebro.core.database import async_session_factory
 
 logger = structlog.get_logger(__name__)

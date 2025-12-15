@@ -30,18 +30,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from cerebro.core.dynamodb import (
-    TableName,
-    build_pk,
-    build_sk,
     build_gsi1_pk,
     build_gsi1_sk,
-    get_current_timestamp,
+    build_pk,
+    build_sk,
 )
 
 

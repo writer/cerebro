@@ -3,14 +3,13 @@
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional
-from uuid import UUID
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich import print as rprint
 
 from cerebro.core.database import async_session_factory
-from cerebro.core.models import Organization, Account, Rule, Finding
+from cerebro.core.models import Organization, Rule, Finding
 from cerebro.collectors.manager import CollectorManager
 from cerebro.findings.manager import FindingManager
 from cerebro.findings.evaluator import RuleEvaluator
@@ -70,7 +69,7 @@ def collect(
             console.print(table)
             
             if result["errors"]:
-                rprint(f"[yellow]Errors encountered:[/yellow]")
+                rprint("[yellow]Errors encountered:[/yellow]")
                 for error in result["errors"]:
                     rprint(f"  - {error}")
     
@@ -163,7 +162,7 @@ def findings(
     """Manage security findings."""
     async def _findings():
         async with async_session_factory() as db:
-            from sqlalchemy import select, and_
+            from sqlalchemy import select
             
             org = None
             if org_name:
@@ -229,7 +228,7 @@ def findings(
                 console.print(table)
                 
                 if result.errors:
-                    rprint(f"[yellow]Errors encountered:[/yellow]")
+                    rprint("[yellow]Errors encountered:[/yellow]")
                     for error in result.errors:
                         rprint(f"  - {error}")
                         
@@ -248,13 +247,13 @@ def findings(
                 
                 if stats['by_status']:
                     rprint("\nBy Status:")
-                    for status, count in stats['by_status'].items():
-                        rprint(f"  {status}: {count}")
+                    for status_key, count in stats['by_status'].items():
+                        rprint(f"  {status_key}: {count}")
                 
                 if stats['by_severity']:
                     rprint("\nBy Severity:")
-                    for severity, count in stats['by_severity'].items():
-                        rprint(f"  {severity}: {count}")
+                    for severity_key, count in stats['by_severity'].items():
+                        rprint(f"  {severity_key}: {count}")
     
     asyncio.run(_findings())
 
@@ -457,7 +456,7 @@ def evidence(
                 output_path = f"{output_dir}/{bundle.metadata.bundle_id}.evb"
                 exported_path = await bundle.export_bundle(output_path)
                 
-                rprint(f"[green]Evidence bundle created successfully[/green]")
+                rprint("[green]Evidence bundle created successfully[/green]")
                 rprint(f"Bundle ID: {bundle.metadata.bundle_id}")
                 rprint(f"Evidence items: {len(bundle.evidence_items)}")
                 rprint(f"Exported to: {exported_path}")
@@ -477,13 +476,13 @@ def evidence(
                 verification_result = await evidence_manager.verify_bundle(bundle_path)
                 
                 if verification_result["valid"]:
-                    rprint(f"[green]✓ Bundle verification PASSED[/green]")
+                    rprint("[green]✓ Bundle verification PASSED[/green]")
                     rprint(f"Bundle ID: {verification_result['bundle_id']}")
                     
                     for check in verification_result["checks"]:
                         rprint(f"  ✓ {check}")
                 else:
-                    rprint(f"[red]✗ Bundle verification FAILED[/red]")
+                    rprint("[red]✗ Bundle verification FAILED[/red]")
                     
                     for error in verification_result["errors"]:
                         rprint(f"  ✗ {error}")

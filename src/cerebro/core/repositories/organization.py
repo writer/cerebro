@@ -1,7 +1,7 @@
 """Organization repository for DynamoDB."""
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -10,10 +10,10 @@ from cerebro.core.dynamodb_client import (
     TableName,
     delete_item,
     get_item,
-    now_iso,
     pk,
     put_item,
     query,
+    query_paginated,
     sk,
     update_item,
 )
@@ -110,9 +110,22 @@ class OrganizationRepository:
         return [Organization.from_item(item) for item in items]
     
     async def get_by_name(self, name: str) -> Optional[Organization]:
-        """Get organization by name."""
-        orgs = await self.list_all(limit=1000)
-        for org in orgs:
-            if org.name == name:
-                return org
+        """Get organization by name.
+        
+        Note: Scans all orgs. Consider adding GSI on name for better performance.
+        """
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                "ORG#ALL",
+                index="GSI3",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("name") == name:
+                    return Organization.from_item(item)
+            if not cursor:
+                break
         return None

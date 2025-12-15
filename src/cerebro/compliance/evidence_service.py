@@ -8,13 +8,11 @@ clean service with proper dependency injection and storage abstraction.
 import asyncio
 import json
 import logging
-from typing import Dict, List, Any, Optional, Union, BinaryIO
+from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
-from uuid import uuid4
 
 from .models import (
-    BaseEvidenceMetadata, ComplianceEvidenceMetadata, ForensicEvidenceMetadata,
-    EvidenceStatus, EvidenceCategory, EvidenceCollectionMethod,
+    BaseEvidenceMetadata, ComplianceEvidenceMetadata, EvidenceStatus, EvidenceCategory, EvidenceCollectionMethod,
     EvidenceRepository, EvidenceBundle,
     create_compliance_evidence
 )

@@ -9,8 +9,7 @@ investigation capabilities directly to Claude agents.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
@@ -184,7 +183,7 @@ class ForensicReplayTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "timestamp": timestamp,
                         "scope": scope,
@@ -325,7 +324,7 @@ class ChangeReplayTool(StructuredTool):
 
                 return ToolResult(
                     success=True,
-                    data=output.dict(),
+                    data=output.model_dump(),
                     metadata={
                         "start_time": start_time,
                         "end_time": end_time,

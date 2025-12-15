@@ -6,7 +6,6 @@ Transforms Cerebro security data into OCSF v1.4.0 compliant events.
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 import structlog
 
@@ -14,12 +13,10 @@ from cerebro.core.models import Finding, Principal, Resource, Account
 from cerebro.ocsf.models import (
     OCSFFinding,
     OCSFComplianceFinding,
-    OCSFIdentityActivity,
     OCSFFindingInfo,
     OCSFMetadata,
     OCSFProduct,
     OCSFResource,
-    OCSFUser,
     OCSFCloud,
     OCSFAccount,
     OCSFCompliance,

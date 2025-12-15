@@ -1,16 +1,16 @@
 """User management service for authentication and authorization."""
 
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
-from uuid import UUID
-from datetime import datetime
 import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
 from passlib.context import CryptContext
+from sqlalchemy import and_, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .user_models import User, Scope, UserScope, UserAuditLog
+from .user_models import Scope, User, UserAuditLog, UserScope
 
 logger = logging.getLogger(__name__)
 

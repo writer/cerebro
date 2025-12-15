@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional, AsyncGenerator, Set
 from datetime import datetime
 import json
 import logging
-import asyncio
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 
@@ -1294,7 +1293,6 @@ class AWSProvider(BaseProvider):
     def _analyze_group_permissions(self, iam, group: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze permissions for an IAM group."""
         permissions = []
-        group_arn = group['Arn']
         group_name = group['GroupName']
         
         # Get group members

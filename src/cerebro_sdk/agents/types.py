@@ -24,7 +24,7 @@ class AgentValidationError(AgentSDKError):
     """Raised when user input cannot be coerced into the expected type."""
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentSessionRecord:
     session_id: UUID
     org_id: UUID
@@ -36,7 +36,7 @@ class AgentSessionRecord:
     context: dict[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentMessageRecord:
     message_id: UUID
     session_id: UUID
@@ -45,7 +45,7 @@ class AgentMessageRecord:
     created_at: datetime
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentMemoryRecord:
     entry_id: UUID
     session_id: Optional[UUID]
@@ -61,7 +61,7 @@ class AgentMemoryRecord:
     content: Optional[str]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentMemoryStats:
     total_entries: int
     recent_entries: int
@@ -73,7 +73,7 @@ class AgentMemoryStats:
     top_memories: list[dict[str, Any]]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewTaskRecord:
     task_id: UUID
     session_id: UUID
@@ -96,7 +96,7 @@ class AgentReviewTaskRecord:
     assigned_to: Optional[str]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewCommentRecord:
     comment_id: UUID
     task_id: UUID
@@ -106,7 +106,7 @@ class AgentReviewCommentRecord:
     metadata: dict[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewHistoryRecord:
     history_id: UUID
     task_id: UUID
@@ -119,7 +119,7 @@ class AgentReviewHistoryRecord:
     metadata: dict[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentEventRecord:
     event_id: UUID
     session_id: UUID
@@ -128,7 +128,7 @@ class AgentEventRecord:
     created_at: datetime
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentEventSummary:
     event_type: str
     event_count: int
@@ -136,7 +136,7 @@ class AgentEventSummary:
     last_seen: Optional[datetime]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentAnalyticsSummary:
     total_sessions: int
     active_sessions: int
@@ -146,7 +146,7 @@ class AgentAnalyticsSummary:
     agent_type_counts: dict[str, int]
 
 
-@dataclass(slots=True)
+@dataclass
 class ToolInvocationRecord:
     invocation_id: UUID
     session_id: UUID
@@ -165,7 +165,7 @@ class ToolInvocationRecord:
     cel_context: Optional[dict[str, Any]]
 
 
-@dataclass(slots=True)
+@dataclass
 class ToolApprovalRecord:
     approval_id: UUID
     org_id: UUID
@@ -181,7 +181,7 @@ class ToolApprovalRecord:
     risk_assessment: dict[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentPolicySuggestionRecord:
     suggestion_id: UUID
     org_id: UUID
@@ -194,21 +194,21 @@ class AgentPolicySuggestionRecord:
     created_at: datetime
 
 
-@dataclass(slots=True)
+@dataclass
 class ToolInvocationSummary:
     tool_name: str
     status: str
     count: int
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewExportRecord:
     task: AgentReviewTaskRecord
     comments: list[AgentReviewCommentRecord]
     history: list[AgentReviewHistoryRecord]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewStatusAggregate:
     status: str
     count: int
@@ -218,7 +218,7 @@ class AgentReviewStatusAggregate:
     newest_created: Optional[datetime]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewPendingSummary:
     total: int
     unassigned: int
@@ -227,13 +227,13 @@ class AgentReviewPendingSummary:
     oldest_created: Optional[datetime]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewPriorityBucket:
     priority: Optional[str]
     count: int
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentReviewQueueSummary:
     generated_at: datetime
     status_counts: list[AgentReviewStatusAggregate]
@@ -241,7 +241,7 @@ class AgentReviewQueueSummary:
     priority_breakdown: list[AgentReviewPriorityBucket]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentNotificationRecord:
     notification_id: UUID
     task_id: UUID
@@ -253,7 +253,7 @@ class AgentNotificationRecord:
     delivered_at: Optional[datetime]
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentTicketRecord:
     ticket_id: UUID
     task_id: UUID

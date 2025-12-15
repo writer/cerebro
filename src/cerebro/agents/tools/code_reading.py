@@ -4,10 +4,9 @@ Code Reading Tool
 Enables agents to read source code, find functions/classes, and understand implementation details.
 """
 
-import os
 import ast
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 import structlog
 from pydantic import BaseModel, Field
 

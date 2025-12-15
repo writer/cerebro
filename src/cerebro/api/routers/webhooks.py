@@ -216,7 +216,7 @@ async def create_webhook_config(
     await db.refresh(webhook_config)
 
     # Mask sensitive data in response
-    response_config = WebhookConfigResponse.from_orm(webhook_config)
+    response_config = WebhookConfigResponse.model_validate(webhook_config)
     response_config.url = _mask_url(response_config.url)
     response_config.authentication = _mask_authentication(response_config.authentication)
     if response_config.hmac_secret:
@@ -251,7 +251,7 @@ async def list_webhook_configs(
     configs = result.scalars().all()
 
     # Mask sensitive data in response
-    response_configs = [WebhookConfigResponse.from_orm(config) for config in configs]
+    response_configs = [WebhookConfigResponse.model_validate(config) for config in configs]
     for response_config in response_configs:
         response_config.url = _mask_url(response_config.url)
         response_config.authentication = _mask_authentication(response_config.authentication)
@@ -289,7 +289,7 @@ async def get_webhook_config(
         raise HTTPException(status_code=404, detail="Webhook configuration not found")
 
     # Mask sensitive data in response
-    response_config = WebhookConfigResponse.from_orm(config)
+    response_config = WebhookConfigResponse.model_validate(config)
     response_config.url = _mask_url(response_config.url)
     response_config.authentication = _mask_authentication(response_config.authentication)
     if response_config.hmac_secret:
@@ -349,7 +349,7 @@ async def update_webhook_config(
     await db.refresh(config)
 
     # Mask sensitive data in response
-    response_config = WebhookConfigResponse.from_orm(config)
+    response_config = WebhookConfigResponse.model_validate(config)
     response_config.url = _mask_url(response_config.url)
     response_config.authentication = _mask_authentication(response_config.authentication)
     if response_config.hmac_secret:
@@ -459,9 +459,9 @@ async def test_webhook_config(
 
         return {"message": "Test webhook sent successfully", "payload": test_payload}
 
-    except Exception as e:
-        logger.error(f"Failed to send test webhook: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to send test webhook: {str(e)}")
+    except Exception:
+        logger.exception("Failed to send test webhook", extra={"config_id": str(config_id)})
+        raise HTTPException(status_code=500, detail="Failed to send test webhook")
 
 
 @router.get("/notifications", response_model=List[WebhookNotificationResponse])
@@ -499,7 +499,7 @@ async def list_webhook_notifications(
     )
     notifications = result.scalars().all()
 
-    return [WebhookNotificationResponse.from_orm(notif) for notif in notifications]
+    return [WebhookNotificationResponse.model_validate(notif) for notif in notifications]
 
 
 @router.get("/notifications/stats", response_model=WebhookNotificationStatsResponse)

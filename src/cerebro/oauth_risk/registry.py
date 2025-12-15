@@ -5,9 +5,8 @@ Tracks OAuth apps across Google Workspace, M365, Slack, GitHub with
 scopes, usage, ownership, and provenance tracking.
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -209,14 +208,19 @@ class OAuthAppRegistry:
             # Query GitHub apps (would need GitHub Apps API integration)
             # For now, simulate based on repository integrations
             
-            result = await self.query_engine.execute_query("""
-                SELECT repository, topics, created_at
-                FROM github_repository
-                WHERE topics LIKE '%ci%' OR topics LIKE '%deployment%'
-            """)
+            repos_by_name: Dict[str, Dict[str, Any]] = {}
+            for query in [
+                "SELECT repository, topics, created_at FROM github_repository WHERE topics LIKE '%ci%'",
+                "SELECT repository, topics, created_at FROM github_repository WHERE topics LIKE '%deployment%'",
+            ]:
+                result = await self.query_engine.execute_query(query)
+                for row in result.rows:
+                    repo_name = row.get("repository")
+                    if repo_name:
+                        repos_by_name[repo_name] = row
             
             # Infer OAuth apps from CI/CD integrations
-            for repo in result.rows:
+            for repo in repos_by_name.values():
                 if repo.get("topics"):
                     topics = repo["topics"]
                     if "ci" in topics or "deployment" in topics:
@@ -319,7 +323,7 @@ class OAuthAppRegistry:
                     scope_name = self._map_graph_permission_to_scope(perm.get("id", ""))
                     scope_obj = OAuthScope(
                         scope=scope_name,
-                        description=f"Microsoft Graph permission",
+                        description="Microsoft Graph permission",
                         risk_level=self._assess_graph_permission_risk(scope_name),
                         sensitive_data_access="User" in scope_name or "Mail" in scope_name,
                         write_permissions="Write" in scope_name or "Create" in scope_name
@@ -427,7 +431,6 @@ class OAuthAppRegistry:
         sensitive_data_access = any(s.sensitive_data_access for s in scopes)
         write_permissions = any(s.write_permissions for s in scopes)
         unverified_publisher = not app_data.get("is_verified", False)
-        external_domain = not app_data.get("publisher_domain", "").endswith(".com")  # Simplified
         
         # Calculate risk score
         risk_score = 0

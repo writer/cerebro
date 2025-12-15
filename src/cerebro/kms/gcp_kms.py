@@ -29,7 +29,6 @@ class GCPKMS(BaseKMS):
         self.key_name = key_name
         
         # Initialize async client
-        client_options = {}
         if credentials_path:
             import os
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path

@@ -5,9 +5,8 @@ Detects dangerous combinations of OAuth scopes and settings that
 create security risks (e.g., Slack app with files:read + public links).
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum

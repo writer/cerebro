@@ -21,7 +21,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.config import settings
-from cerebro.core.database import async_session_factory
 from cerebro.core.models import SlackWebhook, SlackNotification, Finding, Organization
 from cerebro.integrations.slack.block_kit import findings_summary_blocks
 
@@ -499,7 +498,7 @@ class SlackNotificationService:
             if not webhook_url:
                 raise ValueError("Failed to decrypt webhook URL")
             if not webhook_url.startswith('https://hooks.slack.com/'):
-                raise ValueError(f"Invalid Slack webhook URL format")
+                raise ValueError("Invalid Slack webhook URL format")
         except Exception as e:
             logger.error(
                 "webhook_url_decryption_failed",

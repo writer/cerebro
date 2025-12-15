@@ -10,11 +10,10 @@ from pydantic import BaseModel, Field
 from cerebro.core.dynamodb_client import (
     TableName,
     batch_write,
-    get_item,
     pk,
     put_item,
     query,
-    sk,
+    query_paginated,
 )
 
 
@@ -92,13 +91,25 @@ class AgentMessageRepository:
     _table = TableName.AGENTS
     
     async def get(self, message_id: UUID, session_id: UUID) -> Optional[AgentMessage]:
-        """Get message by ID (requires knowing the session_id and approximate time)."""
-        # This is inefficient - messages are stored with timestamp in SK
-        # Need to query all messages and filter
-        messages = await self.list_by_session(session_id, limit=10000)
-        for msg in messages:
-            if msg.id == message_id:
-                return msg
+        """Get message by ID.
+        
+        Note: Messages use timestamp in SK, so we must scan. Consider adding
+        a GSI on message_id for direct lookups if this becomes a bottleneck.
+        """
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("SESSION", str(session_id)),
+                sk_prefix="MESSAGE#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("id") == str(message_id):
+                    return AgentMessage.from_item(item)
+            if not cursor:
+                break
         return None
     
     async def create(self, message: AgentMessage) -> AgentMessage:
@@ -157,20 +168,40 @@ class AgentMessageRepository:
         return list(reversed(messages))
     
     async def count_by_session(self, session_id: UUID) -> int:
-        """Count messages in a session."""
-        items = await query(
-            self._table,
-            pk("SESSION", str(session_id)),
-            sk_prefix="MESSAGE#",
-            limit=100000,
-        )
-        return len(items)
+        """Count messages in a session using pagination."""
+        count = 0
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("SESSION", str(session_id)),
+                sk_prefix="MESSAGE#",
+                limit=100,
+                cursor=cursor,
+            )
+            count += len(items)
+            if not cursor:
+                break
+        return count
     
     async def get_token_usage(self, session_id: UUID) -> Dict[str, int]:
-        """Get total token usage for a session."""
-        messages = await self.list_by_session(session_id, limit=100000)
-        input_tokens = sum(m.input_tokens or 0 for m in messages)
-        output_tokens = sum(m.output_tokens or 0 for m in messages)
+        """Get total token usage for a session using pagination."""
+        input_tokens = 0
+        output_tokens = 0
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("SESSION", str(session_id)),
+                sk_prefix="MESSAGE#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                input_tokens += item.get("input_tokens") or 0
+                output_tokens += item.get("output_tokens") or 0
+            if not cursor:
+                break
         return {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,

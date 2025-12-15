@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import structlog
 from sqlalchemy import select
@@ -32,7 +32,7 @@ from cerebro.query.engine import QueryEngine, QueryResult
 logger = structlog.get_logger(__name__)
 
 
-@dataclass(slots=True)
+@dataclass
 class ControlEvaluation:
     """In-memory representation for a control's outcome prior to persistence."""
 

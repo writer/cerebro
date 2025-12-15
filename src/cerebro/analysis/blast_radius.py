@@ -1,6 +1,6 @@
 """Blast radius analysis for compromise scenarios."""
 
-from typing import List, Dict, Set, Any, Optional
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
@@ -11,8 +11,6 @@ from sqlalchemy import select, and_, or_, text
 
 from cerebro.core.models import Principal, Resource, IamEdge, ConfigSnapshot, Organization
 from cerebro.core.identity_models import IdentityCluster, IdentityClusterMember
-from cerebro.core.repositories import IdentityRepository
-from cerebro.providers.base_edge_harvester import harvest_all_edges
 
 logger = logging.getLogger(__name__)
 
@@ -352,16 +350,6 @@ class BlastRadiusAnalyzer:
         try:
             from sqlalchemy import select, and_
             from ..core.models import IamEdge, Principal
-
-            # Find principals (users, services) that can assume this role
-            role_principals_stmt = select(Principal).join(IamEdge).where(
-                and_(
-                    IamEdge.resource_id == role_resource.resource_id,
-                    Principal.principal_id == IamEdge.principal_id,
-                    # Look for assume role permissions
-                    IamEdge.permission.in_(['sts:AssumeRole', 'assume_role', 'AssumeRole'])
-                )
-            )
 
             # Get resources this role can access through IAM edges
             accessible_resources_stmt = select(Resource).join(IamEdge).join(Principal).where(

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Optional, Sequence, Tuple
+from typing import Sequence, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..telemetry_health import TelemetryHealthSnapshot, fetch_telemetry_health
-from .config import default_rules, rules_from_env
+from .config import rules_from_env
 from .evaluator import AlertCooldownStore, evaluate_rules
 from .results import AlertResult
 from .rules import AlertRule

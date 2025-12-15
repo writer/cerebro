@@ -15,7 +15,8 @@ import logging
 
 from ...core.database import get_db
 from ...core.models import Organization
-from ...api.auth import require_read_findings
+from ...api.auth import User, require_read_findings
+from ...api.org_access import require_org_access
 from ...testing.test_registry import get_test_registry, TestType, TestFrequency, TestStatus
 from ...compliance.evidence_data_fabric import EvidenceDataFabric, EvidenceQuery, EvidenceEntityType
 
@@ -53,7 +54,7 @@ async def list_tests(
     overdue_only: bool = Query(False, description="Show only overdue tests"),
     failing_only: bool = Query(False, description="Show only failing tests"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """List security tests with filtering options."""
     org = await db.get(Organization, org_id)
@@ -119,9 +120,9 @@ async def list_tests(
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Test listing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Test listing failed: {str(e)}")
+    except Exception:
+        logger.exception("Test listing failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Test listing failed")
 
 
 @router.get("/organizations/{org_id}/tests/{test_id}")
@@ -131,7 +132,7 @@ async def get_test_details(
     include_entities: bool = Query(False, description="Include test entities"),
     include_history: bool = Query(False, description="Include execution history"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get detailed test information with optional execution history."""
     org = await db.get(Organization, org_id)
@@ -213,9 +214,12 @@ async def get_test_details(
         
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Test details retrieval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Test details failed: {str(e)}")
+    except Exception:
+        logger.exception(
+            "Test details retrieval failed",
+            extra={"org_id": str(org_id), "test_id": test_id},
+        )
+        raise HTTPException(status_code=500, detail="Test details failed")
 
 
 @router.post("/organizations/{org_id}/tests")
@@ -223,7 +227,7 @@ async def create_test(
     org_id: UUID,
     request: TestCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Create new security test."""
     org = await db.get(Organization, org_id)
@@ -281,16 +285,16 @@ async def create_test(
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Test creation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Test creation failed: {str(e)}")
+    except Exception:
+        logger.exception("Test creation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Test creation failed")
 
 
 @router.get("/organizations/{org_id}/tests/summary")
 async def get_test_summary(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get test execution summary and health metrics."""
     org = await db.get(Organization, org_id)
@@ -307,9 +311,9 @@ async def get_test_summary(
             "data": summary
         }
         
-    except Exception as e:
-        logger.error(f"Test summary failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Test summary failed: {str(e)}")
+    except Exception:
+        logger.exception("Test summary failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Test summary failed")
 
 
 # Evidence fabric integration examples
@@ -323,7 +327,7 @@ async def query_evidence_fabric(
     since_days: int = Query(30, description="Evidence age limit", ge=1, le=365),
     limit: int = Query(50, description="Maximum results", ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Query the evidence data fabric directly."""
     org = await db.get(Organization, org_id)
@@ -392,8 +396,8 @@ async def query_evidence_fabric(
                 "cache_hit": evidence_results.from_cache if hasattr(evidence_results, 'from_cache') else False
             }
 
-        except Exception as e:
-            logger.error(f"Evidence fabric query failed: {e}")
+        except Exception:
+            logger.exception("Evidence fabric query failed", extra={"org_id": str(org_id)})
             # Return error response instead of mock data
             return {
                 "organization_id": str(org_id),
@@ -407,11 +411,11 @@ async def query_evidence_fabric(
                 },
                 "total_results": 0,
                 "evidence_records": [],
-                "error": f"Evidence query failed: {str(e)}"
+                "error": "Evidence query failed"
             }
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Evidence fabric query failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Evidence query failed: {str(e)}")
+    except Exception:
+        logger.exception("Evidence fabric query failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Evidence query failed")

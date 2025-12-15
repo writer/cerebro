@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from cerebro.automation.alerting import (
     AlertResult,
-    AlertRule,
     RuleSeverity,
     collect_telemetry_alerts,
     default_rules,

@@ -12,13 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.core.models import Account, Organization, Resource
 
 
-@dataclass(slots=True)
+@dataclass
 class OrganizationRecord:
     org_id: UUID
     name: str
 
 
-@dataclass(slots=True)
+@dataclass
 class AccountRecord:
     account_id: UUID
     org_id: UUID
@@ -27,7 +27,7 @@ class AccountRecord:
     display_name: Optional[str]
 
 
-@dataclass(slots=True)
+@dataclass
 class ResourceRecord:
     resource_id: UUID
     account_id: UUID

@@ -10,12 +10,9 @@ cryptographic hashing, digital signatures, and complete audit trails.
 
 import json
 import hashlib
-import asyncio
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Union, BinaryIO
+from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field, asdict
-from enum import Enum
-from uuid import uuid4, UUID
 from pathlib import Path
 import aiofiles
 from cryptography.hazmat.primitives import hashes, serialization

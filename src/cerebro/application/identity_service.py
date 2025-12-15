@@ -1,11 +1,11 @@
 """Identity service for principal management and identity stitching."""
 
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 from uuid import UUID
 
 from cerebro.core.identity import IdentityStitcher
-from cerebro.analytics.identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector, RiskyIdentity
+from cerebro.analytics.identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector
 
 logger = logging.getLogger(__name__)
 

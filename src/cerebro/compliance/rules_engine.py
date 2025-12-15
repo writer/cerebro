@@ -13,19 +13,16 @@ Key capabilities:
 - Requirement-level rule binding
 """
 
-import json
 import re
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Union, Callable
+from datetime import datetime
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
-import pandas as pd
-from sqlalchemy.orm import sessionmaker
 
 from .evidence_data_fabric import (
     EvidenceDataFabric, EvidenceQuery, EvidenceEntityType, 
-    EvidenceRecord, RequirementMapping
+    EvidenceRecord
 )
 
 

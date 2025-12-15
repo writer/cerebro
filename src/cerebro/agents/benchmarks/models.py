@@ -37,7 +37,7 @@ class BenchmarkCase(BaseModel):
     assertions: List[BenchmarkAssertion] = Field(default_factory=list)
 
 
-@dataclass(slots=True)
+@dataclass
 class BenchmarkMetrics:
     """Computed metrics for a benchmark execution."""
 
@@ -48,7 +48,7 @@ class BenchmarkMetrics:
     average_score: Optional[float]
 
 
-@dataclass(slots=True)
+@dataclass
 class BenchmarkCaseResult:
     """Result of evaluating a single benchmark case."""
 
@@ -62,7 +62,7 @@ class BenchmarkCaseResult:
         return not self.failures
 
 
-@dataclass(slots=True)
+@dataclass
 class BenchmarkSuiteResult:
     """Aggregate outcome of running a benchmark suite."""
 

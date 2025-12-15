@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict
 from sse_starlette.sse import EventSourceResponse
 import structlog
@@ -21,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.api.auth import User, get_current_user
 from cerebro.core.database import get_db
 from cerebro.agents.service import AgentSessionService
-from cerebro.agents.models import AgentType
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -1155,7 +1153,7 @@ async def agent_health():
     Verifies that the agent runtime and SDK integration are operational.
     """
     try:
-        service = AgentSessionService()
+        AgentSessionService()
         # Basic check that service initializes
         return {
             "status": "healthy",

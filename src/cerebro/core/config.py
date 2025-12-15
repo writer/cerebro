@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
+
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -547,6 +548,12 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql://user:password@localhost/cerebro",
         description="PostgreSQL database URL (deprecated - use DynamoDB tables)"
+    )
+
+    # Analytics warehouse
+    snowflake_database_url: Optional[str] = Field(
+        default=None,
+        description="Snowflake SQLAlchemy database URL for analytics workloads",
     )
 
     # DynamoDB Tables

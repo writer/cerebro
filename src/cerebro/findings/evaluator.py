@@ -1,8 +1,6 @@
 """Rule evaluator for generating findings."""
 
-from typing import Any, Dict, List, Optional
-from datetime import datetime
-from uuid import UUID
+from typing import Dict, List, Optional
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession

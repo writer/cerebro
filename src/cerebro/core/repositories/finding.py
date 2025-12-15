@@ -16,6 +16,7 @@ from cerebro.core.dynamodb_client import (
     pk,
     put_item,
     query,
+    query_paginated,
     sk,
     update_item,
 )
@@ -248,11 +249,29 @@ class FindingRepository:
         org_id: UUID,
         fingerprint: str,
     ) -> Optional[Finding]:
-        """Get finding by fingerprint."""
-        findings = await self.list_by_org(org_id, limit=10000)
-        for finding in findings:
-            if finding.fingerprint == fingerprint:
-                return finding
+        """Get finding by fingerprint.
+        
+        Note: This performs a scan within the org's findings. For better
+        performance with large datasets, consider adding a GSI on fingerprint.
+        """
+        # Use paginated query to avoid loading all items at once
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("ORG", str(org_id)),
+                sk_prefix="FINDING#",
+                limit=100,
+                cursor=cursor,
+            )
+            
+            for item in items:
+                if item.get("fingerprint") == fingerprint:
+                    return Finding.from_item(item)
+            
+            if not cursor:
+                break
+        
         return None
     
     async def upsert(self, finding: Finding) -> Finding:
@@ -279,17 +298,47 @@ class FindingRepository:
         return len(findings)
     
     async def count_by_status(self, org_id: UUID) -> Dict[str, int]:
-        """Count findings by status for an organization."""
+        """Count findings by status for an organization.
+        
+        Uses paginated queries to handle large datasets efficiently.
+        """
         counts = {}
         for status in FindingStatus:
-            findings = await self.list_by_org(org_id, status=status, limit=10000)
-            counts[status.value] = len(findings)
+            status_val = status.value
+            count = 0
+            cursor = None
+            while True:
+                items, cursor = await query_paginated(
+                    self._table,
+                    f"ORG#{org_id}#STATUS#{status_val}",
+                    index="GSI2",
+                    limit=100,
+                    cursor=cursor,
+                )
+                count += len(items)
+                if not cursor:
+                    break
+            counts[status_val] = count
         return counts
     
     async def count_by_severity(self, org_id: UUID) -> Dict[str, int]:
-        """Count findings by severity for an organization."""
-        counts = {}
-        for severity in Severity:
-            findings = await self.list_by_org(org_id, severity=severity, limit=10000)
-            counts[severity.value] = len(findings)
+        """Count findings by severity for an organization.
+        
+        Uses paginated queries to handle large datasets efficiently.
+        """
+        counts = {sev.value: 0 for sev in Severity}
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                pk("ORG", str(org_id)),
+                sk_prefix="FINDING#",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                sev = item.get("severity", "info")
+                counts[sev] = counts.get(sev, 0) + 1
+            if not cursor:
+                break
         return counts

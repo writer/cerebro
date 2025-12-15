@@ -1,19 +1,28 @@
 """SQLAlchemy models for Cerebro database schema."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    String, Text, Boolean, DateTime, LargeBinary, Integer, Float,
-    ForeignKey, UniqueConstraint, CheckConstraint, Index
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from .database_types import JSONType, ArrayType
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .database import Base
+from .database_types import ArrayType, JSONType
 
 if TYPE_CHECKING:  # pragma: no cover
     from cerebro.core.user_models import User
@@ -774,4 +783,3 @@ class FrontendObservationEvent(Base):
 
 
 # Import identity models to make them available
-from .identity_models import IdentityCluster, IdentityClusterMember, IdentityStitchingLog

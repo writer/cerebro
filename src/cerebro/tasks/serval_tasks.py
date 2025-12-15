@@ -7,7 +7,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from celery import Celery
 from dateutil import parser as date_parser
 
 from cerebro.core.database import async_session_factory

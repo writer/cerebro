@@ -8,9 +8,9 @@ from uuid import UUID
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 
-from cerebro.core.models import Finding, Rule, Resource, Principal, Account, Organization
+from cerebro.core.models import Finding, Rule, Resource, Organization
 from cerebro.rules import RuleResult
 from .evaluator import RuleEvaluator
 from .producers import ProducerBasedFindingService, producer_registry

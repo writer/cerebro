@@ -5,9 +5,8 @@ Provides standardized column definitions and data types for security resources.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from datetime import datetime
 
 
 class ColumnType(Enum):
@@ -215,7 +214,7 @@ class SecuritySchema:
         # Always index primary identifier
         id_columns = [col.name for col in columns if col.name in ["id", "user_id", "alert_id", "vulnerability_id", "host_id"]]
         if id_columns:
-            indexes.append(SecurityIndex(f"idx_primary_id", id_columns[:1], unique=True))
+            indexes.append(SecurityIndex("idx_primary_id", id_columns[:1], unique=True))
             
         # Index timestamp columns for time-based queries
         time_columns = [col.name for col in columns if col.type == ColumnType.TIMESTAMP]

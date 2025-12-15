@@ -5,9 +5,9 @@ Provides REST API for JML campaigns, access reviews, peer group analysis,
 and exception management.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -15,8 +15,9 @@ import logging
 
 from ...core.database import get_db
 from ...core.models import Organization
-from ...api.auth import require_read_findings
-from ...identity_governance.jml_campaigns import get_jml_manager, JMLEventType
+from ...api.auth import User, require_read_findings
+from ...api.org_access import require_org_access
+from ...identity_governance.jml_campaigns import get_jml_manager
 from ...identity_governance.access_reviews import get_access_review_manager, ReviewDecision
 from ...identity_governance.peer_groups import get_peer_group_analyzer
 from ...identity_governance.exceptions import get_exception_manager, ExceptionType
@@ -64,7 +65,7 @@ async def create_jml_campaign(
     org_id: UUID,
     request: JMLCampaignRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Create Joiner/Mover/Leaver campaign."""
     org = await db.get(Organization, org_id)
@@ -86,9 +87,9 @@ async def create_jml_campaign(
             "data": campaign
         }
         
-    except Exception as e:
-        logger.error(f"JML campaign creation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Campaign creation failed: {str(e)}")
+    except Exception:
+        logger.exception("JML campaign creation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Campaign creation failed")
 
 
 @router.get("/organizations/{org_id}/jml/events")
@@ -97,7 +98,7 @@ async def get_jml_events(
     lookback_days: int = Query(7, description="Days to look back", ge=1, le=90),
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get recent JML events for organization."""
     org = await db.get(Organization, org_id)
@@ -131,9 +132,9 @@ async def get_jml_events(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"JML events retrieval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"JML events failed: {str(e)}")
+    except Exception:
+        logger.exception("JML events retrieval failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="JML events failed")
 
 
 # Access Review Endpoints
@@ -142,7 +143,7 @@ async def create_access_review(
     org_id: UUID,
     request: AccessReviewRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Create quarterly access review campaign."""
     org = await db.get(Organization, org_id)
@@ -170,9 +171,9 @@ async def create_access_review(
             }
         }
         
-    except Exception as e:
-        logger.error(f"Access review creation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Review creation failed: {str(e)}")
+    except Exception:
+        logger.exception("Access review creation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Review creation failed")
 
 
 @router.get("/organizations/{org_id}/access-reviews")
@@ -180,7 +181,7 @@ async def list_access_reviews(
     org_id: UUID,
     status: Optional[str] = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """List access reviews for organization."""
     org = await db.get(Organization, org_id)
@@ -208,9 +209,9 @@ async def list_access_reviews(
             "reviews": all_reviews
         }
         
-    except Exception as e:
-        logger.error(f"Access review listing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Review listing failed: {str(e)}")
+    except Exception:
+        logger.exception("Access review listing failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Review listing failed")
 
 
 @router.post("/organizations/{org_id}/access-reviews/{review_id}/decisions")
@@ -219,7 +220,7 @@ async def record_review_decision(
     review_id: str,
     request: ReviewDecisionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Record access review decision."""
     org = await db.get(Organization, org_id)
@@ -247,11 +248,11 @@ async def record_review_decision(
             "data": decision_record
         }
         
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid decision: {str(e)}")
-    except Exception as e:
-        logger.error(f"Review decision failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Decision recording failed: {str(e)}")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid decision")
+    except Exception:
+        logger.exception("Review decision failed", extra={"org_id": str(org_id), "review_id": review_id})
+        raise HTTPException(status_code=500, detail="Decision recording failed")
 
 
 # Peer Group Analysis Endpoints
@@ -259,7 +260,7 @@ async def record_review_decision(
 async def get_peer_group_analysis(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get peer group analysis and outlier detection."""
     org = await db.get(Organization, org_id)
@@ -276,9 +277,9 @@ async def get_peer_group_analysis(
             "data": report
         }
         
-    except Exception as e:
-        logger.error(f"Peer group analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Peer group analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Peer group analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Peer group analysis failed")
 
 
 @router.get("/organizations/{org_id}/peer-groups/outliers")
@@ -287,7 +288,7 @@ async def get_access_outliers(
     min_risk_score: float = Query(0.6, description="Minimum risk score for outliers", ge=0.0, le=1.0),
     department: Optional[str] = Query(None, description="Filter by department"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get access outliers compared to peer groups."""
     org = await db.get(Organization, org_id)
@@ -323,9 +324,9 @@ async def get_access_outliers(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"Outlier analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Outlier analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("Outlier analysis failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Outlier analysis failed")
 
 
 # Exception Management Endpoints
@@ -334,7 +335,7 @@ async def request_access_exception(
     org_id: UUID,
     request: ExceptionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Request time-boxed access exception."""
     org = await db.get(Organization, org_id)
@@ -373,9 +374,9 @@ async def request_access_exception(
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Exception request failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Exception request failed: {str(e)}")
+    except Exception:
+        logger.exception("Exception request failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Exception request failed")
 
 
 @router.post("/organizations/{org_id}/exceptions/{exception_id}/approve")
@@ -384,7 +385,7 @@ async def approve_access_exception(
     exception_id: str,
     approval_justification: str = Query(..., description="Justification for approval"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Approve access exception."""
     org = await db.get(Organization, org_id)
@@ -413,16 +414,19 @@ async def approve_access_exception(
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Exception approval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Exception approval failed: {str(e)}")
+    except Exception:
+        logger.exception(
+            "Exception approval failed",
+            extra={"org_id": str(org_id), "exception_id": exception_id},
+        )
+        raise HTTPException(status_code=500, detail="Exception approval failed")
 
 
 @router.post("/organizations/{org_id}/exceptions/process-expired")
 async def process_expired_exceptions(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Process expired exceptions and auto-revoke access."""
     org = await db.get(Organization, org_id)
@@ -439,9 +443,9 @@ async def process_expired_exceptions(
             "data": results
         }
         
-    except Exception as e:
-        logger.error(f"Exception processing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Exception processing failed: {str(e)}")
+    except Exception:
+        logger.exception("Exception processing failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Exception processing failed")
 
 
 # Combined Identity Governance Dashboard
@@ -449,7 +453,7 @@ async def process_expired_exceptions(
 async def get_identity_governance_dashboard(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_read_findings)
+    current_user: User = Depends(require_org_access(require_read_findings))
 ):
     """Get comprehensive identity governance dashboard."""
     org = await db.get(Organization, org_id)
@@ -524,6 +528,6 @@ async def get_identity_governance_dashboard(
             ]
         }
         
-    except Exception as e:
-        logger.error(f"Identity governance dashboard failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Dashboard generation failed: {str(e)}")
+    except Exception:
+        logger.exception("Identity governance dashboard failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Dashboard generation failed")

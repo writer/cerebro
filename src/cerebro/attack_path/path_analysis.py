@@ -5,15 +5,14 @@ Implements graph algorithms to find attack paths between principals and
 resources with severity scoring and what-if simulation capabilities.
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 import networkx as nx
 
-from .graph_model import AttackGraph, AttackNode, AttackEdge, get_attack_graph
+from .graph_model import AttackGraph, get_attack_graph
 
 logger = logging.getLogger(__name__)
 

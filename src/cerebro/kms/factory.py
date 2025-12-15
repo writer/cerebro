@@ -1,7 +1,6 @@
 """KMS factory for creating appropriate KMS instances."""
 
 import logging
-from typing import Optional
 
 from cerebro.core.config import settings
 from .base import BaseKMS

@@ -47,7 +47,7 @@ class AgentRuntimePersistenceMixin:
         created_by: str,
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Load organizational and system context for a new session."""
+        """Load organizational, system, and historical session context for a new session."""
 
         prepared_context = dict(context)
 
@@ -110,7 +110,67 @@ class AgentRuntimePersistenceMixin:
                 error=str(exc),
             )
 
+        # Load cross-session memory (learned facts, preferences, corrections)
+        try:
+            session_memory = await self._load_session_memory(org_id, created_by)
+            if session_memory:
+                prepared_context["_auto_loaded_session_memory"] = session_memory
+                logger.info(
+                    "Auto-loaded session memory",
+                    org_id=org_id,
+                    memory_entries=len(session_memory),
+                )
+        except Exception as exc:  # pragma: no cover - defensive logging only
+            logger.warning(
+                "Session memory loading failed, continuing without",
+                org_id=org_id,
+                error=str(exc),
+            )
+
         return prepared_context
+
+    async def _load_session_memory(
+        self,
+        org_id: UUID,
+        user_id: str,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Load persisted session context from previous sessions."""
+        from datetime import datetime, timezone
+        from sqlalchemy import select, and_, or_
+        from cerebro.agents.models import AgentSessionContext
+
+        async with async_session_factory() as db_session:
+            # Load non-expired context entries for this org
+            now = datetime.now(timezone.utc)
+            stmt = (
+                select(AgentSessionContext)
+                .where(
+                    and_(
+                        AgentSessionContext.org_id == org_id,
+                        or_(
+                            AgentSessionContext.expires_at.is_(None),
+                            AgentSessionContext.expires_at > now,
+                        ),
+                    )
+                )
+                .order_by(AgentSessionContext.created_at.desc())
+                .limit(limit)
+            )
+            result = await db_session.execute(stmt)
+            entries = result.scalars().all()
+
+            return [
+                {
+                    "key": entry.context_key,
+                    "value": entry.context_value,
+                    "type": entry.context_type,
+                    "confidence": entry.confidence,
+                    "learned_from": entry.learned_from,
+                    "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                }
+                for entry in entries
+            ]
 
     async def _persist_session(
         self,

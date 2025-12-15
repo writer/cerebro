@@ -1,6 +1,6 @@
 """Monitoring and operational health API endpoints."""
 
-from typing import Dict, Any
+from typing import Any, Dict
 from uuid import UUID
 from datetime import datetime, timezone
 
@@ -9,8 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.api.org_access import require_org_access
+from cerebro.analytics.sql_dialect import (
+    days_since_expr,
+    get_dialect_name,
+    timestamp_minus_days_expr,
+)
 from cerebro.analytics.operations import gather_celery_status, collect_operational_health
 from cerebro.analytics.runtime_health import summarize_runtime_health
+from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 
@@ -21,7 +28,8 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def get_sla_breach_analysis(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    analytics_db: Any = Depends(get_analytics_db),
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get detailed SLA breach analysis with ownership."""
 
@@ -29,8 +37,15 @@ async def get_sla_breach_analysis(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    dialect = get_dialect_name(analytics_db)
+    days_old_expr = days_since_expr(column_expr="f.first_seen", dialect=dialect)
+    critical_cutoff = timestamp_minus_days_expr(days=7, dialect=dialect)
+    high_cutoff = timestamp_minus_days_expr(days=14, dialect=dialect)
+    medium_cutoff = timestamp_minus_days_expr(days=30, dialect=dialect)
+    low_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
+
     # Get SLA breaches by severity with details and ownership
-    sla_breach_query = text("""
+    sla_breach_query = text(f"""
         SELECT
             f.finding_id,
             f.title,
@@ -41,7 +56,7 @@ async def get_sla_breach_analysis(
             r.owner,
             r.backup_owner,
             a.provider,
-            EXTRACT(EPOCH FROM (NOW() - f.first_seen)) / 86400 as days_old,
+            {days_old_expr} as days_old,
             CASE f.severity
                 WHEN 'critical' THEN 7
                 WHEN 'high' THEN 14
@@ -55,10 +70,10 @@ async def get_sla_breach_analysis(
         WHERE a.org_id = :org_id
             AND f.status = 'open'
             AND (
-                (f.severity = 'critical' AND f.first_seen <= NOW() - INTERVAL '7 days') OR
-                (f.severity = 'high' AND f.first_seen <= NOW() - INTERVAL '14 days') OR
-                (f.severity = 'medium' AND f.first_seen <= NOW() - INTERVAL '30 days') OR
-                (f.severity = 'low' AND f.first_seen <= NOW() - INTERVAL '90 days')
+                (f.severity = 'critical' AND f.first_seen <= {critical_cutoff}) OR
+                (f.severity = 'high' AND f.first_seen <= {high_cutoff}) OR
+                (f.severity = 'medium' AND f.first_seen <= {medium_cutoff}) OR
+                (f.severity = 'low' AND f.first_seen <= {low_cutoff})
             )
         ORDER BY
             CASE f.severity
@@ -70,7 +85,7 @@ async def get_sla_breach_analysis(
             f.first_seen
     """)
 
-    result = await db.execute(sla_breach_query, {"org_id": org_id})
+    result = await analytics_db.execute(sla_breach_query, {"org_id": org_id})
     breaches = result.fetchall()
 
     # Organize by severity
@@ -215,12 +230,12 @@ async def get_operational_health(
 @router.get("/runtime-health")
 async def get_runtime_health_summary(
     hours: int = Query(24, ge=1, le=168, description="Lookback window in hours"),
-    db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_scopes("read:findings")),
 ) -> Dict[str, Any]:
     """Summarize agent runtime health for operational dashboards."""
 
-    summaries = await summarize_runtime_health(db, hours=hours)
+    summaries = await summarize_runtime_health(analytics_db, hours=hours)
     return {
         "window_hours": hours,
         "generated_at": datetime.now(timezone.utc).isoformat(),

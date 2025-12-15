@@ -18,9 +18,11 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Sequence, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from cerebro.core.config import Settings
 
 import boto3
 from botocore.config import Config
@@ -619,6 +621,54 @@ class PaginatedResult(BaseModel):
     last_evaluated_key: Optional[str] = None
     count: int
     has_more: bool
+
+
+async def query_by_pk_paginated(
+    table: TableName,
+    pk: str,
+    sk_prefix: Optional[str] = None,
+    limit: int = 100,
+    scan_forward: bool = True,
+    index_name: Optional[str] = None,
+    cursor: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Query items by partition key with pagination support.
+
+    Returns:
+        Tuple of (items, next_cursor). next_cursor is None if no more pages.
+    """
+    client = get_dynamodb_client()
+    table_name = get_table_name(table)
+
+    key_attr = "PK" if not index_name else "GSI1PK"
+    sort_attr = "SK" if not index_name else "GSI1SK"
+
+    params: Dict[str, Any] = {
+        "TableName": table_name,
+        "KeyConditionExpression": f"{key_attr} = :pk",
+        "ExpressionAttributeValues": {":pk": {"S": pk}},
+        "ScanIndexForward": scan_forward,
+        "Limit": limit,
+    }
+
+    if index_name:
+        params["IndexName"] = index_name
+
+    if sk_prefix:
+        params["KeyConditionExpression"] += f" AND begins_with({sort_attr}, :sk)"
+        params["ExpressionAttributeValues"][":sk"] = {"S": sk_prefix}
+
+    if cursor:
+        params["ExclusiveStartKey"] = decode_pagination_token(cursor)
+
+    response = client.query(**params)
+    items = [deserialize_item(item) for item in response.get("Items", [])]
+
+    next_cursor = None
+    if "LastEvaluatedKey" in response:
+        next_cursor = encode_pagination_token(response["LastEvaluatedKey"])
+
+    return items, next_cursor
 
 
 def encode_pagination_token(key: Dict[str, Any]) -> str:

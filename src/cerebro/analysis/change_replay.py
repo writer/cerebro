@@ -7,7 +7,7 @@ from uuid import UUID
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc
+from sqlalchemy import select, and_
 
 from cerebro.core.models import Rule, Resource, ConfigSnapshot, Finding, Organization
 from cerebro.rules.engine import RuleEngine, EvaluationContext

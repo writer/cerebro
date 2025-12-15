@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from cerebro.core.database import get_db
+from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
+from cerebro.api.org_access import require_org_access
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 from cerebro.analytics.dashboard_repository import DashboardRepository
 from cerebro.integrations.freshness import IntegrationFreshnessService
@@ -74,7 +76,7 @@ async def bulk_accept_remediation_actions(
     org_id: UUID,
     payload: RemediationBulkUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("write:findings")),
+    current_user: User = Depends(require_org_access(require_scopes("write:findings"))),
 ):
     """Accept multiple remediation actions in a single request."""
 
@@ -92,7 +94,7 @@ async def bulk_complete_remediation_actions(
     org_id: UUID,
     payload: RemediationBulkUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("write:findings")),
+    current_user: User = Depends(require_org_access(require_scopes("write:findings"))),
 ):
     """Complete multiple remediation actions in a single request."""
 
@@ -109,7 +111,8 @@ async def bulk_complete_remediation_actions(
 async def get_organization_dashboard(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    analytics_db: Any = Depends(get_analytics_db),
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get comprehensive dashboard data for an organization."""
 
@@ -119,7 +122,7 @@ async def get_organization_dashboard(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     # Generate comprehensive dashboard
-    dashboard_analytics = DashboardAnalytics(db)
+    dashboard_analytics = DashboardAnalytics(analytics_db)
     dashboard_data = await dashboard_analytics.generate_comprehensive_dashboard(org_id)
 
     providers: set[str] = set()
@@ -178,7 +181,8 @@ async def get_organization_dashboard(
 async def get_executive_summary(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings"))
+    analytics_db: Any = Depends(get_analytics_db),
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get executive-level security summary."""
 
@@ -186,7 +190,7 @@ async def get_executive_summary(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    dashboard_analytics = DashboardAnalytics(db)
+    dashboard_analytics = DashboardAnalytics(analytics_db)
     executive_summary = await dashboard_analytics.generate_executive_summary(org_id)
 
     return {
@@ -216,7 +220,8 @@ async def get_provider_findings(
     provider: str,
     limit: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("read:findings")),
+    analytics_db: Any = Depends(get_analytics_db),
+    current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ):
     """List detailed findings for a specific provider."""
 
@@ -224,7 +229,7 @@ async def get_provider_findings(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    repository = DashboardRepository(db)
+    repository = DashboardRepository(analytics_db)
     findings = await repository.get_findings_by_provider(org_id, provider, limit=limit)
 
     return {
@@ -239,7 +244,7 @@ async def accept_remediation_action(
     action_id: UUID,
     payload: RemediationActionUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("write:findings")),
+    current_user: User = Depends(require_org_access(require_scopes("write:findings"))),
 ):
     """Accept a remediation action and optionally append a note."""
 
@@ -268,7 +273,7 @@ async def complete_remediation_action(
     action_id: UUID,
     payload: RemediationActionUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("write:findings")),
+    current_user: User = Depends(require_org_access(require_scopes("write:findings"))),
 ):
     """Mark a remediation action as completed."""
 
@@ -297,7 +302,7 @@ async def add_remediation_note(
     action_id: UUID,
     payload: RemediationNoteRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_scopes("write:findings")),
+    current_user: User = Depends(require_org_access(require_scopes("write:findings"))),
 ):
     """Append a note to a remediation action."""
 

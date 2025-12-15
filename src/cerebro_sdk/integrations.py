@@ -13,7 +13,7 @@ from cerebro.core.models import IntegrationSyncState, IntegrationSyncIssueEvent
 from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
 
 
-@dataclass(slots=True)
+@dataclass
 class IntegrationStateRecord:
     integration: str
     scope: str
@@ -22,7 +22,7 @@ class IntegrationStateRecord:
     metadata: dict[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class IntegrationIssueRecord:
     integration: str
     scope: str

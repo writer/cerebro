@@ -17,8 +17,7 @@ from sqlalchemy import select, and_, desc, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from cerebro.core.database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import Column, String, DateTime, Boolean, Text, Float
-from sqlalchemy.sql import func
+from sqlalchemy import String, DateTime, Boolean, Text, Float
 
 from cerebro.core.database import Base
 from .vendor_registry import VendorRiskLevel

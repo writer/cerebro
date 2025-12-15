@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 from uuid import UUID
 from fastapi import HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase
 from pydantic import BaseModel
 

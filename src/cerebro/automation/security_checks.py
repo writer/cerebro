@@ -14,7 +14,7 @@ from cerebro.core.models import Rule
 from cerebro.core.user_models import User
 
 
-@dataclass(slots=True)
+@dataclass
 class StaleAdminUser:
     user_id: str
     username: str

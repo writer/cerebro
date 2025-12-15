@@ -246,7 +246,8 @@ def security_table(name: Optional[str] = None, aliases: Optional[List[str]] = No
     def decorator(cls: Type[SecurityTable]):
         def register_instance(*args, **kwargs):
             instance = cls(*args, **kwargs)
-            table_name = name or instance.name
+            if name:
+                instance.name = name
             register_table(instance, aliases)
             return instance
         return register_instance

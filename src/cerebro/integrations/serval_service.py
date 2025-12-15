@@ -13,7 +13,7 @@ from cerebro.core.encryption import SecretEncryptionService
 from cerebro.core.models import ServalIntegration
 
 
-@dataclass(slots=True)
+@dataclass
 class ServalIntegrationSettings:
     """Decrypted Serval configuration for an organization."""
 

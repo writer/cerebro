@@ -1,22 +1,24 @@
 """Compliance management endpoints."""
 
+import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import User, require_read_findings
 from cerebro.compliance.pre_audit_service import PreAuditHealthCheckService
 from cerebro.compliance.preaudit_models import ComplianceAuditSchedule, PreAuditRun
 from cerebro.core.database import get_db
-from cerebro.core.models import Finding, Organization
+from cerebro.core.models import Finding
 
 router = APIRouter()
 _pre_audit_service = PreAuditHealthCheckService()
+logger = logging.getLogger(__name__)
 
 
 class PreAuditRunRequest(BaseModel):
@@ -77,8 +79,9 @@ async def get_evidence_status(
             "evidence_quality_score": 96,
         }
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Evidence status calculation failed: {str(e)}")
+    except Exception:
+        logger.exception("Evidence status calculation failed", extra={"org_id": str(org_id)})
+        raise HTTPException(status_code=500, detail="Evidence status calculation failed")
 
 
 @router.get("/frameworks")

@@ -9,7 +9,7 @@ from typing import Callable, Iterable, List, Optional
 from .models import SecurityCenterCustomerInsight, SecurityCenterVendorInsight
 
 
-@dataclass(slots=True)
+@dataclass
 class MonitoringEvent:
     id: str
     entity_type: str
@@ -21,7 +21,7 @@ class MonitoringEvent:
     severity: str
 
 
-@dataclass(slots=True)
+@dataclass
 class GovernanceAlert:
     id: str
     entity_type: str
@@ -33,7 +33,7 @@ class GovernanceAlert:
     escalation_target: str
 
 
-@dataclass(slots=True)
+@dataclass
 class MonitoringContext:
     vendor_resolver: Callable[[str], Optional[SecurityCenterVendorInsight]] | None = None
     customer_resolver: Callable[[str], Optional[SecurityCenterCustomerInsight]] | None = None

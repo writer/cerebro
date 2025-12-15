@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cerebro-config
+  labels:
+    app.kubernetes.io/name: cerebro
+data:
+  LOG_LEVEL: "INFO"
+  PYTHONPATH: "/app/src"
+  ENVIRONMENT: "production"
+  # DynamoDB table names
+  DYNAMODB_CORE_TABLE: "cerebro-core"
+  DYNAMODB_AUDIT_TABLE: "cerebro-audit"
+  DYNAMODB_AGENTS_TABLE: "cerebro-agents"
+  DYNAMODB_NOTIFICATIONS_TABLE: "cerebro-notifications"
+  DYNAMODB_USERS_TABLE: "cerebro-users"
+  # Feature flags
+  ENABLE_AGENT_TELEMETRY: "true"
+  ENABLE_DEBUG_ENDPOINTS: "false"

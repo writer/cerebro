@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Awaitable, Callable, Iterable, Optional, Sequence
+from typing import Awaitable, Callable, Optional, Sequence
 
 import httpx
 import redis.asyncio as redis

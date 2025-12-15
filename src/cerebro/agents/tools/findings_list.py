@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding, Resource
-from cerebro.core.repositories import FindingRepository
 
 from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
 
@@ -106,8 +105,6 @@ class FindingsListTool(Tool):
                 provider_filter = [p for p in provider_filter if p in context.provider_scope] if provider_filter else context.provider_scope
             
             async with async_session_factory() as session:
-                finding_repo = FindingRepository(session)
-                
                 # Build comprehensive query using SQLAlchemy
                 from sqlalchemy import select, and_, func
                 from sqlalchemy.orm import selectinload

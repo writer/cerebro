@@ -9,7 +9,6 @@ provider implementations, and aggregates the results for API consumers.
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import logging
-import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -152,7 +151,6 @@ class CollectorManager:
         interval_hours: int = 24
     ) -> str:
         """Register a scheduled Celery beat task for recurring collection."""
-        from cerebro.tasks.collection_tasks import collect_organization_task
         from celery.schedules import crontab
         
         # Calculate cron schedule for interval

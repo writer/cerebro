@@ -1631,6 +1631,7 @@ class TestProducerRegistry:
             "aws",
             "aws.s3.bucket",
         )
+        assert len(s3_producers) > 0
 
 
 class TestTelemetryProducers:

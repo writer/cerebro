@@ -10,7 +10,7 @@ from typing import Any, Mapping
 MetadataMapping = Mapping[str, Any]
 
 
-@dataclass(slots=True)
+@dataclass
 class SecurityCenterVendorInsight:
     """Structured vendor insight used by Security Center helpers."""
 
@@ -27,7 +27,7 @@ class SecurityCenterVendorInsight:
     raw_metadata: MetadataMapping = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class SecurityCenterCustomerInsight:
     """Structured customer insight used by Security Center helpers."""
 

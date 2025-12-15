@@ -14,6 +14,7 @@ from cerebro.core.dynamodb_client import (
     pk,
     put_item,
     query,
+    query_paginated,
     sk,
     update_item,
 )
@@ -215,11 +216,24 @@ class RuleRepository:
         return [r for r in rules if provider in r.provider][:limit]
     
     async def get_by_name(self, name: str) -> Optional[Rule]:
-        """Get rule by name."""
-        rules = await self.list_active(limit=10000)
-        for rule in rules:
-            if rule.name == name:
-                return rule
+        """Get rule by name.
+        
+        Note: Scans active rules. Consider adding GSI on name for better performance.
+        """
+        cursor = None
+        while True:
+            items, cursor = await query_paginated(
+                self._table,
+                "RULE#ACTIVE#True",
+                index="GSI1",
+                limit=100,
+                cursor=cursor,
+            )
+            for item in items:
+                if item.get("name") == name:
+                    return Rule.from_item(item)
+            if not cursor:
+                break
         return None
     
     async def deactivate(self, rule_id: UUID) -> Optional[Rule]:

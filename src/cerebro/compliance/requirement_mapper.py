@@ -12,17 +12,12 @@ Key capabilities:
 - Cross-framework requirement analysis
 """
 
-import json
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Set, Tuple
+from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
-from sqlalchemy import Column, String, DateTime, JSON, Text, Boolean, ForeignKey, Index
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
-from sqlalchemy.dialects.postgresql import UUID
-from cerebro.core.database_types import JSONType
 
 from .evidence_data_fabric import EvidenceDataFabric, EvidenceQuery, EvidenceEntityType
 
@@ -249,7 +244,6 @@ class RequirementMappingService:
                 }
                 continue
             
-            requirement = self._requirements[req_key]
             evidence_mappings = self._evidence_mappings.get(req_key, [])
             
             if not evidence_mappings:
