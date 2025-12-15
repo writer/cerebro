@@ -15,6 +15,10 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 
+SNOWFLAKE_QUERY_TAG_ENV = "SNOWFLAKE_QUERY_TAG"
+SNOWFLAKE_APPLICATION_ENV = "SNOWFLAKE_APPLICATION"
+
+
 def _quote_ident(identifier: str) -> str:
     escaped = identifier.replace('"', '""')
     return f'"{escaped}"'
@@ -533,12 +537,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     url = make_url(args.url)
+    query_tag = os.getenv(SNOWFLAKE_QUERY_TAG_ENV, "cerebro")
+    application = os.getenv(SNOWFLAKE_APPLICATION_ENV, "cerebro")
     engine = create_engine(
         url,
         poolclass=NullPool,
         pool_pre_ping=True,
         connect_args={
             "client_session_keep_alive": True,
+            "application": application,
+            "session_parameters": {
+                "QUERY_TAG": query_tag,
+            },
         },
     )
 
