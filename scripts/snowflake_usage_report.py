@@ -14,6 +14,9 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 
+DEFAULT_STATEMENT_TIMEOUT_SECONDS = 300
+
+
 def _get_int_env(name: str) -> int | None:
     value = os.getenv(name)
     if value is None or value == "":
@@ -59,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         "TIMEZONE": os.getenv("SNOWFLAKE_TIMEZONE", "UTC"),
     }
     if (statement_timeout := _get_int_env("SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS")) is None:
-        statement_timeout = 300
+        statement_timeout = DEFAULT_STATEMENT_TIMEOUT_SECONDS
     session_parameters["STATEMENT_TIMEOUT_IN_SECONDS"] = statement_timeout
 
     connect_args: dict[str, object] = {

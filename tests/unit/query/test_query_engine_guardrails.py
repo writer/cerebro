@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from cerebro.query.engine import SQLParser
@@ -33,7 +31,6 @@ def test_wildcard_expansion_is_capped(monkeypatch):
     finally:
         for name in created:
             registry.unregister_table(name)
-        os.environ.pop("QUERY_ENGINE_MAX_WILDCARD_TABLES", None)
 
 
 def test_or_filters_are_rejected():

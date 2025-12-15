@@ -82,7 +82,14 @@ class SQLParser:
                 if not matching_tables:
                     raise QueryError(f"No tables match pattern '{table_name}'")
 
-                max_tables = int(os.getenv("QUERY_ENGINE_MAX_WILDCARD_TABLES", "25"))
+                try:
+                    max_tables = int(os.getenv("QUERY_ENGINE_MAX_WILDCARD_TABLES", "25"))
+                except ValueError:
+                    logger.warning(
+                        "Invalid QUERY_ENGINE_MAX_WILDCARD_TABLES=%r; falling back to default=25",
+                        os.getenv("QUERY_ENGINE_MAX_WILDCARD_TABLES"),
+                    )
+                    max_tables = 25
                 if max_tables > 0 and len(matching_tables) > max_tables:
                     raise QueryError(
                         f"Wildcard pattern '{table_name}' expanded to {len(matching_tables)} tables, "
