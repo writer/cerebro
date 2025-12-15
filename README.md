@@ -76,6 +76,60 @@ Place additional settings in `.env` or export them before launching the API.
 
 When `SNOWFLAKE_DATABASE_URL` is set, analytics endpoints and services that depend on the analytics DB will route queries to Snowflake; otherwise they fall back to the core DB session (`DATABASE_URL`).
 
+#### Bootstrapping the Snowflake schema
+
+The analytics warehouse schema is managed outside Alembic and can be created/updated idempotently:
+
+```bash
+uv run python scripts/bootstrap_snowflake_warehouse.py --dry-run
+
+# Execute against your configured Snowflake URL
+uv run python scripts/bootstrap_snowflake_warehouse.py \
+  --url "$SNOWFLAKE_DATABASE_URL" \
+  --best
+
+# Optionally override database/schema
+uv run python scripts/bootstrap_snowflake_warehouse.py \
+  --url "$SNOWFLAKE_DATABASE_URL" \
+  --database CEREBRO \
+  --schema ANALYTICS \
+  --best
+```
+
+`--best` applies a recommended baseline for production warehouses:
+
+- Creates/updates tables (idempotent)
+- Sets `RELY` constraints + adds `RELY NOT ENFORCED` foreign keys (for join elimination)
+- Applies recommended `CLUSTER BY` keys for large tables
+- Refreshes derived tables (see `rule_controls` below)
+
+Search Optimization Service is intentionally **opt-in** (cost impact):
+
+```bash
+uv run python scripts/bootstrap_snowflake_warehouse.py \
+  --url "$SNOWFLAKE_DATABASE_URL" \
+  --apply-search-optimization
+```
+
+#### Derived table: `rule_controls`
+
+Some compliance endpoints rely on rule-to-control mappings (CIS / NIST). To avoid request-time `FLATTEN`/array expansion on Snowflake, Cerebro maintains a derived mapping table:
+
+- `rule_controls(rule_id, framework, control_id)`
+
+It can be rebuilt via:
+
+```bash
+uv run python scripts/bootstrap_snowflake_warehouse.py \
+  --url "$SNOWFLAKE_DATABASE_URL" \
+  --refresh-rule-controls
+```
+
+In running stacks, Celery beat schedules an hourly refresh:
+
+- Task: `cerebro.tasks.warehouse_tasks.refresh_rule_controls`
+- Beat entry: `refresh-rule-controls-hourly`
+
 ## Interacting with Cerebro
 
 ### CLI
