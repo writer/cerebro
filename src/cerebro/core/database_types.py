@@ -9,7 +9,11 @@ from sqlalchemy.engine import Dialect
 
 class JSONType(TypeDecorator):
     """
-    Cross-database JSON type that uses JSONB for PostgreSQL and JSON for others.
+    Cross-database JSON type.
+
+    - PostgreSQL: JSONB
+    - Snowflake: VARIANT
+    - SQLite/others: JSON stored as text
 
     This allows the same code to work with both PostgreSQL (production)
     and SQLite (testing) databases.
@@ -20,10 +24,30 @@ class JSONType(TypeDecorator):
 
     def load_dialect_impl(self, dialect: Dialect):
         """Load the appropriate type for the dialect."""
-        if dialect.name == 'postgresql':
+        if dialect.name == "postgresql":
             return dialect.type_descriptor(JSONB())
-        else:
-            return dialect.type_descriptor(JSON())
+
+        if dialect.name == "snowflake":
+            from snowflake.sqlalchemy.custom_types import VARIANT
+
+            return dialect.type_descriptor(VARIANT())
+
+        return dialect.type_descriptor(JSON())
+
+    def process_result_value(self, value, dialect):
+        """Process values being returned from the database."""
+        if value is None:
+            return None
+
+        if dialect.name == "snowflake":
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return value
+            return value
+
+        return value
 
 
 class ArrayType(TypeDecorator):
