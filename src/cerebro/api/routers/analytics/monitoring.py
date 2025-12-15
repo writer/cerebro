@@ -230,12 +230,12 @@ async def get_operational_health(
 @router.get("/runtime-health")
 async def get_runtime_health_summary(
     hours: int = Query(24, ge=1, le=168, description="Lookback window in hours"),
-    db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_scopes("read:findings")),
 ) -> Dict[str, Any]:
     """Summarize agent runtime health for operational dashboards."""
 
-    summaries = await summarize_runtime_health(db, hours=hours)
+    summaries = await summarize_runtime_health(analytics_db, hours=hours)
     return {
         "window_hours": hours,
         "generated_at": datetime.now(timezone.utc).isoformat(),

@@ -41,16 +41,16 @@ async def get_severity_breakdown_chips(
     low_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
 
     # Get counts by severity and SLA breach status
-    severity_query = text("""
+    severity_query = text(f"""
         WITH finding_counts AS (
             SELECT
                 f.severity,
                 COUNT(*) as total_count,
                 COUNT(CASE WHEN
-                    ((f.severity = 'critical' AND f.first_seen <= NOW() - INTERVAL '7 days') OR
-                     (f.severity = 'high' AND f.first_seen <= NOW() - INTERVAL '14 days') OR
-                     (f.severity = 'medium' AND f.first_seen <= NOW() - INTERVAL '30 days') OR
-                     (f.severity = 'low' AND f.first_seen <= NOW() - INTERVAL '90 days'))
+                    ((f.severity = 'critical' AND f.first_seen <= {critical_cutoff}) OR
+                     (f.severity = 'high' AND f.first_seen <= {high_cutoff}) OR
+                     (f.severity = 'medium' AND f.first_seen <= {medium_cutoff}) OR
+                     (f.severity = 'low' AND f.first_seen <= {low_cutoff}))
                      AND f.status = 'open'
                 THEN 1 END) as sla_breach_count
             FROM findings f
@@ -92,19 +92,7 @@ async def get_severity_breakdown_chips(
                 WHEN 'medium' THEN 3
                 WHEN 'low' THEN 4
             END
-    """.replace(
-        "NOW() - INTERVAL '7 days'",
-        critical_cutoff,
-    ).replace(
-        "NOW() - INTERVAL '14 days'",
-        high_cutoff,
-    ).replace(
-        "NOW() - INTERVAL '30 days'",
-        medium_cutoff,
-    ).replace(
-        "NOW() - INTERVAL '90 days'",
-        low_cutoff,
-    ))
+    """)
 
     result = await analytics_db.execute(severity_query, {"org_id": org_id})
     severity_data = result.fetchall()

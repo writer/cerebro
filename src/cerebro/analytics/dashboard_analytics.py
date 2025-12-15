@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from .time_series import TimeSeriesCollector, TrendAnalyzer, MetricType
 from .risk_scoring import RiskScoringEngine
+from .sql_dialect import case_insensitive_like_expr, get_dialect_name
 from .identity_analytics import IdentityAnalyzer
 from .dashboard_repository import DashboardRepository
 from .runtime_health import summarize_runtime_health
@@ -231,16 +232,68 @@ class DashboardAnalytics:
 
     async def _generate_top_5_risks(self, org_id: UUID) -> List[str]:
         """Generate top 5 risks in board-friendly language."""
+
+        dialect = get_dialect_name(self.db)
+        public_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%public%'",
+            dialect=dialect,
+        )
+        exposed_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%exposed%'",
+            dialect=dialect,
+        )
+        admin_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%admin%'",
+            dialect=dialect,
+        )
+        privilege_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%privilege%'",
+            dialect=dialect,
+        )
+        mfa_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%mfa%'",
+            dialect=dialect,
+        )
+        auth_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%authentication%'",
+            dialect=dialect,
+        )
+        encryption_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%encryption%'",
+            dialect=dialect,
+        )
+        unencrypted_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%unencrypted%'",
+            dialect=dialect,
+        )
+        logging_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%logging%'",
+            dialect=dialect,
+        )
+        monitoring_match = case_insensitive_like_expr(
+            column_expr="r.name",
+            pattern_expr="'%monitoring%'",
+            dialect=dialect,
+        )
         
-        risks_query = text("""
+        risks_query = text(f"""
             WITH risk_analysis AS (
                 SELECT 
                     CASE 
-                        WHEN r.name ILIKE '%public%' OR r.name ILIKE '%exposed%' THEN 'Data Exposure'
-                        WHEN r.name ILIKE '%admin%' OR r.name ILIKE '%privilege%' THEN 'Privilege Escalation'
-                        WHEN r.name ILIKE '%mfa%' OR r.name ILIKE '%authentication%' THEN 'Authentication Weaknesses'
-                        WHEN r.name ILIKE '%encryption%' OR r.name ILIKE '%unencrypted%' THEN 'Data Protection'
-                        WHEN r.name ILIKE '%logging%' OR r.name ILIKE '%monitoring%' THEN 'Visibility Gaps'
+                        WHEN {public_match} OR {exposed_match} THEN 'Data Exposure'
+                        WHEN {admin_match} OR {privilege_match} THEN 'Privilege Escalation'
+                        WHEN {mfa_match} OR {auth_match} THEN 'Authentication Weaknesses'
+                        WHEN {encryption_match} OR {unencrypted_match} THEN 'Data Protection'
+                        WHEN {logging_match} OR {monitoring_match} THEN 'Visibility Gaps'
                         ELSE 'Other Security Issues'
                     END as risk_category,
                     COUNT(*) as finding_count,
@@ -358,7 +411,7 @@ class DashboardAnalytics:
                 provider,
                 finding_count,
                 high_risk_count,
-                (high_risk_count::float / finding_count * 100) as risk_percentage
+                (CAST(high_risk_count AS FLOAT) / finding_count * 100) as risk_percentage
             FROM provider_risk
             WHERE finding_count > 5
             ORDER BY risk_percentage DESC, finding_count DESC

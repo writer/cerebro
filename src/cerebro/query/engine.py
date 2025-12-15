@@ -9,7 +9,7 @@ import logging
 import sqlparse
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from .bootstrap import ensure_tables_registered
 from .registry import get_registry, TableRegistry
@@ -222,11 +222,11 @@ class SQLParser:
             condition = condition.strip()
             
             # Parse condition (column operator value)
-            for operator in ['>=', '<=', '!=', '=', '>', '<', 'LIKE', 'IN']:
+            for operator in ['>=', '<=', '!=', '=', '>', '<', 'ILIKE', 'LIKE', 'IN']:
                 if f' {operator} ' in condition:
                     parts = condition.split(f' {operator} ', 1)
                     if len(parts) == 2:
-                        column = parts[0].strip()
+                        column = self._normalize_filter_column(parts[0])
                         value_str = parts[1].strip().strip("'\"")
                         
                         # Convert value to appropriate type
@@ -236,9 +236,41 @@ class SQLParser:
                         break
         
         return filters
+
+    def _normalize_filter_column(self, column_expr: str) -> str:
+        """Normalize a WHERE clause column expression into a table column name."""
+
+        import re
+
+        column = column_expr.strip().strip('"`')
+        column = column.lstrip('(').rstrip(')')
+
+        # Drop casts like "permissions::text" -> "permissions"
+        if "::" in column:
+            column = column.split("::", 1)[0].strip()
+
+        # Drop common wrappers like LOWER(column)
+        func_match = re.match(r"(?i)^(lower|upper)\((.+)\)$", column)
+        if func_match:
+            column = func_match.group(2).strip()
+
+        # Drop table qualifiers like "t.column" -> "column"
+        if "." in column:
+            column = column.split(".")[-1].strip()
+
+        return column
     
     def _parse_filter_value(self, value_str: str, operator: str) -> Any:
         """Parse and convert filter value to appropriate type."""
+        value_str = value_str.strip()
+
+        relative_ts = self._parse_relative_timestamp(value_str)
+        if relative_ts is not None:
+            return relative_ts
+
+        if value_str.lower() in {"now()", "current_timestamp", "current_timestamp()"}:
+            return datetime.now(timezone.utc)
+
         # Handle IN operator (list values)
         if operator == 'IN':
             if value_str.startswith('(') and value_str.endswith(')'):
@@ -259,6 +291,54 @@ class SQLParser:
             return self._parse_timestamp(value_str)
         else:
             return value_str
+
+    def _parse_relative_timestamp(self, value_str: str) -> Optional[datetime]:
+        """Parse expressions like NOW() - INTERVAL '24 hours' into a datetime."""
+
+        lowered = value_str.lower()
+        if "interval" not in lowered or "-" not in lowered:
+            return None
+
+        if not ("now()" in lowered or "current_timestamp" in lowered):
+            return None
+
+        # Accept patterns like:
+        # - NOW() - INTERVAL '24 hours'
+        # - current_timestamp - interval '30 days'
+        try:
+            before_interval, interval_part = lowered.split("interval", 1)
+        except ValueError:
+            return None
+
+        if "-" not in before_interval:
+            return None
+
+        interval_part = interval_part.strip()
+        if interval_part.startswith("'"):
+            interval_part = interval_part[1:]
+        if interval_part.endswith("'"):
+            interval_part = interval_part[:-1]
+
+        parts = interval_part.strip().split()
+        if len(parts) < 2:
+            return None
+
+        amount_raw, unit_raw = parts[0], parts[1]
+        if not amount_raw.isdigit():
+            return None
+
+        amount = int(amount_raw)
+        unit = unit_raw.strip()
+
+        now = datetime.now(timezone.utc)
+        if unit.startswith("day"):
+            return now - timedelta(days=amount)
+        if unit.startswith("hour"):
+            return now - timedelta(hours=amount)
+        if unit.startswith("minute"):
+            return now - timedelta(minutes=amount)
+
+        return None
     
     def _is_float(self, value_str: str) -> bool:
         """Check if string represents a float."""

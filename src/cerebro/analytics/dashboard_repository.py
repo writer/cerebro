@@ -568,28 +568,38 @@ class DashboardRepository:
     async def get_findings_breakdown_by_provider(self, org_id: UUID) -> List[Dict[str, Any]]:
         """Aggregate findings by provider with severity and SLA context."""
 
+        dialect = get_dialect_name(self._db)
+        last_24h_cutoff = timestamp_minus_days_expr(days=1, dialect=dialect)
+        critical_cutoff = timestamp_minus_days_expr(days=7, dialect=dialect)
+        high_cutoff = timestamp_minus_days_expr(days=14, dialect=dialect)
+        medium_cutoff = timestamp_minus_days_expr(days=30, dialect=dialect)
+        mttr_hours_expr = hours_between_expr(
+            start_expr="f.first_seen",
+            end_expr="f.last_seen",
+            dialect=dialect,
+        )
+
         provider_query = text(
-            """
+            f"""
             SELECT
                 a.provider,
                 SUM(CASE WHEN f.status = 'open' THEN 1 ELSE 0 END) AS open_findings,
                 SUM(CASE WHEN f.status = 'open' AND f.severity = 'critical' THEN 1 ELSE 0 END) AS critical_open,
                 SUM(CASE WHEN f.status = 'open' AND f.severity = 'high' THEN 1 ELSE 0 END) AS high_open,
-                SUM(CASE WHEN f.first_seen >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END) AS new_last_24h,
+                SUM(CASE WHEN f.first_seen >= {last_24h_cutoff} THEN 1 ELSE 0 END) AS new_last_24h,
                 SUM(
                     CASE
                         WHEN f.status = 'open'
                             AND (
-                                (f.severity = 'critical' AND f.first_seen <= NOW() - INTERVAL '7 days') OR
-                                (f.severity = 'high' AND f.first_seen <= NOW() - INTERVAL '14 days') OR
-                                (f.severity = 'medium' AND f.first_seen <= NOW() - INTERVAL '30 days')
+                                (f.severity = 'critical' AND f.first_seen <= {critical_cutoff}) OR
+                                (f.severity = 'high' AND f.first_seen <= {high_cutoff}) OR
+                                (f.severity = 'medium' AND f.first_seen <= {medium_cutoff})
                             )
                         THEN 1 ELSE 0 END
                 ) AS sla_breaches,
                 AVG(
                     CASE
-                        WHEN f.status IN ('fixed', 'accepted_risk') THEN
-                            EXTRACT(EPOCH FROM (f.last_seen - f.first_seen)) / 3600
+                        WHEN f.status IN ('fixed', 'accepted_risk') THEN {mttr_hours_expr}
                         ELSE NULL
                     END
                 ) AS mttr_hours
