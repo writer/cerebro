@@ -8,7 +8,7 @@ from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, text
+from sqlalchemy import text
 
 from .sql_dialect import array_has_elements_expr, current_timestamp_expr, get_dialect_name
 
@@ -432,18 +432,26 @@ class RiskScoringEngine:
         
         # Get historical risk scores (from metric snapshots)
         since_date = datetime.utcnow() - timedelta(days=30)
-        
-        from .time_series import SecurityMetricSnapshot
-        
-        stmt = select(SecurityMetricSnapshot.value).where(
-            and_(
-                SecurityMetricSnapshot.org_id == org_id,
-                SecurityMetricSnapshot.metric_type == "overall_risk_score",
-                SecurityMetricSnapshot.captured_at >= since_date
-            )
-        ).order_by(SecurityMetricSnapshot.captured_at)
-        
-        historical_scores = list(await self.db.scalars(stmt))
+
+        dialect = get_dialect_name(self.db)
+        org_param: object = str(org_id) if dialect == "snowflake" else org_id
+
+        result = await self.db.execute(
+            text(
+                """
+                SELECT value
+                FROM security_metric_snapshots
+                WHERE org_id = :org_id
+                    AND metric_type = 'overall_risk_score'
+                    AND aggregation_period = 'daily'
+                    AND captured_at >= :since_date
+                ORDER BY captured_at
+                """
+            ),
+            {"org_id": org_param, "since_date": since_date},
+        )
+
+        historical_scores = [float(row[0]) for row in result.fetchall()]
         
         if len(historical_scores) < 2:
             return "stable", 0.5
