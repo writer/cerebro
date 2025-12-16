@@ -11,11 +11,15 @@ from uuid import uuid4
 from celery import states
 from sqlalchemy import text
 
+from cerebro.core.config import settings
 from cerebro.core.warehouse import resolve_snowflake_database_url, warehouse_session
 from cerebro.tasks.celery_app import celery_app
 
 
 logger = logging.getLogger(__name__)
+
+
+_DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}
 
 
 @celery_app.task(
@@ -26,8 +30,11 @@ def refresh_rule_controls(self) -> dict[str, object]:
     """Rebuild the derived rule_controls mapping table in the Snowflake warehouse."""
 
     if not resolve_snowflake_database_url():
-        logger.info("Snowflake not configured; skipping rule_controls refresh")
-        return {"skipped": True, "reason": "SNOWFLAKE_DATABASE_URL not configured"}
+        env = (settings.environment or "development").lower()
+        if env in _DEV_ENVIRONMENTS:
+            logger.info("Snowflake not configured; skipping rule_controls refresh")
+            return {"skipped": True, "reason": "SNOWFLAKE_DATABASE_URL not configured"}
+        raise RuntimeError("SNOWFLAKE_DATABASE_URL is not configured")
 
     self.update_state(state=states.STARTED, meta={"status": "Refreshing rule_controls"})
 
@@ -192,8 +199,11 @@ def run_warehouse_data_quality_checks(self) -> dict[str, object]:
     """Run lightweight warehouse data quality checks and record the results."""
 
     if not resolve_snowflake_database_url():
-        logger.info("Snowflake not configured; skipping warehouse DQ checks")
-        return {"skipped": True, "reason": "SNOWFLAKE_DATABASE_URL not configured"}
+        env = (settings.environment or "development").lower()
+        if env in _DEV_ENVIRONMENTS:
+            logger.info("Snowflake not configured; skipping warehouse DQ checks")
+            return {"skipped": True, "reason": "SNOWFLAKE_DATABASE_URL not configured"}
+        raise RuntimeError("SNOWFLAKE_DATABASE_URL is not configured")
 
     self.update_state(state=states.STARTED, meta={"status": "Running warehouse DQ checks"})
 

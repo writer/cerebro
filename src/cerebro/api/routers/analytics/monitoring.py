@@ -18,6 +18,7 @@ from cerebro.analytics.sql_dialect import (
 from cerebro.analytics.operations import gather_celery_status, collect_operational_health
 from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.core.analytics_db import get_analytics_db
+from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.core.warehouse import resolve_snowflake_database_url
@@ -225,10 +226,10 @@ async def get_warehouse_health(
     """Get Snowflake warehouse operational health (jobs + derived table freshness)."""
 
     if not resolve_snowflake_database_url():
-        return {
-            "configured": False,
-            "error": "SNOWFLAKE_DATABASE_URL not configured",
-        }
+        env = (settings.environment or "development").lower()
+        if env not in {"dev", "development", "test", "testing"}:
+            raise HTTPException(status_code=503, detail="SNOWFLAKE_DATABASE_URL is not configured")
+        return {"configured": False, "error": "SNOWFLAKE_DATABASE_URL not configured"}
 
     try:
         async with warehouse_async_session() as warehouse:

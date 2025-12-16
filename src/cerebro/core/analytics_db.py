@@ -1,7 +1,8 @@
 """Dependency that chooses the analytics database.
 
-- Default: the core async DB (DATABASE_URL).
-- When SNOWFLAKE_DATABASE_URL is configured: route analytics queries to Snowflake.
+- In dev/test environments, falls back to the core async DB (DATABASE_URL) when
+  SNOWFLAKE_DATABASE_URL is not configured.
+- In non-dev environments, SNOWFLAKE_DATABASE_URL is required.
 """
 
 from __future__ import annotations
@@ -12,9 +13,13 @@ from typing import Any, AsyncGenerator
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.core.warehouse import resolve_snowflake_database_url
 from cerebro.core.warehouse_async import warehouse_async_session
+
+
+_DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}
 
 
 @asynccontextmanager
@@ -28,8 +33,11 @@ async def analytics_read_session(db: Any) -> AsyncGenerator[Any, None]:
     """
 
     if not resolve_snowflake_database_url():
-        yield db
-        return
+        env = (settings.environment or "development").lower()
+        if env in _DEV_ENVIRONMENTS:
+            yield db
+            return
+        raise RuntimeError("SNOWFLAKE_DATABASE_URL is not configured")
 
     async with warehouse_async_session() as warehouse:
         yield warehouse
