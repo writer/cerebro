@@ -19,6 +19,7 @@ from cerebro.analytics.time_series import (
     MetricSnapshot,
     MetricType,
     TimeSeriesCollector,
+    store_snapshot_to_warehouse,
 )
 from cerebro.analytics.risk_scoring import RiskScoringEngine, RiskFactor, OrganizationRiskScore
 from cerebro.analytics.dashboard_repository import DashboardRepository
@@ -75,50 +76,66 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
             compliance_score = await repository.calculate_compliance_score(org.org_id)
             framework_compliance = await repository.get_compliance_by_framework(org.org_id)
 
-        collector_writer = TimeSeriesCollector(db)
+            collector_writer = TimeSeriesCollector(db)
 
-        stored_snapshots: List[str] = []
-        for snapshot in snapshots:
-            db_snapshot = await collector_writer.store_snapshot(
+            stored_snapshots: List[str] = []
+            for snapshot in snapshots:
+                db_snapshot = await collector_writer.store_snapshot(
+                    org.org_id,
+                    snapshot,
+                    aggregation_period=AggregationPeriod.DAILY,
+                )
+                stored_snapshots.append(str(db_snapshot.snapshot_id))
+
+            risk_snapshot = MetricSnapshot(
+                timestamp=risk_score.calculation_date,
+                metric_type=MetricType.OVERALL_RISK_SCORE.value,
+                value=risk_score.overall_score,
+                metadata={
+                    "category": "risk",
+                    "details": _serialize_risk_score(risk_score),
+                },
+            )
+
+            db_risk_snapshot = await collector_writer.store_snapshot(
                 org.org_id,
-                snapshot,
+                risk_snapshot,
                 aggregation_period=AggregationPeriod.DAILY,
             )
-            stored_snapshots.append(str(db_snapshot.snapshot_id))
+            stored_snapshots.append(str(db_risk_snapshot.snapshot_id))
 
-        risk_snapshot = MetricSnapshot(
-            timestamp=risk_score.calculation_date,
-            metric_type=MetricType.OVERALL_RISK_SCORE.value,
-            value=risk_score.overall_score,
-            metadata={
-                "category": "risk",
-                "details": _serialize_risk_score(risk_score),
-            },
-        )
+            compliance_snapshot = MetricSnapshot(
+                timestamp=datetime.utcnow(),
+                metric_type=MetricType.COMPLIANCE_SCORE.value,
+                value=compliance_score,
+                metadata={
+                    "category": "compliance",
+                    "framework_breakdown": framework_compliance,
+                },
+            )
 
-        db_risk_snapshot = await collector_writer.store_snapshot(
-            org.org_id,
-            risk_snapshot,
-            aggregation_period=AggregationPeriod.DAILY,
-        )
-        stored_snapshots.append(str(db_risk_snapshot.snapshot_id))
+            db_compliance_snapshot = await collector_writer.store_snapshot(
+                org.org_id,
+                compliance_snapshot,
+                aggregation_period=AggregationPeriod.DAILY,
+            )
+            stored_snapshots.append(str(db_compliance_snapshot.snapshot_id))
 
-        compliance_snapshot = MetricSnapshot(
-            timestamp=datetime.utcnow(),
-            metric_type=MetricType.COMPLIANCE_SCORE.value,
-            value=compliance_score,
-            metadata={
-                "category": "compliance",
-                "framework_breakdown": framework_compliance,
-            },
-        )
-
-        db_compliance_snapshot = await collector_writer.store_snapshot(
-            org.org_id,
-            compliance_snapshot,
-            aggregation_period=AggregationPeriod.DAILY,
-        )
-        stored_snapshots.append(str(db_compliance_snapshot.snapshot_id))
+            if getattr(analytics_db, "dialect_name", None) == "snowflake":
+                for snapshot in [*snapshots, risk_snapshot, compliance_snapshot]:
+                    try:
+                        await store_snapshot_to_warehouse(
+                            analytics_db,
+                            org.org_id,
+                            snapshot,
+                            aggregation_period=AggregationPeriod.DAILY,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to write metric snapshot to warehouse for org %s",
+                            org.org_id,
+                            exc_info=True,
+                        )
 
         return {
             "org_id": str(org.org_id),

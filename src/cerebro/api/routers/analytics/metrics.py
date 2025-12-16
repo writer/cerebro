@@ -1,10 +1,11 @@
 """Metrics and time-series analytics API endpoints."""
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
@@ -20,6 +21,7 @@ async def get_metric_trends(
     metric_type: str = Query(..., description="Metric type to analyze"),
     days_back: int = Query(default=30, description="Days of historical data"),
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get trend analysis for a specific metric."""
@@ -33,7 +35,7 @@ async def get_metric_trends(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid metric type: {metric_type}")
 
-    trend_analyzer = TrendAnalyzer(db)
+    trend_analyzer = TrendAnalyzer(analytics_db)
     trend = await trend_analyzer.analyze_metric_trend(org_id, metric_enum, days_back)
 
     return {
@@ -54,6 +56,7 @@ async def get_metrics_sparklines(
     org_id: UUID,
     days_back: int = Query(default=7, description="Days of data for sparklines"),
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, List[float]]:
     """Get sparkline data for key metrics."""
@@ -62,7 +65,7 @@ async def get_metrics_sparklines(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    trend_analyzer = TrendAnalyzer(db)
+    trend_analyzer = TrendAnalyzer(analytics_db)
 
     # Generate sparklines for key metrics
     sparklines = {}
@@ -88,6 +91,7 @@ async def get_card_sparkline(
     card_type: str,
     days_back: int = Query(default=7, description="Days of historical data"),
     db: AsyncSession = Depends(get_db),
+    analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
 ) -> Dict[str, Any]:
     """Get sparkline data for specific dashboard cards."""
@@ -108,7 +112,7 @@ async def get_card_sparkline(
         raise HTTPException(status_code=400, detail=f"Invalid card type: {card_type}")
 
     metric_type = card_to_metric[card_type]
-    trend_analyzer = TrendAnalyzer(db)
+    trend_analyzer = TrendAnalyzer(analytics_db)
 
     # Get trend analysis with sparkline
     trend = await trend_analyzer.analyze_metric_trend(org_id, metric_type, days_back)

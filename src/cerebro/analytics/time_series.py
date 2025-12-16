@@ -1,14 +1,15 @@
 """Time series analytics for tracking security metrics over time."""
 
+import json
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, text
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from cerebro.core.database_types import JSONType
 from sqlalchemy.orm import Mapped, mapped_column
@@ -326,12 +327,94 @@ class TimeSeriesCollector:
         return breach_count
 
 
+async def store_snapshot_to_warehouse(
+    db_session: Any,
+    org_id: UUID,
+    snapshot: MetricSnapshot,
+    *,
+    aggregation_period: AggregationPeriod = AggregationPeriod.DAILY,
+) -> str:
+    """Store a metric snapshot in Snowflake.
+
+    The Snowflake warehouse is accessed via a sync SQLAlchemy session wrapper,
+    so we avoid ORM models (which use Postgres-specific UUID types) and instead
+    insert directly into the warehouse table.
+    """
+
+    dialect = get_dialect_name(db_session)
+    if dialect != "snowflake":
+        raise ValueError("store_snapshot_to_warehouse requires a Snowflake session")
+
+    snapshot_id = str(uuid4())
+    payload = snapshot.metadata or {}
+    payload_json = json.dumps(payload, default=str)
+
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO security_metric_snapshots (
+                snapshot_id,
+                org_id,
+                metric_type,
+                metric_category,
+                captured_at,
+                aggregation_period,
+                value,
+                previous_value,
+                breakdown_data,
+                metadata,
+                metric_metadata,
+                created_at
+            ) VALUES (
+                :snapshot_id,
+                :org_id,
+                :metric_type,
+                :metric_category,
+                :captured_at,
+                :aggregation_period,
+                :value,
+                :previous_value,
+                PARSE_JSON(:breakdown_data),
+                PARSE_JSON(:metadata),
+                PARSE_JSON(:metric_metadata),
+                CURRENT_TIMESTAMP()
+            )
+            """
+        ),
+        {
+            "snapshot_id": snapshot_id,
+            "org_id": str(org_id),
+            "metric_type": snapshot.metric_type,
+            "metric_category": str(payload.get("category") or "general"),
+            "captured_at": snapshot.timestamp,
+            "aggregation_period": aggregation_period.value,
+            "value": float(snapshot.value),
+            "previous_value": None,
+            "breakdown_data": payload_json,
+            "metadata": payload_json,
+            "metric_metadata": payload_json,
+        },
+    )
+
+    commit = getattr(db_session, "commit", None)
+    if callable(commit):
+        await commit()
+
+    return snapshot_id
+
+
 class TrendAnalyzer:
     """Analyzes trends in security metrics over time."""
     
-    def __init__(self, db_session: AsyncSession):
+    def __init__(self, db_session: Any):
         """Initialize trend analyzer."""
         self.db = db_session
+
+    def _org_param(self, org_id: UUID) -> object:
+        dialect = get_dialect_name(self.db)
+        if dialect == "snowflake":
+            return str(org_id)
+        return org_id
     
     async def analyze_metric_trend(
         self,
@@ -344,23 +427,34 @@ class TrendAnalyzer:
         
         # Get historical data
         since_date = datetime.utcnow() - timedelta(days=days_back)
-        
-        stmt = select(SecurityMetricSnapshot).where(
-            and_(
-                SecurityMetricSnapshot.org_id == org_id,
-                SecurityMetricSnapshot.metric_type == metric_type.value,
-                SecurityMetricSnapshot.aggregation_period == aggregation_period.value,
-                SecurityMetricSnapshot.captured_at >= since_date
-            )
-        ).order_by(SecurityMetricSnapshot.captured_at)
-        
-        snapshots = list(await self.db.scalars(stmt))
-        
-        if len(snapshots) < 2:
+
+        result = await self.db.execute(
+            text(
+                """
+                SELECT captured_at, value, breakdown_data
+                FROM security_metric_snapshots
+                WHERE org_id = :org_id
+                    AND metric_type = :metric_type
+                    AND aggregation_period = :aggregation_period
+                    AND captured_at >= :since_date
+                ORDER BY captured_at
+                """
+            ),
+            {
+                "org_id": self._org_param(org_id),
+                "metric_type": metric_type.value,
+                "aggregation_period": aggregation_period.value,
+                "since_date": since_date,
+            },
+        )
+
+        rows = list(result.mappings().all())
+
+        if len(rows) < 2:
             # Not enough data for trend analysis
             return TrendData(
                 metric_type=metric_type.value,
-                current_value=snapshots[0].value if snapshots else 0.0,
+                current_value=float(rows[0]["value"]) if rows else 0.0,
                 previous_value=0.0,
                 change_absolute=0.0,
                 change_percentage=0.0,
@@ -370,8 +464,8 @@ class TrendAnalyzer:
             )
         
         # Calculate trend
-        current_value = snapshots[-1].value
-        previous_value = snapshots[-2].value if len(snapshots) > 1 else snapshots[0].value
+        current_value = float(rows[-1]["value"])
+        previous_value = float(rows[-2]["value"]) if len(rows) > 1 else float(rows[0]["value"])
         
         change_absolute = current_value - previous_value
         change_percentage = (change_absolute / previous_value * 100) if previous_value > 0 else 0.0
@@ -385,16 +479,16 @@ class TrendAnalyzer:
             trend_direction = "down"
         
         # Calculate confidence based on data consistency
-        confidence = min(1.0, len(snapshots) / 30.0)  # Higher confidence with more data points
+        confidence = min(1.0, len(rows) / 30.0)  # Higher confidence with more data points
         
         # Prepare data points for sparkline
         data_points = [
             {
-                "timestamp": snapshot.captured_at.isoformat(),
-                "value": snapshot.value,
-                "metadata": snapshot.breakdown_data
+                "timestamp": row["captured_at"].isoformat(),
+                "value": float(row["value"]),
+                "metadata": row.get("breakdown_data"),
             }
-            for snapshot in snapshots
+            for row in rows
         ]
         
         return TrendData(
@@ -417,17 +511,25 @@ class TrendAnalyzer:
         """Generate sparkline data for the last N days."""
         
         since_date = datetime.utcnow() - timedelta(days=days_back)
-        
-        stmt = select(SecurityMetricSnapshot.value).where(
-            and_(
-                SecurityMetricSnapshot.org_id == org_id,
-                SecurityMetricSnapshot.metric_type == metric_type.value,
-                SecurityMetricSnapshot.captured_at >= since_date
-            )
-        ).order_by(SecurityMetricSnapshot.captured_at)
-        
-        values = await self.db.scalars(stmt)
-        return list(values)
+
+        result = await self.db.execute(
+            text(
+                """
+                SELECT value
+                FROM security_metric_snapshots
+                WHERE org_id = :org_id
+                    AND metric_type = :metric_type
+                    AND captured_at >= :since_date
+                ORDER BY captured_at
+                """
+            ),
+            {
+                "org_id": self._org_param(org_id),
+                "metric_type": metric_type.value,
+                "since_date": since_date,
+            },
+        )
+        return [float(row[0]) for row in result.fetchall()]
     
     async def detect_anomalies(
         self,
@@ -439,22 +541,31 @@ class TrendAnalyzer:
         
         # Get last 30 days of data
         since_date = datetime.utcnow() - timedelta(days=30)
-        
-        stmt = select(SecurityMetricSnapshot).where(
-            and_(
-                SecurityMetricSnapshot.org_id == org_id,
-                SecurityMetricSnapshot.metric_type == metric_type.value,
-                SecurityMetricSnapshot.captured_at >= since_date
-            )
-        ).order_by(SecurityMetricSnapshot.captured_at)
-        
-        snapshots = list(await self.db.scalars(stmt))
-        
-        if len(snapshots) < 7:  # Need at least a week of data
+
+        result = await self.db.execute(
+            text(
+                """
+                SELECT captured_at, value
+                FROM security_metric_snapshots
+                WHERE org_id = :org_id
+                    AND metric_type = :metric_type
+                    AND captured_at >= :since_date
+                ORDER BY captured_at
+                """
+            ),
+            {
+                "org_id": self._org_param(org_id),
+                "metric_type": metric_type.value,
+                "since_date": since_date,
+            },
+        )
+        rows = list(result.mappings().all())
+
+        if len(rows) < 7:  # Need at least a week of data
             return []
         
         # Calculate baseline statistics
-        values = [s.value for s in snapshots[:-3]]  # Exclude last 3 days from baseline
+        values = [float(row["value"]) for row in rows[:-3]]  # Exclude last 3 days from baseline
         if not values:
             return []
         
@@ -465,13 +576,13 @@ class TrendAnalyzer:
         # Check last 3 days for anomalies
         anomalies = []
         threshold = sensitivity * std_dev
-        
-        for snapshot in snapshots[-3:]:
-            deviation = abs(snapshot.value - mean_value)
+
+        for row in rows[-3:]:
+            deviation = abs(float(row["value"]) - mean_value)
             if deviation > threshold:
                 anomalies.append({
-                    "timestamp": snapshot.captured_at.isoformat(),
-                    "value": snapshot.value,
+                    "timestamp": row["captured_at"].isoformat(),
+                    "value": float(row["value"]),
                     "expected_range": [mean_value - threshold, mean_value + threshold],
                     "deviation": deviation,
                     "severity": "high" if deviation > threshold * 1.5 else "medium"
