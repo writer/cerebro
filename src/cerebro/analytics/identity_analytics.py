@@ -9,9 +9,9 @@ from enum import Enum
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, text
+from sqlalchemy import bindparam, text
 
-from cerebro.core.models import IamEdge, Finding, IdentityRemediationAction
+from cerebro.core.models import IdentityRemediationAction
 from .dashboard_repository import DashboardRepository
 from .sql_dialect import (
     case_insensitive_like_expr,
@@ -891,48 +891,46 @@ async def _build_drilldown_identities(
 
     principal_ids = [identity.principal_id for identity in risky_identities]
 
-    permissions_stmt = (
-        select(
-            IamEdge.principal_id,
-            IamEdge.provider,
-            IamEdge.permission,
-            IamEdge.is_admin,
-            IamEdge.effective_at,
-        )
-        .where(IamEdge.principal_id.in_(principal_ids))
-        .order_by(IamEdge.principal_id, desc(IamEdge.effective_at))
+    dialect = get_dialect_name(analyzer.db)
+    principal_id_params: List[object] = (
+        [str(pid) for pid in principal_ids] if dialect == "snowflake" else list(principal_ids)
     )
 
-    findings_stmt = (
-        select(
-            Finding.principal_id,
-            Finding.finding_id,
-            Finding.title,
-            Finding.severity,
-            Finding.status,
-            Finding.last_seen,
-        )
-        .where(
-            Finding.principal_id.in_(principal_ids),
-            Finding.status == "open",
-        )
-        .order_by(Finding.principal_id, desc(Finding.severity), desc(Finding.last_seen))
-    )
+    permissions_stmt = text(
+        """
+        SELECT principal_id, provider, permission, is_admin, effective_at
+        FROM iam_edges
+        WHERE principal_id IN :principal_ids
+        ORDER BY principal_id, effective_at DESC
+        """
+    ).bindparams(bindparam("principal_ids", expanding=True))
 
-    permissions_result = await analyzer.db.execute(permissions_stmt)
-    findings_result = await analyzer.db.execute(findings_stmt)
+    findings_stmt = text(
+        """
+        SELECT principal_id, finding_id, title, severity, status, last_seen
+        FROM findings
+        WHERE principal_id IN :principal_ids
+            AND status = 'open'
+        ORDER BY principal_id, severity DESC, last_seen DESC
+        """
+    ).bindparams(bindparam("principal_ids", expanding=True))
+
+    permissions_result = await analyzer.db.execute(permissions_stmt, {"principal_ids": principal_id_params})
+    findings_result = await analyzer.db.execute(findings_stmt, {"principal_ids": principal_id_params})
 
     permissions_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
     for row in permissions_result.fetchall():
-        if len(permissions_by_identity[row.principal_id]) >= 12:
+        principal_id = row.principal_id if isinstance(row.principal_id, UUID) else UUID(str(row.principal_id))
+        if len(permissions_by_identity[principal_id]) >= 12:
             continue
-        permissions_by_identity[row.principal_id].append(row)
+        permissions_by_identity[principal_id].append(row)
 
     findings_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
     for row in findings_result.fetchall():
-        if len(findings_by_identity[row.principal_id]) >= 6:
+        principal_id = row.principal_id if isinstance(row.principal_id, UUID) else UUID(str(row.principal_id))
+        if len(findings_by_identity[principal_id]) >= 6:
             continue
-        findings_by_identity[row.principal_id].append(row)
+        findings_by_identity[principal_id].append(row)
 
     for identity in risky_identities:
         permission_rows = permissions_by_identity.get(identity.principal_id, [])
