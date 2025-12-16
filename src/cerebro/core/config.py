@@ -1041,6 +1041,17 @@ class Settings(BaseSettings):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _validate_snowflake(self) -> "Settings":
+        env = (self.environment or "development").lower()
+        if env not in _DEV_ENVIRONMENTS:
+            snowflake_url = (self.snowflake_database_url or os.getenv("SNOWFLAKE_DATABASE_URL") or "").strip()
+            if not snowflake_url:
+                raise ValueError(
+                    "SNOWFLAKE_DATABASE_URL must be configured for non-development environments."
+                )
+        return self
+
     @property
     def secret_key(self) -> str:
         if self.auth.secret_key is None:
