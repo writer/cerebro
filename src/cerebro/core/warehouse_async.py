@@ -31,6 +31,12 @@ class WarehouseAsyncSession:
     async def close(self) -> None:
         await anyio.to_thread.run_sync(self._session.close)
 
+    async def commit(self) -> None:
+        await anyio.to_thread.run_sync(self._session.commit)
+
+    async def rollback(self) -> None:
+        await anyio.to_thread.run_sync(self._session.rollback)
+
 
 @asynccontextmanager
 async def warehouse_async_session() -> AsyncGenerator[WarehouseAsyncSession, None]:
