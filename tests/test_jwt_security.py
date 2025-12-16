@@ -508,7 +508,13 @@ class TestSecurityValidation:
         """Test all configuration security validators."""
         from cerebro.core.config import Settings
 
-        with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "production",
+                "SNOWFLAKE_DATABASE_URL": "snowflake://user:pass@account/db/schema?warehouse=WH",
+            },
+        ):
             # Test all security validators
             secure_config = Settings(
                 secret_key="a-very-secure-secret-key-that-is-at-least-32-characters-long",
