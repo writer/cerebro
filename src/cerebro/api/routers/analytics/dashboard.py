@@ -122,7 +122,7 @@ async def get_organization_dashboard(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     # Generate comprehensive dashboard
-    dashboard_analytics = DashboardAnalytics(analytics_db)
+    dashboard_analytics = DashboardAnalytics(analytics_db, core_db_session=db)
     dashboard_data = await dashboard_analytics.generate_comprehensive_dashboard(org_id)
 
     providers: set[str] = set()
@@ -190,7 +190,7 @@ async def get_executive_summary(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    dashboard_analytics = DashboardAnalytics(analytics_db)
+    dashboard_analytics = DashboardAnalytics(analytics_db, core_db_session=db)
     executive_summary = await dashboard_analytics.generate_executive_summary(org_id)
 
     return {

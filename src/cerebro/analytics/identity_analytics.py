@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import bindparam, text
 
+from cerebro.core.database import async_session_factory
 from cerebro.core.models import IdentityRemediationAction
 from .dashboard_repository import DashboardRepository
 from .sql_dialect import (
@@ -89,9 +90,10 @@ class PrivilegeSprawlAnalysis:
 class IdentityAnalyzer:
     """Analyzer for identity-centric security insights."""
     
-    def __init__(self, db_session: AsyncSession):
+    def __init__(self, db_session: Any, *, core_db_session: AsyncSession | None = None):
         """Initialize identity analyzer."""
         self.db = db_session
+        self.core_db = core_db_session
     
     async def analyze_risky_identities(
         self,
@@ -982,126 +984,142 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
     top_risky = sprawl_analysis.top_risky_identities[:5]
     drilldown_identities = await _build_drilldown_identities(self, top_risky)
 
-    repository = DashboardRepository(self.db)
-    existing_actions = await repository.get_remediation_actions(org_id)
-    action_map: Dict[tuple[str, str], IdentityRemediationAction] = {
-        (str(action.principal_id), action.recommended_action): action
-        for action in existing_actions
-    }
+    async def _build_remediation_queue(remediation_db: AsyncSession) -> List[Dict[str, Any]]:
+        repository = DashboardRepository(remediation_db)
+        existing_actions = await repository.get_remediation_actions(org_id)
+        action_map: Dict[tuple[str, str], IdentityRemediationAction] = {
+            (str(action.principal_id), action.recommended_action): action
+            for action in existing_actions
+        }
 
-    remediation_queue: List[Dict[str, Any]] = []
-    used_keys: Set[tuple[str, str]] = set()
+        remediation_queue: List[Dict[str, Any]] = []
+        used_keys: Set[tuple[str, str]] = set()
+        created_actions = False
 
-    for entry in drilldown_identities:
-        risk_level = entry["risk_level"]
-        priority = (
-            "high"
-            if risk_level in {"high", "critical"}
-            else "medium"
-            if risk_level == "medium"
-            else "low"
-        )
-        recommended_action = (
-            entry["recommended_actions"][0]
-            if entry["recommended_actions"]
-            else "Review access assignments"
-        )
-        evidence = [finding["title"] for finding in entry["open_findings"]] or entry["providers"]
-        key = (entry["principal_id"], recommended_action)
-
-        action = action_map.get(key)
-        if action is None:
-            action = await repository.ensure_remediation_action(
-                org_id=org_id,
-                principal_id=UUID(entry["principal_id"]),
-                summary=entry["display_name"] or entry["email"] or entry["principal_id"],
-                recommended_action=recommended_action,
-                priority=priority,
-                evidence=evidence[:5],
+        for entry in drilldown_identities:
+            risk_level = entry["risk_level"]
+            priority = (
+                "high"
+                if risk_level in {"high", "critical"}
+                else "medium"
+                if risk_level == "medium"
+                else "low"
             )
-            action_map[key] = action
-
-        used_keys.add(key)
-        remediation_queue.append(
-            _merge_remediation_action(
-                {
-                    "principal_id": entry["principal_id"],
-                    "priority": priority,
-                    "summary": entry["display_name"] or entry["email"] or entry["principal_id"],
-                    "recommended_action": recommended_action,
-                    "evidence": evidence[:5],
-                    "risk_level": risk_level,
-                    "source": "analytics",
-                },
-                action,
+            recommended_action = (
+                entry["recommended_actions"][0]
+                if entry["recommended_actions"]
+                else "Review access assignments"
             )
-        )
+            evidence = [finding["title"] for finding in entry["open_findings"]] or entry["providers"]
+            key = (entry["principal_id"], recommended_action)
 
-    for key, action in action_map.items():
-        if key in used_keys:
-            continue
-        remediation_queue.append(
-            _merge_remediation_action(
-                {
-                    "principal_id": key[0],
-                    "priority": action.priority,
-                    "summary": action.summary,
-                    "recommended_action": action.recommended_action,
-                    "evidence": (action.evidence or [])[:5],
-                    "risk_level": "unknown",
-                    "source": "manual",
-                },
-                action,
+            action = action_map.get(key)
+            if action is None:
+                action = await repository.ensure_remediation_action(
+                    org_id=org_id,
+                    principal_id=UUID(entry["principal_id"]),
+                    summary=entry["display_name"] or entry["email"] or entry["principal_id"],
+                    recommended_action=recommended_action,
+                    priority=priority,
+                    evidence=evidence[:5],
+                )
+                action_map[key] = action
+                created_actions = True
+
+            used_keys.add(key)
+            remediation_queue.append(
+                _merge_remediation_action(
+                    {
+                        "principal_id": entry["principal_id"],
+                        "priority": priority,
+                        "summary": entry["display_name"] or entry["email"] or entry["principal_id"],
+                        "recommended_action": recommended_action,
+                        "evidence": evidence[:5],
+                        "risk_level": risk_level,
+                        "source": "analytics",
+                    },
+                    action,
+                )
             )
-        )
+
+        for key, action in action_map.items():
+            if key in used_keys:
+                continue
+            remediation_queue.append(
+                _merge_remediation_action(
+                    {
+                        "principal_id": key[0],
+                        "priority": action.priority,
+                        "summary": action.summary,
+                        "recommended_action": action.recommended_action,
+                        "evidence": (action.evidence or [])[:5],
+                        "risk_level": "unknown",
+                        "source": "manual",
+                    },
+                    action,
+                )
+            )
+
+        if created_actions:
+            await remediation_db.commit()
+
+        return remediation_queue
+
+    if self.core_db is not None:
+        remediation_queue = await _build_remediation_queue(self.core_db)
+    elif isinstance(self.db, AsyncSession) or (hasattr(self.db, "add") and hasattr(self.db, "flush")):
+        remediation_queue = await _build_remediation_queue(self.db)  # type: ignore[arg-type]
+    else:
+        async with async_session_factory() as remediation_db:
+            remediation_queue = await _build_remediation_queue(remediation_db)
 
     return {
-            "summary": {
-                "total_identities": sprawl_analysis.total_identities,
-                "high_privilege_identities": sprawl_analysis.high_privilege_identities,
-                "cross_provider_identities": sprawl_analysis.cross_provider_identities,
-                "avg_permissions_per_identity": round(sprawl_analysis.avg_permissions_per_identity, 1),
-                "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity,
-            },
-            "privilege_distribution": sprawl_analysis.privilege_distribution,
-            "privilege_segments": [
-                {
-                    "label": label,
-                    "count": int(count),
-                }
-                for label, count in sprawl_analysis.privilege_distribution.items()
-            ],
-            "top_risky_identities": [
-                {
-                    "principal_id": str(identity.principal_id),
-                    "display_name": identity.display_name,
-                    "email": identity.email,
-                    "risk_score": round(identity.risk_score, 1),
-                    "risk_level": identity.risk_level.value,
-                    "cross_provider_access": identity.cross_provider_access,
-                    "admin_access_count": identity.admin_access_count,
-                    "mfa_status": identity.mfa_status,
-                    "top_risk_factor": identity.risk_factors[0] if identity.risk_factors else None,
-                }
-                for identity in top_risky
-            ],
-            "privilege_anomalies": anomalies,
-            "mfa_compliance_by_provider": mfa_compliance,
-            "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
-            "provider_segments": [
-                {
-                    "provider": provider,
-                    "identity_count": data.get("identity_count", 0),
-                    "admin_grants": data.get("admin_grants", 0),
-                    "risk_level": data.get("risk_level", "unknown"),
-                }
-                for provider, data in sprawl_analysis.provider_privilege_breakdown.items()
-            ],
-            "drilldown_identities": drilldown_identities,
-            "remediation_queue": remediation_queue,
-            "risk_level_breakdown": risk_level_breakdown,
-            "generated_at": sprawl_analysis.analysis_date.isoformat() + "Z",
-        }
+        "summary": {
+            "total_identities": sprawl_analysis.total_identities,
+            "high_privilege_identities": sprawl_analysis.high_privilege_identities,
+            "cross_provider_identities": sprawl_analysis.cross_provider_identities,
+            "avg_permissions_per_identity": round(sprawl_analysis.avg_permissions_per_identity, 1),
+            "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity,
+        },
+        "privilege_distribution": sprawl_analysis.privilege_distribution,
+        "privilege_segments": [
+            {
+                "label": label,
+                "count": int(count),
+            }
+            for label, count in sprawl_analysis.privilege_distribution.items()
+        ],
+        "top_risky_identities": [
+            {
+                "principal_id": str(identity.principal_id),
+                "display_name": identity.display_name,
+                "email": identity.email,
+                "risk_score": round(identity.risk_score, 1),
+                "risk_level": identity.risk_level.value,
+                "cross_provider_access": identity.cross_provider_access,
+                "admin_access_count": identity.admin_access_count,
+                "mfa_status": identity.mfa_status,
+                "top_risk_factor": identity.risk_factors[0] if identity.risk_factors else None,
+            }
+            for identity in top_risky
+        ],
+        "privilege_anomalies": anomalies,
+        "mfa_compliance_by_provider": mfa_compliance,
+        "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
+        "provider_segments": [
+            {
+                "provider": provider,
+                "identity_count": data.get("identity_count", 0),
+                "admin_grants": data.get("admin_grants", 0),
+                "risk_level": data.get("risk_level", "unknown"),
+            }
+            for provider, data in sprawl_analysis.provider_privilege_breakdown.items()
+        ],
+        "drilldown_identities": drilldown_identities,
+        "remediation_queue": remediation_queue,
+        "risk_level_breakdown": risk_level_breakdown,
+        "generated_at": sprawl_analysis.analysis_date.isoformat() + "Z",
+    }
 
 IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data
 
