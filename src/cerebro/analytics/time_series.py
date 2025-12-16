@@ -15,8 +15,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, DateTime, Float
 
 from cerebro.core.database import Base
-from cerebro.core.models import Finding
-
 from .sql_dialect import get_dialect_name, hours_between_expr
 
 logger = logging.getLogger(__name__)
@@ -207,28 +205,47 @@ class TimeSeriesCollector:
     
     async def _get_finding_count(self, org_id: UUID) -> int:
         """Get total finding count."""
-        stmt = select(func.count(Finding.finding_id)).where(Finding.org_id == org_id)
-        return await self.db.scalar(stmt) or 0
+        result = await self.db.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM findings
+                WHERE org_id = :org_id
+                """
+            ),
+            {"org_id": org_id},
+        )
+        return int(result.scalar() or 0)
     
     async def _get_severity_distribution(self, org_id: UUID) -> Dict[str, int]:
         """Get finding severity distribution."""
-        stmt = select(
-            Finding.severity,
-            func.count(Finding.finding_id)
-        ).where(Finding.org_id == org_id).group_by(Finding.severity)
-        
-        result = await self.db.execute(stmt)
-        return {severity: count for severity, count in result.fetchall()}
+        result = await self.db.execute(
+            text(
+                """
+                SELECT severity, COUNT(*)
+                FROM findings
+                WHERE org_id = :org_id
+                GROUP BY severity
+                """
+            ),
+            {"org_id": org_id},
+        )
+        return {str(severity): int(count) for severity, count in result.fetchall()}
     
     async def _get_status_distribution(self, org_id: UUID) -> Dict[str, int]:
         """Get finding status distribution."""
-        stmt = select(
-            Finding.status,
-            func.count(Finding.finding_id)
-        ).where(Finding.org_id == org_id).group_by(Finding.status)
-        
-        result = await self.db.execute(stmt)
-        return {status: count for status, count in result.fetchall()}
+        result = await self.db.execute(
+            text(
+                """
+                SELECT status, COUNT(*)
+                FROM findings
+                WHERE org_id = :org_id
+                GROUP BY status
+                """
+            ),
+            {"org_id": org_id},
+        )
+        return {str(status): int(count) for status, count in result.fetchall()}
     
     async def _calculate_mttr(self, org_id: UUID) -> float:
         """Calculate mean time to remediation in hours."""
@@ -285,18 +302,26 @@ class TimeSeriesCollector:
         
         for severity, days in sla_thresholds.items():
             threshold_date = now - timedelta(days=days)
-            
-            stmt = select(func.count(Finding.finding_id)).where(
-                and_(
-                    Finding.org_id == org_id,
-                    Finding.severity == severity,
-                    Finding.status == "open",
-                    Finding.first_seen <= threshold_date
-                )
+
+            result = await self.db.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM findings
+                    WHERE org_id = :org_id
+                      AND severity = :severity
+                      AND status = 'open'
+                      AND first_seen <= :threshold_date
+                    """
+                ),
+                {
+                    "org_id": org_id,
+                    "severity": severity,
+                    "threshold_date": threshold_date,
+                },
             )
-            
-            count = await self.db.scalar(stmt) or 0
-            breach_count += count
+
+            breach_count += int(result.scalar() or 0)
         
         return breach_count
 

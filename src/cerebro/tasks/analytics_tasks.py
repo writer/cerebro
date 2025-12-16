@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncGenerator, Callable, Dict, List
+from typing import Callable, Dict, List
 from uuid import UUID
 
 from celery import states
 
 from cerebro.tasks.celery_app import celery_app
+from cerebro.core.analytics_db import analytics_read_session
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization
-from cerebro.core.warehouse import resolve_snowflake_database_url
-from cerebro.core.warehouse_async import warehouse_async_session
 from cerebro.analytics.time_series import (
     AggregationPeriod,
     MetricSnapshot,
@@ -26,16 +24,6 @@ from cerebro.analytics.risk_scoring import RiskScoringEngine, RiskFactor, Organi
 from cerebro.analytics.dashboard_repository import DashboardRepository
 
 logger = logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def _analytics_read_session(db: Any) -> AsyncGenerator[Any, None]:
-    if not resolve_snowflake_database_url():
-        yield db
-        return
-
-    async with warehouse_async_session() as warehouse:
-        yield warehouse
 
 
 def _serialize_risk_factor(factor: RiskFactor) -> Dict[str, object]:
@@ -76,7 +64,7 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
         if not org:
             raise ValueError("Organization not found")
 
-        async with _analytics_read_session(db) as analytics_db:
+        async with analytics_read_session(db) as analytics_db:
             collector_reader = TimeSeriesCollector(analytics_db)
             snapshots = await collector_reader.collect_finding_metrics(org.org_id)
 

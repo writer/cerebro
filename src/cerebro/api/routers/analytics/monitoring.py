@@ -232,6 +232,18 @@ async def get_warehouse_health(
 
     try:
         async with warehouse_async_session() as warehouse:
+            table_names = [
+                "orgs",
+                "accounts",
+                "findings",
+                "iam_edges",
+                "rules",
+                "rule_controls",
+                "warehouse_job_runs",
+                "security_metric_snapshots",
+                "agent_runtime_events",
+            ]
+
             job_status_query = text(
                 """
                 SELECT
@@ -285,13 +297,48 @@ async def get_warehouse_health(
                 "row_count": int(rule_controls_row.get("row_count") or 0) if rule_controls_row else 0,
             }
 
+            # Use INFORMATION_SCHEMA to avoid expensive COUNT(*) on large tables.
+            quoted_tables = ", ".join(f"'{name.upper()}'" for name in table_names)
+            table_stats_rows = (
+                await warehouse.execute(
+                    text(
+                        f"""
+                        SELECT table_name, row_count, bytes, last_altered
+                        FROM information_schema.tables
+                        WHERE table_schema = CURRENT_SCHEMA()
+                          AND table_name IN ({quoted_tables})
+                        """
+                    )
+                )
+            ).mappings().all()
+
+            table_stats: Dict[str, Any] = {
+                row["table_name"].lower(): {
+                    "row_count": int(row.get("row_count") or 0),
+                    "bytes": int(row.get("bytes") or 0),
+                    "last_altered": row.get("last_altered").isoformat() if row.get("last_altered") else None,
+                }
+                for row in table_stats_rows
+            }
+
+            missing_tables = [name for name in table_names if name not in table_stats]
+
+            overall_status = "healthy"
+            if jobs.get("refresh_rule_controls") is None:
+                overall_status = "degraded"
+            elif jobs["refresh_rule_controls"]["status"] not in {"success", "warning"}:
+                overall_status = "degraded"
+
             return {
                 "configured": True,
                 "dialect": getattr(warehouse, "dialect_name", "snowflake"),
+                "overall_status": overall_status,
                 "jobs": jobs,
                 "derived_tables": {
                     "rule_controls": rule_controls,
                 },
+                "tables": table_stats,
+                "missing_tables": missing_tables,
             }
 
     except Exception as exc:
