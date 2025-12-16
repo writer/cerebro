@@ -87,13 +87,13 @@ class ExecutiveSummary:
 class DashboardAnalytics:
     """Comprehensive analytics for security dashboard."""
     
-    def __init__(self, db_session: AsyncSession):
+    def __init__(self, db_session: Any, *, core_db_session: Optional[AsyncSession] = None):
         """Initialize dashboard analytics."""
         self.db = db_session
         self.time_series = TimeSeriesCollector(db_session)
         self.trend_analyzer = TrendAnalyzer(db_session)
         self.risk_engine = RiskScoringEngine(db_session)
-        self.identity_analyzer = IdentityAnalyzer(db_session)
+        self.identity_analyzer = IdentityAnalyzer(db_session, core_db_session=core_db_session)
         self.repository = DashboardRepository(db_session)
         self._last_generation_timings: Dict[str, float] = {}
 
