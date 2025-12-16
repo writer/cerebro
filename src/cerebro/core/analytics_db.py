@@ -10,7 +10,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.config import settings
@@ -44,5 +44,8 @@ async def analytics_read_session(db: Any) -> AsyncGenerator[Any, None]:
 
 
 async def get_analytics_db(db: AsyncSession = Depends(get_db)) -> AsyncGenerator[Any, None]:
-    async with analytics_read_session(db) as analytics_db:
-        yield analytics_db
+    try:
+        async with analytics_read_session(db) as analytics_db:
+            yield analytics_db
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
