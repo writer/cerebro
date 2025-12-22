@@ -26,8 +26,7 @@ cp .env.example .env
 ## 3. Initialize the Database
 
 ```bash
-make db-init
-uv run alembic upgrade head
+make db-migrate
 ```
 
 ## 4. Start Services

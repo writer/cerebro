@@ -237,67 +237,12 @@ clean: ## Clean up temporary files
 .PHONY: providers-test
 providers-test: ## Test provider authentication
 	@echo "🔗 Testing provider authentication..."
-	$(UV) run python -c "
-import asyncio
-from cerebro.infrastructure.provider_registry import get_provider_registry
-from cerebro.core.config import settings
-
-async def test_providers():
-    registry = get_provider_registry()
-    for provider_name in registry.list_providers():
-        try:
-            if provider_name == 'github' and settings.github_token:
-                provider = registry.create_provider('github', account_id='test', org_name='test')
-                result = await provider.authenticate()
-                print(f'✅ GitHub: {result}')
-            elif provider_name == 'aws' and settings.aws_access_key_id:
-                provider = registry.create_provider('aws', account_id='test', aws_account_id='123456789012')
-                result = await provider.authenticate()
-                print(f'✅ AWS: {result}')
-            else:
-                print(f'⏩ {provider_name}: Skipped (no credentials)')
-        except Exception as e:
-            print(f'❌ {provider_name}: {e}')
-
-asyncio.run(test_providers())
-"
+	$(UV) run python scripts/make_test_providers.py
 
 # Finding Generation
 .PHONY: findings-test
 findings-test: ## Test finding generation with sample data
 	@echo "🔍 Testing finding generation..."
-	$(UV) run python -c "
-import asyncio
-from cerebro.findings.producers import producer_registry
-from cerebro.domain.entities import ResourceEntity, ConfigEntity
-from datetime import datetime
-
-async def test_findings():
-    # Test GitHub producer
-    resource = ResourceEntity(
-        external_id='test/repo',
-        resource_type='github.repo',
-        provider='github',
-        name='test-repo'
-    )
-    
-    config = ConfigEntity(
-        resource_external_id='test/repo',
-        captured_at=datetime.utcnow(),
-        normalized_config={
-            'visibility': 'public',
-            'branchProtection': {'requirePR': False},
-            'archived': False
-        }
-    )
-    
-    findings = producer_registry.evaluate_resource(resource, config)
-    print(f'Generated {len(findings)} findings for test resource')
-    
-    for finding in findings:
-        print(f'  - {finding.title} (severity: {finding.severity})')
-
-asyncio.run(test_findings())
-"
+	$(UV) run python scripts/make_test_findings.py
 
 .DEFAULT_GOAL := help
