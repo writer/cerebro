@@ -121,4 +121,6 @@ async def preview_telemetry_alerts(
     )
 
     serialized = [_serialize_alert(alert) for alert in alerts]
-    return TelemetryAlertsResponse(alerts=serialized, snapshot=_snapshot_to_dict(snapshot))
+    return TelemetryAlertsResponse(
+        alerts=serialized, snapshot=_snapshot_to_dict(snapshot)
+    )

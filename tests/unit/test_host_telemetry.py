@@ -357,4 +357,3 @@ async def test_host_event_trigger_assigns_follow_on_pack(test_db):
     assert target.fulfilled_at is not None
     await test_db.refresh(follow_on_pack)
     assert follow_on_pack.last_deployed_at is not None
-

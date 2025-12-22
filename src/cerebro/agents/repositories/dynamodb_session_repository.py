@@ -128,7 +128,9 @@ class DynamoDBAgentSessionRepository:
 
         # Apply created_by filter in memory if specified
         if created_by:
-            all_items = [item for item in all_items if item.get("created_by") == created_by]
+            all_items = [
+                item for item in all_items if item.get("created_by") == created_by
+            ]
 
         total = len(all_items)
 

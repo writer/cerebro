@@ -106,9 +106,7 @@ class GithubOrgWorkflowRiskProducer(BaseGitHubProducer):
             resource=resource,
             rule_id=rule_id,
             title=f"Organization {subject} allows untrusted workflow defaults",
-            summary=(
-                f"GitHub organization {resource.external_id} {summary_detail}."
-            ),
+            summary=(f"GitHub organization {resource.external_id} {summary_detail}."),
             evidence=evidence,
             severity=self.severity,
         )

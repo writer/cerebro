@@ -26,9 +26,11 @@ from .frameworks import ComplianceControl
 
 # Define EvidenceItem locally for backward compatibility
 
+
 @dataclass
 class EvidenceItem:
     """Legacy evidence item - use ComplianceEvidenceMetadata for new code."""
+
     control_id: str
     evidence_type: str
     data: Dict[str, Any]
@@ -38,6 +40,7 @@ class EvidenceItem:
 
 class TestStatus(Enum):
     """Status of a control test execution."""
+
     PASS = "pass"
     FAIL = "fail"
     ERROR = "error"
@@ -47,6 +50,7 @@ class TestStatus(Enum):
 
 class ControlFrequency(Enum):
     """How often controls should be tested."""
+
     CONTINUOUS = "continuous"  # Real-time/streaming
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -58,26 +62,27 @@ class ControlFrequency(Enum):
 @dataclass
 class ControlTest:
     """Definition of how to test a compliance control."""
+
     id: str
     control_id: str
     framework_name: str
     name: str
     description: str
-    
+
     # Test execution
     rule_ids: List[str] = field(default_factory=list)  # CEL rules to evaluate
     sql_queries: List[str] = field(default_factory=list)  # SQL queries for evidence
     assertion: Optional[str] = None  # CEL expression for pass/fail logic
-    
+
     # Configuration
     frequency: ControlFrequency = ControlFrequency.QUARTERLY
     owner: Optional[str] = None
     enabled: bool = True
-    
+
     # Pass/fail thresholds
     pass_threshold: float = 1.0  # 1.0 = 100% pass required
     sample_size: Optional[int] = None  # For controls requiring sampling
-    
+
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -86,39 +91,40 @@ class ControlTest:
 @dataclass
 class ControlTestResult:
     """Result of a control test execution."""
+
     id: str
     test_id: str
     control_id: str
     framework_name: str
-    
+
     # Execution details
     status: TestStatus
     started_at: datetime
     finished_at: datetime
     period_start: datetime  # Audit period start
-    period_end: datetime    # Audit period end
-    
+    period_end: datetime  # Audit period end
+
     # Results
     pass_count: int = 0
     fail_count: int = 0
     error_count: int = 0
     total_count: int = 0
     pass_rate: float = 0.0
-    
+
     # Evidence and context
     evidence_items: List[str] = field(default_factory=list)  # Evidence item IDs
     rule_results: Dict[str, Any] = field(default_factory=dict)
     error_messages: List[str] = field(default_factory=list)
-    
+
     # Audit trail
     executor: Optional[str] = None  # Who/what executed the test
     execution_context: Dict[str, Any] = field(default_factory=dict)
-    
+
     @property
     def duration_seconds(self) -> float:
         """Test execution duration in seconds."""
         return (self.finished_at - self.started_at).total_seconds()
-    
+
     @property
     def passed(self) -> bool:
         """Whether the test passed overall."""
@@ -128,6 +134,7 @@ class ControlTestResult:
 @dataclass
 class ControlCoverage:
     """Coverage metrics for a compliance framework."""
+
     framework_name: str
     total_controls: int
     automated_controls: int
@@ -143,14 +150,18 @@ class ControlCoverage:
 
 class ControlTestRunner:
     """Executes control tests and produces compliance evidence."""
-    
-    def __init__(self, rule_engine: 'RuleEngine', query_engine: 'QueryEngine', db_session=None):
+
+    def __init__(
+        self, rule_engine: "RuleEngine", query_engine: "QueryEngine", db_session=None
+    ):
         self.rule_engine = rule_engine
         self.query_engine = query_engine
         evidence_path = os.getenv("CEREBRO_EVIDENCE_PATH", "/tmp/cerebro_evidence")
         self.evidence_repository = FileBasedEvidenceRepository(evidence_path)
-        self.evidence_service = EvidenceService(self.evidence_repository, query_engine=query_engine)
-    
+        self.evidence_service = EvidenceService(
+            self.evidence_repository, query_engine=query_engine
+        )
+
     async def run_control_test(
         self,
         test: Optional[ControlTest] = None,
@@ -168,7 +179,9 @@ class ControlTestRunner:
 
         if test is None:
             if not framework_id or not control_id:
-                raise ValueError("Either 'test' or ('framework_id' and 'control_id') must be provided")
+                raise ValueError(
+                    "Either 'test' or ('framework_id' and 'control_id') must be provided"
+                )
 
             from cerebro.compliance.framework_registry import get_framework_registry
 
@@ -186,7 +199,7 @@ class ControlTestRunner:
 
         if period_start is None:
             period_start = self._get_default_period_start(test.frequency, period_end)
-        
+
         result = ControlTestResult(
             id=str(uuid4()),
             test_id=test.id,
@@ -197,9 +210,9 @@ class ControlTestRunner:
             finished_at=datetime.now(),  # Will be updated
             period_start=period_start,
             period_end=period_end,
-            executor="system"
+            executor="system",
         )
-        
+
         try:
             evidence_ids: List[str] = []
             if collect_evidence and test.sql_queries:
@@ -235,47 +248,55 @@ class ControlTestRunner:
 
             result.total_count = len(evidence_ids)
             result.pass_rate = result.pass_count / max(result.total_count, 1)
-            
+
             # Execute CEL rules if specified
             rule_results = {}
             if test.rule_ids:
                 for rule_id in test.rule_ids:
                     try:
                         # Mock rule execution - in real implementation would use RuleEngine
-                        rule_result = await self._execute_rule(rule_id, period_start, period_end)
+                        rule_result = await self._execute_rule(
+                            rule_id, period_start, period_end
+                        )
                         rule_results[rule_id] = rule_result
                     except Exception as e:
                         rule_results[rule_id] = {"error": str(e)}
                         result.error_messages.append(f"Rule {rule_id}: {str(e)}")
-            
+
             result.rule_results = rule_results
 
             rules_pass = all(
-                r.get("status") == "pass" for r in rule_results.values() if isinstance(r, dict) and "status" in r
+                r.get("status") == "pass"
+                for r in rule_results.values()
+                if isinstance(r, dict) and "status" in r
             )
 
             if result.total_count == 0:
                 result.status = TestStatus.SKIP
             elif result.error_count > 0 or result.error_messages:
                 result.status = TestStatus.ERROR
-            elif result.fail_count > 0 or not rules_pass or result.pass_rate < test.pass_threshold:
+            elif (
+                result.fail_count > 0
+                or not rules_pass
+                or result.pass_rate < test.pass_threshold
+            ):
                 result.status = TestStatus.FAIL
             else:
                 result.status = TestStatus.PASS
-                
+
         except Exception as e:
             result.status = TestStatus.ERROR
             result.error_messages.append(str(e))
-        
+
         result.finished_at = datetime.now()
         return result
-    
+
     async def run_framework_tests(
-        self, 
+        self,
         framework_name: str,
         tests: List[ControlTest],
         period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None
+        period_end: Optional[datetime] = None,
     ) -> List[ControlTestResult]:
         """Execute all tests for a compliance framework."""
         # Run tests in parallel for efficiency
@@ -284,9 +305,9 @@ class ControlTestRunner:
             for test in tests
             if test.enabled
         ]
-        
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Handle any exceptions
         valid_results = []
         for i, result in enumerate(results):
@@ -303,36 +324,42 @@ class ControlTestRunner:
                     finished_at=datetime.now(),
                     period_start=period_start or datetime.now() - timedelta(days=30),
                     period_end=period_end or datetime.now(),
-                    error_messages=[str(result)]
+                    error_messages=[str(result)],
                 )
                 valid_results.append(error_result)
             else:
                 valid_results.append(result)
-        
+
         return valid_results
-    
+
     async def calculate_coverage(
-        self, 
+        self,
         framework_name: str,
         all_controls: List[ComplianceControl],
-        test_results: List[ControlTestResult]
+        test_results: List[ControlTestResult],
     ) -> ControlCoverage:
         """Calculate compliance coverage metrics."""
         total_controls = len(all_controls)
-        automated_controls = len([c for c in all_controls if c.automation_level == "automated"])
+        automated_controls = len(
+            [c for c in all_controls if c.automation_level == "automated"]
+        )
         manual_controls = total_controls - automated_controls
-        
+
         # Map results by control ID
         results_by_control = {r.control_id: r for r in test_results}
-        
+
         tested_controls = len(results_by_control)
         passing_controls = len([r for r in test_results if r.status == TestStatus.PASS])
         failing_controls = len([r for r in test_results if r.status == TestStatus.FAIL])
         error_controls = len([r for r in test_results if r.status == TestStatus.ERROR])
-        
+
         coverage_percentage = (tested_controls / max(total_controls, 1)) * 100
-        pass_percentage = (passing_controls / max(tested_controls, 1)) * 100 if tested_controls > 0 else 0
-        
+        pass_percentage = (
+            (passing_controls / max(tested_controls, 1)) * 100
+            if tested_controls > 0
+            else 0
+        )
+
         return ControlCoverage(
             framework_name=framework_name,
             total_controls=total_controls,
@@ -344,10 +371,12 @@ class ControlTestRunner:
             error_controls=error_controls,
             coverage_percentage=coverage_percentage,
             pass_percentage=pass_percentage,
-            last_updated=datetime.now()
+            last_updated=datetime.now(),
         )
-    
-    def _get_default_period_start(self, frequency: ControlFrequency, end_date: datetime) -> datetime:
+
+    def _get_default_period_start(
+        self, frequency: ControlFrequency, end_date: datetime
+    ) -> datetime:
         """Get default period start based on test frequency."""
         if frequency == ControlFrequency.CONTINUOUS:
             return end_date - timedelta(hours=1)
@@ -363,8 +392,10 @@ class ControlTestRunner:
             return end_date - timedelta(days=365)
         else:
             return end_date - timedelta(days=30)
-    
-    async def _execute_rule(self, rule_id: str, period_start: datetime, period_end: datetime) -> Dict[str, Any]:
+
+    async def _execute_rule(
+        self, rule_id: str, period_start: datetime, period_end: datetime
+    ) -> Dict[str, Any]:
         """Execute a CEL rule and return results."""
         try:
             from uuid import UUID, uuid5, NAMESPACE_URL
@@ -379,15 +410,19 @@ class ControlTestRunner:
                 resource={
                     "period_start": period_start.isoformat(),
                     "period_end": period_end.isoformat(),
-                    "findings_count": 0  # Would be queried from actual findings
+                    "findings_count": 0,  # Would be queried from actual findings
                 }
             )
 
             # Execute rule using real CEL engine
             rule_result = self.rule_engine.evaluate_rule(
-                rule_id=UUID(rule_id) if len(rule_id) == 36 else uuid5(NAMESPACE_URL, rule_id),
+                rule_id=(
+                    UUID(rule_id)
+                    if len(rule_id) == 36
+                    else uuid5(NAMESPACE_URL, rule_id)
+                ),
                 expression=rule_expression,
-                context=context
+                context=context,
             )
 
             return {
@@ -397,7 +432,7 @@ class ControlTestRunner:
                 "period_start": period_start.isoformat(),
                 "period_end": period_end.isoformat(),
                 "error": rule_result.error,
-                "execution_time_ms": rule_result.execution_time_ms
+                "execution_time_ms": rule_result.execution_time_ms,
             }
 
         except Exception as e:
@@ -407,14 +442,14 @@ class ControlTestRunner:
                 "findings_count": 0,
                 "period_start": period_start.isoformat(),
                 "period_end": period_end.isoformat(),
-                "error": str(e)
+                "error": str(e),
             }
-    
+
     async def _evaluate_assertion(
         self,
         assertion: str,
         evidence_items: List[EvidenceItem],
-        rule_results: Dict[str, Any]
+        rule_results: Dict[str, Any],
     ) -> bool:
         """Evaluate CEL assertion to determine pass/fail."""
         try:
@@ -428,7 +463,7 @@ class ControlTestRunner:
                     "evidence_type": item.evidence_type,
                     "data": item.data,
                     "collected_at": item.collected_at.isoformat(),
-                    "query_used": item.query_used
+                    "query_used": item.query_used,
                 }
                 for item in evidence_items
             ]
@@ -438,17 +473,21 @@ class ControlTestRunner:
                 config={
                     "evidence_items": evidence_data,
                     "evidence_count": len(evidence_items),
-                    "error_count": len([e for e in evidence_items if e.evidence_type == "query_error"]),
-                    "valid_evidence_count": len([e for e in evidence_items if e.evidence_type != "query_error"])
+                    "error_count": len(
+                        [e for e in evidence_items if e.evidence_type == "query_error"]
+                    ),
+                    "valid_evidence_count": len(
+                        [e for e in evidence_items if e.evidence_type != "query_error"]
+                    ),
                 },
-                resource=rule_results
+                resource=rule_results,
             )
 
             # Execute CEL assertion
             rule_result = self.rule_engine.evaluate_rule(
                 rule_id=uuid5(NAMESPACE_URL, assertion),
                 expression=assertion,
-                context=context
+                context=context,
             )
 
             return rule_result.matched and rule_result.error is None
@@ -456,28 +495,36 @@ class ControlTestRunner:
         except Exception as e:
             logger.error(f"Failed to evaluate assertion '{assertion}': {e}")
             # Fallback to basic logic if CEL evaluation fails
-            return len([e for e in evidence_items if e.evidence_type != "query_error"]) > 0
-    
-    def _default_pass_logic(self, evidence_items: List[EvidenceItem], rule_results: Dict[str, Any]) -> bool:
+            return (
+                len([e for e in evidence_items if e.evidence_type != "query_error"]) > 0
+            )
+
+    def _default_pass_logic(
+        self, evidence_items: List[EvidenceItem], rule_results: Dict[str, Any]
+    ) -> bool:
         """Default pass/fail logic when no assertion is specified."""
         # Pass if we have evidence and no query errors
-        has_evidence = len([e for e in evidence_items if e.evidence_type != "query_error"]) > 0
-        rules_pass = all(r.get("status") == "pass" for r in rule_results.values() if "status" in r)
+        has_evidence = (
+            len([e for e in evidence_items if e.evidence_type != "query_error"]) > 0
+        )
+        rules_pass = all(
+            r.get("status") == "pass" for r in rule_results.values() if "status" in r
+        )
         return has_evidence and (not rule_results or rules_pass)
 
 
 class ControlTestScheduler:
     """Schedules and manages periodic execution of control tests."""
-    
+
     def __init__(self, test_runner: ControlTestRunner):
         self.test_runner = test_runner
         self.scheduled_tests: Dict[str, ControlTest] = {}
         self.running = False
-    
+
     def schedule_test(self, test: ControlTest):
         """Add a test to the scheduler."""
         self.scheduled_tests[test.id] = test
-    
+
     async def run_scheduler(self):
         """Main scheduler loop."""
         self.running = True
@@ -488,41 +535,43 @@ class ControlTestScheduler:
             except Exception as e:
                 print(f"Scheduler error: {e}")
                 await asyncio.sleep(60)  # Wait and retry
-    
+
     async def _execute_due_tests(self):
         """Execute tests that are due to run."""
         now = datetime.now()
         due_tests = []
-        
+
         for test in self.scheduled_tests.values():
             if not test.enabled:
                 continue
-            
+
             # Simple logic - in production would track last execution time
             if self._is_test_due(test, now):
                 due_tests.append(test)
-        
+
         if due_tests:
             print(f"Executing {len(due_tests)} due tests...")
-            results = await asyncio.gather(*[
-                self.test_runner.run_control_test(test)
-                for test in due_tests
-            ], return_exceptions=True)
-            
+            results = await asyncio.gather(
+                *[self.test_runner.run_control_test(test) for test in due_tests],
+                return_exceptions=True,
+            )
+
             # Process results (store, alert, etc.)
             for result in results:
                 if isinstance(result, ControlTestResult):
                     await self._process_test_result(result)
-    
+
     def _is_test_due(self, test: ControlTest, current_time: datetime) -> bool:
         """Check if a test is due to run."""
         # Simplified logic - would check last execution time in real implementation
         return True
-    
+
     async def _process_test_result(self, result: ControlTestResult):
         """Process a completed test result."""
         # Store result, send alerts if failing, update dashboards
-        print(f"Test {result.test_id} for control {result.control_id}: {result.status.value}")
-        
+        print(
+            f"Test {result.test_id} for control {result.control_id}: {result.status.value}"
+        )
+
         if result.status == TestStatus.FAIL:
             print(f"ALERT: Control {result.control_id} is failing!")

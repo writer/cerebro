@@ -145,7 +145,9 @@ class UnifiedCerebroSDKContext:
         else:
             session = manager
         self._active_session = session
-        return UnifiedCerebroSDK(session, registry=self._registry, celery_app=self._celery_app)
+        return UnifiedCerebroSDK(
+            session, registry=self._registry, celery_app=self._celery_app
+        )
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         manager = self._session_manager

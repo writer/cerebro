@@ -26,25 +26,22 @@ class SystemContextInput(BaseModel):
     """Input for system context retrieval."""
 
     include_database: bool = Field(
-        default=True,
-        description="Include database connectivity and status"
+        default=True, description="Include database connectivity and status"
     )
     include_environment: bool = Field(
-        default=True,
-        description="Include deployment environment info"
+        default=True, description="Include deployment environment info"
     )
     include_providers: bool = Field(
-        default=True,
-        description="Include provider connectivity status"
+        default=True, description="Include provider connectivity status"
     )
     include_health: bool = Field(
-        default=True,
-        description="Include system health metrics"
+        default=True, description="Include system health metrics"
     )
 
 
 class DatabaseInfo(BaseModel):
     """Database connection info."""
+
     connected: bool
     database_url_masked: str
     pg_version: Optional[str]
@@ -54,6 +51,7 @@ class DatabaseInfo(BaseModel):
 
 class EnvironmentInfo(BaseModel):
     """Deployment environment info."""
+
     python_version: str
     deployment_type: str  # docker, k8s, bare-metal, dev
     environment: str  # production, staging, development
@@ -64,6 +62,7 @@ class EnvironmentInfo(BaseModel):
 
 class ProviderHealth(BaseModel):
     """Provider connectivity health."""
+
     provider: str
     status: str  # healthy, degraded, offline
     last_collection: Optional[str]
@@ -72,6 +71,7 @@ class ProviderHealth(BaseModel):
 
 class SystemHealthMetrics(BaseModel):
     """System health metrics."""
+
     uptime_seconds: Optional[float]
     memory_usage_mb: Optional[float]
     active_agent_sessions: int
@@ -111,7 +111,9 @@ class GetSystemContextTool(StructuredTool):
     """
 
     tool_name = "get_system_context"
-    tool_description = "Get system/infrastructure context including database, environment, and health"
+    tool_description = (
+        "Get system/infrastructure context including database, environment, and health"
+    )
     tool_version = "1.0.0"
     input_model = SystemContextInput
     output_model = SystemContextOutput
@@ -160,7 +162,9 @@ class GetSystemContextTool(StructuredTool):
 
             # 3. Provider Health
             if include_providers:
-                output_data["provider_health"] = await self._get_provider_health(context.org_id)
+                output_data["provider_health"] = await self._get_provider_health(
+                    context.org_id
+                )
 
             # 4. Health Metrics
             if include_health:
@@ -175,7 +179,7 @@ class GetSystemContextTool(StructuredTool):
                 data=output.model_dump(),
                 metadata={
                     "timestamp": output_data["timestamp"],
-                }
+                },
             )
 
         except Exception:
@@ -201,7 +205,9 @@ class GetSystemContextTool(StructuredTool):
                 pg_version: Optional[str] = None
                 extensions: Optional[List[str]] = None
                 if dialect == "postgresql":
-                    pg_version_result = await db_session.execute(text("SELECT version()"))
+                    pg_version_result = await db_session.execute(
+                        text("SELECT version()")
+                    )
                     pg_version_row = pg_version_result.fetchone()
                     pg_version = pg_version_row[0] if pg_version_row else None
 
@@ -210,7 +216,9 @@ class GetSystemContextTool(StructuredTool):
                     )
                     extensions = [row[0] for row in ext_result.fetchall()]
                 elif dialect == "sqlite":
-                    sqlite_version_result = await db_session.execute(text("select sqlite_version()"))
+                    sqlite_version_result = await db_session.execute(
+                        text("select sqlite_version()")
+                    )
                     sqlite_row = sqlite_version_result.fetchone()
                     pg_version = f"sqlite {sqlite_row[0]}" if sqlite_row else "sqlite"
 
@@ -228,7 +236,7 @@ class GetSystemContextTool(StructuredTool):
                     "database_url_masked": masked_url,
                     "pg_version": pg_version,
                     "connection_pool_size": None,
-                    "extensions": extensions
+                    "extensions": extensions,
                 }
 
         except Exception as e:
@@ -238,7 +246,7 @@ class GetSystemContextTool(StructuredTool):
                 "database_url_masked": "***",
                 "pg_version": None,
                 "connection_pool_size": None,
-                "extensions": None
+                "extensions": None,
             }
 
     async def _get_environment_info(self) -> Dict[str, Any]:
@@ -273,12 +281,17 @@ class GetSystemContextTool(StructuredTool):
                 provider_query = (
                     select(
                         Account.provider,
-                        func.count(func.distinct(Account.account_id)).label("account_count"),
+                        func.count(func.distinct(Account.account_id)).label(
+                            "account_count"
+                        ),
                         func.max(ConfigSnapshot.captured_at).label("last_collection"),
                     )
                     .select_from(Account)
                     .outerjoin(Resource, Resource.account_id == Account.account_id)
-                    .outerjoin(ConfigSnapshot, ConfigSnapshot.resource_id == Resource.resource_id)
+                    .outerjoin(
+                        ConfigSnapshot,
+                        ConfigSnapshot.resource_id == Resource.resource_id,
+                    )
                     .where(Account.org_id == org_id)
                     .group_by(Account.provider)
                 )
@@ -294,18 +307,26 @@ class GetSystemContextTool(StructuredTool):
                         now = datetime.now(timezone.utc)
                         last_collection = row.last_collection
                         if last_collection.tzinfo is None:
-                            last_collection = last_collection.replace(tzinfo=timezone.utc)
+                            last_collection = last_collection.replace(
+                                tzinfo=timezone.utc
+                            )
 
                         time_since_collection = now - last_collection
                         if time_since_collection.days > 1:
                             status = "degraded"
 
-                    provider_health.append({
-                        "provider": row.provider,
-                        "status": status,
-                        "last_collection": row.last_collection.isoformat() if row.last_collection else None,
-                        "error_rate": None  # TODO: Calculate from audit events
-                    })
+                    provider_health.append(
+                        {
+                            "provider": row.provider,
+                            "status": status,
+                            "last_collection": (
+                                row.last_collection.isoformat()
+                                if row.last_collection
+                                else None
+                            ),
+                            "error_rate": None,  # TODO: Calculate from audit events
+                        }
+                    )
 
         except Exception as e:
             logger.error("Provider health check failed", error=str(e))
@@ -321,7 +342,9 @@ class GetSystemContextTool(StructuredTool):
                 from cerebro.agents.models import AgentSession
 
                 active_sessions = await db_session.scalar(
-                    select(func.count(AgentSession.id)).where(AgentSession.is_active.is_(True))
+                    select(func.count(AgentSession.id)).where(
+                        AgentSession.is_active.is_(True)
+                    )
                 )
 
                 # Count total organizations
@@ -332,6 +355,7 @@ class GetSystemContextTool(StructuredTool):
                 # Get memory usage (rough estimate)
                 try:
                     import psutil
+
                     process = psutil.Process()
                     memory_usage_mb = process.memory_info().rss / 1024 / 1024
                 except ImportError:

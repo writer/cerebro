@@ -62,7 +62,9 @@ class DatasetBuilder:
                 handle.write(json.dumps(record.as_dict(), ensure_ascii=False))
                 handle.write("\n")
 
-    async def _collect_runtime_events(self, org_id: Optional[UUID]) -> List[DatasetRecord]:
+    async def _collect_runtime_events(
+        self, org_id: Optional[UUID]
+    ) -> List[DatasetRecord]:
         stmt = select(AgentRuntimeEvent)
         if org_id:
             stmt = stmt.where(AgentRuntimeEvent.org_id == org_id)
@@ -90,7 +92,9 @@ class DatasetBuilder:
             )
         return records
 
-    async def _collect_frontend_events(self, org_id: Optional[UUID]) -> List[DatasetRecord]:
+    async def _collect_frontend_events(
+        self, org_id: Optional[UUID]
+    ) -> List[DatasetRecord]:
         stmt = select(FrontendObservationEvent)
         if org_id:
             stmt = stmt.where(FrontendObservationEvent.org_id == org_id)
@@ -122,7 +126,9 @@ class DatasetBuilder:
             )
         return records
 
-    async def _collect_review_events(self, org_id: Optional[UUID]) -> List[DatasetRecord]:
+    async def _collect_review_events(
+        self, org_id: Optional[UUID]
+    ) -> List[DatasetRecord]:
         stmt = select(AgentReviewTask)
         if org_id:
             stmt = stmt.where(AgentReviewTask.org_id == org_id)
@@ -140,8 +146,14 @@ class DatasetBuilder:
                 "priority": task.priority,
             }
             labels = {
-                "status": task.status.value if hasattr(task.status, "value") else str(task.status),
-                "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
+                "status": (
+                    task.status.value
+                    if hasattr(task.status, "value")
+                    else str(task.status)
+                ),
+                "resolved_at": (
+                    task.resolved_at.isoformat() if task.resolved_at else None
+                ),
                 "resolution_notes": task.resolution_notes,
             }
             records.append(

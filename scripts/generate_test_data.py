@@ -29,6 +29,10 @@ from cerebro.core.config import settings
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
+# Create synchronous engine and session for scripts
+sync_engine = create_engine(settings.database_url)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
+
 
 def import_scenario_modules():
     """Import scenario modules dynamically."""
@@ -60,10 +64,6 @@ class TestDataGenerator:
         self.session = session
         self.scenario_generators = import_scenario_modules()
 
-# Create synchronous engine and session for scripts
-sync_engine = create_engine(settings.database_url)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
-    
     def clean_database(self):
         """Clean all test data from database."""
         print("🧹 Cleaning existing test data...")

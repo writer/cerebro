@@ -546,9 +546,7 @@ async def batch_get_items(
 
     for i in range(0, len(keys), batch_size):
         batch_keys = keys[i : i + batch_size]
-        request_keys = [
-            {"PK": {"S": pk}, "SK": {"S": sk}} for pk, sk in batch_keys
-        ]
+        request_keys = [{"PK": {"S": pk}, "SK": {"S": sk}} for pk, sk in batch_keys]
 
         response = client.batch_get_item(
             RequestItems={table_name: {"Keys": request_keys}}

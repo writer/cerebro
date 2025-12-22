@@ -49,7 +49,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-
 def _print_table(title: str, items: Iterable[Tuple[str, int]], limit: int = 10) -> None:
     """Render a simple bullet list of counts for console output."""
     rows = list(items)[:limit]

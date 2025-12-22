@@ -300,8 +300,7 @@ def test_annotate_agent_events_handles_multiple(vendors, customers) -> None:
 
     assert len(annotations) == 2
     assert (
-        annotations[0].vendors
-        and annotations[0].vendors[0].vendor_id == "vendor-acme"
+        annotations[0].vendors and annotations[0].vendors[0].vendor_id == "vendor-acme"
     )
     assert (
         annotations[1].customers

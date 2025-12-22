@@ -40,7 +40,10 @@ def ensure_tables_registered(
 
 
 def get_query_engine(
-    *, registry: Optional[TableRegistry] = None, force_refresh: bool = False, shared: bool = True
+    *,
+    registry: Optional[TableRegistry] = None,
+    force_refresh: bool = False,
+    shared: bool = True,
 ):
     """Return a query engine with provider tables registered."""
 

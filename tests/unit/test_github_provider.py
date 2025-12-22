@@ -182,8 +182,6 @@ async def test_discover_iam_edges_for_repo(monkeypatch):
     assert edges[0].principal_external_id == "octocat"
     assert edges[0].permission == "github.repo.admin"
 
-    org_edge = next(
-        edge for edge in edges if edge.resource_external_id is None
-    )
+    org_edge = next(edge for edge in edges if edge.resource_external_id is None)
     assert org_edge.principal_external_id == "jane"
     assert org_edge.permission == "github.org.admin"

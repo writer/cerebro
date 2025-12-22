@@ -68,9 +68,8 @@ class Org2FADisabledProducer(BaseGitHubProducer):
 
         normalized = config.normalized_config or {}
         requires_2fa = bool(normalized.get("two_factor_requirement_enabled", False))
-        member_count = (
-            int(normalized.get("public_members", 0))
-            + int(normalized.get("private_members", 0))
+        member_count = int(normalized.get("public_members", 0)) + int(
+            normalized.get("private_members", 0)
         )
 
         if not requires_2fa and member_count > 0:

@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class IdentityRiskLevel(Enum):
     """Risk levels for identity assessment."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -34,6 +35,7 @@ class IdentityRiskLevel(Enum):
 
 class PrivilegeType(Enum):
     """Types of privileges for analysis."""
+
     ADMIN = "admin"
     READ_WRITE = "read_write"
     READ_ONLY = "read_only"
@@ -43,22 +45,23 @@ class PrivilegeType(Enum):
 @dataclass
 class RiskyIdentity:
     """Identity with elevated risk profile."""
+
     principal_id: UUID
     display_name: str
     email: Optional[str]
     risk_score: float
     risk_level: IdentityRiskLevel
-    
+
     # Risk factors
     privilege_sprawl_score: float
     cross_provider_access: int
     admin_access_count: int
     stale_permissions_count: int
     mfa_status: str
-    
+
     # Provider breakdown
     provider_access: Dict[str, Dict[str, Any]]
-    
+
     # Recommendations
     risk_factors: List[str]
     remediation_actions: List[str]
@@ -67,49 +70,49 @@ class RiskyIdentity:
 @dataclass
 class PrivilegeSprawlAnalysis:
     """Analysis of privilege sprawl across the organization."""
+
     org_id: UUID
     analysis_date: datetime
-    
+
     # Overall statistics
     total_identities: int
     high_privilege_identities: int
     cross_provider_identities: int
-    
+
     # Sprawl metrics
     avg_permissions_per_identity: float
     max_permissions_per_identity: int
     privilege_distribution: Dict[str, int]
-    
+
     # Top risk identities
     top_risky_identities: List[RiskyIdentity]
-    
+
     # Provider analysis
     provider_privilege_breakdown: Dict[str, Dict[str, Any]]
 
 
 class IdentityAnalyzer:
     """Analyzer for identity-centric security insights."""
-    
+
     def __init__(self, db_session: Any, *, core_db_session: AsyncSession | None = None):
         """Initialize identity analyzer."""
         self.db = db_session
         self.core_db = core_db_session
-    
+
     async def analyze_risky_identities(
-        self,
-        org_id: UUID,
-        limit: int = 20
+        self, org_id: UUID, limit: int = 20
     ) -> List[RiskyIdentity]:
         """Identify identities with highest risk profiles."""
-        
+
         logger.info(f"Analyzing risky identities for org {org_id}")
-        
+
         dialect = get_dialect_name(self.db)
         stale_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
         now_expr = current_timestamp_expr(dialect=dialect)
 
         # Get all human identities with their privilege data
-        identity_risk_query = text(f"""
+        identity_risk_query = text(
+            f"""
             WITH identity_stats AS (
                 SELECT 
                     p.principal_id,
@@ -138,15 +141,15 @@ class IdentityAnalyzer:
             WHERE permission_count > 0
             ORDER BY risk_score DESC
             LIMIT :limit
-        """)
-        
-        result = await self.db.execute(identity_risk_query, {
-            "org_id": org_id,
-            "limit": limit
-        })
-        
+        """
+        )
+
+        result = await self.db.execute(
+            identity_risk_query, {"org_id": org_id, "limit": limit}
+        )
+
         risky_identities = []
-        
+
         for row in result.fetchall():
             # Determine risk level
             risk_score = row.risk_score
@@ -158,33 +161,37 @@ class IdentityAnalyzer:
                 risk_level = IdentityRiskLevel.MEDIUM
             else:
                 risk_level = IdentityRiskLevel.LOW
-            
+
             # Get MFA status
             mfa_status = await self._get_mfa_status(row.principal_id)
-            
+
             # Get provider access breakdown
-            provider_access = await self._get_provider_access_breakdown(row.principal_id)
-            
+            provider_access = await self._get_provider_access_breakdown(
+                row.principal_id
+            )
+
             # Generate risk factors and remediation actions
             risk_factors = []
             remediation_actions = []
-            
+
             if row.provider_count > 3:
                 risk_factors.append(f"Access across {row.provider_count} providers")
                 remediation_actions.append("Review cross-provider access necessity")
-            
+
             if row.admin_count > 0:
-                risk_factors.append(f"Administrative access to {row.admin_count} resources")
+                risk_factors.append(
+                    f"Administrative access to {row.admin_count} resources"
+                )
                 remediation_actions.append("Implement just-in-time admin access")
-            
+
             if row.stale_count > 5:
                 risk_factors.append(f"{row.stale_count} stale permissions (>90 days)")
                 remediation_actions.append("Remove unused permissions")
-            
+
             if mfa_status != "enabled":
                 risk_factors.append("Multi-factor authentication not enabled")
                 remediation_actions.append("Enable MFA for this identity")
-            
+
             risky_identity = RiskyIdentity(
                 principal_id=row.principal_id,
                 display_name=row.display_name or "Unknown",
@@ -198,14 +205,14 @@ class IdentityAnalyzer:
                 mfa_status=mfa_status,
                 provider_access=provider_access,
                 risk_factors=risk_factors,
-                remediation_actions=remediation_actions
+                remediation_actions=remediation_actions,
             )
-            
+
             risky_identities.append(risky_identity)
-        
+
         logger.info(f"Identified {len(risky_identities)} risky identities")
         return risky_identities
-    
+
     async def _get_mfa_status(self, principal_id: UUID) -> str:
         """Get MFA status for a principal."""
 
@@ -220,29 +227,36 @@ class IdentityAnalyzer:
             pattern_expr="'%multi-factor%'",
             dialect=dialect,
         )
-        
+
         # Check if there are any MFA-related findings for this principal
-        mfa_finding_query = text(f"""
+        mfa_finding_query = text(
+            f"""
             SELECT COUNT(*)
             FROM findings f
             JOIN rules r ON f.rule_id = r.rule_id
             WHERE f.principal_id = :principal_id
                 AND f.status = 'open'
                 AND ({name_match} OR {desc_match})
-        """)
-        
-        result = await self.db.execute(mfa_finding_query, {"principal_id": principal_id})
+        """
+        )
+
+        result = await self.db.execute(
+            mfa_finding_query, {"principal_id": principal_id}
+        )
         mfa_violations = result.scalar() or 0
-        
+
         return "disabled" if mfa_violations > 0 else "enabled"
-    
-    async def _get_provider_access_breakdown(self, principal_id: UUID) -> Dict[str, Dict[str, Any]]:
+
+    async def _get_provider_access_breakdown(
+        self, principal_id: UUID
+    ) -> Dict[str, Dict[str, Any]]:
         """Get detailed provider access breakdown for a principal."""
 
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
-        
-        provider_query = text(f"""
+
+        provider_query = text(
+            f"""
             SELECT 
                 ie.provider,
                 COUNT(DISTINCT ie.permission) as permission_count,
@@ -253,52 +267,59 @@ class IdentityAnalyzer:
             WHERE ie.principal_id = :principal_id
                 AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(provider_query, {"principal_id": principal_id})
-        
+
         provider_breakdown = {}
         for row in result.fetchall():
             provider_breakdown[row.provider] = {
                 "permission_count": row.permission_count,
                 "admin_access": row.admin_count > 0,
-                "first_access": row.first_access.isoformat() if row.first_access else None,
+                "first_access": (
+                    row.first_access.isoformat() if row.first_access else None
+                ),
                 "last_access": row.last_access.isoformat() if row.last_access else None,
-                "risk_level": "high" if row.admin_count > 0 else "medium" if row.permission_count > 10 else "low"
+                "risk_level": (
+                    "high"
+                    if row.admin_count > 0
+                    else "medium" if row.permission_count > 10 else "low"
+                ),
             }
-        
+
         return provider_breakdown
 
 
 class PrivilegeSprawlDetector:
     """Detects and analyzes privilege sprawl across the organization."""
-    
+
     def __init__(self, db_session: AsyncSession):
         """Initialize privilege sprawl detector."""
         self.db = db_session
-    
+
     async def analyze_privilege_sprawl(self, org_id: UUID) -> PrivilegeSprawlAnalysis:
         """Comprehensive privilege sprawl analysis."""
-        
+
         logger.info(f"Analyzing privilege sprawl for org {org_id}")
-        
+
         # Overall statistics
         total_identities = await self._count_total_identities(org_id)
         high_privilege_identities = await self._count_high_privilege_identities(org_id)
         cross_provider_identities = await self._count_cross_provider_identities(org_id)
-        
+
         # Permission statistics
         avg_permissions = await self._calculate_avg_permissions_per_identity(org_id)
         max_permissions = await self._get_max_permissions_per_identity(org_id)
         privilege_distribution = await self._get_privilege_distribution(org_id)
-        
+
         # Top risky identities
         identity_analyzer = IdentityAnalyzer(self.db)
         top_risky = await identity_analyzer.analyze_risky_identities(org_id, limit=10)
-        
+
         # Provider breakdown
         provider_breakdown = await self._analyze_provider_privilege_breakdown(org_id)
-        
+
         return PrivilegeSprawlAnalysis(
             org_id=org_id,
             analysis_date=datetime.utcnow(),
@@ -309,27 +330,30 @@ class PrivilegeSprawlDetector:
             max_permissions_per_identity=max_permissions,
             privilege_distribution=privilege_distribution,
             top_risky_identities=top_risky,
-            provider_privilege_breakdown=provider_breakdown
+            provider_privilege_breakdown=provider_breakdown,
         )
-    
+
     async def _count_total_identities(self, org_id: UUID) -> int:
         """Count total human identities."""
-        query = text("""
+        query = text(
+            """
             SELECT COUNT(DISTINCT p.principal_id)
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
             WHERE a.org_id = :org_id AND p.is_human = true
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(query, {"org_id": org_id})
         return result.scalar() or 0
-    
+
     async def _count_high_privilege_identities(self, org_id: UUID) -> int:
         """Count identities with high privileges (admin or >20 permissions)."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
 
-        query = text(f"""
+        query = text(
+            f"""
             SELECT COUNT(DISTINCT p.principal_id)
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
@@ -340,17 +364,19 @@ class PrivilegeSprawlDetector:
             GROUP BY p.principal_id
             HAVING COUNT(DISTINCT ie.permission) > 20
                 OR MAX(CASE WHEN ie.is_admin THEN 1 ELSE 0 END) = 1
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(query, {"org_id": org_id})
         return len(result.fetchall())
-    
+
     async def _count_cross_provider_identities(self, org_id: UUID) -> int:
         """Count identities with access across multiple providers."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
 
-        query = text(f"""
+        query = text(
+            f"""
             SELECT COUNT(DISTINCT p.principal_id)
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
@@ -360,17 +386,19 @@ class PrivilegeSprawlDetector:
                 AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id
             HAVING COUNT(DISTINCT ie.provider) > 1
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(query, {"org_id": org_id})
         return len(result.fetchall())
-    
+
     async def _calculate_avg_permissions_per_identity(self, org_id: UUID) -> float:
         """Calculate average permissions per identity."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
 
-        query = text(f"""
+        query = text(
+            f"""
             SELECT AVG(CAST(permission_count AS FLOAT))
             FROM (
                 SELECT COUNT(DISTINCT ie.permission) as permission_count
@@ -382,17 +410,19 @@ class PrivilegeSprawlDetector:
                     AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
             ) subq
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(query, {"org_id": org_id})
         return result.scalar() or 0.0
-    
+
     async def _get_max_permissions_per_identity(self, org_id: UUID) -> int:
         """Get maximum permissions held by any single identity."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
 
-        query = text(f"""
+        query = text(
+            f"""
             SELECT MAX(permission_count)
             FROM (
                 SELECT COUNT(DISTINCT ie.permission) as permission_count
@@ -404,17 +434,19 @@ class PrivilegeSprawlDetector:
                     AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
             ) subq
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(query, {"org_id": org_id})
         return result.scalar() or 0
-    
+
     async def _get_privilege_distribution(self, org_id: UUID) -> Dict[str, int]:
         """Get distribution of privilege levels."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
 
-        query = text(f"""
+        query = text(
+            f"""
             WITH identity_privilege_counts AS (
                 SELECT 
                     p.principal_id,
@@ -446,18 +478,22 @@ class PrivilegeSprawlDetector:
                     WHEN permission_count > 5 THEN 'low_privilege'
                     ELSE 'minimal_privilege'
                 END
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(query, {"org_id": org_id})
         return {row.privilege_level: row.identity_count for row in result.fetchall()}
-    
-    async def _analyze_provider_privilege_breakdown(self, org_id: UUID) -> Dict[str, Dict[str, Any]]:
+
+    async def _analyze_provider_privilege_breakdown(
+        self, org_id: UUID
+    ) -> Dict[str, Dict[str, Any]]:
         """Analyze privilege distribution by provider."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
         last_30_days = timestamp_minus_days_expr(days=30, dialect=dialect)
 
-        query = text(f"""
+        query = text(
+            f"""
             SELECT 
                 ie.provider,
                 COUNT(DISTINCT ie.principal_id) as identity_count,
@@ -475,10 +511,11 @@ class PrivilegeSprawlDetector:
                 AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
             ORDER BY identity_count DESC
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(query, {"org_id": org_id})
-        
+
         breakdown = {}
         for row in result.fetchall():
             breakdown[row.provider] = {
@@ -486,21 +523,26 @@ class PrivilegeSprawlDetector:
                 "unique_permissions": row.unique_permissions,
                 "admin_grants": row.admin_grants,
                 "recent_activity_ratio": float(row.recent_activity_ratio or 0),
-                "risk_level": "high" if row.admin_grants > 5 else "medium" if row.identity_count > 50 else "low"
+                "risk_level": (
+                    "high"
+                    if row.admin_grants > 5
+                    else "medium" if row.identity_count > 50 else "low"
+                ),
             }
-        
+
         return breakdown
-    
+
     async def identify_privilege_anomalies(self, org_id: UUID) -> List[Dict[str, Any]]:
         """Identify privilege anomalies requiring investigation."""
 
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
-        
+
         anomalies = []
-        
+
         # Orphaned permissions (identities with permissions but no recent activity)
-        orphaned_query = text(f"""
+        orphaned_query = text(
+            f"""
             SELECT 
                 p.principal_id,
                 p.display_name,
@@ -518,26 +560,29 @@ class PrivilegeSprawlDetector:
             HAVING COUNT(ie.permission) > 10
             ORDER BY permission_count DESC
             LIMIT 10
-        """)
-        
+        """
+        )
+
         stale_threshold = datetime.utcnow() - timedelta(days=180)
-        result = await self.db.execute(orphaned_query, {
-            "org_id": org_id,
-            "stale_threshold": stale_threshold
-        })
-        
+        result = await self.db.execute(
+            orphaned_query, {"org_id": org_id, "stale_threshold": stale_threshold}
+        )
+
         for row in result.fetchall():
-            anomalies.append({
-                "type": "orphaned_permissions",
-                "principal_id": str(row.principal_id),
-                "principal_name": row.display_name,
-                "description": f"Identity has {row.permission_count} permissions but no activity since {row.last_permission_grant.strftime('%Y-%m-%d')}",
-                "risk_level": "medium",
-                "recommendation": "Review and remove unused permissions"
-            })
-        
+            anomalies.append(
+                {
+                    "type": "orphaned_permissions",
+                    "principal_id": str(row.principal_id),
+                    "principal_name": row.display_name,
+                    "description": f"Identity has {row.permission_count} permissions but no activity since {row.last_permission_grant.strftime('%Y-%m-%d')}",
+                    "risk_level": "medium",
+                    "recommendation": "Review and remove unused permissions",
+                }
+            )
+
         # Unusual cross-provider admin access
-        cross_admin_query = text(f"""
+        cross_admin_query = text(
+            f"""
             SELECT 
                 p.principal_id,
                 p.display_name,
@@ -553,40 +598,47 @@ class PrivilegeSprawlDetector:
             GROUP BY p.principal_id, p.display_name
             HAVING COUNT(DISTINCT ie.provider) > 2
             ORDER BY admin_provider_count DESC
-        """)
+        """
+        )
         result = await self.db.execute(cross_admin_query, {"org_id": org_id})
-        
+
         for row in result.fetchall():
-            anomalies.append({
-                "type": "excessive_cross_provider_admin",
-                "principal_id": str(row.principal_id),
-                "principal_name": row.display_name,
-                "description": f"Administrative access across {row.admin_provider_count} providers: {', '.join(row.admin_providers)}",
-                "risk_level": "high",
-                "recommendation": "Implement role-based access with provider-specific admins"
-            })
-        
+            anomalies.append(
+                {
+                    "type": "excessive_cross_provider_admin",
+                    "principal_id": str(row.principal_id),
+                    "principal_name": row.display_name,
+                    "description": f"Administrative access across {row.admin_provider_count} providers: {', '.join(row.admin_providers)}",
+                    "risk_level": "high",
+                    "recommendation": "Implement role-based access with provider-specific admins",
+                }
+            )
+
         return anomalies
-    
+
     async def generate_identity_dashboard_data(self, org_id: UUID) -> Dict[str, Any]:
         """Generate comprehensive identity analytics for dashboard."""
-        
+
         # Get privilege sprawl analysis
-        sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(org_id)
-        
+        sprawl_analysis = await PrivilegeSprawlDetector(
+            self.db
+        ).analyze_privilege_sprawl(org_id)
+
         # Get privilege anomalies
         anomalies = await self.identify_privilege_anomalies(org_id)
-        
+
         # Get MFA compliance across providers
         mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
-        
+
         return {
             "summary": {
                 "total_identities": sprawl_analysis.total_identities,
                 "high_privilege_identities": sprawl_analysis.high_privilege_identities,
                 "cross_provider_identities": sprawl_analysis.cross_provider_identities,
-                "avg_permissions_per_identity": round(sprawl_analysis.avg_permissions_per_identity, 1),
-                "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity
+                "avg_permissions_per_identity": round(
+                    sprawl_analysis.avg_permissions_per_identity, 1
+                ),
+                "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity,
             },
             "privilege_distribution": sprawl_analysis.privilege_distribution,
             "top_risky_identities": [
@@ -599,16 +651,20 @@ class PrivilegeSprawlDetector:
                     "cross_provider_access": identity.cross_provider_access,
                     "admin_access_count": identity.admin_access_count,
                     "mfa_status": identity.mfa_status,
-                    "top_risk_factor": identity.risk_factors[0] if identity.risk_factors else None
+                    "top_risk_factor": (
+                        identity.risk_factors[0] if identity.risk_factors else None
+                    ),
                 }
                 for identity in sprawl_analysis.top_risky_identities[:5]
             ],
             "privilege_anomalies": anomalies,
             "mfa_compliance_by_provider": mfa_compliance,
-            "provider_breakdown": sprawl_analysis.provider_privilege_breakdown
+            "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
         }
-    
-    async def _get_mfa_compliance_by_provider(self, org_id: UUID) -> Dict[str, Dict[str, Any]]:
+
+    async def _get_mfa_compliance_by_provider(
+        self, org_id: UUID
+    ) -> Dict[str, Dict[str, Any]]:
         """Get MFA compliance status by provider."""
 
         dialect = get_dialect_name(self.db)
@@ -623,9 +679,10 @@ class PrivilegeSprawlDetector:
             pattern_expr="'%multi-factor%'",
             dialect=dialect,
         )
-        
+
         # This is a simplified implementation - in practice you'd check provider-specific MFA settings
-        mfa_query = text(f"""
+        mfa_query = text(
+            f"""
             SELECT 
                 ie.provider,
                 COUNT(DISTINCT p.principal_id) as total_users,
@@ -645,28 +702,36 @@ class PrivilegeSprawlDetector:
                 AND p.is_human = true
                 AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(mfa_query, {"org_id": org_id})
-        
+
         compliance_data = {}
         for row in result.fetchall():
             total = row.total_users
             enabled = row.mfa_enabled_users
             compliance_rate = (enabled / total * 100) if total > 0 else 0
-            
+
             compliance_data[row.provider] = {
                 "total_users": total,
                 "mfa_enabled_users": enabled,
                 "compliance_rate": round(compliance_rate, 1),
-                "status": "compliant" if compliance_rate >= 95 else "non_compliant" if compliance_rate < 80 else "partial"
+                "status": (
+                    "compliant"
+                    if compliance_rate >= 95
+                    else "non_compliant" if compliance_rate < 80 else "partial"
+                ),
             }
-        
+
         return compliance_data
 
 
 if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
-    async def _identify_privilege_anomalies(self: IdentityAnalyzer, org_id: UUID) -> List[Dict[str, Any]]:
+
+    async def _identify_privilege_anomalies(
+        self: IdentityAnalyzer, org_id: UUID
+    ) -> List[Dict[str, Any]]:
         """Identify privilege anomalies requiring investigation."""
 
         dialect = get_dialect_name(self.db)
@@ -760,7 +825,10 @@ if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
 
 
 if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
-    async def _get_mfa_compliance_by_provider(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Dict[str, Any]]:
+
+    async def _get_mfa_compliance_by_provider(
+        self: IdentityAnalyzer, org_id: UUID
+    ) -> Dict[str, Dict[str, Any]]:
         """Get MFA compliance status by provider."""
 
         dialect = get_dialect_name(self.db)
@@ -813,9 +881,7 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
                 "status": (
                     "compliant"
                     if compliance_rate >= 95
-                    else "non_compliant"
-                    if compliance_rate < 80
-                    else "partial"
+                    else "non_compliant" if compliance_rate < 80 else "partial"
                 ),
             }
 
@@ -825,7 +891,10 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
 
 
 if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
-    async def _get_risk_level_breakdown(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, int]:
+
+    async def _get_risk_level_breakdown(
+        self: IdentityAnalyzer, org_id: UUID
+    ) -> Dict[str, int]:
         """Return identity counts grouped by risk level."""
 
         dialect = get_dialect_name(self.db)
@@ -895,7 +964,9 @@ async def _build_drilldown_identities(
 
     dialect = get_dialect_name(analyzer.db)
     principal_id_params: List[object] = (
-        [str(pid) for pid in principal_ids] if dialect == "snowflake" else list(principal_ids)
+        [str(pid) for pid in principal_ids]
+        if dialect == "snowflake"
+        else list(principal_ids)
     )
 
     permissions_stmt = text(
@@ -917,19 +988,31 @@ async def _build_drilldown_identities(
         """
     ).bindparams(bindparam("principal_ids", expanding=True))
 
-    permissions_result = await analyzer.db.execute(permissions_stmt, {"principal_ids": principal_id_params})
-    findings_result = await analyzer.db.execute(findings_stmt, {"principal_ids": principal_id_params})
+    permissions_result = await analyzer.db.execute(
+        permissions_stmt, {"principal_ids": principal_id_params}
+    )
+    findings_result = await analyzer.db.execute(
+        findings_stmt, {"principal_ids": principal_id_params}
+    )
 
     permissions_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
     for row in permissions_result.fetchall():
-        principal_id = row.principal_id if isinstance(row.principal_id, UUID) else UUID(str(row.principal_id))
+        principal_id = (
+            row.principal_id
+            if isinstance(row.principal_id, UUID)
+            else UUID(str(row.principal_id))
+        )
         if len(permissions_by_identity[principal_id]) >= 12:
             continue
         permissions_by_identity[principal_id].append(row)
 
     findings_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
     for row in findings_result.fetchall():
-        principal_id = row.principal_id if isinstance(row.principal_id, UUID) else UUID(str(row.principal_id))
+        principal_id = (
+            row.principal_id
+            if isinstance(row.principal_id, UUID)
+            else UUID(str(row.principal_id))
+        )
         if len(findings_by_identity[principal_id]) >= 6:
             continue
         findings_by_identity[principal_id].append(row)
@@ -937,7 +1020,9 @@ async def _build_drilldown_identities(
     for identity in risky_identities:
         permission_rows = permissions_by_identity.get(identity.principal_id, [])
         finding_rows = findings_by_identity.get(identity.principal_id, [])
-        providers = sorted({row.provider for row in permission_rows}) if permission_rows else []
+        providers = (
+            sorted({row.provider for row in permission_rows}) if permission_rows else []
+        )
 
         drilldown.append(
             {
@@ -952,7 +1037,9 @@ async def _build_drilldown_identities(
                         "provider": row.provider,
                         "permission": row.permission,
                         "is_admin": bool(row.is_admin),
-                        "granted_at": row.effective_at.isoformat() if row.effective_at else None,
+                        "granted_at": (
+                            row.effective_at.isoformat() if row.effective_at else None
+                        ),
                     }
                     for row in permission_rows
                 ],
@@ -962,7 +1049,9 @@ async def _build_drilldown_identities(
                         "title": row.title,
                         "severity": row.severity,
                         "status": row.status,
-                        "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+                        "last_seen": (
+                            row.last_seen.isoformat() if row.last_seen else None
+                        ),
                     }
                     for row in finding_rows
                 ],
@@ -974,9 +1063,13 @@ async def _build_drilldown_identities(
     return drilldown
 
 
-async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID) -> Dict[str, Any]:
+async def _generate_identity_dashboard_data(
+    self: IdentityAnalyzer, org_id: UUID
+) -> Dict[str, Any]:
     """Generate comprehensive identity analytics for dashboard consumers."""
-    sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(org_id)
+    sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(
+        org_id
+    )
     anomalies = await self.identify_privilege_anomalies(org_id)
     mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
     risk_level_breakdown = await self.get_risk_level_breakdown(org_id)
@@ -984,7 +1077,9 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
     top_risky = sprawl_analysis.top_risky_identities[:5]
     drilldown_identities = await _build_drilldown_identities(self, top_risky)
 
-    async def _build_remediation_queue(remediation_db: AsyncSession) -> List[Dict[str, Any]]:
+    async def _build_remediation_queue(
+        remediation_db: AsyncSession,
+    ) -> List[Dict[str, Any]]:
         repository = DashboardRepository(remediation_db)
         existing_actions = await repository.get_remediation_actions(org_id)
         action_map: Dict[tuple[str, str], IdentityRemediationAction] = {
@@ -1001,16 +1096,16 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
             priority = (
                 "high"
                 if risk_level in {"high", "critical"}
-                else "medium"
-                if risk_level == "medium"
-                else "low"
+                else "medium" if risk_level == "medium" else "low"
             )
             recommended_action = (
                 entry["recommended_actions"][0]
                 if entry["recommended_actions"]
                 else "Review access assignments"
             )
-            evidence = [finding["title"] for finding in entry["open_findings"]] or entry["providers"]
+            evidence = [
+                finding["title"] for finding in entry["open_findings"]
+            ] or entry["providers"]
             key = (entry["principal_id"], recommended_action)
 
             action = action_map.get(key)
@@ -1018,7 +1113,9 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
                 action = await repository.ensure_remediation_action(
                     org_id=org_id,
                     principal_id=UUID(entry["principal_id"]),
-                    summary=entry["display_name"] or entry["email"] or entry["principal_id"],
+                    summary=entry["display_name"]
+                    or entry["email"]
+                    or entry["principal_id"],
                     recommended_action=recommended_action,
                     priority=priority,
                     evidence=evidence[:5],
@@ -1032,7 +1129,9 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
                     {
                         "principal_id": entry["principal_id"],
                         "priority": priority,
-                        "summary": entry["display_name"] or entry["email"] or entry["principal_id"],
+                        "summary": entry["display_name"]
+                        or entry["email"]
+                        or entry["principal_id"],
                         "recommended_action": recommended_action,
                         "evidence": evidence[:5],
                         "risk_level": risk_level,
@@ -1067,7 +1166,9 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
 
     if self.core_db is not None:
         remediation_queue = await _build_remediation_queue(self.core_db)
-    elif isinstance(self.db, AsyncSession) or (hasattr(self.db, "add") and hasattr(self.db, "flush")):
+    elif isinstance(self.db, AsyncSession) or (
+        hasattr(self.db, "add") and hasattr(self.db, "flush")
+    ):
         remediation_queue = await _build_remediation_queue(self.db)  # type: ignore[arg-type]
     else:
         async with async_session_factory() as remediation_db:
@@ -1078,7 +1179,9 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
             "total_identities": sprawl_analysis.total_identities,
             "high_privilege_identities": sprawl_analysis.high_privilege_identities,
             "cross_provider_identities": sprawl_analysis.cross_provider_identities,
-            "avg_permissions_per_identity": round(sprawl_analysis.avg_permissions_per_identity, 1),
+            "avg_permissions_per_identity": round(
+                sprawl_analysis.avg_permissions_per_identity, 1
+            ),
             "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity,
         },
         "privilege_distribution": sprawl_analysis.privilege_distribution,
@@ -1099,7 +1202,9 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
                 "cross_provider_access": identity.cross_provider_access,
                 "admin_access_count": identity.admin_access_count,
                 "mfa_status": identity.mfa_status,
-                "top_risk_factor": identity.risk_factors[0] if identity.risk_factors else None,
+                "top_risk_factor": (
+                    identity.risk_factors[0] if identity.risk_factors else None
+                ),
             }
             for identity in top_risky
         ],
@@ -1120,6 +1225,7 @@ async def _generate_identity_dashboard_data(self: IdentityAnalyzer, org_id: UUID
         "risk_level_breakdown": risk_level_breakdown,
         "generated_at": sprawl_analysis.analysis_date.isoformat() + "Z",
     }
+
 
 IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data
 

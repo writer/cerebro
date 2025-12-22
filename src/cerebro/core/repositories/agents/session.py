@@ -22,6 +22,7 @@ from cerebro.core.dynamodb_client import (
 
 class AgentType(str, Enum):
     """Types of security agents."""
+
     SECURITY_ANALYST = "security_analyst"
     INCIDENT_RESPONDER = "incident_responder"
     IDENTITY_ADVISOR = "identity_advisor"
@@ -31,7 +32,7 @@ class AgentType(str, Enum):
 
 class AgentSession(BaseModel):
     """Agent conversation session."""
-    
+
     id: UUID = Field(default_factory=uuid4)
     org_id: UUID
     agent_type: AgentType
@@ -40,22 +41,26 @@ class AgentSession(BaseModel):
     title: Optional[str] = None
     context: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
-    
+
     class Config:
         from_attributes = True
         use_enum_values = True
-    
+
     @property
     def session_id(self) -> UUID:
         return self.id
-    
+
     def to_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item."""
         session_id = str(self.id)
         org_id = str(self.org_id)
-        agent_type = self.agent_type.value if isinstance(self.agent_type, Enum) else self.agent_type
+        agent_type = (
+            self.agent_type.value
+            if isinstance(self.agent_type, Enum)
+            else self.agent_type
+        )
         created_at = self.created_at.isoformat()
-        
+
         return {
             "PK": pk("ORG", org_id),
             "SK": sk("SESSION", session_id),
@@ -75,7 +80,7 @@ class AgentSession(BaseModel):
             "GSI2PK": f"ORG#{org_id}#ACTIVE#{self.is_active}",
             "GSI2SK": f"CREATED#{created_at}",
         }
-    
+
     @classmethod
     def from_item(cls, item: Dict[str, Any]) -> "AgentSession":
         """Create from DynamoDB item."""
@@ -93,9 +98,9 @@ class AgentSession(BaseModel):
 
 class AgentSessionRepository:
     """Repository for AgentSession operations."""
-    
+
     _table = TableName.AGENTS
-    
+
     async def get(self, session_id: UUID, org_id: UUID) -> Optional[AgentSession]:
         """Get session by ID."""
         item = await get_item(
@@ -104,13 +109,15 @@ class AgentSessionRepository:
             sk("SESSION", str(session_id)),
         )
         return AgentSession.from_item(item) if item else None
-    
+
     async def create(self, session: AgentSession) -> AgentSession:
         """Create new session."""
         await put_item(self._table, session.to_item())
         return session
-    
-    async def update(self, session_id: UUID, org_id: UUID, **updates) -> Optional[AgentSession]:
+
+    async def update(
+        self, session_id: UUID, org_id: UUID, **updates
+    ) -> Optional[AgentSession]:
         """Update session."""
         # Update GSI2 if is_active changed
         current = await self.get(session_id, org_id)
@@ -119,7 +126,7 @@ class AgentSessionRepository:
             created_at = current.created_at.isoformat()
             updates["GSI2PK"] = f"ORG#{org_id}#ACTIVE#{is_active}"
             updates["GSI2SK"] = f"CREATED#{created_at}"
-        
+
         result = await update_item(
             self._table,
             pk("ORG", str(org_id)),
@@ -127,11 +134,11 @@ class AgentSessionRepository:
             updates,
         )
         return AgentSession.from_item(result) if result else None
-    
+
     async def delete(self, session_id: UUID, org_id: UUID) -> bool:
         """Delete session and all related items (messages, tool invocations)."""
         delete_keys = []
-        
+
         # Paginate through all items under this session
         cursor = None
         while True:
@@ -144,16 +151,16 @@ class AgentSessionRepository:
             delete_keys.extend([(item["PK"], item["SK"]) for item in items])
             if not cursor:
                 break
-        
+
         # Add the session itself
         delete_keys.append((pk("ORG", str(org_id)), sk("SESSION", str(session_id))))
-        
+
         # Delete in batches
         if delete_keys:
             await batch_write(self._table, delete_keys=delete_keys)
-        
+
         return True
-    
+
     async def list_by_org(
         self,
         org_id: UUID,
@@ -166,7 +173,9 @@ class AgentSessionRepository:
         """List sessions for an organization."""
         if agent_type:
             # Use GSI1 for agent type filtering
-            agent_type_val = agent_type.value if isinstance(agent_type, Enum) else agent_type
+            agent_type_val = (
+                agent_type.value if isinstance(agent_type, Enum) else agent_type
+            )
             items = await query(
                 self._table,
                 f"ORG#{org_id}#AGENT#{agent_type_val}",
@@ -192,27 +201,31 @@ class AgentSessionRepository:
                 limit=limit + offset,
                 forward=False,
             )
-        
+
         # Filter by created_by if specified
         if created_by:
             items = [i for i in items if i.get("created_by") == created_by]
-        
+
         total = len(items)
-        
+
         # Apply pagination
-        items = items[offset:offset + limit]
+        items = items[offset : offset + limit]
         sessions = [AgentSession.from_item(item) for item in items]
-        
+
         return sessions, total
-    
-    async def deactivate(self, session_id: UUID, org_id: UUID) -> Optional[AgentSession]:
+
+    async def deactivate(
+        self, session_id: UUID, org_id: UUID
+    ) -> Optional[AgentSession]:
         """Deactivate a session."""
         return await self.update(session_id, org_id, is_active=False)
-    
-    async def update_title(self, session_id: UUID, org_id: UUID, title: str) -> Optional[AgentSession]:
+
+    async def update_title(
+        self, session_id: UUID, org_id: UUID, title: str
+    ) -> Optional[AgentSession]:
         """Update session title."""
         return await self.update(session_id, org_id, title=title)
-    
+
     async def update_context(
         self,
         session_id: UUID,

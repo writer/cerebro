@@ -65,9 +65,7 @@ class BenchmarkRunner:
         tool_call_count = sum(len(step.tool_calls) for step in case.steps)
         total_duration_ms = sum(step.duration_ms or 0.0 for step in case.steps)
         outcomes = [
-            step.message
-            for step in case.steps
-            if "OUTCOME" in step.message.upper()
+            step.message for step in case.steps if "OUTCOME" in step.message.upper()
         ]
         outcome = outcomes[-1] if outcomes else None
         scores = [step.score for step in case.steps if step.score is not None]

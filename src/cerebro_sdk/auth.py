@@ -27,7 +27,9 @@ class AuthSession:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._user_service = UserService(db)
-        self._jwt_service = JWTService(JWTKeyStore(db, metrics=jwt_metrics), metrics=jwt_metrics)
+        self._jwt_service = JWTService(
+            JWTKeyStore(db, metrics=jwt_metrics), metrics=jwt_metrics
+        )
 
     async def login(self, username: str, password: str) -> Optional[TokenPair]:
         """Authenticate a user and return access/refresh tokens."""
@@ -37,7 +39,9 @@ class AuthSession:
             return None
 
         scopes = await self._user_service.get_user_scopes(user.user_id)
-        access_token = await self._jwt_service.create_token(username=user.username, scopes=scopes)
+        access_token = await self._jwt_service.create_token(
+            username=user.username, scopes=scopes
+        )
 
         refresh_token = await self._jwt_service.create_token(
             username=user.username,

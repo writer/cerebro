@@ -3,7 +3,12 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from cerebro.agents.models import AgentReviewTask, AgentSession, AgentType, ReviewTaskStatus
+from cerebro.agents.models import (
+    AgentReviewTask,
+    AgentSession,
+    AgentType,
+    ReviewTaskStatus,
+)
 
 
 def _run_async(coro):
@@ -84,5 +89,7 @@ def test_review_queue_summary_endpoint(client, test_db, test_org, test_token):
     assert status_counts["pending"]["count"] == 2
     assert status_counts["approved"]["count"] == 1
 
-    priority_breakdown = {entry["priority"]: entry["count"] for entry in summary["priority_breakdown"]}
+    priority_breakdown = {
+        entry["priority"]: entry["count"] for entry in summary["priority_breakdown"]
+    }
     assert priority_breakdown.get("high") == 1

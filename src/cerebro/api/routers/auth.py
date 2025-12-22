@@ -187,7 +187,9 @@ async def _issue_tokens(
     }
 
     if include_refresh_metadata and settings.refresh_token_expire_days:
-        payload["refresh_token_expires_in"] = settings.refresh_token_expire_days * 24 * 60 * 60
+        payload["refresh_token_expires_in"] = (
+            settings.refresh_token_expire_days * 24 * 60 * 60
+        )
 
     if include_refresh_token_in_body and refresh_token is not None:
         payload["refresh_token"] = refresh_token
@@ -195,7 +197,9 @@ async def _issue_tokens(
     return payload
 
 
-async def authenticate_user(username: str, password: str, db: AsyncSession) -> Optional[dict]:
+async def authenticate_user(
+    username: str, password: str, db: AsyncSession
+) -> Optional[dict]:
     """Authenticate credentials and return user context."""
 
     user_service = UserService(db)
@@ -366,7 +370,9 @@ async def refresh_token(
     csrf_token = generate_csrf_token()
 
     try:
-        payload = await jwt_service.verify_token(refresh_token_value, expected_type="refresh")
+        payload = await jwt_service.verify_token(
+            refresh_token_value, expected_type="refresh"
+        )
     except Exception:
         refresh_token_service = RefreshTokenService(db)
         user_id = await refresh_token_service.verify_refresh_token(refresh_token_value)
@@ -410,7 +416,10 @@ async def refresh_token(
             "access_token": access_token,
             "token_type": "bearer",
             "access_token_expires_in": settings.access_token_expire_minutes * 60,
-            "refresh_token_expires_in": settings.refresh_token_expire_days * 24 * 60 * 60,
+            "refresh_token_expires_in": settings.refresh_token_expire_days
+            * 24
+            * 60
+            * 60,
             "csrf_token": csrf_token,
         }
 

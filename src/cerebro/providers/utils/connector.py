@@ -14,7 +14,18 @@ import asyncio
 import functools
 import logging
 from concurrent.futures import Executor
-from typing import Any, AsyncIterator, Awaitable, Callable, Iterable, Optional, Sequence, Tuple, Type, TypeVar
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 
 T = TypeVar("T")

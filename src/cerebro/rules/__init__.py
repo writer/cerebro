@@ -5,7 +5,7 @@ from .exceptions import RuleError, CompilationError, EvaluationError
 
 __all__ = [
     "RuleEngine",
-    "EvaluationContext", 
+    "EvaluationContext",
     "RuleResult",
     "RuleError",
     "CompilationError",

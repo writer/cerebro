@@ -62,7 +62,9 @@ async def test_integration_coverage_client_summarize(monkeypatch):
         )
     ]
 
-    summarize_mock.assert_awaited_once_with(fake_db, provider_mapping=None, stale_seconds=None)
+    summarize_mock.assert_awaited_once_with(
+        fake_db, provider_mapping=None, stale_seconds=None
+    )
 
 
 async def test_integration_coverage_client_skips_invalid_records(monkeypatch):
@@ -86,4 +88,6 @@ async def test_integration_coverage_client_skips_invalid_records(monkeypatch):
     records = await client.summarize()
 
     assert records == []
-    summarize_mock.assert_awaited_once_with(fake_db, provider_mapping=None, stale_seconds=None)
+    summarize_mock.assert_awaited_once_with(
+        fake_db, provider_mapping=None, stale_seconds=None
+    )

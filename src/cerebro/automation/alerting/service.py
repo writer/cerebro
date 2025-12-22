@@ -24,5 +24,7 @@ async def collect_telemetry_alerts(
 
     applied_rules = tuple(rules or rules_from_env())
     snapshot = await fetch_telemetry_health(window_days, db_session=db_session)
-    results = await evaluate_rules(snapshot, applied_rules, cooldown_store=cooldown_store)
+    results = await evaluate_rules(
+        snapshot, applied_rules, cooldown_store=cooldown_store
+    )
     return tuple(results), snapshot

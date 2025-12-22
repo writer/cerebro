@@ -19,7 +19,9 @@ class AsyncManagerBase:
         self._db = db
 
     def _transaction(self):  # pragma: no cover - thin wrapper
-        return self._db.begin_nested() if self._db.in_transaction() else self._db.begin()
+        return (
+            self._db.begin_nested() if self._db.in_transaction() else self._db.begin()
+        )
 
     @staticmethod
     def _coerce_enum(value: object, enum_cls: Type[EnumT], *, message: str) -> EnumT:

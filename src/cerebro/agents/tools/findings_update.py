@@ -23,6 +23,7 @@ logger = structlog.get_logger(__name__)
 
 class UpdateFindingStatusInput(BaseModel):
     """Input for updating finding status."""
+
     finding_id: str = Field(description="Finding ID to update")
     status: str = Field(description="New status for the finding")
     comment: str = Field(description="Comment explaining the status change")
@@ -31,6 +32,7 @@ class UpdateFindingStatusInput(BaseModel):
 
 class UpdateFindingStatusOutput(BaseModel):
     """Output for updating finding status."""
+
     finding_id: UUID
     old_status: str
     new_status: str
@@ -43,31 +45,31 @@ class UpdateFindingStatusOutput(BaseModel):
 
 class FindingStatusUpdateTool(Tool):
     """Tool for updating finding status with audit trails and RBAC."""
-    
+
     @property
     def name(self) -> str:
         return "finding_update_status"
-    
+
     @property
     def description(self) -> str:
         return "Update security finding status with audit trail and approval workflow"
-    
+
     @property
     def input_schema(self) -> type:
         return UpdateFindingStatusInput
-    
+
     @property
     def output_schema(self) -> type:
         return UpdateFindingStatusOutput
-    
+
     @property
     def permission_level(self) -> ToolPermissionLevel:
         return ToolPermissionLevel.WRITE_SAFE
-    
+
     @property
     def cel_policy_key(self) -> Optional[str]:
         return "tools.findings.update_status"
-    
+
     @property
     def cel_expression(self) -> Optional[str]:
         # Require security analyst role and proper org ownership
@@ -76,18 +78,18 @@ class FindingStatusUpdateTool(Tool):
         org_id == context.org_id &&
         (inputs.status != 'accepted_risk' || has(approval))
         """
-    
+
     @property
     def requires_approval(self) -> bool:
         # Require approval for accepting risk
         return True
-    
+
     async def execute(self, inputs: BaseModel, context: AgentContext) -> ToolResult:
         """Update finding status with comprehensive validation and audit trail."""
-        
+
         try:
             update_inputs = UpdateFindingStatusInput(**inputs.model_dump())
-            
+
             # Validate finding ID format
             try:
                 finding_uuid = UUID(update_inputs.finding_id)
@@ -96,51 +98,53 @@ class FindingStatusUpdateTool(Tool):
                     success=False,
                     error=f"Invalid finding ID format: {update_inputs.finding_id}",
                 )
-            
+
             # Validate status value
-            valid_statuses = ['open', 'suppressed', 'accepted_risk', 'fixed']
+            valid_statuses = ["open", "suppressed", "accepted_risk", "fixed"]
             if update_inputs.status not in valid_statuses:
                 return ToolResult(
                     success=False,
                     error=f"Invalid status: {update_inputs.status}. Valid statuses: {valid_statuses}",
                 )
-            
+
             # Enforce provider scope if specified
             if context.provider_scope:
                 # Need to check finding's provider is in scope
                 async with async_session_factory() as session:
                     finding_provider_query = select(Finding.provider).where(
                         Finding.finding_id == finding_uuid,
-                        Finding.org_id == context.org_id
+                        Finding.org_id == context.org_id,
                     )
                     result = await session.execute(finding_provider_query)
                     finding_provider = result.scalar_one_or_none()
-                    
-                    if finding_provider and finding_provider not in context.provider_scope:
+
+                    if (
+                        finding_provider
+                        and finding_provider not in context.provider_scope
+                    ):
                         return ToolResult(
                             success=False,
                             error=f"Finding provider '{finding_provider}' not in authorized scope: {context.provider_scope}",
                         )
-            
+
             # Single transaction for all operations
             async with async_session_factory() as session:
                 # Get the current finding
                 query = select(Finding).where(
-                    Finding.finding_id == finding_uuid,
-                    Finding.org_id == context.org_id
+                    Finding.finding_id == finding_uuid, Finding.org_id == context.org_id
                 )
-                
+
                 result = await session.execute(query)
                 finding = result.scalar_one_or_none()
-                
+
                 if not finding:
                     return ToolResult(
                         success=False,
                         error=f"Finding {update_inputs.finding_id} not found or access denied",
                     )
-                
+
                 old_status = finding.status
-                
+
                 # Check if status change is actually needed
                 if old_status == update_inputs.status:
                     return ToolResult(
@@ -159,7 +163,7 @@ class FindingStatusUpdateTool(Tool):
                             "status": old_status,
                         },
                     )
-                
+
                 # Handle dry-run mode
                 if context.dry_run:
                     return ToolResult(
@@ -186,16 +190,16 @@ class FindingStatusUpdateTool(Tool):
                             "finding_severity": finding.severity,
                         },
                     )
-                
+
                 # Perform actual update
                 finding.status = update_inputs.status
                 finding.last_seen = datetime.now(timezone.utc)
-                
+
                 # Set resolved timestamp if marking as fixed
-                if update_inputs.status == 'fixed' and old_status != 'fixed':
-                    if hasattr(finding, 'resolved_at'):
+                if update_inputs.status == "fixed" and old_status != "fixed":
+                    if hasattr(finding, "resolved_at"):
                         finding.resolved_at = datetime.now(timezone.utc)
-                
+
                 # Create comprehensive agent audit event
                 from cerebro.agents.audit import log_agent_event
 
@@ -220,7 +224,7 @@ class FindingStatusUpdateTool(Tool):
                     },
                     success=True,
                 )
-                
+
                 # Commit all changes atomically
                 await session.commit()
                 await session.refresh(finding)
@@ -235,14 +239,14 @@ class FindingStatusUpdateTool(Tool):
                     dry_run=False,
                     audit_event_id=audit_event.event_id,
                 )
-                
+
                 return ToolResult(
                     success=True,
                     data=output.model_dump(),
                     metadata={
                         "status_change": f"{old_status} -> {finding.status}",
                         "audit_trail": True,
-                        "resolved": finding.status == 'fixed',
+                        "resolved": finding.status == "fixed",
                         "assignee": update_inputs.assignee,
                         "finding_title": finding.title,
                         "severity": finding.severity,
@@ -250,9 +254,13 @@ class FindingStatusUpdateTool(Tool):
                         "atomic_transaction": True,
                     },
                 )
-                
+
         except Exception as e:
-            logger.exception("Update finding status failed", finding_id=update_inputs.finding_id, error=str(e))
+            logger.exception(
+                "Update finding status failed",
+                finding_id=update_inputs.finding_id,
+                error=str(e),
+            )
             return ToolResult(
                 success=False,
                 error=f"Failed to update finding status: {str(e)}",

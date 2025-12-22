@@ -15,21 +15,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
-from cerebro.api.auth import get_current_user, require_scopes, require_read_findings, User
-from cerebro.api.org_access import require_org_access
-from cerebro.api.utils import (
-    get_entity_by_id_or_404, StandardResponses
+from cerebro.api.auth import (
+    get_current_user,
+    require_scopes,
+    require_read_findings,
+    User,
 )
+from cerebro.api.org_access import require_org_access
+from cerebro.api.utils import get_entity_by_id_or_404, StandardResponses
 
 # Compliance modules
-from cerebro.compliance.framework_registry import (
-    get_framework_registry
-)
+from cerebro.compliance.framework_registry import get_framework_registry
 from cerebro.compliance.evidence_service import EvidenceService, EvidenceQueryService
 from cerebro.compliance.storage import FileBasedEvidenceRepository
-from cerebro.compliance.models import (
-    EvidenceStatus
-)
+from cerebro.compliance.models import EvidenceStatus
 from cerebro.query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
@@ -39,6 +38,7 @@ router = APIRouter(prefix="/compliance", dependencies=[Depends(get_current_user)
 # Request/Response Models
 class FrameworkSummary(BaseModel):
     """Framework summary information."""
+
     framework_id: str
     name: str
     version: str
@@ -52,6 +52,7 @@ class FrameworkSummary(BaseModel):
 
 class ControlSummary(BaseModel):
     """Control summary information."""
+
     control_id: str
     title: str
     category: str
@@ -65,6 +66,7 @@ class ControlSummary(BaseModel):
 
 class EvidenceCollectionRequest(BaseModel):
     """Request to collect evidence for controls."""
+
     framework_id: str
     control_ids: List[str]
     test_run_id: Optional[str] = None
@@ -73,6 +75,7 @@ class EvidenceCollectionRequest(BaseModel):
 
 class EvidenceBundleRequest(BaseModel):
     """Request to create evidence bundle."""
+
     bundle_name: str
     framework_id: str
     control_ids: List[str]
@@ -84,6 +87,7 @@ class EvidenceBundleRequest(BaseModel):
 
 class ComplianceStatusResponse(BaseModel):
     """Compliance status response."""
+
     framework_id: str
     organization_id: str
     assessment_date: datetime
@@ -103,8 +107,7 @@ def get_evidence_repository():
 
 
 def get_evidence_service(
-    repository=Depends(get_evidence_repository),
-    db: AsyncSession = Depends(get_db)
+    repository=Depends(get_evidence_repository), db: AsyncSession = Depends(get_db)
 ):
     """Get evidence service with dependencies."""
     query_engine = get_query_engine()
@@ -118,10 +121,11 @@ def get_evidence_query_service(repository=Depends(get_evidence_repository)):
 
 # === FRAMEWORK MANAGEMENT ENDPOINTS ===
 
+
 @router.get("/frameworks", summary="List Compliance Frameworks")
 async def list_compliance_frameworks(
     framework_type: Optional[str] = Query(None, description="Filter by framework type"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> List[FrameworkSummary]:
     """List all available compliance frameworks."""
     try:
@@ -136,22 +140,31 @@ async def list_compliance_frameworks(
 
         summaries = []
         for framework in frameworks:
-            automated_controls = len([c for c in framework.controls
-                                    if c.automation_level.value == "automated"])
+            automated_controls = len(
+                [
+                    c
+                    for c in framework.controls
+                    if c.automation_level.value == "automated"
+                ]
+            )
 
-            summaries.append(FrameworkSummary(
-                framework_id=framework.framework_id,
-                name=framework.name,
-                version=framework.version,
-                description=framework.description,
-                total_controls=len(framework.controls),
-                automated_controls=automated_controls,
-                automation_percentage=round(
-                    (automated_controls / len(framework.controls)) * 100, 1
-                ) if framework.controls else 0,
-                issuing_organization=framework.issuing_organization,
-                certification_available=framework.certification_available
-            ))
+            summaries.append(
+                FrameworkSummary(
+                    framework_id=framework.framework_id,
+                    name=framework.name,
+                    version=framework.version,
+                    description=framework.description,
+                    total_controls=len(framework.controls),
+                    automated_controls=automated_controls,
+                    automation_percentage=(
+                        round((automated_controls / len(framework.controls)) * 100, 1)
+                        if framework.controls
+                        else 0
+                    ),
+                    issuing_organization=framework.issuing_organization,
+                    certification_available=framework.certification_available,
+                )
+            )
 
         return summaries
 
@@ -164,7 +177,7 @@ async def list_compliance_frameworks(
 async def get_framework_details(
     framework_id: str,
     version: Optional[str] = Query(None, description="Framework version"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Get detailed information about a compliance framework."""
     try:
@@ -181,16 +194,18 @@ async def get_framework_details(
             for control_id in control_ids:
                 control = framework.get_control(control_id)
                 if control:
-                    family_controls.append({
-                        "control_id": control.control_id,
-                        "title": control.title,
-                        "description": control.description,
-                        "control_type": control.control_type.value,
-                        "automation_level": control.automation_level.value,
-                        "testing_frequency": control.testing_frequency.value,
-                        "risk_level": control.risk_level,
-                        "evidence_queries_count": len(control.evidence_queries)
-                    })
+                    family_controls.append(
+                        {
+                            "control_id": control.control_id,
+                            "title": control.title,
+                            "description": control.description,
+                            "control_type": control.control_type.value,
+                            "automation_level": control.automation_level.value,
+                            "testing_frequency": control.testing_frequency.value,
+                            "risk_level": control.risk_level,
+                            "evidence_queries_count": len(control.evidence_queries),
+                        }
+                    )
             controls_by_family[family] = family_controls
 
         return {
@@ -203,18 +218,18 @@ async def get_framework_details(
                 "framework_type": framework.framework_type,
                 "industry_focus": framework.industry_focus,
                 "geographic_scope": framework.geographic_scope,
-                "certification_available": framework.certification_available
+                "certification_available": framework.certification_available,
             },
             "summary": {
                 "total_controls": len(framework.controls),
                 "control_families": len(framework.control_families),
                 "automated_controls": len(framework.get_automated_controls()),
-                "implementation_tiers": framework.implementation_tiers
+                "implementation_tiers": framework.implementation_tiers,
             },
             "controls_by_family": controls_by_family,
             "maturity_model": framework.maturity_model,
             "references": framework.references,
-            "documentation_urls": framework.documentation_urls
+            "documentation_urls": framework.documentation_urls,
         }
 
     except HTTPException:
@@ -224,11 +239,11 @@ async def get_framework_details(
         raise StandardResponses.internal_error("Failed to retrieve framework details")
 
 
-@router.get("/frameworks/{framework_id}/controls/{control_id}", summary="Get Control Details")
+@router.get(
+    "/frameworks/{framework_id}/controls/{control_id}", summary="Get Control Details"
+)
 async def get_control_details(
-    framework_id: str,
-    control_id: str,
-    current_user: User = Depends(get_current_user)
+    framework_id: str, control_id: str, current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Get detailed information about a specific control."""
     try:
@@ -262,7 +277,7 @@ async def get_control_details(
             "tags": control.tags,
             "references": control.references,
             "last_updated": control.last_updated,
-            "version": control.version
+            "version": control.version,
         }
 
     except HTTPException:
@@ -274,14 +289,19 @@ async def get_control_details(
 
 # === EVIDENCE COLLECTION ENDPOINTS ===
 
-@router.post("/organizations/{org_id}/collect-evidence", summary="Collect Compliance Evidence")
+
+@router.post(
+    "/organizations/{org_id}/collect-evidence", summary="Collect Compliance Evidence"
+)
 async def collect_compliance_evidence(
     org_id: UUID,
     request: EvidenceCollectionRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     evidence_service: EvidenceService = Depends(get_evidence_service),
-    current_user: User = Depends(require_org_access(require_scopes("compliance:collect"))),
+    current_user: User = Depends(
+        require_org_access(require_scopes("compliance:collect"))
+    ),
 ) -> Dict[str, Any]:
     """Collect evidence for specified controls."""
     await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
@@ -291,7 +311,9 @@ async def collect_compliance_evidence(
         framework = registry.get_framework(request.framework_id)
 
         if not framework:
-            raise StandardResponses.bad_request(f"Framework '{request.framework_id}' not found")
+            raise StandardResponses.bad_request(
+                f"Framework '{request.framework_id}' not found"
+            )
 
         # Validate control IDs
         invalid_controls = []
@@ -300,10 +322,14 @@ async def collect_compliance_evidence(
                 invalid_controls.append(control_id)
 
         if invalid_controls:
-            raise StandardResponses.bad_request(f"Invalid control IDs: {invalid_controls}")
+            raise StandardResponses.bad_request(
+                f"Invalid control IDs: {invalid_controls}"
+            )
 
         # Start evidence collection in background
-        collection_task_id = f"evidence_collection_{org_id}_{request.test_run_id or 'adhoc'}"
+        collection_task_id = (
+            f"evidence_collection_{org_id}_{request.test_run_id or 'adhoc'}"
+        )
 
         background_tasks.add_task(
             _collect_evidence_background,
@@ -311,7 +337,7 @@ async def collect_compliance_evidence(
             request.framework_id,
             request.control_ids,
             request.collector_id,
-            request.test_run_id
+            request.test_run_id,
         )
 
         return {
@@ -319,7 +345,8 @@ async def collect_compliance_evidence(
             "framework_id": request.framework_id,
             "control_ids": request.control_ids,
             "task_id": collection_task_id,
-            "estimated_duration_minutes": len(request.control_ids) * 2  # Rough estimate
+            "estimated_duration_minutes": len(request.control_ids)
+            * 2,  # Rough estimate
         }
 
     except HTTPException:
@@ -359,13 +386,15 @@ async def list_evidence(
                 "id": item.id,
                 "category": item.category.value,
                 "status": item.status.value,
-                "collected_at": item.collected_at.isoformat() if item.collected_at else None,
+                "collected_at": (
+                    item.collected_at.isoformat() if item.collected_at else None
+                ),
                 "collector_id": item.collector_id,
                 "source_system": item.source_system,
                 "content_size": item.content_size,
-                "framework_name": getattr(item, 'framework_name', None),
-                "control_id": getattr(item, 'control_id', None),
-                "tags": item.tags
+                "framework_name": getattr(item, "framework_name", None),
+                "control_id": getattr(item, "control_id", None),
+                "tags": item.tags,
             }
             for item in evidence_items[:100]  # Limit results
         ]
@@ -375,13 +404,15 @@ async def list_evidence(
         raise StandardResponses.internal_error("Failed to retrieve evidence")
 
 
-@router.get("/organizations/{org_id}/evidence/{evidence_id}", summary="Get Evidence Details")
+@router.get(
+    "/organizations/{org_id}/evidence/{evidence_id}", summary="Get Evidence Details"
+)
 async def get_evidence_details(
     org_id: UUID,
     evidence_id: str,
     include_content: bool = Query(False, description="Include evidence content"),
     db: AsyncSession = Depends(get_db),
-    repository = Depends(get_evidence_repository),
+    repository=Depends(get_evidence_repository),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ) -> Dict[str, Any]:
     """Get detailed evidence information."""
@@ -397,16 +428,19 @@ async def get_evidence_details(
 
             # Convert content to string if it's text-based
             content_preview = None
-            if metadata.content_type.startswith('text/') or metadata.content_type == 'application/json':
+            if (
+                metadata.content_type.startswith("text/")
+                or metadata.content_type == "application/json"
+            ):
                 try:
-                    content_preview = content.decode('utf-8')[:1000]  # First 1000 chars
+                    content_preview = content.decode("utf-8")[:1000]  # First 1000 chars
                 except UnicodeDecodeError:
                     content_preview = "Binary content"
 
             return {
                 "metadata": _metadata_to_dict(metadata),
                 "content_preview": content_preview,
-                "content_size": len(content)
+                "content_size": len(content),
             }
         else:
             metadata = await repository.get_metadata(evidence_id)
@@ -424,13 +458,18 @@ async def get_evidence_details(
 
 # === EVIDENCE BUNDLE ENDPOINTS ===
 
-@router.post("/organizations/{org_id}/evidence-bundles", summary="Create Evidence Bundle")
+
+@router.post(
+    "/organizations/{org_id}/evidence-bundles", summary="Create Evidence Bundle"
+)
 async def create_evidence_bundle(
     org_id: UUID,
     request: EvidenceBundleRequest,
     db: AsyncSession = Depends(get_db),
     evidence_service: EvidenceService = Depends(get_evidence_service),
-    current_user: User = Depends(require_org_access(require_scopes("compliance:bundle"))),
+    current_user: User = Depends(
+        require_org_access(require_scopes("compliance:bundle"))
+    ),
 ) -> Dict[str, str]:
     """Create evidence bundle for audit delivery."""
     await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
@@ -440,7 +479,9 @@ async def create_evidence_bundle(
         registry = get_framework_registry()
         framework = registry.get_framework(request.framework_id)
         if not framework:
-            raise StandardResponses.bad_request(f"Framework '{request.framework_id}' not found")
+            raise StandardResponses.bad_request(
+                f"Framework '{request.framework_id}' not found"
+            )
 
         # Get evidence for specified controls
         query_service = EvidenceQueryService(evidence_service.repository)
@@ -453,7 +494,9 @@ async def create_evidence_bundle(
             evidence_ids.extend([e.id for e in control_evidence])
 
         if not evidence_ids:
-            raise StandardResponses.bad_request("No evidence found for specified controls")
+            raise StandardResponses.bad_request(
+                "No evidence found for specified controls"
+            )
 
         # Create bundle
         bundle_id = await evidence_service.create_evidence_bundle(
@@ -466,12 +509,12 @@ async def create_evidence_bundle(
             bundle_type=request.bundle_type,
             description=request.description,
             period_start=request.period_start,
-            period_end=request.period_end
+            period_end=request.period_end,
         )
 
         return {
             "bundle_id": bundle_id,
-            "message": f"Created evidence bundle with {len(evidence_ids)} evidence items"
+            "message": f"Created evidence bundle with {len(evidence_ids)} evidence items",
         }
 
     except HTTPException:
@@ -481,7 +524,10 @@ async def create_evidence_bundle(
         raise StandardResponses.internal_error("Failed to create evidence bundle")
 
 
-@router.get("/organizations/{org_id}/compliance-status/{framework_id}", summary="Get Compliance Status")
+@router.get(
+    "/organizations/{org_id}/compliance-status/{framework_id}",
+    summary="Get Compliance Status",
+)
 async def get_compliance_status(
     org_id: UUID,
     framework_id: str,
@@ -516,8 +562,10 @@ async def get_compliance_status(
             else:
                 # Simple heuristic: if we have recent evidence, consider compliant
                 recent_evidence = [
-                    e for e in evidence_items
-                    if e.collected_at and e.collected_at > (datetime.utcnow() - timedelta(days=90))
+                    e
+                    for e in evidence_items
+                    if e.collected_at
+                    and e.collected_at > (datetime.utcnow() - timedelta(days=90))
                 ]
 
                 if recent_evidence:
@@ -534,22 +582,26 @@ async def get_compliance_status(
                     compliance_status = "non_compliant"
                     non_compliant_count += 1
 
-            control_summaries.append(ControlSummary(
-                control_id=control.control_id,
-                title=control.title,
-                category=control.category,
-                control_type=control.control_type.value,
-                automation_level=control.automation_level.value,
-                testing_frequency=control.testing_frequency.value,
-                risk_level=control.risk_level,
-                evidence_count=len(evidence_items),
-                compliance_status=compliance_status
-            ))
+            control_summaries.append(
+                ControlSummary(
+                    control_id=control.control_id,
+                    title=control.title,
+                    category=control.category,
+                    control_type=control.control_type.value,
+                    automation_level=control.automation_level.value,
+                    testing_frequency=control.testing_frequency.value,
+                    risk_level=control.risk_level,
+                    evidence_count=len(evidence_items),
+                    compliance_status=compliance_status,
+                )
+            )
 
         total_controls = len(framework.controls)
-        compliance_percentage = round(
-            (compliant_count / total_controls) * 100, 1
-        ) if total_controls > 0 else 0
+        compliance_percentage = (
+            round((compliant_count / total_controls) * 100, 1)
+            if total_controls > 0
+            else 0
+        )
 
         return ComplianceStatusResponse(
             framework_id=framework_id,
@@ -560,7 +612,7 @@ async def get_compliance_status(
             non_compliant_controls=non_compliant_count,
             testing_controls=testing_count,
             compliance_percentage=compliance_percentage,
-            control_status=control_summaries
+            control_status=control_summaries,
         )
 
     except HTTPException:
@@ -572,12 +624,13 @@ async def get_compliance_status(
 
 # === UTILITY FUNCTIONS ===
 
+
 async def _collect_evidence_background(
     evidence_service: EvidenceService,
     framework_id: str,
     control_ids: List[str],
     collector_id: str,
-    test_run_id: Optional[str]
+    test_run_id: Optional[str],
 ):
     """Background task for evidence collection."""
     try:
@@ -591,11 +644,15 @@ async def _collect_evidence_background(
                     framework_name=framework_id,
                     queries=queries,
                     collector_id=collector_id,
-                    test_run_id=test_run_id
+                    test_run_id=test_run_id,
                 )
-                logger.info(f"Collected {len(evidence_ids)} evidence items for control {control_id}")
+                logger.info(
+                    f"Collected {len(evidence_ids)} evidence items for control {control_id}"
+                )
 
-        logger.info(f"Background evidence collection completed for {len(control_ids)} controls")
+        logger.info(
+            f"Background evidence collection completed for {len(control_ids)} controls"
+        )
 
     except Exception as e:
         logger.error(f"Background evidence collection failed: {e}")
@@ -614,28 +671,31 @@ def _metadata_to_dict(metadata) -> Dict[str, Any]:
         "content_size": metadata.content_size,
         "content_hash": metadata.content_hash,
         "created_at": metadata.created_at.isoformat(),
-        "collected_at": metadata.collected_at.isoformat() if metadata.collected_at else None,
+        "collected_at": (
+            metadata.collected_at.isoformat() if metadata.collected_at else None
+        ),
         "status": metadata.status.value,
         "retention_class": metadata.retention_class.value,
         "expires_at": metadata.expires_at.isoformat() if metadata.expires_at else None,
         "pii_detected": metadata.pii_detected,
         "sensitivity_level": metadata.sensitivity_level,
         "tags": metadata.tags,
-        "related_evidence_ids": metadata.related_evidence_ids
+        "related_evidence_ids": metadata.related_evidence_ids,
     }
 
     # Add type-specific fields
-    if hasattr(metadata, 'control_id'):
+    if hasattr(metadata, "control_id"):
         result["control_id"] = metadata.control_id
-    if hasattr(metadata, 'framework_name'):
+    if hasattr(metadata, "framework_name"):
         result["framework_name"] = metadata.framework_name
-    if hasattr(metadata, 'query_used'):
+    if hasattr(metadata, "query_used"):
         result["query_used"] = metadata.query_used
 
     return result
 
 
 # === HEALTH CHECK ===
+
 
 @router.get("/health", summary="Compliance Service Health")
 async def compliance_health():
@@ -655,8 +715,8 @@ async def compliance_health():
                 "evidence_collection",
                 "evidence_storage",
                 "evidence_bundling",
-                "compliance_assessment"
-            ]
+                "compliance_assessment",
+            ],
         }
 
     except Exception as e:

@@ -33,7 +33,9 @@ async def get_metric_trends(
     try:
         metric_enum = MetricType(metric_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid metric type: {metric_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid metric type: {metric_type}"
+        )
 
     trend_analyzer = TrendAnalyzer(analytics_db)
     trend = await trend_analyzer.analyze_metric_trend(org_id, metric_enum, days_back)
@@ -47,7 +49,7 @@ async def get_metric_trends(
         "trend_direction": trend.trend_direction,
         "confidence": round(trend.confidence, 2),
         "data_points": trend.data_points,
-        "sparkline_values": [point["value"] for point in trend.data_points]
+        "sparkline_values": [point["value"] for point in trend.data_points],
     }
 
 
@@ -73,7 +75,7 @@ async def get_metrics_sparklines(
     key_metrics = [
         MetricType.FINDING_COUNT,
         MetricType.MEAN_TIME_TO_REMEDIATION,
-        MetricType.SLA_BREACH_COUNT
+        MetricType.SLA_BREACH_COUNT,
     ]
 
     for metric_type in key_metrics:
@@ -105,7 +107,7 @@ async def get_card_sparkline(
         "findings": MetricType.FINDING_COUNT,
         "criticals": MetricType.CRITICAL_FINDING_COUNT,
         "sla_breaches": MetricType.SLA_BREACH_COUNT,
-        "mttr": MetricType.MEAN_TIME_TO_REMEDIATION
+        "mttr": MetricType.MEAN_TIME_TO_REMEDIATION,
     }
 
     if card_type not in card_to_metric:
@@ -116,12 +118,16 @@ async def get_card_sparkline(
 
     # Get trend analysis with sparkline
     trend = await trend_analyzer.analyze_metric_trend(org_id, metric_type, days_back)
-    sparkline_data = await trend_analyzer.generate_sparkline_data(org_id, metric_type, days_back)
+    sparkline_data = await trend_analyzer.generate_sparkline_data(
+        org_id, metric_type, days_back
+    )
 
     return {
         "card_type": card_type,
         "current_value": trend.current_value,
-        "change_percentage": round(trend.change_percentage, 1) if trend.change_percentage else 0,
+        "change_percentage": (
+            round(trend.change_percentage, 1) if trend.change_percentage else 0
+        ),
         "trend_direction": trend.trend_direction,
-        "sparkline": sparkline_data
+        "sparkline": sparkline_data,
     }

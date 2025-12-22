@@ -186,8 +186,7 @@ class TableMigrator:
             batch = items[i : i + 25]
             request_items = {
                 self.target_table: [
-                    {"PutRequest": {"Item": serialize_item(item)}}
-                    for item in batch
+                    {"PutRequest": {"Item": serialize_item(item)}} for item in batch
                 ]
             }
             self.dynamodb.batch_write_item(RequestItems=request_items)
@@ -202,13 +201,19 @@ class OrganizationMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"SELECT * FROM orgs ORDER BY org_id OFFSET {offset} LIMIT {limit}")
+                text(
+                    f"SELECT * FROM orgs ORDER BY org_id OFFSET {offset} LIMIT {limit}"
+                )
             )
             return [dict(row._mapping) for row in result]
 
     def transform_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
         org_id = str(record["org_id"])
-        created_at = record["created_at"].isoformat() if record.get("created_at") else datetime.now(timezone.utc).isoformat()
+        created_at = (
+            record["created_at"].isoformat()
+            if record.get("created_at")
+            else datetime.now(timezone.utc).isoformat()
+        )
 
         return {
             "PK": f"ORG#{org_id}",
@@ -232,7 +237,9 @@ class AccountMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"SELECT * FROM accounts ORDER BY account_id OFFSET {offset} LIMIT {limit}")
+                text(
+                    f"SELECT * FROM accounts ORDER BY account_id OFFSET {offset} LIMIT {limit}"
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -268,13 +275,15 @@ class PrincipalMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"""
+                text(
+                    f"""
                     SELECT p.*, a.org_id
                     FROM principals p
                     JOIN accounts a ON p.account_id = a.account_id
                     ORDER BY p.principal_id
                     OFFSET {offset} LIMIT {limit}
-                """)
+                """
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -310,13 +319,15 @@ class ResourceMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"""
+                text(
+                    f"""
                     SELECT r.*, a.org_id
                     FROM resources r
                     JOIN accounts a ON r.account_id = a.account_id
                     ORDER BY r.resource_id
                     OFFSET {offset} LIMIT {limit}
-                """)
+                """
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -324,7 +335,11 @@ class ResourceMigrator(TableMigrator):
         org_id = str(record["org_id"])
         resource_id = str(record["resource_id"])
         account_id = str(record["account_id"])
-        created_at = record["created_at"].isoformat() if record.get("created_at") else datetime.now(timezone.utc).isoformat()
+        created_at = (
+            record["created_at"].isoformat()
+            if record.get("created_at")
+            else datetime.now(timezone.utc).isoformat()
+        )
 
         return {
             "PK": f"ORG#{org_id}",
@@ -353,7 +368,9 @@ class FindingMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"SELECT * FROM findings ORDER BY finding_id OFFSET {offset} LIMIT {limit}")
+                text(
+                    f"SELECT * FROM findings ORDER BY finding_id OFFSET {offset} LIMIT {limit}"
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -374,8 +391,12 @@ class FindingMigrator(TableMigrator):
             "provider": record["provider"],
             "rule_id": str(record["rule_id"]),
             "rule_version": record["rule_version"],
-            "resource_id": str(record["resource_id"]) if record.get("resource_id") else None,
-            "principal_id": str(record["principal_id"]) if record.get("principal_id") else None,
+            "resource_id": (
+                str(record["resource_id"]) if record.get("resource_id") else None
+            ),
+            "principal_id": (
+                str(record["principal_id"]) if record.get("principal_id") else None
+            ),
             "first_seen": record["first_seen"].isoformat(),
             "last_seen": last_seen,
             "status": status,
@@ -402,7 +423,9 @@ class RuleMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"SELECT * FROM rules ORDER BY rule_id OFFSET {offset} LIMIT {limit}")
+                text(
+                    f"SELECT * FROM rules ORDER BY rule_id OFFSET {offset} LIMIT {limit}"
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -410,7 +433,11 @@ class RuleMigrator(TableMigrator):
         rule_id = str(record["rule_id"])
         severity = record["severity"]
         is_active = record.get("is_active", True)
-        created_at = record["created_at"].isoformat() if record.get("created_at") else datetime.now(timezone.utc).isoformat()
+        created_at = (
+            record["created_at"].isoformat()
+            if record.get("created_at")
+            else datetime.now(timezone.utc).isoformat()
+        )
 
         return {
             "PK": f"RULE#{rule_id}",
@@ -450,13 +477,15 @@ class AuditEventMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"""
+                text(
+                    f"""
                     SELECT ae.*, a.org_id
                     FROM audit_events ae
                     JOIN accounts a ON ae.account_id = a.account_id
                     ORDER BY ae.event_id
                     OFFSET {offset} LIMIT {limit}
-                """)
+                """
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -468,7 +497,10 @@ class AuditEventMigrator(TableMigrator):
 
         # Calculate TTL (90 days from occurred_at)
         from datetime import timedelta
-        ttl_timestamp = int((record["occurred_at"] + timedelta(days=self.ttl_days)).timestamp())
+
+        ttl_timestamp = int(
+            (record["occurred_at"] + timedelta(days=self.ttl_days)).timestamp()
+        )
 
         return {
             "PK": f"ACCOUNT#{account_id}",
@@ -498,7 +530,9 @@ class AgentSessionMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"SELECT * FROM agent_sessions ORDER BY id OFFSET {offset} LIMIT {limit}")
+                text(
+                    f"SELECT * FROM agent_sessions ORDER BY id OFFSET {offset} LIMIT {limit}"
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -541,13 +575,15 @@ class AgentMessageMigrator(TableMigrator):
     def fetch_records(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         with Session(self.pg_engine) as session:
             result = session.execute(
-                text(f"""
+                text(
+                    f"""
                     SELECT m.*, s.org_id
                     FROM agent_messages m
                     JOIN agent_sessions s ON m.session_id = s.id
                     ORDER BY m.id
                     OFFSET {offset} LIMIT {limit}
-                """)
+                """
+                )
             )
             return [dict(row._mapping) for row in result]
 
@@ -604,7 +640,9 @@ def main():
     )
     parser.add_argument(
         "--database-url",
-        default=os.environ.get("DATABASE_URL", "postgresql://cerebro:cerebro@localhost/cerebro"),
+        default=os.environ.get(
+            "DATABASE_URL", "postgresql://cerebro:cerebro@localhost/cerebro"
+        ),
         help="PostgreSQL connection URL",
     )
     parser.add_argument(
@@ -641,8 +679,15 @@ def main():
     # Show source table counts
     logger.info("\nSource table counts:")
     tables_to_check = [
-        "orgs", "accounts", "principals", "resources", "findings",
-        "rules", "audit_events", "agent_sessions", "agent_messages",
+        "orgs",
+        "accounts",
+        "principals",
+        "resources",
+        "findings",
+        "rules",
+        "audit_events",
+        "agent_sessions",
+        "agent_messages",
     ]
     for table in tables_to_check:
         count = get_table_count(pg_engine, table)
@@ -653,15 +698,39 @@ def main():
 
     # Define migrators
     migrators = [
-        ("orgs", OrganizationMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
-        ("accounts", AccountMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
-        ("principals", PrincipalMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
-        ("resources", ResourceMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
-        ("findings", FindingMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
+        (
+            "orgs",
+            OrganizationMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
+        (
+            "accounts",
+            AccountMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
+        (
+            "principals",
+            PrincipalMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
+        (
+            "resources",
+            ResourceMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
+        (
+            "findings",
+            FindingMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
         ("rules", RuleMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
-        ("audit_events", AuditEventMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
-        ("agent_sessions", AgentSessionMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
-        ("agent_messages", AgentMessageMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run)),
+        (
+            "audit_events",
+            AuditEventMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
+        (
+            "agent_sessions",
+            AgentSessionMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
+        (
+            "agent_messages",
+            AgentMessageMigrator(pg_engine, dynamodb, args.batch_size, args.dry_run),
+        ),
     ]
 
     # Update table names

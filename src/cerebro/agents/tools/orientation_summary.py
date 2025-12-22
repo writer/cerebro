@@ -72,8 +72,12 @@ class OrientationSummaryTool(StructuredTool):
         # Convert raw dictionaries into the strongly typed output model
         transformed = {
             **summary,
-            "top_event_types": [OrientationEventRow(**row) for row in summary["top_event_types"]],
-            "top_components": [OrientationEventRow(**row) for row in summary["top_components"]],
+            "top_event_types": [
+                OrientationEventRow(**row) for row in summary["top_event_types"]
+            ],
+            "top_components": [
+                OrientationEventRow(**row) for row in summary["top_components"]
+            ],
         }
         validated = self.output_model(**transformed)
         return ToolResult(success=True, data=validated.model_dump())

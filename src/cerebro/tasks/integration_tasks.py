@@ -11,7 +11,11 @@ from cerebro.auditability.transparency_log import get_transparency_log, LogEntry
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
 from cerebro.integrations.kandji import KandjiClient, KandjiIngestion
-from cerebro.integrations.sentinelone import SentinelOneClient, SentinelOneConfig, SentinelOneIngestion
+from cerebro.integrations.sentinelone import (
+    SentinelOneClient,
+    SentinelOneConfig,
+    SentinelOneIngestion,
+)
 from cerebro.integrations.state import IntegrationStateRepository
 
 from .celery_app import celery_app
@@ -60,14 +64,18 @@ async def _log_integration_sync(
             metadata_update["last_error"] = str(error_value)
     if isinstance(payload, dict) and "last_sync_unix" in payload:
         try:
-            sync_ts = datetime.fromtimestamp(float(payload["last_sync_unix"]), tz=timezone.utc)
+            sync_ts = datetime.fromtimestamp(
+                float(payload["last_sync_unix"]), tz=timezone.utc
+            )
         except Exception:  # pragma: no cover - defensive only
             sync_ts = None
         if sync_ts is not None:
             metadata_update["last_sync_unix"] = float(payload["last_sync_unix"])
             metadata_update["last_sync_at"] = sync_ts.isoformat()
 
-    duration_seconds = payload.get("duration_seconds") if isinstance(payload, dict) else None
+    duration_seconds = (
+        payload.get("duration_seconds") if isinstance(payload, dict) else None
+    )
     if duration_seconds is not None:
         try:
             duration_value = float(duration_seconds)
@@ -91,15 +99,17 @@ async def _log_integration_sync(
                 metadata_update["duration_samples"] = durations
 
             if status == "ok":
-                metadata_update["last_success_at"] = metadata_update.get("last_sync_at") or metadata_update.get(
-                    "last_status_at"
-                )
+                metadata_update["last_success_at"] = metadata_update.get(
+                    "last_sync_at"
+                ) or metadata_update.get("last_status_at")
             if status == "error":
                 errors = list(existing_metadata.get("recent_errors", []))
                 errors.append(
                     {
                         "recorded_at": metadata_update["last_status_at"],
-                        "details": payload.get("error") if isinstance(payload, dict) else None,
+                        "details": (
+                            payload.get("error") if isinstance(payload, dict) else None
+                        ),
                     }
                 )
                 if len(errors) > 10:
@@ -113,7 +123,9 @@ async def _log_integration_sync(
             )
             await db.commit()
     except Exception:  # pragma: no cover - metadata update should not break tasks
-        logger.exception("Failed to persist integration sync metadata for %%s", resource_id)
+        logger.exception(
+            "Failed to persist integration sync metadata for %%s", resource_id
+        )
 
 
 @celery_app.task(bind=True, name="cerebro.tasks.integration.sync_sentinelone")
@@ -170,7 +182,9 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
                 "status": "error",
                 "error": str(exc),
                 "lookback_minutes": window,
-                "duration_seconds": (datetime.now(timezone.utc) - started_at).total_seconds(),
+                "duration_seconds": (
+                    datetime.now(timezone.utc) - started_at
+                ).total_seconds(),
             }
             await _log_integration_sync(
                 integration=integration_id,
@@ -181,7 +195,9 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
             raise
 
         result.update({"status": "ok", "lookback_minutes": window})
-        result["duration_seconds"] = (datetime.now(timezone.utc) - started_at).total_seconds()
+        result["duration_seconds"] = (
+            datetime.now(timezone.utc) - started_at
+        ).total_seconds()
         await _log_integration_sync(
             integration=integration_id,
             scope=integration_scope,
@@ -241,7 +257,9 @@ def sync_kandji(self) -> Any:
                 error_payload = {
                     "status": "error",
                     "error": str(exc),
-                    "duration_seconds": (datetime.now(timezone.utc) - started_at).total_seconds(),
+                    "duration_seconds": (
+                        datetime.now(timezone.utc) - started_at
+                    ).total_seconds(),
                 }
                 await _log_integration_sync(
                     integration=integration_id,
@@ -253,7 +271,9 @@ def sync_kandji(self) -> Any:
         # ``ingest`` returns high-level counters which we bubble up so task
         # monitoring dashboards can surface progress without parsing logs.
         result.update({"status": "ok"})
-        result["duration_seconds"] = (datetime.now(timezone.utc) - started_at).total_seconds()
+        result["duration_seconds"] = (
+            datetime.now(timezone.utc) - started_at
+        ).total_seconds()
         await _log_integration_sync(
             integration=integration_id,
             scope=integration_scope,

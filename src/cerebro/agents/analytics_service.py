@@ -88,7 +88,9 @@ class AgentAnalyticsService:
                 {
                     "event_type": row.event_type,
                     "event_count": row.event_count,
-                    "first_seen": row.first_seen.isoformat() if row.first_seen else None,
+                    "first_seen": (
+                        row.first_seen.isoformat() if row.first_seen else None
+                    ),
                     "last_seen": row.last_seen.isoformat() if row.last_seen else None,
                 }
             )

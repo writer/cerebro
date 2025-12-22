@@ -34,7 +34,9 @@ def export_openapi(output_path: Path, indent: int) -> None:
 
     schema = jsonable_encoder(app.openapi())
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(schema, indent=indent, sort_keys=True), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(schema, indent=indent, sort_keys=True), encoding="utf-8"
+    )
 
 
 def main() -> None:

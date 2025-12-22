@@ -9,6 +9,7 @@ Tests cover:
 - KMS integration
 - Cache statistics
 """
+
 import pytest
 import asyncio
 from unittest.mock import patch
@@ -34,7 +35,9 @@ class TestEncryptionService:
         plaintext = "my-secret-password"
 
         # Encrypt
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
 
         # Verify encrypted data is different from plaintext
         assert encrypted_data != plaintext.encode()
@@ -43,7 +46,9 @@ class TestEncryptionService:
         assert isinstance(encrypted_dek, bytes)
 
         # Decrypt
-        decrypted = await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
+        decrypted = await encryption_service.decrypt_secret(
+            encrypted_data, encrypted_dek
+        )
 
         # Verify roundtrip
         assert decrypted == plaintext
@@ -53,8 +58,12 @@ class TestEncryptionService:
         """Test encrypting an empty string."""
         plaintext = ""
 
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
-        decrypted = await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
+        decrypted = await encryption_service.decrypt_secret(
+            encrypted_data, encrypted_dek
+        )
 
         assert decrypted == plaintext
 
@@ -63,8 +72,12 @@ class TestEncryptionService:
         """Test encrypting Unicode characters."""
         plaintext = "🔐 密码 пароль password 🔑"
 
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
-        decrypted = await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
+        decrypted = await encryption_service.decrypt_secret(
+            encrypted_data, encrypted_dek
+        )
 
         assert decrypted == plaintext
 
@@ -73,8 +86,12 @@ class TestEncryptionService:
         """Test encrypting long text."""
         plaintext = "A" * 10000  # 10KB
 
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
-        decrypted = await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
+        decrypted = await encryption_service.decrypt_secret(
+            encrypted_data, encrypted_dek
+        )
 
         assert decrypted == plaintext
 
@@ -84,7 +101,9 @@ class TestEncryptionService:
         plaintext = "test-secret"
 
         # First encryption
-        encrypted_data1, encrypted_dek1 = await encryption_service.encrypt_secret(plaintext)
+        encrypted_data1, encrypted_dek1 = await encryption_service.encrypt_secret(
+            plaintext
+        )
 
         # First decryption - populates cache
         await encryption_service.decrypt_secret(encrypted_data1, encrypted_dek1)
@@ -106,7 +125,9 @@ class TestEncryptionService:
         # Fill cache to maximum
         deks = []
         for i in range(1005):  # Over the limit of 1000
-            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(f"secret-{i}")
+            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+                f"secret-{i}"
+            )
             deks.append((encrypted_data, encrypted_dek))
             # Decrypt to populate cache
             await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
@@ -130,7 +151,9 @@ class TestEncryptionService:
 
         # Add some entries
         for i in range(10):
-            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(f"secret-{i}")
+            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+                f"secret-{i}"
+            )
             await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
 
         stats = encryption_service.get_cache_stats()
@@ -142,7 +165,9 @@ class TestEncryptionService:
         """Test cache clearing."""
         # Populate cache
         for i in range(10):
-            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(f"secret-{i}")
+            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+                f"secret-{i}"
+            )
             await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
 
         stats = encryption_service.get_cache_stats()
@@ -158,7 +183,9 @@ class TestEncryptionService:
     async def test_concurrent_decryption(self, encryption_service):
         """Test thread safety with concurrent decryption operations."""
         plaintext = "concurrent-test-secret"
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
 
         # Run 100 concurrent decryption operations
         tasks = [
@@ -176,10 +203,7 @@ class TestEncryptionService:
     async def test_concurrent_encryption(self, encryption_service):
         """Test concurrent encryption operations."""
         # Run 100 concurrent encryption operations
-        tasks = [
-            encryption_service.encrypt_secret(f"secret-{i}")
-            for i in range(100)
-        ]
+        tasks = [encryption_service.encrypt_secret(f"secret-{i}") for i in range(100)]
 
         results = await asyncio.gather(*tasks)
 
@@ -196,7 +220,9 @@ class TestEncryptionService:
         original_plaintext = "rotation-test-secret"
 
         # Original encryption
-        old_encrypted_data, old_encrypted_dek = await encryption_service.encrypt_secret(original_plaintext)
+        old_encrypted_data, old_encrypted_dek = await encryption_service.encrypt_secret(
+            original_plaintext
+        )
 
         # Rotate DEK
         new_encrypted_data, new_encrypted_dek = await encryption_service.rotate_dek(
@@ -210,12 +236,16 @@ class TestEncryptionService:
         assert new_encrypted_data != old_encrypted_data
 
         # But plaintext should be the same
-        decrypted = await encryption_service.decrypt_secret(new_encrypted_data, new_encrypted_dek)
+        decrypted = await encryption_service.decrypt_secret(
+            new_encrypted_data, new_encrypted_dek
+        )
         assert decrypted == original_plaintext
 
         # Old DEK should no longer work with new encrypted data
         with pytest.raises(Exception):
-            await encryption_service.decrypt_secret(new_encrypted_data, old_encrypted_dek)
+            await encryption_service.decrypt_secret(
+                new_encrypted_data, old_encrypted_dek
+            )
 
     @pytest.mark.asyncio
     async def test_test_encryption_success(self, encryption_service):
@@ -227,7 +257,9 @@ class TestEncryptionService:
     async def test_invalid_encrypted_data(self, encryption_service):
         """Test that invalid encrypted data raises an error."""
         plaintext = "test-secret"
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
 
         # Corrupt the encrypted data
         corrupted_data = b"corrupted" + encrypted_data
@@ -239,7 +271,9 @@ class TestEncryptionService:
     async def test_invalid_dek(self, encryption_service):
         """Test that invalid DEK raises an error."""
         plaintext = "test-secret"
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
 
         # Use wrong DEK
         _, wrong_dek = await encryption_service.encrypt_secret("other-secret")
@@ -251,7 +285,9 @@ class TestEncryptionService:
     async def test_kms_failure_during_encryption(self, encryption_service):
         """Test handling of KMS failure during encryption."""
         # Mock KMS to fail
-        with patch.object(encryption_service.kms, 'encrypt', side_effect=Exception("KMS unavailable")):
+        with patch.object(
+            encryption_service.kms, "encrypt", side_effect=Exception("KMS unavailable")
+        ):
             with pytest.raises(Exception) as exc_info:
                 await encryption_service.encrypt_secret("test")
             assert "KMS unavailable" in str(exc_info.value)
@@ -260,10 +296,14 @@ class TestEncryptionService:
     async def test_kms_failure_during_decryption(self, encryption_service):
         """Test handling of KMS failure during decryption."""
         plaintext = "test-secret"
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(plaintext)
+        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+            plaintext
+        )
 
         # Mock KMS to fail
-        with patch.object(encryption_service.kms, 'decrypt', side_effect=Exception("KMS unavailable")):
+        with patch.object(
+            encryption_service.kms, "decrypt", side_effect=Exception("KMS unavailable")
+        ):
             with pytest.raises(Exception) as exc_info:
                 await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
             assert "KMS unavailable" in str(exc_info.value)
@@ -282,7 +322,9 @@ class TestEncryptionService:
         # Create 3 secrets
         secrets = []
         for i in range(3):
-            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(f"secret-{i}")
+            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+                f"secret-{i}"
+            )
             secrets.append((encrypted_data, encrypted_dek))
             await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
 
@@ -291,12 +333,16 @@ class TestEncryptionService:
 
         # Fill cache to force eviction
         for i in range(1000):
-            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(f"filler-{i}")
+            encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+                f"filler-{i}"
+            )
             await encryption_service.decrypt_secret(encrypted_data, encrypted_dek)
 
         # First secret should still be in cache (was moved to end)
         # This is implicit - if it wasn't moved, it would have been evicted
-        decrypted = await encryption_service.decrypt_secret(secrets[0][0], secrets[0][1])
+        decrypted = await encryption_service.decrypt_secret(
+            secrets[0][0], secrets[0][1]
+        )
         assert decrypted == "secret-0"
 
 
@@ -339,7 +385,9 @@ class TestEncryptionPerformance:
 
         # 1000 decryptions (cache hits)
         start = time.time()
-        tasks = [service.decrypt_secret(encrypted_data, encrypted_dek) for _ in range(1000)]
+        tasks = [
+            service.decrypt_secret(encrypted_data, encrypted_dek) for _ in range(1000)
+        ]
         await asyncio.gather(*tasks)
         elapsed = time.time() - start
 

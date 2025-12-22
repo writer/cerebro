@@ -31,8 +31,12 @@ class BenchmarkCase(BaseModel):
     case_id: str = Field(..., description="Unique ID for the benchmark case")
     title: str
     playbook: str
-    disposable_org: str = Field(..., description="Name of the sandbox tenant to provision")
-    incident: Optional[str] = Field(default=None, description="Historical incident reference")
+    disposable_org: str = Field(
+        ..., description="Name of the sandbox tenant to provision"
+    )
+    incident: Optional[str] = Field(
+        default=None, description="Historical incident reference"
+    )
     steps: List[BenchmarkStep] = Field(default_factory=list)
     assertions: List[BenchmarkAssertion] = Field(default_factory=list)
 

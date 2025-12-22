@@ -27,7 +27,9 @@ class IntegrationStateRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_state(self, integration: str, scope: str = "default") -> Optional[IntegrationSyncState]:
+    async def get_state(
+        self, integration: str, scope: str = "default"
+    ) -> Optional[IntegrationSyncState]:
         stmt = select(IntegrationSyncState).where(
             IntegrationSyncState.integration == integration,
             IntegrationSyncState.scope == scope,
@@ -42,7 +44,9 @@ class IntegrationStateRepository:
         stmt = select(IntegrationSyncState)
         if integration is not None:
             stmt = stmt.where(IntegrationSyncState.integration == integration)
-        stmt = stmt.order_by(IntegrationSyncState.integration, IntegrationSyncState.scope)
+        stmt = stmt.order_by(
+            IntegrationSyncState.integration, IntegrationSyncState.scope
+        )
         result = await self._session.scalars(stmt)
         return list(result)
 
@@ -84,7 +88,9 @@ class IntegrationIssueEventRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def record_issue_event(self, issue: IntegrationIssue) -> IntegrationSyncIssueEvent:
+    async def record_issue_event(
+        self, issue: IntegrationIssue
+    ) -> IntegrationSyncIssueEvent:
         event = IntegrationSyncIssueEvent(
             integration=issue.integration,
             scope=issue.scope,

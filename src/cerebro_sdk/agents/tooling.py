@@ -34,17 +34,25 @@ from cerebro_sdk.telemetry import get_logger
 class AgentToolingManager(AsyncManagerBase):
     """Inspect and manage tool invocations and approvals."""
 
-    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession, *, registry: CollectorRegistry | None = None
+    ) -> None:
         super().__init__(db)
         self._repo = ToolingRepository(db, registry=registry)
         self._logger = get_logger(__name__ + ".manager")
-        self._listeners: List[Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]] = []
+        self._listeners: List[
+            Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]
+        ] = []
 
-    def register_listener(self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]) -> None:
+    def register_listener(
+        self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]
+    ) -> None:
         if listener not in self._listeners:
             self._listeners.append(listener)
 
-    def unregister_listener(self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]) -> None:
+    def unregister_listener(
+        self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]
+    ) -> None:
         if listener in self._listeners:
             self._listeners.remove(listener)
 
@@ -108,7 +116,9 @@ class AgentToolingManager(AsyncManagerBase):
         )
         return [self._invocation_to_record(invocation) for invocation in invocations]
 
-    async def get_invocation(self, invocation_id: UUID) -> Optional[ToolInvocationRecord]:
+    async def get_invocation(
+        self, invocation_id: UUID
+    ) -> Optional[ToolInvocationRecord]:
         invocation = await self._repo.get_invocation(invocation_id)
         if not invocation:
             return None
@@ -313,7 +323,9 @@ class AgentToolingManager(AsyncManagerBase):
         org_id: UUID,
         tool_name: Optional[str] = None,
     ) -> list[AgentPolicySuggestionRecord]:
-        stmt = select(AgentPolicySuggestion).where(AgentPolicySuggestion.org_id == org_id)
+        stmt = select(AgentPolicySuggestion).where(
+            AgentPolicySuggestion.org_id == org_id
+        )
         if tool_name:
             stmt = stmt.where(AgentPolicySuggestion.tool_name == tool_name)
         stmt = stmt.order_by(AgentPolicySuggestion.last_seen.desc())
@@ -322,10 +334,18 @@ class AgentToolingManager(AsyncManagerBase):
 
     @staticmethod
     def _invocation_to_record(invocation: ToolInvocation) -> ToolInvocationRecord:
-        input_payload = invocation.input_data if isinstance(invocation.input_data, dict) else {"value": invocation.input_data}
+        input_payload = (
+            invocation.input_data
+            if isinstance(invocation.input_data, dict)
+            else {"value": invocation.input_data}
+        )
         output_payload = None
         if invocation.output_data is not None:
-            output_payload = invocation.output_data if isinstance(invocation.output_data, dict) else {"value": invocation.output_data}
+            output_payload = (
+                invocation.output_data
+                if isinstance(invocation.output_data, dict)
+                else {"value": invocation.output_data}
+            )
         return ToolInvocationRecord(
             invocation_id=invocation.id,
             session_id=invocation.session_id,
@@ -341,7 +361,11 @@ class AgentToolingManager(AsyncManagerBase):
             cel_policy_key=invocation.cel_policy_key,
             cel_expression=invocation.cel_expression,
             cel_result=invocation.cel_result,
-            cel_context=invocation.cel_context if isinstance(invocation.cel_context, dict) else None,
+            cel_context=(
+                invocation.cel_context
+                if isinstance(invocation.cel_context, dict)
+                else None
+            ),
         )
 
     @staticmethod
@@ -358,11 +382,17 @@ class AgentToolingManager(AsyncManagerBase):
             decided_at=approval.decided_at,
             decision_reason=approval.decision_reason,
             expires_at=approval.expires_at,
-            risk_assessment=approval.risk_assessment if isinstance(approval.risk_assessment, dict) else {},
+            risk_assessment=(
+                approval.risk_assessment
+                if isinstance(approval.risk_assessment, dict)
+                else {}
+            ),
         )
 
     @staticmethod
-    def _policy_to_record(suggestion: AgentPolicySuggestion) -> AgentPolicySuggestionRecord:
+    def _policy_to_record(
+        suggestion: AgentPolicySuggestion,
+    ) -> AgentPolicySuggestionRecord:
         return AgentPolicySuggestionRecord(
             suggestion_id=suggestion.id,
             org_id=suggestion.org_id,

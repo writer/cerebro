@@ -29,7 +29,9 @@ from cerebro_sdk.agents import (
     AgentReviewManager,
     AgentToolingManager,
 )
+
 UTC = timezone.utc
+
 
 @pytest.mark.asyncio
 async def test_agent_manager_create_and_list_sessions(test_db: AsyncSession, test_org):
@@ -628,12 +630,9 @@ async def test_agent_notification_manager(test_db: AsyncSession, test_org):
     )
     assert len(pending_notifications) == 1
 
-    delivered = await notification_manager.mark_delivered(
-        notification.notification_id
-    )
+    delivered = await notification_manager.mark_delivered(notification.notification_id)
     assert (
-        delivered is not None
-        and delivered.status == NotificationStatus.DELIVERED.value
+        delivered is not None and delivered.status == NotificationStatus.DELIVERED.value
     )
 
     with pytest.raises(AgentInvalidStatusError):
@@ -751,8 +750,7 @@ async def test_agent_playbook_helpers(test_db: AsyncSession, test_org):
     )
     assert len(notifications) == 2
     assert all(
-        record.status == NotificationStatus.PENDING.value
-        for record in notifications
+        record.status == NotificationStatus.PENDING.value for record in notifications
     )
 
     ticket = await playbook.escalate_to_ticket(

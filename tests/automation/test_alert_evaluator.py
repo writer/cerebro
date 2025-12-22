@@ -102,7 +102,9 @@ class _MemoryCooldownStore(AlertCooldownStore):
         self._suppressed = False
         self.last_recorded_rule: str | None = None
 
-    async def should_suppress(self, rule: AlertRule, *, now: datetime) -> bool:  # noqa: D401
+    async def should_suppress(
+        self, rule: AlertRule, *, now: datetime
+    ) -> bool:  # noqa: D401
         return self._suppressed
 
     async def record_fire(self, result: AlertResult) -> None:

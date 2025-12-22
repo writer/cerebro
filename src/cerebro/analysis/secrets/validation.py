@@ -57,7 +57,9 @@ def validate_secret_payload(secret: SecretsScanResult) -> ValidationResult:
             status="format_match",
             confidence=0.7,
             reason="Secret matches expected format for family.",
-            metadata={"example": candidate[:12] + "…" if len(candidate) > 12 else candidate},
+            metadata={
+                "example": candidate[:12] + "…" if len(candidate) > 12 else candidate
+            },
         )
 
     if descriptor.family is SecretFamily.GENERIC:

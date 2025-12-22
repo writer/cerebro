@@ -22,7 +22,9 @@ class OrganizationResponse(BaseModel):
 # Account schemas
 class AccountCreate(BaseModel):
     org_id: UUID
-    provider: str = Field(..., description="Provider name (github, aws, gcp, google_workspace)")
+    provider: str = Field(
+        ..., description="Provider name (github, aws, gcp, google_workspace)"
+    )
     external_id: str = Field(..., description="Provider-specific account ID")
     display_name: Optional[str] = None
 
@@ -71,7 +73,9 @@ class RuleCreate(BaseModel):
     description: Optional[str] = None
     provider: List[str] = Field(..., description="List of applicable providers")
     resource_types: Optional[List[str]] = None
-    expression_lang: str = Field(default="cel", description="Expression language (cel, sql, rego)")
+    expression_lang: str = Field(
+        default="cel", description="Expression language (cel, sql, rego)"
+    )
     expression: str = Field(..., description="Rule expression")
     severity: str = Field(..., description="Severity level")
     policy_id: Optional[UUID] = None
@@ -131,7 +135,7 @@ class FindingPageResponse(BaseModel):
 
 class FindingUpdate(BaseModel):
     status: Optional[str] = None
-    
+
 
 class FindingStats(BaseModel):
     total: int

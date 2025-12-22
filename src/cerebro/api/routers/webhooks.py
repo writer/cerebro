@@ -1,11 +1,19 @@
 """API endpoints for generic webhook notification configuration and management."""
+
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, HttpUrl, ValidationInfo, field_validator, ConfigDict
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    ValidationInfo,
+    field_validator,
+    ConfigDict,
+)
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
@@ -27,9 +35,13 @@ limiter = Limiter(key_func=get_remote_address)
 class WebhookConfigCreate(BaseModel):
     """Request model for creating webhook configuration."""
 
-    name: str = Field(..., min_length=1, max_length=255, description="Human-readable name")
+    name: str = Field(
+        ..., min_length=1, max_length=255, description="Human-readable name"
+    )
     url: HttpUrl = Field(..., description="Webhook URL endpoint")
-    http_method: str = Field(default="POST", description="HTTP method (POST, PUT, PATCH)")
+    http_method: str = Field(
+        default="POST", description="HTTP method (POST, PUT, PATCH)"
+    )
     headers: Optional[Dict[str, str]] = Field(None, description="Custom HTTP headers")
     payload_template: Dict[str, Any] = Field(
         ..., description="Jinja2 template for webhook payload"
@@ -37,17 +49,25 @@ class WebhookConfigCreate(BaseModel):
     authentication: Optional[Dict[str, Any]] = Field(
         None, description="Authentication configuration (Bearer token, etc.)"
     )
-    use_hmac_signature: bool = Field(default=False, description="Add HMAC signature header")
+    use_hmac_signature: bool = Field(
+        default=False, description="Add HMAC signature header"
+    )
     hmac_secret: Optional[str] = Field(None, description="HMAC secret key")
     enabled: bool = Field(default=True, description="Enable this webhook config")
     severity_filter: Optional[List[str]] = Field(
         None, description="Filter by severity (critical, high, medium, low)"
     )
     event_types: List[str] = Field(
-        ..., min_length=1, description="Event types to send (finding.created, compliance.check_failed, etc.)"
+        ...,
+        min_length=1,
+        description="Event types to send (finding.created, compliance.check_failed, etc.)",
     )
-    timeout_seconds: int = Field(default=10, ge=1, le=60, description="Request timeout in seconds")
-    webhook_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    timeout_seconds: int = Field(
+        default=10, ge=1, le=60, description="Request timeout in seconds"
+    )
+    webhook_metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Additional metadata"
+    )
 
     @field_validator("http_method")
     @classmethod
@@ -218,11 +238,15 @@ async def create_webhook_config(
     # Mask sensitive data in response
     response_config = WebhookConfigResponse.model_validate(webhook_config)
     response_config.url = _mask_url(response_config.url)
-    response_config.authentication = _mask_authentication(response_config.authentication)
+    response_config.authentication = _mask_authentication(
+        response_config.authentication
+    )
     if response_config.hmac_secret:
         response_config.hmac_secret = "********"
 
-    logger.info(f"Created webhook config {webhook_config.config_id} for org {current_user.org_id}")
+    logger.info(
+        f"Created webhook config {webhook_config.config_id} for org {current_user.org_id}"
+    )
     return response_config
 
 
@@ -251,10 +275,14 @@ async def list_webhook_configs(
     configs = result.scalars().all()
 
     # Mask sensitive data in response
-    response_configs = [WebhookConfigResponse.model_validate(config) for config in configs]
+    response_configs = [
+        WebhookConfigResponse.model_validate(config) for config in configs
+    ]
     for response_config in response_configs:
         response_config.url = _mask_url(response_config.url)
-        response_config.authentication = _mask_authentication(response_config.authentication)
+        response_config.authentication = _mask_authentication(
+            response_config.authentication
+        )
         if response_config.hmac_secret:
             response_config.hmac_secret = "********"
 
@@ -291,7 +319,9 @@ async def get_webhook_config(
     # Mask sensitive data in response
     response_config = WebhookConfigResponse.model_validate(config)
     response_config.url = _mask_url(response_config.url)
-    response_config.authentication = _mask_authentication(response_config.authentication)
+    response_config.authentication = _mask_authentication(
+        response_config.authentication
+    )
     if response_config.hmac_secret:
         response_config.hmac_secret = "********"
 
@@ -351,7 +381,9 @@ async def update_webhook_config(
     # Mask sensitive data in response
     response_config = WebhookConfigResponse.model_validate(config)
     response_config.url = _mask_url(response_config.url)
-    response_config.authentication = _mask_authentication(response_config.authentication)
+    response_config.authentication = _mask_authentication(
+        response_config.authentication
+    )
     if response_config.hmac_secret:
         response_config.hmac_secret = "********"
 
@@ -445,7 +477,9 @@ async def test_webhook_config(
         }
 
         # Render payload
-        test_payload = webhook_service._render_payload(config.payload_template, test_context)
+        test_payload = webhook_service._render_payload(
+            config.payload_template, test_context
+        )
 
         # Send test webhook
         await webhook_service._send_with_retry(
@@ -460,15 +494,21 @@ async def test_webhook_config(
         return {"message": "Test webhook sent successfully", "payload": test_payload}
 
     except Exception:
-        logger.exception("Failed to send test webhook", extra={"config_id": str(config_id)})
+        logger.exception(
+            "Failed to send test webhook", extra={"config_id": str(config_id)}
+        )
         raise HTTPException(status_code=500, detail="Failed to send test webhook")
 
 
 @router.get("/notifications", response_model=List[WebhookNotificationResponse])
 async def list_webhook_notifications(
     config_id: Optional[UUID] = Query(None, description="Filter by config ID"),
-    status: Optional[str] = Query(None, description="Filter by status (sent, failed, retrying)"),
-    limit: int = Query(100, ge=1, le=1000, description="Number of notifications to return"),
+    status: Optional[str] = Query(
+        None, description="Filter by status (sent, failed, retrying)"
+    ),
+    limit: int = Query(
+        100, ge=1, le=1000, description="Number of notifications to return"
+    ),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -486,7 +526,9 @@ async def list_webhook_notifications(
     Returns:
         List of webhook notifications
     """
-    query = select(WebhookNotification).where(WebhookNotification.org_id == current_user.org_id)
+    query = select(WebhookNotification).where(
+        WebhookNotification.org_id == current_user.org_id
+    )
 
     if config_id:
         query = query.where(WebhookNotification.config_id == config_id)
@@ -495,11 +537,15 @@ async def list_webhook_notifications(
         query = query.where(WebhookNotification.status == status)
 
     result = await db.execute(
-        query.order_by(WebhookNotification.created_at.desc()).limit(limit).offset(offset)
+        query.order_by(WebhookNotification.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     notifications = result.scalars().all()
 
-    return [WebhookNotificationResponse.model_validate(notif) for notif in notifications]
+    return [
+        WebhookNotificationResponse.model_validate(notif) for notif in notifications
+    ]
 
 
 @router.get("/notifications/stats", response_model=WebhookNotificationStatsResponse)
@@ -520,9 +566,15 @@ async def get_webhook_notification_stats(
     """
     query = select(
         func.count(WebhookNotification.notification_id).label("total"),
-        func.sum(func.cast(WebhookNotification.status == "sent", sa.Integer)).label("sent"),
-        func.sum(func.cast(WebhookNotification.status == "failed", sa.Integer)).label("failed"),
-        func.sum(func.cast(WebhookNotification.status == "retrying", sa.Integer)).label("retrying"),
+        func.sum(func.cast(WebhookNotification.status == "sent", sa.Integer)).label(
+            "sent"
+        ),
+        func.sum(func.cast(WebhookNotification.status == "failed", sa.Integer)).label(
+            "failed"
+        ),
+        func.sum(func.cast(WebhookNotification.status == "retrying", sa.Integer)).label(
+            "retrying"
+        ),
         func.avg(WebhookNotification.response_time_ms).label("avg_response_time"),
     ).where(WebhookNotification.org_id == current_user.org_id)
 

@@ -1,4 +1,6 @@
-def test_security_center_overview_includes_vendor_and_customer_data(client, test_org, admin_token):
+def test_security_center_overview_includes_vendor_and_customer_data(
+    client, test_org, admin_token
+):
     org_id = test_org.org_id
 
     vendor_payload = {

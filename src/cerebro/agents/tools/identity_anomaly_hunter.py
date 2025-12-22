@@ -26,21 +26,21 @@ class IdentityAnomalyHunterInput(BaseModel):
 
     principal_id: Optional[str] = Field(
         None,
-        description="Specific principal/user to analyze (leave empty to analyze all)"
+        description="Specific principal/user to analyze (leave empty to analyze all)",
     )
     lookback_days: int = Field(
         default=30,
         description="Number of days of historical data to analyze",
         ge=1,
-        le=90
+        le=90,
     )
     min_risk_level: str = Field(
         default="medium",
-        description="Minimum risk level to report: 'low', 'medium', 'high', or 'critical'"
+        description="Minimum risk level to report: 'low', 'medium', 'high', or 'critical'",
     )
     anomaly_types: Optional[List[str]] = Field(
         None,
-        description="Specific anomaly types to detect (empty = all). Options: login_pattern, permission_escalation, access_time, resource_access, velocity, cross_provider"
+        description="Specific anomaly types to detect (empty = all). Options: login_pattern, permission_escalation, access_time, resource_access, velocity, cross_provider",
     )
 
 
@@ -94,7 +94,9 @@ class IdentityAnomalyHunterTool(StructuredTool):
     """
 
     tool_name = "hunt_identity_anomalies"
-    tool_description = "ML-powered anomaly detection for suspicious identity behavior patterns"
+    tool_description = (
+        "ML-powered anomaly detection for suspicious identity behavior patterns"
+    )
     tool_version = "1.0.0"
     input_model = IdentityAnomalyHunterInput
     output_model = IdentityAnomalyHunterOutput
@@ -136,37 +138,51 @@ class IdentityAnomalyHunterTool(StructuredTool):
 
             # Run anomaly detection
             anomalies = await detector.analyze_identity_anomalies(
-                org_id=str(context.org_id),
-                principal_id=principal_id
+                org_id=str(context.org_id), principal_id=principal_id
             )
 
             # Filter by minimum risk level
             risk_levels = {
-                "low": [RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL],
+                "low": [
+                    RiskLevel.LOW,
+                    RiskLevel.MEDIUM,
+                    RiskLevel.HIGH,
+                    RiskLevel.CRITICAL,
+                ],
                 "medium": [RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL],
                 "high": [RiskLevel.HIGH, RiskLevel.CRITICAL],
-                "critical": [RiskLevel.CRITICAL]
+                "critical": [RiskLevel.CRITICAL],
             }
-            allowed_levels = risk_levels.get(min_risk_level.lower(), risk_levels["medium"])
+            allowed_levels = risk_levels.get(
+                min_risk_level.lower(), risk_levels["medium"]
+            )
 
             filtered_anomalies = [
-                a for a in anomalies
-                if a.risk_level in allowed_levels
+                a for a in anomalies if a.risk_level in allowed_levels
             ]
 
             # Filter by anomaly types if specified
             if anomaly_types:
                 anomaly_type_set = set(at.lower() for at in anomaly_types)
                 filtered_anomalies = [
-                    a for a in filtered_anomalies
+                    a
+                    for a in filtered_anomalies
                     if a.anomaly_type.value.lower() in anomaly_type_set
                 ]
 
             # Count by risk level
-            critical_count = sum(1 for a in filtered_anomalies if a.risk_level == RiskLevel.CRITICAL)
-            high_count = sum(1 for a in filtered_anomalies if a.risk_level == RiskLevel.HIGH)
-            medium_count = sum(1 for a in filtered_anomalies if a.risk_level == RiskLevel.MEDIUM)
-            low_count = sum(1 for a in filtered_anomalies if a.risk_level == RiskLevel.LOW)
+            critical_count = sum(
+                1 for a in filtered_anomalies if a.risk_level == RiskLevel.CRITICAL
+            )
+            high_count = sum(
+                1 for a in filtered_anomalies if a.risk_level == RiskLevel.HIGH
+            )
+            medium_count = sum(
+                1 for a in filtered_anomalies if a.risk_level == RiskLevel.MEDIUM
+            )
+            low_count = sum(
+                1 for a in filtered_anomalies if a.risk_level == RiskLevel.LOW
+            )
 
             # Get unique principals analyzed
             principals_analyzed = len(set(a.principal_id for a in anomalies))
@@ -175,7 +191,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
             sorted_anomalies = sorted(
                 filtered_anomalies,
                 key=lambda a: (a.risk_level.value, a.score),
-                reverse=True
+                reverse=True,
             )[:20]
 
             anomaly_outputs = [
@@ -189,7 +205,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
                     details=a.details,
                     detected_at=a.detected_at.isoformat(),
                     affected_resources=a.affected_resources[:5],  # Top 5 resources
-                    recommended_actions=a.recommended_actions
+                    recommended_actions=a.recommended_actions,
                 )
                 for a in sorted_anomalies
             ]
@@ -201,7 +217,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
                 high=high_count,
                 medium=medium_count,
                 low=low_count,
-                principals=principals_analyzed
+                principals=principals_analyzed,
             )
 
             # Generate immediate actions
@@ -218,7 +234,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
                 principals_analyzed=principals_analyzed,
                 anomalies=anomaly_outputs,
                 risk_summary=risk_summary,
-                immediate_actions=immediate_actions
+                immediate_actions=immediate_actions,
             )
 
             logger.info(
@@ -235,15 +251,14 @@ class IdentityAnomalyHunterTool(StructuredTool):
                     "lookback_days": lookback_days,
                     "principals_analyzed": principals_analyzed,
                     "anomalies_detected": len(filtered_anomalies),
-                    "min_risk_level": min_risk_level
-                }
+                    "min_risk_level": min_risk_level,
+                },
             )
 
         except Exception as e:
             logger.error("Identity anomaly hunting failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False,
-                error=f"Identity anomaly hunting failed: {str(e)}"
+                success=False, error=f"Identity anomaly hunting failed: {str(e)}"
             )
 
     def _generate_risk_summary(
@@ -253,7 +268,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
         high: int,
         medium: int,
         low: int,
-        principals: int
+        principals: int,
     ) -> str:
         """Generate human-readable risk summary."""
 
@@ -265,7 +280,9 @@ class IdentityAnomalyHunterTool(StructuredTool):
         ]
 
         if critical > 0:
-            summary_parts.append(f"  🔴 {critical} CRITICAL - Immediate investigation required")
+            summary_parts.append(
+                f"  🔴 {critical} CRITICAL - Immediate investigation required"
+            )
         if high > 0:
             summary_parts.append(f"  🟠 {high} HIGH - Priority attention needed")
         if medium > 0:
@@ -274,7 +291,9 @@ class IdentityAnomalyHunterTool(StructuredTool):
             summary_parts.append(f"  🟢 {low} LOW - Monitor for patterns")
 
         if critical > 0 or high > 0:
-            summary_parts.append("\n🚨 Immediate security team notification recommended.")
+            summary_parts.append(
+                "\n🚨 Immediate security team notification recommended."
+            )
 
         return "\n".join(summary_parts)
 
@@ -299,7 +318,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
                 "Review audit logs for affected principals",
                 "Verify MFA is enabled for all flagged accounts",
                 "Check for unauthorized OAuth app authorizations",
-                "Validate recent permission changes"
+                "Validate recent permission changes",
             ]
             for general_action in general_actions:
                 if general_action not in seen_actions and len(actions) < 5:

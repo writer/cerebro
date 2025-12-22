@@ -33,7 +33,9 @@ def _default_query_tag() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Summarize Snowflake QUERY_HISTORY for Cerebro.")
+    parser = argparse.ArgumentParser(
+        description="Summarize Snowflake QUERY_HISTORY for Cerebro."
+    )
     parser.add_argument(
         "--url",
         default=os.getenv("SNOWFLAKE_DATABASE_URL"),
@@ -47,11 +49,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--limit", type=int, default=50, help="Max result rows")
     parser.add_argument("--role", default=None, help="Optional Snowflake role override")
-    parser.add_argument("--warehouse", default=None, help="Optional Snowflake warehouse override")
+    parser.add_argument(
+        "--warehouse", default=None, help="Optional Snowflake warehouse override"
+    )
     args = parser.parse_args(argv)
 
     if not args.url:
-        raise SystemExit("Snowflake URL not provided; set SNOWFLAKE_DATABASE_URL or pass --url")
+        raise SystemExit(
+            "Snowflake URL not provided; set SNOWFLAKE_DATABASE_URL or pass --url"
+        )
 
     url = make_url(args.url)
     query_tag = os.getenv("SNOWFLAKE_QUERY_TAG") or _default_query_tag()
@@ -61,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
         "QUERY_TAG": query_tag,
         "TIMEZONE": os.getenv("SNOWFLAKE_TIMEZONE", "UTC"),
     }
-    if (statement_timeout := _get_int_env("SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS")) is None:
+    if (
+        statement_timeout := _get_int_env("SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS")
+    ) is None:
         statement_timeout = DEFAULT_STATEMENT_TIMEOUT_SECONDS
     session_parameters["STATEMENT_TIMEOUT_IN_SECONDS"] = statement_timeout
 
@@ -103,14 +111,18 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with engine.begin() as conn:
-            rows = conn.execute(
-                query,
-                {
-                    "days": args.days,
-                    "tag_prefix": args.tag_prefix,
-                    "limit": args.limit,
-                },
-            ).mappings().all()
+            rows = (
+                conn.execute(
+                    query,
+                    {
+                        "days": args.days,
+                        "tag_prefix": args.tag_prefix,
+                        "limit": args.limit,
+                    },
+                )
+                .mappings()
+                .all()
+            )
 
         if not rows:
             print("No matching queries found.")
@@ -121,12 +133,18 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 " - ",
                 row.get("query_tag"),
-                "warehouse=", row.get("warehouse_name"),
-                "count=", row.get("query_count"),
-                "total_s=", round(float(row.get("total_elapsed_seconds") or 0.0), 2),
-                "avg_s=", round(float(row.get("avg_elapsed_seconds") or 0.0), 2),
-                "bytes_scanned=", int(row.get("bytes_scanned") or 0),
-                "cloud_credits=", float(row.get("cloud_services_credits") or 0.0),
+                "warehouse=",
+                row.get("warehouse_name"),
+                "count=",
+                row.get("query_count"),
+                "total_s=",
+                round(float(row.get("total_elapsed_seconds") or 0.0), 2),
+                "avg_s=",
+                round(float(row.get("avg_elapsed_seconds") or 0.0), 2),
+                "bytes_scanned=",
+                int(row.get("bytes_scanned") or 0),
+                "cloud_credits=",
+                float(row.get("cloud_services_credits") or 0.0),
                 sep="",
             )
 

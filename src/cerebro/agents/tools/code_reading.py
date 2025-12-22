@@ -22,8 +22,10 @@ logger = structlog.get_logger(__name__)
 
 # ==================== Input/Output Schemas ====================
 
+
 class ReadCodeInput(BaseModel):
     """Input for read_code tool."""
+
     file_path: str = Field(
         description="Path to code file (relative to repo root or absolute)",
         min_length=1,
@@ -46,6 +48,7 @@ class ReadCodeInput(BaseModel):
 
 class SymbolInfo(BaseModel):
     """Information about a code symbol (function/class)."""
+
     name: str
     type: str  # function, class, method
     line_number: int
@@ -56,6 +59,7 @@ class SymbolInfo(BaseModel):
 
 class ReadCodeOutput(BaseModel):
     """Output for read_code tool."""
+
     success: bool
     file_path: str
     total_lines: int
@@ -68,6 +72,7 @@ class ReadCodeOutput(BaseModel):
 
 class SearchCodeInput(BaseModel):
     """Input for search_code tool."""
+
     search_term: str = Field(
         description="Term to search for in code (function name, class name, etc.)",
         min_length=1,
@@ -84,6 +89,7 @@ class SearchCodeInput(BaseModel):
 
 class SearchResult(BaseModel):
     """A code search result."""
+
     file_path: str
     line_number: int
     line_content: str
@@ -92,6 +98,7 @@ class SearchResult(BaseModel):
 
 class SearchCodeOutput(BaseModel):
     """Output for search_code tool."""
+
     success: bool
     search_term: str
     total_matches: int
@@ -102,6 +109,7 @@ class SearchCodeOutput(BaseModel):
 
 # ==================== Helper Functions ====================
 
+
 def find_python_symbol(code: str, symbol_name: str) -> Optional[SymbolInfo]:
     """Parse Python AST to find a specific symbol."""
     try:
@@ -111,8 +119,8 @@ def find_python_symbol(code: str, symbol_name: str) -> Optional[SymbolInfo]:
             # Find function definitions
             if isinstance(node, ast.FunctionDef) and node.name == symbol_name:
                 # Extract function code
-                func_lines = code.split('\n')[node.lineno - 1:node.end_lineno]
-                func_code = '\n'.join(func_lines)
+                func_lines = code.split("\n")[node.lineno - 1 : node.end_lineno]
+                func_code = "\n".join(func_lines)
 
                 # Extract docstring
                 docstring = ast.get_docstring(node)
@@ -133,15 +141,19 @@ def find_python_symbol(code: str, symbol_name: str) -> Optional[SymbolInfo]:
             # Find class definitions
             elif isinstance(node, ast.ClassDef) and node.name == symbol_name:
                 # Extract class code
-                class_lines = code.split('\n')[node.lineno - 1:node.end_lineno]
-                class_code = '\n'.join(class_lines)
+                class_lines = code.split("\n")[node.lineno - 1 : node.end_lineno]
+                class_code = "\n".join(class_lines)
 
                 # Extract docstring
                 docstring = ast.get_docstring(node)
 
                 # Find base classes
                 bases = [ast.unparse(base) for base in node.bases] if node.bases else []
-                signature = f"class {node.name}({', '.join(bases)})" if bases else f"class {node.name}"
+                signature = (
+                    f"class {node.name}({', '.join(bases)})"
+                    if bases
+                    else f"class {node.name}"
+                )
 
                 return SymbolInfo(
                     name=node.name,
@@ -180,20 +192,20 @@ def detect_language(file_path: str) -> str:
     """Detect programming language from file extension."""
     ext = Path(file_path).suffix.lower()
     lang_map = {
-        '.py': 'python',
-        '.ts': 'typescript',
-        '.tsx': 'typescript',
-        '.js': 'javascript',
-        '.jsx': 'javascript',
-        '.go': 'go',
-        '.rs': 'rust',
-        '.java': 'java',
-        '.c': 'c',
-        '.cpp': 'cpp',
-        '.h': 'c',
-        '.hpp': 'cpp',
+        ".py": "python",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".go": "go",
+        ".rs": "rust",
+        ".java": "java",
+        ".c": "c",
+        ".cpp": "cpp",
+        ".h": "c",
+        ".hpp": "cpp",
     }
-    return lang_map.get(ext, 'unknown')
+    return lang_map.get(ext, "unknown")
 
 
 def find_repo_root() -> Optional[Path]:
@@ -201,7 +213,7 @@ def find_repo_root() -> Optional[Path]:
     current = Path.cwd()
 
     # Look for repo markers
-    markers = ['.git', 'pyproject.toml', 'package.json', 'go.mod', 'Cargo.toml']
+    markers = [".git", "pyproject.toml", "package.json", "go.mod", "Cargo.toml"]
 
     while current != current.parent:
         for marker in markers:
@@ -213,6 +225,7 @@ def find_repo_root() -> Optional[Path]:
 
 
 # ==================== Tools ====================
+
 
 class ReadCodeTool(StructuredTool):
     """
@@ -268,7 +281,7 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
 
             # Read file
             try:
-                with open(full_path, 'r', encoding='utf-8') as f:
+                with open(full_path, "r", encoding="utf-8") as f:
                     code = f.read()
             except UnicodeDecodeError:
                 output = ReadCodeOutput(
@@ -284,7 +297,7 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
                     metadata={"error": "binary_file"},
                 )
 
-            lines = code.split('\n')
+            lines = code.split("\n")
             total_lines = len(lines)
             language = detect_language(file_path)
 
@@ -327,7 +340,7 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
             if line_start is not None or line_end is not None:
                 start = (line_start - 1) if line_start else 0
                 end = line_end if line_end else total_lines
-                extracted_code = '\n'.join(lines[start:end])
+                extracted_code = "\n".join(lines[start:end])
             else:
                 extracted_code = code
 
@@ -448,15 +461,28 @@ Useful for finding where specific logic is implemented."""
             files = list(search_dir.rglob(file_pattern))
 
             # Exclude common non-code directories
-            exclude_dirs = {'__pycache__', 'node_modules', '.git', 'venv', 'env', '.venv', 'dist', 'build'}
-            files = [f for f in files if not any(excluded in f.parts for excluded in exclude_dirs)]
+            exclude_dirs = {
+                "__pycache__",
+                "node_modules",
+                ".git",
+                "venv",
+                "env",
+                ".venv",
+                "dist",
+                "build",
+            }
+            files = [
+                f
+                for f in files
+                if not any(excluded in f.parts for excluded in exclude_dirs)
+            ]
 
             results = []
             searched_files = 0
 
             for file_path in files[:100]:  # Limit to 100 files
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
                         searched_files += 1
 
@@ -464,10 +490,10 @@ Useful for finding where specific logic is implemented."""
                             if search_term.lower() in line.lower():
                                 # Determine symbol type
                                 symbol_type = None
-                                if 'def ' in line:
-                                    symbol_type = 'function'
-                                elif 'class ' in line:
-                                    symbol_type = 'class'
+                                if "def " in line:
+                                    symbol_type = "function"
+                                elif "class " in line:
+                                    symbol_type = "class"
 
                                 results.append(
                                     SearchResult(
@@ -514,7 +540,9 @@ Useful for finding where specific logic is implemented."""
             )
 
         except Exception as e:
-            logger.exception("Code search failed", error=str(e), search_term=search_term)
+            logger.exception(
+                "Code search failed", error=str(e), search_term=search_term
+            )
 
             output = SearchCodeOutput(
                 success=False,

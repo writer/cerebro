@@ -116,7 +116,9 @@ def refresh_rule_controls(self) -> dict[str, object]:
             # Build into a staging table then atomically swap, so readers never observe an empty table.
             # COPY GRANTS ensures the swapped-in table retains the grants readers expect.
             session.execute(
-                text("CREATE OR REPLACE TABLE rule_controls_staging LIKE rule_controls COPY GRANTS")
+                text(
+                    "CREATE OR REPLACE TABLE rule_controls_staging LIKE rule_controls COPY GRANTS"
+                )
             )
             session.execute(text("TRUNCATE TABLE rule_controls_staging"))
             session.execute(
@@ -135,10 +137,17 @@ def refresh_rule_controls(self) -> dict[str, object]:
                     """
                 )
             )
-            session.execute(text("ALTER TABLE rule_controls SWAP WITH rule_controls_staging"))
+            session.execute(
+                text("ALTER TABLE rule_controls SWAP WITH rule_controls_staging")
+            )
             session.execute(text("DROP TABLE IF EXISTS rule_controls_staging"))
 
-            row_count = session.execute(text("SELECT COUNT(*) AS cnt FROM rule_controls")).scalar() or 0
+            row_count = (
+                session.execute(
+                    text("SELECT COUNT(*) AS cnt FROM rule_controls")
+                ).scalar()
+                or 0
+            )
             finished_at = datetime.now(timezone.utc)
 
             session.execute(
@@ -205,7 +214,9 @@ def run_warehouse_data_quality_checks(self) -> dict[str, object]:
             return {"skipped": True, "reason": "SNOWFLAKE_DATABASE_URL not configured"}
         raise RuntimeError("SNOWFLAKE_DATABASE_URL is not configured")
 
-    self.update_state(state=states.STARTED, meta={"status": "Running warehouse DQ checks"})
+    self.update_state(
+        state=states.STARTED, meta={"status": "Running warehouse DQ checks"}
+    )
 
     job_run_id = str(uuid4())
     component = (

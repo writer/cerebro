@@ -14,7 +14,9 @@ from cerebro.providers.base import (
     ConfigurationSnapshot,
     ResourceInfo,
 )
+
 UTC = timezone.utc
+
 
 class StubProvider(BaseProvider):
     """Minimal provider implementation for collector tests."""

@@ -64,7 +64,11 @@ def analyze_state(
         issue_message = metadata.get("last_error") or "Latest sync ended with an error"
     elif status == "skipped":
         issue_type = "skipped"
-        issue_message = metadata.get("last_payload", {}).get("reason") if isinstance(metadata.get("last_payload"), dict) else None
+        issue_message = (
+            metadata.get("last_payload", {}).get("reason")
+            if isinstance(metadata.get("last_payload"), dict)
+            else None
+        )
         issue_message = issue_message or "Sync skipped due to missing prerequisites"
     elif last_timestamp is None:
         issue_type = "missing"
@@ -121,7 +125,12 @@ def should_suppress_issue(
 
 def _format_metadata_summary(metadata: Dict[str, Any]) -> str:
     summary_parts: list[str] = []
-    for key in ("last_status_at", "last_error", "last_event_count", "last_ingested_count"):
+    for key in (
+        "last_status_at",
+        "last_error",
+        "last_event_count",
+        "last_ingested_count",
+    ):
         if key in metadata and metadata[key] not in (None, ""):
             summary_parts.append(f"*{key.replace('_', ' ').title()}:* {metadata[key]}")
 
@@ -134,7 +143,11 @@ def _format_metadata_summary(metadata: Dict[str, Any]) -> str:
     if "last_auto_retry_at" in metadata:
         summary_parts.append(f"*Last retry:* {metadata['last_auto_retry_at']}")
 
-    return "\n".join(summary_parts) if summary_parts else "No additional metadata recorded."
+    return (
+        "\n".join(summary_parts)
+        if summary_parts
+        else "No additional metadata recorded."
+    )
 
 
 def _format_slack_payload(issue: IntegrationIssue) -> Dict[str, Any]:
@@ -144,7 +157,9 @@ def _format_slack_payload(issue: IntegrationIssue) -> Dict[str, Any]:
         seconds = int(issue.age_seconds % 60)
         age_text = f"{minutes}m {seconds}s"
 
-    last_sync_text = issue.last_timestamp.isoformat() if issue.last_timestamp else "Never"
+    last_sync_text = (
+        issue.last_timestamp.isoformat() if issue.last_timestamp else "Never"
+    )
 
     color = {
         "critical": "#d32f2f",
@@ -170,9 +185,18 @@ def _format_slack_payload(issue: IntegrationIssue) -> Dict[str, Any]:
                         "type": "section",
                         "fields": [
                             {"type": "mrkdwn", "text": f"*Status:*\\n{issue.status}"},
-                            {"type": "mrkdwn", "text": f"*Issue:*\\n{issue.issue_type}"},
-                            {"type": "mrkdwn", "text": f"*Severity:*\\n{issue.severity}"},
-                            {"type": "mrkdwn", "text": f"*Last Sync:*\\n{last_sync_text}"},
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Issue:*\\n{issue.issue_type}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Severity:*\\n{issue.severity}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Last Sync:*\\n{last_sync_text}",
+                            },
                             {"type": "mrkdwn", "text": f"*Age:*\\n{age_text}"},
                         ],
                     },

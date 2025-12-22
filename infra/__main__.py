@@ -3,6 +3,7 @@ Main Pulumi program for Cerebro infrastructure.
 
 Deploys production-ready infrastructure on AWS or GCP.
 """
+
 import pulumi
 import pulumi_aws as aws
 import pulumi_random as random
@@ -32,7 +33,10 @@ api_cpu = _config_int("apiCpu", 1024)
 api_memory = _config_int("apiMemory", 2048)
 worker_cpu = _config_int("workerCpu", 2048)
 worker_memory = _config_int("workerMemory", 4096)
-container_image = config.get("containerImage") or "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+container_image = (
+    config.get("containerImage")
+    or "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+)
 alb_internal = config.get_bool("albInternal")
 if alb_internal is None:
     alb_internal = True
@@ -67,11 +71,14 @@ kms_key = kms.create_kms_key(
 )
 
 # Generate Redis password if not provided
-redis_password = config.get_secret("redisPassword") or random.RandomPassword(
-    "redis-password",
-    length=32,
-    special=False,
-).result
+redis_password = (
+    config.get_secret("redisPassword")
+    or random.RandomPassword(
+        "redis-password",
+        length=32,
+        special=False,
+    ).result
+)
 
 automation_org_id = config.get("automationOrgId") or ""
 session_base_url = config.get("sessionBaseUrl") or ""
@@ -121,9 +128,15 @@ redis_stack = cache.create_elasticache_redis(
     at_rest_encryption_enabled=True,
     transit_encryption_enabled=True,
     kms_key_id=kms_key.arn,
-    parameter_group_name=None if existing_redis_parameter_group_id else config.get("redisParameterGroupName"),
+    parameter_group_name=(
+        None
+        if existing_redis_parameter_group_id
+        else config.get("redisParameterGroupName")
+    ),
     existing_parameter_group_id=existing_redis_parameter_group_id,
-    subnet_group_name=None if existing_redis_subnet_group_id else config.get("redisSubnetGroupName"),
+    subnet_group_name=(
+        None if existing_redis_subnet_group_id else config.get("redisSubnetGroupName")
+    ),
     existing_subnet_group_id=existing_redis_subnet_group_id,
     existing_replication_group_id=existing_redis_replication_group_id,
 )
@@ -132,7 +145,11 @@ redis_stack = cache.create_elasticache_redis(
 alb_stack = load_balancer.create_application_load_balancer(
     name=f"cerebro-{environment}",
     vpc_id=vpc_stack["vpc_id"],
-    subnet_ids=vpc_stack["private_subnet_ids"] if alb_internal else vpc_stack["public_subnet_ids"],
+    subnet_ids=(
+        vpc_stack["private_subnet_ids"]
+        if alb_internal
+        else vpc_stack["public_subnet_ids"]
+    ),
     security_group_id=vpc_stack["alb_security_group_id"],
     certificate_domain=domain or None,
     internal=alb_internal,
@@ -200,9 +217,11 @@ monitoring_stack = monitoring.create_monitoring(
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export(
     "api_url",
-    pulumi.Output.concat("https://", domain)
-    if domain
-    else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
+    (
+        pulumi.Output.concat("https://", domain)
+        if domain
+        else pulumi.Output.concat("http://", alb_stack["alb"].dns_name)
+    ),
 )
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
 pulumi.export("redis_endpoint", redis_stack["primary_endpoint"])
@@ -214,7 +233,9 @@ pulumi.export("secrets_arn", cerebro_secrets.arn)
 pulumi.export("dynamodb_core_table", dynamodb_stack["core_table_name"])
 pulumi.export("dynamodb_audit_table", dynamodb_stack["audit_table_name"])
 pulumi.export("dynamodb_agents_table", dynamodb_stack["agents_table_name"])
-pulumi.export("dynamodb_notifications_table", dynamodb_stack["notifications_table_name"])
+pulumi.export(
+    "dynamodb_notifications_table", dynamodb_stack["notifications_table_name"]
+)
 pulumi.export("dynamodb_users_table", dynamodb_stack["users_table_name"])
 
 # Export DynamoDB Stream ARNs (for Lambda triggers)
@@ -222,26 +243,27 @@ pulumi.export("dynamodb_core_stream_arn", dynamodb_stack["core_stream_arn"])
 pulumi.export("dynamodb_audit_stream_arn", dynamodb_stack["audit_stream_arn"])
 
 if _config_bool("enableFlower", True):
-    pulumi.export("flower_url", pulumi.Output.concat(
-        "http://", alb_stack["alb"].dns_name, ":5555"
-    ))
+    pulumi.export(
+        "flower_url",
+        pulumi.Output.concat("http://", alb_stack["alb"].dns_name, ":5555"),
+    )
 
 # Export Redis connection string
-pulumi.export("redis_url", pulumi.Output.concat(
-    "rediss://:",
-    redis_password,
-    "@",
-    redis_stack["primary_endpoint"],
-    ":6379/0"
-))
+pulumi.export(
+    "redis_url",
+    pulumi.Output.concat(
+        "rediss://:", redis_password, "@", redis_stack["primary_endpoint"], ":6379/0"
+    ),
+)
 
 pulumi.export(
     "readme",
     pulumi.Output.all(
-        api_url=pulumi.Output.concat(
-            "https://",
-            domain
-        ) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name),
+        api_url=(
+            pulumi.Output.concat("https://", domain)
+            if domain
+            else pulumi.Output.concat("http://", alb_stack["alb"].dns_name)
+        ),
         alb_dns=alb_stack["alb"].dns_name,
         cluster=ecs_stack["cluster"].name,
         core_table=dynamodb_stack["core_table_name"],

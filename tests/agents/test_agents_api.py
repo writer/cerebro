@@ -17,6 +17,7 @@ BASE_URL = "http://localhost:8000"
 API_PREFIX = "/api/v1"
 TEST_TOKEN = "test_token_here"  # Replace with actual token
 
+
 async def test_agent_health():
     """Test agent system health check."""
     print("=" * 60)
@@ -52,10 +53,7 @@ async def test_create_session():
     payload = {
         "agent_type": "security_analyst",
         "title": "Test Session",
-        "context": {
-            "provider_scope": ["aws"],
-            "focus": "security_findings"
-        }
+        "context": {"provider_scope": ["aws"], "focus": "security_findings"},
     }
 
     async with httpx.AsyncClient() as client:
@@ -64,7 +62,7 @@ async def test_create_session():
                 f"{BASE_URL}{API_PREFIX}/agents/sessions",
                 headers=headers,
                 json=payload,
-                timeout=10.0
+                timeout=10.0,
             )
 
             print(f"Status: {response.status_code}")
@@ -104,7 +102,7 @@ async def test_list_sessions():
                 f"{BASE_URL}{API_PREFIX}/agents/sessions",
                 headers=headers,
                 params={"limit": 10},
-                timeout=10.0
+                timeout=10.0,
             )
 
             print(f"Status: {response.status_code}")
@@ -117,8 +115,10 @@ async def test_list_sessions():
                 data = response.json()
                 print(f"Total sessions: {data['total']}")
                 print(f"Returned: {len(data['sessions'])}")
-                for session in data['sessions'][:3]:  # Show first 3
-                    print(f"  - {session['agent_type']}: {session.get('title', 'Untitled')}")
+                for session in data["sessions"][:3]:  # Show first 3
+                    print(
+                        f"  - {session['agent_type']}: {session.get('title', 'Untitled')}"
+                    )
                 print("✅ Session listing works")
             else:
                 print(f"❌ Session listing failed: {response.text}")
@@ -140,7 +140,7 @@ async def test_send_message(session_id):
     headers = {"Authorization": f"Bearer {TEST_TOKEN}"}
     payload = {
         "message": "List the most critical security findings",
-        "stream": False  # Non-streaming for simplicity
+        "stream": False,  # Non-streaming for simplicity
     }
 
     async with httpx.AsyncClient() as client:
@@ -149,7 +149,7 @@ async def test_send_message(session_id):
                 f"{BASE_URL}{API_PREFIX}/agents/sessions/{session_id}/messages",
                 headers=headers,
                 json=payload,
-                timeout=30.0
+                timeout=30.0,
             )
 
             print(f"Status: {response.status_code}")
@@ -177,10 +177,7 @@ async def test_streaming_message(session_id):
         return
 
     headers = {"Authorization": f"Bearer {TEST_TOKEN}"}
-    payload = {
-        "message": "What are the top 3 security issues?",
-        "stream": True
-    }
+    payload = {"message": "What are the top 3 security issues?", "stream": True}
 
     print("Connecting to SSE stream...")
 
@@ -191,7 +188,7 @@ async def test_streaming_message(session_id):
                 f"{BASE_URL}{API_PREFIX}/agents/sessions/{session_id}/messages",
                 headers=headers,
                 json=payload,
-                timeout=30.0
+                timeout=30.0,
             ) as response:
 
                 print(f"Status: {response.status_code}")

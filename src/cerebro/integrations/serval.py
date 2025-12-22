@@ -204,7 +204,9 @@ class ServalClient:
             return ticket
         raise ServalError("Serval update ticket response missing data")
 
-    async def list_statuses(self, *, team_id: Optional[str] = None) -> list[dict[str, Any]]:
+    async def list_statuses(
+        self, *, team_id: Optional[str] = None
+    ) -> list[dict[str, Any]]:
         """Fetch available workflow statuses from Serval."""
         params: Dict[str, Any] = {}
         if team_id:
@@ -215,12 +217,16 @@ class ServalClient:
             return [item for item in data if isinstance(item, dict)]
         return []
 
-    async def list_priorities(self, *, team_id: Optional[str] = None) -> list[dict[str, Any]]:
+    async def list_priorities(
+        self, *, team_id: Optional[str] = None
+    ) -> list[dict[str, Any]]:
         """Fetch available priority options for configuration surfaces."""
         params: Dict[str, Any] = {}
         if team_id:
             params["teamId"] = team_id
-        payload = await self._request_json("GET", "/v2/priorities", params=params or None)
+        payload = await self._request_json(
+            "GET", "/v2/priorities", params=params or None
+        )
         data = payload.get("data")
         if isinstance(data, list):
             return [item for item in data if isinstance(item, dict)]
@@ -281,7 +287,9 @@ class ServalClient:
         encoded = base64.b64encode(raw).decode("ascii")
         return f"Basic {encoded}"
 
-    async def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    async def _request_json(
+        self, method: str, path: str, **kwargs: Any
+    ) -> dict[str, Any]:
         """Make an authenticated request and parse the JSON response."""
         response = await self._request(method, path, **kwargs)
         try:

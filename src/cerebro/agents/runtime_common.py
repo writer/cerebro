@@ -82,7 +82,9 @@ class AgentRuntimePersistenceMixin:
 
             if org_context_result.success and system_context_result.success:
                 prepared_context["_auto_loaded_org_context"] = org_context_result.data
-                prepared_context["_auto_loaded_system_context"] = system_context_result.data
+                prepared_context["_auto_loaded_system_context"] = (
+                    system_context_result.data
+                )
 
                 logger.info(
                     "Auto-loaded context for agent session",
@@ -167,7 +169,9 @@ class AgentRuntimePersistenceMixin:
                     "type": entry.context_type,
                     "confidence": entry.confidence,
                     "learned_from": entry.learned_from,
-                    "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                    "created_at": (
+                        entry.created_at.isoformat() if entry.created_at else None
+                    ),
                 }
                 for entry in entries
             ]
@@ -261,9 +265,9 @@ class AgentRuntimePersistenceMixin:
                 role=role.value,
                 org_id=session.org_id,
                 content_length=len(str(content)),
-                tool_calls=content.get("tool_calls", 0)
-                if isinstance(content, dict)
-                else 0,
+                tool_calls=(
+                    content.get("tool_calls", 0) if isinstance(content, dict) else 0
+                ),
             )
 
     async def _get_session_metrics(self, session_id: UUID) -> Dict[str, Any]:
@@ -282,7 +286,9 @@ class AgentRuntimePersistenceMixin:
                 .where(AgentMessage.session_id == session_id)
                 .group_by(AgentMessage.role)
             )
-            message_stats = (await db_session.execute(message_stats_stmt)).mappings().all()
+            message_stats = (
+                (await db_session.execute(message_stats_stmt)).mappings().all()
+            )
 
             tool_stats_stmt = (
                 select(
@@ -453,4 +459,3 @@ class AgentRuntimePersistenceMixin:
             tool_calls=tool_calls,
             error=error,
         )
-

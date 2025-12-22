@@ -6,6 +6,6 @@ from .identity_service import IdentityService
 
 __all__ = [
     "CollectionService",
-    "FindingService", 
+    "FindingService",
     "IdentityService",
 ]

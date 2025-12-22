@@ -41,7 +41,9 @@ def enforce_org_access(org_id: UUID, current_user: User) -> None:
 def require_org_access(user_dependency: UserDep = get_current_user):
     """Dependency factory that also verifies the requested org_id is accessible."""
 
-    async def _dependency(org_id: UUID, current_user: User = Depends(user_dependency)) -> User:
+    async def _dependency(
+        org_id: UUID, current_user: User = Depends(user_dependency)
+    ) -> User:
         enforce_org_access(org_id, current_user)
         return current_user
 

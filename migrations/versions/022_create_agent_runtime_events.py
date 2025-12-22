@@ -30,10 +30,24 @@ def upgrade() -> None:
         sa.Column("org_id", uuid_type, nullable=False),
         sa.Column("session_id", uuid_type, nullable=False),
         sa.Column("event_type", sa.String(length=100), nullable=False),
-        sa.Column("payload", json_type, nullable=False, server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.ForeignKeyConstraint(["org_id"], ["organizations.org_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["session_id"], ["agent_sessions.id"], ondelete="CASCADE"),
+        sa.Column(
+            "payload",
+            json_type,
+            nullable=False,
+            server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.org_id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["session_id"], ["agent_sessions.id"], ondelete="CASCADE"
+        ),
     )
     op.create_index(
         "ix_agent_runtime_events_session_id",
@@ -48,6 +62,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_agent_runtime_events_event_type", table_name="agent_runtime_events")
-    op.drop_index("ix_agent_runtime_events_session_id", table_name="agent_runtime_events")
+    op.drop_index(
+        "ix_agent_runtime_events_event_type", table_name="agent_runtime_events"
+    )
+    op.drop_index(
+        "ix_agent_runtime_events_session_id", table_name="agent_runtime_events"
+    )
     op.drop_table("agent_runtime_events")

@@ -62,7 +62,9 @@ async def test_check_database_failure(monkeypatch):
 async def test_check_celery_workers_success(monkeypatch):
     module = types.SimpleNamespace(
         celery_app=types.SimpleNamespace(
-            control=types.SimpleNamespace(ping=lambda timeout: [{"worker@host": "pong"}]),
+            control=types.SimpleNamespace(
+                ping=lambda timeout: [{"worker@host": "pong"}]
+            ),
             connection=lambda: _connection_factory(True),
         )
     )
@@ -94,7 +96,9 @@ async def test_check_celery_workers_failure(monkeypatch):
 async def test_check_broker_connection_failure(monkeypatch):
     module = types.SimpleNamespace(
         celery_app=types.SimpleNamespace(
-            control=types.SimpleNamespace(ping=lambda timeout: [{"worker@host": "pong"}]),
+            control=types.SimpleNamespace(
+                ping=lambda timeout: [{"worker@host": "pong"}]
+            ),
             connection=lambda: _connection_factory(False),
         )
     )
@@ -110,7 +114,9 @@ async def test_check_broker_connection_failure(monkeypatch):
 async def test_run_target_api_ready(monkeypatch):
     module = types.SimpleNamespace(
         celery_app=types.SimpleNamespace(
-            control=types.SimpleNamespace(ping=lambda timeout: [{"worker@host": "pong"}]),
+            control=types.SimpleNamespace(
+                ping=lambda timeout: [{"worker@host": "pong"}]
+            ),
             connection=lambda: _connection_factory(True),
         )
     )

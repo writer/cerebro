@@ -19,7 +19,9 @@ from .celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-async def _send_slack_alert(title: str, message: str, severity: str, fields: Dict[str, Any]) -> None:
+async def _send_slack_alert(
+    title: str, message: str, severity: str, fields: Dict[str, Any]
+) -> None:
     webhook = settings.operational_alert_slack_webhook
     if not webhook:
         logger.debug("operational_slack_webhook_missing")
@@ -53,7 +55,9 @@ async def _send_slack_alert(title: str, message: str, severity: str, fields: Dic
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": "\n".join(f"*{key}:* {value}" for key, value in fields.items()),
+                                "text": "\n".join(
+                                    f"*{key}:* {value}" for key, value in fields.items()
+                                ),
                             }
                         ],
                     },
@@ -70,7 +74,9 @@ async def _send_slack_alert(title: str, message: str, severity: str, fields: Dic
         logger.warning("operational_slack_alert_failed", error=str(exc))
 
 
-async def _send_pagerduty_alert(title: str, message: str, severity: str, dedup_key: str) -> None:
+async def _send_pagerduty_alert(
+    title: str, message: str, severity: str, dedup_key: str
+) -> None:
     routing_key = settings.operational_alert_pagerduty_routing_key
     if not routing_key:
         logger.debug("operational_pagerduty_key_missing")
@@ -82,7 +88,11 @@ async def _send_pagerduty_alert(title: str, message: str, severity: str, dedup_k
         "dedup_key": dedup_key,
         "payload": {
             "summary": title[:1024],
-            "severity": severity if severity in {"info", "warning", "error", "critical"} else "warning",
+            "severity": (
+                severity
+                if severity in {"info", "warning", "error", "critical"}
+                else "warning"
+            ),
             "source": "cerebro-operations",
             "component": "operational-health",
             "group": "cerebro",
@@ -95,14 +105,18 @@ async def _send_pagerduty_alert(title: str, message: str, severity: str, dedup_k
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post("https://events.pagerduty.com/v2/enqueue", json=payload)
+            response = await client.post(
+                "https://events.pagerduty.com/v2/enqueue", json=payload
+            )
             response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("operational_pagerduty_alert_failed", error=str(exc))
 
 
 async def _send_email_alert(subject: str, body: str) -> None:
-    recipients = [email for email in settings.operational_alert_email_recipients if email]
+    recipients = [
+        email for email in settings.operational_alert_email_recipients if email
+    ]
     if not recipients:
         logger.debug("operational_email_recipients_missing")
         return
@@ -132,7 +146,10 @@ async def _send_email_alert(subject: str, body: str) -> None:
         else:
             client = smtplib.SMTP(host, port, timeout=10)
         with client as smtp:
-            if settings.operational_alert_smtp_use_tls and not settings.operational_alert_smtp_use_ssl:
+            if (
+                settings.operational_alert_smtp_use_tls
+                and not settings.operational_alert_smtp_use_ssl
+            ):
                 smtp.starttls()
             if username and password:
                 smtp.login(username, password)
@@ -152,7 +169,9 @@ async def _evaluate_alerts() -> Dict[str, Any]:
 
     evidence_threshold = max(1, settings.operational_evidence_stale_hours) * 3600
     queue_threshold = max(1, settings.operational_celery_queue_threshold)
-    db_threshold = max(0.0, min(1.0, settings.operational_db_pool_utilization_threshold))
+    db_threshold = max(
+        0.0, min(1.0, settings.operational_db_pool_utilization_threshold)
+    )
 
     integrations = metrics.get("integrations", {}).get("items", [])
     stale_integrations = []
@@ -163,11 +182,23 @@ async def _evaluate_alerts() -> Dict[str, Any]:
         status = item.get("status")
         integration_name = item.get("integration") or "unknown"
         scope = item.get("scope") or "default"
-        threshold_hours = item.get("stale_threshold_hours") or settings.operational_integration_stale_hours
+        threshold_hours = (
+            item.get("stale_threshold_hours")
+            or settings.operational_integration_stale_hours
+        )
         threshold_seconds = max(1, int(threshold_hours)) * 3600
 
         if status == "error" or (age is not None and age >= threshold_seconds):
-            stale_integrations.append((integration_name, scope, age, status, threshold_hours, item.get("error_count_24h", 0)))
+            stale_integrations.append(
+                (
+                    integration_name,
+                    scope,
+                    age,
+                    status,
+                    threshold_hours,
+                    item.get("error_count_24h", 0),
+                )
+            )
 
         metadata = item.get("metadata") or {}
         is_evidence = False
@@ -192,8 +223,12 @@ async def _evaluate_alerts() -> Dict[str, Any]:
             message=message,
             severity="warning" if len(stale_integrations) < 3 else "critical",
             fields={
-                "threshold_hours": ", ".join(str(entry[4]) for entry in stale_integrations[:3]),
-                "errors_24h": ", ".join(str(entry[5]) for entry in stale_integrations[:3]),
+                "threshold_hours": ", ".join(
+                    str(entry[4]) for entry in stale_integrations[:3]
+                ),
+                "errors_24h": ", ".join(
+                    str(entry[5]) for entry in stale_integrations[:3]
+                ),
             },
         )
         await _send_pagerduty_alert(
@@ -219,7 +254,9 @@ async def _evaluate_alerts() -> Dict[str, Any]:
     jobs_summary = metrics.get("jobs", {}).get("summary", {})
     queue_depth = jobs_summary.get("total_queue_depth", 0)
     if queue_depth >= queue_threshold:
-        message = f"Celery queue depth is {queue_depth} tasks (threshold {queue_threshold})."
+        message = (
+            f"Celery queue depth is {queue_depth} tasks (threshold {queue_threshold})."
+        )
         await _send_slack_alert(
             title="Celery backlog detected",
             message=message,

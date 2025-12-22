@@ -18,6 +18,7 @@ logger = structlog.get_logger(__name__)
 
 class OCSFFormat(str, Enum):
     """Supported OCSF export formats."""
+
     JSON = "json"
     JSONL = "jsonl"  # JSON Lines (newline-delimited)
     PARQUET = "parquet"  # For AWS Security Lake
@@ -102,8 +103,7 @@ class OCSFExporter:
             )
         elif format == OCSFFormat.JSONL:
             return "\n".join(
-                json.dumps(event.model_dump(exclude_none=True))
-                for event in events
+                json.dumps(event.model_dump(exclude_none=True)) for event in events
             )
         else:
             raise ValueError(f"String export only supports JSON/JSONL, not {format}")
@@ -118,14 +118,16 @@ class OCSFExporter:
 
         if append and output_path.exists():
             # Load existing, append, write back
-            with open(output_path, 'r') as f:
+            with open(output_path, "r") as f:
                 existing = json.load(f)
                 if not isinstance(existing, list):
                     existing = [existing]
 
-            combined = existing + [event.model_dump(exclude_none=True) for event in events]
+            combined = existing + [
+                event.model_dump(exclude_none=True) for event in events
+            ]
 
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 json.dump(combined, f, indent=2)
 
             logger.info(
@@ -135,7 +137,7 @@ class OCSFExporter:
                 total_events=len(combined),
             )
         else:
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 json.dump(
                     [event.model_dump(exclude_none=True) for event in events],
                     f,
@@ -159,11 +161,11 @@ class OCSFExporter:
     ) -> int:
         """Export as JSONL (newline-delimited JSON)."""
 
-        mode = 'a' if append else 'w'
+        mode = "a" if append else "w"
 
         with open(output_path, mode) as f:
             for event in events:
-                f.write(json.dumps(event.model_dump(exclude_none=True)) + '\n')
+                f.write(json.dumps(event.model_dump(exclude_none=True)) + "\n")
 
         logger.info(
             "Exported OCSF events to JSONL",
@@ -207,7 +209,7 @@ class OCSFExporter:
 
         # Write to Parquet
         table = pa.Table.from_pandas(df)
-        pq.write_table(table, output_path, compression='snappy')
+        pq.write_table(table, output_path, compression="snappy")
 
         logger.info(
             "Exported OCSF events to Parquet",
@@ -240,7 +242,7 @@ class OCSFExporter:
         df = pd.DataFrame(flattened_records)
 
         # Write CSV
-        mode = 'a' if append else 'w'
+        mode = "a" if append else "w"
         header = not append  # Write header only if not appending
 
         df.to_csv(output_path, mode=mode, header=header, index=False)
@@ -258,8 +260,8 @@ class OCSFExporter:
     def _flatten_dict(
         self,
         d: Dict[str, Any],
-        parent_key: str = '',
-        sep: str = '.',
+        parent_key: str = "",
+        sep: str = ".",
     ) -> Dict[str, Any]:
         """Flatten nested dictionary with dot notation."""
 

@@ -22,7 +22,7 @@ async def test_get_session_analytics_filters_by_event_type():
             agent_type=AgentType.SECURITY_ANALYST,
             created_by="analytics@example.com",
             title="Analytics Session",
-            context={}
+            context={},
         )
         db_session.add(session)
         await db_session.commit()
@@ -71,7 +71,7 @@ async def test_get_session_analytics_paginates_with_cursor():
             agent_type=AgentType.SECURITY_ANALYST,
             created_by="analytics@example.com",
             title="Analytics Session",
-            context={}
+            context={},
         )
         db_session.add(session)
         await db_session.commit()
@@ -134,4 +134,6 @@ async def test_get_session_analytics_paginates_with_cursor():
     summary_by_type = {item["event_type"]: item for item in summary}
     assert summary_by_type["memory_recall"]["event_count"] == 1
     assert summary_by_type["tool_execution"]["event_count"] == 1
-    assert datetime.fromisoformat(summary_by_type["memory_recall"]["first_seen"]) <= cursor
+    assert (
+        datetime.fromisoformat(summary_by_type["memory_recall"]["first_seen"]) <= cursor
+    )

@@ -19,7 +19,7 @@ from .ports import (
 
 __all__ = [
     "ResourceEntity",
-    "PrincipalEntity", 
+    "PrincipalEntity",
     "ConfigEntity",
     "IamPermissionEntity",
     "FindingEntity",

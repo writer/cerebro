@@ -5,9 +5,18 @@ from cerebro.analytics.sql_dialect import array_has_elements_expr, array_length_
 
 
 def test_array_length_expr_returns_dialect_specific_length() -> None:
-    assert array_length_expr(column_expr="r.cis", dialect="snowflake") == "ARRAY_SIZE(r.cis)"
-    assert array_length_expr(column_expr="r.cis", dialect="sqlite") == "json_array_length(r.cis)"
-    assert array_length_expr(column_expr="r.cis", dialect="postgresql") == "CARDINALITY(r.cis)"
+    assert (
+        array_length_expr(column_expr="r.cis", dialect="snowflake")
+        == "ARRAY_SIZE(r.cis)"
+    )
+    assert (
+        array_length_expr(column_expr="r.cis", dialect="sqlite")
+        == "json_array_length(r.cis)"
+    )
+    assert (
+        array_length_expr(column_expr="r.cis", dialect="postgresql")
+        == "CARDINALITY(r.cis)"
+    )
 
 
 def test_array_has_elements_expr_wraps_with_coalesce_predicate() -> None:

@@ -121,7 +121,11 @@ class OCSFMapper:
                         uid=resource.resource_id,
                         type=resource.resource_type,
                         labels=resource.tags.get("labels", []) if resource.tags else [],
-                        data={"arn": resource.resource_id} if resource.provider == "aws" else {},
+                        data=(
+                            {"arn": resource.resource_id}
+                            if resource.provider == "aws"
+                            else {}
+                        ),
                     )
                 )
 
@@ -152,9 +156,7 @@ class OCSFMapper:
         if finding.metadata and finding.metadata.get("remediation"):
             remediation = OCSFRemediation(
                 desc=finding.metadata["remediation"],
-                references=[
-                    finding.metadata.get("documentation", "")
-                ],
+                references=[finding.metadata.get("documentation", "")],
             )
 
         # Extract observables (IoCs, principals, resource IDs)
@@ -178,10 +180,14 @@ class OCSFMapper:
             remediation=remediation,
             compliance=compliance,
             risk_score=risk_score,
-            risk_level="High" if risk_score >= 70 else "Medium" if risk_score >= 40 else "Low",
+            risk_level=(
+                "High" if risk_score >= 70 else "Medium" if risk_score >= 40 else "Low"
+            ),
             cloud=cloud,
             observables=observables,
-            unmapped={"cerebro_metadata": finding.metadata} if finding.metadata else None,
+            unmapped=(
+                {"cerebro_metadata": finding.metadata} if finding.metadata else None
+            ),
         )
 
     async def compliance_result_to_ocsf(
@@ -210,7 +216,11 @@ class OCSFMapper:
 
         # Map status
         compliance_status = "Pass" if status.lower() == "pass" else "Fail"
-        severity_id = OCSFSeverity.INFORMATIONAL if status.lower() == "pass" else OCSFSeverity.HIGH
+        severity_id = (
+            OCSFSeverity.INFORMATIONAL
+            if status.lower() == "pass"
+            else OCSFSeverity.HIGH
+        )
         severity = OCSFSeverity(severity_id).name.title()
 
         # Activity: Create (new test result)
@@ -304,7 +314,9 @@ class OCSFMapper:
 
         return types if types else ["Security Issue"]
 
-    def _determine_profiles(self, finding: Finding, account: Optional[Account]) -> List[str]:
+    def _determine_profiles(
+        self, finding: Finding, account: Optional[Account]
+    ) -> List[str]:
         """Determine applicable OCSF profiles."""
         profiles = []
 

@@ -26,7 +26,9 @@ from cerebro.agents.models import (
 
 
 class ToolingRepository:
-    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession, *, registry: CollectorRegistry | None = None
+    ) -> None:
         self._db = db
         from cerebro_sdk.telemetry import get_logger, create_counter
 
@@ -83,9 +85,13 @@ class ToolingRepository:
             output_expr = cast(ToolInvocation.output_data, String)
             dialect = self._db.bind.dialect.name if self._db.bind else "postgresql"
             if dialect == "sqlite":
-                stmt = stmt.where((input_expr.like(pattern)) | (output_expr.like(pattern)))
+                stmt = stmt.where(
+                    (input_expr.like(pattern)) | (output_expr.like(pattern))
+                )
             else:
-                stmt = stmt.where((input_expr.ilike(pattern)) | (output_expr.ilike(pattern)))
+                stmt = stmt.where(
+                    (input_expr.ilike(pattern)) | (output_expr.ilike(pattern))
+                )
         if since:
             stmt = stmt.where(ToolInvocation.started_at >= since)
         if until:
@@ -94,7 +100,9 @@ class ToolingRepository:
             stmt = stmt.where(ToolInvocation.started_at < cursor)
         if offset:
             stmt = stmt.offset(offset)
-        stmt = stmt.order_by(ToolInvocation.started_at.desc(), ToolInvocation.id.desc()).limit(effective_limit)
+        stmt = stmt.order_by(
+            ToolInvocation.started_at.desc(), ToolInvocation.id.desc()
+        ).limit(effective_limit)
         results = list(await self._db.scalars(stmt))
         self._logger.debug(
             "tooling.list_invocations",
@@ -133,7 +141,9 @@ class ToolingRepository:
             stmt = stmt.where(ToolApproval.requested_at < cursor)
         if offset:
             stmt = stmt.offset(offset)
-        stmt = stmt.order_by(ToolApproval.requested_at.desc(), ToolApproval.id.desc()).limit(effective_limit)
+        stmt = stmt.order_by(
+            ToolApproval.requested_at.desc(), ToolApproval.id.desc()
+        ).limit(effective_limit)
         results = list(await self._db.scalars(stmt))
         self._logger.debug(
             "tooling.list_approvals",
@@ -252,7 +262,9 @@ class ToolingRepository:
 
 
 class NotificationRepository:
-    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession, *, registry: CollectorRegistry | None = None
+    ) -> None:
         self._db = db
         from cerebro_sdk.telemetry import get_logger, create_counter
 
@@ -292,7 +304,9 @@ class NotificationRepository:
         limit: int,
     ) -> list[AgentReviewNotification]:
         self._counter.labels("list").inc()
-        stmt = select(AgentReviewNotification).where(AgentReviewNotification.org_id == org_id)
+        stmt = select(AgentReviewNotification).where(
+            AgentReviewNotification.org_id == org_id
+        )
         if status:
             stmt = stmt.where(AgentReviewNotification.status == status)
         stmt = stmt.order_by(AgentReviewNotification.created_at.desc()).limit(limit)
@@ -311,7 +325,9 @@ class NotificationRepository:
 
 
 class TicketRepository:
-    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession, *, registry: CollectorRegistry | None = None
+    ) -> None:
         self._db = db
         from cerebro_sdk.telemetry import get_logger, create_counter
 
@@ -360,7 +376,11 @@ def memory_scope_distribution(
     *,
     where_clause,
 ) -> Select:
-    scope_elements = func.jsonb_array_elements(AgentMemoryEntry.scopes).table_valued("scope").lateral()
+    scope_elements = (
+        func.jsonb_array_elements(AgentMemoryEntry.scopes)
+        .table_valued("scope")
+        .lateral()
+    )
     scope_json = scope_elements.column("scope")
     scope_type_col = scope_json["type"].astext
     return (

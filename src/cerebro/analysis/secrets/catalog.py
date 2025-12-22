@@ -46,7 +46,7 @@ SECRET_CATALOG: Dict[SecretFamily, SecretDescriptor] = {
         family=SecretFamily.OKTA,
         display_name="Okta API token",
         keywords=("okta",),
-        patterns=(_compile(r"00[a-z0-9]{20,}") ,),
+        patterns=(_compile(r"00[a-z0-9]{20,}"),),
         graph_controls=("GC-SECRETS-OKTA-001",),
     ),
     SecretFamily.AWS_ACCESS_KEY: SecretDescriptor(
@@ -80,7 +80,9 @@ SECRET_CATALOG: Dict[SecretFamily, SecretDescriptor] = {
 }
 
 
-def identify_secret_family(secret_type: Optional[str], raw_result: Optional[Dict[str, object]]) -> SecretDescriptor:
+def identify_secret_family(
+    secret_type: Optional[str], raw_result: Optional[Dict[str, object]]
+) -> SecretDescriptor:
     """Return descriptor for the best matching secret family."""
 
     lowered_type = (secret_type or "").lower()

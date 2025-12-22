@@ -111,9 +111,7 @@ class IAMUserWithoutMFAProducer(BaseAWSProducer):
             severity = Severity.CRITICAL if is_admin else self.severity
 
             user_label = resource.name or resource.external_id
-            risk_summary = (
-                ", ".join(risk_factors) if risk_factors else "None"
-            )
+            risk_summary = ", ".join(risk_factors) if risk_factors else "None"
 
             finding = self.create_finding(
                 resource=resource,

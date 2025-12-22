@@ -13,10 +13,10 @@ from cerebro.agents.models import Base as AgentBase
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Setup test environment variables."""
-    os.environ['ENVIRONMENT'] = 'test'
+    os.environ["ENVIRONMENT"] = "test"
     yield
     # Cleanup after tests
-    os.environ.pop('ENVIRONMENT', None)
+    os.environ.pop("ENVIRONMENT", None)
 
 
 @pytest.fixture(scope="session")
@@ -36,15 +36,15 @@ async def agent_db() -> AsyncGenerator[AsyncSession, None]:
         poolclass=StaticPool,
         echo=False,
     )
-    
+
     # Create only agent tables
     async with engine.begin() as conn:
         await conn.run_sync(AgentBase.metadata.create_all)
-    
+
     # Create session
     async_session = async_sessionmaker(engine, expire_on_commit=False)
-    
+
     async with async_session() as session:
         yield session
-    
+
     await engine.dispose()

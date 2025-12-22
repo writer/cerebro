@@ -6,6 +6,6 @@ from .adapters import SQLAlchemyRepository, CELRuleEngineAdapter
 __all__ = [
     "ProviderRegistry",
     "register_provider",
-    "SQLAlchemyRepository", 
+    "SQLAlchemyRepository",
     "CELRuleEngineAdapter",
 ]

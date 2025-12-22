@@ -86,7 +86,7 @@ DEFAULT_POLICY_GUIDANCE: Sequence[Dict[str, Any]] = (
                 "reference": "Vendor Management SOP :: Onboarding Checklist",
             }
         ],
-        "notes": "Submit new integrations through the Vendor Security Request form in GRC."
+        "notes": "Submit new integrations through the Vendor Security Request form in GRC.",
     },
 )
 
@@ -135,16 +135,38 @@ class SelfServiceQuestionClassifier:
     """Lightweight heuristic classifier for common security questions."""
 
     ACCESS_KEYWORDS = {
-        "access", "permission", "permissions", "who", "assume", "role", "admin",
+        "access",
+        "permission",
+        "permissions",
+        "who",
+        "assume",
+        "role",
+        "admin",
     }
     POLICY_KEYWORDS = {
-        "policy", "allowed", "allow", "can i", "should", "approved", "standard",
+        "policy",
+        "allowed",
+        "allow",
+        "can i",
+        "should",
+        "approved",
+        "standard",
     }
     FINDING_KEYWORDS = {
-        "finding", "findings", "critical", "false positive", "seen before", "team",
+        "finding",
+        "findings",
+        "critical",
+        "false positive",
+        "seen before",
+        "team",
     }
     COMPLIANCE_KEYWORDS = {
-        "compliance", "soc2", "control", "audit", "failing", "status",
+        "compliance",
+        "soc2",
+        "control",
+        "audit",
+        "failing",
+        "status",
     }
 
     _CROSS_ACCOUNT_PATTERNS = ("cross-account", "assume role", "sts")
@@ -162,13 +184,17 @@ class SelfServiceQuestionClassifier:
         confidence = scores[question_type]
 
         if confidence == 0:
-            return SelfServiceClassification(question_type=QuestionType.UNKNOWN, confidence=0.0)
+            return SelfServiceClassification(
+                question_type=QuestionType.UNKNOWN, confidence=0.0
+            )
 
         intent, subject_user, subject_resource = None, None, None
         context: Dict[str, Any] = {}
 
         if question_type is QuestionType.ACCESS:
-            intent, subject_user, subject_resource, context = self._classify_access(normalized)
+            intent, subject_user, subject_resource, context = self._classify_access(
+                normalized
+            )
         elif question_type is QuestionType.POLICY:
             intent, context = self._classify_policy(normalized)
         elif question_type is QuestionType.FINDING:
@@ -191,7 +217,9 @@ class SelfServiceQuestionClassifier:
             return 0.0
         return round(min(1.0, hits / max(len(keywords), 4)), 2)
 
-    def _classify_access(self, question: str) -> Tuple[str, Optional[str], Optional[str], Dict[str, Any]]:
+    def _classify_access(
+        self, question: str
+    ) -> Tuple[str, Optional[str], Optional[str], Dict[str, Any]]:
         user_match = re.search(r"does\s+([\w@\.\-]+)\s+have", question)
         resource_match = re.search(r"access\s+to\s+([^\?]+)", question)
         if question.startswith("who has access") and resource_match:
@@ -357,26 +385,27 @@ class SelfServiceKnowledgeService:
         if classification.subject_user and classification.subject_resource:
             summary = (
                 f"Yes, {classification.subject_user} can reach {classification.subject_resource} "
-                f"with {result.rows[0]['permission']}" if result.total_rows else
-                f"No path from {classification.subject_user} to {classification.subject_resource} was found."
+                f"with {result.rows[0]['permission']}"
+                if result.total_rows
+                else f"No path from {classification.subject_user} to {classification.subject_resource} was found."
             )
         elif classification.subject_user:
             summary = (
                 f"{classification.subject_user} has {result.total_rows} permission paths."
-                if result.total_rows else
-                f"No permissions found for {classification.subject_user}."
+                if result.total_rows
+                else f"No permissions found for {classification.subject_user}."
             )
         elif classification.subject_resource:
             summary = (
                 f"Identified {result.total_rows} principals with access to {classification.subject_resource}."
-                if result.total_rows else
-                f"No principals found with access to {classification.subject_resource}."
+                if result.total_rows
+                else f"No principals found with access to {classification.subject_resource}."
             )
         else:
             summary = (
                 f"Retrieved {result.total_rows} principal-resource relationships."
-                if result.total_rows else
-                "No IAM relationships matched the query."
+                if result.total_rows
+                else "No IAM relationships matched the query."
             )
 
         return SelfServiceAnswer(
@@ -411,13 +440,13 @@ class SelfServiceKnowledgeService:
                 "matched_keywords": best_overlap,
             }
             summary = matched_entry["answer"]
-            confidence = max(classification.confidence, min(1.0, 0.6 + best_overlap * 0.1))
+            confidence = max(
+                classification.confidence, min(1.0, 0.6 + best_overlap * 0.1)
+            )
         else:
             evidence = []
             details = {"matched_keywords": 0}
-            summary = (
-                "I couldn't locate a published policy for that scenario. Please escalate to security so we can review."
-            )
+            summary = "I couldn't locate a published policy for that scenario. Please escalate to security so we can review."
             confidence = classification.confidence * 0.5
 
         return SelfServiceAnswer(
@@ -434,7 +463,11 @@ class SelfServiceKnowledgeService:
         classification: SelfServiceClassification,
         question: str,
     ) -> SelfServiceAnswer:
-        severity = classification.additional_context.get("severity") if classification.additional_context else None
+        severity = (
+            classification.additional_context.get("severity")
+            if classification.additional_context
+            else None
+        )
 
         async with self.session_factory() as session:  # type: ignore[func-returns-value]
             stmt = select(Finding).where(Finding.org_id == org_id)
@@ -450,7 +483,9 @@ class SelfServiceKnowledgeService:
                 "severity": finding.severity,
                 "status": finding.status,
                 "resource_id": finding.resource_id,
-                "created_at": finding.created_at.isoformat() if finding.created_at else None,
+                "created_at": (
+                    finding.created_at.isoformat() if finding.created_at else None
+                ),
             }
             for finding in findings
         ]
@@ -498,24 +533,33 @@ class SelfServiceKnowledgeService:
                         f"Next audit for {', '.join(schedule.frameworks)} is scheduled on "
                         f"{schedule.audit_date.date().isoformat()}."
                     )
-                    evidence.append({
-                        "schedule_id": str(schedule.id),
-                        "frameworks": schedule.frameworks,
-                        "audit_date": schedule.audit_date.isoformat(),
-                        "status": schedule.status.value,
-                    })
+                    evidence.append(
+                        {
+                            "schedule_id": str(schedule.id),
+                            "frameworks": schedule.frameworks,
+                            "audit_date": schedule.audit_date.isoformat(),
+                            "status": schedule.status.value,
+                        }
+                    )
                 else:
                     summary = "No future audits are scheduled."
             elif intent == "failing_controls":
                 stmt = (
                     select(PreAuditControlFinding)
                     .join(PreAuditRun, PreAuditControlFinding.run_id == PreAuditRun.id)
-                    .join(ComplianceAuditSchedule, PreAuditRun.schedule_id == ComplianceAuditSchedule.id)
+                    .join(
+                        ComplianceAuditSchedule,
+                        PreAuditRun.schedule_id == ComplianceAuditSchedule.id,
+                    )
                     .where(ComplianceAuditSchedule.org_id == org_id)
-                    .where(PreAuditControlFinding.status.in_([
-                        ControlHealthStatus.FAILING,
-                        ControlHealthStatus.AT_RISK,
-                    ]))
+                    .where(
+                        PreAuditControlFinding.status.in_(
+                            [
+                                ControlHealthStatus.FAILING,
+                                ControlHealthStatus.AT_RISK,
+                            ]
+                        )
+                    )
                     .order_by(PreAuditControlFinding.created_at.desc())
                     .limit(20)
                 )
@@ -531,8 +575,9 @@ class SelfServiceKnowledgeService:
                     for finding in failing
                 ]
                 summary = (
-                    f"There are {len(failing)} controls failing or at risk." if failing else
-                    "All tracked controls are currently passing."
+                    f"There are {len(failing)} controls failing or at risk."
+                    if failing
+                    else "All tracked controls are currently passing."
                 )
             else:  # framework_status or overview
                 framework = None
@@ -541,13 +586,18 @@ class SelfServiceKnowledgeService:
 
                 stmt = (
                     select(PreAuditRun)
-                    .join(ComplianceAuditSchedule, PreAuditRun.schedule_id == ComplianceAuditSchedule.id)
+                    .join(
+                        ComplianceAuditSchedule,
+                        PreAuditRun.schedule_id == ComplianceAuditSchedule.id,
+                    )
                     .where(ComplianceAuditSchedule.org_id == org_id)
                     .order_by(PreAuditRun.run_at.desc())
                 )
                 if framework:
                     stmt = stmt.where(
-                        func.lower(cast(ComplianceAuditSchedule.frameworks, String)).like(f"%{framework.lower()}%")
+                        func.lower(
+                            cast(ComplianceAuditSchedule.frameworks, String)
+                        ).like(f"%{framework.lower()}%")
                     )
                 run = (await session.execute(stmt.limit(1))).scalars().first()
                 if run:
@@ -555,17 +605,19 @@ class SelfServiceKnowledgeService:
                         f"Latest pre-audit run estimates {run.estimated_outcome.lower()} "
                         f"with {run.failing_controls} failing controls and {run.at_risk_controls} at risk."
                     )
-                    evidence.append({
-                        "run_id": str(run.id),
-                        "schedule_id": str(run.schedule_id),
-                        "estimated_outcome": run.estimated_outcome,
-                        "totals": {
-                            "passing": run.passing_controls,
-                            "failing": run.failing_controls,
-                            "at_risk": run.at_risk_controls,
-                            "missing": run.missing_controls,
-                        },
-                    })
+                    evidence.append(
+                        {
+                            "run_id": str(run.id),
+                            "schedule_id": str(run.schedule_id),
+                            "estimated_outcome": run.estimated_outcome,
+                            "totals": {
+                                "passing": run.passing_controls,
+                                "failing": run.failing_controls,
+                                "at_risk": run.at_risk_controls,
+                                "missing": run.missing_controls,
+                            },
+                        }
+                    )
                 else:
                     summary = "No pre-audit runs have been recorded yet."
 
@@ -591,7 +643,9 @@ class SelfServiceKnowledgeService:
             details={"intent": "unknown"},
         )
 
-    async def _safe_query(self, sql: str, params: Optional[List[Any]] = None) -> QueryResult:
+    async def _safe_query(
+        self, sql: str, params: Optional[List[Any]] = None
+    ) -> QueryResult:
         try:
             return await self.query_engine.execute_query(sql, params=params)
         except Exception as exc:  # pragma: no cover - defensive guardrail
@@ -668,7 +722,9 @@ class SelfServiceAnalytics:
         async with self.session_factory() as session:  # type: ignore[func-returns-value]
             org_ids = await self._list_org_ids(session, period_start, period_end)
             for org_id in org_ids:
-                report = await self._build_report(session, org_id, period_start, period_end)
+                report = await self._build_report(
+                    session, org_id, period_start, period_end
+                )
                 if report:
                     session.add(report)
                     reports.append(report)
@@ -708,7 +764,10 @@ class SelfServiceAnalytics:
             .where(AgentSelfServiceQuestion.org_id == org_id)
             .where(AgentSelfServiceQuestion.created_at >= period_start)
             .where(AgentSelfServiceQuestion.created_at < period_end)
-            .group_by(AgentSelfServiceQuestion.question, AgentSelfServiceQuestion.question_type)
+            .group_by(
+                AgentSelfServiceQuestion.question,
+                AgentSelfServiceQuestion.question_type,
+            )
             .order_by(func.count().desc())
             .limit(10)
         )
@@ -735,9 +794,7 @@ class SelfServiceAnalytics:
             for row in top_entries
         ]
 
-        recommendations = (
-            "Top 10 self-service questions requested this month. Consider documenting these in the knowledge base."
-        )
+        recommendations = "Top 10 self-service questions requested this month. Consider documenting these in the knowledge base."
 
         return AgentSelfServiceReport(
             org_id=org_id,

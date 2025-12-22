@@ -19,7 +19,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def create_rule(
     rule: RuleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_write_rules)
+    current_user: User = Depends(require_write_rules),
 ):
     """Create a new rule."""
     # Verify policy exists if provided
@@ -27,14 +27,14 @@ async def create_rule(
         policy = await db.get(Policy, rule.policy_id)
         if not policy:
             raise HTTPException(status_code=404, detail="Policy not found")
-    
+
     # Test compile the rule if it's CEL
     if rule.expression_lang == "cel":
         try:
             rule_engine.compile_rule(rule.expression)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Rule compilation failed: {e}")
-    
+
     db_rule = Rule(
         policy_id=rule.policy_id,
         name=rule.name,
@@ -47,9 +47,9 @@ async def create_rule(
         cwe=rule.cwe,
         cis=rule.cis,
         nist_800_53=rule.nist_800_53,
-        mitre_attack=rule.mitre_attack
+        mitre_attack=rule.mitre_attack,
     )
-    
+
     db.add(db_rule)
     await db.commit()
     await db.refresh(db_rule)
@@ -63,28 +63,25 @@ async def list_rules(
     is_active: Optional[bool] = True,
     skip: int = 0,
     limit: int = 100,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List rules."""
     stmt = select(Rule)
-    
+
     if provider:
         stmt = stmt.where(Rule.provider.contains([provider]))
     if severity:
         stmt = stmt.where(Rule.severity == severity)
     if is_active is not None:
         stmt = stmt.where(Rule.is_active == is_active)
-    
+
     stmt = stmt.offset(skip).limit(limit)
     rules = await db.scalars(stmt)
     return list(rules)
 
 
 @router.get("/{rule_id}", response_model=RuleResponse)
-async def get_rule(
-    rule_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_rule(rule_id: UUID, db: AsyncSession = Depends(get_db)):
     """Get rule by ID."""
     rule = await db.get(Rule, rule_id)
     if not rule:
@@ -97,20 +94,20 @@ async def update_rule(
     rule_id: UUID,
     rule_update: RuleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_write_rules)
+    current_user: User = Depends(require_write_rules),
 ):
     """Update a rule."""
     db_rule = await db.get(Rule, rule_id)
     if not db_rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    
+
     # Test compile the rule if it's CEL
     if rule_update.expression_lang == "cel":
         try:
             rule_engine.compile_rule(rule_update.expression)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Rule compilation failed: {e}")
-    
+
     # Update fields
     db_rule.name = rule_update.name
     db_rule.description = rule_update.description
@@ -124,7 +121,7 @@ async def update_rule(
     db_rule.nist_800_53 = rule_update.nist_800_53
     db_rule.mitre_attack = rule_update.mitre_attack
     db_rule.version += 1  # Increment version
-    
+
     await db.commit()
     await db.refresh(db_rule)
     return db_rule
@@ -134,41 +131,34 @@ async def update_rule(
 async def deactivate_rule(
     rule_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_write_rules)
+    current_user: User = Depends(require_write_rules),
 ):
     """Deactivate a rule (soft delete)."""
     rule = await db.get(Rule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    
+
     rule.is_active = False
     await db.commit()
     return {"message": "Rule deactivated successfully"}
 
 
 @router.post("/{rule_id}/test")
-async def test_rule(
-    rule_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def test_rule(rule_id: UUID, db: AsyncSession = Depends(get_db)):
     """Test a rule compilation."""
     rule = await db.get(Rule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    
+
     if rule.expression_lang != "cel":
         raise HTTPException(status_code=400, detail="Only CEL rules can be tested")
-    
+
     try:
         rule_engine.compile_rule(rule.expression)
         return {
             "rule_id": rule_id,
             "status": "success",
-            "message": "Rule compiled successfully"
+            "message": "Rule compiled successfully",
         }
     except Exception as e:
-        return {
-            "rule_id": rule_id,
-            "status": "error",
-            "message": str(e)
-        }
+        return {"rule_id": rule_id, "status": "error", "message": str(e)}

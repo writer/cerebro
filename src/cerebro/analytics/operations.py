@@ -17,7 +17,12 @@ from cerebro.core.database import engine as core_engine
 from cerebro.integrations.freshness import IntegrationFreshnessService
 from cerebro.integrations.state import IntegrationIssueEventRepository
 from cerebro.metrics import api_metrics
-from cerebro.agents.models import AgentMessage, AgentSession, ToolInvocation, ToolInvocationStatus
+from cerebro.agents.models import (
+    AgentMessage,
+    AgentSession,
+    ToolInvocation,
+    ToolInvocationStatus,
+)
 
 
 def _coerce_float_list(value: Any) -> List[float]:
@@ -50,7 +55,9 @@ def _build_schedule_index(schedule_conf: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _resolve_task_for_integration(integration: str, tasks: Iterable[str]) -> Optional[str]:
+def _resolve_task_for_integration(
+    integration: str, tasks: Iterable[str]
+) -> Optional[str]:
     integration_key = integration.split(".")[0].lower()
     for task in tasks:
         if not isinstance(task, str):
@@ -86,9 +93,13 @@ def _compute_next_scheduled(
             remaining = schedule_obj.remaining_estimate(datetime.utcnow())
             if isinstance(remaining, timedelta):
                 delta = remaining
-        except Exception:  # pragma: no cover - Celery schedule introspection best effort
+        except (
+            Exception
+        ):  # pragma: no cover - Celery schedule introspection best effort
             delta = None
-    elif hasattr(schedule_obj, "run_every") and isinstance(getattr(schedule_obj, "run_every"), timedelta):
+    elif hasattr(schedule_obj, "run_every") and isinstance(
+        getattr(schedule_obj, "run_every"), timedelta
+    ):
         delta = schedule_obj.run_every
 
     if delta is None:
@@ -134,7 +145,9 @@ async def gather_celery_status() -> Dict[str, Any]:
                 total_active += active_count
                 total_reserved += reserved_count
 
-                host = worker_name.split("@", 1)[1] if "@" in worker_name else worker_name
+                host = (
+                    worker_name.split("@", 1)[1] if "@" in worker_name else worker_name
+                )
                 short_name = worker_name.split("@", 1)[0]
                 health_status = "healthy" if "rusage" in worker_stats else "degraded"
 
@@ -143,7 +156,9 @@ async def gather_celery_status() -> Dict[str, Any]:
                 if isinstance(task_stats, dict):
                     for metrics in task_stats.values():
                         if isinstance(metrics, dict):
-                            failure_count = metrics.get("failures") or metrics.get("failed")
+                            failure_count = metrics.get("failures") or metrics.get(
+                                "failed"
+                            )
                             try:
                                 failed_tasks += int(failure_count or 0)
                             except (TypeError, ValueError):
@@ -166,11 +181,15 @@ async def gather_celery_status() -> Dict[str, Any]:
                 "workers": workers,
                 "summary": {
                     "total_workers": len(workers),
-                    "healthy_workers": sum(1 for worker in workers if worker["status"] == "healthy"),
+                    "healthy_workers": sum(
+                        1 for worker in workers if worker["status"] == "healthy"
+                    ),
                     "total_active_tasks": total_active,
                     "total_reserved_tasks": total_reserved,
                     "total_queue_depth": total_active + total_reserved,
-                    "failed_tasks": sum(worker.get("failed_tasks", 0) for worker in workers),
+                    "failed_tasks": sum(
+                        worker.get("failed_tasks", 0) for worker in workers
+                    ),
                 },
             }
         except Exception as exc:  # pragma: no cover - defensive guard
@@ -235,7 +254,9 @@ async def _collect_integration_health(db: AsyncSession) -> Dict[str, Any]:
         next_sync = _compute_next_scheduled(entry.integration, schedule_index)
         threshold_hours = _get_integration_stale_threshold(entry.integration)
         error_count = sum(
-            count for severity, count in events.items() if str(severity).lower() in {"error", "critical"}
+            count
+            for severity, count in events.items()
+            if str(severity).lower() in {"error", "critical"}
         )
 
         items.append(
@@ -243,7 +264,9 @@ async def _collect_integration_health(db: AsyncSession) -> Dict[str, Any]:
                 "integration": entry.integration,
                 "scope": entry.scope,
                 "status": entry.status,
-                "last_synced_at": entry.last_synced_at.isoformat() if entry.last_synced_at else None,
+                "last_synced_at": (
+                    entry.last_synced_at.isoformat() if entry.last_synced_at else None
+                ),
                 "age_seconds": entry.age_seconds,
                 "age_human": entry.age_human,
                 "warning": entry.warning,
@@ -304,7 +327,9 @@ async def _collect_database_health(db: AsyncSession) -> Dict[str, Any]:
         )
         for row in result:
             duration = row.duration
-            duration_seconds = duration.total_seconds() if hasattr(duration, "total_seconds") else None
+            duration_seconds = (
+                duration.total_seconds() if hasattr(duration, "total_seconds") else None
+            )
             slow_queries.append(
                 {
                     "pid": row.pid,
@@ -347,7 +372,11 @@ async def _collect_agent_health(db: AsyncSession) -> Dict[str, Any]:
     hour_ago = now - timedelta(hours=1)
     day_ago = now - timedelta(hours=24)
 
-    active_sessions_stmt = select(func.count()).select_from(AgentSession).where(AgentSession.is_active.is_(True))
+    active_sessions_stmt = (
+        select(func.count())
+        .select_from(AgentSession)
+        .where(AgentSession.is_active.is_(True))
+    )
     active_sessions = (await db.execute(active_sessions_stmt)).scalar_one()
 
     messages_stmt = (
@@ -427,9 +456,14 @@ async def _collect_usage_metrics(db: AsyncSession) -> Dict[str, Any]:
         return total
 
     feature_breakdown = {
-        "queries": _sum_matching(events_by_component, ["query", "sql"]) + _sum_matching(events_by_type, ["query"]),
-        "agent_sessions": _sum_matching(events_by_component, ["agent", "session"]) + _sum_matching(events_by_type, ["agent_session", "agent.run"]),
-        "findings_viewed": _sum_matching(events_by_component, ["finding", "review", "evidence"]) + _sum_matching(events_by_type, ["finding", "evidence"]),
+        "queries": _sum_matching(events_by_component, ["query", "sql"])
+        + _sum_matching(events_by_type, ["query"]),
+        "agent_sessions": _sum_matching(events_by_component, ["agent", "session"])
+        + _sum_matching(events_by_type, ["agent_session", "agent.run"]),
+        "findings_viewed": _sum_matching(
+            events_by_component, ["finding", "review", "evidence"]
+        )
+        + _sum_matching(events_by_type, ["finding", "evidence"]),
     }
 
     usage_summary = {

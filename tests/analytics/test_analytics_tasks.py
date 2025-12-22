@@ -6,7 +6,12 @@ import pytest
 from sqlalchemy import select
 
 import cerebro.tasks.analytics_tasks as analytics_tasks
-from cerebro.analytics.time_series import MetricSnapshot, SecurityMetricSnapshot, TimeSeriesCollector, MetricType
+from cerebro.analytics.time_series import (
+    MetricSnapshot,
+    SecurityMetricSnapshot,
+    TimeSeriesCollector,
+    MetricType,
+)
 from cerebro.analytics.risk_scoring import OrganizationRiskScore, RiskSeverity
 
 sqlite3.register_adapter(UUID, lambda value: str(value))
@@ -115,7 +120,9 @@ async def test_collect_security_metrics_for_org_records_snapshots(
     result = await analytics_tasks._collect_security_metrics_for_org(test_org.org_id)
 
     assert result["org_id"] == str(test_org.org_id)
-    assert result["snapshots_created"], "Expected security metric snapshots to be stored"
+    assert result[
+        "snapshots_created"
+    ], "Expected security metric snapshots to be stored"
 
     snapshot_stmt = select(SecurityMetricSnapshot).where(
         SecurityMetricSnapshot.org_id == test_org.org_id
@@ -127,7 +134,8 @@ async def test_collect_security_metrics_for_org_records_snapshots(
         snapshot.metric_type == "overall_risk_score" for snapshot in snapshots
     ), "Overall risk score snapshot missing"
     assert any(
-        snapshot.metric_type == MetricType.COMPLIANCE_SCORE.value for snapshot in snapshots
+        snapshot.metric_type == MetricType.COMPLIANCE_SCORE.value
+        for snapshot in snapshots
     ), "Compliance score snapshot missing"
 
 

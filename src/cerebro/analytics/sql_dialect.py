@@ -51,7 +51,9 @@ def timestamp_minus_hours_expr(*, hours: int, dialect: str) -> str:
     return f"CURRENT_TIMESTAMP - INTERVAL '{int(hours)} hours'"
 
 
-def case_insensitive_like_expr(*, column_expr: str, pattern_expr: str, dialect: str) -> str:
+def case_insensitive_like_expr(
+    *, column_expr: str, pattern_expr: str, dialect: str
+) -> str:
     if dialect in {"postgresql", "snowflake"}:
         return f"({column_expr} ILIKE {pattern_expr})"
     if dialect == "sqlite":
@@ -89,7 +91,9 @@ def array_agg_ordered_expr(*, value_expr: str, order_by_expr: str, dialect: str)
     return f"ARRAY_AGG({value_expr} ORDER BY {order_by_expr})"
 
 
-def split_part_expr(*, column_expr: str, delimiter: str, part: int, dialect: str) -> str:
+def split_part_expr(
+    *, column_expr: str, delimiter: str, part: int, dialect: str
+) -> str:
     part_value = int(part)
     if dialect in {"postgresql", "snowflake"}:
         return f"SPLIT_PART({column_expr}, '{delimiter}', {part_value})"
@@ -146,7 +150,7 @@ def cast_to_string_expr(*, column_expr: str, dialect: str) -> str:
 
 def json_text_extract_expr(*, column_expr: str, key: str, dialect: str) -> str:
     if dialect == "snowflake":
-        return f"{column_expr}:\"{key}\"::string"
+        return f'{column_expr}:"{key}"::string'
     if dialect == "sqlite":
         return f"json_extract({column_expr}, '$.{key}')"
     if dialect == "postgresql":

@@ -15,7 +15,11 @@ from cerebro.agents.models import AgentReviewTask, AgentSession, AgentType
 from cerebro.agents.notification_service import NotificationService
 from cerebro.agents.review_service import AgentReviewService
 from cerebro.agents.ticketing_service import TicketingService
-from cerebro.compliance.frameworks import ComplianceControl, ComplianceFramework, get_framework
+from cerebro.compliance.frameworks import (
+    ComplianceControl,
+    ComplianceFramework,
+    get_framework,
+)
 from cerebro.compliance.preaudit_models import (
     AuditScheduleStatus,
     ComplianceAuditSchedule,
@@ -104,7 +108,9 @@ class PreAuditHealthCheckService:
             await db.refresh(schedule)
             return schedule
 
-    async def due_schedules(self, *, as_of: Optional[datetime] = None) -> List[ComplianceAuditSchedule]:
+    async def due_schedules(
+        self, *, as_of: Optional[datetime] = None
+    ) -> List[ComplianceAuditSchedule]:
         """Return schedules that should execute a pre-audit run."""
 
         now = as_of or datetime.now(timezone.utc)
@@ -136,7 +142,9 @@ class PreAuditHealthCheckService:
                 await self._persist_findings(db, run, evaluations)
                 await db.commit()
             except Exception as exc:  # pragma: no cover - defensive logging
-                logger.exception("Pre-audit health check failed", schedule_id=str(schedule_id))
+                logger.exception(
+                    "Pre-audit health check failed", schedule_id=str(schedule_id)
+                )
                 run.status = PreAuditRunStatus.ERROR
                 run.error_message = str(exc)
                 schedule.status = AuditScheduleStatus.ACTIVE
@@ -167,12 +175,16 @@ class PreAuditHealthCheckService:
         )
         return await self.run_for_schedule(schedule.id)
 
-    async def _evaluate_frameworks(self, schedule: ComplianceAuditSchedule) -> List[ControlEvaluation]:
+    async def _evaluate_frameworks(
+        self, schedule: ComplianceAuditSchedule
+    ) -> List[ControlEvaluation]:
         results: List[ControlEvaluation] = []
         for framework_name in schedule.frameworks:
             framework = get_framework(framework_name)
             if not framework:
-                logger.warning("Unknown framework referenced in schedule", framework=framework_name)
+                logger.warning(
+                    "Unknown framework referenced in schedule", framework=framework_name
+                )
                 continue
             results.extend(await self._evaluate_framework(schedule, framework))
         return results
@@ -210,11 +222,13 @@ class PreAuditHealthCheckService:
         else:
             for query in control.sql_queries:
                 result = await self._safe_query(query)
-                evidence_summary["queries"].append({
-                    "sql": query,
-                    "rows": result.total_rows,
-                    "errors": result.errors,
-                })
+                evidence_summary["queries"].append(
+                    {
+                        "sql": query,
+                        "rows": result.total_rows,
+                        "errors": result.errors,
+                    }
+                )
 
                 if result.errors:
                     missing_evidence = True
@@ -222,11 +236,17 @@ class PreAuditHealthCheckService:
                     continue
 
                 pass_rate = self._derive_pass_rate(result)
-                best_pass_rate = pass_rate if best_pass_rate is None else min(best_pass_rate, pass_rate)
+                best_pass_rate = (
+                    pass_rate
+                    if best_pass_rate is None
+                    else min(best_pass_rate, pass_rate)
+                )
 
                 if pass_rate < 1.0 and result.rows:
                     sample = result.rows[0]
-                    issues.append(self._summarise_violation(control, sample, result.total_rows))
+                    issues.append(
+                        self._summarise_violation(control, sample, result.total_rows)
+                    )
 
         status = self._determine_status(control, best_pass_rate, missing_evidence)
         priority = self._derive_priority(control, status)
@@ -266,7 +286,12 @@ class PreAuditHealthCheckService:
 
         metrics: List[float] = []
         for row in result.rows:
-            for key in ("compliance_rate", "pass_rate", "percent_compliant", "compliance"):
+            for key in (
+                "compliance_rate",
+                "pass_rate",
+                "percent_compliant",
+                "compliance",
+            ):
                 value = row.get(key)
                 if isinstance(value, (int, float)):
                     metrics.append(float(value))
@@ -283,8 +308,14 @@ class PreAuditHealthCheckService:
             return min(clipped)
         return 0.0
 
-    def _summarise_violation(self, control: ComplianceControl, sample: Dict[str, Any], total_rows: int) -> str:
-        hint = ", ".join(f"{k}={v}" for k, v in list(sample.items())[:3]) if sample else "see findings"
+    def _summarise_violation(
+        self, control: ComplianceControl, sample: Dict[str, Any], total_rows: int
+    ) -> str:
+        hint = (
+            ", ".join(f"{k}={v}" for k, v in list(sample.items())[:3])
+            if sample
+            else "see findings"
+        )
         return f"{total_rows} finding(s) detected for {control.control_id} ({hint})"
 
     def _determine_status(
@@ -308,7 +339,9 @@ class PreAuditHealthCheckService:
 
         return ControlHealthStatus.FAILING
 
-    def _derive_priority(self, control: ComplianceControl, status: ControlHealthStatus) -> Optional[str]:
+    def _derive_priority(
+        self, control: ComplianceControl, status: ControlHealthStatus
+    ) -> Optional[str]:
         if status == ControlHealthStatus.PASSING:
             return None
         if control.control_type.name in {"PREVENTIVE", "TECHNICAL"}:
@@ -326,7 +359,9 @@ class PreAuditHealthCheckService:
         passing = sum(1 for e in evaluations if e.status == ControlHealthStatus.PASSING)
         failing = sum(1 for e in evaluations if e.status == ControlHealthStatus.FAILING)
         at_risk = sum(1 for e in evaluations if e.status == ControlHealthStatus.AT_RISK)
-        missing = sum(1 for e in evaluations if e.status == ControlHealthStatus.MISSING_EVIDENCE)
+        missing = sum(
+            1 for e in evaluations if e.status == ControlHealthStatus.MISSING_EVIDENCE
+        )
 
         run.status = PreAuditRunStatus.COMPLETED
         run.passing_controls = passing
@@ -356,14 +391,20 @@ class PreAuditHealthCheckService:
             return f"PASS WITH {at_risk} EXCEPTIONS" if at_risk else "PASS"
         return f"FAIL - {failing + missing} controls outstanding"
 
-    def _compute_next_run(self, schedule: ComplianceAuditSchedule, run_at: datetime) -> Optional[datetime]:
+    def _compute_next_run(
+        self, schedule: ComplianceAuditSchedule, run_at: datetime
+    ) -> Optional[datetime]:
         follow_up = run_at + timedelta(days=7)
         if follow_up >= schedule.audit_date:
             return None
         return follow_up
 
     def _derive_schedule_status(self, run: PreAuditRun) -> AuditScheduleStatus:
-        if run.failing_controls == 0 and run.at_risk_controls == 0 and run.missing_controls == 0:
+        if (
+            run.failing_controls == 0
+            and run.at_risk_controls == 0
+            and run.missing_controls == 0
+        ):
             return AuditScheduleStatus.READY
         return AuditScheduleStatus.ACTIVE
 
@@ -389,19 +430,27 @@ class PreAuditHealthCheckService:
             )
             db.add(finding)
 
-    async def _ensure_remediation_tasks(self, schedule: ComplianceAuditSchedule, run: PreAuditRun) -> None:
+    async def _ensure_remediation_tasks(
+        self, schedule: ComplianceAuditSchedule, run: PreAuditRun
+    ) -> None:
         async with async_session_factory() as db:
-            stmt = select(PreAuditControlFinding).where(PreAuditControlFinding.run_id == run.id)
+            stmt = select(PreAuditControlFinding).where(
+                PreAuditControlFinding.run_id == run.id
+            )
             findings = list(await db.scalars(stmt))
 
             actionable = [
                 finding
                 for finding in findings
-                if finding.status in {ControlHealthStatus.FAILING, ControlHealthStatus.AT_RISK}
+                if finding.status
+                in {ControlHealthStatus.FAILING, ControlHealthStatus.AT_RISK}
             ]
 
             if not actionable:
-                if not schedule.ready_notification_sent and run.estimated_outcome.startswith("PASS"):
+                if (
+                    not schedule.ready_notification_sent
+                    and run.estimated_outcome.startswith("PASS")
+                ):
                     await self._send_ready_notification(schedule, run)
                 return
 
@@ -429,12 +478,17 @@ class PreAuditHealthCheckService:
 
             await db.commit()
 
-    async def _ensure_agent_session(self, schedule: ComplianceAuditSchedule) -> AgentSession:
+    async def _ensure_agent_session(
+        self, schedule: ComplianceAuditSchedule
+    ) -> AgentSession:
         async with async_session_factory() as db:
             stmt = (
                 select(AgentSession)
                 .where(AgentSession.org_id == schedule.org_id)
-                .where(AgentSession.title == f"Pre-Audit Preparation {schedule.audit_date.year}")
+                .where(
+                    AgentSession.title
+                    == f"Pre-Audit Preparation {schedule.audit_date.year}"
+                )
             )
             session = await db.scalar(stmt)
             if session:
@@ -490,7 +544,9 @@ class PreAuditHealthCheckService:
                 },
             )
         except Exception:  # pragma: no cover - external integrations
-            logger.exception("Failed to create remediation ticket", control=finding.control_id)
+            logger.exception(
+                "Failed to create remediation ticket", control=finding.control_id
+            )
             return
 
         finding.ticket_id = ticket.ticket_id

@@ -66,24 +66,41 @@ class ComplianceAuditSchedule(Base):
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid4
     )
-    org_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), index=True, nullable=False)
+    org_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), index=True, nullable=False
+    )
     frameworks: Mapped[List[str]] = mapped_column(_json_type(), nullable=False)
-    audit_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    audit_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     prep_window_weeks: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
-    owner_emails: Mapped[List[str]] = mapped_column(_json_type(), default=list, nullable=False)
-    auto_assign_tasks: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    owner_emails: Mapped[List[str]] = mapped_column(
+        _json_type(), default=list, nullable=False
+    )
+    auto_assign_tasks: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
     create_tickets: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[AuditScheduleStatus] = mapped_column(
         Enum(AuditScheduleStatus), default=AuditScheduleStatus.SCHEDULED, nullable=False
     )
-    ready_notification_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ready_notification_sent: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
     )
 
     runs: Mapped[List["PreAuditRun"]] = relationship(
@@ -96,11 +113,17 @@ class PreAuditRun(Base):
 
     __tablename__ = "compliance_pre_audit_runs"
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    schedule_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("compliance_audit_schedules.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
     )
-    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    schedule_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("compliance_audit_schedules.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    run_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
     status: Mapped[PreAuditRunStatus] = mapped_column(
         Enum(PreAuditRunStatus), default=PreAuditRunStatus.RUNNING, nullable=False
     )
@@ -110,9 +133,13 @@ class PreAuditRun(Base):
     failing_controls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     at_risk_controls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     missing_controls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    estimated_outcome: Mapped[str] = mapped_column(String(128), default="pending", nullable=False)
+    estimated_outcome: Mapped[str] = mapped_column(
+        String(128), default="pending", nullable=False
+    )
 
-    schedule: Mapped[ComplianceAuditSchedule] = relationship("ComplianceAuditSchedule", back_populates="runs")
+    schedule: Mapped[ComplianceAuditSchedule] = relationship(
+        "ComplianceAuditSchedule", back_populates="runs"
+    )
     findings: Mapped[List["PreAuditControlFinding"]] = relationship(
         "PreAuditControlFinding", back_populates="run", cascade="all, delete-orphan"
     )
@@ -123,9 +150,13 @@ class PreAuditControlFinding(Base):
 
     __tablename__ = "compliance_pre_audit_findings"
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
     run_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("compliance_pre_audit_runs.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True),
+        ForeignKey("compliance_pre_audit_runs.id", ondelete="CASCADE"),
+        nullable=False,
     )
     framework_name: Mapped[str] = mapped_column(String(64), nullable=False)
     control_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -134,13 +165,21 @@ class PreAuditControlFinding(Base):
         Enum(ControlHealthStatus), nullable=False
     )
     pass_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    evidence_summary: Mapped[dict] = mapped_column(_json_type(), default=dict, nullable=False)
+    evidence_summary: Mapped[dict] = mapped_column(
+        _json_type(), default=dict, nullable=False
+    )
     issue_summary: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    remediation_suggestion: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    remediation_suggestion: Mapped[Optional[str]] = mapped_column(
+        String(1024), nullable=True
+    )
     priority: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     owner: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    task_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
-    ticket_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
+    task_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True, index=True
+    )
+    ticket_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False

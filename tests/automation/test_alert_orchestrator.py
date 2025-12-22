@@ -68,6 +68,7 @@ async def test_run_telemetry_alerts_no_alerts(monkeypatch) -> None:
     from cerebro.automation.alerting import orchestrator
 
     monkeypatch.setattr(orchestrator, "async_session_factory", lambda: _DummySession())
+
     async def fake_collect(**kwargs):
         return tuple(), _snapshot()
 

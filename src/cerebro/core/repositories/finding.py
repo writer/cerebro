@@ -24,6 +24,7 @@ from cerebro.core.dynamodb_client import (
 
 class FindingStatus(str, Enum):
     """Finding lifecycle states."""
+
     OPEN = "open"
     SUPPRESSED = "suppressed"
     ACCEPTED_RISK = "accepted_risk"
@@ -32,6 +33,7 @@ class FindingStatus(str, Enum):
 
 class Severity(str, Enum):
     """Severity levels."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -41,7 +43,7 @@ class Severity(str, Enum):
 
 class Finding(BaseModel):
     """Finding entity - security misconfiguration or violation."""
-    
+
     finding_id: UUID = Field(default_factory=uuid4)
     org_id: UUID
     account_id: UUID
@@ -58,19 +60,21 @@ class Finding(BaseModel):
     title: str
     summary: Optional[str] = None
     evidence: Optional[Dict[str, Any]] = None
-    
+
     class Config:
         from_attributes = True
         use_enum_values = True
-    
+
     def to_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item."""
         finding_id = str(self.finding_id)
         org_id = str(self.org_id)
         status = self.status.value if isinstance(self.status, Enum) else self.status
-        severity = self.severity.value if isinstance(self.severity, Enum) else self.severity
+        severity = (
+            self.severity.value if isinstance(self.severity, Enum) else self.severity
+        )
         last_seen = self.last_seen.isoformat()
-        
+
         return {
             "PK": pk("ORG", org_id),
             "SK": sk("FINDING", finding_id),
@@ -99,7 +103,7 @@ class Finding(BaseModel):
             "GSI3PK": f"ORG#{org_id}",
             "GSI3SK": f"LAST_SEEN#{last_seen}",
         }
-    
+
     @classmethod
     def from_item(cls, item: Dict[str, Any]) -> "Finding":
         """Create from DynamoDB item."""
@@ -111,7 +115,9 @@ class Finding(BaseModel):
             rule_id=UUID(item["rule_id"]),
             rule_version=item.get("rule_version", 1),
             resource_id=UUID(item["resource_id"]) if item.get("resource_id") else None,
-            principal_id=UUID(item["principal_id"]) if item.get("principal_id") else None,
+            principal_id=(
+                UUID(item["principal_id"]) if item.get("principal_id") else None
+            ),
             first_seen=datetime.fromisoformat(item["first_seen"]),
             last_seen=datetime.fromisoformat(item["last_seen"]),
             status=FindingStatus(item["status"]),
@@ -125,9 +131,9 @@ class Finding(BaseModel):
 
 class FindingRepository:
     """Repository for Finding operations."""
-    
+
     _table = TableName.CORE
-    
+
     async def get(self, finding_id: UUID, org_id: UUID) -> Optional[Finding]:
         """Get finding by ID."""
         item = await get_item(
@@ -136,12 +142,12 @@ class FindingRepository:
             sk("FINDING", str(finding_id)),
         )
         return Finding.from_item(item) if item else None
-    
+
     async def create(self, finding: Finding) -> Finding:
         """Create new finding."""
         await put_item(self._table, finding.to_item())
         return finding
-    
+
     async def update(
         self,
         finding_id: UUID,
@@ -151,7 +157,7 @@ class FindingRepository:
         """Update finding."""
         # Always update last_seen
         updates["last_seen"] = now_iso()
-        
+
         # If status or severity changed, update GSI keys
         current = await self.get(finding_id, org_id)
         if current:
@@ -162,7 +168,7 @@ class FindingRepository:
             updates["GSI2PK"] = f"ORG#{org_id}#STATUS#{status_val}"
             updates["GSI2SK"] = f"SEVERITY#{severity_val}#{finding_id}"
             updates["GSI3SK"] = f"LAST_SEEN#{updates['last_seen']}"
-        
+
         result = await update_item(
             self._table,
             pk("ORG", str(org_id)),
@@ -170,7 +176,7 @@ class FindingRepository:
             updates,
         )
         return Finding.from_item(result) if result else None
-    
+
     async def delete(self, finding_id: UUID, org_id: UUID) -> bool:
         """Delete finding."""
         return await delete_item(
@@ -178,7 +184,7 @@ class FindingRepository:
             pk("ORG", str(org_id)),
             sk("FINDING", str(finding_id)),
         )
-    
+
     async def list_by_org(
         self,
         org_id: UUID,
@@ -191,9 +197,11 @@ class FindingRepository:
             # Use GSI2 for status filtering
             status_val = status.value if isinstance(status, Enum) else status
             pk_val = f"ORG#{org_id}#STATUS#{status_val}"
-            
+
             if severity:
-                severity_val = severity.value if isinstance(severity, Enum) else severity
+                severity_val = (
+                    severity.value if isinstance(severity, Enum) else severity
+                )
                 items = await query(
                     self._table,
                     pk_val,
@@ -217,13 +225,15 @@ class FindingRepository:
                 limit=limit,
                 forward=False,
             )
-            
+
             if severity:
-                severity_val = severity.value if isinstance(severity, Enum) else severity
+                severity_val = (
+                    severity.value if isinstance(severity, Enum) else severity
+                )
                 items = [i for i in items if i.get("severity") == severity_val]
-        
+
         return [Finding.from_item(item) for item in items]
-    
+
     async def list_by_rule(self, rule_id: UUID, limit: int = 100) -> List[Finding]:
         """List findings for a specific rule."""
         items = await query(
@@ -233,7 +243,7 @@ class FindingRepository:
             limit=limit,
         )
         return [Finding.from_item(item) for item in items]
-    
+
     async def list_by_account(
         self,
         org_id: UUID,
@@ -243,14 +253,14 @@ class FindingRepository:
         """List findings for an account."""
         findings = await self.list_by_org(org_id, limit=limit * 2)
         return [f for f in findings if f.account_id == account_id][:limit]
-    
+
     async def get_by_fingerprint(
         self,
         org_id: UUID,
         fingerprint: str,
     ) -> Optional[Finding]:
         """Get finding by fingerprint.
-        
+
         Note: This performs a scan within the org's findings. For better
         performance with large datasets, consider adding a GSI on fingerprint.
         """
@@ -264,42 +274,45 @@ class FindingRepository:
                 limit=100,
                 cursor=cursor,
             )
-            
+
             for item in items:
                 if item.get("fingerprint") == fingerprint:
                     return Finding.from_item(item)
-            
+
             if not cursor:
                 break
-        
+
         return None
-    
+
     async def upsert(self, finding: Finding) -> Finding:
         """Create or update finding by fingerprint."""
         existing = await self.get_by_fingerprint(finding.org_id, finding.fingerprint)
         if existing:
             # Update existing
-            return await self.update(
-                existing.finding_id,
-                existing.org_id,
-                last_seen=finding.last_seen.isoformat(),
-                status=finding.status,
-                severity=finding.severity,
-                evidence=finding.evidence,
-            ) or existing
+            return (
+                await self.update(
+                    existing.finding_id,
+                    existing.org_id,
+                    last_seen=finding.last_seen.isoformat(),
+                    status=finding.status,
+                    severity=finding.severity,
+                    evidence=finding.evidence,
+                )
+                or existing
+            )
         else:
             # Create new
             return await self.create(finding)
-    
+
     async def bulk_upsert(self, findings: List[Finding]) -> int:
         """Bulk upsert findings."""
         items = [f.to_item() for f in findings]
         await batch_write(self._table, put_items=items)
         return len(findings)
-    
+
     async def count_by_status(self, org_id: UUID) -> Dict[str, int]:
         """Count findings by status for an organization.
-        
+
         Uses paginated queries to handle large datasets efficiently.
         """
         counts = {}
@@ -320,10 +333,10 @@ class FindingRepository:
                     break
             counts[status_val] = count
         return counts
-    
+
     async def count_by_severity(self, org_id: UUID) -> Dict[str, int]:
         """Count findings by severity for an organization.
-        
+
         Uses paginated queries to handle large datasets efficiently.
         """
         counts = {sev.value: 0 for sev in Severity}

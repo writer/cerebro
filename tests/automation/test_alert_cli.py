@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from cerebro.automation.alerting import AlertResult, AlertRule, RuleComparison, RuleSeverity
+from cerebro.automation.alerting import (
+    AlertResult,
+    AlertRule,
+    RuleComparison,
+    RuleSeverity,
+)
 from cerebro.automation.telemetry_health import TelemetryHealthSnapshot
 from scripts import telemetry_alerts
 

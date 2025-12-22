@@ -25,8 +25,10 @@ logger = structlog.get_logger(__name__)
 
 # ==================== Input/Output Schemas ====================
 
+
 class NLQueryInput(BaseModel):
     """Input for natural language query tool."""
+
     question: str = Field(
         description="Natural language question about security data",
         min_length=5,
@@ -47,6 +49,7 @@ class NLQueryInput(BaseModel):
 
 class NLQueryOutput(BaseModel):
     """Output for natural language query tool."""
+
     success: bool
     question: str
     sql_query: str
@@ -134,6 +137,7 @@ SQL: SELECT group_id, group_name, ingress_rules FROM aws_security_group WHERE in
 
 
 # ==================== Tool Implementation ====================
+
 
 class NaturalLanguageQueryTool(StructuredTool):
     """
@@ -242,7 +246,9 @@ The system will automatically translate to SQL and execute the query safely."""
         try:
             result = await self.query_engine.execute_query(sql_query)
         except Exception as exc:
-            logger.exception("Query execution failed", error=str(exc), question=question)
+            logger.exception(
+                "Query execution failed", error=str(exc), question=question
+            )
             output = NLQueryOutput(
                 success=False,
                 question=question,
@@ -262,7 +268,10 @@ The system will automatically translate to SQL and execute the query safely."""
 
         if result.errors:
             logger.warning(
-                "Query returned errors", question=question, sql=sql_query, errors=result.errors
+                "Query returned errors",
+                question=question,
+                sql=sql_query,
+                errors=result.errors,
             )
             error_message = "; ".join(result.errors)
             output = NLQueryOutput(
@@ -327,8 +336,15 @@ The system will automatically translate to SQL and execute the query safely."""
 
         # Destructive operations not allowed
         dangerous_keywords = [
-            "INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE",
-            "ALTER", "CREATE", "GRANT", "REVOKE",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "DROP",
+            "TRUNCATE",
+            "ALTER",
+            "CREATE",
+            "GRANT",
+            "REVOKE",
         ]
 
         for keyword in dangerous_keywords:

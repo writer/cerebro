@@ -127,7 +127,9 @@ async def seed_database(session_factory: async_sessionmaker[AsyncSession]):
             await session.flush()
 
         now = datetime.now(timezone.utc)
-        existing = await session.scalar(select(Finding).where(Finding.title == "E2E Finding"))
+        existing = await session.scalar(
+            select(Finding).where(Finding.title == "E2E Finding")
+        )
         if not existing:
             session.add(
                 Finding(
@@ -192,7 +194,9 @@ async def api_client() -> AsyncGenerator[httpx.AsyncClient, None]:
 
 
 @pytest_asyncio.fixture
-async def auth_client(api_client: httpx.AsyncClient) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def auth_client(
+    api_client: httpx.AsyncClient,
+) -> AsyncGenerator[httpx.AsyncClient, None]:
     username = os.getenv("E2E_TEST_USER", "test@example.com")
     password = os.getenv("E2E_TEST_PASSWORD", "testpassword123")
 
@@ -207,7 +211,12 @@ async def auth_client(api_client: httpx.AsyncClient) -> AsyncGenerator[httpx.Asy
 
 
 class TestDataFactory:
-    def __init__(self, client: httpx.AsyncClient, org_id: UUID, session_factory: async_sessionmaker[AsyncSession]):
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        org_id: UUID,
+        session_factory: async_sessionmaker[AsyncSession],
+    ):
         self.client = client
         self.org_id = org_id
         self._session_factory = session_factory
@@ -223,7 +232,9 @@ class TestDataFactory:
     ) -> UUID:
         async with self._session_factory() as session:
             account = await session.scalar(
-                select(Account).where(Account.org_id == self.org_id, Account.provider == provider)
+                select(Account).where(
+                    Account.org_id == self.org_id, Account.provider == provider
+                )
             )
             if not account:
                 account = Account(
@@ -279,7 +290,9 @@ class TestDataFactory:
             self._created_findings.append(finding.finding_id)
             return finding.finding_id
 
-    async def create_agent_session(self, *, agent_type: str = "security_analyst", context: dict | None = None) -> UUID:
+    async def create_agent_session(
+        self, *, agent_type: str = "security_analyst", context: dict | None = None
+    ) -> UUID:
         response = await self.client.post(
             "/api/v1/agents/sessions",
             json={"agent_type": agent_type, "context": context or {}},

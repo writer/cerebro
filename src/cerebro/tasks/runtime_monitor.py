@@ -24,7 +24,9 @@ async def _post_slack_message(webhook_url: str, payload: Dict[str, Any]) -> None
         response.raise_for_status()
 
 
-def _build_runtime_alert_payload(runtime: str, severity: str, warning_count: int, error_count: int, window_hours: int) -> Dict[str, Any]:
+def _build_runtime_alert_payload(
+    runtime: str, severity: str, warning_count: int, error_count: int, window_hours: int
+) -> Dict[str, Any]:
     title = f"{runtime.title()} runtime health {severity.upper()}"
     now = datetime.now(timezone.utc)
     text = (
@@ -95,7 +97,9 @@ def monitor_runtime_health(self):
             return {"alerts": 0}
 
         window_hours = max(1, getattr(settings, "runtime_health_alert_window_hours", 1))
-        warning_threshold = max(1, getattr(settings, "runtime_health_warning_threshold", 3))
+        warning_threshold = max(
+            1, getattr(settings, "runtime_health_warning_threshold", 3)
+        )
         error_threshold = max(1, getattr(settings, "runtime_health_error_threshold", 1))
 
         async with async_session_factory() as db:
@@ -126,10 +130,14 @@ def monitor_runtime_health(self):
             )
 
             try:
-                await _post_slack_message(settings.runtime_health_alert_webhook, payload)
+                await _post_slack_message(
+                    settings.runtime_health_alert_webhook, payload
+                )
                 alerts_sent += 1
             except httpx.HTTPError:
-                logger.exception("runtime_health_alert_failed", runtime=runtime, severity=severity)
+                logger.exception(
+                    "runtime_health_alert_failed", runtime=runtime, severity=severity
+                )
 
         return {"alerts": alerts_sent}
 

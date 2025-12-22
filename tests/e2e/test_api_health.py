@@ -15,7 +15,7 @@ async def test_health_endpoint(api_client: httpx.AsyncClient):
     """Test that the health endpoint returns OK."""
     response = await api_client.get("/health")
     assert response.status_code == 200
-    
+
     data = response.json()
     assert data.get("status") in ("ok", "healthy")
 
@@ -25,7 +25,7 @@ async def test_openapi_spec_available(api_client: httpx.AsyncClient):
     """Test that OpenAPI spec is accessible."""
     response = await api_client.get("/api/v1/openapi.json")
     assert response.status_code == 200
-    
+
     spec = response.json()
     assert "openapi" in spec
     assert "paths" in spec

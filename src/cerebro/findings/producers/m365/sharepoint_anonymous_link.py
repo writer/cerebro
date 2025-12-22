@@ -103,8 +103,7 @@ class M365SharePointAnonymousLinkProducer(BaseFindingProducer):
                 "SharePoint site "
                 f"{resource.name or resource.external_id} allows anonymous editing"
             ),
-            summary=
-            (
+            summary=(
                 "Anonymous edit links are enabled for this SharePoint site, allowing "
                 "anyone with the link to modify content without authentication."
             ),

@@ -22,20 +22,20 @@ def build_security_agent_prompt(
         " and providing actionable recommendations.\n\n"
         "MULTI-STEP PLANNING:\n"
         "For complex tasks, break them down into clear steps and execute them sequentially:\n\n"
-        "Example 1 - \"Conduct full AWS security audit\":\n"
+        'Example 1 - "Conduct full AWS security audit":\n'
         "Step 1: Use get_org_context to identify AWS accounts\n"
         "Step 2: Use findings_list filtered to AWS resources\n"
         "Step 3: Use query to pull configuration gaps and recent changes\n"
         "Step 4: Use security_analysis to cluster high-risk findings\n"
         "Step 5: Use remediation to produce prioritized actions\n"
         "Step 6: Summarize key insights with smart_finding_summarizer\n\n"
-        "Example 2 - \"Investigate suspicious user activity\":\n"
+        'Example 2 - "Investigate suspicious user activity":\n'
         "Step 1: Use query to gather the user's recent events\n"
         "Step 2: Use timeline to build a chronological view\n"
         "Step 3: Use security_analysis to evaluate risk indicators\n"
         "Step 4: Use remediation to recommend containment actions\n"
         "Step 5: Capture highlights with smart_finding_summarizer\n\n"
-        "Example 3 - \"Prepare for SOC2 audit\":\n"
+        'Example 3 - "Prepare for SOC2 audit":\n'
         "Step 1: Use get_org_context to understand scope\n"
         "Step 2: Use findings_list filtered by compliance frameworks\n"
         "Step 3: Use rules to validate critical guardrails\n"
@@ -46,7 +46,7 @@ def build_security_agent_prompt(
         "- Complex investigations requiring multiple data sources\n"
         "- Compliance preparation requiring evidence collection\n"
         "- Risk analysis needing multiple perspectives\n"
-        "- Any task with \"full\", \"comprehensive\", \"complete\" in the request\n\n"
+        '- Any task with "full", "comprehensive", "complete" in the request\n\n'
         "SAFETY GUIDELINES:\n"
         "- Always default to dry-run mode for any potentially destructive actions\n"
         "- Request human approval for any changes to production systems\n"
@@ -69,7 +69,10 @@ def build_security_agent_prompt(
         session_memory = session.context.get("_auto_loaded_session_memory", [])
 
         if org_context or system_context or session_memory:
-            context_lines: list[str] = ["", "=== YOUR ENVIRONMENT (YOU ALREADY KNOW THIS) ==="]
+            context_lines: list[str] = [
+                "",
+                "=== YOUR ENVIRONMENT (YOU ALREADY KNOW THIS) ===",
+            ]
 
             if org_context:
                 org_name = org_context.get("org_name", "Unknown Organization")
@@ -136,7 +139,9 @@ def build_security_agent_prompt(
                 provider_health = system_context.get("provider_health", [])
                 if provider_health:
                     degraded = [
-                        entry for entry in provider_health if entry.get("status") != "healthy"
+                        entry
+                        for entry in provider_health
+                        if entry.get("status") != "healthy"
                     ]
                     if degraded:
                         context_lines.append("")
@@ -150,40 +155,60 @@ def build_security_agent_prompt(
             # Include learned session memory (cross-session context)
             if session_memory:
                 context_lines.append("")
-                context_lines.append("=== REMEMBERED CONTEXT (from previous sessions) ===")
-                
+                context_lines.append(
+                    "=== REMEMBERED CONTEXT (from previous sessions) ==="
+                )
+
                 # Group by context type
-                preferences = [m for m in session_memory if m.get("type") == "user_preference"]
+                preferences = [
+                    m for m in session_memory if m.get("type") == "user_preference"
+                ]
                 facts = [m for m in session_memory if m.get("type") == "learned_fact"]
-                corrections = [m for m in session_memory if m.get("type") == "correction"]
-                environment = [m for m in session_memory if m.get("type") == "environment"]
-                
+                corrections = [
+                    m for m in session_memory if m.get("type") == "correction"
+                ]
+                environment = [
+                    m for m in session_memory if m.get("type") == "environment"
+                ]
+
                 if preferences:
                     context_lines.append("")
                     context_lines.append("User Preferences:")
                     for pref in preferences[:5]:
-                        context_lines.append(f"  - {pref.get('key')}: {pref.get('value')}")
-                
+                        context_lines.append(
+                            f"  - {pref.get('key')}: {pref.get('value')}"
+                        )
+
                 if facts:
                     context_lines.append("")
                     context_lines.append("Learned Facts:")
                     for fact in facts[:5]:
                         confidence = fact.get("confidence", 1.0)
-                        conf_str = f" (confidence: {confidence:.0%})" if confidence < 1.0 else ""
-                        context_lines.append(f"  - {fact.get('key')}: {fact.get('value')}{conf_str}")
-                
+                        conf_str = (
+                            f" (confidence: {confidence:.0%})"
+                            if confidence < 1.0
+                            else ""
+                        )
+                        context_lines.append(
+                            f"  - {fact.get('key')}: {fact.get('value')}{conf_str}"
+                        )
+
                 if corrections:
                     context_lines.append("")
                     context_lines.append("Corrections/Feedback:")
                     for corr in corrections[:3]:
-                        context_lines.append(f"  - {corr.get('key')}: {corr.get('value')}")
-                
+                        context_lines.append(
+                            f"  - {corr.get('key')}: {corr.get('value')}"
+                        )
+
                 if environment:
                     context_lines.append("")
                     context_lines.append("Environment Mappings:")
                     for env in environment[:5]:
-                        context_lines.append(f"  - {env.get('key')}: {env.get('value')}")
-                
+                        context_lines.append(
+                            f"  - {env.get('key')}: {env.get('value')}"
+                        )
+
                 context_lines.append("")
                 context_lines.append(
                     "IMPORTANT: This is information you learned from previous conversations."
@@ -239,7 +264,9 @@ def build_security_agent_prompt(
         memory_lines: list[str] = ["", "=== RETAINED MEMORY SNIPPETS ==="]
         for snippet in memory_snippets[: settings.agent_memory_max_snippets]:
             memory_lines.append(f"- {snippet}")
-        memory_lines.append("Always verify these facts against current data before acting.")
+        memory_lines.append(
+            "Always verify these facts against current data before acting."
+        )
         memory_lines.append("=== END MEMORY SNIPPETS ===")
         memory_section = "\n".join(memory_lines)
 

@@ -7,6 +7,7 @@ Creates:
 - cerebro-agents: Agent sessions, messages, tool invocations, review tasks
 - cerebro-notifications: Notification configs and delivery logs
 """
+
 import pulumi
 import pulumi_aws as aws
 from typing import Optional
@@ -329,7 +330,9 @@ def create_dynamodb_tables(
         "notifications_table": notifications_table,
         "notifications_table_name": notifications_table.name,
         "notifications_table_arn": notifications_table.arn,
-        "notifications_stream_arn": notifications_table.stream_arn if enable_streams else None,
+        "notifications_stream_arn": (
+            notifications_table.stream_arn if enable_streams else None
+        ),
         "users_table": users_table,
         "users_table_name": users_table.name,
         "users_table_arn": users_table.arn,
@@ -394,31 +397,35 @@ def create_dynamodb_iam_policy(
     ]
 
     if not read_only:
-        statements.append({
-            "Sid": "DynamoDBStreamAccess",
-            "Effect": "Allow",
-            "Action": [
-                "dynamodb:DescribeStream",
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
-                "dynamodb:ListStreams",
-            ],
-            "Resource": [
-                pulumi.Output.concat(arn, "/stream/*") for arn in table_arns
-            ],
-        })
+        statements.append(
+            {
+                "Sid": "DynamoDBStreamAccess",
+                "Effect": "Allow",
+                "Action": [
+                    "dynamodb:DescribeStream",
+                    "dynamodb:GetRecords",
+                    "dynamodb:GetShardIterator",
+                    "dynamodb:ListStreams",
+                ],
+                "Resource": [
+                    pulumi.Output.concat(arn, "/stream/*") for arn in table_arns
+                ],
+            }
+        )
 
     if kms_key_arn:
-        statements.append({
-            "Sid": "KMSAccess",
-            "Effect": "Allow",
-            "Action": [
-                "kms:Decrypt",
-                "kms:GenerateDataKey",
-                "kms:DescribeKey",
-            ],
-            "Resource": kms_key_arn,
-        })
+        statements.append(
+            {
+                "Sid": "KMSAccess",
+                "Effect": "Allow",
+                "Action": [
+                    "kms:Decrypt",
+                    "kms:GenerateDataKey",
+                    "kms:DescribeKey",
+                ],
+                "Resource": kms_key_arn,
+            }
+        )
 
     policy_document = pulumi.Output.all(*table_arns).apply(
         lambda arns: {
@@ -486,9 +493,11 @@ def create_streams_lambda(
         role=lambda_role.arn,
         runtime="python3.11",
         handler="index.handler",
-        code=pulumi.AssetArchive({
-            "index.py": pulumi.StringAsset(handler_code),
-        }),
+        code=pulumi.AssetArchive(
+            {
+                "index.py": pulumi.StringAsset(handler_code),
+            }
+        ),
         timeout=timeout,
         memory_size=memory_size,
         environment=aws.lambda_.FunctionEnvironmentArgs(

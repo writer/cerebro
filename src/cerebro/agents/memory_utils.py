@@ -42,7 +42,11 @@ def summarize_text(text: str, max_chars: int) -> str:
     for sentence in sentences:
         if not sentence:
             continue
-        candidate = f"{' '.join(summary_parts)} {sentence}".strip() if summary_parts else sentence
+        candidate = (
+            f"{' '.join(summary_parts)} {sentence}".strip()
+            if summary_parts
+            else sentence
+        )
         if len(candidate) > max_chars:
             break
         summary_parts.append(sentence)

@@ -137,11 +137,9 @@ class BaseFindingProducer(abc.ABC):
         finding = FindingEntity(
             rule_id=rule_id,
             resource_external_id=resource.external_id,
-            title=
-            title
+            title=title
             or f"{self.finding_name}: {resource.name or resource.external_id}",
-            summary=
-            summary
+            summary=summary
             or (
                 f"{self.description} detected on {resource.resource_type} "
                 f"{resource.name or resource.external_id}"
@@ -206,9 +204,9 @@ class ProducerRegistry:
     def __init__(self) -> None:
         """Initialize producer registry."""
         self._producers: dict[str, BaseFindingProducer] = {}
-        self._producers_by_source: defaultdict[
-            str, list[BaseFindingProducer]
-        ] = defaultdict(list)
+        self._producers_by_source: defaultdict[str, list[BaseFindingProducer]] = (
+            defaultdict(list)
+        )
         self._producers_by_resource_type: defaultdict[
             str, list[BaseFindingProducer]
         ] = defaultdict(list)
@@ -231,14 +229,13 @@ class ProducerRegistry:
         logger.info("Registered producer: %s", producer_name)
 
     def get_producers_for_resource(
-        self,
-        provider: str,
-        resource_type: str
+        self, provider: str, resource_type: str
     ) -> list[BaseFindingProducer]:
         """Get all producers that can evaluate a resource."""
         provider_producers = self._producers_by_source.get(provider, [])
         return [
-            producer for producer in provider_producers
+            producer
+            for producer in provider_producers
             if resource_type in producer.resource_types
         ]
 

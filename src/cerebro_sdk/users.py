@@ -59,7 +59,9 @@ class UserManager:
         offset: int = 0,
         active_only: bool = True,
     ) -> list[UserRecord]:
-        users = await self._service.list_users(limit=limit, offset=offset, active_only=active_only)
+        users = await self._service.list_users(
+            limit=limit, offset=offset, active_only=active_only
+        )
         return [await self._to_record(user) for user in users]
 
     async def add_scopes(self, user_id: UUID, scopes: Iterable[str]) -> None:

@@ -44,18 +44,28 @@ class NotificationService:
         limit: int = 100,
     ) -> List[AgentReviewNotification]:
         async with async_session_factory() as db_session:
-            stmt = select(AgentReviewNotification).where(AgentReviewNotification.org_id == org_id)
+            stmt = select(AgentReviewNotification).where(
+                AgentReviewNotification.org_id == org_id
+            )
             if status:
-                status_enum = status if isinstance(status, NotificationStatus) else NotificationStatus(status)
+                status_enum = (
+                    status
+                    if isinstance(status, NotificationStatus)
+                    else NotificationStatus(status)
+                )
                 stmt = stmt.where(AgentReviewNotification.status == status_enum)
             stmt = stmt.order_by(AgentReviewNotification.created_at.desc()).limit(limit)
             result = await db_session.execute(stmt)
             return list(result.scalars())
 
     @staticmethod
-    async def mark_delivered(*, notification_id: UUID) -> Optional[AgentReviewNotification]:
+    async def mark_delivered(
+        *, notification_id: UUID
+    ) -> Optional[AgentReviewNotification]:
         async with async_session_factory() as db_session:
-            notification = await db_session.get(AgentReviewNotification, notification_id)
+            notification = await db_session.get(
+                AgentReviewNotification, notification_id
+            )
             if not notification:
                 return None
             if notification.status != NotificationStatus.PENDING:

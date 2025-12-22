@@ -10,11 +10,11 @@ from .toxic_combinations import ToxicCombinationDetector, ToxicPattern
 from .quarantine import QuarantineManager, QuarantineAction
 
 __all__ = [
-    'OAuthAppRegistry',
-    'OAuthApp', 
-    'AppRiskLevel',
-    'ToxicCombinationDetector',
-    'ToxicPattern',
-    'QuarantineManager',
-    'QuarantineAction'
+    "OAuthAppRegistry",
+    "OAuthApp",
+    "AppRiskLevel",
+    "ToxicCombinationDetector",
+    "ToxicPattern",
+    "QuarantineManager",
+    "QuarantineAction",
 ]

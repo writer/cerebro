@@ -101,9 +101,7 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         if not objects_sample:
             return findings
 
-        matches = [
-            obj for obj in objects_sample if _is_suspicious_key(obj.get("key"))
-        ]
+        matches = [obj for obj in objects_sample if _is_suspicious_key(obj.get("key"))]
         if not matches:
             return findings
 
@@ -168,10 +166,7 @@ class BucketCleartextKeyProducer(BaseAWSProducer):
         from hashlib import sha256
 
         key_fragment = ";".join(
-            sorted(
-                obj.get("key", "")
-                for obj in clip_sequence(matches, limit=5)
-            )
+            sorted(obj.get("key", "") for obj in clip_sequence(matches, limit=5))
         )
         raw = f"{rule_id}|{bucket_id}|{key_fragment}"
         return sha256(raw.encode()).hexdigest()

@@ -13,12 +13,15 @@ from .evidence import EvidenceCollector, EvidenceItem
 @dataclass
 class ControlEvaluation:
     """Summary of a single control's evaluation."""
+
     control: Any
     evidence: List[EvidenceItem]
 
     @property
     def successful_queries(self) -> int:
-        return sum(1 for item in self.evidence if item.evidence_type == "sql_query_result")
+        return sum(
+            1 for item in self.evidence if item.evidence_type == "sql_query_result"
+        )
 
     @property
     def failed_queries(self) -> int:
@@ -36,7 +39,9 @@ class ControlEvaluation:
                 for etype in getattr(self.control, "required_evidence", [])
             ]
         elif hasattr(self.control, "evidence_collection_methods"):
-            required_evidence = list(getattr(self.control, "evidence_collection_methods", []))
+            required_evidence = list(
+                getattr(self.control, "evidence_collection_methods", [])
+            )
 
         return {
             "control_id": self.control.control_id,
@@ -116,7 +121,9 @@ class ComplianceEvidenceGenerator:
         evaluations: List[ControlEvaluation],
     ) -> Dict[str, object]:
         total_controls = len(framework.controls)
-        successful_controls = sum(1 for evaluation in evaluations if evaluation.successful_queries > 0)
+        successful_controls = sum(
+            1 for evaluation in evaluations if evaluation.successful_queries > 0
+        )
 
         automated_controls = 0
         if hasattr(framework, "get_automated_controls"):
@@ -124,7 +131,9 @@ class ComplianceEvidenceGenerator:
 
         compliance_percentage = 0.0
         if total_controls:
-            compliance_percentage = round((successful_controls / total_controls) * 100, 2)
+            compliance_percentage = round(
+                (successful_controls / total_controls) * 100, 2
+            )
 
         return {
             "total_controls": total_controls,

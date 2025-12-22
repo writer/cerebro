@@ -37,7 +37,10 @@ class RemediationPolicy:
     risk_threshold: float
     overdue_review_days: int | None = None
     attestation_window_days: int | None = None
-    owner_resolver: Callable[[SecurityCenterVendorInsight | SecurityCenterCustomerInsight], str] | None = None
+    owner_resolver: (
+        Callable[[SecurityCenterVendorInsight | SecurityCenterCustomerInsight], str]
+        | None
+    ) = None
 
 
 @dataclass
@@ -58,7 +61,10 @@ def generate_remediation_actions(
         risk_score = vendor.residual_risk_score or vendor.inherent_risk_score or 0.0
         overdue_days = _compute_overdue_days(vendor.next_review_due, now)
         overdue_limit = options.vendor_policy.overdue_review_days or 0
-        if risk_score < options.vendor_policy.risk_threshold and overdue_days <= overdue_limit:
+        if (
+            risk_score < options.vendor_policy.risk_threshold
+            and overdue_days <= overdue_limit
+        ):
             continue
 
         actions.append(
@@ -68,8 +74,12 @@ def generate_remediation_actions(
                 entity_id=vendor.vendor_id,
                 title=f"Mitigate vendor risk: {vendor.name}",
                 description=_build_vendor_description(vendor, risk_score, overdue_days),
-                owner=_resolve_owner(vendor, options.vendor_policy.owner_resolver, "sec-ops"),
-                due_date=_compute_due_date(now, options.vendor_policy.attestation_window_days or 14),
+                owner=_resolve_owner(
+                    vendor, options.vendor_policy.owner_resolver, "sec-ops"
+                ),
+                due_date=_compute_due_date(
+                    now, options.vendor_policy.attestation_window_days or 14
+                ),
                 severity=_classify_severity(risk_score),
                 attestation_required=True,
                 evidence_ids=_collect_vendor_evidence(vendor),
@@ -93,7 +103,9 @@ def generate_remediation_actions(
                     options.customer_policy.owner_resolver,
                     customer.account_manager or "customer-success",
                 ),
-                due_date=_compute_due_date(now, options.customer_policy.attestation_window_days or 10),
+                due_date=_compute_due_date(
+                    now, options.customer_policy.attestation_window_days or 10
+                ),
                 severity=_classify_severity(risk_score),
                 attestation_required=False,
                 evidence_ids=_collect_customer_evidence(customer),
@@ -128,7 +140,10 @@ def _classify_severity(score: float) -> RemediationSeverity:
 
 def _resolve_owner(
     entity: SecurityCenterVendorInsight | SecurityCenterCustomerInsight,
-    resolver: Callable[[SecurityCenterVendorInsight | SecurityCenterCustomerInsight], str] | None,
+    resolver: (
+        Callable[[SecurityCenterVendorInsight | SecurityCenterCustomerInsight], str]
+        | None
+    ),
     fallback: str,
 ) -> str:
     if resolver:
@@ -146,22 +161,41 @@ def _build_vendor_description(
     parts = [f"Residual risk score: {risk_score:.2f}"]
     if overdue_days > 0:
         parts.append(f"Review overdue by {overdue_days} day(s)")
-    compliance = vendor.metadata.get("complianceSummary") if isinstance(vendor.metadata, dict) else None
+    compliance = (
+        vendor.metadata.get("complianceSummary")
+        if isinstance(vendor.metadata, dict)
+        else None
+    )
     if isinstance(compliance, dict) and not compliance.get("certifications"):
         parts.append("No certifications on file")
-    if isinstance(compliance, dict) and compliance.get("penetrationTestResultsPresent") is False:
+    if (
+        isinstance(compliance, dict)
+        and compliance.get("penetrationTestResultsPresent") is False
+    ):
         parts.append("Missing penetration test results")
     return "; ".join(parts)
 
 
-def _build_customer_description(customer: SecurityCenterCustomerInsight, risk_score: float) -> str:
+def _build_customer_description(
+    customer: SecurityCenterCustomerInsight, risk_score: float
+) -> str:
     parts = [f"Churn risk score: {risk_score:.2f}"]
-    engagement = customer.metadata.get("engagement") if isinstance(customer.metadata, dict) else None
+    engagement = (
+        customer.metadata.get("engagement")
+        if isinstance(customer.metadata, dict)
+        else None
+    )
     if isinstance(engagement, dict):
-        tickets = engagement.get("openSupportTickets") or engagement.get("open_support_tickets")
+        tickets = engagement.get("openSupportTickets") or engagement.get(
+            "open_support_tickets"
+        )
         if isinstance(tickets, int) and tickets > 0:
             parts.append(f"{tickets} open support ticket(s)")
-    adoption = customer.metadata.get("adoption") if isinstance(customer.metadata, dict) else None
+    adoption = (
+        customer.metadata.get("adoption")
+        if isinstance(customer.metadata, dict)
+        else None
+    )
     metrics = adoption.get("metrics") if isinstance(adoption, dict) else None
     if isinstance(metrics, dict) and metrics:
         metric_str = ", ".join(f"{key}={value}" for key, value in metrics.items())
@@ -171,34 +205,62 @@ def _build_customer_description(customer: SecurityCenterCustomerInsight, risk_sc
 
 def _collect_vendor_evidence(vendor: SecurityCenterVendorInsight) -> List[str]:
     evidence_ids: List[str] = []
-    evidence = vendor.metadata.get("evidence") if isinstance(vendor.metadata, dict) else None
+    evidence = (
+        vendor.metadata.get("evidence") if isinstance(vendor.metadata, dict) else None
+    )
     if isinstance(evidence, dict):
         evidence_id = evidence.get("id")
         if isinstance(evidence_id, str):
             evidence_ids.append(evidence_id)
-        if evidence.get("securityQuestionnaireCompleted") is False or evidence.get("security_questionnaire_completed") is False:
+        if (
+            evidence.get("securityQuestionnaireCompleted") is False
+            or evidence.get("security_questionnaire_completed") is False
+        ):
             evidence_ids.append("missing-security-questionnaire")
-    risk_summary = vendor.metadata.get("riskSummary") if isinstance(vendor.metadata, dict) else None
+    risk_summary = (
+        vendor.metadata.get("riskSummary")
+        if isinstance(vendor.metadata, dict)
+        else None
+    )
     if isinstance(risk_summary, dict):
         monitoring = risk_summary.get("monitoring")
-        if isinstance(monitoring, dict) and monitoring.get("accessMonitoringEnabled") is False:
+        if (
+            isinstance(monitoring, dict)
+            and monitoring.get("accessMonitoringEnabled") is False
+        ):
             evidence_ids.append("access-monitoring-gap")
     return evidence_ids
 
 
 def _collect_customer_evidence(customer: SecurityCenterCustomerInsight) -> List[str]:
     evidence_ids: List[str] = []
-    evidence = customer.metadata.get("evidence") if isinstance(customer.metadata, dict) else None
+    evidence = (
+        customer.metadata.get("evidence")
+        if isinstance(customer.metadata, dict)
+        else None
+    )
     if isinstance(evidence, dict):
         evidence_id = evidence.get("id")
         if isinstance(evidence_id, str):
             evidence_ids.append(evidence_id)
-        tickets = evidence.get("support_tickets_open") or evidence.get("supportTicketsOpen")
+        tickets = evidence.get("support_tickets_open") or evidence.get(
+            "supportTicketsOpen"
+        )
         if isinstance(tickets, int) and tickets > 0:
             evidence_ids.append(f"support-tickets-{tickets}")
-    engagement = customer.metadata.get("engagement") if isinstance(customer.metadata, dict) else None
+    engagement = (
+        customer.metadata.get("engagement")
+        if isinstance(customer.metadata, dict)
+        else None
+    )
     if isinstance(engagement, dict):
-        tickets = engagement.get("openSupportTickets") or engagement.get("open_support_tickets")
-        if isinstance(tickets, int) and tickets > 0 and f"support-tickets-{tickets}" not in evidence_ids:
+        tickets = engagement.get("openSupportTickets") or engagement.get(
+            "open_support_tickets"
+        )
+        if (
+            isinstance(tickets, int)
+            and tickets > 0
+            and f"support-tickets-{tickets}" not in evidence_ids
+        ):
             evidence_ids.append(f"support-tickets-{tickets}")
     return evidence_ids

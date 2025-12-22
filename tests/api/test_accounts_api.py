@@ -10,7 +10,7 @@ def test_account_crud_flow(client: TestClient, admin_token: str, test_org) -> No
             "org_id": str(test_org.org_id),
             "provider": "github",
             "external_id": "example",
-            "display_name": "Example Org"
+            "display_name": "Example Org",
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -39,14 +39,16 @@ def test_account_crud_flow(client: TestClient, admin_token: str, test_org) -> No
     assert delete_response.status_code == 200
 
 
-def test_account_creation_requires_existing_org(client: TestClient, admin_token: str) -> None:
+def test_account_creation_requires_existing_org(
+    client: TestClient, admin_token: str
+) -> None:
     response = client.post(
         "/api/v1/accounts/",
         json={
             "org_id": "00000000-0000-0000-0000-000000000000",
             "provider": "github",
             "external_id": "missing",
-            "display_name": "Missing"
+            "display_name": "Missing",
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )

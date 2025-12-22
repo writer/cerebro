@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EvidenceFreshnessReport:
     """Report on evidence freshness for compliance."""
+
     control_id: str
     control_name: str
     framework: str
@@ -30,6 +31,7 @@ class EvidenceFreshnessReport:
 @dataclass
 class ControlOwnership:
     """Control ownership and responsibility tracking."""
+
     control_id: str
     control_name: str
     owner: Optional[str]
@@ -42,23 +44,23 @@ class ControlOwnership:
 
 class ComplianceAnalyzer:
     """Analyzer for compliance evidence and control tracking."""
-    
+
     def __init__(self, db_session: AsyncSession):
         """Initialize compliance analyzer."""
         self.db = db_session
-    
+
     async def analyze_evidence_freshness(
-        self,
-        org_id: UUID,
-        framework: Optional[str] = None
+        self, org_id: UUID, framework: Optional[str] = None
     ) -> List[EvidenceFreshnessReport]:
         """Analyze evidence freshness across compliance controls."""
-        
+
         logger.info(f"Analyzing evidence freshness for org {org_id}")
 
         dialect = get_dialect_name(self.db)
-        age_days_expr = days_since_expr(column_expr="MAX(cs.captured_at)", dialect=dialect)
-        
+        age_days_expr = days_since_expr(
+            column_expr="MAX(cs.captured_at)", dialect=dialect
+        )
+
         if dialect == "snowflake":
             evidence_query = text(
                 f"""
@@ -99,7 +101,9 @@ class ComplianceAnalyzer:
             )
         else:
             cis_nonempty = array_has_elements_expr(column_expr="r.cis", dialect=dialect)
-            nist_nonempty = array_has_elements_expr(column_expr="r.nist_800_53", dialect=dialect)
+            nist_nonempty = array_has_elements_expr(
+                column_expr="r.nist_800_53", dialect=dialect
+            )
             compliance_rule_predicate = f"({cis_nonempty} OR {nist_nonempty})"
             framework_expr = (
                 f"CASE WHEN {cis_nonempty} THEN 'CIS' "
@@ -143,12 +147,11 @@ class ComplianceAnalyzer:
                 ORDER BY age_days DESC, framework, control_name
                 """
             )
-        
-        result = await self.db.execute(evidence_query, {
-            "org_id": org_id,
-            "framework": framework
-        })
-        
+
+        result = await self.db.execute(
+            evidence_query, {"org_id": org_id, "framework": framework}
+        )
+
         reports = []
         for row in result.fetchall():
             # Determine collection frequency based on framework
@@ -158,29 +161,31 @@ class ComplianceAnalyzer:
                 frequency_days = 14
             else:
                 frequency_days = 30
-            
+
             # Calculate next collection due
             if row.last_evidence_collected:
                 next_due = row.last_evidence_collected + timedelta(days=frequency_days)
             else:
                 next_due = datetime.utcnow()  # Immediate
-            
-            reports.append(EvidenceFreshnessReport(
-                control_id=str(row.rule_id),
-                control_name=row.control_name,
-                framework=row.framework,
-                last_collected=row.last_evidence_collected,
-                age_days=row.age_days,
-                freshness_status=row.freshness_status,
-                collection_frequency_required=frequency_days,
-                next_collection_due=next_due
-            ))
-        
+
+            reports.append(
+                EvidenceFreshnessReport(
+                    control_id=str(row.rule_id),
+                    control_name=row.control_name,
+                    framework=row.framework,
+                    last_collected=row.last_evidence_collected,
+                    age_days=row.age_days,
+                    freshness_status=row.freshness_status,
+                    collection_frequency_required=frequency_days,
+                    next_collection_due=next_due,
+                )
+            )
+
         return reports
-    
+
     async def track_control_ownership(self, org_id: UUID) -> List[ControlOwnership]:
         """Track control ownership and review status."""
-        
+
         # For now, this returns a template since control ownership
         # would typically be stored in a separate governance system
         # In production, this would integrate with systems like:
@@ -188,9 +193,9 @@ class ComplianceAnalyzer:
         # - Archer
         # - MetricStream
         # - Custom governance database
-        
+
         ownership_data = []
-        
+
         dialect = get_dialect_name(self.db)
         if dialect == "snowflake":
             rules_query = text(
@@ -207,7 +212,9 @@ class ComplianceAnalyzer:
         else:
             # Get all compliance rules
             cis_nonempty = array_has_elements_expr(column_expr="cis", dialect=dialect)
-            nist_nonempty = array_has_elements_expr(column_expr="nist_800_53", dialect=dialect)
+            nist_nonempty = array_has_elements_expr(
+                column_expr="nist_800_53", dialect=dialect
+            )
             rules_query = text(
                 f"""
                 SELECT rule_id, name, description
@@ -217,63 +224,70 @@ class ComplianceAnalyzer:
                 ORDER BY name
                 """
             )
-        
+
         result = await self.db.execute(rules_query)
-        
+
         for row in result.fetchall():
             # Template ownership data - in production this would come from GRC system
-            ownership_data.append(ControlOwnership(
-                control_id=str(row.rule_id),
-                control_name=row.name,
-                owner=None,  # Would be populated from GRC system
-                backup_owner=None,
-                review_frequency=90,  # 90 days
-                last_reviewed=None,
-                next_review_due=datetime.utcnow() + timedelta(days=90),
-                ownership_status="unassigned"  # Would be calculated from GRC data
-            ))
-        
+            ownership_data.append(
+                ControlOwnership(
+                    control_id=str(row.rule_id),
+                    control_name=row.name,
+                    owner=None,  # Would be populated from GRC system
+                    backup_owner=None,
+                    review_frequency=90,  # 90 days
+                    last_reviewed=None,
+                    next_review_due=datetime.utcnow() + timedelta(days=90),
+                    ownership_status="unassigned",  # Would be calculated from GRC data
+                )
+            )
+
         return ownership_data
 
 
 class EvidenceFreshnessTracker:
     """Tracks evidence collection freshness for compliance."""
-    
+
     def __init__(self, db_session: AsyncSession):
         """Initialize evidence freshness tracker."""
         self.db = db_session
-    
+
     async def get_stale_evidence_summary(self, org_id: UUID) -> Dict[str, Any]:
         """Get summary of stale evidence requiring attention."""
-        
+
         analyzer = ComplianceAnalyzer(self.db)
         evidence_reports = await analyzer.analyze_evidence_freshness(org_id)
-        
+
         # Categorize by freshness
-        freshness_counts = {
-            "fresh": 0,
-            "aging": 0, 
-            "stale": 0,
-            "missing": 0
-        }
-        
+        freshness_counts = {"fresh": 0, "aging": 0, "stale": 0, "missing": 0}
+
         critical_stale = []
         for report in evidence_reports:
             freshness_counts[report.freshness_status] += 1
-            
+
             # Flag critical stale evidence
             if report.freshness_status == "stale" and report.age_days > 60:
-                critical_stale.append({
-                    "control_name": report.control_name,
-                    "framework": report.framework,
-                    "age_days": int(report.age_days),
-                    "last_collected": report.last_collected.isoformat() if report.last_collected else None
-                })
-        
+                critical_stale.append(
+                    {
+                        "control_name": report.control_name,
+                        "framework": report.framework,
+                        "age_days": int(report.age_days),
+                        "last_collected": (
+                            report.last_collected.isoformat()
+                            if report.last_collected
+                            else None
+                        ),
+                    }
+                )
+
         return {
             "summary": freshness_counts,
             "total_controls": len(evidence_reports),
-            "compliance_percentage": round((freshness_counts["fresh"] / len(evidence_reports)) * 100, 1) if evidence_reports else 0,
+            "compliance_percentage": (
+                round((freshness_counts["fresh"] / len(evidence_reports)) * 100, 1)
+                if evidence_reports
+                else 0
+            ),
             "critical_stale_evidence": critical_stale,
-            "action_required": len(critical_stale) > 0
+            "action_required": len(critical_stale) > 0,
         }

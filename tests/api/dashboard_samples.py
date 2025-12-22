@@ -162,7 +162,10 @@ def build_sample_dashboard_response() -> dict:
                             "last_seen": now,
                         }
                     ],
-                    "recommended_actions": ["Restrict admin access", "Rotate credentials"],
+                    "recommended_actions": [
+                        "Restrict admin access",
+                        "Rotate credentials",
+                    ],
                     "risk_factors": ["Cross-provider admin"],
                 }
             ],
@@ -238,7 +241,7 @@ def build_sample_dashboard_response() -> dict:
                     {
                         "date": now,
                         "score": 90.0,
-                    }
+                    },
                 ]
             },
             "delta": {
@@ -255,9 +258,7 @@ def build_sample_dashboard_response() -> dict:
                     "runtime_warning": {"count": 2, "last_seen": now},
                     "runtime_error": {"count": 0, "last_seen": None},
                 },
-                "warnings": {
-                    "claude_cli_missing": {"count": 2, "last_seen": now}
-                },
+                "warnings": {"claude_cli_missing": {"count": 2, "last_seen": now}},
                 "latest_metadata": {
                     "payload": {"session_id": "sess-123", "response_id": "resp-456"},
                     "captured_at": now,

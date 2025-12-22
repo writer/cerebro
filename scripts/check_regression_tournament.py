@@ -9,7 +9,9 @@ from pathlib import Path
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Check regression tournament baselines")
+    parser = argparse.ArgumentParser(
+        description="Check regression tournament baselines"
+    )
     parser.add_argument(
         "--config",
         type=Path,

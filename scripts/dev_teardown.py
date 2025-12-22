@@ -86,7 +86,9 @@ def terminate_process(proc: ManagedProcess, timeout: float = 10.0) -> None:
         print(f"  {proc.name} exited while escalating signal.")
         return
     except PermissionError:
-        print(f"  Permission denied when killing {proc.name}; manual intervention required.")
+        print(
+            f"  Permission denied when killing {proc.name}; manual intervention required."
+        )
         return
 
     if not is_process_alive(proc.pid):

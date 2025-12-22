@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class ControlType(Enum):
     """Types of security controls."""
+
     PREVENTIVE = "preventive"
     DETECTIVE = "detective"
     CORRECTIVE = "corrective"
@@ -28,6 +29,7 @@ class ControlType(Enum):
 
 class AutomationLevel(Enum):
     """Level of automation for controls."""
+
     MANUAL = "manual"
     SEMI_AUTOMATED = "semi_automated"
     AUTOMATED = "automated"
@@ -35,6 +37,7 @@ class AutomationLevel(Enum):
 
 class TestingFrequency(Enum):
     """How often controls should be tested."""
+
     CONTINUOUS = "continuous"
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -95,7 +98,9 @@ class FrameworkDefinition:
 
     # Framework properties
     issuing_organization: str
-    framework_type: str = "compliance"  # "compliance", "security", "privacy", "operational"
+    framework_type: str = (
+        "compliance"  # "compliance", "security", "privacy", "operational"
+    )
     industry_focus: List[str] = field(default_factory=list)
     geographic_scope: List[str] = field(default_factory=list)
 
@@ -128,9 +133,13 @@ class FrameworkDefinition:
 
     def get_automated_controls(self) -> List[ControlDefinition]:
         """Get fully automated controls."""
-        return [c for c in self.controls if c.automation_level == AutomationLevel.AUTOMATED]
+        return [
+            c for c in self.controls if c.automation_level == AutomationLevel.AUTOMATED
+        ]
 
-    def get_controls_by_frequency(self, frequency: TestingFrequency) -> List[ControlDefinition]:
+    def get_controls_by_frequency(
+        self, frequency: TestingFrequency
+    ) -> List[ControlDefinition]:
         """Get controls with specific testing frequency."""
         return [c for c in self.controls if c.testing_frequency == frequency]
 
@@ -151,12 +160,16 @@ class FrameworkProvider(ABC):
         pass
 
     @abstractmethod
-    def get_framework_definition(self, version: Optional[str] = None) -> FrameworkDefinition:
+    def get_framework_definition(
+        self, version: Optional[str] = None
+    ) -> FrameworkDefinition:
         """Get framework definition for specified version."""
         pass
 
     @abstractmethod
-    def validate_control_implementation(self, control_id: str, evidence_data: Any) -> bool:
+    def validate_control_implementation(
+        self, control_id: str, evidence_data: Any
+    ) -> bool:
         """Validate that control implementation meets framework requirements."""
         pass
 
@@ -176,7 +189,7 @@ class FrameworkProvider(ABC):
         return {
             "implementation": control.implementation_guidance,
             "remediation": control.remediation_guidance,
-            "testing_procedures": "; ".join(control.testing_procedures)
+            "testing_procedures": "; ".join(control.testing_procedures),
         }
 
 
@@ -202,7 +215,9 @@ class FrameworkRegistry:
         self._custom_query_handlers[control_id] = handler
         logger.info(f"Registered custom query handler for control: {control_id}")
 
-    def get_framework(self, framework_id: str, version: Optional[str] = None) -> Optional[FrameworkDefinition]:
+    def get_framework(
+        self, framework_id: str, version: Optional[str] = None
+    ) -> Optional[FrameworkDefinition]:
         """Get framework definition."""
         cache_key = f"{framework_id}:{version or 'latest'}"
 
@@ -235,10 +250,7 @@ class FrameworkRegistry:
         return self._providers.get(framework_id)
 
     def validate_control_implementation(
-        self,
-        framework_id: str,
-        control_id: str,
-        evidence_data: Any
+        self, framework_id: str, control_id: str, evidence_data: Any
     ) -> bool:
         """Validate control implementation using framework provider."""
         provider = self._providers.get(framework_id)
@@ -262,7 +274,9 @@ class FrameworkRegistry:
 
         return provider.get_evidence_queries(control_id)
 
-    def auto_discover_providers(self, package_name: str = "cerebro.compliance.frameworks"):
+    def auto_discover_providers(
+        self, package_name: str = "cerebro.compliance.frameworks"
+    ):
         """Auto-discover and register framework providers."""
         try:
             # Import the package
@@ -282,26 +296,32 @@ class FrameworkRegistry:
                     # Look for provider classes
                     for attr_name in dir(module):
                         attr = getattr(module, attr_name)
-                        if (isinstance(attr, type) and
-                            issubclass(attr, FrameworkProvider) and
-                            attr != FrameworkProvider):
+                        if (
+                            isinstance(attr, type)
+                            and issubclass(attr, FrameworkProvider)
+                            and attr != FrameworkProvider
+                        ):
 
                             # Instantiate and register provider
                             provider_instance = attr()
                             self.register_provider(provider_instance)
 
                 except Exception as e:
-                    logger.error(f"Failed to load framework provider from {module_name}: {e}")
+                    logger.error(
+                        f"Failed to load framework provider from {module_name}: {e}"
+                    )
 
         except ImportError as e:
-            logger.warning(f"Failed to discover framework providers in {package_name}: {e}")
+            logger.warning(
+                f"Failed to discover framework providers in {package_name}: {e}"
+            )
 
     def get_control_matrix(self, framework_ids: List[str]) -> Dict[str, Any]:
         """Generate control mapping matrix across multiple frameworks."""
         matrix = {
             "frameworks": framework_ids,
             "control_mappings": {},
-            "coverage_analysis": {}
+            "coverage_analysis": {},
         }
 
         # Get all frameworks
@@ -326,12 +346,14 @@ class FrameworkRegistry:
             matrix["control_mappings"][control_type] = {}
 
             for framework_id, controls in framework_controls.items():
-                type_controls = [c for c in controls.values() if c.category == control_type]
+                type_controls = [
+                    c for c in controls.values() if c.category == control_type
+                ]
                 matrix["control_mappings"][control_type][framework_id] = [
                     {
                         "control_id": c.control_id,
                         "title": c.title,
-                        "automation_level": c.automation_level.value
+                        "automation_level": c.automation_level.value,
                     }
                     for c in type_controls
                 ]
@@ -342,9 +364,16 @@ class FrameworkRegistry:
                 "total_controls": len(framework.controls),
                 "automated_controls": len(framework.get_automated_controls()),
                 "control_families": len(framework.control_families),
-                "automation_percentage": round(
-                    len(framework.get_automated_controls()) / len(framework.controls) * 100, 1
-                ) if framework.controls else 0
+                "automation_percentage": (
+                    round(
+                        len(framework.get_automated_controls())
+                        / len(framework.controls)
+                        * 100,
+                        1,
+                    )
+                    if framework.controls
+                    else 0
+                ),
             }
 
         return matrix
@@ -357,10 +386,12 @@ class FrameworkRegistry:
 
         if format == "json":
             import json
+
             return json.dumps(framework, default=lambda x: x.__dict__, indent=2)
         elif format == "yaml":
             try:
                 import yaml
+
                 return yaml.dump(framework, default_flow_style=False)
             except ImportError:
                 logger.error("PyYAML not available for YAML export")
@@ -383,7 +414,9 @@ def register_framework_provider(provider: FrameworkProvider):
     _registry.register_provider(provider)
 
 
-def get_framework(framework_id: str, version: Optional[str] = None) -> Optional[FrameworkDefinition]:
+def get_framework(
+    framework_id: str, version: Optional[str] = None
+) -> Optional[FrameworkDefinition]:
     """Get framework from global registry."""
     return _registry.get_framework(framework_id, version)
 
@@ -401,6 +434,7 @@ def discover_framework_providers(package_name: str = "cerebro.compliance.framewo
 
 class FrameworkValidationError(Exception):
     """Raised when framework validation fails."""
+
     pass
 
 
@@ -437,9 +471,13 @@ def validate_framework_definition(framework: FrameworkDefinition) -> bool:
     for control in framework.controls:
         for dep_id in control.depends_on:
             if dep_id not in control_ids:
-                errors.append(f"Control {control.control_id} depends on non-existent control {dep_id}")
+                errors.append(
+                    f"Control {control.control_id} depends on non-existent control {dep_id}"
+                )
 
     if errors:
-        raise FrameworkValidationError(f"Framework validation failed: {'; '.join(errors)}")
+        raise FrameworkValidationError(
+            f"Framework validation failed: {'; '.join(errors)}"
+        )
 
     return True

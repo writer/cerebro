@@ -7,7 +7,7 @@ from .decorators import plugin, provider_plugin, rule_plugin
 
 __all__ = [
     "PluginManager",
-    "PluginLoader", 
+    "PluginLoader",
     "plugin_registry",
     "plugin",
     "provider_plugin",

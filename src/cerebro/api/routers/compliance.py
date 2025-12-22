@@ -40,33 +40,37 @@ async def get_evidence_status(
     org_id: Optional[UUID] = None,
     framework: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_read_findings)
+    current_user: User = Depends(require_read_findings),
 ):
     """Get evidence collection status and freshness metrics."""
     try:
         # Calculate evidence freshness based on recent findings
         recent_cutoff = datetime.utcnow() - timedelta(hours=24)
-        
+
         stmt = select(Finding)
         if org_id:
             stmt = stmt.where(Finding.org_id == org_id)
-        
-        recent_findings = await db.scalars(stmt.where(Finding.created_at >= recent_cutoff))
+
+        recent_findings = await db.scalars(
+            stmt.where(Finding.created_at >= recent_cutoff)
+        )
         total_findings = await db.scalars(stmt)
-        
+
         recent_count = len(list(recent_findings))
         total_count = len(list(total_findings))
-        
+
         # Determine freshness
-        freshness = 'current'
+        freshness = "current"
         if recent_count == 0 and total_count > 0:
             week_cutoff = datetime.utcnow() - timedelta(days=7)
-            week_findings = await db.scalars(stmt.where(Finding.created_at >= week_cutoff))
+            week_findings = await db.scalars(
+                stmt.where(Finding.created_at >= week_cutoff)
+            )
             if len(list(week_findings)) == 0:
-                freshness = 'expired'
+                freshness = "expired"
             else:
-                freshness = 'stale'
-        
+                freshness = "stale"
+
         return {
             "last_collected": "2 hours ago" if recent_count > 0 else "1 week ago",
             "freshness": freshness,
@@ -78,15 +82,19 @@ async def get_evidence_status(
             "total_evidence_items": total_count,
             "evidence_quality_score": 96,
         }
-        
+
     except Exception:
-        logger.exception("Evidence status calculation failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Evidence status calculation failed")
+        logger.exception(
+            "Evidence status calculation failed", extra={"org_id": str(org_id)}
+        )
+        raise HTTPException(
+            status_code=500, detail="Evidence status calculation failed"
+        )
 
 
 @router.get("/frameworks")
 async def get_compliance_frameworks(
-    current_user: User = Depends(require_read_findings)
+    current_user: User = Depends(require_read_findings),
 ):
     """Get supported compliance frameworks and their status."""
     frameworks = [
@@ -101,7 +109,7 @@ async def get_compliance_frameworks(
         },
         {
             "name": "ISO 27001",
-            "version": "2022", 
+            "version": "2022",
             "controls": 168,
             "implemented": 145,
             "score": 86,
@@ -109,7 +117,7 @@ async def get_compliance_frameworks(
             "next_assessment": "2025-08-20",
         },
     ]
-    
+
     return {
         "frameworks": frameworks,
         "total_frameworks": len(frameworks),
@@ -125,13 +133,16 @@ async def run_pre_audit_check(
     """Trigger an on-demand pre-audit health check."""
 
     if current_user.org_id != request.org_id:
-        raise HTTPException(status_code=403, detail="Not authorised for target organisation")
+        raise HTTPException(
+            status_code=403, detail="Not authorised for target organisation"
+        )
 
     run = await _pre_audit_service.run_on_demand(
         org_id=request.org_id,
         frameworks=request.frameworks,
         audit_date=request.audit_date,
-        owner_emails=request.owner_emails or [getattr(current_user, "email", current_user.user_id)],
+        owner_emails=request.owner_emails
+        or [getattr(current_user, "email", current_user.user_id)],
     )
 
     return PreAuditRunResponse(
@@ -142,7 +153,9 @@ async def run_pre_audit_check(
     )
 
 
-@router.get("/pre-audit/schedules/{schedule_id}/latest", response_model=PreAuditRunResponse)
+@router.get(
+    "/pre-audit/schedules/{schedule_id}/latest", response_model=PreAuditRunResponse
+)
 async def get_latest_pre_audit_run(
     schedule_id: UUID,
     current_user: User = Depends(require_read_findings),
@@ -154,7 +167,9 @@ async def get_latest_pre_audit_run(
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     if schedule.org_id != current_user.org_id:
-        raise HTTPException(status_code=403, detail="Not authorised for target organisation")
+        raise HTTPException(
+            status_code=403, detail="Not authorised for target organisation"
+        )
 
     stmt = (
         select(PreAuditRun)

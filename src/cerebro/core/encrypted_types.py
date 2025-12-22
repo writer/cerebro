@@ -22,6 +22,7 @@ Recommended pattern:
             service = get_encryption_service()
             self.smtp_password, self.smtp_password_dek = await service.encrypt_secret(password)
 """
+
 import asyncio
 from typing import Optional
 
@@ -61,13 +62,12 @@ class EncryptedString(TypeDecorator):
 
 class EncryptedText(EncryptedString):
     """DEPRECATED: Alias for EncryptedString. DO NOT USE."""
+
     pass
 
 
 def create_encrypted_field_pair(
-    field_name: str,
-    data_column_name: str = None,
-    dek_column_name: str = None
+    field_name: str, data_column_name: str = None, dek_column_name: str = None
 ):
     """Helper to create an encrypted field with automatic DEK management.
 
@@ -128,7 +128,9 @@ class EncryptedFieldMixin:
                 self._smtp_password, self._smtp_password_dek = await self.encrypt_field(value)
     """
 
-    async def encrypt_field(self, value: Optional[str]) -> tuple[Optional[bytes], Optional[bytes]]:
+    async def encrypt_field(
+        self, value: Optional[str]
+    ) -> tuple[Optional[bytes], Optional[bytes]]:
         """Encrypt a field value.
 
         Args:
@@ -144,9 +146,7 @@ class EncryptedFieldMixin:
         return await service.encrypt_secret(value)
 
     async def decrypt_field(
-        self,
-        encrypted_data: Optional[bytes],
-        encrypted_dek: Optional[bytes]
+        self, encrypted_data: Optional[bytes], encrypted_dek: Optional[bytes]
     ) -> Optional[str]:
         """Decrypt a field value.
 
@@ -164,9 +164,7 @@ class EncryptedFieldMixin:
         return await service.decrypt_secret(encrypted_data, encrypted_dek)
 
     def decrypt_field_sync(
-        self,
-        encrypted_data: Optional[bytes],
-        encrypted_dek: Optional[bytes]
+        self, encrypted_data: Optional[bytes], encrypted_dek: Optional[bytes]
     ) -> Optional[str]:
         """Decrypt a field value synchronously.
 
@@ -187,7 +185,9 @@ class EncryptedFieldMixin:
         )
 
 
-def encrypt_field_helper(value: Optional[str]) -> tuple[Optional[bytes], Optional[bytes]]:
+def encrypt_field_helper(
+    value: Optional[str],
+) -> tuple[Optional[bytes], Optional[bytes]]:
     """DEPRECATED: Synchronous helper to encrypt a field value.
 
     DO NOT USE - This function uses deprecated asyncio.get_event_loop().
@@ -206,8 +206,7 @@ def encrypt_field_helper(value: Optional[str]) -> tuple[Optional[bytes], Optiona
 
 
 def decrypt_field_helper(
-    encrypted_data: Optional[bytes],
-    encrypted_dek: Optional[bytes]
+    encrypted_data: Optional[bytes], encrypted_dek: Optional[bytes]
 ) -> Optional[str]:
     """DEPRECATED: Synchronous helper to decrypt a field value.
 

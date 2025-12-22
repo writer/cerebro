@@ -22,6 +22,7 @@ from cerebro.core.dynamodb_client import (
 
 class ExpressionLang(str, Enum):
     """Rule expression languages."""
+
     SQL = "sql"
     REGO = "rego"
     CEL = "cel"
@@ -29,6 +30,7 @@ class ExpressionLang(str, Enum):
 
 class Severity(str, Enum):
     """Severity levels."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -38,7 +40,7 @@ class Severity(str, Enum):
 
 class Rule(BaseModel):
     """Rule entity - CEL/SQL/Rego rule expression."""
-    
+
     rule_id: UUID = Field(default_factory=uuid4)
     policy_id: Optional[UUID] = None
     name: str
@@ -55,17 +57,23 @@ class Rule(BaseModel):
     version: int = 1
     is_active: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     class Config:
         from_attributes = True
         use_enum_values = True
-    
+
     def to_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item."""
         rule_id = str(self.rule_id)
-        severity = self.severity.value if isinstance(self.severity, Enum) else self.severity
-        expr_lang = self.expression_lang.value if isinstance(self.expression_lang, Enum) else self.expression_lang
-        
+        severity = (
+            self.severity.value if isinstance(self.severity, Enum) else self.severity
+        )
+        expr_lang = (
+            self.expression_lang.value
+            if isinstance(self.expression_lang, Enum)
+            else self.expression_lang
+        )
+
         return {
             "PK": pk("RULE", rule_id),
             "SK": sk("RULE", rule_id),
@@ -90,7 +98,7 @@ class Rule(BaseModel):
             "GSI1PK": f"RULE#ACTIVE#{self.is_active}",
             "GSI1SK": f"SEVERITY#{severity}#{rule_id}",
         }
-    
+
     @classmethod
     def from_item(cls, item: Dict[str, Any]) -> "Rule":
         """Create from DynamoDB item."""
@@ -110,15 +118,19 @@ class Rule(BaseModel):
             mitre_attack=item.get("mitre_attack"),
             version=item.get("version", 1),
             is_active=item.get("is_active", True),
-            created_at=datetime.fromisoformat(item["created_at"]) if item.get("created_at") else datetime.now(timezone.utc),
+            created_at=(
+                datetime.fromisoformat(item["created_at"])
+                if item.get("created_at")
+                else datetime.now(timezone.utc)
+            ),
         )
 
 
 class RuleRepository:
     """Repository for Rule operations."""
-    
+
     _table = TableName.CORE
-    
+
     async def get(self, rule_id: UUID) -> Optional[Rule]:
         """Get rule by ID."""
         item = await get_item(
@@ -127,26 +139,26 @@ class RuleRepository:
             sk("RULE", str(rule_id)),
         )
         return Rule.from_item(item) if item else None
-    
+
     async def create(self, rule: Rule) -> Rule:
         """Create new rule."""
         await put_item(self._table, rule.to_item())
         return rule
-    
+
     async def update(self, rule_id: UUID, **updates) -> Optional[Rule]:
         """Update rule."""
         # Increment version
         current = await self.get(rule_id)
         if current:
             updates["version"] = current.version + 1
-            
+
             # Update GSI if is_active or severity changed
             is_active = updates.get("is_active", current.is_active)
             severity = updates.get("severity", current.severity)
             severity_val = severity.value if isinstance(severity, Enum) else severity
             updates["GSI1PK"] = f"RULE#ACTIVE#{is_active}"
             updates["GSI1SK"] = f"SEVERITY#{severity_val}#{rule_id}"
-        
+
         result = await update_item(
             self._table,
             pk("RULE", str(rule_id)),
@@ -154,7 +166,7 @@ class RuleRepository:
             updates,
         )
         return Rule.from_item(result) if result else None
-    
+
     async def delete(self, rule_id: UUID) -> bool:
         """Delete rule."""
         return await delete_item(
@@ -162,7 +174,7 @@ class RuleRepository:
             pk("RULE", str(rule_id)),
             sk("RULE", str(rule_id)),
         )
-    
+
     async def list_active(
         self,
         severity: Optional[Severity] = None,
@@ -186,7 +198,7 @@ class RuleRepository:
                 limit=limit,
             )
         return [Rule.from_item(item) for item in items]
-    
+
     async def list_by_provider(
         self,
         provider: str,
@@ -212,12 +224,12 @@ class RuleRepository:
             )
             items.extend(inactive_items)
             rules = [Rule.from_item(item) for item in items]
-        
+
         return [r for r in rules if provider in r.provider][:limit]
-    
+
     async def get_by_name(self, name: str) -> Optional[Rule]:
         """Get rule by name.
-        
+
         Note: Scans active rules. Consider adding GSI on name for better performance.
         """
         cursor = None
@@ -235,11 +247,11 @@ class RuleRepository:
             if not cursor:
                 break
         return None
-    
+
     async def deactivate(self, rule_id: UUID) -> Optional[Rule]:
         """Deactivate a rule."""
         return await self.update(rule_id, is_active=False)
-    
+
     async def activate(self, rule_id: UUID) -> Optional[Rule]:
         """Activate a rule."""
         return await self.update(rule_id, is_active=True)

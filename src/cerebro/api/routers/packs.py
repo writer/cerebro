@@ -34,7 +34,9 @@ async def list_packs(
 @router.post("/", response_model=ArtifactPackDefinition, status_code=201)
 async def create_pack(
     payload: ArtifactPackCreate,
-    org_name: Optional[str] = Query(None, description="Organization name for new pack ownership"),
+    org_name: Optional[str] = Query(
+        None, description="Organization name for new pack ownership"
+    ),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("manage:packs")),
 ):

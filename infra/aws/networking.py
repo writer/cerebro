@@ -8,6 +8,7 @@ Creates:
 - Route tables
 - Security groups
 """
+
 import pulumi
 import pulumi_aws as aws
 from typing import List, Optional
@@ -66,7 +67,9 @@ def create_vpc(
         raise ValueError(f"Invalid CIDR block: {cidr_block}")
     network_base = [int(part) for part in base_cidr_parts]
     if network_base[2] != 0 or network_base[3] != 0:
-        raise ValueError("VPC CIDR must align on /16 boundary (third and fourth octets zero)")
+        raise ValueError(
+            "VPC CIDR must align on /16 boundary (third and fourth octets zero)"
+        )
 
     # Create public subnets
     public_subnets = []

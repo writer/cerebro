@@ -60,7 +60,7 @@ def create_tables(client):
         ],
         BillingMode="PAY_PER_REQUEST",
     )
-    
+
     # Agents table
     client.create_table(
         TableName=get_table_name(TableName.AGENTS),
@@ -104,13 +104,13 @@ def mock_dynamodb():
     with mock_aws():
         # Reset the cached client
         reset_client()
-        
+
         # Create tables
         client = boto3.client("dynamodb", region_name="us-east-1")
         create_tables(client)
-        
+
         yield client
-        
+
         # Reset again after test
         reset_client()
 
@@ -121,18 +121,21 @@ class TestOrganizationRepository:
     @pytest.mark.asyncio
     async def test_create_and_get(self, mock_dynamodb):
         """Test creating and retrieving an organization."""
-        from cerebro.core.repositories.organization import Organization, OrganizationRepository
-        
+        from cerebro.core.repositories.organization import (
+            Organization,
+            OrganizationRepository,
+        )
+
         repo = OrganizationRepository()
         org_id = uuid4()
-        
+
         # Create
         org = Organization(org_id=org_id, name="Test Org")
         created = await repo.create(org)
-        
+
         assert created.org_id == org_id
         assert created.name == "Test Org"
-        
+
         # Get
         retrieved = await repo.get(org_id)
         assert retrieved is not None
@@ -142,37 +145,43 @@ class TestOrganizationRepository:
     @pytest.mark.asyncio
     async def test_update(self, mock_dynamodb):
         """Test updating an organization."""
-        from cerebro.core.repositories.organization import Organization, OrganizationRepository
-        
+        from cerebro.core.repositories.organization import (
+            Organization,
+            OrganizationRepository,
+        )
+
         repo = OrganizationRepository()
         org_id = uuid4()
-        
+
         # Create
         org = Organization(org_id=org_id, name="Original Name")
         await repo.create(org)
-        
+
         # Update
         updated = await repo.update(org_id, name="Updated Name")
-        
+
         assert updated is not None
         assert updated.name == "Updated Name"
 
     @pytest.mark.asyncio
     async def test_delete(self, mock_dynamodb):
         """Test deleting an organization."""
-        from cerebro.core.repositories.organization import Organization, OrganizationRepository
-        
+        from cerebro.core.repositories.organization import (
+            Organization,
+            OrganizationRepository,
+        )
+
         repo = OrganizationRepository()
         org_id = uuid4()
-        
+
         # Create
         org = Organization(org_id=org_id, name="To Delete")
         await repo.create(org)
-        
+
         # Delete
         result = await repo.delete(org_id)
         assert result is True
-        
+
         # Verify deleted
         retrieved = await repo.get(org_id)
         assert retrieved is None
@@ -180,15 +189,18 @@ class TestOrganizationRepository:
     @pytest.mark.asyncio
     async def test_list_all(self, mock_dynamodb):
         """Test listing all organizations."""
-        from cerebro.core.repositories.organization import Organization, OrganizationRepository
-        
+        from cerebro.core.repositories.organization import (
+            Organization,
+            OrganizationRepository,
+        )
+
         repo = OrganizationRepository()
-        
+
         # Create multiple orgs
         for i in range(3):
             org = Organization(name=f"Org {i}")
             await repo.create(org)
-        
+
         # List
         orgs = await repo.list_all()
         assert len(orgs) == 3
@@ -200,13 +212,18 @@ class TestFindingRepository:
     @pytest.mark.asyncio
     async def test_create_and_get(self, mock_dynamodb):
         """Test creating and retrieving a finding."""
-        from cerebro.core.repositories.finding import Finding, FindingRepository, Severity, FindingStatus
-        
+        from cerebro.core.repositories.finding import (
+            Finding,
+            FindingRepository,
+            Severity,
+            FindingStatus,
+        )
+
         repo = FindingRepository()
         org_id = uuid4()
         account_id = uuid4()
         rule_id = uuid4()
-        
+
         # Create
         finding = Finding(
             org_id=org_id,
@@ -218,10 +235,10 @@ class TestFindingRepository:
             title="Test Finding",
         )
         created = await repo.create(finding)
-        
+
         assert created.org_id == org_id
         assert created.status == FindingStatus.OPEN
-        
+
         # Get
         retrieved = await repo.get(created.finding_id, org_id)
         assert retrieved is not None
@@ -230,15 +247,22 @@ class TestFindingRepository:
     @pytest.mark.asyncio
     async def test_list_by_status(self, mock_dynamodb):
         """Test listing findings by status."""
-        from cerebro.core.repositories.finding import Finding, FindingRepository, Severity, FindingStatus
-        
+        from cerebro.core.repositories.finding import (
+            Finding,
+            FindingRepository,
+            Severity,
+            FindingStatus,
+        )
+
         repo = FindingRepository()
         org_id = uuid4()
         account_id = uuid4()
         rule_id = uuid4()
-        
+
         # Create findings with different statuses
-        for i, status in enumerate([FindingStatus.OPEN, FindingStatus.OPEN, FindingStatus.FIXED]):
+        for i, status in enumerate(
+            [FindingStatus.OPEN, FindingStatus.OPEN, FindingStatus.FIXED]
+        ):
             finding = Finding(
                 org_id=org_id,
                 account_id=account_id,
@@ -250,11 +274,11 @@ class TestFindingRepository:
                 title=f"Finding {i}",
             )
             await repo.create(finding)
-        
+
         # List open findings
         open_findings = await repo.list_by_org(org_id, status=FindingStatus.OPEN)
         assert len(open_findings) == 2
-        
+
         # List fixed findings
         fixed_findings = await repo.list_by_org(org_id, status=FindingStatus.FIXED)
         assert len(fixed_findings) == 1
@@ -262,11 +286,16 @@ class TestFindingRepository:
     @pytest.mark.asyncio
     async def test_update_status(self, mock_dynamodb):
         """Test updating finding status."""
-        from cerebro.core.repositories.finding import Finding, FindingRepository, Severity, FindingStatus
-        
+        from cerebro.core.repositories.finding import (
+            Finding,
+            FindingRepository,
+            Severity,
+            FindingStatus,
+        )
+
         repo = FindingRepository()
         org_id = uuid4()
-        
+
         # Create
         finding = Finding(
             org_id=org_id,
@@ -278,14 +307,14 @@ class TestFindingRepository:
             title="Test",
         )
         created = await repo.create(finding)
-        
+
         # Update status
         updated = await repo.update(
             created.finding_id,
             org_id,
             status=FindingStatus.SUPPRESSED,
         )
-        
+
         assert updated is not None
         assert updated.status == FindingStatus.SUPPRESSED
 
@@ -301,10 +330,10 @@ class TestAgentSessionRepository:
             AgentSessionRepository,
             AgentType,
         )
-        
+
         repo = AgentSessionRepository()
         org_id = uuid4()
-        
+
         # Create
         session = AgentSession(
             org_id=org_id,
@@ -313,10 +342,10 @@ class TestAgentSessionRepository:
             title="Test Session",
         )
         created = await repo.create(session)
-        
+
         assert created.org_id == org_id
         assert created.agent_type == AgentType.SECURITY_ANALYST
-        
+
         # Get
         retrieved = await repo.get(created.id, org_id)
         assert retrieved is not None
@@ -330,19 +359,23 @@ class TestAgentSessionRepository:
             AgentSessionRepository,
             AgentType,
         )
-        
+
         repo = AgentSessionRepository()
         org_id = uuid4()
-        
+
         # Create sessions with different types
-        for agent_type in [AgentType.SECURITY_ANALYST, AgentType.SECURITY_ANALYST, AgentType.INCIDENT_RESPONDER]:
+        for agent_type in [
+            AgentType.SECURITY_ANALYST,
+            AgentType.SECURITY_ANALYST,
+            AgentType.INCIDENT_RESPONDER,
+        ]:
             session = AgentSession(
                 org_id=org_id,
                 agent_type=agent_type,
                 created_by="test-user",
             )
             await repo.create(session)
-        
+
         # List by type
         analyst_sessions, total = await repo.list_by_org(
             org_id,
@@ -358,10 +391,10 @@ class TestAgentSessionRepository:
             AgentSessionRepository,
             AgentType,
         )
-        
+
         repo = AgentSessionRepository()
         org_id = uuid4()
-        
+
         # Create
         session = AgentSession(
             org_id=org_id,
@@ -370,7 +403,7 @@ class TestAgentSessionRepository:
         )
         created = await repo.create(session)
         assert created.is_active is True
-        
+
         # Deactivate
         deactivated = await repo.deactivate(created.id, org_id)
         assert deactivated is not None
@@ -388,13 +421,15 @@ class TestAgentMessageRepository:
             AgentMessageRepository,
             MessageRole,
         )
-        
+
         repo = AgentMessageRepository()
         session_id = uuid4()
         org_id = uuid4()
-        
+
         # Create messages
-        for i, role in enumerate([MessageRole.USER, MessageRole.ASSISTANT, MessageRole.USER]):
+        for i, role in enumerate(
+            [MessageRole.USER, MessageRole.ASSISTANT, MessageRole.USER]
+        ):
             message = AgentMessage(
                 session_id=session_id,
                 org_id=org_id,
@@ -402,11 +437,11 @@ class TestAgentMessageRepository:
                 content={"text": f"Message {i}"},
             )
             await repo.create(message)
-        
+
         # List
         messages = await repo.list_by_session(session_id)
         assert len(messages) == 3
-        
+
         # Should be in chronological order
         assert messages[0].content["text"] == "Message 0"
         assert messages[2].content["text"] == "Message 2"
@@ -419,11 +454,11 @@ class TestAgentMessageRepository:
             AgentMessageRepository,
             MessageRole,
         )
-        
+
         repo = AgentMessageRepository()
         session_id = uuid4()
         org_id = uuid4()
-        
+
         # Create messages with tokens
         for i in range(3):
             message = AgentMessage(
@@ -435,7 +470,7 @@ class TestAgentMessageRepository:
                 output_tokens=50,
             )
             await repo.create(message)
-        
+
         # Get usage
         usage = await repo.get_token_usage(session_id)
         assert usage["input_tokens"] == 300

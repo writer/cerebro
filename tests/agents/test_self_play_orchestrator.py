@@ -22,9 +22,7 @@ class _AnalyticsStub:
         event_type: str,
         payload: Dict[str, Any],
     ) -> None:
-        _AnalyticsStub.events.append(
-            {"event_type": event_type, "payload": payload}
-        )
+        _AnalyticsStub.events.append({"event_type": event_type, "payload": payload})
 
     @classmethod
     def reset(cls) -> None:
@@ -34,8 +32,7 @@ class _AnalyticsStub:
 class _RuntimeFacadeStub:
     def __init__(self, scripted_responses: Dict[str, List[Dict[str, Any]]]):
         self._scripted = {
-            role: list(responses)
-            for role, responses in scripted_responses.items()
+            role: list(responses) for role, responses in scripted_responses.items()
         }
         self._history: Dict[UUID, List[Dict[str, Any]]] = {}
 
@@ -85,12 +82,8 @@ class _RuntimeFacadeStub:
                 "token_usage": scripted.get("token_usage", {}),
             },
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "input_tokens": scripted.get("token_usage", {}).get(
-                "input_tokens"
-            ),
-            "output_tokens": scripted.get("token_usage", {}).get(
-                "output_tokens"
-            ),
+            "input_tokens": scripted.get("token_usage", {}).get("input_tokens"),
+            "output_tokens": scripted.get("token_usage", {}).get("output_tokens"),
         }
         self._history[session.id].insert(0, assistant_record)
 
@@ -217,9 +210,7 @@ async def test_run_match_respects_disabled_flag() -> None:
 
     class _FailingRuntime:
         async def create_session(self, *args, **kwargs):
-            raise AssertionError(
-                "create_session should not be called when disabled"
-            )
+            raise AssertionError("create_session should not be called when disabled")
 
     scenario = SelfPlayScenario(
         id="disabled",

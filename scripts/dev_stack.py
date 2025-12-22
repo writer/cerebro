@@ -56,7 +56,10 @@ def ensure_no_active_stack() -> None:
             active_entries.append(proc)
 
     if active_entries:
-        process_list = ", ".join(f"{entry.get('name','unknown')} (pid={entry['pid']})" for entry in active_entries)
+        process_list = ", ".join(
+            f"{entry.get('name','unknown')} (pid={entry['pid']})"
+            for entry in active_entries
+        )
         raise RuntimeError(
             "An existing dev stack appears to be running: "
             f"{process_list}. Run 'make dev-stop' before starting a new stack."
@@ -65,7 +68,9 @@ def ensure_no_active_stack() -> None:
     STATE_PATH.unlink(missing_ok=True)
 
 
-def write_state(processes: Sequence[asyncio.subprocess.Process], names: Sequence[str]) -> None:
+def write_state(
+    processes: Sequence[asyncio.subprocess.Process], names: Sequence[str]
+) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "processes": [
@@ -86,10 +91,20 @@ def clear_state() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Cerebro development services")
-    parser.add_argument("--api-port", type=int, default=8000, help="Port for the API server")
-    parser.add_argument("--skip-worker", action="store_true", help="Skip starting the Celery worker")
-    parser.add_argument("--skip-beat", action="store_true", help="Skip starting the Celery beat scheduler")
-    parser.add_argument("--flower", action="store_true", help="Launch Flower for Celery monitoring")
+    parser.add_argument(
+        "--api-port", type=int, default=8000, help="Port for the API server"
+    )
+    parser.add_argument(
+        "--skip-worker", action="store_true", help="Skip starting the Celery worker"
+    )
+    parser.add_argument(
+        "--skip-beat",
+        action="store_true",
+        help="Skip starting the Celery beat scheduler",
+    )
+    parser.add_argument(
+        "--flower", action="store_true", help="Launch Flower for Celery monitoring"
+    )
     return parser.parse_args()
 
 
@@ -192,7 +207,9 @@ async def pipe_stream(stream: asyncio.StreamReader, prefix: str) -> None:
         pass
 
 
-async def terminate_process(process: asyncio.subprocess.Process, name: str, timeout: float = 10.0) -> None:
+async def terminate_process(
+    process: asyncio.subprocess.Process, name: str, timeout: float = 10.0
+) -> None:
     if process.returncode is not None:
         return
     process.terminate()
@@ -224,9 +241,13 @@ async def run_stack(args: argparse.Namespace) -> int:
         processes.append(process)
         names.append(spec.name)
         if process.stdout:
-            output_tasks.append(asyncio.create_task(pipe_stream(process.stdout, spec.name)))
+            output_tasks.append(
+                asyncio.create_task(pipe_stream(process.stdout, spec.name))
+            )
         if process.stderr:
-            output_tasks.append(asyncio.create_task(pipe_stream(process.stderr, f"{spec.name}:err")))
+            output_tasks.append(
+                asyncio.create_task(pipe_stream(process.stderr, f"{spec.name}:err"))
+            )
         print(f"[{spec.name}] started (pid={process.pid})")
 
     try:
@@ -246,7 +267,10 @@ async def run_stack(args: argparse.Namespace) -> int:
             except NotImplementedError:
                 pass
 
-        wait_tasks = {asyncio.create_task(proc.wait()): name for proc, name in zip(processes, names)}
+        wait_tasks = {
+            asyncio.create_task(proc.wait()): name
+            for proc, name in zip(processes, names)
+        }
         stop_task = asyncio.create_task(stop_event.wait())
 
         try:

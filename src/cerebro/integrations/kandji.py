@@ -13,7 +13,13 @@ import httpx
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.telemetry.schemas import AgentHealth, HostEvent, HostEventBatch, HostTelemetry, SoftwarePackage
+from cerebro.telemetry.schemas import (
+    AgentHealth,
+    HostEvent,
+    HostEventBatch,
+    HostTelemetry,
+    SoftwarePackage,
+)
 from cerebro.telemetry.services import TelemetryIngestionService
 from cerebro.integrations.state import IntegrationStateRepository
 from cerebro.metrics.integration_metrics import record_integration_sync
@@ -64,7 +70,9 @@ class KandjiClient:
     async def __aexit__(self, *exc: Any) -> None:
         await self._client.__aexit__(*exc)
 
-    async def iter_devices(self, *, page_size: int = 300) -> AsyncIterator[Dict[str, Any]]:
+    async def iter_devices(
+        self, *, page_size: int = 300
+    ) -> AsyncIterator[Dict[str, Any]]:
         """Stream device inventory using Kandji's cursor-based pagination."""
 
         url = "/api/v1/devices"
@@ -116,9 +124,13 @@ class KandjiClient:
                 return None
             raise
 
-    async def get_device_smart_groups(self, device_id: str) -> Optional[List[Dict[str, Any]]]:
+    async def get_device_smart_groups(
+        self, device_id: str
+    ) -> Optional[List[Dict[str, Any]]]:
         try:
-            payload = await self._request_json(f"/api/v1/devices/{device_id}/smart-groups")
+            payload = await self._request_json(
+                f"/api/v1/devices/{device_id}/smart-groups"
+            )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code in {404, 403}:
                 return None
@@ -178,7 +190,9 @@ class KandjiClient:
             url = payload.get("next") if isinstance(payload, dict) else None
             params = None
 
-    async def _request_json(self, url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _request_json(
+        self, url: str, *, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Execute Kandji API calls with retry/backoff handling."""
 
         attempt = 0
@@ -251,7 +265,9 @@ class KandjiIngestion:
 
         device_count = 0
         async for device in self._client.iter_devices():
-            compliance, blueprint, smart_groups, lifecycle = await self._collect_device_enrichment(device)
+            compliance, blueprint, smart_groups, lifecycle = (
+                await self._collect_device_enrichment(device)
+            )
             telemetry = self._build_host_telemetry(
                 device,
                 collected_at=now,
@@ -281,7 +297,9 @@ class KandjiIngestion:
         for host_id, events in grouped_events.items():
             hostname = next((e.hostname for e in events if e.hostname), None)
             for chunk in self._chunk_events(events, _EVENT_BATCH_SIZE):
-                chunk_hostname = next((e.hostname for e in chunk if e.hostname), hostname)
+                chunk_hostname = next(
+                    (e.hostname for e in chunk if e.hostname), hostname
+                )
                 batch = HostEventBatch(
                     host_id=host_id,
                     hostname=chunk_hostname,
@@ -295,7 +313,11 @@ class KandjiIngestion:
                 total_events += len(chunk)
 
         if latest_detection:
-            ts = latest_detection if latest_detection.tzinfo else latest_detection.replace(tzinfo=timezone.utc)
+            ts = (
+                latest_detection
+                if latest_detection.tzinfo
+                else latest_detection.replace(tzinfo=timezone.utc)
+            )
             await state_repo.upsert_state(
                 integration=_DETECTIONS_SCOPE,
                 scope=self._organization,
@@ -324,7 +346,11 @@ class KandjiIngestion:
         state_repo: IntegrationStateRepository,
     ) -> Tuple[Dict[str, List[HostEvent]], int]:
         state = await state_repo.get_state(_AUDIT_SCOPE, self._organization)
-        cutoff = state.last_timestamp - _AUDIT_DRIFT if state and state.last_timestamp else None
+        cutoff = (
+            state.last_timestamp - _AUDIT_DRIFT
+            if state and state.last_timestamp
+            else None
+        )
         grouped: Dict[str, List[HostEvent]] = {}
         latest: Optional[datetime] = None
         async for record in self._client.iter_audit_events(since=cutoff):
@@ -377,7 +403,11 @@ class KandjiIngestion:
         state_repo: IntegrationStateRepository,
     ) -> Tuple[Dict[str, List[HostEvent]], int]:
         state = await state_repo.get_state(_PATCH_SCOPE, self._organization)
-        cutoff = state.last_timestamp - _DETECTIONS_DRIFT if state and state.last_timestamp else None
+        cutoff = (
+            state.last_timestamp - _DETECTIONS_DRIFT
+            if state and state.last_timestamp
+            else None
+        )
         grouped: Dict[str, List[HostEvent]] = {}
         latest: Optional[datetime] = None
         async for detection in self._client.iter_patch_updates():
@@ -427,7 +457,12 @@ class KandjiIngestion:
     async def _collect_device_enrichment(
         self,
         device: Dict[str, Any],
-    ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[List[Dict[str, Any]]], Dict[str, Any]]:
+    ) -> Tuple[
+        Optional[Dict[str, Any]],
+        Optional[Dict[str, Any]],
+        Optional[List[Dict[str, Any]]],
+        Dict[str, Any],
+    ]:
         device_id = str(device.get("id") or "")
         compliance: Optional[Dict[str, Any]] = None
         smart_groups: Optional[List[Dict[str, Any]]] = None
@@ -440,11 +475,16 @@ class KandjiIngestion:
             details = await self._client.get_device_details(device_id)
             if isinstance(details, dict):
                 lifecycle = {
-                    "owner_email": details.get("owner", {}).get("email") if isinstance(details.get("owner"), dict) else None,
+                    "owner_email": (
+                        details.get("owner", {}).get("email")
+                        if isinstance(details.get("owner"), dict)
+                        else None
+                    ),
                     "department": details.get("department"),
                     "asset_tag": details.get("asset_tag"),
                     "enrollment": details.get("enrollment_status"),
-                    "last_check_in": details.get("last_check_in") or details.get("last_check_in_date"),
+                    "last_check_in": details.get("last_check_in")
+                    or details.get("last_check_in_date"),
                 }
 
         blueprint_id = str(device.get("blueprint_id") or device.get("blueprint") or "")
@@ -476,7 +516,11 @@ class KandjiIngestion:
         if not serial:
             return None
 
-        mdm_device = device.get("mdm_device") if isinstance(device.get("mdm_device"), dict) else {}
+        mdm_device = (
+            device.get("mdm_device")
+            if isinstance(device.get("mdm_device"), dict)
+            else {}
+        )
         hostname = (
             mdm_device.get("name")
             or device.get("device_name")
@@ -484,7 +528,9 @@ class KandjiIngestion:
             or serial
         )
 
-        os_family = (device.get("os") or device.get("device_family") or "unknown").lower()
+        os_family = (
+            device.get("os") or device.get("device_family") or "unknown"
+        ).lower()
         blueprint_id = str(device.get("blueprint_id") or device.get("blueprint") or "")
         tags: Dict[str, str] = {}
         if blueprint_id:
@@ -520,7 +566,9 @@ class KandjiIngestion:
                 tags["blueprint_owner"] = str(owner)
 
         if smart_groups:
-            names = [str(group.get("name")) for group in smart_groups if group.get("name")]
+            names = [
+                str(group.get("name")) for group in smart_groups if group.get("name")
+            ]
             if names:
                 tags["smart_groups"] = ",".join(sorted(names))
 
@@ -553,7 +601,9 @@ class KandjiIngestion:
         if not isinstance(detection, dict):
             return None
 
-        serial = str(detection.get("device_serial_number") or detection.get("device_id") or "").strip()
+        serial = str(
+            detection.get("device_serial_number") or detection.get("device_id") or ""
+        ).strip()
         if not serial:
             return None
 
@@ -561,14 +611,21 @@ class KandjiIngestion:
         if not cve:
             return None
 
-        timestamp_raw = detection.get("latest_detection_date") or detection.get("first_detection_date")
+        timestamp_raw = detection.get("latest_detection_date") or detection.get(
+            "first_detection_date"
+        )
         if isinstance(timestamp_raw, str):
             timestamp = date_parser.isoparse(timestamp_raw)
         else:
             timestamp = datetime.now(timezone.utc)
 
         event_uuid = uuid5(_KANDJI_EVENT_NAMESPACE, f"vuln:{serial}:{cve}")
-        severity = str(detection.get("cvss_severity") or detection.get("severity") or "").lower() or None
+        severity = (
+            str(
+                detection.get("cvss_severity") or detection.get("severity") or ""
+            ).lower()
+            or None
+        )
 
         # Preserve Kandji's raw detection data so analysts can cross-reference
         # affected software, remediation state, and ticket links.
@@ -615,7 +672,9 @@ class KandjiIngestion:
 
     def _extract_compliance_tags(self, device: Dict[str, Any]) -> Dict[str, str]:
         tags: Dict[str, str] = {}
-        compliance_status = device.get("compliance_status") or device.get("device_status")
+        compliance_status = device.get("compliance_status") or device.get(
+            "device_status"
+        )
         if compliance_status not in (None, ""):
             tags["compliance_status"] = str(compliance_status).lower()
 
@@ -623,17 +682,23 @@ class KandjiIngestion:
         if compliance_score not in (None, ""):
             tags["compliance_score"] = str(compliance_score)
 
-        missing_patches = device.get("missing_patch_count") or device.get("pending_updates")
+        missing_patches = device.get("missing_patch_count") or device.get(
+            "pending_updates"
+        )
         if missing_patches not in (None, ""):
             tags["missing_patch_count"] = str(missing_patches)
 
         return tags
 
-    def _build_health(self, compliance: Optional[Dict[str, Any]], collected_at: datetime) -> Optional[AgentHealth]:
+    def _build_health(
+        self, compliance: Optional[Dict[str, Any]], collected_at: datetime
+    ) -> Optional[AgentHealth]:
         if not compliance:
             return None
 
-        status = str(compliance.get("status") or compliance.get("state") or "unknown").lower()
+        status = str(
+            compliance.get("status") or compliance.get("state") or "unknown"
+        ).lower()
         issues_field = compliance.get("issues") or compliance.get("failures")
         if isinstance(issues_field, list):
             issues = [str(item) for item in issues_field if item]
@@ -642,7 +707,9 @@ class KandjiIngestion:
         else:
             issues = []
 
-        last_check = compliance.get("last_check_in") or compliance.get("last_evaluated_at")
+        last_check = compliance.get("last_check_in") or compliance.get(
+            "last_evaluated_at"
+        )
         parsed = self._parse_datetime(last_check)
         heartbeat = parsed or collected_at
 
@@ -653,9 +720,13 @@ class KandjiIngestion:
             "not_compliant": "degraded",
         }.get(status, status or "unknown")
 
-        return AgentHealth(status=normalized_status, last_heartbeat=heartbeat, issues=issues or None)
+        return AgentHealth(
+            status=normalized_status, last_heartbeat=heartbeat, issues=issues or None
+        )
 
-    def _extract_installed_packages(self, device: Dict[str, Any]) -> Optional[List[SoftwarePackage]]:
+    def _extract_installed_packages(
+        self, device: Dict[str, Any]
+    ) -> Optional[List[SoftwarePackage]]:
         candidates = [
             device.get("applications"),
             device.get("installed_applications"),
@@ -668,15 +739,25 @@ class KandjiIngestion:
             for entry in apps:
                 if not isinstance(entry, dict):
                     continue
-                name = entry.get("name") or entry.get("app_name") or entry.get("bundle_name")
+                name = (
+                    entry.get("name")
+                    or entry.get("app_name")
+                    or entry.get("bundle_name")
+                )
                 if not name:
                     continue
-                version = entry.get("version") or entry.get("app_version") or entry.get("bundle_version")
+                version = (
+                    entry.get("version")
+                    or entry.get("app_version")
+                    or entry.get("bundle_version")
+                )
                 package = SoftwarePackage(
                     name=str(name),
                     version=str(version) if version else "unknown",
                     source=entry.get("source") or entry.get("bundle_id"),
-                    install_time=self._parse_datetime(entry.get("installed_at") or entry.get("install_date")),
+                    install_time=self._parse_datetime(
+                        entry.get("installed_at") or entry.get("install_date")
+                    ),
                     vendor=entry.get("vendor") or entry.get("developer"),
                     signature=entry.get("signature"),
                 )
@@ -687,19 +768,28 @@ class KandjiIngestion:
         if not isinstance(record, dict):
             return None
 
-        serial = str(record.get("device_serial_number") or record.get("serial_number") or "").strip()
+        serial = str(
+            record.get("device_serial_number") or record.get("serial_number") or ""
+        ).strip()
         if not serial:
             return None
 
-        event_type = str(record.get("event_type") or record.get("type") or "audit").lower()
+        event_type = str(
+            record.get("event_type") or record.get("type") or "audit"
+        ).lower()
         status = str(record.get("result") or record.get("status") or "info").lower()
-        timestamp = self._parse_datetime(record.get("created_at") or record.get("timestamp"))
+        timestamp = self._parse_datetime(
+            record.get("created_at") or record.get("timestamp")
+        )
         if timestamp is None:
             timestamp = datetime.now(timezone.utc)
 
         payload = {k: v for k, v in record.items()}
 
-        event_uuid = uuid5(_KANDJI_EVENT_NAMESPACE, f"audit:{serial}:{payload.get('id') or timestamp.isoformat()}:{event_type}")
+        event_uuid = uuid5(
+            _KANDJI_EVENT_NAMESPACE,
+            f"audit:{serial}:{payload.get('id') or timestamp.isoformat()}:{event_type}",
+        )
 
         return HostEvent(
             event_id=event_uuid,
@@ -713,26 +803,41 @@ class KandjiIngestion:
             payload=payload,
         )
 
-    def _normalize_patch_detection(self, detection: Dict[str, Any]) -> Optional[HostEvent]:
+    def _normalize_patch_detection(
+        self, detection: Dict[str, Any]
+    ) -> Optional[HostEvent]:
         if not isinstance(detection, dict):
             return None
 
-        serial = str(detection.get("device_serial_number") or detection.get("device_id") or "").strip()
+        serial = str(
+            detection.get("device_serial_number") or detection.get("device_id") or ""
+        ).strip()
         if not serial:
             return None
 
-        app_name = detection.get("application_name") or detection.get("name") or detection.get("title")
+        app_name = (
+            detection.get("application_name")
+            or detection.get("name")
+            or detection.get("title")
+        )
         cve = detection.get("cve") or detection.get("cve_id")
         event_key = app_name or cve or "patch"
         event_type = f"patch:{event_key}".lower()
-        severity = str(detection.get("severity") or detection.get("priority") or "info").lower()
-        timestamp = self._parse_datetime(detection.get("detected_at") or detection.get("updated_at"))
+        severity = str(
+            detection.get("severity") or detection.get("priority") or "info"
+        ).lower()
+        timestamp = self._parse_datetime(
+            detection.get("detected_at") or detection.get("updated_at")
+        )
         if timestamp is None:
             timestamp = datetime.now(timezone.utc)
 
         payload = {k: v for k, v in detection.items()}
 
-        event_uuid = uuid5(_KANDJI_EVENT_NAMESPACE, f"patch:{serial}:{event_key}:{timestamp.isoformat()}")
+        event_uuid = uuid5(
+            _KANDJI_EVENT_NAMESPACE,
+            f"patch:{serial}:{event_key}:{timestamp.isoformat()}",
+        )
 
         return HostEvent(
             event_id=event_uuid,

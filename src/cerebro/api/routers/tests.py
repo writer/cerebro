@@ -17,8 +17,17 @@ from ...core.database import get_db
 from ...core.models import Organization
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...testing.test_registry import get_test_registry, TestType, TestFrequency, TestStatus
-from ...compliance.evidence_data_fabric import EvidenceDataFabric, EvidenceQuery, EvidenceEntityType
+from ...testing.test_registry import (
+    get_test_registry,
+    TestType,
+    TestFrequency,
+    TestStatus,
+)
+from ...compliance.evidence_data_fabric import (
+    EvidenceDataFabric,
+    EvidenceQuery,
+    EvidenceEntityType,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,23 +35,31 @@ logger = logging.getLogger(__name__)
 
 class TestCreateRequest(BaseModel):
     """Request to create new security test."""
+
     name: str = Field(..., description="Test name")
     description: str = Field(..., description="Test description")
     test_type: str = Field(..., description="Test type (automated, manual, hybrid)")
     sql_query: Optional[str] = Field(None, description="SQL query for automated tests")
-    manual_steps: List[str] = Field(default_factory=list, description="Manual test steps")
+    manual_steps: List[str] = Field(
+        default_factory=list, description="Manual test steps"
+    )
     expected_result: str = Field(..., description="Expected test result")
     pass_criteria: str = Field(..., description="Criteria for test to pass")
     frequency: str = Field("monthly", description="Test frequency")
-    control_ids: List[str] = Field(default_factory=list, description="Associated control IDs")
+    control_ids: List[str] = Field(
+        default_factory=list, description="Associated control IDs"
+    )
     risk_level: str = Field("medium", description="Risk level if test fails")
 
 
 class TestExecutionRequest(BaseModel):
     """Request to execute security test."""
+
     test_id: str = Field(..., description="Test ID to execute")
     manual_result: Optional[str] = Field(None, description="Manual test result")
-    evidence_references: List[str] = Field(default_factory=list, description="Evidence record IDs")
+    evidence_references: List[str] = Field(
+        default_factory=list, description="Evidence record IDs"
+    )
 
 
 @router.get("/organizations/{org_id}/tests")
@@ -50,7 +67,9 @@ async def list_tests(
     org_id: UUID,
     status: Optional[str] = Query(None, description="Filter by test status"),
     test_type: Optional[str] = Query(None, description="Filter by test type"),
-    framework: Optional[str] = Query(None, description="Filter by compliance framework"),
+    framework: Optional[str] = Query(
+        None, description="Filter by compliance framework"
+    ),
     overdue_only: bool = Query(False, description="Show only overdue tests"),
     failing_only: bool = Query(False, description="Show only failing tests"),
     db: AsyncSession = Depends(get_db),
@@ -60,32 +79,36 @@ async def list_tests(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         test_registry = get_test_registry()
         all_tests = list(test_registry.tests.values())
-        
+
         # Apply filters
         filtered_tests = all_tests
-        
+
         if status:
             status_enum = TestStatus(status.lower())
             filtered_tests = [t for t in filtered_tests if t.status == status_enum]
-        
+
         if test_type:
-            type_enum = TestType(test_type.lower()) 
+            type_enum = TestType(test_type.lower())
             filtered_tests = [t for t in filtered_tests if t.test_type == type_enum]
-        
+
         if framework:
-            filtered_tests = [t for t in filtered_tests if framework in t.framework_mappings]
-        
+            filtered_tests = [
+                t for t in filtered_tests if framework in t.framework_mappings
+            ]
+
         if overdue_only:
             current_time = datetime.now()
-            filtered_tests = [t for t in filtered_tests if t.next_execution < current_time]
-        
+            filtered_tests = [
+                t for t in filtered_tests if t.next_execution < current_time
+            ]
+
         if failing_only:
             filtered_tests = [t for t in filtered_tests if t.last_result == "fail"]
-        
+
         return {
             "organization_id": str(org_id),
             "total_tests": len(all_tests),
@@ -95,7 +118,7 @@ async def list_tests(
                 "test_type": test_type,
                 "framework": framework,
                 "overdue_only": overdue_only,
-                "failing_only": failing_only
+                "failing_only": failing_only,
             },
             "tests": [
                 {
@@ -106,18 +129,20 @@ async def list_tests(
                     "status": test.status.value,
                     "frequency": test.frequency.value,
                     "next_execution": test.next_execution.isoformat(),
-                    "last_execution": test.last_execution.isoformat() if test.last_execution else None,
+                    "last_execution": (
+                        test.last_execution.isoformat() if test.last_execution else None
+                    ),
                     "last_result": test.last_result,
                     "consecutive_failures": test.consecutive_failures,
                     "risk_level": test.risk_level,
                     "control_ids": test.control_ids,
                     "framework_mappings": test.framework_mappings,
-                    "is_overdue": test.next_execution < datetime.now()
+                    "is_overdue": test.next_execution < datetime.now(),
                 }
                 for test in filtered_tests
-            ]
+            ],
         }
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -138,14 +163,14 @@ async def get_test_details(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         test_registry = get_test_registry()
         test = test_registry.tests.get(test_id)
-        
+
         if not test:
             raise HTTPException(status_code=404, detail="Test not found")
-        
+
         test_details = {
             "test_id": test.test_id,
             "name": test.name,
@@ -158,60 +183,62 @@ async def get_test_details(
                 "expected_result": test.expected_result,
                 "pass_criteria": test.pass_criteria,
                 "timeout_minutes": test.timeout_minutes,
-                "retry_count": test.retry_count
+                "retry_count": test.retry_count,
             },
             "scheduling": {
                 "frequency": test.frequency.value,
                 "next_execution": test.next_execution.isoformat(),
-                "last_execution": test.last_execution.isoformat() if test.last_execution else None
+                "last_execution": (
+                    test.last_execution.isoformat() if test.last_execution else None
+                ),
             },
             "compliance_mapping": {
                 "control_ids": test.control_ids,
                 "framework_mappings": test.framework_mappings,
-                "requirements": []  # Would map to evidence fabric requirements
+                "requirements": [],  # Would map to evidence fabric requirements
             },
             "risk_assessment": {
                 "risk_level": test.risk_level,
-                "impact_of_failure": test.impact_of_failure
+                "impact_of_failure": test.impact_of_failure,
             },
             "execution_status": {
                 "last_result": test.last_result,
                 "failure_count": test.failure_count,
-                "consecutive_failures": test.consecutive_failures
+                "consecutive_failures": test.consecutive_failures,
             },
             "metadata": {
                 "created_by": test.created_by,
                 "created_at": test.created_at.isoformat(),
                 "updated_at": test.updated_at.isoformat(),
-                "tags": test.tags
-            }
+                "tags": test.tags,
+            },
         }
-        
+
         # Include test entities if requested
         if include_entities:
             # This would query the entities being tested
             test_details["test_entities"] = {
                 "total_entities": 0,  # Would count from evidence fabric
                 "entity_types": [],
-                "sample_entities": []
+                "sample_entities": [],
             }
-        
-        # Include execution history if requested  
+
+        # Include execution history if requested
         if include_history:
             # This would query execution history from evidence fabric
             test_details["execution_history"] = {
                 "total_executions": 0,
                 "recent_executions": [],
                 "pass_rate_30_days": 100.0,
-                "average_execution_time": 0.0
+                "average_execution_time": 0.0,
             }
-        
+
         return {
             "success": True,
             "message": f"Test details retrieved: {test.name}",
-            "data": test_details
+            "data": test_details,
         }
-        
+
     except HTTPException:
         raise
     except Exception:
@@ -233,10 +260,10 @@ async def create_test(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         from ...testing.test_registry import SecurityTest
-        
+
         # Create test object
         test = SecurityTest(
             test_id=f"test_{request.name.lower().replace(' ', '_')}_{int(datetime.now().timestamp())}",
@@ -265,13 +292,13 @@ async def create_test(
             created_at=datetime.now(),
             updated_at=datetime.now(),
             tags=[],
-            metadata={}
+            metadata={},
         )
-        
+
         # Register test
         test_registry = get_test_registry()
         test_id = await test_registry.register_test(test)
-        
+
         return {
             "success": True,
             "message": f"Security test '{request.name}' created successfully",
@@ -279,10 +306,10 @@ async def create_test(
                 "test_id": test_id,
                 "name": test.name,
                 "test_type": test.test_type.value,
-                "next_execution": test.next_execution.isoformat()
-            }
+                "next_execution": test.next_execution.isoformat(),
+            },
         }
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -300,17 +327,17 @@ async def get_test_summary(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         test_registry = get_test_registry()
         summary = await test_registry.generate_test_summary(str(org_id))
-        
+
         return {
             "success": True,
             "message": f"Test summary generated for {summary['totals']['total_tests']} tests",
-            "data": summary
+            "data": summary,
         }
-        
+
     except Exception:
         logger.exception("Test summary failed", extra={"org_id": str(org_id)})
         raise HTTPException(status_code=500, detail="Test summary failed")
@@ -323,7 +350,9 @@ async def query_evidence_fabric(
     entity_type: Optional[str] = Query(None, description="Filter by entity type"),
     entity_id: Optional[str] = Query(None, description="Specific entity ID"),
     source_system: Optional[str] = Query(None, description="Filter by source system"),
-    requirements: Optional[List[str]] = Query(None, description="Filter by requirement IDs"),
+    requirements: Optional[List[str]] = Query(
+        None, description="Filter by requirement IDs"
+    ),
     since_days: int = Query(30, description="Evidence age limit", ge=1, le=365),
     limit: int = Query(50, description="Maximum results", ge=1, le=500),
     db: AsyncSession = Depends(get_db),
@@ -333,29 +362,29 @@ async def query_evidence_fabric(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         # Build evidence query
         query_filters = {}
-        
+
         if entity_type:
             query_filters["entity_types"] = [EvidenceEntityType(entity_type.lower())]
-        
+
         if entity_id:
             query_filters["entity_ids"] = [entity_id]
-        
+
         if source_system:
             query_filters["source_systems"] = [source_system]
-        
+
         if requirements:
             query_filters["requirements"] = requirements
-        
+
         query_filters["time_range"] = (
             datetime.now() - timedelta(days=since_days),
-            datetime.now()
+            datetime.now(),
         )
         query_filters["limit"] = limit
-        
+
         evidence_query = EvidenceQuery(**query_filters)
 
         # Query actual evidence fabric instead of returning mock data
@@ -369,13 +398,15 @@ async def query_evidence_fabric(
             formatted_results = [
                 {
                     "evidence_id": result.evidence_id,
-                    "entity_type": result.entity_type.value if result.entity_type else "unknown",
+                    "entity_type": (
+                        result.entity_type.value if result.entity_type else "unknown"
+                    ),
                     "entity_id": result.entity_id,
                     "source_system": result.source_system,
                     "observed_at": result.observed_at.isoformat(),
                     "quality_score": result.quality_score or 0.0,
                     "requirements": result.requirements or [],
-                    "normalized_data": result.normalized_data or {}
+                    "normalized_data": result.normalized_data or {},
                 }
                 for result in evidence_results.evidence_items
             ]
@@ -388,16 +419,22 @@ async def query_evidence_fabric(
                     "source_system": source_system,
                     "requirements": requirements,
                     "since_days": since_days,
-                    "limit": limit
+                    "limit": limit,
                 },
                 "total_results": evidence_results.total_count,
                 "evidence_records": formatted_results,
                 "query_execution_time_ms": evidence_results.execution_time_ms,
-                "cache_hit": evidence_results.from_cache if hasattr(evidence_results, 'from_cache') else False
+                "cache_hit": (
+                    evidence_results.from_cache
+                    if hasattr(evidence_results, "from_cache")
+                    else False
+                ),
             }
 
         except Exception:
-            logger.exception("Evidence fabric query failed", extra={"org_id": str(org_id)})
+            logger.exception(
+                "Evidence fabric query failed", extra={"org_id": str(org_id)}
+            )
             # Return error response instead of mock data
             return {
                 "organization_id": str(org_id),
@@ -407,13 +444,13 @@ async def query_evidence_fabric(
                     "source_system": source_system,
                     "requirements": requirements,
                     "since_days": since_days,
-                    "limit": limit
+                    "limit": limit,
                 },
                 "total_results": 0,
                 "evidence_records": [],
-                "error": "Evidence query failed"
+                "error": "Evidence query failed",
             }
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:

@@ -152,9 +152,7 @@ class GCPBucketSecretArtifactProducer(BaseGCPProducer):
             sample_size=len(objects),
             extra={
                 "bucket": bucket_name,
-                "public_access_prevention": normalized.get(
-                    "public_access_prevention"
-                ),
+                "public_access_prevention": normalized.get("public_access_prevention"),
                 "uniform_bucket_level_access": upla.get("enabled"),
             },
         )

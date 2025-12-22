@@ -42,7 +42,9 @@ class TelemetryHealthSnapshot:
         return (self.missing_metadata / self.total_events) if self.total_events else 0.0
 
     def missing_component_ratio(self) -> float:
-        return (self.missing_component / self.total_events) if self.total_events else 0.0
+        return (
+            (self.missing_component / self.total_events) if self.total_events else 0.0
+        )
 
 
 async def fetch_telemetry_health(
@@ -94,26 +96,24 @@ async def fetch_telemetry_health(
 
         unique_orgs = (
             await session.execute(
-                select(func.count(func.distinct(FrontendObservationEvent.org_id))).where(
-                    *filters
-                )
+                select(
+                    func.count(func.distinct(FrontendObservationEvent.org_id))
+                ).where(*filters)
             )
         ).scalar_one()
 
         unique_users = (
             await session.execute(
-                select(func.count(func.distinct(FrontendObservationEvent.user_id))).where(
-                    *filters
-                )
+                select(
+                    func.count(func.distinct(FrontendObservationEvent.user_id))
+                ).where(*filters)
             )
         ).scalar_one()
 
         unique_sessions = (
             await session.execute(
                 select(
-                    func.count(
-                        func.distinct(FrontendObservationEvent.agent_session_id)
-                    )
+                    func.count(func.distinct(FrontendObservationEvent.agent_session_id))
                 ).where(*filters)
             )
         ).scalar_one()
@@ -146,11 +146,7 @@ async def fetch_telemetry_health(
             )
         ).scalar_one()
 
-        events_per_session = (
-            total_events / unique_sessions
-            if unique_sessions
-            else 0.0
-        )
+        events_per_session = total_events / unique_sessions if unique_sessions else 0.0
 
         recent_stmt = (
             select(FrontendObservationEvent)
@@ -167,9 +163,9 @@ async def fetch_telemetry_health(
                 "component": row.component,
                 "org_id": str(row.org_id) if row.org_id else None,
                 "user_id": str(row.user_id) if row.user_id else None,
-                "agent_session_id": str(row.agent_session_id)
-                if row.agent_session_id
-                else None,
+                "agent_session_id": (
+                    str(row.agent_session_id) if row.agent_session_id else None
+                ),
                 "metadata_keys": sorted((row.event_metadata or {}).keys()),
             }
             for row in recent_rows

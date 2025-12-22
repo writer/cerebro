@@ -12,7 +12,7 @@ router = APIRouter()
 async def events_websocket(
     websocket: WebSocket,
     org_id: Optional[str] = Query(None),
-    token: Optional[str] = Query(None)
+    token: Optional[str] = Query(None),
 ):
     """WebSocket endpoint for real-time event updates."""
     await websocket_endpoint(websocket, org_id, token)

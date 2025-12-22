@@ -16,7 +16,7 @@ from .agent_self_service_tasks import generate_self_service_question_report
 __all__ = [
     "celery_app",
     "collect_account_task",
-    "collect_organization_task", 
+    "collect_organization_task",
     "generate_findings_task",
     "cleanup_old_snapshots_task",
     "run_self_play_batch",

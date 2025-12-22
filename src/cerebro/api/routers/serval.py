@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import require_scopes
 from cerebro.core.database import get_db
-from cerebro.integrations.serval_service import ServalIntegrationRepository, ServalIntegrationSettings
+from cerebro.integrations.serval_service import (
+    ServalIntegrationRepository,
+    ServalIntegrationSettings,
+)
 from cerebro.integrations.serval_ticket_service import ServalTicketService
 
 
@@ -19,17 +22,33 @@ class ServalConfigRequest(BaseModel):
     team_id: str = Field(..., description="Serval team identifier")
     client_id: str = Field(..., description="Serval client identifier")
     client_secret: str = Field(..., description="Serval client secret")
-    default_created_by_user_id: str = Field(..., description="Default Serval user recorded as creator")
+    default_created_by_user_id: str = Field(
+        ..., description="Default Serval user recorded as creator"
+    )
     api_base_url: Optional[str] = Field(
         default="https://public.api.serval.com",
         description="Serval API base URL",
     )
-    default_status_id: Optional[str] = Field(None, description="Default Serval status id for new tickets")
-    default_priority_id: Optional[str] = Field(None, description="Default Serval priority id")
-    default_requester_user_id: Optional[str] = Field(None, description="Default Serval requester user id")
-    default_assigned_user_id: Optional[str] = Field(None, description="Default Serval assignee user id")
-    status_map: Dict[str, str] = Field(default_factory=dict, description="Mapping of Cerebro statuses to Serval status ids")
-    priority_map: Dict[str, str] = Field(default_factory=dict, description="Mapping of Cerebro priorities to Serval priority ids")
+    default_status_id: Optional[str] = Field(
+        None, description="Default Serval status id for new tickets"
+    )
+    default_priority_id: Optional[str] = Field(
+        None, description="Default Serval priority id"
+    )
+    default_requester_user_id: Optional[str] = Field(
+        None, description="Default Serval requester user id"
+    )
+    default_assigned_user_id: Optional[str] = Field(
+        None, description="Default Serval assignee user id"
+    )
+    status_map: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of Cerebro statuses to Serval status ids",
+    )
+    priority_map: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of Cerebro priorities to Serval priority ids",
+    )
 
 
 class ServalConfigResponse(BaseModel):
@@ -45,7 +64,9 @@ class ServalConfigResponse(BaseModel):
     priority_map: Dict[str, str]
 
     @classmethod
-    def from_settings(cls, settings: ServalIntegrationSettings) -> "ServalConfigResponse":
+    def from_settings(
+        cls, settings: ServalIntegrationSettings
+    ) -> "ServalConfigResponse":
         return cls(
             org_id=settings.org_id,
             team_id=settings.team_id,

@@ -84,7 +84,9 @@ class ProviderFreshness:
 class IntegrationFreshnessService:
     """Derive integration freshness summaries from sync state records."""
 
-    def __init__(self, session: AsyncSession, *, stale_seconds: Optional[int] = None) -> None:
+    def __init__(
+        self, session: AsyncSession, *, stale_seconds: Optional[int] = None
+    ) -> None:
         self._session = session
         self._repo = IntegrationStateRepository(session)
         self._stale_seconds = stale_seconds or settings.integration_sync_stale_seconds
@@ -115,14 +117,18 @@ class IntegrationFreshnessService:
             )
         return summaries
 
-    async def provider_freshness(self, providers: Iterable[str]) -> Dict[str, ProviderFreshness]:
+    async def provider_freshness(
+        self, providers: Iterable[str]
+    ) -> Dict[str, ProviderFreshness]:
         integration_freshness = await self.list_freshness()
         provider_map: Dict[str, ProviderFreshness] = {}
 
         for provider in providers:
             hints = PROVIDER_HINTS.get(provider.lower(), (provider.lower(),))
             matches = [
-                item for item in integration_freshness if any(hint in item.integration.lower() for hint in hints)
+                item
+                for item in integration_freshness
+                if any(hint in item.integration.lower() for hint in hints)
             ]
             if not matches:
                 provider_map[provider] = ProviderFreshness(
@@ -136,7 +142,11 @@ class IntegrationFreshnessService:
                 )
                 continue
 
-            latest = max(matches, key=lambda item: item.last_synced_at or datetime.fromtimestamp(0, tz=timezone.utc))
+            latest = max(
+                matches,
+                key=lambda item: item.last_synced_at
+                or datetime.fromtimestamp(0, tz=timezone.utc),
+            )
             age_seconds = latest.age_seconds
             status = latest.status
             warning = latest.warning
@@ -166,7 +176,9 @@ class IntegrationFreshnessService:
 
         return provider_map
 
-    def _derive_last_synced(self, last_timestamp: Optional[datetime], metadata: Dict[str, object]) -> Optional[datetime]:
+    def _derive_last_synced(
+        self, last_timestamp: Optional[datetime], metadata: Dict[str, object]
+    ) -> Optional[datetime]:
         candidates: List[datetime] = []
         if last_timestamp is not None:
             candidates.append(self._ensure_utc(last_timestamp))
@@ -188,9 +200,15 @@ class IntegrationFreshnessService:
             return None
         return max(candidates)
 
-    def _classify_status(self, age_seconds: Optional[float], metadata: Dict[str, object]) -> str:
+    def _classify_status(
+        self, age_seconds: Optional[float], metadata: Dict[str, object]
+    ) -> str:
         status_hint = metadata.get("last_status")
-        if isinstance(status_hint, str) and status_hint.lower() in {"error", "disabled", "skipped"}:
+        if isinstance(status_hint, str) and status_hint.lower() in {
+            "error",
+            "disabled",
+            "skipped",
+        }:
             return status_hint.lower()
 
         if age_seconds is None:
@@ -199,7 +217,9 @@ class IntegrationFreshnessService:
             return "fresh"
         return "stale"
 
-    def _build_warning(self, status: str, integration: str, age_seconds: Optional[float]) -> Optional[str]:
+    def _build_warning(
+        self, status: str, integration: str, age_seconds: Optional[float]
+    ) -> Optional[str]:
         if status not in {"stale", "error"}:
             return None
         age_text = _humanize_age(age_seconds) if age_seconds is not None else "unknown"

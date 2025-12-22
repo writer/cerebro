@@ -65,8 +65,7 @@ class BenchmarksStatusTool(StructuredTool):
         path = Path(scorecard_path) if scorecard_path else DEFAULT_SCORECARD_PATH
         if not path.exists():
             return ToolResult(
-                success=False,
-                error=f"Benchmark scorecard not found at {path}"
+                success=False, error=f"Benchmark scorecard not found at {path}"
             )
 
         try:

@@ -16,7 +16,9 @@ logger = structlog.get_logger(__name__)
 class ScenarioProvider:
     """Load a `SelfPlayScenario` by identifier."""
 
-    async def load(self, scenario_id: str) -> SelfPlayScenario:  # pragma: no cover - interface only
+    async def load(
+        self, scenario_id: str
+    ) -> SelfPlayScenario:  # pragma: no cover - interface only
         raise NotImplementedError
 
 
@@ -79,13 +81,13 @@ class TournamentRunner:
         scenario_results: List[ScenarioRunResult] = []
 
         for scenario_cfg in config.scenarios:
-            scenario_results.append(
-                await self._run_scenario(scenario_cfg)
-            )
+            scenario_results.append(await self._run_scenario(scenario_cfg))
 
         return TournamentResult(name=config.name, scenarios=scenario_results)
 
-    async def _run_scenario(self, config: TournamentScenarioConfig) -> ScenarioRunResult:
+    async def _run_scenario(
+        self, config: TournamentScenarioConfig
+    ) -> ScenarioRunResult:
         scenario = await self._scenario_provider.load(config.scenario_id)
         matches: List[SelfPlayResult] = []
 
@@ -114,7 +116,9 @@ class TournamentRunner:
                     f"Scenario {config.scenario_id} exceeded turn budget: "
                     f"{max_turns} > {config.max_allowed_turns}"
                 )
-                drift_alert = extra if drift_alert is None else f"{drift_alert}; {extra}"
+                drift_alert = (
+                    extra if drift_alert is None else f"{drift_alert}; {extra}"
+                )
 
         if drift_alert:
             logger.warning("self_play.tournament.drift", alert=drift_alert)

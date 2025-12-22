@@ -5,6 +5,7 @@ Revises: 017
 Create Date: 2024-10-15 00:00:00.000000
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -73,14 +74,28 @@ def upgrade() -> None:
         sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("agent_type", sa.String(length=100), nullable=True),
         sa.Column("role", message_role_enum, nullable=True),
-        sa.Column("scopes", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("scope_priority", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "scopes",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "scope_priority", sa.Integer(), nullable=False, server_default=sa.text("0")
+        ),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("summary", sa.String(length=500), nullable=True),
         sa.Column("embedding", postgresql.JSONB(), nullable=True),
         sa.Column("embedding_norm", sa.Float(), nullable=True),
-        sa.Column("extra_metadata", postgresql.JSONB(), nullable=True, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("decay_score", sa.Float(), nullable=False, server_default=sa.text("1.0")),
+        sa.Column(
+            "extra_metadata",
+            postgresql.JSONB(),
+            nullable=True,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "decay_score", sa.Float(), nullable=False, server_default=sa.text("1.0")
+        ),
         sa.Column(
             "last_accessed_at",
             sa.DateTime(timezone=True),
@@ -100,7 +115,9 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.ForeignKeyConstraint(["org_id"], ["orgs.org_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["session_id"], ["agent_sessions.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["session_id"], ["agent_sessions.id"], ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 

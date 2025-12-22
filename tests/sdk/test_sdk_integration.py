@@ -13,6 +13,7 @@ try:
     from cerebro.agents.models import AgentType
     from cerebro.agents.tools import tool_registry, AgentContext, ToolPermissionLevel
     from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
+
     print("✅ All imports successful")
 except ImportError as e:
     print(f"❌ Import failed: {e}")
@@ -36,6 +37,7 @@ try:
 
     # Create MCP server - need to pass tools, context, and executor
     from cerebro.agents.tools import ToolExecutor
+
     tools = [tool for tool in tool_registry._tools.values()]
     executor = ToolExecutor()
 
@@ -50,6 +52,7 @@ try:
 except Exception as e:
     print(f"❌ MCP server creation failed: {e}")
     import traceback
+
     traceback.print_exc()
     exit(1)
 
@@ -68,6 +71,7 @@ try:
 except Exception as e:
     print(f"❌ Runtime initialization failed: {e}")
     import traceback
+
     traceback.print_exc()
     exit(1)
 
@@ -78,17 +82,22 @@ try:
     print(f"✅ Tool registry has {len(available_tools)} tools:")
     for tool_obj in available_tools:
         # list_tools returns tool objects, not names
-        desc = tool_obj.description[:60] + "..." if len(tool_obj.description) > 60 else tool_obj.description
+        desc = (
+            tool_obj.description[:60] + "..."
+            if len(tool_obj.description) > 60
+            else tool_obj.description
+        )
         print(f"   - {tool_obj.name}: {desc}")
 except Exception as e:
     print(f"❌ Tool registry check failed: {e}")
     import traceback
+
     traceback.print_exc()
     exit(1)
 
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("🎉 All SDK integration tests passed!")
-print("="*60)
+print("=" * 60)
 print("\nNext steps:")
 print("1. Set up PostgreSQL database")
 print("2. Run: make db-migrate")

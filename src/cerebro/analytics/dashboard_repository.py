@@ -48,9 +48,7 @@ class DashboardRepository:
             WHERE a.org_id = :org_id AND f.severity = :severity AND f.status = 'open'
             """
         )
-        result = await self._db.execute(
-            query, {"org_id": org_id, "severity": severity}
-        )
+        result = await self._db.execute(query, {"org_id": org_id, "severity": severity})
         return result.scalar() or 0
 
     async def get_finding_count_by_status(self, org_id: UUID, status: str) -> int:
@@ -166,10 +164,14 @@ class DashboardRepository:
     async def calculate_compliance_score(self, org_id: UUID) -> float:
         dialect = get_dialect_name(self._db)
         if dialect == "snowflake":
-            compliance_rule_predicate = "EXISTS (SELECT 1 FROM rule_controls rc WHERE rc.rule_id = r.rule_id)"
+            compliance_rule_predicate = (
+                "EXISTS (SELECT 1 FROM rule_controls rc WHERE rc.rule_id = r.rule_id)"
+            )
         else:
             cis_nonempty = array_has_elements_expr(column_expr="r.cis", dialect=dialect)
-            nist_nonempty = array_has_elements_expr(column_expr="r.nist_800_53", dialect=dialect)
+            nist_nonempty = array_has_elements_expr(
+                column_expr="r.nist_800_53", dialect=dialect
+            )
             compliance_rule_predicate = f"({cis_nonempty} OR {nist_nonempty})"
 
         total_query = text(
@@ -200,7 +202,9 @@ class DashboardRepository:
 
         return round((compliant_rules / total_rules) * 100.0, 2)
 
-    async def get_compliance_by_framework(self, org_id: UUID) -> Dict[str, Dict[str, float]]:
+    async def get_compliance_by_framework(
+        self, org_id: UUID
+    ) -> Dict[str, Dict[str, float]]:
         """Return compliance counts grouped by framework."""
 
         dialect = get_dialect_name(self._db)
@@ -225,8 +229,12 @@ class DashboardRepository:
                 """
             )
         else:
-            cis_controls = select_array_elements_subquery(array_column="cis", dialect=dialect)
-            nist_controls = select_array_elements_subquery(array_column="nist_800_53", dialect=dialect)
+            cis_controls = select_array_elements_subquery(
+                array_column="cis", dialect=dialect
+            )
+            nist_controls = select_array_elements_subquery(
+                array_column="nist_800_53", dialect=dialect
+            )
 
             frameworks_query = text(
                 f"""
@@ -277,15 +285,15 @@ class DashboardRepository:
                 "status": (
                     "compliant"
                     if percentage_value >= 90
-                    else "partial"
-                    if percentage_value >= 70
-                    else "non_compliant"
+                    else "partial" if percentage_value >= 70 else "non_compliant"
                 ),
             }
 
         return framework_compliance
 
-    async def get_remediation_actions(self, org_id: UUID) -> List[IdentityRemediationAction]:
+    async def get_remediation_actions(
+        self, org_id: UUID
+    ) -> List[IdentityRemediationAction]:
         statement = (
             select(IdentityRemediationAction)
             .where(IdentityRemediationAction.org_id == org_id)
@@ -483,7 +491,9 @@ class DashboardRepository:
         return action
 
     @staticmethod
-    def serialize_remediation_action(action: IdentityRemediationAction) -> Dict[str, Any]:
+    def serialize_remediation_action(
+        action: IdentityRemediationAction,
+    ) -> Dict[str, Any]:
         return {
             "action_id": str(action.action_id),
             "principal_id": str(action.principal_id),
@@ -493,9 +503,13 @@ class DashboardRepository:
             "status": action.status,
             "evidence": action.evidence or [],
             "notes": action.notes or [],
-            "accepted_at": action.accepted_at.isoformat() if action.accepted_at else None,
+            "accepted_at": (
+                action.accepted_at.isoformat() if action.accepted_at else None
+            ),
             "accepted_by": str(action.accepted_by) if action.accepted_by else None,
-            "completed_at": action.completed_at.isoformat() if action.completed_at else None,
+            "completed_at": (
+                action.completed_at.isoformat() if action.completed_at else None
+            ),
             "completed_by": str(action.completed_by) if action.completed_by else None,
             "created_at": action.created_at.isoformat() if action.created_at else None,
             "updated_at": action.updated_at.isoformat() if action.updated_at else None,
@@ -506,7 +520,10 @@ class DashboardRepository:
     def serialize_remediation_actions(
         actions: Sequence[IdentityRemediationAction],
     ) -> List[Dict[str, Any]]:
-        return [DashboardRepository.serialize_remediation_action(action) for action in actions]
+        return [
+            DashboardRepository.serialize_remediation_action(action)
+            for action in actions
+        ]
 
     @staticmethod
     def _build_note_entry(
@@ -569,7 +586,9 @@ class DashboardRepository:
                     "title": row.title,
                     "severity": row.severity,
                     "status": row.status,
-                    "first_seen": row.first_seen.isoformat() if row.first_seen else None,
+                    "first_seen": (
+                        row.first_seen.isoformat() if row.first_seen else None
+                    ),
                     "last_seen": row.last_seen.isoformat() if row.last_seen else None,
                     "resource_id": str(row.resource_id) if row.resource_id else None,
                     "rule_name": row.rule_name,
@@ -578,7 +597,9 @@ class DashboardRepository:
 
         return findings
 
-    async def get_findings_breakdown_by_provider(self, org_id: UUID) -> List[Dict[str, Any]]:
+    async def get_findings_breakdown_by_provider(
+        self, org_id: UUID
+    ) -> List[Dict[str, Any]]:
         """Aggregate findings by provider with severity and SLA context."""
 
         dialect = get_dialect_name(self._db)
@@ -636,7 +657,9 @@ class DashboardRepository:
                     "high_open": int(row.high_open or 0),
                     "new_last_24h": int(row.new_last_24h or 0),
                     "sla_breaches": int(row.sla_breaches or 0),
-                    "mttr_hours": float(row.mttr_hours) if row.mttr_hours is not None else None,
+                    "mttr_hours": (
+                        float(row.mttr_hours) if row.mttr_hours is not None else None
+                    ),
                 }
             )
 

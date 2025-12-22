@@ -68,7 +68,9 @@ class ControlMapping:
 class ControlMappingOptions:
     catalog: ControlCatalog
     vendor_tags: Callable[[SecurityCenterVendorInsight], Sequence[str]] | None = None
-    customer_tags: Callable[[SecurityCenterCustomerInsight], Sequence[str]] | None = None
+    customer_tags: Callable[[SecurityCenterCustomerInsight], Sequence[str]] | None = (
+        None
+    )
     evidence_policy: LifecyclePolicy | None = None
 
 
@@ -108,7 +110,9 @@ def map_to_control_framework(
             related_vendors = _collect_entities(control.vendor_tags, vendor_index)
             related_customers = _collect_entities(control.customer_tags, customer_index)
 
-            status, rationale = _evaluate_control(control, related_vendors, related_customers)
+            status, rationale = _evaluate_control(
+                control, related_vendors, related_customers
+            )
             evidence_report = _build_evidence_bundle(
                 exported_at,
                 control_id,
@@ -127,7 +131,9 @@ def map_to_control_framework(
                     status=status,
                     rationale=rationale,
                     related_vendors=[vendor.vendor_id for vendor in related_vendors],
-                    related_customers=[customer.customer_id for customer in related_customers],
+                    related_customers=[
+                        customer.customer_id for customer in related_customers
+                    ],
                     evidence_report=evidence_report,
                 )
             )
@@ -168,7 +174,8 @@ def _evaluate_control(
     vendor_breaches = [
         vendor
         for vendor in vendors
-        if residual_max is not None and (vendor.residual_risk_score or 0.0) > residual_max
+        if residual_max is not None
+        and (vendor.residual_risk_score or 0.0) > residual_max
     ]
     customer_breaches = [
         customer
@@ -187,7 +194,9 @@ def _evaluate_control(
         parts.append(f"{len(vendor_breaches)} vendor(s) exceeding tolerance: {names}")
     if customer_breaches:
         names = ", ".join(customer.name for customer in customer_breaches)
-        parts.append(f"{len(customer_breaches)} customer(s) exceeding tolerance: {names}")
+        parts.append(
+            f"{len(customer_breaches)} customer(s) exceeding tolerance: {names}"
+        )
 
     severity = "gap" if len(vendor_breaches) + len(customer_breaches) > 2 else "at_risk"
     return severity, "; ".join(parts)
@@ -201,7 +210,9 @@ def _build_evidence_bundle(
     customers: Sequence[SecurityCenterCustomerInsight],
     evidence_policy: LifecyclePolicy | None,
 ) -> EvidenceBundle:
-    policy = evidence_policy or LifecyclePolicy(max_age_days=90, refresh_window_days=14, hard_expiry_days=365)
+    policy = evidence_policy or LifecyclePolicy(
+        max_age_days=90, refresh_window_days=14, hard_expiry_days=365
+    )
 
     vendor_evidence: List[EvidenceArtifact] = []
     for vendor in vendors:
@@ -242,7 +253,9 @@ def _build_evidence_bundle(
         )
 
     vendor_summary = summarize_evidence_set(vendor_evidence, policy, now=exported_at)
-    customer_summary = summarize_evidence_set(customer_evidence, policy, now=exported_at)
+    customer_summary = summarize_evidence_set(
+        customer_evidence, policy, now=exported_at
+    )
 
     return EvidenceBundle(
         exported_at=exported_at,
@@ -261,10 +274,14 @@ def extract_vendor_tags(metadata: Mapping[str, Any] | None) -> Sequence[str]:
     tags: List[str] = []
     integration = metadata.get("integration")
     if isinstance(integration, Mapping):
-        integration_type = integration.get("integrationType") or integration.get("integration_type")
+        integration_type = integration.get("integrationType") or integration.get(
+            "integration_type"
+        )
         if isinstance(integration_type, str):
             tags.append(integration_type)
-        auth_methods = integration.get("authenticationMethods") or integration.get("authentication_methods")
+        auth_methods = integration.get("authenticationMethods") or integration.get(
+            "authentication_methods"
+        )
         if isinstance(auth_methods, Sequence):
             tags.extend(str(method) for method in auth_methods)
     compliance = metadata.get("complianceSummary") or metadata.get("compliance_summary")
@@ -292,5 +309,3 @@ def extract_customer_tags(metadata: Mapping[str, Any] | None) -> Sequence[str]:
     if isinstance(tags_section, Mapping):
         tags.extend(str(value) for value in tags_section.values())
     return tags
-
-

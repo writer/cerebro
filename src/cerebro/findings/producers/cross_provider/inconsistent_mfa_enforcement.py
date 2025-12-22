@@ -120,9 +120,7 @@ class InconsistentMFAEnforcementProducer(BaseFindingProducer):
         }
 
         title_subject = (
-            identity_data.get("email")
-            or resource.name
-            or resource.external_id
+            identity_data.get("email") or resource.name or resource.external_id
         )
         summary = (
             "User has MFA enabled in "

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class EventType(Enum):
     """Types of security events for correlation."""
+
     FINDING_CREATED = "finding_created"
     FINDING_UPDATED = "finding_updated"
     FINDING_RESOLVED = "finding_resolved"
@@ -37,6 +38,7 @@ class EventType(Enum):
 @dataclass
 class SecurityEvent:
     """Security event for timeline analysis."""
+
     event_id: str
     event_type: EventType
     timestamp: datetime
@@ -50,6 +52,7 @@ class SecurityEvent:
 @dataclass
 class FindingTimeline:
     """Timeline of events related to a finding."""
+
     finding_id: UUID
     finding_title: str
     created_at: datetime
@@ -62,6 +65,7 @@ class FindingTimeline:
 @dataclass
 class EventCorrelation:
     """Correlation analysis between security events."""
+
     correlation_id: str
     event_cluster: List[SecurityEvent]
     correlation_strength: float
@@ -72,58 +76,70 @@ class EventCorrelation:
 
 class InvestigationEngine:
     """Engine for security investigation and event correlation."""
-    
+
     def __init__(self, db_session: AsyncSession):
         """Initialize investigation engine."""
         self.db = db_session
-    
+
     async def generate_finding_timeline(self, finding_id: UUID) -> FindingTimeline:
         """Generate comprehensive timeline for a finding investigation."""
-        
+
         logger.info(f"Generating timeline for finding {finding_id}")
-        
+
         # Get finding details
-        finding_query = text("""
+        finding_query = text(
+            """
             SELECT f.finding_id, f.title, f.first_seen, f.resource_id, f.principal_id, f.rule_id
             FROM findings f
             WHERE f.finding_id = :finding_id
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(finding_query, {"finding_id": finding_id})
         finding_row = result.fetchone()
-        
+
         if not finding_row:
             raise ValueError(f"Finding {finding_id} not found")
-        
+
         # Collect related events
         events = []
-        
+
         # 1. Configuration changes on the affected resource
         if finding_row.resource_id:
-            config_events = await self._get_resource_config_timeline(finding_row.resource_id)
+            config_events = await self._get_resource_config_timeline(
+                finding_row.resource_id
+            )
             events.extend(config_events)
-        
+
         # 2. Permission changes for involved principals
         if finding_row.principal_id:
-            permission_events = await self._get_principal_permission_timeline(finding_row.principal_id)
+            permission_events = await self._get_principal_permission_timeline(
+                finding_row.principal_id
+            )
             events.extend(permission_events)
-        
+
         # 3. Related findings (same rule, same resource, etc.)
-        related_finding_events = await self._get_related_finding_events(finding_id, finding_row.rule_id)
+        related_finding_events = await self._get_related_finding_events(
+            finding_id, finding_row.rule_id
+        )
         events.extend(related_finding_events)
-        
+
         # Sort events chronologically
         events.sort(key=lambda x: x.timestamp)
-        
+
         # Get related findings
-        related_findings = await self._get_related_findings(finding_id, finding_row.rule_id, finding_row.resource_id)
-        
+        related_findings = await self._get_related_findings(
+            finding_id, finding_row.rule_id, finding_row.resource_id
+        )
+
         # Get affected resources
         affected_resources = await self._get_affected_resources(finding_row.resource_id)
-        
+
         # Get involved identities
-        involved_identities = await self._get_involved_identities(finding_row.principal_id)
-        
+        involved_identities = await self._get_involved_identities(
+            finding_row.principal_id
+        )
+
         return FindingTimeline(
             finding_id=finding_id,
             finding_title=finding_row.title,
@@ -131,15 +147,17 @@ class InvestigationEngine:
             events=events,
             related_findings=related_findings,
             affected_resources=affected_resources,
-            involved_identities=involved_identities
+            involved_identities=involved_identities,
         )
-    
-    async def _get_resource_config_timeline(self, resource_id: UUID) -> List[SecurityEvent]:
+
+    async def _get_resource_config_timeline(
+        self, resource_id: UUID
+    ) -> List[SecurityEvent]:
         """Get configuration change timeline for a resource."""
 
         dialect = get_dialect_name(self.db)
         lookback_90_days = timestamp_minus_days_expr(days=90, dialect=dialect)
-        
+
         config_timeline_query = text(
             f"""
             SELECT 
@@ -153,39 +171,47 @@ class InvestigationEngine:
             ORDER BY cs.captured_at
             """
         )
-        
-        result = await self.db.execute(config_timeline_query, {"resource_id": resource_id})
-        
+
+        result = await self.db.execute(
+            config_timeline_query, {"resource_id": resource_id}
+        )
+
         events = []
         for row in result.fetchall():
             # Detect configuration changes
             if row.previous_config:
                 # Simple change detection - in production would use deep diff
-                changed_keys = set(row.normalized_config.keys()) - set(row.previous_config.keys())
-                
+                changed_keys = set(row.normalized_config.keys()) - set(
+                    row.previous_config.keys()
+                )
+
                 if changed_keys or row.normalized_config != row.previous_config:
-                    events.append(SecurityEvent(
-                        event_id=str(row.snapshot_id),
-                        event_type=EventType.CONFIG_CHANGED,
-                        timestamp=row.captured_at,
-                        principal_id=None,
-                        resource_id=resource_id,
-                        description=f"Configuration changed: {', '.join(changed_keys) if changed_keys else 'values modified'}",
-                        metadata={
-                            "config_snapshot_id": str(row.snapshot_id),
-                            "changed_keys": list(changed_keys)
-                        },
-                        correlation_id=None
-                    ))
-        
+                    events.append(
+                        SecurityEvent(
+                            event_id=str(row.snapshot_id),
+                            event_type=EventType.CONFIG_CHANGED,
+                            timestamp=row.captured_at,
+                            principal_id=None,
+                            resource_id=resource_id,
+                            description=f"Configuration changed: {', '.join(changed_keys) if changed_keys else 'values modified'}",
+                            metadata={
+                                "config_snapshot_id": str(row.snapshot_id),
+                                "changed_keys": list(changed_keys),
+                            },
+                            correlation_id=None,
+                        )
+                    )
+
         return events
-    
-    async def _get_principal_permission_timeline(self, principal_id: UUID) -> List[SecurityEvent]:
+
+    async def _get_principal_permission_timeline(
+        self, principal_id: UUID
+    ) -> List[SecurityEvent]:
         """Get permission change timeline for a principal."""
 
         dialect = get_dialect_name(self.db)
         lookback_90_days = timestamp_minus_days_expr(days=90, dialect=dialect)
-        
+
         permission_timeline_query = text(
             f"""
             SELECT 
@@ -202,35 +228,43 @@ class InvestigationEngine:
             ORDER BY ie.effective_at
             """
         )
-        
-        result = await self.db.execute(permission_timeline_query, {"principal_id": principal_id})
-        
+
+        result = await self.db.execute(
+            permission_timeline_query, {"principal_id": principal_id}
+        )
+
         events = []
         for row in result.fetchall():
-            events.append(SecurityEvent(
-                event_id=str(row.edge_id),
-                event_type=EventType.PERMISSION_GRANTED,
-                timestamp=row.effective_at,
-                principal_id=principal_id,
-                resource_id=row.resource_id,
-                description=f"Permission granted: {row.permission} via {row.via}",
-                metadata={
-                    "permission": row.permission,
-                    "via": row.via,
-                    "is_admin": row.is_admin,
-                    "expires_at": row.expires_at.isoformat() if row.expires_at else None
-                },
-                correlation_id=None
-            ))
-        
+            events.append(
+                SecurityEvent(
+                    event_id=str(row.edge_id),
+                    event_type=EventType.PERMISSION_GRANTED,
+                    timestamp=row.effective_at,
+                    principal_id=principal_id,
+                    resource_id=row.resource_id,
+                    description=f"Permission granted: {row.permission} via {row.via}",
+                    metadata={
+                        "permission": row.permission,
+                        "via": row.via,
+                        "is_admin": row.is_admin,
+                        "expires_at": (
+                            row.expires_at.isoformat() if row.expires_at else None
+                        ),
+                    },
+                    correlation_id=None,
+                )
+            )
+
         return events
-    
-    async def _get_related_finding_events(self, finding_id: UUID, rule_id: UUID) -> List[SecurityEvent]:
+
+    async def _get_related_finding_events(
+        self, finding_id: UUID, rule_id: UUID
+    ) -> List[SecurityEvent]:
         """Get events from related findings (same rule)."""
 
         dialect = get_dialect_name(self.db)
         lookback_90_days = timestamp_minus_days_expr(days=90, dialect=dialect)
-        
+
         related_findings_query = text(
             f"""
             SELECT f.finding_id, f.title, f.first_seen, f.last_seen, f.status
@@ -241,54 +275,55 @@ class InvestigationEngine:
             ORDER BY f.first_seen
             """
         )
-        
-        result = await self.db.execute(related_findings_query, {
-            "rule_id": rule_id,
-            "finding_id": finding_id
-        })
-        
+
+        result = await self.db.execute(
+            related_findings_query, {"rule_id": rule_id, "finding_id": finding_id}
+        )
+
         events = []
         for row in result.fetchall():
-            events.append(SecurityEvent(
-                event_id=f"finding_{row.finding_id}",
-                event_type=EventType.FINDING_CREATED,
-                timestamp=row.first_seen,
-                principal_id=None,
-                resource_id=None,
-                description=f"Related finding created: {row.title}",
-                metadata={
-                    "finding_id": str(row.finding_id),
-                    "status": row.status,
-                    "last_seen": row.last_seen.isoformat() if row.last_seen else None
-                },
-                correlation_id=f"rule_{rule_id}"
-            ))
-        
+            events.append(
+                SecurityEvent(
+                    event_id=f"finding_{row.finding_id}",
+                    event_type=EventType.FINDING_CREATED,
+                    timestamp=row.first_seen,
+                    principal_id=None,
+                    resource_id=None,
+                    description=f"Related finding created: {row.title}",
+                    metadata={
+                        "finding_id": str(row.finding_id),
+                        "status": row.status,
+                        "last_seen": (
+                            row.last_seen.isoformat() if row.last_seen else None
+                        ),
+                    },
+                    correlation_id=f"rule_{rule_id}",
+                )
+            )
+
         return events
-    
+
     async def _get_related_findings(
-        self,
-        finding_id: UUID,
-        rule_id: UUID,
-        resource_id: Optional[UUID]
+        self, finding_id: UUID, rule_id: UUID, resource_id: Optional[UUID]
     ) -> List[Dict[str, Any]]:
         """Get findings related to the current finding."""
-        
-        related_query = text("""
+
+        related_query = text(
+            """
             SELECT f.finding_id, f.title, f.severity, f.status, f.first_seen
             FROM findings f
             WHERE (f.rule_id = :rule_id OR f.resource_id = :resource_id)
                 AND f.finding_id != :finding_id
             ORDER BY f.first_seen DESC
             LIMIT 10
-        """)
-        
-        result = await self.db.execute(related_query, {
-            "rule_id": rule_id,
-            "resource_id": resource_id,
-            "finding_id": finding_id
-        })
-        
+        """
+        )
+
+        result = await self.db.execute(
+            related_query,
+            {"rule_id": rule_id, "resource_id": resource_id, "finding_id": finding_id},
+        )
+
         return [
             {
                 "finding_id": str(row.finding_id),
@@ -296,19 +331,26 @@ class InvestigationEngine:
                 "severity": row.severity,
                 "status": row.status,
                 "first_seen": row.first_seen.isoformat(),
-                "relationship": "same_rule" if str(row.finding_id) == str(rule_id) else "same_resource"
+                "relationship": (
+                    "same_rule"
+                    if str(row.finding_id) == str(rule_id)
+                    else "same_resource"
+                ),
             }
             for row in result.fetchall()
         ]
-    
-    async def _get_affected_resources(self, resource_id: Optional[UUID]) -> List[Dict[str, Any]]:
+
+    async def _get_affected_resources(
+        self, resource_id: Optional[UUID]
+    ) -> List[Dict[str, Any]]:
         """Get resources affected by or related to the finding."""
-        
+
         if not resource_id:
             return []
-        
+
         # Get resource details and related resources
-        resource_query = text("""
+        resource_query = text(
+            """
             SELECT 
                 r.resource_id,
                 r.external_id,
@@ -323,10 +365,11 @@ class InvestigationEngine:
                     SELECT external_id FROM resources WHERE resource_id = :resource_id
                 )
             GROUP BY r.resource_id, r.external_id, r.name, r.resource_type, r.provider
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(resource_query, {"resource_id": resource_id})
-        
+
         return [
             {
                 "resource_id": str(row.resource_id),
@@ -335,17 +378,21 @@ class InvestigationEngine:
                 "resource_type": row.resource_type,
                 "provider": row.provider,
                 "open_findings": row.finding_count,
-                "relationship": "primary" if row.resource_id == resource_id else "related"
+                "relationship": (
+                    "primary" if row.resource_id == resource_id else "related"
+                ),
             }
             for row in result.fetchall()
         ]
-    
-    async def _get_involved_identities(self, principal_id: Optional[UUID]) -> List[Dict[str, Any]]:
+
+    async def _get_involved_identities(
+        self, principal_id: Optional[UUID]
+    ) -> List[Dict[str, Any]]:
         """Get identities involved in or related to the finding."""
-        
+
         if not principal_id:
             return []
-        
+
         # Get principal details and related identities
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
@@ -368,9 +415,9 @@ class InvestigationEngine:
             GROUP BY p.principal_id, p.display_name, p.email, p.principal_type, p.provider
             """
         )
-        
+
         result = await self.db.execute(identity_query, {"principal_id": principal_id})
-        
+
         return [
             {
                 "principal_id": str(row.principal_id),
@@ -380,25 +427,29 @@ class InvestigationEngine:
                 "provider": row.provider,
                 "permission_count": row.permission_count,
                 "admin_permissions": row.admin_permissions,
-                "relationship": "primary" if row.principal_id == principal_id else "cross_provider_identity"
+                "relationship": (
+                    "primary"
+                    if row.principal_id == principal_id
+                    else "cross_provider_identity"
+                ),
             }
             for row in result.fetchall()
         ]
-    
+
     async def correlate_security_events(
-        self,
-        org_id: UUID,
-        time_window_hours: int = 24
+        self, org_id: UUID, time_window_hours: int = 24
     ) -> List[EventCorrelation]:
         """Correlate security events to identify patterns and incidents."""
-        
+
         since_time = datetime.utcnow() - timedelta(hours=time_window_hours)
 
         dialect = get_dialect_name(self.db)
         json_object = json_object_function(dialect=dialect)
-        finding_id_str = cast_to_string_expr(column_expr="f.finding_id", dialect=dialect)
+        finding_id_str = cast_to_string_expr(
+            column_expr="f.finding_id", dialect=dialect
+        )
         edge_id_str = cast_to_string_expr(column_expr="ie.edge_id", dialect=dialect)
-        
+
         # Get recent security events
         events_query = text(
             f"""
@@ -444,35 +495,38 @@ class InvestigationEngine:
             ORDER BY timestamp
             """
         )
-        
-        result = await self.db.execute(events_query, {
-            "org_id": org_id,
-            "since_time": since_time
-        })
-        
+
+        result = await self.db.execute(
+            events_query, {"org_id": org_id, "since_time": since_time}
+        )
+
         events = []
         for row in result.fetchall():
-            events.append(SecurityEvent(
-                event_id=row.event_id,
-                event_type=EventType(row.event_type),
-                timestamp=row.timestamp,
-                principal_id=row.principal_id,
-                resource_id=row.resource_id,
-                description=row.description,
-                metadata=row.metadata,
-                correlation_id=None
-            ))
-        
+            events.append(
+                SecurityEvent(
+                    event_id=row.event_id,
+                    event_type=EventType(row.event_type),
+                    timestamp=row.timestamp,
+                    principal_id=row.principal_id,
+                    resource_id=row.resource_id,
+                    description=row.description,
+                    metadata=row.metadata,
+                    correlation_id=None,
+                )
+            )
+
         # Perform correlation analysis
         correlations = await self._correlate_events(events)
-        
+
         return correlations
-    
-    async def _correlate_events(self, events: List[SecurityEvent]) -> List[EventCorrelation]:
+
+    async def _correlate_events(
+        self, events: List[SecurityEvent]
+    ) -> List[EventCorrelation]:
         """Correlate events to identify patterns."""
-        
+
         correlations = []
-        
+
         # Group events by time windows (1-hour buckets)
         time_buckets = {}
         for event in events:
@@ -480,11 +534,11 @@ class InvestigationEngine:
             if bucket_key not in time_buckets:
                 time_buckets[bucket_key] = []
             time_buckets[bucket_key].append(event)
-        
+
         # Look for correlated activity
         for bucket_time, bucket_events in time_buckets.items():
             if len(bucket_events) >= 3:  # Threshold for correlation
-                
+
                 # Check for principal-based correlation
                 principals = {}
                 for event in bucket_events:
@@ -493,32 +547,35 @@ class InvestigationEngine:
                         if principal_key not in principals:
                             principals[principal_key] = []
                         principals[principal_key].append(event)
-                
+
                 for principal_id, principal_events in principals.items():
                     if len(principal_events) >= 2:
-                        correlations.append(EventCorrelation(
-                            correlation_id=f"principal_{principal_id}_{bucket_time.isoformat()}",
-                            event_cluster=principal_events,
-                            correlation_strength=len(principal_events) / len(bucket_events),
-                            pattern_type="principal_activity_burst",
-                            risk_indicators=[
-                                f"Multiple security events for principal {principal_id}",
-                                f"{len(principal_events)} events in 1 hour"
-                            ],
-                            investigation_priority="medium" if len(principal_events) > 3 else "low"
-                        ))
-        
+                        correlations.append(
+                            EventCorrelation(
+                                correlation_id=f"principal_{principal_id}_{bucket_time.isoformat()}",
+                                event_cluster=principal_events,
+                                correlation_strength=len(principal_events)
+                                / len(bucket_events),
+                                pattern_type="principal_activity_burst",
+                                risk_indicators=[
+                                    f"Multiple security events for principal {principal_id}",
+                                    f"{len(principal_events)} events in 1 hour",
+                                ],
+                                investigation_priority=(
+                                    "medium" if len(principal_events) > 3 else "low"
+                                ),
+                            )
+                        )
+
         return correlations
-    
+
     async def _get_related_findings(
-        self,
-        finding_id: UUID,
-        rule_id: UUID,
-        resource_id: Optional[UUID]
+        self, finding_id: UUID, rule_id: UUID, resource_id: Optional[UUID]
     ) -> List[Dict[str, Any]]:
         """Get findings related by rule or resource."""
-        
-        related_query = text("""
+
+        related_query = text(
+            """
             SELECT 
                 f.finding_id,
                 f.title,
@@ -537,14 +594,14 @@ class InvestigationEngine:
                 AND f.finding_id != :finding_id
             ORDER BY f.first_seen DESC
             LIMIT 20
-        """)
-        
-        result = await self.db.execute(related_query, {
-            "rule_id": rule_id,
-            "resource_id": resource_id,
-            "finding_id": finding_id
-        })
-        
+        """
+        )
+
+        result = await self.db.execute(
+            related_query,
+            {"rule_id": rule_id, "resource_id": resource_id, "finding_id": finding_id},
+        )
+
         return [
             {
                 "finding_id": str(row.finding_id),
@@ -555,17 +612,17 @@ class InvestigationEngine:
                 "last_seen": row.last_seen.isoformat() if row.last_seen else None,
                 "rule_name": row.rule_name,
                 "resource_name": row.resource_name,
-                "provider": row.provider
+                "provider": row.provider,
             }
             for row in result.fetchall()
         ]
-    
+
     async def get_temporal_query_interface(self, org_id: UUID) -> Dict[str, Any]:
         """Get interface for temporal security queries."""
 
         dialect = get_dialect_name(self.db)
         last_24_hours_expr = timestamp_minus_hours_expr(hours=24, dialect=dialect)
-        
+
         # Provide common temporal query templates
         query_templates = [
             {
@@ -581,7 +638,7 @@ class InvestigationEngine:
                         AND ie.effective_at <= '{target_date}'
                         AND (ie.expires_at IS NULL OR ie.expires_at > '{target_date}')
                 """,
-                "parameters": ["target_date"]
+                "parameters": ["target_date"],
             },
             {
                 "name": "What changed in the last 24 hours?",
@@ -602,11 +659,11 @@ class InvestigationEngine:
 
                     ORDER BY captured_at DESC
                 """,
-                "parameters": []
+                "parameters": [],
             },
             {
                 "name": "Permission timeline for identity",
-                "description": "Show permission changes for a specific identity over time", 
+                "description": "Show permission changes for a specific identity over time",
                 "template": """
                     SELECT ie.effective_at, ie.permission, ie.via, r.name as resource_name
                     FROM iam_edges ie
@@ -617,18 +674,18 @@ class InvestigationEngine:
                         AND p.email = '{principal_email}'
                     ORDER BY ie.effective_at DESC
                 """,
-                "parameters": ["principal_email"]
-            }
+                "parameters": ["principal_email"],
+            },
         ]
-        
+
         return {
             "org_id": str(org_id),
             "available_templates": query_templates,
             "capabilities": [
                 "Point-in-time access analysis",
-                "Change timeline reconstruction", 
+                "Change timeline reconstruction",
                 "Permission evolution tracking",
-                "Incident correlation analysis"
+                "Incident correlation analysis",
             ],
-            "usage_note": "Replace {org_id} and parameter placeholders with actual values"
+            "usage_note": "Replace {org_id} and parameter placeholders with actual values",
         }

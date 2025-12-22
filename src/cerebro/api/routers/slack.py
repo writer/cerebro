@@ -36,12 +36,17 @@ limiter = Limiter(key_func=get_remote_address)
 
 # ==================== Request/Response Models ====================
 
+
 class SlackWebhookCreate(BaseModel):
     """Request model for creating a Slack webhook."""
 
-    name: str = Field(..., min_length=1, max_length=255, description="Human-readable webhook name")
+    name: str = Field(
+        ..., min_length=1, max_length=255, description="Human-readable webhook name"
+    )
     webhook_url: HttpUrl = Field(..., description="Slack incoming webhook URL")
-    channel: Optional[str] = Field(None, max_length=255, description="Slack channel (e.g., #security-alerts)")
+    channel: Optional[str] = Field(
+        None, max_length=255, description="Slack channel (e.g., #security-alerts)"
+    )
     enabled: bool = Field(True, description="Whether webhook is enabled")
     severity_filter: Optional[List[str]] = Field(
         None,
@@ -120,7 +125,12 @@ class SlackNotificationStats(BaseModel):
 
 # ==================== Endpoints ====================
 
-@router.post("/webhooks", response_model=SlackWebhookResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/webhooks",
+    response_model=SlackWebhookResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 @limiter.limit("10/minute")
 async def create_slack_webhook(
     request: Request,
@@ -258,7 +268,9 @@ async def get_slack_webhook(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("get_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e))
+        logger.error(
+            "get_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get Slack webhook",
@@ -327,7 +339,9 @@ async def update_slack_webhook(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("update_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e))
+        logger.error(
+            "update_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update Slack webhook",
@@ -372,7 +386,9 @@ async def delete_slack_webhook(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("delete_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e))
+        logger.error(
+            "delete_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete Slack webhook",
@@ -488,7 +504,9 @@ async def get_slack_notification_stats(
         total_failed = total_failed_result.scalar() or 0
 
         # Last 24 hours
-        last_24h = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        last_24h = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
 
         last_24h_sent_result = await db.execute(
             select(func.count(SlackNotification.notification_id)).where(
@@ -509,25 +527,35 @@ async def get_slack_notification_stats(
         last_24h_failed = last_24h_failed_result.scalar() or 0
 
         # Group by severity
-        severity_query = select(
-            SlackNotification.severity,
-            func.count(SlackNotification.notification_id).label("count")
-        ).where(
-            SlackNotification.org_id == current_user.org_id,
-            SlackNotification.status == "sent"
-        ).group_by(SlackNotification.severity)
+        severity_query = (
+            select(
+                SlackNotification.severity,
+                func.count(SlackNotification.notification_id).label("count"),
+            )
+            .where(
+                SlackNotification.org_id == current_user.org_id,
+                SlackNotification.status == "sent",
+            )
+            .group_by(SlackNotification.severity)
+        )
 
         severity_result = await db.execute(severity_query)
-        by_severity = {row.severity: row.count for row in severity_result if row.severity}
+        by_severity = {
+            row.severity: row.count for row in severity_result if row.severity
+        }
 
         # Group by event type
-        event_type_query = select(
-            SlackNotification.event_type,
-            func.count(SlackNotification.notification_id).label("count")
-        ).where(
-            SlackNotification.org_id == current_user.org_id,
-            SlackNotification.status == "sent"
-        ).group_by(SlackNotification.event_type)
+        event_type_query = (
+            select(
+                SlackNotification.event_type,
+                func.count(SlackNotification.notification_id).label("count"),
+            )
+            .where(
+                SlackNotification.org_id == current_user.org_id,
+                SlackNotification.status == "sent",
+            )
+            .group_by(SlackNotification.event_type)
+        )
 
         event_type_result = await db.execute(event_type_query)
         by_event_type = {row.event_type: row.count for row in event_type_result}
@@ -550,6 +578,7 @@ async def get_slack_notification_stats(
 
 
 # ==================== Helper Functions ====================
+
 
 def _mask_url(url: str) -> str:
     """Mask webhook URL for security (show only last 8 chars)."""

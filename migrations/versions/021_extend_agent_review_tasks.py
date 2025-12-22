@@ -55,12 +55,28 @@ def upgrade() -> None:
         sa.Column("org_id", uuid_type, nullable=False),
         sa.Column("task_id", uuid_type, nullable=False),
         sa.Column("channel", sa.String(length=100), nullable=False),
-        sa.Column("status", sa.String(length=50), nullable=False, server_default="pending"),
-        sa.Column("payload", json_type, nullable=False, server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "status", sa.String(length=50), nullable=False, server_default="pending"
+        ),
+        sa.Column(
+            "payload",
+            json_type,
+            nullable=False,
+            server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["org_id"], ["organizations.org_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["task_id"], ["agent_review_tasks.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.org_id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["task_id"], ["agent_review_tasks.id"], ondelete="CASCADE"
+        ),
     )
     op.create_index(
         "ix_agent_review_notifications_task_id",
@@ -80,12 +96,28 @@ def upgrade() -> None:
         sa.Column("task_id", uuid_type, nullable=False),
         sa.Column("system", sa.String(length=100), nullable=False),
         sa.Column("external_id", sa.String(length=255), nullable=True),
-        sa.Column("status", sa.String(length=50), nullable=False, server_default="open"),
-        sa.Column("metadata", json_type, nullable=False, server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "status", sa.String(length=50), nullable=False, server_default="open"
+        ),
+        sa.Column(
+            "metadata",
+            json_type,
+            nullable=False,
+            server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["org_id"], ["organizations.org_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["task_id"], ["agent_review_tasks.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.org_id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["task_id"], ["agent_review_tasks.id"], ondelete="CASCADE"
+        ),
     )
     op.create_index(
         "ix_agent_review_tickets_task_id",
@@ -103,8 +135,12 @@ def downgrade() -> None:
     op.drop_index("ix_agent_review_tickets_system", table_name="agent_review_tickets")
     op.drop_index("ix_agent_review_tickets_task_id", table_name="agent_review_tickets")
     op.drop_table("agent_review_tickets")
-    op.drop_index("ix_agent_review_notifications_status", table_name="agent_review_notifications")
-    op.drop_index("ix_agent_review_notifications_task_id", table_name="agent_review_notifications")
+    op.drop_index(
+        "ix_agent_review_notifications_status", table_name="agent_review_notifications"
+    )
+    op.drop_index(
+        "ix_agent_review_notifications_task_id", table_name="agent_review_notifications"
+    )
     op.drop_table("agent_review_notifications")
     op.drop_column("agent_review_tasks", "ticket_reference")
     op.drop_column("agent_review_tasks", "notification_channel")

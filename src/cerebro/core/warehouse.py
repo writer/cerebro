@@ -61,12 +61,16 @@ def _resolve_component() -> str:
 
 
 def _sanitize_tag_part(value: str) -> str:
-    return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in value).strip("-")
+    return "".join(
+        ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in value
+    ).strip("-")
 
 
 def _default_query_tag() -> str:
     base = "cerebro"
-    environment = _sanitize_tag_part((os.getenv("ENVIRONMENT") or settings.environment or "unknown").lower())
+    environment = _sanitize_tag_part(
+        (os.getenv("ENVIRONMENT") or settings.environment or "unknown").lower()
+    )
     component = _sanitize_tag_part(_resolve_component())
     return f"{base}:{environment}:{component}"
 
@@ -86,7 +90,9 @@ def _resolve_snowflake_session_parameters() -> dict[str, object]:
     }
 
     component = _resolve_component().upper()
-    per_component_timeout = _get_int_env(f"{SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV}_{component}")
+    per_component_timeout = _get_int_env(
+        f"{SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV}_{component}"
+    )
     statement_timeout_seconds = (
         per_component_timeout
         if per_component_timeout is not None
@@ -141,10 +147,14 @@ def _build_warehouse_connect_args() -> dict[str, object]:
     }
 
     component = _resolve_component().upper()
-    role = os.getenv(f"{SNOWFLAKE_ROLE_ENV}_{component}") or os.getenv(SNOWFLAKE_ROLE_ENV)
+    role = os.getenv(f"{SNOWFLAKE_ROLE_ENV}_{component}") or os.getenv(
+        SNOWFLAKE_ROLE_ENV
+    )
     if role:
         connect_args["role"] = role
-    warehouse = os.getenv(f"{SNOWFLAKE_WAREHOUSE_ENV}_{component}") or os.getenv(SNOWFLAKE_WAREHOUSE_ENV)
+    warehouse = os.getenv(f"{SNOWFLAKE_WAREHOUSE_ENV}_{component}") or os.getenv(
+        SNOWFLAKE_WAREHOUSE_ENV
+    )
     if warehouse:
         connect_args["warehouse"] = warehouse
 

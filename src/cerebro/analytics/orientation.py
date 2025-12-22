@@ -78,12 +78,16 @@ async def generate_orientation_summary(
 
     current_types, baseline_types = await asyncio.gather(  # type: ignore[name-defined]
         _count_by_field(FrontendObservationEvent.event_type, window_start, now),
-        _count_by_field(FrontendObservationEvent.event_type, baseline_start, window_start),
+        _count_by_field(
+            FrontendObservationEvent.event_type, baseline_start, window_start
+        ),
     )
 
     current_components, baseline_components = await asyncio.gather(  # type: ignore[name-defined]
         _count_by_field(FrontendObservationEvent.component, window_start, now),
-        _count_by_field(FrontendObservationEvent.component, baseline_start, window_start),
+        _count_by_field(
+            FrontendObservationEvent.component, baseline_start, window_start
+        ),
     )
 
     trending_types = _diff(current_types, baseline_types)

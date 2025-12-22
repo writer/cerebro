@@ -48,8 +48,12 @@ def main() -> int:
     with args.scorecard.open("w", encoding="utf-8") as handle:
         json.dump(scorecard, handle, indent=2, sort_keys=True)
 
-    passed_cases = [case_id for case_id, metrics in scorecard.items() if metrics["passed"]]
-    failed_cases = [case_id for case_id, metrics in scorecard.items() if not metrics["passed"]]
+    passed_cases = [
+        case_id for case_id, metrics in scorecard.items() if metrics["passed"]
+    ]
+    failed_cases = [
+        case_id for case_id, metrics in scorecard.items() if not metrics["passed"]
+    ]
 
     print(f"Benchmarks completed: {len(scorecard)} cases")
     print(f"  Passed: {', '.join(passed_cases) or 'none'}")

@@ -22,20 +22,16 @@ class RemediationInput(BaseModel):
     """Input parameters for remediation suggestions."""
 
     finding_id: Optional[UUID] = Field(
-        None,
-        description="Specific finding ID to get remediation for"
+        None, description="Specific finding ID to get remediation for"
     )
     resource_type: Optional[str] = Field(
-        None,
-        description="Resource type to get general remediations for"
+        None, description="Resource type to get general remediations for"
     )
     severity: Optional[str] = Field(
-        None,
-        description="Filter by severity: critical, high, medium, low"
+        None, description="Filter by severity: critical, high, medium, low"
     )
     limit: int = Field(
-        default=5,
-        description="Maximum number of remediation suggestions to return"
+        default=5, description="Maximum number of remediation suggestions to return"
     )
 
 
@@ -47,7 +43,9 @@ class RemediationSuggestion(BaseModel):
     description: str = Field(..., description="Detailed description")
     steps: List[str] = Field(..., description="Step-by-step remediation steps")
     automation_available: bool = Field(..., description="Can this be automated?")
-    estimated_effort: str = Field(..., description="Estimated effort (minutes/hours/days)")
+    estimated_effort: str = Field(
+        ..., description="Estimated effort (minutes/hours/days)"
+    )
     impact: str = Field(..., description="Impact of implementing this remediation")
     references: List[str] = Field(default_factory=list, description="Reference links")
 
@@ -173,8 +171,7 @@ class RemediationTool(StructuredTool):
 
         if severity:
             suggestions = [
-                s for s in suggestions
-                if self._matches_severity(s, severity)
+                s for s in suggestions if self._matches_severity(s, severity)
             ]
 
         return suggestions[:limit]
@@ -342,7 +339,9 @@ class RemediationTool(StructuredTool):
                     automation_available=True,
                     estimated_effort="5 minutes",
                     impact="Enables recovery from accidents and malicious actions",
-                    references=["https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html"],
+                    references=[
+                        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html"
+                    ],
                 ),
                 RemediationSuggestion(
                     priority=2,
@@ -357,7 +356,9 @@ class RemediationTool(StructuredTool):
                     automation_available=True,
                     estimated_effort="5 minutes",
                     impact="Protects data at rest",
-                    references=["https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html"],
+                    references=[
+                        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html"
+                    ],
                 ),
             ],
             "iam_user": [
@@ -374,7 +375,9 @@ class RemediationTool(StructuredTool):
                     automation_available=False,
                     estimated_effort="1 hour",
                     impact="Significantly reduces unauthorized access risk",
-                    references=["https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_mfa.html"],
+                    references=[
+                        "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_mfa.html"
+                    ],
                 ),
             ],
         }

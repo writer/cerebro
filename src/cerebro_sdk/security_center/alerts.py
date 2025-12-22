@@ -35,12 +35,22 @@ class GovernanceAlert:
 
 @dataclass
 class MonitoringContext:
-    vendor_resolver: Callable[[str], Optional[SecurityCenterVendorInsight]] | None = None
-    customer_resolver: Callable[[str], Optional[SecurityCenterCustomerInsight]] | None = None
-    escalation_resolver: Callable[
-        [SecurityCenterVendorInsight | SecurityCenterCustomerInsight, MonitoringEvent],
-        Optional[str],
-    ] | None = None
+    vendor_resolver: Callable[[str], Optional[SecurityCenterVendorInsight]] | None = (
+        None
+    )
+    customer_resolver: (
+        Callable[[str], Optional[SecurityCenterCustomerInsight]] | None
+    ) = None
+    escalation_resolver: (
+        Callable[
+            [
+                SecurityCenterVendorInsight | SecurityCenterCustomerInsight,
+                MonitoringEvent,
+            ],
+            Optional[str],
+        ]
+        | None
+    ) = None
 
 
 def evaluate_monitoring_events(

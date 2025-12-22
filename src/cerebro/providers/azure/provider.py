@@ -56,8 +56,7 @@ class AzureProvider(BaseProvider):
 
             # Ensure we can enumerate storage accounts (no-op if subscription empty)
             await call_sync_with_retries(
-                lambda: list(self._storage_client.storage_accounts.list())
-                or True,
+                lambda: list(self._storage_client.storage_accounts.list()) or True,
                 exceptions=(AzureError, HttpResponseError),
                 logger=logger,
             )
@@ -81,7 +80,9 @@ class AzureProvider(BaseProvider):
 
         for account in accounts:
             resource_group = _extract_resource_group(account.id)
-            account_props = await self._get_account_properties(account.name, resource_group)
+            account_props = await self._get_account_properties(
+                account.name, resource_group
+            )
 
             if not resource_types or "azure.storage.account" in resource_types:
                 metadata = {
@@ -89,10 +90,18 @@ class AzureProvider(BaseProvider):
                     "resource_group": resource_group,
                     "kind": account.kind,
                     "sku": getattr(account.sku, "name", None),
-                    "allow_blob_public_access": getattr(account_props, "allow_blob_public_access", None),
-                    "minimum_tls_version": getattr(account_props, "minimum_tls_version", None),
-                    "https_traffic_only": getattr(account_props, "enable_https_traffic_only", None),
-                    "network_rules": self._serialize_network_rules(getattr(account_props, "network_rule_set", None)),
+                    "allow_blob_public_access": getattr(
+                        account_props, "allow_blob_public_access", None
+                    ),
+                    "minimum_tls_version": getattr(
+                        account_props, "minimum_tls_version", None
+                    ),
+                    "https_traffic_only": getattr(
+                        account_props, "enable_https_traffic_only", None
+                    ),
+                    "network_rules": self._serialize_network_rules(
+                        getattr(account_props, "network_rule_set", None)
+                    ),
                     "region": account.primary_location or account.location or "global",
                     "tags": account.tags or {},
                     "account_id": str(self.account_id),
@@ -123,7 +132,9 @@ class AzureProvider(BaseProvider):
             )
 
             containers = await call_sync_with_retries(
-                lambda: list(blob_service_client.list_containers(include_metadata=True)),
+                lambda: list(
+                    blob_service_client.list_containers(include_metadata=True)
+                ),
                 exceptions=(AzureError,),
                 logger=logger,
             )
@@ -137,11 +148,19 @@ class AzureProvider(BaseProvider):
                     "resource_group": resource_group,
                     "account_name": account.name,
                     "public_access": getattr(container, "public_access", None),
-                    "has_immutability_policy": getattr(container, "has_immutability_policy", None),
+                    "has_immutability_policy": getattr(
+                        container, "has_immutability_policy", None
+                    ),
                     "has_legal_hold": getattr(container, "has_legal_hold", None),
-                    "default_encryption_scope": getattr(container, "default_encryption_scope", None),
-                    "deny_encryption_scope_override": getattr(container, "deny_encryption_scope_override", None),
-                    "allow_blob_public_access": getattr(account_props, "allow_blob_public_access", None),
+                    "default_encryption_scope": getattr(
+                        container, "default_encryption_scope", None
+                    ),
+                    "deny_encryption_scope_override": getattr(
+                        container, "deny_encryption_scope_override", None
+                    ),
+                    "allow_blob_public_access": getattr(
+                        account_props, "allow_blob_public_access", None
+                    ),
                     "region": account.primary_location or account.location or "global",
                     "tags": getattr(container, "metadata", {}) or {},
                     "account_id": str(self.account_id),
@@ -179,9 +198,15 @@ class AzureProvider(BaseProvider):
             normalized_config=normalized,
         )
 
-    async def _build_account_configuration(self, resource: ResourceInfo) -> Dict[str, object]:
-        resource_group = resource.metadata.get("resource_group") if resource.metadata else None
-        account_name = resource.metadata.get("account_name") if resource.metadata else None
+    async def _build_account_configuration(
+        self, resource: ResourceInfo
+    ) -> Dict[str, object]:
+        resource_group = (
+            resource.metadata.get("resource_group") if resource.metadata else None
+        )
+        account_name = (
+            resource.metadata.get("account_name") if resource.metadata else None
+        )
         if not account_name:
             # Derive from ID
             account_name = resource.name
@@ -191,18 +216,26 @@ class AzureProvider(BaseProvider):
         if not props:
             return {}
 
-        network_rules = self._serialize_network_rules(getattr(props, "network_rule_set", None))
+        network_rules = self._serialize_network_rules(
+            getattr(props, "network_rule_set", None)
+        )
 
         return {
-            "allow_blob_public_access": getattr(props, "allow_blob_public_access", None),
+            "allow_blob_public_access": getattr(
+                props, "allow_blob_public_access", None
+            ),
             "minimum_tls_version": getattr(props, "minimum_tls_version", None),
             "https_traffic_only": getattr(props, "enable_https_traffic_only", None),
-            "encryption": self._serialize_encryption(getattr(props, "encryption", None)),
+            "encryption": self._serialize_encryption(
+                getattr(props, "encryption", None)
+            ),
             "network_rules": network_rules,
             "identity": self._serialize_identity(getattr(props, "identity", None)),
         }
 
-    async def _build_container_configuration(self, resource: ResourceInfo) -> Dict[str, object]:
+    async def _build_container_configuration(
+        self, resource: ResourceInfo
+    ) -> Dict[str, object]:
         metadata = resource.metadata or {}
         resource_group = metadata.get("resource_group")
         account_name = metadata.get("account_name")
@@ -212,7 +245,9 @@ class AzureProvider(BaseProvider):
             return {}
 
         container_props = await call_sync_with_retries(
-            lambda: self._storage_client.blob_containers.get(resource_group, account_name, container_name),
+            lambda: self._storage_client.blob_containers.get(
+                resource_group, account_name, container_name
+            ),
             exceptions=(AzureError, HttpResponseError),
             logger=logger,
         )
@@ -222,7 +257,9 @@ class AzureProvider(BaseProvider):
             getattr(account_props, "network_rule_set", None) if account_props else None
         )
         allow_blob_public_access = (
-            getattr(account_props, "allow_blob_public_access", None) if account_props else None
+            getattr(account_props, "allow_blob_public_access", None)
+            if account_props
+            else None
         )
 
         account_key = await self._get_account_key(account_name, resource_group)
@@ -233,19 +270,29 @@ class AzureProvider(BaseProvider):
                 account_url=f"https://{account_name}.blob.core.windows.net",
                 credential=account_key,
             )
-            sample_objects = await self._sample_container_objects(blob_service_client, container_name)
+            sample_objects = await self._sample_container_objects(
+                blob_service_client, container_name
+            )
 
         return {
             "resource_group": resource_group,
             "account_name": account_name,
             "public_access": getattr(container_props, "public_access", None),
-            "has_immutability_policy": getattr(container_props, "has_immutability_policy", None),
+            "has_immutability_policy": getattr(
+                container_props, "has_immutability_policy", None
+            ),
             "has_legal_hold": getattr(container_props, "has_legal_hold", None),
-            "default_encryption_scope": getattr(container_props, "default_encryption_scope", None),
-            "deny_encryption_scope_override": getattr(container_props, "deny_encryption_scope_override", None),
-            "last_modified": getattr(container_props, "last_modified", None).isoformat()
-            if getattr(container_props, "last_modified", None)
-            else None,
+            "default_encryption_scope": getattr(
+                container_props, "default_encryption_scope", None
+            ),
+            "deny_encryption_scope_override": getattr(
+                container_props, "deny_encryption_scope_override", None
+            ),
+            "last_modified": (
+                getattr(container_props, "last_modified", None).isoformat()
+                if getattr(container_props, "last_modified", None)
+                else None
+            ),
             "metadata": getattr(container_props, "metadata", {}) or {},
             "signed_identifiers": self._serialize_signed_identifiers(
                 getattr(container_props, "signed_identifiers", None)
@@ -256,23 +303,33 @@ class AzureProvider(BaseProvider):
             "sampledObjectCount": len(sample_objects),
         }
 
-    async def _get_account_properties(self, account_name: str, resource_group: Optional[str]):
+    async def _get_account_properties(
+        self, account_name: str, resource_group: Optional[str]
+    ):
         if not resource_group:
-            logger.warning("Resource group not found for storage account %s", account_name)
+            logger.warning(
+                "Resource group not found for storage account %s", account_name
+            )
             return None
 
         return await call_sync_with_retries(
-            lambda: self._storage_client.storage_accounts.get_properties(resource_group, account_name),
+            lambda: self._storage_client.storage_accounts.get_properties(
+                resource_group, account_name
+            ),
             exceptions=(AzureError, HttpResponseError),
             logger=logger,
         )
 
-    async def _get_account_key(self, account_name: str, resource_group: Optional[str]) -> Optional[str]:
+    async def _get_account_key(
+        self, account_name: str, resource_group: Optional[str]
+    ) -> Optional[str]:
         if not resource_group:
             return None
 
         keys = await call_sync_with_retries(
-            lambda: self._storage_client.storage_accounts.list_keys(resource_group, account_name),
+            lambda: self._storage_client.storage_accounts.list_keys(
+                resource_group, account_name
+            ),
             exceptions=(AzureError, HttpResponseError),
             logger=logger,
         )
@@ -291,7 +348,9 @@ class AzureProvider(BaseProvider):
             container_client = blob_service_client.get_container_client(container_name)
 
             def _list_blobs():
-                iterator = container_client.list_blobs(results_per_page=max_samples).by_page()
+                iterator = container_client.list_blobs(
+                    results_per_page=max_samples
+                ).by_page()
                 blobs = []
                 for page in iterator:
                     for blob in page:
@@ -312,12 +371,16 @@ class AzureProvider(BaseProvider):
                     {
                         "name": blob.name,
                         "size": getattr(blob, "size", None),
-                        "last_modified": getattr(blob, "last_modified", None).isoformat()
-                        if getattr(blob, "last_modified", None)
-                        else None,
-                        "content_type": getattr(blob, "content_settings", None).content_type
-                        if getattr(blob, "content_settings", None)
-                        else None,
+                        "last_modified": (
+                            getattr(blob, "last_modified", None).isoformat()
+                            if getattr(blob, "last_modified", None)
+                            else None
+                        ),
+                        "content_type": (
+                            getattr(blob, "content_settings", None).content_type
+                            if getattr(blob, "content_settings", None)
+                            else None
+                        ),
                     }
                 )
             return samples
@@ -332,7 +395,10 @@ class AzureProvider(BaseProvider):
         return {
             "default_action": getattr(rule_set, "default_action", None),
             "bypass": getattr(rule_set, "bypass", None),
-            "ip_rules": [getattr(rule, "ip_address_or_range", None) for rule in getattr(rule_set, "ip_rules", [])],
+            "ip_rules": [
+                getattr(rule, "ip_address_or_range", None)
+                for rule in getattr(rule_set, "ip_rules", [])
+            ],
             "virtual_network_rules": [
                 getattr(rule, "virtual_network_resource_id", None)
                 for rule in getattr(rule_set, "virtual_network_rules", [])
@@ -352,7 +418,11 @@ class AzureProvider(BaseProvider):
                 and hasattr(encryption.key_vault_properties, "as_dict")
                 else None
             ),
-            "services": services.as_dict() if services and hasattr(services, "as_dict") else None,
+            "services": (
+                services.as_dict()
+                if services and hasattr(services, "as_dict")
+                else None
+            ),
         }
 
     @staticmethod
@@ -375,7 +445,11 @@ class AzureProvider(BaseProvider):
             serialized.append(
                 {
                     "id": getattr(identifier, "id", None),
-                    "access_policy": access_policy.as_dict() if access_policy and hasattr(access_policy, "as_dict") else None,
+                    "access_policy": (
+                        access_policy.as_dict()
+                        if access_policy and hasattr(access_policy, "as_dict")
+                        else None
+                    ),
                 }
             )
         return serialized

@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 
-
 @dataclass
 class WorkflowStep:
     """A single step in a workflow template."""
-    
+
     name: str
     description: str
     action: str  # status change, assignment, notification, etc.
@@ -22,7 +21,7 @@ class WorkflowStep:
 @dataclass
 class WorkflowTemplate:
     """Template for automated review task workflows."""
-    
+
     id: str
     name: str
     description: str
@@ -34,7 +33,7 @@ class WorkflowTemplate:
 
 class WorkflowTemplateLibrary:
     """Built-in workflow templates."""
-    
+
     CRITICAL_ESCALATION = WorkflowTemplate(
         id="critical_escalation",
         name="Critical Priority Auto-Escalation",
@@ -67,7 +66,7 @@ class WorkflowTemplateLibrary:
         ],
         metadata={"category": "escalation", "auto_run": True},
     )
-    
+
     SECURITY_FINDING_WORKFLOW = WorkflowTemplate(
         id="security_finding_workflow",
         name="Security Finding Review Workflow",
@@ -114,7 +113,7 @@ class WorkflowTemplateLibrary:
         ],
         metadata={"category": "security", "auto_run": True},
     )
-    
+
     COMPLIANCE_AUDIT_WORKFLOW = WorkflowTemplate(
         id="compliance_audit_workflow",
         name="Compliance Audit Workflow",
@@ -147,7 +146,7 @@ class WorkflowTemplateLibrary:
         ],
         metadata={"category": "compliance", "auto_run": False},
     )
-    
+
     AUTO_APPROVE_LOW_RISK = WorkflowTemplate(
         id="auto_approve_low_risk",
         name="Auto-Approve Low Risk Actions",
@@ -183,7 +182,7 @@ class WorkflowTemplateLibrary:
         ],
         metadata={"category": "automation", "auto_run": False},
     )
-    
+
     @classmethod
     def get_all_templates(cls) -> List[WorkflowTemplate]:
         """Get all available workflow templates."""
@@ -193,7 +192,7 @@ class WorkflowTemplateLibrary:
             cls.COMPLIANCE_AUDIT_WORKFLOW,
             cls.AUTO_APPROVE_LOW_RISK,
         ]
-    
+
     @classmethod
     def get_template(cls, template_id: str) -> Optional[WorkflowTemplate]:
         """Get a specific template by ID."""
@@ -201,7 +200,7 @@ class WorkflowTemplateLibrary:
             if template.id == template_id:
                 return template
         return None
-    
+
     @classmethod
     def get_templates_by_trigger(cls, trigger: str) -> List[WorkflowTemplate]:
         """Get all templates for a specific trigger."""
@@ -214,7 +213,7 @@ class WorkflowTemplateLibrary:
 
 class WorkflowEngine:
     """Execute workflow templates."""
-    
+
     @staticmethod
     def evaluate_conditions(
         conditions: Dict[str, Any],
@@ -224,7 +223,7 @@ class WorkflowEngine:
         for key, expected_value in conditions.items():
             # Handle nested keys with dot notation
             context_value = WorkflowEngine._get_nested_value(context, key)
-            
+
             # Handle comparison operators
             if isinstance(expected_value, dict):
                 if "$lt" in expected_value and context_value >= expected_value["$lt"]:
@@ -235,9 +234,9 @@ class WorkflowEngine:
                     return False
             elif context_value != expected_value:
                 return False
-        
+
         return True
-    
+
     @staticmethod
     def _get_nested_value(data: Dict[str, Any], key_path: str) -> Any:
         """Get value from nested dict using dot notation."""
@@ -249,7 +248,7 @@ class WorkflowEngine:
             else:
                 return None
         return value
-    
+
     @staticmethod
     async def find_matching_templates(
         trigger: str,
@@ -258,13 +257,13 @@ class WorkflowEngine:
         """Find all templates that match the trigger and conditions."""
         matching = []
         templates = WorkflowTemplateLibrary.get_templates_by_trigger(trigger)
-        
+
         for template in templates:
             if WorkflowEngine.evaluate_conditions(template.conditions, context):
                 matching.append(template)
-        
+
         return matching
-    
+
     @staticmethod
     def to_dict(template: WorkflowTemplate) -> Dict[str, Any]:
         """Convert workflow template to dict representation."""

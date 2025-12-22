@@ -17,9 +17,17 @@ from ...core.database import get_db
 from ...core.models import Organization
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...vendor_management.vendor_registry import get_vendor_registry, VendorCategory, VendorRiskLevel
+from ...vendor_management.vendor_registry import (
+    get_vendor_registry,
+    VendorCategory,
+    VendorRiskLevel,
+)
 from ...vendor_management.discovered_vendors import get_discovered_vendor_tracker
-from ...compliance.evidence_data_fabric import EvidenceDataFabric, EvidenceQuery, EvidenceEntityType
+from ...compliance.evidence_data_fabric import (
+    EvidenceDataFabric,
+    EvidenceQuery,
+    EvidenceEntityType,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -27,21 +35,31 @@ logger = logging.getLogger(__name__)
 
 class VendorCreateRequest(BaseModel):
     """Request to create new vendor."""
+
     name: str = Field(..., description="Vendor name")
     website_url: str = Field(..., description="Vendor website URL")
     category: str = Field(..., description="Vendor category")
     primary_contact: str = Field("", description="Primary contact email")
     industry: str = Field("", description="Industry sector")
     country: str = Field("", description="Country of operation")
-    data_processing_locations: List[str] = Field(default_factory=list, description="Data processing locations")
-    certifications: List[str] = Field(default_factory=list, description="Security certifications")
-    data_types_processed: List[str] = Field(default_factory=list, description="Types of data processed")
-    business_criticality: str = Field("medium", description="Business criticality level")
+    data_processing_locations: List[str] = Field(
+        default_factory=list, description="Data processing locations"
+    )
+    certifications: List[str] = Field(
+        default_factory=list, description="Security certifications"
+    )
+    data_types_processed: List[str] = Field(
+        default_factory=list, description="Types of data processed"
+    )
+    business_criticality: str = Field(
+        "medium", description="Business criticality level"
+    )
     annual_spend: Optional[float] = Field(None, description="Annual spend with vendor")
 
 
 class VendorUpdateRequest(BaseModel):
     """Request to update vendor information."""
+
     primary_contact: Optional[str] = None
     certifications: Optional[List[str]] = None
     risk_level: Optional[str] = None
@@ -60,13 +78,13 @@ async def create_vendor(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         vendor_registry = get_vendor_registry()
-        
+
         # Convert category string to enum
         category_enum = VendorCategory(request.category.lower())
-        
+
         vendor = await vendor_registry.register_vendor(
             name=request.name,
             website_url=request.website_url,
@@ -79,9 +97,9 @@ async def create_vendor(
             certifications=request.certifications,
             data_types_processed=request.data_types_processed,
             business_criticality=request.business_criticality,
-            annual_spend=request.annual_spend
+            annual_spend=request.annual_spend,
         )
-        
+
         return {
             "success": True,
             "message": f"Vendor '{request.name}' created successfully",
@@ -90,10 +108,10 @@ async def create_vendor(
                 "name": vendor.name,
                 "risk_level": vendor.risk_level.value,
                 "risk_score": vendor.inherent_risk_score,
-                "next_review_due": vendor.next_review_due.isoformat()
-            }
+                "next_review_due": vendor.next_review_due.isoformat(),
+            },
         }
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -106,7 +124,9 @@ async def list_vendors(
     org_id: UUID,
     risk_level: Optional[str] = Query(None, description="Filter by risk level"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    overdue_reviews: bool = Query(False, description="Show only vendors with overdue reviews"),
+    overdue_reviews: bool = Query(
+        False, description="Show only vendors with overdue reviews"
+    ),
     limit: int = Query(50, description="Maximum vendors to return", ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
@@ -115,29 +135,35 @@ async def list_vendors(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         vendor_registry = get_vendor_registry()
         all_vendors = list(vendor_registry.vendors.values())
-        
+
         # Apply filters
         filtered_vendors = all_vendors
-        
+
         if risk_level:
             risk_enum = VendorRiskLevel(risk_level.lower())
-            filtered_vendors = [v for v in filtered_vendors if v.risk_level == risk_enum]
-        
+            filtered_vendors = [
+                v for v in filtered_vendors if v.risk_level == risk_enum
+            ]
+
         if category:
             category_enum = VendorCategory(category.lower())
-            filtered_vendors = [v for v in filtered_vendors if v.category == category_enum]
-        
+            filtered_vendors = [
+                v for v in filtered_vendors if v.category == category_enum
+            ]
+
         if overdue_reviews:
             current_date = datetime.now()
-            filtered_vendors = [v for v in filtered_vendors if v.next_review_due < current_date]
-        
+            filtered_vendors = [
+                v for v in filtered_vendors if v.next_review_due < current_date
+            ]
+
         # Limit results
         filtered_vendors = filtered_vendors[:limit]
-        
+
         return {
             "organization_id": str(org_id),
             "total_vendors": len(all_vendors),
@@ -145,7 +171,7 @@ async def list_vendors(
             "filters_applied": {
                 "risk_level": risk_level,
                 "category": category,
-                "overdue_reviews": overdue_reviews
+                "overdue_reviews": overdue_reviews,
             },
             "vendors": [
                 {
@@ -160,12 +186,12 @@ async def list_vendors(
                     "business_criticality": vendor.business_criticality,
                     "next_review_due": vendor.next_review_due.isoformat(),
                     "days_until_review": (vendor.next_review_due - datetime.now()).days,
-                    "last_assessment": vendor.last_assessment_date.isoformat()
+                    "last_assessment": vendor.last_assessment_date.isoformat(),
                 }
                 for vendor in filtered_vendors
-            ]
+            ],
         }
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -179,20 +205,20 @@ async def get_vendor_details(
     vendor_id: str,
     include_evidence: bool = Query(False, description="Include compliance evidence"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_org_access(require_read_findings))
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get detailed vendor information with optional evidence."""
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         vendor_registry = get_vendor_registry()
         vendor = vendor_registry.vendors.get(vendor_id)
-        
+
         if not vendor:
             raise HTTPException(status_code=404, detail="Vendor not found")
-        
+
         metadata_envelope = vendor.metadata or {}
 
         vendor_details = {
@@ -209,30 +235,34 @@ async def get_vendor_details(
                 "inherent_risk_score": vendor.inherent_risk_score,
                 "residual_risk_score": vendor.residual_risk_score,
                 "last_assessment_date": vendor.last_assessment_date.isoformat(),
-                "next_review_due": vendor.next_review_due.isoformat()
+                "next_review_due": vendor.next_review_due.isoformat(),
             },
             "compliance": {
                 "certifications": vendor.certifications,
                 "compliance_frameworks": vendor.compliance_frameworks,
                 "security_questionnaire_completed": vendor.security_questionnaire_completed,
-                "incident_response_plan": vendor.incident_response_plan
+                "incident_response_plan": vendor.incident_response_plan,
             },
             "business_relationship": {
                 "contract_start_date": vendor.contract_start_date.isoformat(),
-                "contract_end_date": vendor.contract_end_date.isoformat() if vendor.contract_end_date else None,
+                "contract_end_date": (
+                    vendor.contract_end_date.isoformat()
+                    if vendor.contract_end_date
+                    else None
+                ),
                 "annual_spend": vendor.annual_spend,
-                "business_criticality": vendor.business_criticality
+                "business_criticality": vendor.business_criticality,
             },
             "data_handling": {
                 "data_types_processed": vendor.data_types_processed,
                 "data_retention_period": vendor.data_retention_period,
-                "data_deletion_policy": vendor.data_deletion_policy
+                "data_deletion_policy": vendor.data_deletion_policy,
             },
             "integration": {
                 "integration_type": vendor.integration_type,
                 "network_access": vendor.network_access,
                 "authentication_methods": vendor.authentication_methods,
-                "access_monitoring_enabled": vendor.access_monitoring_enabled
+                "access_monitoring_enabled": vendor.access_monitoring_enabled,
             },
             "metadata": {
                 "created_at": vendor.created_at.isoformat(),
@@ -244,10 +274,10 @@ async def get_vendor_details(
                 "compliance_summary": metadata_envelope.get("compliance_summary"),
                 "integration": metadata_envelope.get("integration"),
                 "relationship": metadata_envelope.get("relationship"),
-                "evidence": metadata_envelope.get("evidence")
-            }
+                "evidence": metadata_envelope.get("evidence"),
+            },
         }
-        
+
         # Include evidence if requested
         if include_evidence:
             # This would query the evidence data fabric for vendor-related evidence
@@ -255,19 +285,22 @@ async def get_vendor_details(
                 "total_evidence_records": 0,  # Would query evidence fabric
                 "latest_security_assessment": None,
                 "compliance_evidence_count": 0,
-                "last_evidence_update": None
+                "last_evidence_update": None,
             }
-        
+
         return {
             "success": True,
             "message": f"Vendor details retrieved: {vendor.name}",
-            "data": vendor_details
+            "data": vendor_details,
         }
-        
+
     except HTTPException:
         raise
     except Exception:
-        logger.exception("Vendor details retrieval failed", extra={"org_id": str(org_id), "vendor_id": vendor_id})
+        logger.exception(
+            "Vendor details retrieval failed",
+            extra={"org_id": str(org_id), "vendor_id": vendor_id},
+        )
         raise HTTPException(status_code=500, detail="Vendor details failed")
 
 
@@ -275,37 +308,53 @@ async def get_vendor_details(
 async def list_discovered_vendors(
     org_id: UUID,
     reviewed: Optional[bool] = Query(None, description="Filter by review status"),
-    confidence_threshold: float = Query(0.7, description="Minimum confidence score", ge=0.0, le=1.0),
-    discovery_method: Optional[str] = Query(None, description="Filter by discovery method"),
+    confidence_threshold: float = Query(
+        0.7, description="Minimum confidence score", ge=0.0, le=1.0
+    ),
+    discovery_method: Optional[str] = Query(
+        None, description="Filter by discovery method"
+    ),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_org_access(require_read_findings))
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """List automatically discovered vendors."""
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         tracker = get_discovered_vendor_tracker()
-        
+
         # Discover vendors from OAuth apps and integrations
         oauth_discovered = await tracker.discover_vendors_from_oauth(str(org_id))
-        integration_discovered = await tracker.discover_vendors_from_integrations(str(org_id))
-        
+        integration_discovered = await tracker.discover_vendors_from_integrations(
+            str(org_id)
+        )
+
         all_discovered = oauth_discovered + integration_discovered
-        
+
         # Apply filters
         filtered_discovered = all_discovered
-        
+
         if reviewed is not None:
-            filtered_discovered = [v for v in filtered_discovered if v.reviewed == reviewed]
-        
+            filtered_discovered = [
+                v for v in filtered_discovered if v.reviewed == reviewed
+            ]
+
         if confidence_threshold > 0:
-            filtered_discovered = [v for v in filtered_discovered if v.confidence_score >= confidence_threshold]
-        
+            filtered_discovered = [
+                v
+                for v in filtered_discovered
+                if v.confidence_score >= confidence_threshold
+            ]
+
         if discovery_method:
-            filtered_discovered = [v for v in filtered_discovered if v.discovery_method.value == discovery_method]
-        
+            filtered_discovered = [
+                v
+                for v in filtered_discovered
+                if v.discovery_method.value == discovery_method
+            ]
+
         return {
             "organization_id": str(org_id),
             "total_discovered": len(all_discovered),
@@ -313,7 +362,7 @@ async def list_discovered_vendors(
             "filters_applied": {
                 "reviewed": reviewed,
                 "confidence_threshold": confidence_threshold,
-                "discovery_method": discovery_method
+                "discovery_method": discovery_method,
             },
             "discovered_vendors": [
                 {
@@ -329,14 +378,16 @@ async def list_discovered_vendors(
                     "oauth_apps": vendor.oauth_apps,
                     "integrations": vendor.integrations,
                     "reviewed": vendor.reviewed,
-                    "promoted_to_vendor": vendor.promoted_to_vendor
+                    "promoted_to_vendor": vendor.promoted_to_vendor,
                 }
                 for vendor in filtered_discovered
-            ]
+            ],
         }
-        
+
     except Exception:
-        logger.exception("Discovered vendors listing failed", extra={"org_id": str(org_id)})
+        logger.exception(
+            "Discovered vendors listing failed", extra={"org_id": str(org_id)}
+        )
         raise HTTPException(status_code=500, detail="Discovered vendors failed")
 
 
@@ -344,23 +395,23 @@ async def list_discovered_vendors(
 async def get_vendor_risk_report(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_org_access(require_read_findings))
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get comprehensive vendor risk assessment report."""
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         vendor_registry = get_vendor_registry()
         risk_report = await vendor_registry.generate_vendor_risk_report(str(org_id))
-        
+
         return {
             "success": True,
             "message": f"Vendor risk report generated for {risk_report['summary']['total_vendors']} vendors",
-            "data": risk_report
+            "data": risk_report,
         }
-        
+
     except Exception:
         logger.exception("Vendor risk report failed", extra={"org_id": str(org_id)})
         raise HTTPException(status_code=500, detail="Risk report failed")
@@ -370,32 +421,36 @@ async def get_vendor_risk_report(
 async def review_discovered_vendor(
     org_id: UUID,
     discovered_vendor_id: str,
-    promote_to_vendor: bool = Query(..., description="Whether to promote to full vendor"),
-    suppression_reason: Optional[str] = Query(None, description="Reason for suppression if not promoting"),
+    promote_to_vendor: bool = Query(
+        ..., description="Whether to promote to full vendor"
+    ),
+    suppression_reason: Optional[str] = Query(
+        None, description="Reason for suppression if not promoting"
+    ),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_org_access(require_read_findings))
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Review discovered vendor and decide on promotion or suppression."""
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         tracker = get_discovered_vendor_tracker()
-        
+
         review_result = await tracker.review_discovered_vendor(
             discovered_vendor_id,
             current_user.username,
             promote_to_vendor,
-            suppression_reason
+            suppression_reason,
         )
-        
+
         return {
             "success": True,
             "message": f"Discovered vendor reviewed: {'promoted' if promote_to_vendor else 'suppressed'}",
-            "data": review_result
+            "data": review_result,
         }
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -414,17 +469,17 @@ async def get_vendor_evidence(
     evidence_type: Optional[str] = Query(None, description="Filter by evidence type"),
     since_days: int = Query(90, description="Evidence age limit in days", ge=1, le=365),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_org_access(require_read_findings))
+    current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Get compliance evidence related to vendor."""
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         # Query evidence data fabric for vendor-related evidence
         # This demonstrates the key integration point
-        
+
         evidence_query = EvidenceQuery(
             entity_ids=[vendor_id],
             entity_types=[
@@ -434,7 +489,7 @@ async def get_vendor_evidence(
             ],
             time_range=(datetime.now() - timedelta(days=since_days), datetime.now()),
             tags={"vendor_id": vendor_id},
-            limit=100
+            limit=100,
         )
 
         # Query actual evidence fabric for vendor-related evidence
@@ -449,24 +504,31 @@ async def get_vendor_evidence(
             for result in evidence_results.evidence_items:
                 evidence_data = {
                     "evidence_id": result.evidence_id,
-                    "entity_type": result.entity_type.value if result.entity_type else "unknown",
+                    "entity_type": (
+                        result.entity_type.value if result.entity_type else "unknown"
+                    ),
                     "observed_at": result.observed_at.isoformat(),
                     "source_system": result.source_system,
                     "quality_score": result.quality_score or 0.0,
                     "requirements": result.requirements or [],
-                    "normalized_data": result.normalized_data or {}
+                    "normalized_data": result.normalized_data or {},
                 }
 
                 # Extract evidence type from normalized data or tags
                 evidence_data["evidence_type"] = (
-                    result.normalized_data.get("evidence_type") if result.normalized_data
-                    else result.tags.get("evidence_type") if result.tags
-                    else "unknown"
+                    result.normalized_data.get("evidence_type")
+                    if result.normalized_data
+                    else result.tags.get("evidence_type") if result.tags else "unknown"
                 )
 
                 # Add content summary if available
-                if result.normalized_data and "content_summary" in result.normalized_data:
-                    evidence_data["content_summary"] = result.normalized_data["content_summary"]
+                if (
+                    result.normalized_data
+                    and "content_summary" in result.normalized_data
+                ):
+                    evidence_data["content_summary"] = result.normalized_data[
+                        "content_summary"
+                    ]
 
                 # Filter by evidence type if specified
                 if not evidence_type or evidence_data["evidence_type"] == evidence_type:
@@ -477,7 +539,7 @@ async def get_vendor_evidence(
                 "evidence_period_days": since_days,
                 "total_evidence_records": len(vendor_evidence),
                 "evidence": vendor_evidence,
-                "query_execution_time_ms": evidence_results.execution_time_ms
+                "query_execution_time_ms": evidence_results.execution_time_ms,
             }
 
         except Exception as e:
@@ -488,9 +550,12 @@ async def get_vendor_evidence(
                 "evidence_period_days": since_days,
                 "total_evidence_records": 0,
                 "evidence": [],
-                "error": f"Evidence query failed: {str(e)}"
+                "error": f"Evidence query failed: {str(e)}",
             }
-        
+
     except Exception:
-        logger.exception("Vendor evidence retrieval failed", extra={"org_id": str(org_id), "vendor_id": vendor_id})
+        logger.exception(
+            "Vendor evidence retrieval failed",
+            extra={"org_id": str(org_id), "vendor_id": vendor_id},
+        )
         raise HTTPException(status_code=500, detail="Evidence retrieval failed")

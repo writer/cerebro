@@ -65,14 +65,18 @@ def cerebro_tool_to_mcp(
                 content_text = ""
 
                 if result.dry_run and result.preview:
-                    content_text = f"**DRY RUN PREVIEW**\n\n{json.dumps(result.preview, indent=2)}"
+                    content_text = (
+                        f"**DRY RUN PREVIEW**\n\n{json.dumps(result.preview, indent=2)}"
+                    )
                 elif result.data:
                     content_text = json.dumps(result.data, indent=2)
                 else:
                     content_text = "Tool executed successfully"
 
                 if result.warnings:
-                    content_text += "\n\n**Warnings:**\n" + "\n".join(f"- {w}" for w in result.warnings)
+                    content_text += "\n\n**Warnings:**\n" + "\n".join(
+                        f"- {w}" for w in result.warnings
+                    )
 
                 if result.requires_approval:
                     content_text += f"\n\n**Approval Required**: {result.approval_id}"
@@ -85,7 +89,9 @@ def cerebro_tool_to_mcp(
                 # Tool failed
                 error_text = f"**Tool Error**: {result.error}"
                 if result.metadata:
-                    error_text += f"\n\nMetadata: {json.dumps(result.metadata, indent=2)}"
+                    error_text += (
+                        f"\n\nMetadata: {json.dumps(result.metadata, indent=2)}"
+                    )
 
                 return {
                     "content": [{"type": "text", "text": error_text}],
@@ -93,9 +99,13 @@ def cerebro_tool_to_mcp(
                 }
 
         except Exception as e:
-            logger.exception("MCP tool execution failed", tool_name=cerebro_tool.name, error=str(e))
+            logger.exception(
+                "MCP tool execution failed", tool_name=cerebro_tool.name, error=str(e)
+            )
             return {
-                "content": [{"type": "text", "text": f"Tool execution error: {str(e)}"}],
+                "content": [
+                    {"type": "text", "text": f"Tool execution error: {str(e)}"}
+                ],
                 "isError": True,
             }
 

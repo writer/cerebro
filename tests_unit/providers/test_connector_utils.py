@@ -26,7 +26,9 @@ class FailableCallable:
 @pytest.mark.asyncio
 async def test_call_sync_with_retries_succeeds_after_retries():
     operation = FailableCallable(failures=2, result="ok")
-    result = await call_sync_with_retries(operation, retries=3, backoff=0.01, exceptions=(RuntimeError,))
+    result = await call_sync_with_retries(
+        operation, retries=3, backoff=0.01, exceptions=(RuntimeError,)
+    )
     assert result == "ok"
     assert operation.calls == 3
 
@@ -35,7 +37,9 @@ async def test_call_sync_with_retries_succeeds_after_retries():
 async def test_call_sync_with_retries_raises_after_exhausting_attempts():
     operation = FailableCallable(failures=5, result="never")
     with pytest.raises(RuntimeError):
-        await call_sync_with_retries(operation, retries=3, backoff=0.01, exceptions=(RuntimeError,))
+        await call_sync_with_retries(
+            operation, retries=3, backoff=0.01, exceptions=(RuntimeError,)
+        )
     assert operation.calls == 3
 
 
@@ -49,7 +53,9 @@ async def test_call_async_with_retries_handles_coroutines():
             raise ValueError("retry")
         return "done"
 
-    result = await call_async_with_retries(op, retries=3, backoff=0.01, exceptions=(ValueError,))
+    result = await call_async_with_retries(
+        op, retries=3, backoff=0.01, exceptions=(ValueError,)
+    )
     assert result == "done"
     assert len(calls) == 2
 
@@ -80,6 +86,8 @@ async def test_iterate_sync_iterator_retries_on_error(monkeypatch):
 
         return _inner()
 
-    async for item in iterate_sync_iterator(generator, retries=2, backoff=0.01, exceptions=(RuntimeError,)):
+    async for item in iterate_sync_iterator(
+        generator, retries=2, backoff=0.01, exceptions=(RuntimeError,)
+    ):
         assert item == 42
         break

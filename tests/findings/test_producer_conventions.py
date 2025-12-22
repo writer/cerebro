@@ -94,9 +94,9 @@ def _has_builder_call(source: str, function_name: str) -> bool:
 
 def _assert_builder_call(producer_cls, function_name: str) -> None:
     source = inspect.getsource(producer_cls.evaluate)
-    assert _has_builder_call(source, function_name), (
-        f"{producer_cls.__name__} should call {function_name}"
-    )
+    assert _has_builder_call(
+        source, function_name
+    ), f"{producer_cls.__name__} should call {function_name}"
 
 
 @pytest.fixture(scope="module")
@@ -158,9 +158,8 @@ def test_producer_files_avoid_literal_slice_limits():
         if pattern.search(text):
             offenders.append(path)
 
-    assert not offenders, (
-        "Found fixed-length slices in: "
-        + ", ".join(str(path) for path in offenders)
+    assert not offenders, "Found fixed-length slices in: " + ", ".join(
+        str(path) for path in offenders
     )
 
 
@@ -174,9 +173,9 @@ def test_identity_producers_use_identity_builder():
     ]
     for producer_cls in identity_producers:
         source = inspect.getsource(producer_cls.evaluate)
-        assert "build_identity_user_evidence" in source, (
-            f"{producer_cls.__name__} should use identity evidence builder"
-        )
+        assert (
+            "build_identity_user_evidence" in source
+        ), f"{producer_cls.__name__} should use identity evidence builder"
 
 
 def test_ci_producers_use_ci_builder():
@@ -186,9 +185,9 @@ def test_ci_producers_use_ci_builder():
     ]
     for producer_cls in ci_producers:
         source = inspect.getsource(producer_cls.evaluate)
-        assert "build_ci_pipeline_exposure" in source, (
-            f"{producer_cls.__name__} should use CI pipeline evidence builder"
-        )
+        assert (
+            "build_ci_pipeline_exposure" in source
+        ), f"{producer_cls.__name__} should use CI pipeline evidence builder"
 
 
 def test_network_producers_use_network_builder():
@@ -235,8 +234,7 @@ def test_telemetry_secret_producer_uses_incident_builder():
             "aws.s3.bucket",
             lambda count: {
                 "objectsSample": [
-                    {"key": f"secrets/api_key_{i}.json"}
-                    for i in range(count)
+                    {"key": f"secrets/api_key_{i}.json"} for i in range(count)
                 ],
                 "policyAllowsPublic": True,
             },
@@ -354,8 +352,7 @@ def test_github_runner_public_exposure_clamps_repositories():
                 "allows_public_repositories": True,
             },
             "repositories": [
-                {"name": f"public-{i}", "visibility": "public"}
-                for i in range(15)
+                {"name": f"public-{i}", "visibility": "public"} for i in range(15)
             ],
         },
     )

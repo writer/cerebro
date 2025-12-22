@@ -24,7 +24,9 @@ class _FakeSession:
         return False
 
 
-def _snapshot(missing_metadata: int = 50, total_events: int = 100) -> TelemetryHealthSnapshot:
+def _snapshot(
+    missing_metadata: int = 50, total_events: int = 100
+) -> TelemetryHealthSnapshot:
     now = datetime.now(timezone.utc)
     return TelemetryHealthSnapshot(
         generated_at=now,
@@ -72,7 +74,9 @@ async def test_collect_and_evaluate_rules_end_to_end(monkeypatch) -> None:
     assert snapshot.missing_metadata_ratio() == pytest.approx(0.5)
 
     # ensure cooldown suppresses subsequent evaluation
-    alerts_second, _ = await collect_telemetry_alerts(rules=[rule], cooldown_store=store)
+    alerts_second, _ = await collect_telemetry_alerts(
+        rules=[rule], cooldown_store=store
+    )
     assert not alerts_second
 
 

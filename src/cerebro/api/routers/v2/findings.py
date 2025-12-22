@@ -20,8 +20,10 @@ from cerebro.core.repositories.finding import (
 
 # Request/Response schemas
 
+
 class FindingCreate(BaseModel):
     """Request schema for creating a finding."""
+
     org_id: UUID
     account_id: UUID
     provider: str
@@ -38,7 +40,10 @@ class FindingCreate(BaseModel):
 
 class FindingUpdate(BaseModel):
     """Request schema for updating a finding."""
-    status: Optional[str] = Field(None, pattern="^(open|suppressed|accepted_risk|fixed)$")
+
+    status: Optional[str] = Field(
+        None, pattern="^(open|suppressed|accepted_risk|fixed)$"
+    )
     severity: Optional[str] = Field(None, pattern="^(critical|high|medium|low|info)$")
     summary: Optional[str] = None
     evidence: Optional[Dict[str, Any]] = None
@@ -46,6 +51,7 @@ class FindingUpdate(BaseModel):
 
 class FindingResponse(BaseModel):
     """Response schema for finding."""
+
     finding_id: UUID
     org_id: UUID
     account_id: UUID
@@ -79,8 +85,16 @@ class FindingResponse(BaseModel):
             principal_id=finding.principal_id,
             first_seen=finding.first_seen.isoformat(),
             last_seen=finding.last_seen.isoformat(),
-            status=finding.status.value if hasattr(finding.status, 'value') else finding.status,
-            severity=finding.severity.value if hasattr(finding.severity, 'value') else finding.severity,
+            status=(
+                finding.status.value
+                if hasattr(finding.status, "value")
+                else finding.status
+            ),
+            severity=(
+                finding.severity.value
+                if hasattr(finding.severity, "value")
+                else finding.severity
+            ),
             fingerprint=finding.fingerprint,
             title=finding.title,
             summary=finding.summary,
@@ -90,6 +104,7 @@ class FindingResponse(BaseModel):
 
 class FindingStats(BaseModel):
     """Statistics about findings."""
+
     total: int
     by_status: Dict[str, int]
     by_severity: Dict[str, int]
@@ -127,7 +142,9 @@ async def create_finding(
 @router.get("/org/{org_id}", response_model=List[FindingResponse])
 async def list_findings_by_org(
     org_id: UUID,
-    status: Optional[str] = Query(None, pattern="^(open|suppressed|accepted_risk|fixed)$"),
+    status: Optional[str] = Query(
+        None, pattern="^(open|suppressed|accepted_risk|fixed)$"
+    ),
     severity: Optional[str] = Query(None, pattern="^(critical|high|medium|low|info)$"),
     limit: int = Query(100, ge=1, le=1000),
     repo: FindingRepository = Depends(finding_repository),
@@ -135,7 +152,7 @@ async def list_findings_by_org(
     """List findings for an organization."""
     status_enum = FindingStatus(status) if status else None
     severity_enum = Severity(severity) if severity else None
-    
+
     findings = await repo.list_by_org(org_id, status_enum, severity_enum, limit)
     return [FindingResponse.from_entity(f) for f in findings]
 
@@ -149,7 +166,7 @@ async def get_finding_stats(
     by_status = await repo.count_by_status(org_id)
     by_severity = await repo.count_by_severity(org_id)
     total = sum(by_status.values())
-    
+
     return FindingStats(
         total=total,
         by_status=by_status,
@@ -179,7 +196,7 @@ async def update_finding(
 ) -> FindingResponse:
     """Update a finding."""
     updates = {}
-    
+
     if data.status is not None:
         updates["status"] = FindingStatus(data.status)
     if data.severity is not None:
@@ -188,14 +205,14 @@ async def update_finding(
         updates["summary"] = data.summary
     if data.evidence is not None:
         updates["evidence"] = data.evidence
-    
+
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
-    
+
     finding = await repo.update(finding_id, org_id, **updates)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    
+
     return FindingResponse.from_entity(finding)
 
 
@@ -248,7 +265,7 @@ async def delete_finding(
     finding = await repo.get(finding_id, org_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    
+
     await repo.delete(finding_id, org_id)
 
 

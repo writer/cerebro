@@ -73,9 +73,7 @@ def downgrade_severity_for_namespace_policy(
     ):
         return severity
 
-    if require_egress_default_deny and not namespace_posture.get(
-        "default_deny_egress"
-    ):
+    if require_egress_default_deny and not namespace_posture.get("default_deny_egress"):
         return severity
 
     return downgrade_to

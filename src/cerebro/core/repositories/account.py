@@ -21,6 +21,7 @@ from cerebro.core.dynamodb_client import (
 
 class Provider(str, Enum):
     """Cloud/SaaS providers."""
+
     GITHUB = "github"
     GOOGLE_WORKSPACE = "google_workspace"
     AWS = "aws"
@@ -32,7 +33,7 @@ class Provider(str, Enum):
 
 class Account(BaseModel):
     """Account entity - provider-specific account within an org."""
-    
+
     account_id: UUID = Field(default_factory=uuid4)
     org_id: UUID
     provider: Provider
@@ -41,17 +42,19 @@ class Account(BaseModel):
     credentials_encrypted: Optional[bytes] = None
     credentials_dek: Optional[bytes] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     class Config:
         from_attributes = True
         use_enum_values = True
-    
+
     def to_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item."""
         account_id = str(self.account_id)
         org_id = str(self.org_id)
-        provider = self.provider.value if isinstance(self.provider, Enum) else self.provider
-        
+        provider = (
+            self.provider.value if isinstance(self.provider, Enum) else self.provider
+        )
+
         item = {
             "PK": pk("ORG", org_id),
             "SK": sk("ACCOUNT", account_id),
@@ -65,12 +68,12 @@ class Account(BaseModel):
             "GSI1PK": f"PROVIDER#{provider}",
             "GSI1SK": f"ACCOUNT#{account_id}",
         }
-        
+
         # Don't serialize credentials to DynamoDB item for security
         # They should be stored separately or encrypted
-        
+
         return item
-    
+
     @classmethod
     def from_item(cls, item: Dict[str, Any]) -> "Account":
         """Create from DynamoDB item."""
@@ -80,15 +83,19 @@ class Account(BaseModel):
             provider=Provider(item["provider"]),
             external_id=item["external_id"],
             display_name=item.get("display_name"),
-            created_at=datetime.fromisoformat(item["created_at"]) if item.get("created_at") else datetime.now(timezone.utc),
+            created_at=(
+                datetime.fromisoformat(item["created_at"])
+                if item.get("created_at")
+                else datetime.now(timezone.utc)
+            ),
         )
 
 
 class AccountRepository:
     """Repository for Account operations."""
-    
+
     _table = TableName.CORE
-    
+
     async def get(self, account_id: UUID, org_id: UUID) -> Optional[Account]:
         """Get account by ID."""
         item = await get_item(
@@ -97,13 +104,15 @@ class AccountRepository:
             sk("ACCOUNT", str(account_id)),
         )
         return Account.from_item(item) if item else None
-    
+
     async def create(self, account: Account) -> Account:
         """Create new account."""
         await put_item(self._table, account.to_item())
         return account
-    
-    async def update(self, account_id: UUID, org_id: UUID, **updates) -> Optional[Account]:
+
+    async def update(
+        self, account_id: UUID, org_id: UUID, **updates
+    ) -> Optional[Account]:
         """Update account."""
         result = await update_item(
             self._table,
@@ -112,7 +121,7 @@ class AccountRepository:
             updates,
         )
         return Account.from_item(result) if result else None
-    
+
     async def delete(self, account_id: UUID, org_id: UUID) -> bool:
         """Delete account."""
         return await delete_item(
@@ -120,7 +129,7 @@ class AccountRepository:
             pk("ORG", str(org_id)),
             sk("ACCOUNT", str(account_id)),
         )
-    
+
     async def list_by_org(
         self,
         org_id: UUID,
@@ -134,15 +143,19 @@ class AccountRepository:
             sk_prefix="ACCOUNT#",
             limit=limit,
         )
-        
+
         accounts = [Account.from_item(item) for item in items]
-        
+
         if provider:
             prov_val = provider.value if isinstance(provider, Provider) else provider
-            accounts = [a for a in accounts if a.provider == prov_val or a.provider.value == prov_val]
-        
+            accounts = [
+                a
+                for a in accounts
+                if a.provider == prov_val or a.provider.value == prov_val
+            ]
+
         return accounts
-    
+
     async def list_by_provider(
         self,
         provider: Provider,
@@ -157,7 +170,7 @@ class AccountRepository:
             limit=limit,
         )
         return [Account.from_item(item) for item in items]
-    
+
     async def get_by_external_id(
         self,
         org_id: UUID,

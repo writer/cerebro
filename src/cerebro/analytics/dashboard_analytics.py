@@ -33,20 +33,21 @@ dashboard_component_duration = Histogram(
 @dataclass
 class SecurityMetrics:
     """Core security metrics for dashboard."""
+
     # Finding metrics
     total_findings: int
     critical_findings: int
     high_findings: int
     open_findings: int
-    
+
     # Trends (sparkline data)
     findings_trend: List[float]
     critical_trend: List[float]
-    
+
     # SLA and MTTR
     sla_breaches: int
     mean_time_to_remediation: float
-    
+
     # Recent activity
     new_findings_24h: int
     resolved_findings_24h: int
@@ -56,44 +57,49 @@ class SecurityMetrics:
 @dataclass
 class ExecutiveSummary:
     """Executive-level security summary."""
+
     org_id: UUID
     report_date: datetime
-    
+
     # Overall posture
     overall_risk_score: float
     risk_level: str
     risk_trend: str  # "improving", "declining", "stable"
     dimension_scores: Dict[str, float]
-    
+
     # Key metrics
     total_assets: int
     total_identities: int
     active_findings: int
     compliance_score: float
-    
+
     # Top risks (board-friendly)
     top_5_risks: List[str]
-    
+
     # Progress indicators
     findings_burned_down_30d: int
     new_controls_implemented: int
     risk_score_change_30d: float
     risk_score_change_7d: float
-    
+
     # Investment priorities
     recommended_investments: List[Dict[str, Any]]
 
 
 class DashboardAnalytics:
     """Comprehensive analytics for security dashboard."""
-    
-    def __init__(self, db_session: Any, *, core_db_session: Optional[AsyncSession] = None):
+
+    def __init__(
+        self, db_session: Any, *, core_db_session: Optional[AsyncSession] = None
+    ):
         """Initialize dashboard analytics."""
         self.db = db_session
         self.time_series = TimeSeriesCollector(db_session)
         self.trend_analyzer = TrendAnalyzer(db_session)
         self.risk_engine = RiskScoringEngine(db_session)
-        self.identity_analyzer = IdentityAnalyzer(db_session, core_db_session=core_db_session)
+        self.identity_analyzer = IdentityAnalyzer(
+            db_session, core_db_session=core_db_session
+        )
         self.repository = DashboardRepository(db_session)
         self._last_generation_timings: Dict[str, float] = {}
 
@@ -111,76 +117,91 @@ class DashboardAnalytics:
             duration = perf_counter() - start
             self._last_generation_timings[component] = duration
             try:
-                dashboard_component_duration.labels(component=component).observe(duration)
+                dashboard_component_duration.labels(component=component).observe(
+                    duration
+                )
             except Exception:  # pragma: no cover - metrics registration edge cases
                 logger.debug(
                     "Failed to record dashboard timing metric",
                     exc_info=True,
                 )
-    
+
     async def generate_security_metrics(self, org_id: UUID) -> SecurityMetrics:
         """Generate core security metrics for dashboard KPIs."""
-        
+
         # Current finding counts
         total_findings = await self.repository.get_finding_count(org_id)
-        critical_findings = await self.repository.get_finding_count_by_severity(org_id, "critical")
-        high_findings = await self.repository.get_finding_count_by_severity(org_id, "high")
-        open_findings = await self.repository.get_finding_count_by_status(org_id, "open")
-        
+        critical_findings = await self.repository.get_finding_count_by_severity(
+            org_id, "critical"
+        )
+        high_findings = await self.repository.get_finding_count_by_severity(
+            org_id, "high"
+        )
+        open_findings = await self.repository.get_finding_count_by_status(
+            org_id, "open"
+        )
+
         # Generate sparkline data (last 7 days)
         findings_trend = await self.trend_analyzer.generate_sparkline_data(
             org_id, MetricType.FINDING_COUNT, days_back=7
         )
-        
+
         # Generate critical findings trend
-        critical_trend_query = text("""
+        critical_trend_query = text(
+            """
             SELECT DATE(captured_at) as date, value
             FROM security_metric_snapshots
             WHERE org_id = :org_id 
                 AND metric_type = 'critical_finding_count'
                 AND captured_at >= :since_date
             ORDER BY captured_at
-        """)
-        
+        """
+        )
+
         since_date = datetime.utcnow() - timedelta(days=7)
-        result = await self.db.execute(critical_trend_query, {
-            "org_id": org_id,
-            "since_date": since_date
-        })
-        
+        result = await self.db.execute(
+            critical_trend_query, {"org_id": org_id, "since_date": since_date}
+        )
+
         critical_trend = [row.value for row in result.fetchall()]
-        
+
         # Calculate SLA breaches
         sla_breaches = await self.repository.count_sla_breaches(org_id)
 
         # Calculate MTTR
         mttr = await self.repository.calculate_mttr(org_id)
 
-        provider_breakdown = await self.repository.get_findings_breakdown_by_provider(org_id)
+        provider_breakdown = await self.repository.get_findings_breakdown_by_provider(
+            org_id
+        )
 
         # Recent activity (24 hours)
         new_findings_24h = await self.repository.count_new_findings(org_id)
         resolved_findings_24h = await self.repository.count_resolved_findings(org_id)
-        
+
         return SecurityMetrics(
             total_findings=total_findings,
             critical_findings=critical_findings,
             high_findings=high_findings,
             open_findings=open_findings,
-            findings_trend=findings_trend[-7:] if len(findings_trend) >= 7 else findings_trend,
-            critical_trend=critical_trend[-7:] if len(critical_trend) >= 7 else critical_trend,
+            findings_trend=(
+                findings_trend[-7:] if len(findings_trend) >= 7 else findings_trend
+            ),
+            critical_trend=(
+                critical_trend[-7:] if len(critical_trend) >= 7 else critical_trend
+            ),
             sla_breaches=sla_breaches,
             mean_time_to_remediation=mttr,
             new_findings_24h=new_findings_24h,
             resolved_findings_24h=resolved_findings_24h,
             provider_breakdown=provider_breakdown,
         )
-    
+
     async def generate_executive_summary(self, org_id: UUID) -> ExecutiveSummary:
         """Generate executive-level security summary."""
-        
+
         logger.info(f"Generating executive summary for org {org_id}")
-        
+
         # Calculate overall risk score
         risk_score = await self.risk_engine.calculate_organization_risk_score(org_id)
         dimension_scores = {
@@ -190,27 +211,31 @@ class DashboardAnalytics:
             "compliance_posture": risk_score.compliance_score,
             "operational_security": risk_score.operational_score,
         }
-        
+
         # Get asset and identity counts
         total_assets = await self.repository.count_total_assets(org_id)
         total_identities = await self.repository.count_total_identities(org_id)
-        active_findings = await self.repository.get_finding_count_by_status(org_id, "open")
+        active_findings = await self.repository.get_finding_count_by_status(
+            org_id, "open"
+        )
 
         # Calculate compliance score (simplified)
         compliance_score = await self.repository.calculate_compliance_score(org_id)
-        
+
         # Generate top 5 risks (board-friendly format)
         top_5_risks = await self._generate_top_5_risks(org_id)
-        
+
         # Calculate progress indicators
         findings_burned_30d = await self._calculate_findings_burned_down(org_id, 30)
         new_controls = await self._count_new_controls_implemented(org_id, 30)
         risk_change_30d = await self._calculate_risk_score_change(org_id, 30)
         risk_change_7d = await self._calculate_risk_score_change(org_id, 7)
-        
+
         # Generate investment recommendations
-        investment_recommendations = await self._generate_investment_recommendations(org_id)
-        
+        investment_recommendations = await self._generate_investment_recommendations(
+            org_id
+        )
+
         return ExecutiveSummary(
             org_id=org_id,
             report_date=datetime.utcnow(),
@@ -227,7 +252,7 @@ class DashboardAnalytics:
             new_controls_implemented=new_controls,
             risk_score_change_30d=risk_change_30d,
             risk_score_change_7d=risk_change_7d,
-            recommended_investments=investment_recommendations
+            recommended_investments=investment_recommendations,
         )
 
     async def _generate_top_5_risks(self, org_id: UUID) -> List[str]:
@@ -284,8 +309,9 @@ class DashboardAnalytics:
             pattern_expr="'%monitoring%'",
             dialect=dialect,
         )
-        
-        risks_query = text(f"""
+
+        risks_query = text(
+            f"""
             WITH risk_analysis AS (
                 SELECT 
                     CASE 
@@ -318,85 +344,104 @@ class DashboardAnalytics:
             FROM risk_analysis
             ORDER BY risk_impact DESC
             LIMIT 5
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(risks_query, {"org_id": org_id})
-        
+
         top_risks = []
         for row in result.fetchall():
-            severity_text = "critical" if row.avg_severity >= 3.5 else "high" if row.avg_severity >= 2.5 else "medium"
-            top_risks.append(f"#{len(top_risks)+1} {row.risk_category}: {row.finding_count} {severity_text} issues")
-        
+            severity_text = (
+                "critical"
+                if row.avg_severity >= 3.5
+                else "high" if row.avg_severity >= 2.5 else "medium"
+            )
+            top_risks.append(
+                f"#{len(top_risks)+1} {row.risk_category}: {row.finding_count} {severity_text} issues"
+            )
+
         return top_risks
-    
+
     async def _calculate_findings_burned_down(self, org_id: UUID, days: int) -> int:
         """Calculate how many findings were resolved in the last N days."""
         since_date = datetime.utcnow() - timedelta(days=days)
-        
-        query = text("""
+
+        query = text(
+            """
             SELECT COUNT(*)
             FROM findings f
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND f.status IN ('fixed', 'accepted_risk')
                 AND f.last_seen >= :since_date
-        """)
-        
-        result = await self.db.execute(query, {"org_id": org_id, "since_date": since_date})
+        """
+        )
+
+        result = await self.db.execute(
+            query, {"org_id": org_id, "since_date": since_date}
+        )
         return result.scalar() or 0
-    
+
     async def _count_new_controls_implemented(self, org_id: UUID, days: int) -> int:
         """Count new security controls (rules) implemented in last N days."""
         since_date = datetime.utcnow() - timedelta(days=days)
-        
-        query = text("""
+
+        query = text(
+            """
             SELECT COUNT(*)
             FROM rules r
             JOIN policies p ON r.policy_id = p.policy_id
             WHERE p.org_id = :org_id
                 AND r.created_at >= :since_date
                 AND r.is_active = true
-        """)
-        
-        result = await self.db.execute(query, {"org_id": org_id, "since_date": since_date})
+        """
+        )
+
+        result = await self.db.execute(
+            query, {"org_id": org_id, "since_date": since_date}
+        )
         return result.scalar() or 0
-    
+
     async def _calculate_risk_score_change(self, org_id: UUID, days: int) -> float:
         """Calculate risk score change over last N days."""
         since_date = datetime.utcnow() - timedelta(days=days)
-        
+
         # Get oldest and newest risk scores
-        score_query = text("""
+        score_query = text(
+            """
             SELECT value, captured_at
             FROM security_metric_snapshots
             WHERE org_id = :org_id 
                 AND metric_type = 'overall_risk_score'
                 AND captured_at >= :since_date
             ORDER BY captured_at
-        """)
-        
-        result = await self.db.execute(score_query, {
-            "org_id": org_id,
-            "since_date": since_date
-        })
-        
+        """
+        )
+
+        result = await self.db.execute(
+            score_query, {"org_id": org_id, "since_date": since_date}
+        )
+
         scores = result.fetchall()
-        
+
         if len(scores) < 2:
             return 0.0
-        
+
         oldest_score = scores[0].value
         newest_score = scores[-1].value
-        
+
         return newest_score - oldest_score
-    
-    async def _generate_investment_recommendations(self, org_id: UUID) -> List[Dict[str, Any]]:
+
+    async def _generate_investment_recommendations(
+        self, org_id: UUID
+    ) -> List[Dict[str, Any]]:
         """Generate investment recommendations based on risk analysis."""
-        
+
         recommendations = []
-        
+
         # Analyze finding patterns for investment priorities
-        investment_analysis_query = text("""
+        investment_analysis_query = text(
+            """
             WITH provider_risk AS (
                 SELECT 
                     a.provider,
@@ -415,44 +460,51 @@ class DashboardAnalytics:
             FROM provider_risk
             WHERE finding_count > 5
             ORDER BY risk_percentage DESC, finding_count DESC
-        """)
-        
+        """
+        )
+
         result = await self.db.execute(investment_analysis_query, {"org_id": org_id})
-        
+
         for row in result.fetchall():
             if row.risk_percentage > 50:  # High-risk provider
-                recommendations.append({
-                    "priority": "high",
-                    "category": "Provider Security",
-                    "recommendation": f"Invest in {row.provider} security tooling",
-                    "rationale": f"{row.high_risk_count} high-risk findings out of {row.finding_count} total",
-                    "estimated_impact": "30-50% risk reduction",
-                    "investment_level": "medium"
-                })
-        
+                recommendations.append(
+                    {
+                        "priority": "high",
+                        "category": "Provider Security",
+                        "recommendation": f"Invest in {row.provider} security tooling",
+                        "rationale": f"{row.high_risk_count} high-risk findings out of {row.finding_count} total",
+                        "estimated_impact": "30-50% risk reduction",
+                        "investment_level": "medium",
+                    }
+                )
+
         # Identity management investment
-        identity_sprawl = await self.identity_analyzer.analyze_risky_identities(org_id, limit=5)
+        identity_sprawl = await self.identity_analyzer.analyze_risky_identities(
+            org_id, limit=5
+        )
         if len(identity_sprawl) > 3:
-            recommendations.append({
-                "priority": "medium",
-                "category": "Identity Governance",
-                "recommendation": "Implement automated identity lifecycle management",
-                "rationale": f"{len(identity_sprawl)} high-risk identities identified",
-                "estimated_impact": "20-40% identity risk reduction",
-                "investment_level": "high"
-            })
-        
+            recommendations.append(
+                {
+                    "priority": "medium",
+                    "category": "Identity Governance",
+                    "recommendation": "Implement automated identity lifecycle management",
+                    "rationale": f"{len(identity_sprawl)} high-risk identities identified",
+                    "estimated_impact": "20-40% identity risk reduction",
+                    "investment_level": "high",
+                }
+            )
+
         return recommendations
-    
+
     async def generate_comprehensive_dashboard(self, org_id: UUID) -> Dict[str, Any]:
         """Generate comprehensive dashboard data combining all analytics."""
-        
+
         logger.info(f"Generating comprehensive dashboard for org {org_id}")
 
         self._last_generation_timings = {}
         total_start = perf_counter()
         generated_at = datetime.utcnow()
-        
+
         # Collect all analytics
         security_metrics = await self._track_component(
             "security_metrics",
@@ -462,19 +514,19 @@ class DashboardAnalytics:
             "executive_summary",
             self.generate_executive_summary(org_id),
         )
-        
+
         # Identity analytics
         identity_data = await self._track_component(
             "identity_analytics",
             self.identity_analyzer.generate_identity_dashboard_data(org_id),
         )
-        
+
         # Risk heatmap
         risk_heatmap = await self._track_component(
             "risk_heatmap",
             self.risk_engine.generate_risk_heatmap(org_id),
         )
-        
+
         # Compliance status and trends
         compliance_status = await self._track_component(
             "compliance_status",
@@ -485,9 +537,17 @@ class DashboardAnalytics:
             self._get_compliance_trends(org_id, compliance_status),
         )
 
-        runtime_window = getattr(settings, "runtime_health_alert_window_hours", 24) if settings else 24
-        runtime_warning_threshold = getattr(settings, "runtime_health_warning_threshold", 3) if settings else 3
-        runtime_error_threshold = getattr(settings, "runtime_health_error_threshold", 1) if settings else 1
+        runtime_window = (
+            getattr(settings, "runtime_health_alert_window_hours", 24)
+            if settings
+            else 24
+        )
+        runtime_warning_threshold = (
+            getattr(settings, "runtime_health_warning_threshold", 3) if settings else 3
+        )
+        runtime_error_threshold = (
+            getattr(settings, "runtime_health_error_threshold", 1) if settings else 1
+        )
 
         runtime_health_raw = await self._track_component(
             "runtime_health",
@@ -507,8 +567,16 @@ class DashboardAnalytics:
 
             runtime_health.append({**entry, "severity": severity})
 
-        coverage_warning_threshold = getattr(settings, "integration_coverage_warning_threshold", 0.7) if settings else 0.7
-        coverage_critical_threshold = getattr(settings, "integration_coverage_critical_threshold", 0.4) if settings else 0.4
+        coverage_warning_threshold = (
+            getattr(settings, "integration_coverage_warning_threshold", 0.7)
+            if settings
+            else 0.7
+        )
+        coverage_critical_threshold = (
+            getattr(settings, "integration_coverage_critical_threshold", 0.4)
+            if settings
+            else 0.4
+        )
 
         integration_coverage_raw = await self._track_component(
             "integration_coverage",
@@ -533,7 +601,9 @@ class DashboardAnalytics:
         total_duration = perf_counter() - total_start
         self._last_generation_timings["total"] = total_duration
         try:
-            dashboard_component_duration.labels(component="total").observe(total_duration)
+            dashboard_component_duration.labels(component="total").observe(
+                total_duration
+            )
         except Exception:  # pragma: no cover - metrics registration edge cases
             logger.debug("Failed to record total dashboard timing", exc_info=True)
 
@@ -541,11 +611,12 @@ class DashboardAnalytics:
             "Dashboard generation timings",
             extra={"org_id": str(org_id), "timings": self._last_generation_timings},
         )
-        
+
         metadata = {
             "generated_at": generated_at.replace(microsecond=0).isoformat() + "Z",
             "component_timings": {
-                key: round(value, 6) for key, value in self._last_generation_timings.items()
+                key: round(value, 6)
+                for key, value in self._last_generation_timings.items()
             },
             "filters_applied": {
                 "identity_risk_filter": "all",
@@ -599,13 +670,13 @@ class DashboardAnalytics:
                     "high": security_metrics.high_findings,
                     "open": security_metrics.open_findings,
                     "trend_7d": security_metrics.findings_trend,
-                    "critical_trend_7d": security_metrics.critical_trend
+                    "critical_trend_7d": security_metrics.critical_trend,
                 },
                 "sla_performance": {
                     "breaches": security_metrics.sla_breaches,
                     "mttr_hours": round(security_metrics.mean_time_to_remediation, 1),
                     "new_24h": security_metrics.new_findings_24h,
-                    "resolved_24h": security_metrics.resolved_findings_24h
+                    "resolved_24h": security_metrics.resolved_findings_24h,
                 },
                 "provider_breakdown": security_metrics.provider_breakdown or [],
             },
@@ -613,7 +684,7 @@ class DashboardAnalytics:
             "risk_heatmap": {
                 "heatmap_data": risk_heatmap.heatmap_data,
                 "high_risk_areas": risk_heatmap.high_risk_areas,
-                "improvement_opportunities": risk_heatmap.improvement_opportunities
+                "improvement_opportunities": risk_heatmap.improvement_opportunities,
             },
             "compliance_status": compliance_status,
             "compliance_trends": compliance_trends,
@@ -622,7 +693,7 @@ class DashboardAnalytics:
             "integration_coverage": integration_coverage,
             "metadata": metadata,
         }
-    
+
     async def _get_compliance_status_by_framework(self, org_id: UUID) -> Dict[str, Any]:
         """Get compliance status breakdown by framework."""
 
@@ -655,7 +726,11 @@ class DashboardAnalytics:
         for row in reversed(rows):
             captured_at = row.captured_at
             value = float(row.value) if row.value is not None else 0.0
-            capture_date = captured_at.date().isoformat() if captured_at else datetime.utcnow().date().isoformat()
+            capture_date = (
+                captured_at.date().isoformat()
+                if captured_at
+                else datetime.utcnow().date().isoformat()
+            )
             overall.append({"date": capture_date, "score": value})
 
             metadata = row.metric_metadata or {}
@@ -677,7 +752,9 @@ class DashboardAnalytics:
         framework_deltas: Dict[str, float] = {}
         for framework_name, points in frameworks.items():
             if len(points) >= 2:
-                framework_deltas[framework_name] = points[-1]["score"] - points[-2]["score"]
+                framework_deltas[framework_name] = (
+                    points[-1]["score"] - points[-2]["score"]
+                )
             elif points:
                 framework_deltas[framework_name] = 0.0
             else:
@@ -688,6 +765,8 @@ class DashboardAnalytics:
             "frameworks": frameworks,
             "delta": {
                 "overall": round(overall_delta, 2),
-                "frameworks": {name: round(delta, 2) for name, delta in framework_deltas.items()},
+                "frameworks": {
+                    name: round(delta, 2) for name, delta in framework_deltas.items()
+                },
             },
         }

@@ -33,21 +33,25 @@ _executor = ThreadPoolExecutor(max_workers=10)
 
 class DynamoDBError(Exception):
     """Base exception for DynamoDB operations."""
+
     pass
 
 
 class ItemNotFoundError(DynamoDBError):
     """Raised when an item is not found."""
+
     pass
 
 
 class ConditionalCheckFailedError(DynamoDBError):
     """Raised when a conditional check fails."""
+
     pass
 
 
 class ValidationError(DynamoDBError):
     """Raised when validation fails."""
+
     pass
 
 
@@ -55,6 +59,7 @@ def _get_settings():
     """Get settings lazily to avoid circular imports."""
     try:
         from cerebro.core.config import settings
+
         return settings
     except Exception:
         return None
@@ -62,6 +67,7 @@ def _get_settings():
 
 class TableName(str, Enum):
     """DynamoDB table identifiers."""
+
     CORE = "core"
     AUDIT = "audit"
     AGENTS = "agents"
@@ -85,12 +91,12 @@ def get_table_name(table: TableName) -> str:
         TableName.NOTIFICATIONS: "cerebro-notifications",
         TableName.USERS: "cerebro-users",
     }
-    
+
     # Check environment first
     env_var = env_map[table]
     if env_var in os.environ:
         return os.environ[env_var]
-    
+
     # Then check settings
     settings = _get_settings()
     if settings:
@@ -102,7 +108,7 @@ def get_table_name(table: TableName) -> str:
             TableName.USERS: "dynamodb_users_table",
         }
         return getattr(settings, attr_map[table], default_map[table])
-    
+
     return default_map[table]
 
 
@@ -119,7 +125,9 @@ def get_endpoint_url() -> Optional[str]:
 
 def get_region() -> str:
     """Get AWS region."""
-    return os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    return os.environ.get(
+        "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    )
 
 
 # Client singleton
@@ -153,6 +161,7 @@ def reset_client() -> None:
 
 
 # Serialization utilities
+
 
 def to_dynamodb(value: Any) -> Dict[str, Any]:
     """Convert Python value to DynamoDB AttributeValue."""
@@ -227,6 +236,7 @@ def deserialize_item(item: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
 
 # Key builders for single-table design
 
+
 def pk(entity_type: str, id_value: Union[str, UUID]) -> str:
     """Build partition key."""
     return f"{entity_type}#{id_value}"
@@ -242,13 +252,14 @@ def sk(entity_type: str, id_value: Union[str, UUID], *parts: str) -> str:
 
 # Async wrappers for DynamoDB operations
 
+
 async def put_item(
     table: TableName,
     item: Dict[str, Any],
     condition: Optional[str] = None,
 ) -> None:
     """Put item into table.
-    
+
     Raises:
         ConditionalCheckFailedError: If condition expression fails
         DynamoDBError: For other DynamoDB errors
@@ -261,14 +272,16 @@ async def put_item(
     }
     if condition:
         params["ConditionExpression"] = condition
-    
+
     loop = asyncio.get_event_loop()
     try:
         await loop.run_in_executor(_executor, partial(client.put_item, **params))
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "")
         if error_code == "ConditionalCheckFailedException":
-            raise ConditionalCheckFailedError(f"Condition failed for put_item on {table_name}")
+            raise ConditionalCheckFailedError(
+                f"Condition failed for put_item on {table_name}"
+            )
         logger.error(f"DynamoDB put_item error: {e}", extra={"table": table_name})
         raise DynamoDBError(f"Failed to put item: {e}")
 
@@ -280,7 +293,7 @@ async def get_item(
     consistent: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Get single item by key.
-    
+
     Raises:
         DynamoDBError: For DynamoDB errors
     """
@@ -291,14 +304,18 @@ async def get_item(
         "Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}},
         "ConsistentRead": consistent,
     }
-    
+
     loop = asyncio.get_event_loop()
     try:
-        response = await loop.run_in_executor(_executor, partial(client.get_item, **params))
+        response = await loop.run_in_executor(
+            _executor, partial(client.get_item, **params)
+        )
         item = response.get("Item")
         return deserialize_item(item) if item else None
     except ClientError as e:
-        logger.error(f"DynamoDB get_item error: {e}", extra={"table": table_name, "pk": pk_val})
+        logger.error(
+            f"DynamoDB get_item error: {e}", extra={"table": table_name, "pk": pk_val}
+        )
         raise DynamoDBError(f"Failed to get item: {e}")
 
 
@@ -316,7 +333,7 @@ async def delete_item(
     }
     if condition:
         params["ConditionExpression"] = condition
-    
+
     loop = asyncio.get_event_loop()
     try:
         await loop.run_in_executor(_executor, partial(client.delete_item, **params))
@@ -333,7 +350,7 @@ async def update_item(
     condition: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Update item attributes. Returns None if updates dict is empty.
-    
+
     Raises:
         ConditionalCheckFailedError: If condition expression fails
         DynamoDBError: For other DynamoDB errors
@@ -341,21 +358,21 @@ async def update_item(
     if not updates:
         # No updates to apply, return current item
         return await get_item(table, pk_val, sk_val)
-    
+
     client = get_client()
     table_name = get_table_name(table)
-    
+
     set_parts = []
     names = {}
     values = {}
-    
+
     for i, (key, val) in enumerate(updates.items()):
         name_key = f"#k{i}"
         val_key = f":v{i}"
         set_parts.append(f"{name_key} = {val_key}")
         names[name_key] = key
         values[val_key] = to_dynamodb(val)
-    
+
     params: Dict[str, Any] = {
         "TableName": table_name,
         "Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}},
@@ -366,16 +383,23 @@ async def update_item(
     }
     if condition:
         params["ConditionExpression"] = condition
-    
+
     loop = asyncio.get_event_loop()
     try:
-        response = await loop.run_in_executor(_executor, partial(client.update_item, **params))
+        response = await loop.run_in_executor(
+            _executor, partial(client.update_item, **params)
+        )
         return deserialize_item(response.get("Attributes", {}))
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "")
         if error_code == "ConditionalCheckFailedException":
-            raise ConditionalCheckFailedError(f"Condition failed for update on {table_name}")
-        logger.error(f"DynamoDB update_item error: {e}", extra={"table": table_name, "pk": pk_val})
+            raise ConditionalCheckFailedError(
+                f"Condition failed for update on {table_name}"
+            )
+        logger.error(
+            f"DynamoDB update_item error: {e}",
+            extra={"table": table_name, "pk": pk_val},
+        )
         raise DynamoDBError(f"Failed to update item: {e}")
 
 
@@ -392,7 +416,7 @@ async def query(
     cursor: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Query items by partition key.
-    
+
     Args:
         table: Table to query
         pk_val: Partition key value
@@ -404,22 +428,30 @@ async def query(
         filter_expr: Optional filter expression
         filter_values: Values for filter expression
         cursor: Optional pagination cursor from previous query
-    
+
     Returns:
         List of deserialized items
-        
+
     Raises:
         DynamoDBError: For DynamoDB errors
     """
     client = get_client()
     table_name = get_table_name(table)
-    
-    pk_attr = "GSI1PK" if index == "GSI1" else ("GSI2PK" if index == "GSI2" else ("GSI3PK" if index == "GSI3" else "PK"))
-    sk_attr = "GSI1SK" if index == "GSI1" else ("GSI2SK" if index == "GSI2" else ("GSI3SK" if index == "GSI3" else "SK"))
-    
+
+    pk_attr = (
+        "GSI1PK"
+        if index == "GSI1"
+        else ("GSI2PK" if index == "GSI2" else ("GSI3PK" if index == "GSI3" else "PK"))
+    )
+    sk_attr = (
+        "GSI1SK"
+        if index == "GSI1"
+        else ("GSI2SK" if index == "GSI2" else ("GSI3SK" if index == "GSI3" else "SK"))
+    )
+
     key_expr = f"{pk_attr} = :pk"
     expr_values: Dict[str, Any] = {":pk": {"S": pk_val}}
-    
+
     if sk_prefix:
         key_expr += f" AND begins_with({sk_attr}, :sk)"
         expr_values[":sk"] = {"S": sk_prefix}
@@ -427,14 +459,14 @@ async def query(
         key_expr += f" AND {sk_attr} BETWEEN :sk_start AND :sk_end"
         expr_values[":sk_start"] = {"S": sk_between[0]}
         expr_values[":sk_end"] = {"S": sk_between[1]}
-    
+
     params: Dict[str, Any] = {
         "TableName": table_name,
         "KeyConditionExpression": key_expr,
         "ExpressionAttributeValues": expr_values,
         "ScanIndexForward": forward,
     }
-    
+
     if index:
         params["IndexName"] = index
     if limit:
@@ -446,24 +478,28 @@ async def query(
                 params["ExpressionAttributeValues"][k] = to_dynamodb(v)
     if cursor:
         params["ExclusiveStartKey"] = decode_cursor(cursor)
-    
+
     loop = asyncio.get_event_loop()
-    
+
     try:
         items: List[Dict[str, Any]] = []
         while True:
-            response = await loop.run_in_executor(_executor, partial(client.query, **params))
+            response = await loop.run_in_executor(
+                _executor, partial(client.query, **params)
+            )
             items.extend([deserialize_item(item) for item in response.get("Items", [])])
-            
+
             if limit and len(items) >= limit:
                 break
             if "LastEvaluatedKey" not in response:
                 break
             params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-        
+
         return items[:limit] if limit else items
     except ClientError as e:
-        logger.error(f"DynamoDB query error: {e}", extra={"table": table_name, "pk": pk_val})
+        logger.error(
+            f"DynamoDB query error: {e}", extra={"table": table_name, "pk": pk_val}
+        )
         raise DynamoDBError(f"Failed to query items: {e}")
 
 
@@ -477,23 +513,31 @@ async def query_paginated(
     cursor: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Query with pagination support.
-    
+
     Returns:
         Tuple of (items, next_cursor). next_cursor is None if no more pages.
     """
     client = get_client()
     table_name = get_table_name(table)
-    
-    pk_attr = "GSI1PK" if index == "GSI1" else ("GSI2PK" if index == "GSI2" else ("GSI3PK" if index == "GSI3" else "PK"))
-    sk_attr = "GSI1SK" if index == "GSI1" else ("GSI2SK" if index == "GSI2" else ("GSI3SK" if index == "GSI3" else "SK"))
-    
+
+    pk_attr = (
+        "GSI1PK"
+        if index == "GSI1"
+        else ("GSI2PK" if index == "GSI2" else ("GSI3PK" if index == "GSI3" else "PK"))
+    )
+    sk_attr = (
+        "GSI1SK"
+        if index == "GSI1"
+        else ("GSI2SK" if index == "GSI2" else ("GSI3SK" if index == "GSI3" else "SK"))
+    )
+
     key_expr = f"{pk_attr} = :pk"
     expr_values: Dict[str, Any] = {":pk": {"S": pk_val}}
-    
+
     if sk_prefix:
         key_expr += f" AND begins_with({sk_attr}, :sk)"
         expr_values[":sk"] = {"S": sk_prefix}
-    
+
     params: Dict[str, Any] = {
         "TableName": table_name,
         "KeyConditionExpression": key_expr,
@@ -501,25 +545,29 @@ async def query_paginated(
         "ScanIndexForward": forward,
         "Limit": limit,
     }
-    
+
     if index:
         params["IndexName"] = index
     if cursor:
         params["ExclusiveStartKey"] = decode_cursor(cursor)
-    
+
     loop = asyncio.get_event_loop()
-    
+
     try:
-        response = await loop.run_in_executor(_executor, partial(client.query, **params))
+        response = await loop.run_in_executor(
+            _executor, partial(client.query, **params)
+        )
         items = [deserialize_item(item) for item in response.get("Items", [])]
-        
+
         next_cursor = None
         if "LastEvaluatedKey" in response:
             next_cursor = encode_cursor(response["LastEvaluatedKey"])
-        
+
         return items, next_cursor
     except ClientError as e:
-        logger.error(f"DynamoDB query_paginated error: {e}", extra={"table": table_name})
+        logger.error(
+            f"DynamoDB query_paginated error: {e}", extra={"table": table_name}
+        )
         raise DynamoDBError(f"Failed to query items: {e}")
 
 
@@ -530,30 +578,29 @@ async def batch_get(
     """Batch get items by keys."""
     if not keys:
         return []
-    
+
     client = get_client()
     table_name = get_table_name(table)
     loop = asyncio.get_event_loop()
-    
+
     items: List[Dict[str, Any]] = []
-    
+
     # Process in batches of 100
     for i in range(0, len(keys), 100):
-        batch_keys = keys[i:i + 100]
+        batch_keys = keys[i : i + 100]
         request_items = {
             table_name: {
                 "Keys": [{"PK": {"S": pk}, "SK": {"S": sk}} for pk, sk in batch_keys]
             }
         }
-        
+
         response = await loop.run_in_executor(
-            _executor,
-            partial(client.batch_get_item, RequestItems=request_items)
+            _executor, partial(client.batch_get_item, RequestItems=request_items)
         )
-        
+
         for item in response.get("Responses", {}).get(table_name, []):
             items.append(deserialize_item(item))
-    
+
     return items
 
 
@@ -566,27 +613,25 @@ async def batch_write(
     client = get_client()
     table_name = get_table_name(table)
     loop = asyncio.get_event_loop()
-    
+
     requests: List[Dict[str, Any]] = []
-    
+
     if put_items:
         for item in put_items:
             requests.append({"PutRequest": {"Item": serialize_item(item)}})
-    
+
     if delete_keys:
         for pk_val, sk_val in delete_keys:
-            requests.append({
-                "DeleteRequest": {
-                    "Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}}
-                }
-            })
-    
+            requests.append(
+                {"DeleteRequest": {"Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}}}}
+            )
+
     # Process in batches of 25
     for i in range(0, len(requests), 25):
-        batch = requests[i:i + 25]
+        batch = requests[i : i + 25]
         await loop.run_in_executor(
             _executor,
-            partial(client.batch_write_item, RequestItems={table_name: batch})
+            partial(client.batch_write_item, RequestItems={table_name: batch}),
         )
 
 
@@ -594,17 +639,17 @@ async def transact_write(items: List[Dict[str, Any]]) -> None:
     """Transactional write."""
     if not items:
         return
-    
+
     client = get_client()
     loop = asyncio.get_event_loop()
-    
+
     await loop.run_in_executor(
-        _executor,
-        partial(client.transact_write_items, TransactItems=items)
+        _executor, partial(client.transact_write_items, TransactItems=items)
     )
 
 
 # Utility functions
+
 
 def now_iso() -> str:
     """Get current UTC timestamp in ISO format."""
@@ -614,6 +659,7 @@ def now_iso() -> str:
 def ttl_timestamp(days: int) -> int:
     """Calculate TTL timestamp (seconds since epoch)."""
     from datetime import timedelta
+
     expiry = datetime.now(timezone.utc) + timedelta(days=days)
     return int(expiry.timestamp())
 
@@ -626,36 +672,37 @@ def parse_uuid(value: str) -> UUID:
 def encode_cursor(key: Dict[str, Any]) -> str:
     """Encode LastEvaluatedKey to cursor string."""
     import base64
+
     return base64.urlsafe_b64encode(json.dumps(key).encode()).decode()
 
 
 def decode_cursor(cursor: str) -> Dict[str, Any]:
     """Decode cursor string to ExclusiveStartKey."""
     import base64
+
     return json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
 
 
 async def health_check() -> Dict[str, Any]:
     """Check DynamoDB connectivity and table status.
-    
+
     Returns:
         Dict with status, tables info, and any errors
     """
     client = get_client()
     loop = asyncio.get_event_loop()
-    
+
     results = {
         "healthy": True,
         "tables": {},
         "errors": [],
     }
-    
+
     for table in TableName:
         table_name = get_table_name(table)
         try:
             response = await loop.run_in_executor(
-                _executor,
-                partial(client.describe_table, TableName=table_name)
+                _executor, partial(client.describe_table, TableName=table_name)
             )
             table_info = response.get("Table", {})
             results["tables"][table.value] = {
@@ -680,7 +727,7 @@ async def health_check() -> Dict[str, Any]:
                 }
                 results["errors"].append(f"Error checking {table_name}: {e}")
             results["healthy"] = False
-    
+
     return results
 
 

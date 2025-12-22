@@ -21,12 +21,12 @@ from cerebro.core.repositories.rule import RuleRepository
 
 class RepositoryFactory:
     """Factory for creating DynamoDB repository instances.
-    
+
     Uses singleton pattern for repository instances since they're stateless.
     """
-    
+
     _instance: Optional["RepositoryFactory"] = None
-    
+
     def __init__(self):
         self._org_repo: Optional[OrganizationRepository] = None
         self._account_repo: Optional[AccountRepository] = None
@@ -37,75 +37,75 @@ class RepositoryFactory:
         self._session_repo: Optional[AgentSessionRepository] = None
         self._message_repo: Optional[AgentMessageRepository] = None
         self._tool_repo: Optional[ToolInvocationRepository] = None
-    
+
     @classmethod
     def get_instance(cls) -> "RepositoryFactory":
         """Get singleton factory instance."""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
-    
+
     @classmethod
     def reset(cls) -> None:
         """Reset factory instance (for testing)."""
         cls._instance = None
-    
+
     @property
     def organizations(self) -> OrganizationRepository:
         """Get organization repository."""
         if self._org_repo is None:
             self._org_repo = OrganizationRepository()
         return self._org_repo
-    
+
     @property
     def accounts(self) -> AccountRepository:
         """Get account repository."""
         if self._account_repo is None:
             self._account_repo = AccountRepository()
         return self._account_repo
-    
+
     @property
     def findings(self) -> FindingRepository:
         """Get finding repository."""
         if self._finding_repo is None:
             self._finding_repo = FindingRepository()
         return self._finding_repo
-    
+
     @property
     def rules(self) -> RuleRepository:
         """Get rule repository."""
         if self._rule_repo is None:
             self._rule_repo = RuleRepository()
         return self._rule_repo
-    
+
     @property
     def principals(self) -> PrincipalRepository:
         """Get principal repository."""
         if self._principal_repo is None:
             self._principal_repo = PrincipalRepository()
         return self._principal_repo
-    
+
     @property
     def resources(self) -> ResourceRepository:
         """Get resource repository."""
         if self._resource_repo is None:
             self._resource_repo = ResourceRepository()
         return self._resource_repo
-    
+
     @property
     def agent_sessions(self) -> AgentSessionRepository:
         """Get agent session repository."""
         if self._session_repo is None:
             self._session_repo = AgentSessionRepository()
         return self._session_repo
-    
+
     @property
     def agent_messages(self) -> AgentMessageRepository:
         """Get agent message repository."""
         if self._message_repo is None:
             self._message_repo = AgentMessageRepository()
         return self._message_repo
-    
+
     @property
     def tool_invocations(self) -> ToolInvocationRepository:
         """Get tool invocation repository."""

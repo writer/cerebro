@@ -89,7 +89,9 @@ class CustomerRegistry:
         customer_id = f"customer_{name.lower().replace(' ', '_')}_{int(datetime.now().timestamp())}"
         now = datetime.now()
 
-        lifecycle_stage = customer_data.get("lifecycle_stage", CustomerLifecycleStage.ACTIVE)
+        lifecycle_stage = customer_data.get(
+            "lifecycle_stage", CustomerLifecycleStage.ACTIVE
+        )
         if isinstance(lifecycle_stage, str):
             lifecycle_stage = CustomerLifecycleStage(lifecycle_stage)
 
@@ -210,7 +212,9 @@ class CustomerRegistry:
             },
             "engagement": {
                 "last_engagement_at": customer.last_engagement_at.isoformat(),
-                "next_qbr_at": customer.next_qbr_at.isoformat() if customer.next_qbr_at else None,
+                "next_qbr_at": (
+                    customer.next_qbr_at.isoformat() if customer.next_qbr_at else None
+                ),
                 "open_support_tickets": customer.support_tickets_open,
             },
             "success_programs": success_programs,
@@ -226,7 +230,9 @@ class CustomerRegistry:
             tag_updates.add(f"org:{customer.org_id}")
         customer.tags = sorted({*customer.tags, *tag_updates})
 
-    async def refresh_customer_profile(self, customer_id: str, updated_by: str) -> Optional[Customer]:
+    async def refresh_customer_profile(
+        self, customer_id: str, updated_by: str
+    ) -> Optional[Customer]:
         """Refresh success telemetry for an existing customer."""
 
         customer = self.customers.get(customer_id)
@@ -239,10 +245,18 @@ class CustomerRegistry:
         return customer
 
     def get_customers_by_segment(self, segment: CustomerSegment) -> List[Customer]:
-        return [customer for customer in self.customers.values() if customer.segment == segment]
+        return [
+            customer
+            for customer in self.customers.values()
+            if customer.segment == segment
+        ]
 
     def get_at_risk_customers(self) -> List[Customer]:
-        return [customer for customer in self.customers.values() if customer.health_band == CustomerHealthBand.AT_RISK]
+        return [
+            customer
+            for customer in self.customers.values()
+            if customer.health_band == CustomerHealthBand.AT_RISK
+        ]
 
     def record_engagement(self, customer_id: str, when: Optional[datetime] = None):
         customer = self.customers.get(customer_id)
@@ -261,9 +275,9 @@ class CustomerRegistry:
 
         customer.adoption_metrics.update(metrics)
         if customer.adoption_metrics:
-            customer.product_usage_score = sum(customer.adoption_metrics.values()) / len(
-                customer.adoption_metrics
-            )
+            customer.product_usage_score = sum(
+                customer.adoption_metrics.values()
+            ) / len(customer.adoption_metrics)
         else:
             customer.product_usage_score = 0.0
         customer.product_usage_score = max(0.0, min(1.0, customer.product_usage_score))

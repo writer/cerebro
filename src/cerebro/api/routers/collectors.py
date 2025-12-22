@@ -28,12 +28,12 @@ async def collect_organization(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         result = await collector_manager.collect_organization(
             str(org_id),
             providers=request.providers,
-            resource_types=request.resource_types
+            resource_types=request.resource_types,
         )
         return CollectionResponse(**result)
     except ValueError as e:
@@ -57,25 +57,25 @@ async def collect_organization_background(
 ):
     """Start background collection for an organization using Celery."""
     from cerebro.tasks.collection_tasks import collect_organization_task
-    
+
     # Verify organization exists
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     # Schedule background task
     task = collect_organization_task.delay(
         str(org_id),
         provider_filter=request.providers,
-        resource_types=request.resource_types
+        resource_types=request.resource_types,
     )
-    
+
     return {
         "message": "Collection started in background",
         "task_id": task.id,
         "org_id": org_id,
         "providers": request.providers,
-        "resource_types": request.resource_types
+        "resource_types": request.resource_types,
     }
 
 
@@ -83,17 +83,17 @@ async def collect_organization_background(
 async def get_task_status(task_id: str):
     """Get background task status."""
     from cerebro.tasks.celery_app import celery_app
-    
+
     task = celery_app.AsyncResult(task_id)
-    
+
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     return {
         "task_id": task_id,
         "status": task.status,
         "result": task.result,
-        "info": task.info
+        "info": task.info,
     }
 
 
@@ -107,29 +107,29 @@ async def list_supported_providers():
                 "display_name": "GitHub",
                 "description": "GitHub repositories, users, and permissions",
                 "resource_types": ["github.repo", "github.team"],
-                "status": "implemented"
+                "status": "implemented",
             },
             {
                 "name": "aws",
                 "display_name": "Amazon Web Services",
                 "description": "AWS resources, IAM, and configurations",
                 "resource_types": ["aws.s3.bucket", "aws.ec2.instance", "aws.ec2.vpc"],
-                "status": "implemented"
+                "status": "implemented",
             },
             {
                 "name": "gcp",
                 "display_name": "Google Cloud Platform",
                 "description": "GCP resources and IAM",
                 "resource_types": ["gcp.storage.bucket", "gcp.compute.instance"],
-                "status": "planned"
+                "status": "planned",
             },
             {
                 "name": "google_workspace",
                 "display_name": "Google Workspace",
                 "description": "Google Workspace users and groups",
                 "resource_types": ["google_workspace.user", "google_workspace.group"],
-                "status": "planned"
-            }
+                "status": "planned",
+            },
         ]
     }
 
@@ -143,6 +143,6 @@ async def get_collection_status():
             "github": {"status": "ready"},
             "aws": {"status": "ready"},
             "gcp": {"status": "not_implemented"},
-            "google_workspace": {"status": "not_implemented"}
-        }
+            "google_workspace": {"status": "not_implemented"},
+        },
     }

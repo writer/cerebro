@@ -66,6 +66,7 @@ def sample_finding(sample_org):
 
 # ==================== Message Formatter Tests ====================
 
+
 class TestSlackMessageFormatter:
     """Tests for Slack message formatting."""
 
@@ -146,6 +147,7 @@ class TestSlackMessageFormatter:
 
 # ==================== Notification Service Tests ====================
 
+
 class TestSlackNotificationService:
     """Tests for Slack notification service."""
 
@@ -168,11 +170,14 @@ class TestSlackNotificationService:
         async def fake_commit():
             return None
 
-        with patch.object(
-            sample_webhook,
-            "get_webhook_url",
-            side_effect=fake_get_webhook_url,
-        ), patch.object(service, "client") as mock_client:
+        with (
+            patch.object(
+                sample_webhook,
+                "get_webhook_url",
+                side_effect=fake_get_webhook_url,
+            ),
+            patch.object(service, "client") as mock_client,
+        ):
             mock_client.post = AsyncMock(side_effect=fake_post)
             mock_db = MagicMock()
             mock_db.commit = AsyncMock(side_effect=fake_commit)
@@ -215,11 +220,14 @@ class TestSlackNotificationService:
         async def fake_get_webhook_url():
             return "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX"
 
-        with patch.object(
-            sample_webhook,
-            "get_webhook_url",
-            side_effect=fake_get_webhook_url,
-        ), patch.object(service, "client") as mock_client:
+        with (
+            patch.object(
+                sample_webhook,
+                "get_webhook_url",
+                side_effect=fake_get_webhook_url,
+            ),
+            patch.object(service, "client") as mock_client,
+        ):
             mock_client.post = AsyncMock(side_effect=fake_post)
             mock_db = MagicMock()
             mock_db.commit = AsyncMock(side_effect=fake_commit)
@@ -286,6 +294,7 @@ class TestSlackNotificationService:
 
 # ==================== Integration Tests ====================
 
+
 @pytest.mark.integration
 class TestSlackIntegration:
     """Integration tests for Slack (requires actual Slack webhook or mock server)."""
@@ -302,6 +311,7 @@ class TestSlackIntegration:
         #        TestSlackIntegration::test_real_slack_webhook
 
         import os
+
         webhook_url = os.getenv("SLACK_WEBHOOK_URL")
         if not webhook_url:
             pytest.skip("SLACK_WEBHOOK_URL not set")

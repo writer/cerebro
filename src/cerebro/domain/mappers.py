@@ -39,7 +39,9 @@ class MapperRegistry(Generic[RecordT, DomainT]):
     def __init__(self) -> None:
         self._mappers = {}
 
-    def register(self, record_type: Type[RecordT], mapper: DomainMapper[RecordT, DomainT]) -> None:
+    def register(
+        self, record_type: Type[RecordT], mapper: DomainMapper[RecordT, DomainT]
+    ) -> None:
         """Register a mapper for a given record type."""
 
         if record_type in self._mappers:

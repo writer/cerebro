@@ -26,26 +26,27 @@ router = APIRouter()
 
 # Pydantic Models
 
+
 class CreateSessionRequest(BaseModel):
     """Request to create a new agent session."""
+
     agent_type: str = Field(
         ...,
         description="Type of agent to create",
-        examples=["security_analyst", "incident_responder"]
+        examples=["security_analyst", "incident_responder"],
     )
     title: Optional[str] = Field(
-        None,
-        description="Optional title for the session",
-        max_length=255
+        None, description="Optional title for the session", max_length=255
     )
     context: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Context for the session (finding IDs, provider scope, etc.)"
+        description="Context for the session (finding IDs, provider scope, etc.)",
     )
 
 
 class SessionResponse(BaseModel):
     """Response containing session information."""
+
     session_id: UUID
     org_id: UUID
     agent_type: str
@@ -60,20 +61,18 @@ class SessionResponse(BaseModel):
 
 class SendMessageRequest(BaseModel):
     """Request to send a message to an agent session."""
+
     message: str = Field(
-        ...,
-        description="Message to send to the agent",
-        min_length=1,
-        max_length=10000
+        ..., description="Message to send to the agent", min_length=1, max_length=10000
     )
     stream: bool = Field(
-        default=True,
-        description="Whether to stream the response using SSE"
+        default=True, description="Whether to stream the response using SSE"
     )
 
 
 class MessageResponse(BaseModel):
     """Response containing a single message."""
+
     message_id: UUID
     role: str
     content: str
@@ -83,6 +82,7 @@ class MessageResponse(BaseModel):
 
 class SessionListResponse(BaseModel):
     """Response containing list of sessions."""
+
     sessions: List[SessionResponse]
     total: int
     limit: int
@@ -91,6 +91,7 @@ class SessionListResponse(BaseModel):
 
 class SessionWithMessagesResponse(BaseModel):
     """Response containing session with message history."""
+
     session: SessionResponse
     messages: List[MessageResponse]
     message_count: int
@@ -183,8 +184,12 @@ class AssignReviewTaskRequest(BaseModel):
 
 
 class AddReviewCommentRequest(BaseModel):
-    content: str = Field(..., min_length=1, max_length=5000, description="Comment content")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata payload")
+    content: str = Field(
+        ..., min_length=1, max_length=5000, description="Comment content"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Optional metadata payload"
+    )
 
 
 class WorkflowEvaluationRequest(BaseModel):
@@ -196,13 +201,25 @@ class BulkReviewUpdateRequest(BaseModel):
     task_ids: List[UUID]
     status: Optional[str] = Field(None, description="Status to apply to selected tasks")
     notes: Optional[str] = None
-    escalated_to: Optional[str] = Field(None, description="Escalation target identifier")
-    due_at: Optional[datetime] = Field(None, description="Optional due date for review completion")
+    escalated_to: Optional[str] = Field(
+        None, description="Escalation target identifier"
+    )
+    due_at: Optional[datetime] = Field(
+        None, description="Optional due date for review completion"
+    )
     priority: Optional[str] = Field(None, description="Priority label")
-    notification_channel: Optional[str] = Field(None, description="Channel for notifications (e.g. slack:#alerts)")
-    ticket_system: Optional[str] = Field(None, description="External ticket system identifier")
-    ticket_summary: Optional[str] = Field(None, description="Summary used when creating an external ticket")
-    ticket_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional ticket metadata")
+    notification_channel: Optional[str] = Field(
+        None, description="Channel for notifications (e.g. slack:#alerts)"
+    )
+    ticket_system: Optional[str] = Field(
+        None, description="External ticket system identifier"
+    )
+    ticket_summary: Optional[str] = Field(
+        None, description="Summary used when creating an external ticket"
+    )
+    ticket_metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Additional ticket metadata"
+    )
 
 
 class ReviewNotificationResponse(BaseModel):
@@ -301,7 +318,9 @@ class PolicySimulationResponse(BaseModel):
 class PolicySimulationRequest(BaseModel):
     expression: str = Field(..., min_length=3, description="CEL expression to evaluate")
     tool_name: Optional[str] = Field(None, description="Filter to a specific tool name")
-    limit: int = Field(50, ge=1, le=200, description="Number of recent invocations to evaluate")
+    limit: int = Field(
+        50, ge=1, le=200, description="Number of recent invocations to evaluate"
+    )
 
 
 def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -373,6 +392,7 @@ def _policy_suggestion_to_response(data: Dict[str, Any]) -> PolicySuggestionResp
 
 # API Endpoints
 
+
 @router.post("/sessions", response_model=SessionResponse, status_code=201)
 async def create_agent_session(
     request: CreateSessionRequest,
@@ -407,18 +427,24 @@ async def create_agent_session(
         )
 
     except ValueError as e:
-        logger.warning("Invalid agent session request", error=str(e), user=current_user.user_id)
+        logger.warning(
+            "Invalid agent session request", error=str(e), user=current_user.user_id
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
-        logger.exception("Failed to create agent session", error=str(e), user=current_user.user_id)
+        logger.exception(
+            "Failed to create agent session", error=str(e), user=current_user.user_id
+        )
         raise HTTPException(status_code=500, detail="Failed to create agent session")
 
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def list_agent_sessions(
     agent_type: Optional[str] = Query(None, description="Filter by agent type"),
-    limit: int = Query(50, ge=1, le=100, description="Maximum number of sessions to return"),
+    limit: int = Query(
+        50, ge=1, le=100, description="Maximum number of sessions to return"
+    ),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     current_user: User = Depends(get_current_user),
 ):
@@ -458,14 +484,18 @@ async def list_agent_sessions(
         )
 
     except Exception as e:
-        logger.exception("Failed to list agent sessions", error=str(e), user=current_user.user_id)
+        logger.exception(
+            "Failed to list agent sessions", error=str(e), user=current_user.user_id
+        )
         raise HTTPException(status_code=500, detail="Failed to list agent sessions")
 
 
 @router.get("/sessions/{session_id}", response_model=SessionWithMessagesResponse)
 async def get_agent_session(
     session_id: UUID,
-    message_limit: int = Query(50, ge=1, le=200, description="Maximum number of messages to return"),
+    message_limit: int = Query(
+        50, ge=1, le=200, description="Maximum number of messages to return"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -483,7 +513,9 @@ async def get_agent_session(
         )
 
         if not session_data:
-            raise HTTPException(status_code=404, detail="Session not found or access denied")
+            raise HTTPException(
+                status_code=404, detail="Session not found or access denied"
+            )
 
         session_dict = session_data["session"]
         messages = session_data["messages"]
@@ -519,9 +551,11 @@ async def get_agent_session(
                     tool_name=inv["tool_name"],
                     status=inv["status"],
                     started_at=datetime.fromisoformat(inv["started_at"]),
-                    completed_at=datetime.fromisoformat(inv["completed_at"])
-                    if inv.get("completed_at")
-                    else None,
+                    completed_at=(
+                        datetime.fromisoformat(inv["completed_at"])
+                        if inv.get("completed_at")
+                        else None
+                    ),
                     error_message=inv.get("error_message"),
                 )
                 for inv in tool_invocations
@@ -533,7 +567,9 @@ async def get_agent_session(
         raise
 
     except Exception as e:
-        logger.exception("Failed to get agent session", session_id=session_id, error=str(e))
+        logger.exception(
+            "Failed to get agent session", session_id=session_id, error=str(e)
+        )
         raise HTTPException(status_code=500, detail="Failed to get agent session")
 
 
@@ -583,7 +619,9 @@ async def send_message_to_agent(
                     tool_calls.append(event)
 
         except Exception as e:
-            logger.exception("Error sending message", session_id=session_id, error=str(e))
+            logger.exception(
+                "Error sending message", session_id=session_id, error=str(e)
+            )
             raise HTTPException(status_code=500, detail="Failed to send message")
 
         if error:
@@ -632,13 +670,17 @@ async def send_message_to_agent(
                 }
 
             except Exception as e:
-                logger.exception("Error in SSE stream", session_id=session_id, error=str(e))
+                logger.exception(
+                    "Error in SSE stream", session_id=session_id, error=str(e)
+                )
                 yield {
                     "event": "error",
-                    "data": json.dumps({
-                        "type": "error",
-                        "content": {"message": "Stream error occurred"},
-                    }),
+                    "data": json.dumps(
+                        {
+                            "type": "error",
+                            "content": {"message": "Stream error occurred"},
+                        }
+                    ),
                 }
 
         return EventSourceResponse(event_generator())
@@ -647,7 +689,9 @@ async def send_message_to_agent(
 @router.get("/sessions/{session_id}/messages", response_model=List[MessageResponse])
 async def get_session_messages(
     session_id: UUID,
-    limit: int = Query(100, ge=1, le=500, description="Maximum number of messages to return"),
+    limit: int = Query(
+        100, ge=1, le=500, description="Maximum number of messages to return"
+    ),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     current_user: User = Depends(get_current_user),
 ):
@@ -678,15 +722,21 @@ async def get_session_messages(
         ]
 
     except Exception as e:
-        logger.exception("Failed to get session messages", session_id=session_id, error=str(e))
+        logger.exception(
+            "Failed to get session messages", session_id=session_id, error=str(e)
+        )
         raise HTTPException(status_code=500, detail="Failed to get session messages")
 
 
 @router.get("/sessions/{session_id}/memory", response_model=List[MemoryEntryResponse])
 async def get_session_memory_entries(
     session_id: UUID,
-    limit: int = Query(50, ge=1, le=200, description="Maximum memory entries to return"),
-    include_content: bool = Query(False, description="Include full memory content in response"),
+    limit: int = Query(
+        50, ge=1, le=200, description="Maximum memory entries to return"
+    ),
+    include_content: bool = Query(
+        False, description="Include full memory content in response"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """List memory entries associated with an agent session."""
@@ -702,7 +752,9 @@ async def get_session_memory_entries(
         )
 
         if entries is None:
-            raise HTTPException(status_code=404, detail="Session not found or access denied")
+            raise HTTPException(
+                status_code=404, detail="Session not found or access denied"
+            )
 
         return [
             MemoryEntryResponse(
@@ -728,8 +780,12 @@ async def get_session_memory_entries(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Failed to get session memory", session_id=session_id, error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to get session memory entries")
+        logger.exception(
+            "Failed to get session memory", session_id=session_id, error=str(e)
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to get session memory entries"
+        )
 
 
 @router.get("/sessions/{session_id}/memory/stats", response_model=MemoryStatsResponse)
@@ -743,14 +799,18 @@ async def get_session_memory_stats(
         org_id=current_user.org_id,
     )
     if stats is None:
-        raise HTTPException(status_code=404, detail="Session not found or access denied")
+        raise HTTPException(
+            status_code=404, detail="Session not found or access denied"
+        )
     return MemoryStatsResponse(**stats)
 
 
 @router.get("/review-tasks", response_model=List[ReviewTaskResponse])
 async def list_review_tasks(
     status: Optional[str] = Query(None, description="Filter by review status"),
-    limit: int = Query(50, ge=1, le=200, description="Maximum number of tasks to return"),
+    limit: int = Query(
+        50, ge=1, le=200, description="Maximum number of tasks to return"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """Return review tasks awaiting human decisions."""
@@ -767,7 +827,9 @@ async def list_review_tasks(
 @router.get("/review-tasks/page", response_model=ReviewTaskPageResponse)
 async def list_review_tasks_page(
     status: Optional[str] = Query(None, description="Filter by review status"),
-    limit: int = Query(50, ge=1, le=200, description="Number of tasks to fetch per page"),
+    limit: int = Query(
+        50, ge=1, le=200, description="Number of tasks to fetch per page"
+    ),
     cursor: Optional[str] = Query(None, description="Opaque cursor for pagination"),
     current_user: User = Depends(get_current_user),
 ):
@@ -803,7 +865,9 @@ async def get_review_queue_summary(
 
     return ReviewQueueSummary(
         generated_at=summary["generated_at"],
-        status_counts=[ReviewQueueStatusSummary(**item) for item in summary["status_counts"]],
+        status_counts=[
+            ReviewQueueStatusSummary(**item) for item in summary["status_counts"]
+        ],
         pending=ReviewQueuePendingSummary(**summary["pending"]),
         priority_breakdown=[
             ReviewQueuePrioritySummary(**item) for item in summary["priority_breakdown"]
@@ -865,7 +929,7 @@ async def assign_review_task(
 ):
     """Assign a review task to a user."""
     from cerebro.agents.review_service import AgentReviewService
-    
+
     task = await AgentReviewService.assign_task(
         task_id=task_id,
         assigned_to=request.assigned_to,
@@ -884,7 +948,7 @@ async def add_task_comment(
 ):
     """Add a comment to a review task."""
     from cerebro.agents.review_service import AgentReviewService
-    
+
     comment = await AgentReviewService.add_comment(
         task_id=task_id,
         author=current_user.username,
@@ -893,7 +957,7 @@ async def add_task_comment(
     )
     if not comment:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     return {
         "id": str(comment.id),
         "task_id": str(comment.task_id),
@@ -913,12 +977,12 @@ async def get_task_comments(
 ):
     """Get all comments for a review task."""
     from cerebro.agents.review_service import AgentReviewService
-    
+
     comments = await AgentReviewService.get_comments(
         task_id=task_id,
         limit=limit,
     )
-    
+
     return [
         {
             "id": str(comment.id),
@@ -926,7 +990,9 @@ async def get_task_comments(
             "author": comment.author,
             "content": comment.content,
             "created_at": comment.created_at.isoformat(),
-            "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
+            "updated_at": (
+                comment.updated_at.isoformat() if comment.updated_at else None
+            ),
             "metadata": comment.extra_metadata,
         }
         for comment in comments
@@ -936,17 +1002,19 @@ async def get_task_comments(
 @router.get("/review-tasks/{task_id}/history", response_model=List[Dict[str, Any]])
 async def get_task_history(
     task_id: UUID,
-    limit: int = Query(100, ge=1, le=500, description="Maximum history records to return"),
+    limit: int = Query(
+        100, ge=1, le=500, description="Maximum history records to return"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """Get change history for a review task."""
     from cerebro.agents.review_service import AgentReviewService
-    
+
     history = await AgentReviewService.get_history(
         task_id=task_id,
         limit=limit,
     )
-    
+
     return [
         {
             "id": str(record.id),
@@ -969,7 +1037,7 @@ async def get_sla_summary(
 ):
     """Get SLA compliance summary for all pending tasks."""
     from cerebro.agents.sla_service import SLAService
-    
+
     summary = await SLAService.get_sla_summary(org_id=current_user.org_id)
     return summary
 
@@ -980,7 +1048,7 @@ async def get_breached_tasks(
 ):
     """Get all tasks that have breached their SLA."""
     from cerebro.agents.sla_service import SLAService
-    
+
     breached = await SLAService.get_breached_tasks(org_id=current_user.org_id)
     return [status.to_dict() for status in breached]
 
@@ -991,15 +1059,19 @@ async def get_at_risk_tasks(
 ):
     """Get all tasks at risk of breaching SLA."""
     from cerebro.agents.sla_service import SLAService
-    
+
     at_risk = await SLAService.get_at_risk_tasks(org_id=current_user.org_id)
     return [status.to_dict() for status in at_risk]
 
 
-@router.get("/review-tasks/notifications", response_model=List[ReviewNotificationResponse])
+@router.get(
+    "/review-tasks/notifications", response_model=List[ReviewNotificationResponse]
+)
 async def list_review_notifications(
     status: Optional[str] = Query(None, description="Filter notifications by status"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum notification records to return"),
+    limit: int = Query(
+        100, ge=1, le=500, description="Maximum notification records to return"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     service = AgentSessionService()
@@ -1011,13 +1083,22 @@ async def list_review_notifications(
     return [_notification_to_response(notification) for notification in notifications]
 
 
-@router.get("/sessions/{session_id}/analytics", response_model=List[RuntimeEventResponse])
+@router.get(
+    "/sessions/{session_id}/analytics", response_model=List[RuntimeEventResponse]
+)
 async def get_session_analytics(
     session_id: UUID,
-    limit: int = Query(100, ge=1, le=500, description="Maximum analytics events to return"),
+    limit: int = Query(
+        100, ge=1, le=500, description="Maximum analytics events to return"
+    ),
     event_type: Optional[str] = Query(None, description="Filter events by type"),
-    cursor: Optional[str] = Query(None, description="Fetch events created before this ISO-8601 timestamp"),
-    cursor_id: Optional[str] = Query(None, description="Unique identifier of the last event seen (paired with cursor)"),
+    cursor: Optional[str] = Query(
+        None, description="Fetch events created before this ISO-8601 timestamp"
+    ),
+    cursor_id: Optional[str] = Query(
+        None,
+        description="Unique identifier of the last event seen (paired with cursor)",
+    ),
     current_user: User = Depends(get_current_user),
 ):
     service = AgentSessionService()
@@ -1026,7 +1107,9 @@ async def get_session_analytics(
         try:
             parsed = datetime.fromisoformat(cursor)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid cursor timestamp") from exc
+            raise HTTPException(
+                status_code=400, detail="Invalid cursor timestamp"
+            ) from exc
         before_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
     before_id: Optional[UUID] = None
@@ -1034,7 +1117,9 @@ async def get_session_analytics(
         try:
             before_id = UUID(cursor_id)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid cursor event id") from exc
+            raise HTTPException(
+                status_code=400, detail="Invalid cursor event id"
+            ) from exc
 
     events = await service.get_session_analytics(
         session_id=session_id,
@@ -1047,10 +1132,15 @@ async def get_session_analytics(
     return [_runtime_event_to_response(event) for event in events]
 
 
-@router.get("/sessions/{session_id}/analytics/summary", response_model=List[RuntimeEventSummaryResponse])
+@router.get(
+    "/sessions/{session_id}/analytics/summary",
+    response_model=List[RuntimeEventSummaryResponse],
+)
 async def get_session_analytics_summary(
     session_id: UUID,
-    event_type: Optional[str] = Query(None, description="Filter summaries to a specific event type"),
+    event_type: Optional[str] = Query(
+        None, description="Filter summaries to a specific event type"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     service = AgentSessionService()
@@ -1076,13 +1166,16 @@ async def list_workflow_templates(
     current_user: User = Depends(get_current_user),
 ):
     """List all available workflow templates."""
-    from cerebro.agents.workflow_templates import WorkflowTemplateLibrary, WorkflowEngine
-    
+    from cerebro.agents.workflow_templates import (
+        WorkflowTemplateLibrary,
+        WorkflowEngine,
+    )
+
     if trigger:
         templates = WorkflowTemplateLibrary.get_templates_by_trigger(trigger)
     else:
         templates = WorkflowTemplateLibrary.get_all_templates()
-    
+
     return [WorkflowEngine.to_dict(template) for template in templates]
 
 
@@ -1092,12 +1185,15 @@ async def get_workflow_template(
     current_user: User = Depends(get_current_user),
 ):
     """Get a specific workflow template by ID."""
-    from cerebro.agents.workflow_templates import WorkflowTemplateLibrary, WorkflowEngine
-    
+    from cerebro.agents.workflow_templates import (
+        WorkflowTemplateLibrary,
+        WorkflowEngine,
+    )
+
     template = WorkflowTemplateLibrary.get_template(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    
+
     return WorkflowEngine.to_dict(template)
 
 
@@ -1108,14 +1204,18 @@ async def evaluate_workflows(
 ):
     """Evaluate which workflows match given trigger and context."""
     from cerebro.agents.workflow_templates import WorkflowEngine
-    
-    matching = await WorkflowEngine.find_matching_templates(request.trigger, request.context)
+
+    matching = await WorkflowEngine.find_matching_templates(
+        request.trigger, request.context
+    )
     return [WorkflowEngine.to_dict(template) for template in matching]
 
 
 @router.get("/policy-suggestions", response_model=List[PolicySuggestionResponse])
 async def list_policy_suggestions(
-    limit: int = Query(50, ge=1, le=200, description="Maximum policy suggestions to return"),
+    limit: int = Query(
+        50, ge=1, le=200, description="Maximum policy suggestions to return"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     service = AgentSessionService()

@@ -15,7 +15,7 @@ import importlib.util
 # Load the frameworks.py module explicitly
 spec = importlib.util.spec_from_file_location(
     "cerebro.compliance._frameworks_defs",
-    __file__.rsplit('/', 1)[0] + "/../frameworks.py"
+    __file__.rsplit("/", 1)[0] + "/../frameworks.py",
 )
 _frameworks_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(_frameworks_module)
@@ -34,7 +34,11 @@ from .soc2_provider import SOC2FrameworkProvider
 from .iso27001_provider import ISO27001FrameworkProvider
 
 # Auto-register providers with the global registry
-from ..framework_registry import register_framework_provider, get_framework, list_frameworks
+from ..framework_registry import (
+    register_framework_provider,
+    get_framework,
+    list_frameworks,
+)
 
 # Register all providers
 register_framework_provider(SOC2FrameworkProvider())

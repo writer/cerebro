@@ -232,7 +232,10 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
 
     executive = payload["executive_summary"]
     assert set(executive.keys()) == EXPECTED_FIELDS["ExecutiveSummaryResponse"]
-    assert set(executive["progress_indicators"].keys()) == EXPECTED_FIELDS["ExecutiveSummaryProgress"]
+    assert (
+        set(executive["progress_indicators"].keys())
+        == EXPECTED_FIELDS["ExecutiveSummaryProgress"]
+    )
 
     metrics = payload["security_metrics"]
     assert set(metrics.keys()) == EXPECTED_FIELDS["SecurityMetricsResponse"]
@@ -264,11 +267,17 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
 
     identity = payload["identity_analytics"]
     assert set(identity.keys()) == EXPECTED_FIELDS["IdentityAnalyticsResponse"]
-    assert set(identity["summary"].keys()) == EXPECTED_FIELDS["IdentityAnalyticsSummary"]
-    assert identity["privilege_distribution"], "Privilege distribution should not be empty"
+    assert (
+        set(identity["summary"].keys()) == EXPECTED_FIELDS["IdentityAnalyticsSummary"]
+    )
+    assert identity[
+        "privilege_distribution"
+    ], "Privilege distribution should not be empty"
     for segment in identity.get("privilege_segments", []):
         assert set(segment.keys()) == EXPECTED_FIELDS["IdentityPrivilegeSegment"]
-    assert identity["generated_at"], "Identity analytics should include generation timestamp"
+    assert identity[
+        "generated_at"
+    ], "Identity analytics should include generation timestamp"
 
     assert identity["top_risky_identities"], "Risky identities should not be empty"
     for risky in identity["top_risky_identities"]:
@@ -283,7 +292,9 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     for breakdown in identity["provider_breakdown"].values():
         assert set(breakdown.keys()) == EXPECTED_FIELDS["IdentityProviderBreakdown"]
     for provider_segment in identity.get("provider_segments", []):
-        assert set(provider_segment.keys()) == EXPECTED_FIELDS["IdentityProviderSegment"]
+        assert (
+            set(provider_segment.keys()) == EXPECTED_FIELDS["IdentityProviderSegment"]
+        )
 
     risk_breakdown = identity.get("risk_level_breakdown") or {}
     assert risk_breakdown, "Risk level breakdown should be provided"
@@ -293,7 +304,9 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
     for detailed in drilldown:
         assert set(detailed.keys()) == EXPECTED_FIELDS["IdentityDrilldownIdentity"]
         for permission in detailed["permissions"]:
-            assert set(permission.keys()) == EXPECTED_FIELDS["IdentityDrilldownPermission"]
+            assert (
+                set(permission.keys()) == EXPECTED_FIELDS["IdentityDrilldownPermission"]
+            )
         for finding in detailed["open_findings"]:
             assert set(finding.keys()) == EXPECTED_FIELDS["IdentityDrilldownFinding"]
 
@@ -332,11 +345,16 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
 
     metadata = payload["metadata"]
     assert set(metadata.keys()) == EXPECTED_FIELDS["DashboardMetadata"]
-    assert metadata["generated_at"], "Dashboard metadata should include generation timestamp"
+    assert metadata[
+        "generated_at"
+    ], "Dashboard metadata should include generation timestamp"
     component_timings = metadata.get("component_timings") or {}
     assert component_timings, "Component timings should be present"
     if metadata.get("filters_applied"):
-        assert set(metadata["filters_applied"].keys()) == {"identity_risk_filter", "compliance_trend_range"}
+        assert set(metadata["filters_applied"].keys()) == {
+            "identity_risk_filter",
+            "compliance_trend_range",
+        }
     assert metadata.get("cache_ttl_seconds") is not None
     assert "supports_streaming_updates" in metadata
     alert_thresholds = metadata.get("alert_thresholds") or {}
@@ -352,7 +370,9 @@ def _validate_api_response(payload: Dict[str, object]) -> None:
         assert isinstance(metadata["data_as_of"], str)
 
 
-def test_dashboard_contract_matches_expected_schema(client, test_db, test_org, test_token, monkeypatch):
+def test_dashboard_contract_matches_expected_schema(
+    client, test_db, test_org, test_token, monkeypatch
+):
     sample = build_sample_dashboard_response()
 
     async def _fake_dashboard(self, org_id):
@@ -360,7 +380,9 @@ def test_dashboard_contract_matches_expected_schema(client, test_db, test_org, t
         payload["executive_summary"]["org_id"] = str(org_id)
         return payload
 
-    monkeypatch.setattr(DashboardAnalytics, "generate_comprehensive_dashboard", _fake_dashboard)
+    monkeypatch.setattr(
+        DashboardAnalytics, "generate_comprehensive_dashboard", _fake_dashboard
+    )
 
     response = client.get(
         f"/api/v1/analytics/organizations/{test_org.org_id}/dashboard",
@@ -373,7 +395,9 @@ def test_dashboard_contract_matches_expected_schema(client, test_db, test_org, t
     _validate_api_response(payload)
 
 
-def test_dashboard_contract_captures_generation_timings(client, test_db, test_org, test_token, monkeypatch):
+def test_dashboard_contract_captures_generation_timings(
+    client, test_db, test_org, test_token, monkeypatch
+):
     sample = build_sample_dashboard_response()
     captured: Dict[str, DashboardAnalytics] = {}
 
@@ -396,7 +420,9 @@ def test_dashboard_contract_captures_generation_timings(client, test_db, test_or
         captured["instance"] = self
         return payload
 
-    monkeypatch.setattr(DashboardAnalytics, "generate_comprehensive_dashboard", _fake_dashboard)
+    monkeypatch.setattr(
+        DashboardAnalytics, "generate_comprehensive_dashboard", _fake_dashboard
+    )
 
     response = client.get(
         f"/api/v1/analytics/organizations/{test_org.org_id}/dashboard",

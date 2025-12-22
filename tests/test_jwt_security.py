@@ -27,7 +27,7 @@ class TestJWTKeyStore:
         mock_kms = AsyncMock()
         mock_kms.encrypt_data.return_value = (b"encrypted_key", b"encrypted_dek")
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms):
+        with patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms):
             key_store = JWTKeyStore(test_db)
 
             signing_key = await key_store.create_new_signing_key()
@@ -49,7 +49,7 @@ class TestJWTKeyStore:
         mock_kms = AsyncMock()
         mock_kms.encrypt_data.return_value = (b"encrypted_key", b"encrypted_dek")
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms):
+        with patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms):
             key_store = JWTKeyStore(test_db)
 
             # Should return None when no keys exist
@@ -70,7 +70,7 @@ class TestJWTKeyStore:
         mock_kms = AsyncMock()
         mock_kms.encrypt_data.return_value = (b"encrypted_key", b"encrypted_dek")
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms):
+        with patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms):
             key_store = JWTKeyStore(test_db)
 
             # Create initial key
@@ -98,7 +98,7 @@ class TestJWTKeyStore:
         mock_kms = AsyncMock()
         mock_kms.encrypt_data.return_value = (b"encrypted_key", b"encrypted_dek")
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms):
+        with patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms):
             key_store = JWTKeyStore(test_db)
 
             # Create a signing key
@@ -130,7 +130,7 @@ class TestJWTService:
         mock_kms.encrypt_data.return_value = (b"encrypted_key", b"encrypted_dek")
         mock_kms.decrypt_data.return_value = self._generate_test_private_key()
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms):
+        with patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms):
             key_store = JWTKeyStore(test_db)
             jwt_service = JWTService(key_store)
 
@@ -139,8 +139,7 @@ class TestJWTService:
 
             # Create token
             token = await jwt_service.create_token(
-                username="testuser",
-                scopes=["read:findings", "write:rules"]
+                username="testuser", scopes=["read:findings", "write:rules"]
             )
 
             assert token is not None
@@ -179,8 +178,10 @@ class TestJWTService:
         mock_redis = AsyncMock()
         mock_redis.exists.return_value = False  # Not revoked
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms), \
-             patch('redis.asyncio.from_url', return_value=mock_redis):
+        with (
+            patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms),
+            patch("redis.asyncio.from_url", return_value=mock_redis),
+        ):
 
             key_store = JWTKeyStore(test_db)
             jwt_service = JWTService(key_store)
@@ -205,8 +206,10 @@ class TestJWTService:
         mock_redis.setex.return_value = True
         mock_redis.exists.return_value = False  # Initially not revoked
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms), \
-             patch('redis.asyncio.from_url', return_value=mock_redis):
+        with (
+            patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms),
+            patch("redis.asyncio.from_url", return_value=mock_redis),
+        ):
 
             key_store = JWTKeyStore(test_db)
             jwt_service = JWTService(key_store)
@@ -234,8 +237,10 @@ class TestJWTService:
         mock_redis.setex.return_value = True
         mock_redis.exists.return_value = True  # Token is revoked
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms), \
-             patch('redis.asyncio.from_url', return_value=mock_redis):
+        with (
+            patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms),
+            patch("redis.asyncio.from_url", return_value=mock_redis),
+        ):
 
             key_store = JWTKeyStore(test_db)
             jwt_service = JWTService(key_store)
@@ -266,15 +271,12 @@ class TestJWTService:
     @staticmethod
     def _generate_test_private_key() -> bytes:
         """Generate a test RSA private key."""
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
         return private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
+            encryption_algorithm=serialization.NoEncryption(),
         )
 
 
@@ -289,7 +291,7 @@ class TestJWKSEndpoint:
         mock_kms = AsyncMock()
         mock_kms.encrypt_data.return_value = (b"encrypted_key", b"encrypted_dek")
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms):
+        with patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms):
             key_store = JWTKeyStore(test_db)
 
             # Create a signing key
@@ -313,7 +315,7 @@ class TestJWKSEndpoint:
         mock_kms = AsyncMock()
         mock_kms.encrypt_data.return_value = (b"encrypted_key", b"encrypted_dek")
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms):
+        with patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms):
             key_store = JWTKeyStore(test_db)
 
             # Create signing key and get JWKS
@@ -345,8 +347,10 @@ class TestTokenSecurity:
         mock_redis = AsyncMock()
         mock_redis.exists.return_value = False
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms), \
-             patch('redis.asyncio.from_url', return_value=mock_redis):
+        with (
+            patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms),
+            patch("redis.asyncio.from_url", return_value=mock_redis),
+        ):
 
             key_store = JWTKeyStore(test_db)
             jwt_service = JWTService(key_store)
@@ -376,8 +380,10 @@ class TestTokenSecurity:
         mock_redis = AsyncMock()
         mock_redis.exists.return_value = False
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms), \
-             patch('redis.asyncio.from_url', return_value=mock_redis):
+        with (
+            patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms),
+            patch("redis.asyncio.from_url", return_value=mock_redis),
+        ):
 
             key_store = JWTKeyStore(test_db)
             jwt_service = JWTService(key_store)
@@ -388,9 +394,7 @@ class TestTokenSecurity:
             # Create token with very short expiration
             short_expiry = timedelta(seconds=1)
             token = await jwt_service.create_token(
-                "testuser",
-                ["read:findings"],
-                expires_delta=short_expiry
+                "testuser", ["read:findings"], expires_delta=short_expiry
             )
 
             # Wait for token to expire
@@ -411,8 +415,10 @@ class TestTokenSecurity:
         mock_redis = AsyncMock()
         mock_redis.exists.return_value = False
 
-        with patch('cerebro.core.security.key_store.get_kms', return_value=mock_kms), \
-             patch('redis.asyncio.from_url', return_value=mock_redis):
+        with (
+            patch("cerebro.core.security.key_store.get_kms", return_value=mock_kms),
+            patch("redis.asyncio.from_url", return_value=mock_redis),
+        ):
 
             key_store = JWTKeyStore(test_db)
             jwt_service = JWTService(key_store)
@@ -499,9 +505,7 @@ class TestSecurityValidation:
             # Should reject weak password
             with pytest.raises(ValueError, match="at least 12 characters"):
                 await user_service.create_admin_user(
-                    username="admin",
-                    email="admin@test.com",
-                    password="weak"
+                    username="admin", email="admin@test.com", password="weak"
                 )
 
     def test_configuration_validators_comprehensive(self):
@@ -519,7 +523,7 @@ class TestSecurityValidation:
             secure_config = Settings(
                 secret_key="a-very-secure-secret-key-that-is-at-least-32-characters-long",
                 kms_provider="aws",
-                enable_provider_env_fallback=False
+                enable_provider_env_fallback=False,
             )
 
             assert secure_config.secret_key.startswith("a-very-secure")

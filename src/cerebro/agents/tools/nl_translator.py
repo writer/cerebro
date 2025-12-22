@@ -49,7 +49,9 @@ class AnthropicSQLTranslator(SQLTranslator):
         try:
             from anthropic import Anthropic  # type: ignore
         except ImportError as exc:  # pragma: no cover - optional dependency
-            raise TranslationUnavailableError("anthropic package is not installed") from exc
+            raise TranslationUnavailableError(
+                "anthropic package is not installed"
+            ) from exc
 
         if not api_key:
             raise TranslationUnavailableError("Anthropic API key is not configured")
@@ -67,7 +69,9 @@ class AnthropicSQLTranslator(SQLTranslator):
         schema: str,
         examples: str,
     ) -> str:
-        prompt = _build_prompt(question=question, limit=limit, schema=schema, examples=examples)
+        prompt = _build_prompt(
+            question=question, limit=limit, schema=schema, examples=examples
+        )
 
         try:
             message = await asyncio.to_thread(
@@ -83,7 +87,9 @@ class AnthropicSQLTranslator(SQLTranslator):
         try:
             sql_query = message.content[0].text.strip()
         except Exception as exc:  # pragma: no cover - defensive
-            raise TranslationError("Anthropic response did not include text content") from exc
+            raise TranslationError(
+                "Anthropic response did not include text content"
+            ) from exc
 
         sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
         if not sql_query.lower().endswith(";"):
@@ -140,7 +146,9 @@ class StaticFallbackTranslator(SQLTranslator):
     """Deterministic rule-based translator used as fallback."""
 
     def __init__(self, rules: Optional[Iterable[FallbackRule]] = None) -> None:
-        self._rules: Tuple[FallbackRule, ...] = tuple(rules) if rules else _default_rules()
+        self._rules: Tuple[FallbackRule, ...] = (
+            tuple(rules) if rules else _default_rules()
+        )
 
     async def translate(
         self,
@@ -154,7 +162,9 @@ class StaticFallbackTranslator(SQLTranslator):
         for pattern, builder in self._rules:
             if pattern.search(normalized_question):
                 query = builder(limit)
-                logger.debug("Fallback rule matched", pattern=pattern.pattern, query=query)
+                logger.debug(
+                    "Fallback rule matched", pattern=pattern.pattern, query=query
+                )
                 return _finalize_query(query)
 
         default_query = (
@@ -230,7 +240,9 @@ def build_translator(settings) -> SQLTranslator:
             temperature=getattr(settings, "claude_temperature", 0.0),
         )
     except TranslationError as exc:
-        logger.warning("Failed to initialize Anthropic translator; using fallback", error=str(exc))
+        logger.warning(
+            "Failed to initialize Anthropic translator; using fallback", error=str(exc)
+        )
         return fallback
 
     logger.info(
@@ -246,7 +258,7 @@ def _build_prompt(*, question: str, limit: int, schema: str, examples: str) -> s
         "Translate the user's natural language question into a SQL query.\n\n"
         f"{schema}\n\n"
         f"{examples}\n\n"
-        f"User Question: \"{question}\"\n\n"
+        f'User Question: "{question}"\n\n'
         "Instructions:\n"
         "1. Generate a valid PostgreSQL query\n"
         "2. Use appropriate tables from the schema above\n"

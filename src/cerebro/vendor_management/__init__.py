@@ -11,14 +11,14 @@ from .discovered_vendors import DiscoveredVendorTracker, DiscoveredVendor
 from .vendor_risk import VendorRiskAssessment, RiskScenario
 
 __all__ = [
-    'VendorRegistry',
-    'Vendor',
-    'VendorRiskLevel',
-    'SecurityReviewManager', 
-    'SecurityReview',
-    'ReviewStatus',
-    'DiscoveredVendorTracker',
-    'DiscoveredVendor',
-    'VendorRiskAssessment',
-    'RiskScenario'
+    "VendorRegistry",
+    "Vendor",
+    "VendorRiskLevel",
+    "SecurityReviewManager",
+    "SecurityReview",
+    "ReviewStatus",
+    "DiscoveredVendorTracker",
+    "DiscoveredVendor",
+    "VendorRiskAssessment",
+    "RiskScenario",
 ]

@@ -41,7 +41,9 @@ class AgentAnalyticsRepository:
     async def delete_older_than(self, cutoff: datetime) -> None:
         async with self._session_factory() as db_session:
             await db_session.execute(
-                AgentRuntimeEvent.__table__.delete().where(AgentRuntimeEvent.created_at < cutoff)
+                AgentRuntimeEvent.__table__.delete().where(
+                    AgentRuntimeEvent.created_at < cutoff
+                )
             )
             await db_session.commit()
 
@@ -58,7 +60,9 @@ class AgentAnalyticsRepository:
             stmt = (
                 select(AgentRuntimeEvent)
                 .where(AgentRuntimeEvent.session_id == session_id)
-                .order_by(AgentRuntimeEvent.created_at.desc(), AgentRuntimeEvent.id.desc())
+                .order_by(
+                    AgentRuntimeEvent.created_at.desc(), AgentRuntimeEvent.id.desc()
+                )
                 .limit(limit)
             )
 

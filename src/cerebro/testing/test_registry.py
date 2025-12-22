@@ -16,14 +16,16 @@ logger = logging.getLogger(__name__)
 
 class TestStatus(Enum):
     """Status of security tests."""
+
     ACTIVE = "active"
-    INACTIVE = "inactive" 
+    INACTIVE = "inactive"
     DRAFT = "draft"
     DEPRECATED = "deprecated"
 
 
 class TestType(Enum):
     """Types of security tests."""
+
     AUTOMATED = "automated"
     MANUAL = "manual"
     HYBRID = "hybrid"
@@ -31,6 +33,7 @@ class TestType(Enum):
 
 class TestFrequency(Enum):
     """Test execution frequency."""
+
     CONTINUOUS = "continuous"
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -43,41 +46,42 @@ class TestFrequency(Enum):
 @dataclass
 class SecurityTest:
     """Security test definition and configuration."""
+
     test_id: str
     name: str
     description: str
     test_type: TestType
     status: TestStatus
-    
+
     # Test configuration
     sql_query: Optional[str]  # SQL query for automated tests
-    manual_steps: List[str]   # Steps for manual tests
+    manual_steps: List[str]  # Steps for manual tests
     expected_result: str
     pass_criteria: str
-    
+
     # Scheduling
     frequency: TestFrequency
     next_execution: datetime
     last_execution: Optional[datetime]
-    
+
     # Compliance mapping
     control_ids: List[str]
     framework_mappings: Dict[str, str]  # framework -> control_id
-    
+
     # Risk assessment
     risk_level: str  # "low", "medium", "high", "critical"
     impact_of_failure: str
-    
+
     # Execution
     timeout_minutes: int
     retry_count: int
     notification_channels: List[str]
-    
+
     # Results tracking
     last_result: Optional[str]  # "pass", "fail", "error"
     failure_count: int
     consecutive_failures: int
-    
+
     # Metadata
     created_by: str
     created_at: datetime
@@ -89,15 +93,15 @@ class SecurityTest:
 class TestRegistry:
     """
     Registry for security tests and validation procedures.
-    
+
     Manages automated and manual security tests for compliance
     control validation and continuous monitoring.
     """
-    
+
     def __init__(self):
         self.tests: Dict[str, SecurityTest] = {}
         self._initialize_default_tests()
-    
+
     def _initialize_default_tests(self):
         """Initialize default security tests."""
         default_tests = [
@@ -129,9 +133,8 @@ class TestRegistry:
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
                 tags=["access_control", "mfa", "authentication"],
-                metadata={}
+                metadata={},
             ),
-            
             # Configuration Security Tests
             SecurityTest(
                 test_id="test_public_s3_buckets",
@@ -160,9 +163,8 @@ class TestRegistry:
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
                 tags=["data_protection", "cloud_security", "s3"],
-                metadata={}
+                metadata={},
             ),
-            
             # Vulnerability Management Tests
             SecurityTest(
                 test_id="test_critical_vulnerabilities",
@@ -191,9 +193,8 @@ class TestRegistry:
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
                 tags=["vulnerability_management", "critical", "monitoring"],
-                metadata={}
+                metadata={},
             ),
-            
             # Identity Governance Tests
             SecurityTest(
                 test_id="test_privileged_access_review",
@@ -206,7 +207,7 @@ class TestRegistry:
                     "Review list of users with admin privileges",
                     "Verify quarterly access review was completed",
                     "Check for documentation of review decisions",
-                    "Validate that unauthorized access was revoked"
+                    "Validate that unauthorized access was revoked",
                 ],
                 expected_result="Quarterly access review completed with documentation",
                 pass_criteria="Review completed within last 90 days",
@@ -227,70 +228,72 @@ class TestRegistry:
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
                 tags=["access_review", "privileged_access", "governance"],
-                metadata={}
-            )
+                metadata={},
+            ),
         ]
-        
+
         for test in default_tests:
             self.tests[test.test_id] = test
-    
+
     async def register_test(self, test: SecurityTest) -> str:
         """Register a new security test."""
         self.tests[test.test_id] = test
         logger.info(f"Registered security test: {test.name}")
         return test.test_id
-    
+
     async def get_tests_by_control(self, control_id: str) -> List[SecurityTest]:
         """Get all tests for a specific control."""
-        return [
-            test for test in self.tests.values()
-            if control_id in test.control_ids
-        ]
-    
+        return [test for test in self.tests.values() if control_id in test.control_ids]
+
     async def get_tests_by_framework(self, framework: str) -> List[SecurityTest]:
         """Get all tests for a compliance framework."""
         return [
-            test for test in self.tests.values()
-            if framework in test.framework_mappings
+            test for test in self.tests.values() if framework in test.framework_mappings
         ]
-    
+
     async def get_overdue_tests(self) -> List[SecurityTest]:
         """Get tests that are overdue for execution."""
         current_time = datetime.now()
         return [
-            test for test in self.tests.values()
+            test
+            for test in self.tests.values()
             if test.next_execution < current_time and test.status == TestStatus.ACTIVE
         ]
-    
+
     async def get_failing_tests(self) -> List[SecurityTest]:
         """Get tests with recent failures."""
         return [
-            test for test in self.tests.values()
+            test
+            for test in self.tests.values()
             if test.last_result == "fail" or test.consecutive_failures > 0
         ]
-    
+
     async def generate_test_summary(self, org_id: str) -> Dict[str, Any]:
         """Generate test execution summary."""
         tests = list(self.tests.values())
         overdue = await self.get_overdue_tests()
         failing = await self.get_failing_tests()
-        
+
         # Status distribution
         status_counts = {}
         for test in tests:
-            status_counts[test.status.value] = status_counts.get(test.status.value, 0) + 1
-        
+            status_counts[test.status.value] = (
+                status_counts.get(test.status.value, 0) + 1
+            )
+
         # Type distribution
         type_counts = {}
         for test in tests:
-            type_counts[test.test_type.value] = type_counts.get(test.test_type.value, 0) + 1
-        
+            type_counts[test.test_type.value] = (
+                type_counts.get(test.test_type.value, 0) + 1
+            )
+
         # Framework coverage
         framework_coverage = {}
         for test in tests:
             for framework in test.framework_mappings.keys():
                 framework_coverage[framework] = framework_coverage.get(framework, 0) + 1
-        
+
         return {
             "organization_id": org_id,
             "summary_date": datetime.now().isoformat(),
@@ -298,18 +301,22 @@ class TestRegistry:
                 "total_tests": len(tests),
                 "active_tests": status_counts.get("active", 0),
                 "overdue_tests": len(overdue),
-                "failing_tests": len(failing)
+                "failing_tests": len(failing),
             },
             "distribution": {
                 "by_status": status_counts,
                 "by_type": type_counts,
-                "by_framework": framework_coverage
+                "by_framework": framework_coverage,
             },
             "health_metrics": {
-                "pass_rate": round((len(tests) - len(failing)) / max(len(tests), 1) * 100, 1),
+                "pass_rate": round(
+                    (len(tests) - len(failing)) / max(len(tests), 1) * 100, 1
+                ),
                 "overdue_rate": round(len(overdue) / max(len(tests), 1) * 100, 1),
-                "automation_rate": round(type_counts.get("automated", 0) / max(len(tests), 1) * 100, 1)
-            }
+                "automation_rate": round(
+                    type_counts.get("automated", 0) / max(len(tests), 1) * 100, 1
+                ),
+            },
         }
 
 

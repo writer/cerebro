@@ -104,9 +104,7 @@ class GCPBucketPublicWriteProducer(BaseGCPProducer):
             _binding_allows_public_write(binding) for binding in iam_bindings
         )
         if not public_write:
-            public_write = any(
-                _acl_allows_public_write(entry) for entry in acl_entries
-            )
+            public_write = any(_acl_allows_public_write(entry) for entry in acl_entries)
 
         if not public_write:
             return []

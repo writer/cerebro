@@ -60,7 +60,9 @@ class TaskManager:
             eta=eta,
             priority=priority,
         )
-        return TaskSubmission(task_id=async_result.id, status=getattr(async_result, "status", "PENDING"))
+        return TaskSubmission(
+            task_id=async_result.id, status=getattr(async_result, "status", "PENDING")
+        )
 
     def send_task(
         self,
@@ -69,8 +71,12 @@ class TaskManager:
         kwargs: Optional[dict[str, Any]] = None,
         **options: Any,
     ) -> TaskSubmission:
-        async_result = self._app.send_task(task_name, args=args, kwargs=kwargs or {}, **options)
-        return TaskSubmission(task_id=async_result.id, status=getattr(async_result, "status", "PENDING"))
+        async_result = self._app.send_task(
+            task_name, args=args, kwargs=kwargs or {}, **options
+        )
+        return TaskSubmission(
+            task_id=async_result.id, status=getattr(async_result, "status", "PENDING")
+        )
 
     def get_status(self, task_id: str) -> TaskStatus:
         result = self._app.AsyncResult(task_id)
@@ -88,5 +94,7 @@ class TaskManager:
             date_done=date_done,
         )
 
-    def revoke(self, task_id: str, *, terminate: bool = False, signal: Optional[str] = None) -> None:
+    def revoke(
+        self, task_id: str, *, terminate: bool = False, signal: Optional[str] = None
+    ) -> None:
         self._app.control.revoke(task_id, terminate=terminate, signal=signal)

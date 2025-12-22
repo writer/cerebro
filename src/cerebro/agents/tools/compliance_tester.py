@@ -27,22 +27,20 @@ class ComplianceTesterInput(BaseModel):
     """Input parameters for compliance testing."""
 
     framework_id: str = Field(
-        ...,
-        description="Compliance framework: 'soc2', 'iso27001'"
+        ..., description="Compliance framework: 'soc2', 'iso27001'"
     )
     control_id: Optional[str] = Field(
         None,
-        description="Specific control to test (e.g., 'CC6.1', 'A.9.2.1'). Leave empty to test all controls."
+        description="Specific control to test (e.g., 'CC6.1', 'A.9.2.1'). Leave empty to test all controls.",
     )
     collect_evidence: bool = Field(
-        default=True,
-        description="Whether to collect and preserve audit evidence"
+        default=True, description="Whether to collect and preserve audit evidence"
     )
     audit_period_days: int = Field(
         default=90,
         description="Number of days to look back for compliance testing",
         ge=1,
-        le=365
+        le=365,
     )
 
 
@@ -123,7 +121,7 @@ class ComplianceControlTesterTool(StructuredTool):
                 if not framework:
                     return ToolResult(
                         success=False,
-                        error=f"Framework '{framework_id}' not found. Available: soc2, iso27001"
+                        error=f"Framework '{framework_id}' not found. Available: soc2, iso27001",
                     )
 
                 # Initialize test runner
@@ -132,7 +130,7 @@ class ComplianceControlTesterTool(StructuredTool):
                 test_runner = ControlTestRunner(
                     rule_engine=rule_engine,
                     query_engine=query_engine,
-                    db_session=db_session
+                    db_session=db_session,
                 )
 
                 # Determine which controls to test
@@ -142,7 +140,7 @@ class ComplianceControlTesterTool(StructuredTool):
                     if not control:
                         return ToolResult(
                             success=False,
-                            error=f"Control '{control_id}' not found in {framework_id}"
+                            error=f"Control '{control_id}' not found in {framework_id}",
                         )
                     controls_to_test = [control]
                 else:
@@ -159,7 +157,9 @@ class ComplianceControlTesterTool(StructuredTool):
                 gaps = []
 
                 for control in controls_to_test:
-                    logger.info(f"Testing control {control.control_id}: {control.title}")
+                    logger.info(
+                        f"Testing control {control.control_id}: {control.title}"
+                    )
 
                     try:
                         # Execute control test
@@ -169,7 +169,7 @@ class ComplianceControlTesterTool(StructuredTool):
                             control_id=control.control_id,
                             period_start=period_start,
                             period_end=period_end,
-                            collect_evidence=collect_evidence
+                            collect_evidence=collect_evidence,
                         )
 
                         # Format result for output
@@ -183,7 +183,7 @@ class ComplianceControlTesterTool(StructuredTool):
                             "fail_count": result.fail_count,
                             "total_count": result.total_count,
                             "execution_time_seconds": round(result.duration_seconds, 2),
-                            "evidence_items": len(result.evidence_items)
+                            "evidence_items": len(result.evidence_items),
                         }
 
                         # Add to results
@@ -206,32 +206,33 @@ class ComplianceControlTesterTool(StructuredTool):
                         logger.error(
                             "Control test failed",
                             control_id=control.control_id,
-                            error=str(e)
+                            error=str(e),
                         )
-                        test_results.append({
-                            "control_id": control.control_id,
-                            "control_title": control.title,
-                            "status": "error",
-                            "passed": False,
-                            "error_message": str(e)
-                        })
+                        test_results.append(
+                            {
+                                "control_id": control.control_id,
+                                "control_title": control.title,
+                                "status": "error",
+                                "passed": False,
+                                "error_message": str(e),
+                            }
+                        )
                         gaps.append(f"{control.control_id}: Test execution failed")
 
                 # Calculate overall metrics
                 controls_tested = len(test_results)
                 controls_passed = sum(1 for r in test_results if r.get("passed", False))
                 controls_failed = sum(
-                    1 for r in test_results
-                    if r.get("status") == "fail"
+                    1 for r in test_results if r.get("status") == "fail"
                 )
                 controls_with_errors = sum(
-                    1 for r in test_results
-                    if r.get("status") == "error"
+                    1 for r in test_results if r.get("status") == "error"
                 )
 
                 overall_score = (
                     (controls_passed / controls_tested * 100)
-                    if controls_tested > 0 else 0.0
+                    if controls_tested > 0
+                    else 0.0
                 )
 
                 # Generate recommendations
@@ -239,7 +240,7 @@ class ComplianceControlTesterTool(StructuredTool):
                     framework_id=framework_id,
                     test_results=test_results,
                     overall_score=overall_score,
-                    gaps=gaps
+                    gaps=gaps,
                 )
 
                 output = ComplianceTesterOutput(
@@ -252,7 +253,7 @@ class ComplianceControlTesterTool(StructuredTool):
                     test_results=test_results[:20],  # Limit to top 20 for tokens
                     evidence_collected=evidence_collected,
                     gaps_identified=gaps[:10],  # Top 10 gaps
-                    recommendations=recommendations
+                    recommendations=recommendations,
                 )
 
                 logger.info(
@@ -268,15 +269,14 @@ class ComplianceControlTesterTool(StructuredTool):
                     metadata={
                         "framework_id": framework_id,
                         "compliance_score": overall_score,
-                        "audit_period_days": audit_period_days
-                    }
+                        "audit_period_days": audit_period_days,
+                    },
                 )
 
         except Exception as e:
             logger.error("Compliance testing failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False,
-                error=f"Compliance testing failed: {str(e)}"
+                success=False, error=f"Compliance testing failed: {str(e)}"
             )
 
     def _generate_recommendations(
@@ -284,7 +284,7 @@ class ComplianceControlTesterTool(StructuredTool):
         framework_id: str,
         test_results: List[Dict],
         overall_score: float,
-        gaps: List[str]
+        gaps: List[str],
     ) -> List[str]:
         """Generate actionable recommendations based on test results."""
 
@@ -314,7 +314,9 @@ class ComplianceControlTesterTool(StructuredTool):
 
         # Gap-specific recommendations
         if gaps:
-            high_priority_gaps = [g for g in gaps if "error" in g.lower() or "failed" in g.lower()]
+            high_priority_gaps = [
+                g for g in gaps if "error" in g.lower() or "failed" in g.lower()
+            ]
             if high_priority_gaps:
                 recommendations.append(
                     f"Address {len(high_priority_gaps)} high-priority control gaps first: "
@@ -363,14 +365,20 @@ class EvidenceBundleBuilderTool(StructuredTool):
     """
 
     tool_name = "build_evidence_bundle"
-    tool_description = "Create cryptographically-signed audit evidence bundles (WORM storage)"
+    tool_description = (
+        "Create cryptographically-signed audit evidence bundles (WORM storage)"
+    )
     tool_version = "1.0.0"
     required_permission = ToolPermissionLevel.READ_ONLY
 
     class Input(BaseModel):
         framework_id: str = Field(..., description="Framework to collect evidence for")
-        control_ids: Optional[List[str]] = Field(None, description="Specific controls (all if not provided)")
-        include_raw_data: bool = Field(default=False, description="Include raw evidence data")
+        control_ids: Optional[List[str]] = Field(
+            None, description="Specific controls (all if not provided)"
+        )
+        include_raw_data: bool = Field(
+            default=False, description="Include raw evidence data"
+        )
 
     class Output(BaseModel):
         bundle_id: str
@@ -409,7 +417,7 @@ class EvidenceBundleBuilderTool(StructuredTool):
                     org_id=context.org_id,
                     framework_id=framework_id,
                     control_ids=control_ids,
-                    include_raw_data=include_raw_data
+                    include_raw_data=include_raw_data,
                 )
 
                 output = self.Output(
@@ -420,7 +428,7 @@ class EvidenceBundleBuilderTool(StructuredTool):
                     bundle_size_bytes=bundle.bundle_size_bytes,
                     cryptographic_hash=bundle.sha256_hash,
                     created_at=bundle.created_at.isoformat(),
-                    worm_storage_enabled=bundle.worm_enabled
+                    worm_storage_enabled=bundle.worm_enabled,
                 )
 
                 logger.info(
@@ -432,12 +440,11 @@ class EvidenceBundleBuilderTool(StructuredTool):
                 return ToolResult(
                     success=True,
                     data=output.model_dump(),
-                    metadata={"bundle_id": str(bundle.bundle_id)}
+                    metadata={"bundle_id": str(bundle.bundle_id)},
                 )
 
         except Exception as e:
             logger.error("Evidence bundle creation failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False,
-                error=f"Evidence bundle creation failed: {str(e)}"
+                success=False, error=f"Evidence bundle creation failed: {str(e)}"
             )

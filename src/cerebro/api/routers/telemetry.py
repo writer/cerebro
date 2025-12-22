@@ -17,7 +17,10 @@ from cerebro.telemetry.schemas import (
     RepositoryTelemetry,
     RuntimeTelemetry,
 )
-from cerebro.telemetry.services import TelemetryIngestionService, TelemetryProcessingError
+from cerebro.telemetry.services import (
+    TelemetryIngestionService,
+    TelemetryProcessingError,
+)
 
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry", "Intelligence"])
@@ -28,12 +31,13 @@ router = APIRouter(prefix="/telemetry", tags=["Telemetry", "Intelligence"])
 # API Endpoints
 # ============================================================================
 
+
 @router.post("/repository", status_code=200)
 async def receive_repository_telemetry(
     telemetry: RepositoryTelemetry,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None)
+    _authorization: Optional[str] = Header(None),
 ):
     """Receive telemetry from repository CI/CD workflows."""
 
@@ -48,7 +52,7 @@ async def receive_runtime_telemetry(
     telemetry: RuntimeTelemetry,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None)
+    _authorization: Optional[str] = Header(None),
 ):
     """Receive runtime telemetry from running applications."""
 
@@ -63,7 +67,7 @@ async def receive_host_telemetry(
     telemetry: HostTelemetry,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None)
+    _authorization: Optional[str] = Header(None),
 ):
     """Receive endpoint telemetry from the Cerebro desktop agent."""
 
@@ -79,7 +83,9 @@ async def list_host_packs(
     hostname: Optional[str] = Query(None, description="Hostname override"),
     organization: Optional[str] = Query(None, description="Organization name"),
     site: Optional[str] = Query(None, description="Site or location tag"),
-    tags: Optional[list[str]] = Query(None, alias="tag", description="Tag filters in key=value form"),
+    tags: Optional[list[str]] = Query(
+        None, alias="tag", description="Tag filters in key=value form"
+    ),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
 ):
@@ -129,7 +135,7 @@ async def receive_compliance_evidence(
     evidence: ComplianceEvidence,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None)
+    _authorization: Optional[str] = Header(None),
 ):
     """Receive compliance evidence collected from repositories."""
 
@@ -144,7 +150,7 @@ async def receive_dependency_graph(
     graph: DependencyGraph,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None)
+    _authorization: Optional[str] = Header(None),
 ):
     """Receive complete dependency graph including transitive dependencies."""
 
@@ -163,7 +169,9 @@ async def receive_frontend_observation(
     """Record a frontend analyst observation for reinforcement learning pipelines."""
 
     if current_user.org_id is None:
-        raise HTTPException(status_code=400, detail="User is not associated with an organization")
+        raise HTTPException(
+            status_code=400, detail="User is not associated with an organization"
+        )
 
     try:
         return await TelemetryIngestionService(db).process_frontend_observation(
@@ -173,7 +181,3 @@ async def receive_frontend_observation(
         )
     except TelemetryProcessingError as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-
-

@@ -126,7 +126,9 @@ class SentinelOneClient:
             # The activities endpoint returns a heterogeneous payload depending on
             # account tier.  We rely on helper extractors to normalize the shape
             # before yielding individual rows to callers.
-            payload = await self._request_json("/web/api/v2.1/activities", params=params)
+            payload = await self._request_json(
+                "/web/api/v2.1/activities", params=params
+            )
 
             records = self._extract_records(payload)
             for record in records:
@@ -216,8 +218,12 @@ class SentinelOneClient:
                 for agent in agents:
                     if isinstance(agent, dict):
                         yield agent
-            pagination = payload.get("pagination") if isinstance(payload, dict) else None
-            cursor = pagination.get("nextCursor") if isinstance(pagination, dict) else None
+            pagination = (
+                payload.get("pagination") if isinstance(payload, dict) else None
+            )
+            cursor = (
+                pagination.get("nextCursor") if isinstance(pagination, dict) else None
+            )
             if not cursor:
                 break
 
@@ -231,11 +237,15 @@ class SentinelOneClient:
                 return None
             raise
 
-    async def get_agent_applications(self, agent_id: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+    async def get_agent_applications(
+        self, agent_id: Optional[str]
+    ) -> Optional[List[Dict[str, Any]]]:
         if not agent_id:
             return None
         try:
-            payload = await self._request_json(f"/web/api/v2.1/agents/{agent_id}/applications")
+            payload = await self._request_json(
+                f"/web/api/v2.1/agents/{agent_id}/applications"
+            )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code in {403, 404}:
                 return None
@@ -245,7 +255,9 @@ class SentinelOneClient:
             return [app for app in apps if isinstance(app, dict)]
         return None
 
-    async def _request_json(self, url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _request_json(
+        self, url: str, *, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Execute a GET request with retry/backoff semantics."""
 
         attempt = 0
@@ -292,7 +304,9 @@ class SentinelOneIngestion:
 
         service = TelemetryIngestionService(db)
         state_repo = IntegrationStateRepository(db)
-        state = await state_repo.get_state("sentinelone.activities", self._config.organization)
+        state = await state_repo.get_state(
+            "sentinelone.activities", self._config.organization
+        )
 
         effective_since = since
         if state and state.last_timestamp:
@@ -304,7 +318,9 @@ class SentinelOneIngestion:
         now = datetime.now(timezone.utc)
         latest_timestamp: Optional[datetime] = None
 
-        async for activity in self._client.iter_activities(since=effective_since, until=until):
+        async for activity in self._client.iter_activities(
+            since=effective_since, until=until
+        ):
             event = self._normalize_activity(activity)
             if event is None:
                 continue
@@ -328,7 +344,11 @@ class SentinelOneIngestion:
                 ingested += len(chunk)
 
         if latest_timestamp:
-            ts = latest_timestamp if latest_timestamp.tzinfo else latest_timestamp.replace(tzinfo=timezone.utc)
+            ts = (
+                latest_timestamp
+                if latest_timestamp.tzinfo
+                else latest_timestamp.replace(tzinfo=timezone.utc)
+            )
             await state_repo.upsert_state(
                 integration="sentinelone.activities",
                 scope=self._config.organization,
@@ -364,7 +384,9 @@ class SentinelOneIngestion:
         async for agent in self._client.iter_agents():
             policy = await self._get_policy(agent.get("policyId"))
             applications = await self._client.get_agent_applications(agent.get("id"))
-            telemetry = self._build_host_telemetry(agent, policy, applications, collected_at)
+            telemetry = self._build_host_telemetry(
+                agent, policy, applications, collected_at
+            )
             if telemetry is None:
                 continue
             await service.process_host(telemetry)
@@ -379,7 +401,9 @@ class SentinelOneIngestion:
         since: Optional[datetime],
         until: Optional[datetime],
     ) -> Dict[str, Any]:
-        state = await state_repo.get_state("sentinelone.threats", self._config.organization)
+        state = await state_repo.get_state(
+            "sentinelone.threats", self._config.organization
+        )
         effective_since = since
         if state and state.last_timestamp:
             candidate = state.last_timestamp - _STATE_DRIFT
@@ -435,7 +459,10 @@ class SentinelOneIngestion:
             if not threats:
                 continue
 
-            collected_at = max((threat.detected_at for threat in threats), default=datetime.now(timezone.utc))
+            collected_at = max(
+                (threat.detected_at for threat in threats),
+                default=datetime.now(timezone.utc),
+            )
             if collected_at.tzinfo is None:
                 collected_at = collected_at.replace(tzinfo=timezone.utc)
 
@@ -470,7 +497,11 @@ class SentinelOneIngestion:
             hosts_processed += 1
 
         if latest_timestamp:
-            ts = latest_timestamp if latest_timestamp.tzinfo else latest_timestamp.replace(tzinfo=timezone.utc)
+            ts = (
+                latest_timestamp
+                if latest_timestamp.tzinfo
+                else latest_timestamp.replace(tzinfo=timezone.utc)
+            )
             await state_repo.upsert_state(
                 integration="sentinelone.threats",
                 scope=self._config.organization,
@@ -496,16 +527,28 @@ class SentinelOneIngestion:
         if not isinstance(threat, dict):
             return None
 
-        info = threat.get("threatInfo") if isinstance(threat.get("threatInfo"), dict) else {}
-        detection = threat.get("agentDetectionInfo") if isinstance(threat.get("agentDetectionInfo"), dict) else {}
-        realtime = threat.get("agentRealtimeInfo") if isinstance(threat.get("agentRealtimeInfo"), dict) else {}
-        mitigation = threat.get("mitigationStatus") if isinstance(threat.get("mitigationStatus"), dict) else {}
-
-        threat_id = (
-            info.get("threatId")
-            or threat.get("id")
-            or threat.get("threatId")
+        info = (
+            threat.get("threatInfo")
+            if isinstance(threat.get("threatInfo"), dict)
+            else {}
         )
+        detection = (
+            threat.get("agentDetectionInfo")
+            if isinstance(threat.get("agentDetectionInfo"), dict)
+            else {}
+        )
+        realtime = (
+            threat.get("agentRealtimeInfo")
+            if isinstance(threat.get("agentRealtimeInfo"), dict)
+            else {}
+        )
+        mitigation = (
+            threat.get("mitigationStatus")
+            if isinstance(threat.get("mitigationStatus"), dict)
+            else {}
+        )
+
+        threat_id = info.get("threatId") or threat.get("id") or threat.get("threatId")
         if not threat_id:
             return None
         threat_id = str(threat_id)
@@ -583,16 +626,22 @@ class SentinelOneIngestion:
             or self._parse_datetime(threat.get("createdAt"))
             or datetime.now(timezone.utc)
         )
-        updated_at = self._parse_datetime(info.get("updatedAt") or threat.get("updatedAt"))
+        updated_at = self._parse_datetime(
+            info.get("updatedAt") or threat.get("updatedAt")
+        )
         resolved_at = self._parse_datetime(mitigation.get("mitigationEndedAt"))
 
-        categories, tactics, techniques, indicator_text, c2_domains, source_ips = self._extract_indicator_details(threat)
+        categories, tactics, techniques, indicator_text, c2_domains, source_ips = (
+            self._extract_indicator_details(threat)
+        )
 
         classification = info.get("classification")
         confidence = info.get("confidenceLevel")
         severity = self._map_threat_severity(classification, confidence, categories)
 
-        status = info.get("incidentStatus") or info.get("status") or threat.get("status")
+        status = (
+            info.get("incidentStatus") or info.get("status") or threat.get("status")
+        )
         mitigation_status = (
             mitigation.get("status")
             or info.get("mitigationStatus")
@@ -606,13 +655,23 @@ class SentinelOneIngestion:
             confidence=str(confidence) if confidence is not None else None,
             severity=severity,
             status=str(status) if status is not None else None,
-            mitigation_status=str(mitigation_status) if mitigation_status is not None else None,
-            analyst_verdict=str(info.get("analystVerdict")) if info.get("analystVerdict") else None,
-            initiated_by=str(info.get("initiatedBy")) if info.get("initiatedBy") else None,
-            initiating_user=str(info.get("initiatingUsername") or info.get("initiatingUserId"))
-            if (info.get("initiatingUsername") or info.get("initiatingUserId"))
-            else None,
-            process_user=str(info.get("processUser")) if info.get("processUser") else None,
+            mitigation_status=(
+                str(mitigation_status) if mitigation_status is not None else None
+            ),
+            analyst_verdict=(
+                str(info.get("analystVerdict")) if info.get("analystVerdict") else None
+            ),
+            initiated_by=(
+                str(info.get("initiatedBy")) if info.get("initiatedBy") else None
+            ),
+            initiating_user=(
+                str(info.get("initiatingUsername") or info.get("initiatingUserId"))
+                if (info.get("initiatingUsername") or info.get("initiatingUserId"))
+                else None
+            ),
+            process_user=(
+                str(info.get("processUser")) if info.get("processUser") else None
+            ),
             file_path=str(info.get("filePath")) if info.get("filePath") else None,
             md5=str(info.get("md5")) if info.get("md5") else None,
             sha1=str(info.get("sha1")) if info.get("sha1") else None,
@@ -621,14 +680,20 @@ class SentinelOneIngestion:
             detected_at=detected_at,
             updated_at=updated_at,
             resolved_at=resolved_at,
-            reboot_required=bool(info.get("rebootRequired")) if info.get("rebootRequired") is not None else None,
+            reboot_required=(
+                bool(info.get("rebootRequired"))
+                if info.get("rebootRequired") is not None
+                else None
+            ),
             categories=sorted(categories) or None,
             mitre_tactics=sorted(tactics) or None,
             mitre_techniques=sorted(techniques) or None,
             indicators=sorted(indicator_text) or None,
             c2_domains=sorted(c2_domains) or None,
             source_ips=sorted(source_ips) or None,
-            quarantine_status=str(mitigation.get("action")) if mitigation.get("action") else None,
+            quarantine_status=(
+                str(mitigation.get("action")) if mitigation.get("action") else None
+            ),
         )
 
         return _NormalizedThreat(
@@ -680,18 +745,32 @@ class SentinelOneIngestion:
         c2_domains: set[str] = set()
         source_ips: set[str] = set()
 
-        threat_info = threat.get("threatInfo") if isinstance(threat.get("threatInfo"), dict) else {}
+        threat_info = (
+            threat.get("threatInfo")
+            if isinstance(threat.get("threatInfo"), dict)
+            else {}
+        )
         indicators = threat.get("indicators")
         if isinstance(indicators, dict):
-            categories.update(self._ensure_list(indicators.get("category") or indicators.get("categories")))
-            indicator_text.update(self._ensure_list(indicators.get("description") or indicators.get("descriptions")))
+            categories.update(
+                self._ensure_list(
+                    indicators.get("category") or indicators.get("categories")
+                )
+            )
+            indicator_text.update(
+                self._ensure_list(
+                    indicators.get("description") or indicators.get("descriptions")
+                )
+            )
             self._extend_tactics(indicators.get("tactics"), tactics, techniques)
         elif isinstance(indicators, list):
             for item in indicators:
                 if not isinstance(item, dict):
                     continue
                 categories.update(self._ensure_list(item.get("category")))
-                indicator_text.update(self._ensure_list(item.get("description") or item.get("title")))
+                indicator_text.update(
+                    self._ensure_list(item.get("description") or item.get("title"))
+                )
                 self._extend_tactics(item.get("tactics"), tactics, techniques)
 
         detection_engines = threat.get("detectionEngines")
@@ -714,7 +793,14 @@ class SentinelOneIngestion:
             for item in network_indicators:
                 if not isinstance(item, dict):
                     continue
-                for key in ("domain", "url", "address", "destination", "c2Domain", "commandAndControlDomain"):
+                for key in (
+                    "domain",
+                    "url",
+                    "address",
+                    "destination",
+                    "c2Domain",
+                    "commandAndControlDomain",
+                ):
                     value = item.get(key)
                     if value:
                         c2_domains.update(self._ensure_list(value))
@@ -746,7 +832,9 @@ class SentinelOneIngestion:
         elif isinstance(value, list):
             for item in value:
                 if isinstance(item, dict):
-                    tactics.update(self._ensure_list(item.get("name") or item.get("names")))
+                    tactics.update(
+                        self._ensure_list(item.get("name") or item.get("names"))
+                    )
                     techniques.update(self._ensure_list(item.get("id")))
                     self._extend_tactics(item.get("techniques"), tactics, techniques)
                 else:
@@ -756,7 +844,11 @@ class SentinelOneIngestion:
 
         # Techniques may be provided as list/dict nested within value
         if isinstance(value, dict):
-            techniques.update(self._ensure_list(value.get("name") if value.get("type") == "technique" else None))
+            techniques.update(
+                self._ensure_list(
+                    value.get("name") if value.get("type") == "technique" else None
+                )
+            )
 
     def _map_threat_severity(
         self,
@@ -776,9 +868,18 @@ class SentinelOneIngestion:
             severity = "critical"
         elif any(token in classification_text for token in high_indicators):
             severity = "high"
-        elif category_tokens & {"command and control", "c2", "exfiltration", "lateral movement"}:
+        elif category_tokens & {
+            "command and control",
+            "c2",
+            "exfiltration",
+            "lateral movement",
+        }:
             severity = "high"
-        elif "pua" in classification_text or "grayware" in classification_text or "adware" in classification_text:
+        elif (
+            "pua" in classification_text
+            or "grayware" in classification_text
+            or "adware" in classification_text
+        ):
             severity = "medium"
         elif classification_text:
             severity = "medium"
@@ -800,7 +901,14 @@ class SentinelOneIngestion:
         mitigation = (threat.mitigation_status or "").lower()
         verdict = (threat.analyst_verdict or "").lower()
 
-        resolved_tokens = {"resolved", "mitigated", "dismissed", "benign", "suspicious", "false_positive"}
+        resolved_tokens = {
+            "resolved",
+            "mitigated",
+            "dismissed",
+            "benign",
+            "suspicious",
+            "false_positive",
+        }
 
         if threat.resolved_at is not None:
             return False
@@ -841,7 +949,9 @@ class SentinelOneIngestion:
             or agent.get("agentName")
             or uuid
         )
-        os_family = (agent.get("osType") or agent.get("operatingSystem") or "unknown").lower()
+        os_family = (
+            agent.get("osType") or agent.get("operatingSystem") or "unknown"
+        ).lower()
 
         tags: Dict[str, str] = {}
         if agent.get("siteName"):
@@ -851,7 +961,9 @@ class SentinelOneIngestion:
         if agent.get("accountName"):
             tags["account"] = str(agent["accountName"])
         if agent.get("isEligibleForMitigation") is not None:
-            tags["eligible_for_mitigation"] = str(agent.get("isEligibleForMitigation")).lower()
+            tags["eligible_for_mitigation"] = str(
+                agent.get("isEligibleForMitigation")
+            ).lower()
         if policy:
             if policy.get("name"):
                 tags["policy_name"] = str(policy["name"])
@@ -899,7 +1011,9 @@ class SentinelOneIngestion:
         return ips
 
     @staticmethod
-    def _build_packages(applications: Optional[List[Dict[str, Any]]]) -> Optional[List[SoftwarePackage]]:
+    def _build_packages(
+        applications: Optional[List[Dict[str, Any]]],
+    ) -> Optional[List[SoftwarePackage]]:
         if not applications:
             return None
         packages: List[SoftwarePackage] = []
@@ -910,7 +1024,9 @@ class SentinelOneIngestion:
             packages.append(
                 SoftwarePackage(
                     name=str(name),
-                    version=str(app.get("version") or app.get("productVersion") or "unknown"),
+                    version=str(
+                        app.get("version") or app.get("productVersion") or "unknown"
+                    ),
                     source=app.get("publisher"),
                     install_time=None,
                     vendor=app.get("publisher"),
@@ -956,7 +1072,9 @@ class SentinelOneIngestion:
         if not isinstance(activity, dict):
             return None
 
-        activity_id = str(activity.get("id") or activity.get("activityUuid") or "").strip()
+        activity_id = str(
+            activity.get("id") or activity.get("activityUuid") or ""
+        ).strip()
         if not activity_id:
             return None
 
@@ -992,7 +1110,9 @@ class SentinelOneIngestion:
         )
 
         event_uuid = uuid5(_S1_NAMESPACE, f"activity:{activity_id}")
-        event_raw = activity.get("activityType") or activity.get("activity_name") or "activity"
+        event_raw = (
+            activity.get("activityType") or activity.get("activity_name") or "activity"
+        )
         event_type = str(event_raw).lower()
         category = "sentinelone.activity"
         # Persist the raw record for analysts while keeping the schema stable.

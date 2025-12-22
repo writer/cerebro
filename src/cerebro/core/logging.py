@@ -26,7 +26,11 @@ def configure_structlog(level: Optional[int] = None) -> None:
 
     from cerebro.core.config import settings
 
-    level_value = level if level is not None else getattr(logging, settings.log_level.upper(), logging.INFO)
+    level_value = (
+        level
+        if level is not None
+        else getattr(logging, settings.log_level.upper(), logging.INFO)
+    )
     log_format = (settings.log_format or "json").lower()
 
     if log_format == "json":

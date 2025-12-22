@@ -1,7 +1,12 @@
 import pytest
 from datetime import datetime, timezone
 
-from cerebro.agents.models import AgentSession, AgentType, ToolInvocation, ToolInvocationStatus
+from cerebro.agents.models import (
+    AgentSession,
+    AgentType,
+    ToolInvocation,
+    ToolInvocationStatus,
+)
 from cerebro.agents.service import AgentSessionService
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization

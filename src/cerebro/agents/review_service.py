@@ -223,8 +223,10 @@ class AgentReviewService:
                         notes=notes,
                         escalated_to=escalated_to,
                     )
-                    await AgentReviewService._record_policy_signal(db_session, task, status)
-                    
+                    await AgentReviewService._record_policy_signal(
+                        db_session, task, status
+                    )
+
                     # Record status change
                     await AgentReviewService._record_history(
                         db_session,
@@ -250,7 +252,12 @@ class AgentReviewService:
                             )
                         )
 
-                    if ticket_system and ticket_summary and status in {ReviewTaskStatus.ESCALATED, ReviewTaskStatus.PROMOTED}:
+                    if (
+                        ticket_system
+                        and ticket_summary
+                        and status
+                        in {ReviewTaskStatus.ESCALATED, ReviewTaskStatus.PROMOTED}
+                    ):
                         post_tickets.append(
                             (
                                 task.id,
@@ -331,7 +338,10 @@ class AgentReviewService:
         if not tool_name:
             return
 
-        expression = payload.get("suggested_expression") or f'resource.tool_name == "{tool_name}"'
+        expression = (
+            payload.get("suggested_expression")
+            or f'resource.tool_name == "{tool_name}"'
+        )
 
         stmt = (
             select(AgentPolicySuggestion)
@@ -373,7 +383,9 @@ class AgentReviewService:
             "escalated_to": task.escalated_to,
             "ticket_reference": task.ticket_reference,
             "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
-            "updated_at": (task.updated_at or task.resolved_at or task.created_at).isoformat(),
+            "updated_at": (
+                task.updated_at or task.resolved_at or task.created_at
+            ).isoformat(),
         }
 
     @staticmethod
@@ -387,7 +399,9 @@ class AgentReviewService:
         payload = AgentReviewService._serialize_for_websocket(task)
 
         try:
-            await websocket_notifier.notify_review_task_event(str(task.org_id), event_type, payload)
+            await websocket_notifier.notify_review_task_event(
+                str(task.org_id), event_type, payload
+            )
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("Failed to emit review task websocket event: %s", exc)
 
@@ -403,7 +417,7 @@ class AgentReviewService:
             task = await db_session.get(AgentReviewTask, task_id)
             if not task:
                 return None
-            
+
             old_assignee = task.assigned_to
             task.assigned_to = assigned_to
             task.assigned_at = datetime.now(timezone.utc)
@@ -557,34 +571,31 @@ class AgentReviewService:
 
         status_rows = (await db_session.execute(status_stmt)).all()
 
-        pending_stmt = (
-            select(
-                func.count().label("total"),
-                func.sum(
-                    case(
-                        (AgentReviewTask.assigned_to.is_(None), 1),
-                        else_=0,
-                    )
-                ).label("unassigned"),
-                func.sum(
-                    case(
-                        (
-                            and_(
-                                AgentReviewTask.due_at.isnot(None),
-                                AgentReviewTask.due_at <= reference_time,
-                            ),
-                            1,
+        pending_stmt = select(
+            func.count().label("total"),
+            func.sum(
+                case(
+                    (AgentReviewTask.assigned_to.is_(None), 1),
+                    else_=0,
+                )
+            ).label("unassigned"),
+            func.sum(
+                case(
+                    (
+                        and_(
+                            AgentReviewTask.due_at.isnot(None),
+                            AgentReviewTask.due_at <= reference_time,
                         ),
-                        else_=0,
-                    )
-                ).label("overdue"),
-                func.min(AgentReviewTask.due_at).label("next_due"),
-                func.min(AgentReviewTask.created_at).label("oldest_created"),
-            )
-            .where(
-                AgentReviewTask.org_id == org_id,
-                AgentReviewTask.status == ReviewTaskStatus.PENDING,
-            )
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("overdue"),
+            func.min(AgentReviewTask.due_at).label("next_due"),
+            func.min(AgentReviewTask.created_at).label("oldest_created"),
+        ).where(
+            AgentReviewTask.org_id == org_id,
+            AgentReviewTask.status == ReviewTaskStatus.PENDING,
         )
 
         pending_row = await db_session.execute(pending_stmt)
@@ -607,7 +618,11 @@ class AgentReviewService:
 
         status_summary = [
             {
-                "status": row.status.value if hasattr(row.status, "value") else str(row.status),
+                "status": (
+                    row.status.value
+                    if hasattr(row.status, "value")
+                    else str(row.status)
+                ),
                 "count": int(row.count or 0),
                 "unassigned": int(row.unassigned or 0),
                 "overdue": int(row.overdue or 0),
@@ -692,4 +707,3 @@ class AgentReviewService:
         if not isinstance(payload, dict):
             return {}
         return payload
-

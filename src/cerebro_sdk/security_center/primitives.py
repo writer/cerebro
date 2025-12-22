@@ -68,7 +68,9 @@ def evaluate_evidence_lifecycle(
 ) -> EvidenceLifecycle:
     now = now or datetime.utcnow()
     collected_at = artifact.collected_at
-    expires_at = artifact.expires_at or _compute_expiry(collected_at, policy.hard_expiry_days, now)
+    expires_at = artifact.expires_at or _compute_expiry(
+        collected_at, policy.hard_expiry_days, now
+    )
 
     age_days = _compute_age_days(collected_at, now)
     ttl_days = _compute_ttl_days(collected_at, expires_at, policy.hard_expiry_days)
@@ -79,7 +81,11 @@ def evaluate_evidence_lifecycle(
     if expires_at and now >= expires_at:
         status = "expired"
         requires_action = True
-    elif policy.max_age_days is not None and age_days is not None and age_days > policy.max_age_days:
+    elif (
+        policy.max_age_days is not None
+        and age_days is not None
+        and age_days > policy.max_age_days
+    ):
         status = "stale"
         requires_action = True
     elif policy.refresh_window_days is not None and expires_at is not None:
@@ -227,7 +233,11 @@ def _to_artifact(
         source=source,
         collected_at=collected_at,
         expires_at=expires_at,
-        content_type=payload.get("contentType") if isinstance(payload.get("contentType"), str) else None,
+        content_type=(
+            payload.get("contentType")
+            if isinstance(payload.get("contentType"), str)
+            else None
+        ),
         labels=labels,
         metadata=payload,
     )
@@ -237,7 +247,9 @@ def _collect_labels(values: object | None) -> List[str]:
     if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
         return [str(value) for value in values if isinstance(value, (str, bytes))]
     if isinstance(values, Mapping):
-        return [str(value) for value in values.values() if isinstance(value, (str, bytes))]
+        return [
+            str(value) for value in values.values() if isinstance(value, (str, bytes))
+        ]
     return []
 
 
@@ -247,7 +259,11 @@ def _coerce_datetime(value: object | None) -> Optional[datetime]:
     if isinstance(value, datetime):
         return value
     if isinstance(value, (int, float)):
-        dt = datetime.utcfromtimestamp(float(value) / 1000) if value > 10**12 else datetime.utcfromtimestamp(float(value))
+        dt = (
+            datetime.utcfromtimestamp(float(value) / 1000)
+            if value > 10**12
+            else datetime.utcfromtimestamp(float(value))
+        )
         return dt
     if isinstance(value, str):
         try:

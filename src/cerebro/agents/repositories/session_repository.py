@@ -79,7 +79,9 @@ class AgentSessionRepository:
         limit: Optional[int] = None,
     ) -> List[AgentMemoryEntry]:
         async with self._session_factory() as db_session:
-            stmt = select(AgentMemoryEntry).where(AgentMemoryEntry.session_id == session_id)
+            stmt = select(AgentMemoryEntry).where(
+                AgentMemoryEntry.session_id == session_id
+            )
             if limit is not None:
                 stmt = stmt.order_by(AgentMemoryEntry.created_at.desc()).limit(limit)
             else:

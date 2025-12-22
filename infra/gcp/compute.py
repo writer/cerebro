@@ -8,6 +8,7 @@ Creates:
 - Autoscaling configuration
 - Cloud Tasks queues for Celery
 """
+
 import pulumi
 import pulumi_gcp as gcp
 

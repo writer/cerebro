@@ -41,7 +41,9 @@ class OrganizationManager:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def list_organizations(self, *, limit: int = 100, offset: int = 0) -> list[OrganizationRecord]:
+    async def list_organizations(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> list[OrganizationRecord]:
         stmt = (
             select(Organization)
             .order_by(Organization.created_at.asc())
@@ -59,7 +61,11 @@ class OrganizationManager:
         return self._organization_to_record(org)
 
     async def list_accounts(self, org_id: UUID) -> list[AccountRecord]:
-        stmt = select(Account).where(Account.org_id == org_id).order_by(Account.provider.asc())
+        stmt = (
+            select(Account)
+            .where(Account.org_id == org_id)
+            .order_by(Account.provider.asc())
+        )
         accounts = await self._db.scalars(stmt)
         return [self._account_to_record(acct) for acct in accounts]
 

@@ -4,7 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from cerebro.agents.self_play.models import SelfPlayResult, SelfPlayScenario, SelfPlaySpeaker, TranscriptEntry
+from cerebro.agents.self_play.models import (
+    SelfPlayResult,
+    SelfPlayScenario,
+    SelfPlaySpeaker,
+    TranscriptEntry,
+)
 from cerebro.agents.self_play.tournament import (
     ScenarioProvider,
     TournamentConfig,
@@ -61,10 +66,12 @@ def _make_result(success: bool, turns: int) -> SelfPlayResult:
 
 @pytest.mark.asyncio
 async def test_tournament_runner_passes_when_thresholds_met():
-    orchestrator = DummyOrchestrator([
-        _make_result(True, 4),
-        _make_result(True, 5),
-    ])
+    orchestrator = DummyOrchestrator(
+        [
+            _make_result(True, 4),
+            _make_result(True, 5),
+        ]
+    )
     runner = TournamentRunner(orchestrator, DummyProvider())
 
     config = TournamentConfig(
@@ -88,10 +95,12 @@ async def test_tournament_runner_passes_when_thresholds_met():
 
 @pytest.mark.asyncio
 async def test_tournament_runner_flags_drift_on_failure():
-    orchestrator = DummyOrchestrator([
-        _make_result(True, 7),
-        _make_result(False, 8),
-    ])
+    orchestrator = DummyOrchestrator(
+        [
+            _make_result(True, 7),
+            _make_result(False, 8),
+        ]
+    )
     runner = TournamentRunner(orchestrator, DummyProvider())
 
     config = TournamentConfig(

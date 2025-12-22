@@ -267,8 +267,7 @@ async def test_agent_playbook_scenarios(
         await redis_client.rpush(digest_key, record.channel)
 
     stored_channels = [
-        value.decode()
-        for value in await redis_client.lrange(digest_key, 0, -1)
+        value.decode() for value in await redis_client.lrange(digest_key, 0, -1)
     ]
     assert stored_channels == ["slack", "email"]
 

@@ -80,9 +80,15 @@ def _deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any
 class AttackGraphScoring:
     config: Optional[Dict[str, Any]] = None
     _edge_config: Dict[str, Any] = field(init=False, repr=False, default_factory=dict)
-    _principal_config: Dict[str, Any] = field(init=False, repr=False, default_factory=dict)
-    _resource_config: Dict[str, Any] = field(init=False, repr=False, default_factory=dict)
-    _privilege_levels: Dict[str, Any] = field(init=False, repr=False, default_factory=dict)
+    _principal_config: Dict[str, Any] = field(
+        init=False, repr=False, default_factory=dict
+    )
+    _resource_config: Dict[str, Any] = field(
+        init=False, repr=False, default_factory=dict
+    )
+    _privilege_levels: Dict[str, Any] = field(
+        init=False, repr=False, default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         user_config = self.config or {}
@@ -131,15 +137,21 @@ class AttackGraphScoring:
             return "high"
         return "medium"
 
-    def edge_weight(self, permission: str, provider: str, *, mechanism: str | None = None) -> float:
+    def edge_weight(
+        self, permission: str, provider: str, *, mechanism: str | None = None
+    ) -> float:
         privilege_weights = self._edge_config.get("privilege_weights", {})
         mechanism_weights = self._edge_config.get("mechanism_weights", {})
 
         permission_lower = permission.lower()
-        base = _lookup(privilege_weights, permission_lower, default_key="default") or 0.5
+        base = (
+            _lookup(privilege_weights, permission_lower, default_key="default") or 0.5
+        )
 
         if mechanism:
-            mech_weight = mechanism_weights.get(mechanism) or mechanism_weights.get("default")
+            mech_weight = mechanism_weights.get(mechanism) or mechanism_weights.get(
+                "default"
+            )
             if mech_weight is not None:
                 base = min((base + mech_weight) / 2, 1.0)
 
@@ -158,7 +170,9 @@ class AttackGraphScoring:
     def service_edge_weight(self, edge: ServiceIdentityEdge) -> float:
         mechanism = edge.trust_mechanism.value
         mechanism_weights = self._edge_config.get("mechanism_weights", {})
-        mech_weight = mechanism_weights.get(mechanism) or mechanism_weights.get("default")
+        mech_weight = mechanism_weights.get(mechanism) or mechanism_weights.get(
+            "default"
+        )
 
         # Higher risk score → smaller traversal weight (easier to exploit)
         base = max(0.1, 1.0 - min(max(edge.risk_score, 0.0), 1.0) * 0.7)
@@ -179,7 +193,9 @@ class AttackGraphScoring:
                 return level
 
         mapping = {"high": 3, "medium": 2, "low": 1}
-        return mapping.get(edge.exploitability.lower(), self._privilege_levels.get("default", 1))
+        return mapping.get(
+            edge.exploitability.lower(), self._privilege_levels.get("default", 1)
+        )
 
     def service_edge_metadata(self, edge: ServiceIdentityEdge) -> Dict[str, Any]:
         return {

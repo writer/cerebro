@@ -26,7 +26,9 @@ from cerebro_sdk.agents.types import (
 class AgentPlaybook(AsyncManagerBase):
     """High-level helpers orchestrating common agent playbooks."""
 
-    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession, *, registry: CollectorRegistry | None = None
+    ) -> None:
         super().__init__(db)
         self._registry = registry
 
@@ -47,7 +49,9 @@ class AgentPlaybook(AsyncManagerBase):
             title=title,
         )
         if finding_ids:
-            await manager.link_findings(session_id=session.session_id, finding_ids=finding_ids)
+            await manager.link_findings(
+                session_id=session.session_id, finding_ids=finding_ids
+            )
             session = await manager.get_session(session.session_id)
             if session is None:
                 raise RuntimeError("Failed to refresh session after linking findings")
@@ -82,7 +86,9 @@ class AgentPlaybook(AsyncManagerBase):
         task = await self._db.get(AgentReviewTask, task_id)
         if not task:
             return []
-        notification_manager = AgentNotificationManager(self._db, registry=self._registry)
+        notification_manager = AgentNotificationManager(
+            self._db, registry=self._registry
+        )
         results: list[AgentNotificationRecord] = []
         for channel in channels:
             record = await notification_manager.enqueue_notification(
@@ -104,7 +110,9 @@ class AgentPlaybook(AsyncManagerBase):
         task = await self._db.get(AgentReviewTask, task_id)
         if not task:
             return None
-        notification_manager = AgentNotificationManager(self._db, registry=self._registry)
+        notification_manager = AgentNotificationManager(
+            self._db, registry=self._registry
+        )
         return await notification_manager.create_ticket(
             org_id=task.org_id,
             task_id=task_id,

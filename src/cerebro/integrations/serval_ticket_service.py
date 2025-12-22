@@ -35,7 +35,9 @@ class ServalTicketService:
         """Return decrypted settings or raise when the org is not configured."""
         settings = await self._repo.get(org_id)
         if settings is None:
-            raise ValueError("Serval integration is not configured for this organization")
+            raise ValueError(
+                "Serval integration is not configured for this organization"
+            )
         return settings
 
     async def create_ticket(
@@ -51,9 +53,15 @@ class ServalTicketService:
         override = overrides or {}
 
         team_id = override.get("team_id") or settings.team_id
-        created_by_user_id = override.get("created_by_user_id") or settings.default_created_by_user_id
-        requester_user_id = override.get("requester_user_id") or settings.default_requester_user_id
-        assigned_to_user_id = override.get("assigned_to_user_id") or settings.default_assigned_user_id
+        created_by_user_id = (
+            override.get("created_by_user_id") or settings.default_created_by_user_id
+        )
+        requester_user_id = (
+            override.get("requester_user_id") or settings.default_requester_user_id
+        )
+        assigned_to_user_id = (
+            override.get("assigned_to_user_id") or settings.default_assigned_user_id
+        )
         parent_ticket_id = override.get("parent_ticket_id")
         channel_sync_targets = override.get("channel_sync_targets")
         created_at = override.get("created_at")
@@ -119,7 +127,9 @@ class ServalTicketService:
         async with self._build_client(settings) as client:
             return await client.update_ticket(ticket_id, **body)
 
-    async def list_recent_tickets(self, org_id: UUID, since: Optional[datetime]) -> list[dict[str, Any]]:
+    async def list_recent_tickets(
+        self, org_id: UUID, since: Optional[datetime]
+    ) -> list[dict[str, Any]]:
         """Return tickets updated since the provided timestamp for polling syncs."""
         settings = await self.ensure_settings(org_id)
         async with self._build_client(settings) as client:
@@ -148,7 +158,9 @@ class ServalTicketService:
             return None
 
         status_id = ticket_payload.get("statusId")
-        status_key = settings.status_reverse_map.get(str(status_id)) if status_id else None
+        status_key = (
+            settings.status_reverse_map.get(str(status_id)) if status_id else None
+        )
 
         new_status: Optional[TicketStatus] = None
         if status_key == "closed" and ticket.status != TicketStatus.CLOSED:

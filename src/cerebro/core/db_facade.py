@@ -63,12 +63,14 @@ class OrganizationFacade:
     def _get_pg_session(self):
         """Get PostgreSQL session."""
         from cerebro.core.database import async_session_factory
+
         return async_session_factory()
 
     def _get_dynamo_repo(self):
         """Get DynamoDB repository."""
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import OrganizationRepository
+
             self._dynamo_repo = OrganizationRepository()
         return self._dynamo_repo
 
@@ -84,6 +86,7 @@ class OrganizationFacade:
             from sqlalchemy import select
 
             from cerebro.core.models import Organization
+
             async with self._get_pg_session() as session:
                 result = await session.execute(
                     select(Organization).where(Organization.org_id == org_id)
@@ -94,6 +97,7 @@ class OrganizationFacade:
         """Create a new organization."""
         if self._backend == DBBackend.DYNAMODB:
             from cerebro.core.dynamodb_models import Organization
+
             org = Organization(**kwargs)
             return await self._get_dynamo_repo().create(org)
         elif self._backend == DBBackend.DUAL:
@@ -113,6 +117,7 @@ class OrganizationFacade:
         else:
             # PostgreSQL only
             from cerebro.core.models import Organization
+
             async with self._get_pg_session() as session:
                 org = Organization(**kwargs)
                 session.add(org)
@@ -132,10 +137,9 @@ class OrganizationFacade:
             from sqlalchemy import select
 
             from cerebro.core.models import Organization
+
             async with self._get_pg_session() as session:
-                result = await session.execute(
-                    select(Organization).limit(limit)
-                )
+                result = await session.execute(select(Organization).limit(limit))
                 return list(result.scalars()), None
 
 
@@ -148,11 +152,13 @@ class AccountFacade:
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
+
         return async_session_factory()
 
     def _get_dynamo_repo(self):
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import AccountRepository
+
             self._dynamo_repo = AccountRepository()
         return self._dynamo_repo
 
@@ -164,6 +170,7 @@ class AccountFacade:
             from sqlalchemy import select
 
             from cerebro.core.models import Account
+
             async with self._get_pg_session() as session:
                 result = await session.execute(
                     select(Account).where(
@@ -182,12 +189,16 @@ class AccountFacade:
         """List accounts for an organization."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.core.dynamodb_models import Provider
+
             provider_enum = Provider(provider) if provider else None
-            return await self._get_dynamo_repo().list_by_org(org_id, provider_enum, limit)
+            return await self._get_dynamo_repo().list_by_org(
+                org_id, provider_enum, limit
+            )
         else:
             from sqlalchemy import select
 
             from cerebro.core.models import Account
+
             async with self._get_pg_session() as session:
                 query = select(Account).where(Account.org_id == org_id)
                 if provider:
@@ -206,11 +217,13 @@ class FindingFacade:
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
+
         return async_session_factory()
 
     def _get_dynamo_repo(self):
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import FindingRepository
+
             self._dynamo_repo = FindingRepository()
         return self._dynamo_repo
 
@@ -222,6 +235,7 @@ class FindingFacade:
             from sqlalchemy import select
 
             from cerebro.core.models import Finding
+
             async with self._get_pg_session() as session:
                 result = await session.execute(
                     select(Finding).where(
@@ -241,6 +255,7 @@ class FindingFacade:
         """List findings for an organization."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.core.dynamodb_models import FindingStatus, Severity
+
             status_enum = FindingStatus(status) if status else None
             severity_enum = Severity(severity) if severity else None
             return await self._get_dynamo_repo().list_by_org(
@@ -250,6 +265,7 @@ class FindingFacade:
             from sqlalchemy import select
 
             from cerebro.core.models import Finding
+
             async with self._get_pg_session() as session:
                 query = select(Finding).where(Finding.org_id == org_id)
                 if status:
@@ -264,6 +280,7 @@ class FindingFacade:
         """Create a new finding."""
         if self._backend == DBBackend.DYNAMODB:
             from cerebro.core.dynamodb_models import Finding
+
             finding = Finding(**kwargs)
             return await self._get_dynamo_repo().create(finding)
         elif self._backend == DBBackend.DUAL:
@@ -279,6 +296,7 @@ class FindingFacade:
             return await self._get_dynamo_repo().create(dynamo_finding)
         else:
             from cerebro.core.models import Finding
+
             async with self._get_pg_session() as session:
                 finding = Finding(**kwargs)
                 session.add(finding)
@@ -300,10 +318,13 @@ class FindingFacade:
                 from sqlalchemy import update
 
                 from cerebro.core.models import Finding
+
                 async with self._get_pg_session() as session:
                     await session.execute(
                         update(Finding)
-                        .where(Finding.finding_id == finding_id, Finding.org_id == org_id)
+                        .where(
+                            Finding.finding_id == finding_id, Finding.org_id == org_id
+                        )
                         .values(**updates)
                     )
                     await session.commit()
@@ -312,6 +333,7 @@ class FindingFacade:
             from sqlalchemy import update
 
             from cerebro.core.models import Finding
+
             async with self._get_pg_session() as session:
                 await session.execute(
                     update(Finding)
@@ -331,11 +353,13 @@ class RuleFacade:
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
+
         return async_session_factory()
 
     def _get_dynamo_repo(self):
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import RuleRepository
+
             self._dynamo_repo = RuleRepository()
         return self._dynamo_repo
 
@@ -347,6 +371,7 @@ class RuleFacade:
             from sqlalchemy import select
 
             from cerebro.core.models import Rule
+
             async with self._get_pg_session() as session:
                 result = await session.execute(
                     select(Rule).where(Rule.rule_id == rule_id)
@@ -361,12 +386,14 @@ class RuleFacade:
         """List active rules."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.core.dynamodb_models import Severity
+
             severity_enum = Severity(severity) if severity else None
             return await self._get_dynamo_repo().list_active(severity_enum, limit)
         else:
             from sqlalchemy import select
 
             from cerebro.core.models import Rule
+
             async with self._get_pg_session() as session:
                 query = select(Rule).where(Rule.is_active == True)
                 if severity:
@@ -385,6 +412,7 @@ class AgentSessionFacade:
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
+
         return async_session_factory()
 
     def _get_dynamo_repo(self):
@@ -392,10 +420,13 @@ class AgentSessionFacade:
             from cerebro.agents.repositories.dynamodb_session_repository import (
                 DynamoDBAgentSessionRepository,
             )
+
             self._dynamo_repo = DynamoDBAgentSessionRepository()
         return self._dynamo_repo
 
-    async def get(self, session_id: UUID, org_id: Optional[UUID] = None) -> Optional[Any]:
+    async def get(
+        self, session_id: UUID, org_id: Optional[UUID] = None
+    ) -> Optional[Any]:
         """Get session by ID."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             return await self._get_dynamo_repo().get_session(session_id, org_id)
@@ -403,6 +434,7 @@ class AgentSessionFacade:
             from sqlalchemy import select
 
             from cerebro.agents.models import AgentSession
+
             async with self._get_pg_session() as session:
                 query = select(AgentSession).where(AgentSession.id == session_id)
                 if org_id:
@@ -421,6 +453,7 @@ class AgentSessionFacade:
         """List sessions for an organization."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.agents.dynamodb_models import AgentType
+
             agent_type_enum = AgentType(agent_type) if agent_type else None
             return await self._get_dynamo_repo().list_sessions(
                 org_id=org_id,
@@ -433,6 +466,7 @@ class AgentSessionFacade:
             from sqlalchemy import func, select
 
             from cerebro.agents.models import AgentSession
+
             async with self._get_pg_session() as session:
                 filters = [AgentSession.org_id == org_id]
                 if agent_type:
@@ -528,7 +562,9 @@ def reset_db_facade() -> None:
 
 
 @asynccontextmanager
-async def db_facade_context(backend: Optional[DBBackend] = None) -> AsyncGenerator[DBFacade, None]:
+async def db_facade_context(
+    backend: Optional[DBBackend] = None,
+) -> AsyncGenerator[DBFacade, None]:
     """Context manager for database operations with specific backend."""
     facade = DBFacade(backend)
     try:

@@ -160,7 +160,9 @@ class AccountRepository:
         accounts = [Account.from_dynamodb_item(item) for item in items]
 
         if provider:
-            provider_val = provider.value if isinstance(provider, Provider) else provider
+            provider_val = (
+                provider.value if isinstance(provider, Provider) else provider
+            )
             accounts = [a for a in accounts if a.provider.value == provider_val]
 
         return accounts
@@ -252,8 +254,12 @@ class FindingRepository:
             if current:
                 status = updates.get("status", current.status)
                 severity = updates.get("severity", current.severity)
-                status_val = status.value if isinstance(status, FindingStatus) else status
-                severity_val = severity.value if isinstance(severity, Severity) else severity
+                status_val = (
+                    status.value if isinstance(status, FindingStatus) else status
+                )
+                severity_val = (
+                    severity.value if isinstance(severity, Severity) else severity
+                )
                 updates["GSI2PK"] = f"ORG#{org_id}#STATUS#{status_val}"
                 updates["GSI2SK"] = f"SEVERITY#{severity_val}#{finding_id}"
 
@@ -288,9 +294,13 @@ class FindingRepository:
             }
 
             if severity:
-                severity_val = severity.value if isinstance(severity, Severity) else severity
+                severity_val = (
+                    severity.value if isinstance(severity, Severity) else severity
+                )
                 params["KeyConditionExpression"] += " AND begins_with(GSI2SK, :sk)"
-                params["ExpressionAttributeValues"][":sk"] = {"S": f"SEVERITY#{severity_val}"}
+                params["ExpressionAttributeValues"][":sk"] = {
+                    "S": f"SEVERITY#{severity_val}"
+                }
 
             response = client.query(**params)
         else:
@@ -306,7 +316,9 @@ class FindingRepository:
             findings = [Finding.from_dynamodb_item(item) for item in items]
 
             if severity:
-                severity_val = severity.value if isinstance(severity, Severity) else severity
+                severity_val = (
+                    severity.value if isinstance(severity, Severity) else severity
+                )
                 findings = [f for f in findings if f.severity.value == severity_val]
 
             return findings
@@ -340,10 +352,11 @@ class FindingRepository:
         fingerprint: str,
     ) -> Optional[Finding]:
         """Get finding by fingerprint.
-        
+
         Note: Scans findings. Consider adding GSI on fingerprint for better performance.
         """
         from cerebro.core.dynamodb import build_pk
+
         pk = build_pk("ORG", org_id)
         cursor = None
         while True:
@@ -427,9 +440,13 @@ class RuleRepository:
         }
 
         if severity:
-            severity_val = severity.value if isinstance(severity, Severity) else severity
+            severity_val = (
+                severity.value if isinstance(severity, Severity) else severity
+            )
             params["KeyConditionExpression"] += " AND begins_with(GSI1SK, :sk)"
-            params["ExpressionAttributeValues"][":sk"] = {"S": f"SEVERITY#{severity_val}"}
+            params["ExpressionAttributeValues"][":sk"] = {
+                "S": f"SEVERITY#{severity_val}"
+            }
 
         response = client.query(**params)
         items = [deserialize_item(item) for item in response.get("Items", [])]
@@ -484,7 +501,11 @@ class PrincipalRepository:
         )
 
         items = [deserialize_item(item) for item in response.get("Items", [])]
-        return [Principal.from_dynamodb_item(item) for item in items if item.get("entity_type") == "PRINCIPAL"]
+        return [
+            Principal.from_dynamodb_item(item)
+            for item in items
+            if item.get("entity_type") == "PRINCIPAL"
+        ]
 
     async def list_by_org(
         self,
@@ -547,7 +568,11 @@ class ResourceRepository:
         )
 
         items = [deserialize_item(item) for item in response.get("Items", [])]
-        resources = [Resource.from_dynamodb_item(item) for item in items if item.get("entity_type") == "RESOURCE"]
+        resources = [
+            Resource.from_dynamodb_item(item)
+            for item in items
+            if item.get("entity_type") == "RESOURCE"
+        ]
 
         if resource_type:
             resources = [r for r in resources if r.resource_type == resource_type]
@@ -610,11 +635,17 @@ class AuditEventRepository:
 
         if start_time and end_time:
             params["KeyConditionExpression"] += " AND SK BETWEEN :sk_start AND :sk_end"
-            params["ExpressionAttributeValues"][":sk_start"] = {"S": f"AUDIT#{start_time.isoformat()}"}
-            params["ExpressionAttributeValues"][":sk_end"] = {"S": f"AUDIT#{end_time.isoformat()}"}
+            params["ExpressionAttributeValues"][":sk_start"] = {
+                "S": f"AUDIT#{start_time.isoformat()}"
+            }
+            params["ExpressionAttributeValues"][":sk_end"] = {
+                "S": f"AUDIT#{end_time.isoformat()}"
+            }
         elif start_time:
             params["KeyConditionExpression"] += " AND SK >= :sk_start"
-            params["ExpressionAttributeValues"][":sk_start"] = {"S": f"AUDIT#{start_time.isoformat()}"}
+            params["ExpressionAttributeValues"][":sk_start"] = {
+                "S": f"AUDIT#{start_time.isoformat()}"
+            }
 
         response = client.query(**params)
         items = [deserialize_item(item) for item in response.get("Items", [])]
@@ -644,7 +675,9 @@ class AuditEventRepository:
 
         if start_time:
             params["KeyConditionExpression"] += " AND GSI1SK >= :sk_start"
-            params["ExpressionAttributeValues"][":sk_start"] = {"S": f"OCCURRED#{start_time.isoformat()}"}
+            params["ExpressionAttributeValues"][":sk_start"] = {
+                "S": f"OCCURRED#{start_time.isoformat()}"
+            }
 
         response = client.query(**params)
         items = [deserialize_item(item) for item in response.get("Items", [])]
@@ -736,8 +769,7 @@ class SuppressionRepository:
         if not include_expired:
             now = datetime.now(timezone.utc)
             suppressions = [
-                s for s in suppressions
-                if s.expires_at is None or s.expires_at > now
+                s for s in suppressions if s.expires_at is None or s.expires_at > now
             ]
 
         return suppressions

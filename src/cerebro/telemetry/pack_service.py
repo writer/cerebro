@@ -35,7 +35,9 @@ class PackManagementService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def list_packs(self, *, org_id: Optional[UUID] = None) -> List[ArtifactPackDefinition]:
+    async def list_packs(
+        self, *, org_id: Optional[UUID] = None
+    ) -> List[ArtifactPackDefinition]:
         """Return packs for an organisation (or every pack when ``org_id`` is omitted)."""
 
         stmt = (
@@ -57,7 +59,9 @@ class PackManagementService:
         pack = await self._load_pack(pack_id)
         return self._serialize_pack(pack)
 
-    async def create_pack(self, payload: ArtifactPackCreate, *, org_name: Optional[str] = None) -> ArtifactPackDefinition:
+    async def create_pack(
+        self, payload: ArtifactPackCreate, *, org_name: Optional[str] = None
+    ) -> ArtifactPackDefinition:
         """Persist a new pack and eagerly build its tasks and triggers."""
         org = await self._ensure_org(org_name)
 
@@ -77,7 +81,9 @@ class PackManagementService:
         pack.tasks = [self._build_task(task) for task in payload.tasks]
         # Triggers are optional in the request; materialize them explicitly so
         # we always have ORM instances even when the list is empty.
-        pack.triggers = [self._build_trigger(trigger) for trigger in payload.triggers or []]
+        pack.triggers = [
+            self._build_trigger(trigger) for trigger in payload.triggers or []
+        ]
 
         self.db.add(pack)
         await self.db.commit()
@@ -85,7 +91,9 @@ class PackManagementService:
 
         return self._serialize_pack(pack)
 
-    async def update_pack(self, pack_id: UUID, payload: ArtifactPackUpdate) -> ArtifactPackDefinition:
+    async def update_pack(
+        self, pack_id: UUID, payload: ArtifactPackUpdate
+    ) -> ArtifactPackDefinition:
         """Apply partial updates to an existing pack, replacing nested collections when provided."""
         pack = await self._load_pack(pack_id, for_update=True)
 
@@ -125,7 +133,9 @@ class PackManagementService:
         await self.db.execute(stmt)
         await self.db.commit()
 
-    async def _load_pack(self, pack_id: UUID, *, for_update: bool = False) -> ArtifactPack:
+    async def _load_pack(
+        self, pack_id: UUID, *, for_update: bool = False
+    ) -> ArtifactPack:
         """Hydrate a pack plus its tasks/triggers, optionally acquiring a row lock."""
         stmt = (
             select(ArtifactPack)
@@ -163,7 +173,9 @@ class PackManagementService:
         await self.db.refresh(org)
         return org
 
-    async def _replace_tasks(self, pack: ArtifactPack, tasks: List[ArtifactPackTaskCreate]) -> None:
+    async def _replace_tasks(
+        self, pack: ArtifactPack, tasks: List[ArtifactPackTaskCreate]
+    ) -> None:
         """Replace the pack's task collection with freshly built ORM objects."""
         await self.db.flush()
         pack.tasks.clear()
@@ -199,8 +211,15 @@ class PackManagementService:
             approval_notes=pack.approval_notes,
             schedule_interval_seconds=pack.schedule_interval_seconds,
             last_deployed_at=pack.last_deployed_at,
-            tasks=[self._serialize_task(task) for task in sorted(pack.tasks, key=lambda t: t.name)],
-            triggers=[self._serialize_trigger(trigger) for trigger in sorted(pack.triggers, key=lambda t: t.match_value)] or None,
+            tasks=[
+                self._serialize_task(task)
+                for task in sorted(pack.tasks, key=lambda t: t.name)
+            ],
+            triggers=[
+                self._serialize_trigger(trigger)
+                for trigger in sorted(pack.triggers, key=lambda t: t.match_value)
+            ]
+            or None,
         )
 
     def _serialize_task(self, task: ArtifactPackTask) -> ArtifactTaskDefinition:
@@ -228,14 +247,18 @@ class PackManagementService:
             expires_after_seconds=trigger.expires_after_seconds,
         )
 
-    async def _replace_triggers(self, pack: ArtifactPack, triggers: List[ArtifactPackTriggerCreate]) -> None:
+    async def _replace_triggers(
+        self, pack: ArtifactPack, triggers: List[ArtifactPackTriggerCreate]
+    ) -> None:
         """Replace the trigger collection, ensuring we flush pending deletes first."""
         await self.db.flush()
         pack.triggers.clear()
         for trigger in triggers:
             pack.triggers.append(self._build_trigger(trigger))
 
-    def _serialize_trigger(self, trigger: ArtifactPackTrigger) -> ArtifactPackTriggerSchema:
+    def _serialize_trigger(
+        self, trigger: ArtifactPackTrigger
+    ) -> ArtifactPackTriggerSchema:
         """Render a trigger ORM object into the response schema."""
         return ArtifactPackTriggerSchema(
             trigger_id=trigger.trigger_id,

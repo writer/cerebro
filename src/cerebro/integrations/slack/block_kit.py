@@ -3,7 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Iterable, List, Tuple
 
-from slack_sdk.models.blocks import ContextBlock, DividerBlock, HeaderBlock, SectionBlock
+from slack_sdk.models.blocks import (
+    ContextBlock,
+    DividerBlock,
+    HeaderBlock,
+    SectionBlock,
+)
 from slack_sdk.models.blocks.basic_components import MarkdownTextObject, PlainTextObject
 
 
@@ -26,11 +31,13 @@ def findings_summary_blocks(
 
     findings_list = list(findings)
     total = len(findings_list)
-    header_text = f"Top {total} {severity_label} findings for {org_name}" if total else f"No {severity_label.lower()} findings for {org_name}"
+    header_text = (
+        f"Top {total} {severity_label} findings for {org_name}"
+        if total
+        else f"No {severity_label.lower()} findings for {org_name}"
+    )
 
-    blocks: List = [
-        HeaderBlock(text=PlainTextObject(text=header_text, emoji=True))
-    ]
+    blocks: List = [HeaderBlock(text=PlainTextObject(text=header_text, emoji=True))]
 
     fallback_lines = [header_text]
 
@@ -56,9 +63,7 @@ def findings_summary_blocks(
         if summary:
             lines.append(summary)
 
-        blocks.append(
-            SectionBlock(text=MarkdownTextObject(text="\n".join(lines)))
-        )
+        blocks.append(SectionBlock(text=MarkdownTextObject(text="\n".join(lines))))
 
         context_chunks = []
         if finding.resource_id:

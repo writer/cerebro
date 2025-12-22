@@ -83,7 +83,9 @@ async def test_memory_store_prioritizes_recent_entries(memory_session):
 
         older_entry, newer_entry = entries
 
-        antiquated_time = (older_entry.created_at or datetime.now(timezone.utc)) - timedelta(days=10)
+        antiquated_time = (
+            older_entry.created_at or datetime.now(timezone.utc)
+        ) - timedelta(days=10)
         await db_session.execute(
             update(AgentMemoryEntry)
             .where(AgentMemoryEntry.id == older_entry.id)
@@ -96,7 +98,9 @@ async def test_memory_store_prioritizes_recent_entries(memory_session):
         await db_session.commit()
 
         previous_decay = newer_entry.decay_score or 1.0
-        baseline_last_accessed = newer_entry.last_accessed_at or datetime.min.replace(tzinfo=timezone.utc)
+        baseline_last_accessed = newer_entry.last_accessed_at or datetime.min.replace(
+            tzinfo=timezone.utc
+        )
 
     snippets = await store.retrieve_relevant(
         session=memory_session,

@@ -3,6 +3,7 @@
 Aggregates notifications over time periods (daily, weekly) and sends them
 as batched digests instead of individual messages.
 """
+
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
@@ -42,16 +43,20 @@ async def _process_email_digests_async():
             # Find all configs with digest mode enabled
             # Limit to 500 configs per run to prevent memory issues
             configs_result = await db.execute(
-                select(EmailConfig).where(
+                select(EmailConfig)
+                .where(
                     EmailConfig.enabled == True,
                     EmailConfig.digest_mode == True,
-                ).order_by(EmailConfig.created_at.asc())
+                )
+                .order_by(EmailConfig.created_at.asc())
                 .limit(500)
             )
             configs = configs_result.scalars().all()
 
             if len(configs) == 500:
-                logger.warning("Reached digest config limit of 500. Some configs may not be processed this run.")
+                logger.warning(
+                    "Reached digest config limit of 500. Some configs may not be processed this run."
+                )
 
             logger.info(f"Processing email digests for {len(configs)} configs")
 
@@ -89,13 +94,15 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
     # Find findings created in this window for this org
     # Limit to 1000 most recent/critical findings to prevent OOM with high-volume orgs
     findings_result = await db.execute(
-        select(Finding).where(
+        select(Finding)
+        .where(
             and_(
                 Finding.org_id == config.org_id,
                 Finding.created_at >= window_start,
                 Finding.created_at <= now,
             )
-        ).order_by(Finding.severity.desc(), Finding.created_at.desc())
+        )
+        .order_by(Finding.severity.desc(), Finding.created_at.desc())
         .limit(1000)
     )
     findings = findings_result.scalars().all()
@@ -111,7 +118,9 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
         ]
 
     if not findings:
-        logger.info(f"No findings matching severity filter for config {config.config_id}")
+        logger.info(
+            f"No findings matching severity filter for config {config.config_id}"
+        )
         return
 
     # Group findings by severity

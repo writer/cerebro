@@ -18,13 +18,23 @@ class WarehouseAsyncSession:
         bind = self._session.get_bind()
         self.dialect_name = getattr(getattr(bind, "dialect", None), "name", "unknown")
 
-    async def execute(self, statement: Executable, params: Mapping[str, Any] | None = None) -> Result[Any]:
-        return await anyio.to_thread.run_sync(self._session.execute, statement, params or {})
+    async def execute(
+        self, statement: Executable, params: Mapping[str, Any] | None = None
+    ) -> Result[Any]:
+        return await anyio.to_thread.run_sync(
+            self._session.execute, statement, params or {}
+        )
 
-    async def scalars(self, statement: Executable, params: Mapping[str, Any] | None = None):
-        return await anyio.to_thread.run_sync(self._session.scalars, statement, params or {})
+    async def scalars(
+        self, statement: Executable, params: Mapping[str, Any] | None = None
+    ):
+        return await anyio.to_thread.run_sync(
+            self._session.scalars, statement, params or {}
+        )
 
-    async def scalar(self, statement: Executable, params: Mapping[str, Any] | None = None):
+    async def scalar(
+        self, statement: Executable, params: Mapping[str, Any] | None = None
+    ):
         result = await self.execute(statement, params)
         return result.scalar()
 

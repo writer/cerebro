@@ -22,15 +22,14 @@ class SecurityAnalysisInput(BaseModel):
 
     analysis_type: str = Field(
         ...,
-        description="Type of analysis: attack_surface, risk_score, compliance_gaps, posture_assessment"
+        description="Type of analysis: attack_surface, risk_score, compliance_gaps, posture_assessment",
     )
     scope: Optional[Dict[str, Any]] = Field(
         default_factory=dict,
-        description="Scope parameters (providers, resource types, time range)"
+        description="Scope parameters (providers, resource types, time range)",
     )
     filters: Optional[Dict[str, Any]] = Field(
-        default_factory=dict,
-        description="Additional filters for analysis"
+        default_factory=dict, description="Additional filters for analysis"
     )
 
 
@@ -180,7 +179,9 @@ class SecurityAnalysisTool(StructuredTool):
             return SecurityAnalysisOutput(
                 analysis_type="attack_surface",
                 summary=f"Found {len(exposed_resources)} publicly exposed resources with {total_findings} open findings",
-                score=self._calculate_exposure_score(len(exposed_resources), total_findings),
+                score=self._calculate_exposure_score(
+                    len(exposed_resources), total_findings
+                ),
                 findings_count=total_findings,
                 critical_items=critical_items,
                 recommendations=[
@@ -296,7 +297,9 @@ class SecurityAnalysisTool(StructuredTool):
                 {
                     "framework": fw,
                     "gap_count": len(gaps),
-                    "critical_count": len([g for g in gaps if g.severity == "critical"]),
+                    "critical_count": len(
+                        [g for g in gaps if g.severity == "critical"]
+                    ),
                 }
                 for fw, gaps in list(framework_gaps.items())[:5]
             ]
@@ -338,13 +341,15 @@ class SecurityAnalysisTool(StructuredTool):
             )
 
             resources_count = await db.scalar(
-                select(func.count(Resource.resource_id))
-                .where(Resource.org_id == context.org_id)
+                select(func.count(Resource.resource_id)).where(
+                    Resource.org_id == context.org_id
+                )
             )
 
             accounts_count = await db.scalar(
-                select(func.count(Account.account_id))
-                .where(Account.org_id == context.org_id)
+                select(func.count(Account.account_id)).where(
+                    Account.org_id == context.org_id
+                )
             )
 
             # Calculate posture score (0-100, higher is better)
@@ -388,9 +393,11 @@ class SecurityAnalysisTool(StructuredTool):
                 },
             )
 
-    def _calculate_exposure_score(self, exposed_count: int, findings_count: int) -> float:
+    def _calculate_exposure_score(
+        self, exposed_count: int, findings_count: int
+    ) -> float:
         """Calculate exposure score (0-100, lower is better)."""
         # Weighted combination of exposed resources and findings
         exposure_weight = min(100, (exposed_count / 10) * 100)
         findings_weight = min(100, (findings_count / 50) * 100)
-        return (exposure_weight * 0.6 + findings_weight * 0.4)
+        return exposure_weight * 0.6 + findings_weight * 0.4

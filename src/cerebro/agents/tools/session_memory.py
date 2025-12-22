@@ -26,8 +26,10 @@ logger = structlog.get_logger(__name__)
 
 # ==================== Input/Output Schemas ====================
 
+
 class RememberContextInput(BaseModel):
     """Input for remember_context tool."""
+
     context_key: str = Field(
         description="Unique key for this context (e.g. 'prod_aws_account_id', 'ceo_name')",
         min_length=1,
@@ -59,6 +61,7 @@ class RememberContextInput(BaseModel):
 
 class RememberContextOutput(BaseModel):
     """Output for remember_context tool."""
+
     success: bool
     context_id: Optional[str]
     message: str
@@ -67,6 +70,7 @@ class RememberContextOutput(BaseModel):
 
 class GetSessionHistoryInput(BaseModel):
     """Input for get_session_history tool."""
+
     lookback_sessions: int = Field(
         default=5,
         description="Number of recent sessions to retrieve",
@@ -85,6 +89,7 @@ class GetSessionHistoryInput(BaseModel):
 
 class SessionInfo(BaseModel):
     """Information about a session."""
+
     session_id: str
     agent_type: str
     title: Optional[str]
@@ -96,6 +101,7 @@ class SessionInfo(BaseModel):
 
 class GetSessionHistoryOutput(BaseModel):
     """Output for get_session_history tool."""
+
     success: bool
     org_name: str
     sessions_retrieved: int
@@ -105,6 +111,7 @@ class GetSessionHistoryOutput(BaseModel):
 
 
 # ==================== Tools ====================
+
 
 class RememberContextTool(StructuredTool):
     """
@@ -125,7 +132,9 @@ will be useful in future conversations. This enables continuity and personalizat
     tool_version = "1.0.0"
     input_model = RememberContextInput
     output_model = RememberContextOutput
-    required_permission = ToolPermissionLevel.WRITE_SAFE  # Can write context but not destructive
+    required_permission = (
+        ToolPermissionLevel.WRITE_SAFE
+    )  # Can write context but not destructive
 
     async def _run(
         self,
@@ -142,12 +151,16 @@ will be useful in future conversations. This enables continuity and personalizat
         try:
             async with async_session_factory() as db_session:
                 # Check if context already exists for this org + key
-                existing_query = select(AgentSessionContext).where(
-                    and_(
-                        AgentSessionContext.org_id == context.org_id,
-                        AgentSessionContext.context_key == context_key,
+                existing_query = (
+                    select(AgentSessionContext)
+                    .where(
+                        and_(
+                            AgentSessionContext.org_id == context.org_id,
+                            AgentSessionContext.context_key == context_key,
+                        )
                     )
-                ).order_by(AgentSessionContext.created_at.desc())
+                    .order_by(AgentSessionContext.created_at.desc())
+                )
 
                 result = await db_session.execute(existing_query)
                 existing = result.scalar_one_or_none()
@@ -165,7 +178,9 @@ will be useful in future conversations. This enables continuity and personalizat
                 # Calculate expiration
                 expires_at = None
                 if expires_in_days:
-                    expires_at = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
+                    expires_at = datetime.now(timezone.utc) + timedelta(
+                        days=expires_in_days
+                    )
 
                 # Create new context entry
                 new_context = AgentSessionContext(
@@ -265,6 +280,7 @@ and what preferences the user expressed. Essential for continuity across session
             async with async_session_factory() as db_session:
                 # Get organization for name
                 from cerebro.core.models import Organization
+
                 org = await db_session.get(Organization, context.org_id)
                 org_name = org.name if org else "Unknown Organization"
 
@@ -331,12 +347,16 @@ and what preferences the user expressed. Essential for continuity across session
                     # Get recent messages
                     recent_messages = []
                     if include_messages and session.messages:
-                        for msg in sorted(session.messages, key=lambda m: m.created_at)[-5:]:
-                            recent_messages.append({
-                                "role": msg.role.value,
-                                "content": msg.content,
-                                "created_at": msg.created_at.isoformat(),
-                            })
+                        for msg in sorted(session.messages, key=lambda m: m.created_at)[
+                            -5:
+                        ]:
+                            recent_messages.append(
+                                {
+                                    "role": msg.role.value,
+                                    "content": msg.content,
+                                    "created_at": msg.created_at.isoformat(),
+                                }
+                            )
 
                     session_infos.append(
                         SessionInfo(
@@ -344,7 +364,9 @@ and what preferences the user expressed. Essential for continuity across session
                             agent_type=session.agent_type.value,
                             title=session.title,
                             created_at=session.created_at.isoformat(),
-                            message_count=len(session.messages) if include_messages else 0,
+                            message_count=(
+                                len(session.messages) if include_messages else 0
+                            ),
                             recent_messages=recent_messages,
                             learned_context=session_context,
                         )
@@ -353,7 +375,9 @@ and what preferences the user expressed. Essential for continuity across session
                 # Find common context keys
                 context_key_counts = {}
                 for entry in context_entries:
-                    context_key_counts[entry.context_key] = context_key_counts.get(entry.context_key, 0) + 1
+                    context_key_counts[entry.context_key] = (
+                        context_key_counts.get(entry.context_key, 0) + 1
+                    )
 
                 common_keys = sorted(
                     context_key_counts.keys(),

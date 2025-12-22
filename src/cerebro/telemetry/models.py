@@ -108,9 +108,15 @@ class HostTelemetryEvent(Base):
     command_line: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(128), nullable=False)
     agent_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True, default=dict
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
 
     organization: Mapped[Organization] = relationship("Organization")
     resource: Mapped[Optional[Resource]] = relationship("Resource")
@@ -136,13 +142,25 @@ class ArtifactPack(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    selectors: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
-    enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.true())
-    approval_state: Mapped[str] = mapped_column(String(32), nullable=False, default="draft", server_default="draft")
+    selectors: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True, default=dict
+    )
+    enabled: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=True, server_default=sa.true()
+    )
+    approval_state: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="draft", server_default="draft"
+    )
     approval_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    schedule_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    last_deployed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    schedule_interval_seconds: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    last_deployed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -193,14 +211,30 @@ class ArtifactPackTask(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     collector: Mapped[str] = mapped_column(String(128), nullable=False)
     interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    tags: Mapped[Optional[Dict[str, str]]] = mapped_column(JSONType, nullable=True, default=dict)
-    config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
-    discovery: Mapped[Optional[List[str]]] = mapped_column(JSONType, nullable=True, default=list)
-    parameters: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONType, nullable=True, default=list)
-    parameter_values: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
-    resources: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
-    tools: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONType, nullable=True, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    tags: Mapped[Optional[Dict[str, str]]] = mapped_column(
+        JSONType, nullable=True, default=dict
+    )
+    config: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True, default=dict
+    )
+    discovery: Mapped[Optional[List[str]]] = mapped_column(
+        JSONType, nullable=True, default=list
+    )
+    parameters: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(
+        JSONType, nullable=True, default=list
+    )
+    parameter_values: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True, default=dict
+    )
+    resources: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True, default=dict
+    )
+    tools: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(
+        JSONType, nullable=True, default=list
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
 
     pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="tasks")
 
@@ -242,7 +276,9 @@ class ArtifactPackTrigger(Base):
         nullable=True,
         doc="How long the trigger assignment remains valid for a host",
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
 
     pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="triggers")
 
@@ -293,4 +329,3 @@ class ArtifactPackTarget(Base):
     )
 
     pack: Mapped[ArtifactPack] = relationship("ArtifactPack", back_populates="targets")
-

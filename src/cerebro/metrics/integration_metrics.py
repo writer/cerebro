@@ -30,5 +30,9 @@ def record_integration_sync(
 ) -> None:
     """Update gauges reflecting integration synchronization status."""
 
-    INTEGRATION_LAST_SYNC.labels(integration=integration, scope=scope).set(last_sync_unix)
-    INTEGRATION_EVENTS_INGESTED.labels(integration=integration, scope=scope).set(events_ingested)
+    INTEGRATION_LAST_SYNC.labels(integration=integration, scope=scope).set(
+        last_sync_unix
+    )
+    INTEGRATION_EVENTS_INGESTED.labels(integration=integration, scope=scope).set(
+        events_ingested
+    )

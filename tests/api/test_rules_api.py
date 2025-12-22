@@ -22,7 +22,7 @@ def test_rule_crud_flow(client: TestClient, admin_token: str, test_policy) -> No
             "cis": [],
             "cwe": [],
             "nist_800_53": [],
-            "mitre_attack": []
+            "mitre_attack": [],
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -49,7 +49,7 @@ def test_rule_crud_flow(client: TestClient, admin_token: str, test_policy) -> No
             "cis": [],
             "cwe": [],
             "nist_800_53": [],
-            "mitre_attack": []
+            "mitre_attack": [],
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )

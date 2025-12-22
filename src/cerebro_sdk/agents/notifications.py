@@ -9,7 +9,12 @@ from uuid import UUID
 from prometheus_client import CollectorRegistry
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.agents.models import AgentReviewNotification, AgentReviewTicket, NotificationStatus, TicketStatus
+from cerebro.agents.models import (
+    AgentReviewNotification,
+    AgentReviewTicket,
+    NotificationStatus,
+    TicketStatus,
+)
 
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.repositories import NotificationRepository, TicketRepository
@@ -23,7 +28,9 @@ from cerebro_sdk.agents.types import (
 class AgentNotificationManager(AsyncManagerBase):
     """Manage notification and ticket records for agent workflows."""
 
-    def __init__(self, db: AsyncSession, *, registry: CollectorRegistry | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession, *, registry: CollectorRegistry | None = None
+    ) -> None:
         super().__init__(db)
         self._notifications = NotificationRepository(db, registry=registry)
         self._tickets = TicketRepository(db, registry=registry)
@@ -68,9 +75,13 @@ class AgentNotificationManager(AsyncManagerBase):
             status=status_enum,
             limit=limit,
         )
-        return [self._notification_to_record(notification) for notification in notifications]
+        return [
+            self._notification_to_record(notification) for notification in notifications
+        ]
 
-    async def mark_delivered(self, notification_id: UUID) -> Optional[AgentNotificationRecord]:
+    async def mark_delivered(
+        self, notification_id: UUID
+    ) -> Optional[AgentNotificationRecord]:
         notification = await self._notifications.get(notification_id)
         if not notification:
             return None
@@ -127,7 +138,9 @@ class AgentNotificationManager(AsyncManagerBase):
         return [self._ticket_to_record(ticket) for ticket in tickets]
 
     @staticmethod
-    def _notification_to_record(notification: AgentReviewNotification) -> AgentNotificationRecord:
+    def _notification_to_record(
+        notification: AgentReviewNotification,
+    ) -> AgentNotificationRecord:
         return AgentNotificationRecord(
             notification_id=notification.id,
             task_id=notification.task_id,

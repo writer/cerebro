@@ -27,22 +27,29 @@ logger = logging.getLogger(__name__)
 
 class AttackPathQuery(BaseModel):
     """Request for attack path analysis."""
+
     source_principal: Optional[str] = Field(None, description="Source principal ID")
-    target_resource: Optional[str] = Field(None, description="Target resource ID") 
+    target_resource: Optional[str] = Field(None, description="Target resource ID")
     max_path_length: int = Field(5, description="Maximum path length", ge=1, le=10)
     path_type: str = Field("shortest_path", description="Type of path analysis")
-    min_privilege_level: int = Field(0, description="Minimum privilege level", ge=0, le=3)
+    min_privilege_level: int = Field(
+        0, description="Minimum privilege level", ge=0, le=3
+    )
 
 
 class BlastRadiusQuery(BaseModel):
     """Request for blast radius analysis."""
+
     principal_id: str = Field(..., description="Principal to analyze")
     max_steps: int = Field(5, description="Maximum steps for analysis", ge=1, le=10)
-    include_service_paths: bool = Field(True, description="Include service identity paths")
+    include_service_paths: bool = Field(
+        True, description="Include service identity paths"
+    )
 
 
 class WhatIfScenario(BaseModel):
     """What-if simulation scenario."""
+
     scenario_type: str = Field(..., description="Scenario type")
     parameters: Dict[str, Any] = Field(..., description="Scenario parameters")
 
@@ -58,10 +65,10 @@ async def analyze_attack_paths(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         path_analyzer = await get_path_analyzer(str(org_id))
-        
+
         # Convert request to PathQuery
         path_query = PathQuery(
             source_principal=query.source_principal,
@@ -69,12 +76,12 @@ async def analyze_attack_paths(
             max_path_length=query.max_path_length,
             path_type=PathType(query.path_type.lower()),
             min_privilege_level=query.min_privilege_level,
-            exclude_conditions=[]
+            exclude_conditions=[],
         )
-        
+
         # Find attack paths
         paths = await path_analyzer.find_attack_paths(path_query)
-        
+
         return {
             "success": True,
             "message": f"Found {len(paths)} attack paths",
@@ -83,13 +90,19 @@ async def analyze_attack_paths(
                     "source_principal": query.source_principal,
                     "target_resource": query.target_resource,
                     "max_path_length": query.max_path_length,
-                    "path_type": query.path_type
+                    "path_type": query.path_type,
                 },
                 "results": {
                     "total_paths": len(paths),
-                    "shortest_path_length": min((p.path_length for p in paths), default=None),
-                    "critical_paths": len([p for p in paths if p.severity.value == "critical"]),
-                    "high_severity_paths": len([p for p in paths if p.severity.value in ["high", "critical"]])
+                    "shortest_path_length": min(
+                        (p.path_length for p in paths), default=None
+                    ),
+                    "critical_paths": len(
+                        [p for p in paths if p.severity.value == "critical"]
+                    ),
+                    "high_severity_paths": len(
+                        [p for p in paths if p.severity.value in ["high", "critical"]]
+                    ),
                 },
                 "paths": [
                     {
@@ -104,7 +117,7 @@ async def analyze_attack_paths(
                                 "permission": step.permission,
                                 "privilege_level": step.privilege_level,
                                 "conditions": step.conditions,
-                                "description": step.description
+                                "description": step.description,
                             }
                             for step in path.steps
                         ],
@@ -112,19 +125,19 @@ async def analyze_attack_paths(
                         "severity": path.severity.value,
                         "exploitability_score": path.exploitability_score,
                         "impact_score": path.impact_score,
-                        "mitigations": path.mitigations
+                        "mitigations": path.mitigations,
                     }
                     for path in paths[:20]  # Limit results
-                ]
-            }
+                ],
+            },
         }
-        
+
     except Exception:
         logger.exception("Attack path analysis failed", extra={"org_id": str(org_id)})
         raise HTTPException(status_code=500, detail="Attack path analysis failed")
 
 
-@router.post("/organizations/{org_id}/blast-radius")  
+@router.post("/organizations/{org_id}/blast-radius")
 async def analyze_blast_radius(
     org_id: UUID,
     query: BlastRadiusQuery,
@@ -135,16 +148,14 @@ async def analyze_blast_radius(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         analyzer = get_reachability_analyzer()
-        
+
         result = await analyzer.analyze_principal_reachability(
-            str(org_id),
-            query.principal_id,
-            query.max_steps
+            str(org_id), query.principal_id, query.max_steps
         )
-        
+
         return {
             "success": True,
             "message": f"Blast radius analysis complete - {result.blast_radius_size} resources reachable",
@@ -152,13 +163,13 @@ async def analyze_blast_radius(
                 "principal_id": query.principal_id,
                 "analysis_parameters": {
                     "max_steps": query.max_steps,
-                    "include_service_paths": query.include_service_paths
+                    "include_service_paths": query.include_service_paths,
                 },
                 "blast_radius": {
                     "total_reachable_resources": result.blast_radius_size,
                     "critical_resources": len([p for p in result.critical_paths]),
                     "shortest_path_length": result.shortest_path_length,
-                    "overall_risk_score": result.overall_risk_score
+                    "overall_risk_score": result.overall_risk_score,
                 },
                 "attack_paths": [
                     {
@@ -166,16 +177,16 @@ async def analyze_blast_radius(
                         "path_length": path.path_length,
                         "severity": path.severity.value,
                         "exploitability": path.exploitability_score,
-                        "steps": len(path.steps)
+                        "steps": len(path.steps),
                     }
                     for path in result.paths_found[:15]
                 ],
                 "mitigations": result.mitigations,
                 "monitoring_recommendations": result.monitoring_recommendations,
-                "analysis_duration_ms": result.analysis_duration_ms
-            }
+                "analysis_duration_ms": result.analysis_duration_ms,
+            },
         }
-        
+
     except Exception:
         logger.exception("Blast radius analysis failed", extra={"org_id": str(org_id)})
         raise HTTPException(status_code=500, detail="Blast radius analysis failed")
@@ -192,17 +203,17 @@ async def get_attack_graph_summary(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         attack_graph = await get_attack_graph(str(org_id), rebuild=rebuild)
         summary = attack_graph.export_graph_summary()
-        
+
         return {
             "success": True,
             "message": f"Attack graph summary for {summary['graph_metrics']['total_nodes']} nodes",
-            "data": summary
+            "data": summary,
         }
-        
+
     except Exception:
         logger.exception("Attack graph summary failed", extra={"org_id": str(org_id)})
         raise HTTPException(status_code=500, detail="Graph summary failed")
@@ -212,7 +223,9 @@ async def get_attack_graph_summary(
 async def get_service_identities(
     org_id: UUID,
     risk_level: Optional[str] = Query(None, description="Filter by risk level"),
-    trust_mechanism: Optional[str] = Query(None, description="Filter by trust mechanism"),
+    trust_mechanism: Optional[str] = Query(
+        None, description="Filter by trust mechanism"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
@@ -220,30 +233,34 @@ async def get_service_identities(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         service_mapper = get_service_identity_mapper()
-        
+
         # Discover service identities
         service_edges = await service_mapper.discover_service_identities(str(org_id))
-        
+
         # Apply filters
         filtered_edges = service_edges
-        
+
         if risk_level:
             if risk_level == "high":
                 filtered_edges = [e for e in filtered_edges if e.risk_score >= 0.7]
             elif risk_level == "medium":
-                filtered_edges = [e for e in filtered_edges if 0.4 <= e.risk_score < 0.7]
+                filtered_edges = [
+                    e for e in filtered_edges if 0.4 <= e.risk_score < 0.7
+                ]
             elif risk_level == "low":
                 filtered_edges = [e for e in filtered_edges if e.risk_score < 0.4]
-        
+
         if trust_mechanism:
-            filtered_edges = [e for e in filtered_edges if e.trust_mechanism.value == trust_mechanism]
-        
+            filtered_edges = [
+                e for e in filtered_edges if e.trust_mechanism.value == trust_mechanism
+            ]
+
         # Generate risk analysis
         risk_analysis = await service_mapper.analyze_service_identity_risks(str(org_id))
-        
+
         return {
             "organization_id": str(org_id),
             "total_service_edges": len(service_edges),
@@ -259,15 +276,17 @@ async def get_service_identities(
                     "risk_score": edge.risk_score,
                     "exploitability": edge.exploitability,
                     "conditions": edge.conditions,
-                    "allowed_repositories": edge.allowed_repositories
+                    "allowed_repositories": edge.allowed_repositories,
                 }
                 for edge in filtered_edges
             ],
-            "risk_analysis": risk_analysis
+            "risk_analysis": risk_analysis,
         }
-        
+
     except Exception:
-        logger.exception("Service identity analysis failed", extra={"org_id": str(org_id)})
+        logger.exception(
+            "Service identity analysis failed", extra={"org_id": str(org_id)}
+        )
         raise HTTPException(status_code=500, detail="Service identity analysis failed")
 
 
@@ -282,21 +301,20 @@ async def what_if_simulation(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         analyzer = get_reachability_analyzer()
-        
+
         simulation_result = await analyzer.what_if_simulation(
-            str(org_id),
-            {"type": scenario.scenario_type, **scenario.parameters}
+            str(org_id), {"type": scenario.scenario_type, **scenario.parameters}
         )
-        
+
         return {
             "success": True,
             "message": f"What-if simulation completed: {scenario.scenario_type}",
-            "data": simulation_result
+            "data": simulation_result,
         }
-        
+
     except Exception:
         logger.exception("What-if simulation failed", extra={"org_id": str(org_id)})
         raise HTTPException(status_code=500, detail="Simulation failed")
@@ -313,11 +331,11 @@ async def get_high_value_targets(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         attack_graph = await get_attack_graph(str(org_id))
         targets = attack_graph.get_high_value_targets(limit)
-        
+
         return {
             "organization_id": str(org_id),
             "total_targets": len(targets),
@@ -329,14 +347,16 @@ async def get_high_value_targets(
                     "risk_score": target.risk_score,
                     "criticality": target.criticality,
                     "node_type": target.node_type.value,
-                    "properties": target.properties
+                    "properties": target.properties,
                 }
                 for target in targets
-            ]
+            ],
         }
-        
+
     except Exception:
-        logger.exception("High-value targets query failed", extra={"org_id": str(org_id)})
+        logger.exception(
+            "High-value targets query failed", extra={"org_id": str(org_id)}
+        )
         raise HTTPException(status_code=500, detail="Target query failed")
 
 
@@ -351,13 +371,13 @@ async def get_high_privilege_principals(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     try:
         attack_graph = await get_attack_graph(str(org_id))
         principals = attack_graph.get_high_privilege_principals(limit)
-        
+
         return {
-            "organization_id": str(org_id), 
+            "organization_id": str(org_id),
             "total_principals": len(principals),
             "high_privilege_principals": [
                 {
@@ -367,12 +387,14 @@ async def get_high_privilege_principals(
                     "risk_score": principal.risk_score,
                     "criticality": principal.criticality,
                     "node_type": principal.node_type.value,
-                    "properties": principal.properties
+                    "properties": principal.properties,
                 }
                 for principal in principals
-            ]
+            ],
         }
-        
+
     except Exception:
-        logger.exception("High-privilege principals query failed", extra={"org_id": str(org_id)})
+        logger.exception(
+            "High-privilege principals query failed", extra={"org_id": str(org_id)}
+        )
         raise HTTPException(status_code=500, detail="Principals query failed")

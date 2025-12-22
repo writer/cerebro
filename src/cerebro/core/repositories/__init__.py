@@ -39,7 +39,7 @@ from cerebro.core.repositories.rule import Rule, RuleRepository
 __all__ = [
     # Models
     "Organization",
-    "Account", 
+    "Account",
     "Finding",
     "FindingStatus",
     "Severity",

@@ -8,6 +8,7 @@ Creates:
 - IAM roles and policies
 - CloudWatch log groups
 """
+
 import json
 
 import pulumi
@@ -98,9 +99,15 @@ def create_ecs_cluster(
     task_role = _create_task_role(name, kms_key_id, dynamodb_table_arns)
 
     # Create CloudWatch log groups
-    api_log_group = _create_log_group(f"/ecs/{name}-api", retention_days=log_retention_days)
-    worker_log_group = _create_log_group(f"/ecs/{name}-worker", retention_days=log_retention_days)
-    beat_log_group = _create_log_group(f"/ecs/{name}-beat", retention_days=log_retention_days)
+    api_log_group = _create_log_group(
+        f"/ecs/{name}-api", retention_days=log_retention_days
+    )
+    worker_log_group = _create_log_group(
+        f"/ecs/{name}-worker", retention_days=log_retention_days
+    )
+    beat_log_group = _create_log_group(
+        f"/ecs/{name}-beat", retention_days=log_retention_days
+    )
 
     # Base environment variables
     base_env = {
@@ -111,9 +118,9 @@ def create_ecs_cluster(
         "DYNAMODB_NOTIFICATIONS_TABLE": dynamodb_notifications_table,
         "DYNAMODB_USERS_TABLE": dynamodb_users_table,
         # Redis connection
-        "REDIS_URL": pulumi.Output.all(
-            redis_endpoint, redis_password
-        ).apply(lambda args: _build_redis_url(*args)),
+        "REDIS_URL": pulumi.Output.all(redis_endpoint, redis_password).apply(
+            lambda args: _build_redis_url(*args)
+        ),
         # Encryption
         "KMS_KEY_ID": kms_key_id,
         "KMS_PROVIDER": "aws",
@@ -126,7 +133,14 @@ def create_ecs_cluster(
         name=f"{name}-api",
         container_name="cerebro-api",
         container_image=container_image,
-        command=["uvicorn", "cerebro.api.main:app", "--host", "0.0.0.0", "--port", "8000"],
+        command=[
+            "uvicorn",
+            "cerebro.api.main:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8000",
+        ],
         cpu=api_cpu,
         memory=api_memory,
         execution_role_arn=execution_role.arn,
@@ -298,7 +312,9 @@ def create_ecs_cluster(
 
     # Optional Flower monitoring UI
     if enable_flower:
-        flower_log_group = _create_log_group(f"/ecs/{name}-flower", retention_days=log_retention_days)
+        flower_log_group = _create_log_group(
+            f"/ecs/{name}-flower", retention_days=log_retention_days
+        )
         flower_task_definition = _create_task_definition(
             name=f"{name}-flower",
             container_name="cerebro-flower",
@@ -580,11 +596,15 @@ def _build_secret_references(secrets_arn: pulumi.Output[str]) -> list[dict]:
         },
         {
             "name": "CEREBRO_AUTOMATION_ORG_ID",
-            "valueFrom": pulumi.Output.concat(secrets_arn, ":CEREBRO_AUTOMATION_ORG_ID::"),
+            "valueFrom": pulumi.Output.concat(
+                secrets_arn, ":CEREBRO_AUTOMATION_ORG_ID::"
+            ),
         },
         {
             "name": "CEREBRO_SESSION_BASE_URL",
-            "valueFrom": pulumi.Output.concat(secrets_arn, ":CEREBRO_SESSION_BASE_URL::"),
+            "valueFrom": pulumi.Output.concat(
+                secrets_arn, ":CEREBRO_SESSION_BASE_URL::"
+            ),
         },
         {
             "name": "AUTONOMY_SLACK_WEBHOOK",

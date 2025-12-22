@@ -107,7 +107,9 @@ class AgentManager(AsyncManagerBase):
             title=title,
         )
 
-    async def get_session(self, session_id: UUID, *, org_id: Optional[UUID] = None) -> Optional[AgentSessionRecord]:
+    async def get_session(
+        self, session_id: UUID, *, org_id: Optional[UUID] = None
+    ) -> Optional[AgentSessionRecord]:
         session = await self._db.get(AgentSession, session_id)
         if not session:
             return None
@@ -125,7 +127,9 @@ class AgentManager(AsyncManagerBase):
         offset: int = 0,
     ) -> tuple[list[AgentSessionRecord], int]:
         stmt = select(AgentSession).where(AgentSession.org_id == org_id)
-        count_stmt: Select = select(func.count(AgentSession.id)).where(AgentSession.org_id == org_id)
+        count_stmt: Select = select(func.count(AgentSession.id)).where(
+            AgentSession.org_id == org_id
+        )
 
         if agent_type:
             try:
@@ -228,7 +232,9 @@ class AgentManager(AsyncManagerBase):
                 scope_type = scope.get("type")
                 value = scope.get("value")
                 if scope_type and scope_type != "session":
-                    scope_labels.append(f"{scope_type}:{value}" if value else scope_type)
+                    scope_labels.append(
+                        f"{scope_type}:{value}" if value else scope_type
+                    )
             records.append(
                 AgentMemoryRecord(
                     entry_id=entry.id,
@@ -278,20 +284,23 @@ class AgentManager(AsyncManagerBase):
 
         where_clause = join_filters(filters)
         recent_reference = cutoff or (datetime.now(timezone.utc) - timedelta(hours=24))
-        presented_expr = func.coalesce(AgentMemoryEntry.extra_metadata["presented_count"].as_integer(), 0)
-
-        aggregate_stmt = (
-            select(
-                func.count(AgentMemoryEntry.id).label("total"),
-                func.sum(
-                    case((AgentMemoryEntry.created_at >= recent_reference, 1), else_=0)
-                ).label("recent"),
-                func.sum(case((presented_expr > 0, 1), else_=0)).label("presented"),
-                func.coalesce(func.sum(AgentMemoryEntry.token_count), 0).label("token_total"),
-                func.coalesce(func.avg(AgentMemoryEntry.decay_score), 0.0).label("avg_decay"),
-            )
-            .where(where_clause)
+        presented_expr = func.coalesce(
+            AgentMemoryEntry.extra_metadata["presented_count"].as_integer(), 0
         )
+
+        aggregate_stmt = select(
+            func.count(AgentMemoryEntry.id).label("total"),
+            func.sum(
+                case((AgentMemoryEntry.created_at >= recent_reference, 1), else_=0)
+            ).label("recent"),
+            func.sum(case((presented_expr > 0, 1), else_=0)).label("presented"),
+            func.coalesce(func.sum(AgentMemoryEntry.token_count), 0).label(
+                "token_total"
+            ),
+            func.coalesce(func.avg(AgentMemoryEntry.decay_score), 0.0).label(
+                "avg_decay"
+            ),
+        ).where(where_clause)
 
         aggregate = (await self._db.execute(aggregate_stmt)).first()
         if not aggregate or not aggregate.total:
@@ -313,22 +322,29 @@ class AgentManager(AsyncManagerBase):
         )
         role_rows = await self._db.execute(role_stmt)
         role_distribution = {
-            (row[0].value if row[0] else "unknown").lower(): row[1]
-            for row in role_rows
+            (row[0].value if row[0] else "unknown").lower(): row[1] for row in role_rows
         }
 
         scope_distribution: dict[str, int] = {}
         dialect_name = getattr(getattr(self._db, "bind", None), "dialect", None)
         dialect_name = getattr(dialect_name, "name", None)
         if dialect_name == "postgresql":
-            scope_rows = await self._db.execute(memory_scope_distribution(self._db, where_clause=where_clause))
-            scope_distribution = {row.scope_type.lower(): row.scope_count for row in scope_rows}
+            scope_rows = await self._db.execute(
+                memory_scope_distribution(self._db, where_clause=where_clause)
+            )
+            scope_distribution = {
+                row.scope_type.lower(): row.scope_count for row in scope_rows
+            }
         else:
-            scopes_to_process = await self._db.scalars(sqlite_scope_fallback(where_clause))
+            scopes_to_process = await self._db.scalars(
+                sqlite_scope_fallback(where_clause)
+            )
             for scopes in scopes_to_process:
                 for scope in scopes or []:
                     scope_name = (scope.get("type") or "unknown").lower()
-                    scope_distribution[scope_name] = scope_distribution.get(scope_name, 0) + 1
+                    scope_distribution[scope_name] = (
+                        scope_distribution.get(scope_name, 0) + 1
+                    )
 
         highlight_stmt = (
             select(
@@ -355,7 +371,9 @@ class AgentManager(AsyncManagerBase):
                 scope_type_value = scope.get("type")
                 value = scope.get("value")
                 if scope_type_value and scope_type_value != "session":
-                    scope_labels.append(f"{scope_type_value}:{value}" if value else scope_type_value)
+                    scope_labels.append(
+                        f"{scope_type_value}:{value}" if value else scope_type_value
+                    )
             highlights.append(
                 {
                     "id": str(row[0]),

@@ -8,6 +8,7 @@ Tests cover:
 - Error handling
 - Retry logic
 """
+
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
@@ -140,7 +141,9 @@ class TestWebhookNotificationService:
         config.timeout_seconds = 5
         config.hmac_secret = b"secret"
         config.hmac_secret_dek = b"dek"
-        config.get_webhook_url = AsyncMock(return_value="https://webhook.example.com/endpoint")
+        config.get_webhook_url = AsyncMock(
+            return_value="https://webhook.example.com/endpoint"
+        )
         config.get_hmac_secret = AsyncMock(return_value="test-hmac-secret")
         return config
 
@@ -400,8 +403,7 @@ class TestNotificationFiltering:
         ]
 
         filtered = [
-            f for f in findings
-            if f.severity in config_with_filters.severity_filter
+            f for f in findings if f.severity in config_with_filters.severity_filter
         ]
 
         assert len(filtered) == 2
@@ -415,10 +417,7 @@ class TestNotificationFiltering:
             "monitoring.alert",  # Should be filtered out
         ]
 
-        filtered = [
-            e for e in events
-            if e in config_with_filters.event_types
-        ]
+        filtered = [e for e in events if e in config_with_filters.event_types]
 
         assert len(filtered) == 2
         assert "monitoring.alert" not in filtered

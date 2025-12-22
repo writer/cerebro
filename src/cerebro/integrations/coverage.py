@@ -31,7 +31,11 @@ async def summarize_integration_coverage(
 
     mapping = provider_mapping or INTEGRATION_PROVIDER_MAPPING
     now = datetime.now(timezone.utc)
-    threshold = stale_seconds if stale_seconds is not None else settings.integration_sync_stale_seconds
+    threshold = (
+        stale_seconds
+        if stale_seconds is not None
+        else settings.integration_sync_stale_seconds
+    )
 
     repo = IntegrationStateRepository(db)
     states = await repo.list_states()
@@ -42,12 +46,13 @@ async def summarize_integration_coverage(
             continue
         grouped_states[state.integration].append(state)
 
-    account_stmt: Select = (
-        select(Account.provider, func.count().label("count"))
-        .group_by(Account.provider)
-    )
+    account_stmt: Select = select(
+        Account.provider, func.count().label("count")
+    ).group_by(Account.provider)
     account_rows = await db.execute(account_stmt)
-    account_counts: Dict[str, int] = {row.provider: int(row.count or 0) for row in account_rows}
+    account_counts: Dict[str, int] = {
+        row.provider: int(row.count or 0) for row in account_rows
+    }
 
     summaries: List[Dict[str, Any]] = []
     integrations = set(grouped_states.keys()) | set(mapping.keys())

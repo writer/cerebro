@@ -14,7 +14,9 @@ from cerebro.integrations.state import (
     IntegrationIssueEventRepository,
     IntegrationStateRepository,
 )
+
 UTC = timezone.utc
+
 
 def _run_async(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
@@ -240,9 +242,7 @@ def test_integration_coverage_endpoint(
     payload = response.json()
     assert len(payload) >= 2
 
-    kandji_summary = next(
-        item for item in payload if item["integration"] == "kandji"
-    )
+    kandji_summary = next(item for item in payload if item["integration"] == "kandji")
     assert kandji_summary["status"] == "critical"
     assert kandji_summary["scopes"]["total"] == 2
     assert kandji_summary["scopes"]["healthy"] == 1
@@ -302,9 +302,7 @@ def test_integration_admin_overview_endpoint(client, test_db, admin_token, monke
     assert payload, "Expected at least one integration overview"
 
     overview = next(
-        item
-        for item in payload
-        if item["integration"] == "sentinelone.activities"
+        item for item in payload if item["integration"] == "sentinelone.activities"
     )
     assert overview["scope"] == "acme"
     assert overview["duration_samples"] == [45.0, 50.0]

@@ -60,6 +60,7 @@ def get_tool_registry() -> ToolRegistry:
 
     return tool_registry
 
+
 __all__ = [
     "Tool",
     "StructuredTool",

@@ -32,9 +32,14 @@ from .models import (
 
 # Framework system
 from .framework_registry import (
-    FrameworkRegistry, FrameworkProvider, FrameworkDefinition,
-    ControlDefinition, get_framework_registry, get_framework,
-    list_frameworks, register_framework_provider
+    FrameworkRegistry,
+    FrameworkProvider,
+    FrameworkDefinition,
+    ControlDefinition,
+    get_framework_registry,
+    get_framework,
+    list_frameworks,
+    register_framework_provider,
 )
 
 # Evidence services

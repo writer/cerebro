@@ -22,7 +22,9 @@ def upgrade() -> None:
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("integration", sa.String(length=128), nullable=False),
-        sa.Column("scope", sa.String(length=128), nullable=False, server_default="default"),
+        sa.Column(
+            "scope", sa.String(length=128), nullable=False, server_default="default"
+        ),
         sa.Column("issue_type", sa.String(length=64), nullable=False),
         sa.Column("severity", sa.String(length=32), nullable=False),
         sa.Column("message", sa.Text(), nullable=False),
@@ -61,7 +63,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_integration_issue_events_observed", table_name="integration_sync_issue_events")
-    op.drop_index("ix_integration_issue_events_scope", table_name="integration_sync_issue_events")
-    op.drop_index("ix_integration_issue_events_integration", table_name="integration_sync_issue_events")
+    op.drop_index(
+        "ix_integration_issue_events_observed",
+        table_name="integration_sync_issue_events",
+    )
+    op.drop_index(
+        "ix_integration_issue_events_scope", table_name="integration_sync_issue_events"
+    )
+    op.drop_index(
+        "ix_integration_issue_events_integration",
+        table_name="integration_sync_issue_events",
+    )
     op.drop_table("integration_sync_issue_events")

@@ -9,10 +9,20 @@ from sqlalchemy import select
 
 from cerebro.core.database import get_db
 from cerebro.core.models import Finding, Organization
-from cerebro.api.schemas import FindingResponse, FindingUpdate, FindingStats, FindingPageResponse
+from cerebro.api.schemas import (
+    FindingResponse,
+    FindingUpdate,
+    FindingStats,
+    FindingPageResponse,
+)
 from cerebro.api.dependencies import get_finding_manager
 from cerebro.findings.manager import FindingManager
-from cerebro.api.auth import get_current_user, require_read_findings, require_write_findings, User
+from cerebro.api.auth import (
+    get_current_user,
+    require_read_findings,
+    require_write_findings,
+    User,
+)
 from cerebro_sdk.findings import FindingService
 from cerebro_sdk.pagination import PageRequest
 
@@ -49,7 +59,7 @@ async def list_findings(
         stmt = stmt.where(Finding.severity == severity)
     if provider:
         stmt = stmt.where(Finding.provider == provider)
-    
+
     stmt = stmt.order_by(Finding.last_seen.desc()).offset(skip).limit(limit)
     findings = await db.scalars(stmt)
     return list(findings)
@@ -79,19 +89,25 @@ async def list_findings_page(
         page=PageRequest(limit=limit, cursor=cursor),
     )
 
-    providers = {item.provider for item in page.items if getattr(item, "provider", None)}
+    providers = {
+        item.provider for item in page.items if getattr(item, "provider", None)
+    }
     freshness_service = IntegrationFreshnessService(db)
     provider_freshness = await freshness_service.provider_freshness(providers)
     freshness_payload = {
         key: {
-            "last_synced_at": summary.last_synced_at.isoformat() if summary.last_synced_at else None,
+            "last_synced_at": (
+                summary.last_synced_at.isoformat() if summary.last_synced_at else None
+            ),
             "age_seconds": summary.age_seconds,
             "age_human": summary.age_human,
             "status": summary.status,
         }
         for key, summary in provider_freshness.items()
     }
-    warnings = [summary.warning for summary in provider_freshness.values() if summary.warning]
+    warnings = [
+        summary.warning for summary in provider_freshness.values() if summary.warning
+    ]
 
     return FindingPageResponse(
         items=[FindingResponse.model_validate(asdict(item)) for item in page.items],
@@ -131,12 +147,17 @@ async def update_finding(
 
     if finding.org_id is not None and current_user.org_id is not None:
         enforce_org_access(finding.org_id, current_user)
-    
+
     if finding_update.status:
-        if finding_update.status not in ["open", "suppressed", "accepted_risk", "fixed"]:
+        if finding_update.status not in [
+            "open",
+            "suppressed",
+            "accepted_risk",
+            "fixed",
+        ]:
             raise HTTPException(status_code=400, detail="Invalid status")
         finding.status = finding_update.status
-    
+
     await db.commit()
     await db.refresh(finding)
     return finding
@@ -161,7 +182,7 @@ async def suppress_finding(
     success = await finding_manager.suppress_finding(finding_id, reason)
     if not success:
         raise HTTPException(status_code=404, detail="Finding not found")
-    
+
     return {"message": "Finding suppressed successfully", "reason": reason}
 
 
@@ -184,7 +205,7 @@ async def accept_risk(
     success = await finding_manager.accept_risk(finding_id, reason)
     if not success:
         raise HTTPException(status_code=404, detail="Finding not found")
-    
+
     return {"message": "Risk accepted successfully", "reason": reason}
 
 
@@ -200,7 +221,7 @@ async def get_finding_stats(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     stats = await finding_manager.get_finding_stats(org_id)
     return FindingStats(**stats)
 
@@ -215,24 +236,22 @@ async def generate_findings(
 ):
     """Generate findings for an organization using Celery."""
     from cerebro.tasks.finding_tasks import generate_findings_task
-    
+
     # Verify organization exists
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     # Schedule background task
     task = generate_findings_task.delay(
-        str(org_id),
-        provider=provider,
-        resource_types=resource_types
+        str(org_id), provider=provider, resource_types=resource_types
     )
-    
+
     return {
         "message": "Finding generation started",
         "task_id": task.id,
         "org_id": org_id,
-        "provider": provider
+        "provider": provider,
     }
 
 
@@ -248,43 +267,46 @@ async def get_mttr_metrics(
 
     if current_user.org_id is None and not current_user.is_admin:
         raise HTTPException(status_code=400, detail="Organization context required")
-    
+
     # Base query for resolved findings
     stmt = select(Finding).where(Finding.status.in_(["resolved", "fixed"]))
     if current_user.org_id is not None:
         stmt = stmt.where(Finding.org_id == current_user.org_id)
-    
+
     if severity:
         stmt = stmt.where(Finding.severity == severity)
     if provider:
         stmt = stmt.where(Finding.provider == provider)
-    
+
     # Filter by timeframe
     from datetime import datetime, timedelta
+
     cutoff_date = datetime.utcnow() - timedelta(days=timeframe_days)
     stmt = stmt.where(Finding.resolved_at >= cutoff_date)
-    
+
     resolved_findings = await db.scalars(stmt)
     resolved_list = list(resolved_findings)
-    
+
     if not resolved_list:
         return {
             "mttr": 0,
             "sla_target": 4 if severity == "critical" else 24,
             "sla_breaches": {"critical": 0, "high": 0, "medium": 0, "low": 0},
             "trend": 0,
-            "total_resolved": 0
+            "total_resolved": 0,
         }
-    
+
     # Calculate MTTR
-    total_resolution_time = sum([
-        (f.resolved_at - f.created_at).total_seconds() / 3600
-        for f in resolved_list 
-        if f.resolved_at and f.created_at
-    ])
-    
+    total_resolution_time = sum(
+        [
+            (f.resolved_at - f.created_at).total_seconds() / 3600
+            for f in resolved_list
+            if f.resolved_at and f.created_at
+        ]
+    )
+
     mttr = total_resolution_time / len(resolved_list) if resolved_list else 0
-    
+
     return {
         "mttr": round(mttr, 1),
         "sla_target": 4 if severity == "critical" else 24,

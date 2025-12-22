@@ -5,6 +5,7 @@ Revises: 009
 Create Date: 2025-10-27 00:00:00.000000
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -31,26 +32,60 @@ def upgrade() -> None:
         sa.Column("principal_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("summary", sa.String(length=255), nullable=False),
         sa.Column("recommended_action", sa.Text(), nullable=False),
-        sa.Column("priority", sa.String(length=16), nullable=False, server_default="medium"),
-        sa.Column("status", sa.String(length=16), nullable=False, server_default="pending"),
-        sa.Column("evidence", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("notes", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "priority", sa.String(length=16), nullable=False, server_default="medium"
+        ),
+        sa.Column(
+            "status", sa.String(length=16), nullable=False, server_default="pending"
+        ),
+        sa.Column(
+            "evidence",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "notes",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("accepted_by", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_by", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
         sa.ForeignKeyConstraint(["org_id"], ["orgs.org_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["principal_id"], ["principals.principal_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["accepted_by"], ["users.user_id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["completed_by"], ["users.user_id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["principal_id"], ["principals.principal_id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["accepted_by"], ["users.user_id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["completed_by"], ["users.user_id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["created_by"], ["users.user_id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["updated_by"], ["users.user_id"], ondelete="SET NULL"),
-        sa.CheckConstraint("priority IN ('low','medium','high')", name="ck_remediation_priority"),
-        sa.CheckConstraint("status IN ('pending','accepted','completed')", name="ck_remediation_status"),
+        sa.CheckConstraint(
+            "priority IN ('low','medium','high')", name="ck_remediation_priority"
+        ),
+        sa.CheckConstraint(
+            "status IN ('pending','accepted','completed')", name="ck_remediation_status"
+        ),
         sa.UniqueConstraint(
             "org_id",
             "principal_id",
@@ -77,7 +112,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_remediation_actions_status", table_name="identity_remediation_actions")
-    op.drop_index("ix_remediation_actions_principal", table_name="identity_remediation_actions")
-    op.drop_index("ix_remediation_actions_org", table_name="identity_remediation_actions")
+    op.drop_index(
+        "ix_remediation_actions_status", table_name="identity_remediation_actions"
+    )
+    op.drop_index(
+        "ix_remediation_actions_principal", table_name="identity_remediation_actions"
+    )
+    op.drop_index(
+        "ix_remediation_actions_org", table_name="identity_remediation_actions"
+    )
     op.drop_table("identity_remediation_actions")

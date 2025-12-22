@@ -29,6 +29,7 @@ logger = structlog.get_logger(__name__)
 
 # ==================== Slack Message Formatter ====================
 
+
 class SlackMessageFormatter:
     """Format security events into Slack Block Kit messages."""
 
@@ -87,15 +88,17 @@ class SlackMessageFormatter:
         ]
 
         # Add description if available
-        description = getattr(finding, 'description', None)
+        description = getattr(finding, "description", None)
         if description:
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Description:*\n{description[:500]}",
-                },
-            })
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Description:*\n{description[:500]}",
+                    },
+                }
+            )
 
         # Add resource/principal info if available
         resource_info = []
@@ -105,26 +108,30 @@ class SlackMessageFormatter:
             resource_info.append(f"Principal ID: {finding.principal_id}")
 
         if resource_info:
-            blocks.append({
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": " | ".join(resource_info),
+                        }
+                    ],
+                }
+            )
+
+        # Add timestamp
+        blocks.append(
+            {
                 "type": "context",
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": " | ".join(resource_info),
+                        "text": f"<!date^{int(finding.created_at.timestamp())}^{{date_short_pretty}} at {{time}}|{finding.created_at.isoformat()}>",
                     }
                 ],
-            })
-
-        # Add timestamp
-        blocks.append({
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": f"<!date^{int(finding.created_at.timestamp())}^{{date_short_pretty}} at {{time}}|{finding.created_at.isoformat()}>",
-                }
-            ],
-        })
+            }
+        )
 
         return {
             "attachments": [
@@ -255,6 +262,7 @@ class SlackMessageFormatter:
 
 # ==================== Slack Notification Service ====================
 
+
 class SlackNotificationService:
     """Service for sending Slack notifications with retry logic."""
 
@@ -306,7 +314,9 @@ class SlackNotificationService:
             message = SlackMessageFormatter.format_finding_created(finding, org.name)
             fallback_text, blocks = findings_summary_blocks(
                 org_name=org.name,
-                severity_label=finding.severity.capitalize() if finding.severity else "Finding",
+                severity_label=(
+                    finding.severity.capitalize() if finding.severity else "Finding"
+                ),
                 findings=[finding],
             )
 
@@ -497,7 +507,7 @@ class SlackNotificationService:
             webhook_url = await webhook.get_webhook_url()
             if not webhook_url:
                 raise ValueError("Failed to decrypt webhook URL")
-            if not webhook_url.startswith('https://hooks.slack.com/'):
+            if not webhook_url.startswith("https://hooks.slack.com/"):
                 raise ValueError("Invalid Slack webhook URL format")
         except Exception as e:
             logger.error(
@@ -579,7 +589,7 @@ class SlackNotificationService:
             # Retry logic
             if attempt < self.max_retries:
                 retry_count += 1
-                delay = self.retry_delay_seconds * (2 ** attempt)  # Exponential backoff
+                delay = self.retry_delay_seconds * (2**attempt)  # Exponential backoff
                 await asyncio.sleep(delay)
 
         # All retries failed - log failure
@@ -624,7 +634,11 @@ class SlackNotificationService:
                 blocks=blocks,
             )
         except SlackApiError as exc:
-            error_detail = exc.response.get("error") if getattr(exc, "response", None) else str(exc)
+            error_detail = (
+                exc.response.get("error")
+                if getattr(exc, "response", None)
+                else str(exc)
+            )
             logger.warning(
                 "slack_bot_post_failed",
                 channel=channel,

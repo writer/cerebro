@@ -11,15 +11,15 @@ from .peer_groups import PeerGroupAnalyzer, PeerGroupBaseline
 from .exceptions import ExceptionManager, AccessException, ExceptionStatus
 
 __all__ = [
-    'JMLCampaignManager',
-    'JMLEvent', 
-    'LifecycleStage',
-    'AccessReviewManager',
-    'AccessReview',
-    'ReviewStatus',
-    'PeerGroupAnalyzer',
-    'PeerGroupBaseline',
-    'ExceptionManager',
-    'AccessException',
-    'ExceptionStatus'
+    "JMLCampaignManager",
+    "JMLEvent",
+    "LifecycleStage",
+    "AccessReviewManager",
+    "AccessReview",
+    "ReviewStatus",
+    "PeerGroupAnalyzer",
+    "PeerGroupBaseline",
+    "ExceptionManager",
+    "AccessException",
+    "ExceptionStatus",
 ]

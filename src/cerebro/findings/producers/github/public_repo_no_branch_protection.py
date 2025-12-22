@@ -37,9 +37,7 @@ class PublicRepoNoBranchProtectionProducer(BaseGitHubProducer):
 
     @property
     def description(self) -> str:
-        return (
-            "Public GitHub repository lacks required branch protection rules."
-        )
+        return "Public GitHub repository lacks required branch protection rules."
 
     @property
     def remediation(self) -> str:

@@ -87,7 +87,6 @@ class DummyServalTicketService:
         return {}
 
 
-
 async def test_ticketing_service_creates_serval_ticket(monkeypatch):
     # Exercise Serval ticket creation path with override payload.
     session = DummySession()

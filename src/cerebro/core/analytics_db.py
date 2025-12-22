@@ -43,7 +43,9 @@ async def analytics_read_session(db: Any) -> AsyncGenerator[Any, None]:
         yield warehouse
 
 
-async def get_analytics_db(db: AsyncSession = Depends(get_db)) -> AsyncGenerator[Any, None]:
+async def get_analytics_db(
+    db: AsyncSession = Depends(get_db),
+) -> AsyncGenerator[Any, None]:
     try:
         async with analytics_read_session(db) as analytics_db:
             yield analytics_db

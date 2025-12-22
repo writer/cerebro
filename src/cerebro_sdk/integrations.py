@@ -8,7 +8,10 @@ from typing import Any, Callable, ClassVar, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.integrations.state import IntegrationStateRepository, IntegrationIssueEventRepository
+from cerebro.integrations.state import (
+    IntegrationStateRepository,
+    IntegrationIssueEventRepository,
+)
 from cerebro.core.models import IntegrationSyncState, IntegrationSyncIssueEvent
 from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
 
@@ -58,13 +61,17 @@ class IntegrationTaskRegistry:
 class IntegrationService:
     """Facade for integration sync state and task orchestration."""
 
-    def __init__(self, db: AsyncSession, *, registry: type[IntegrationTaskRegistry] | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession, *, registry: type[IntegrationTaskRegistry] | None = None
+    ) -> None:
         self._state_repo = IntegrationStateRepository(db)
         self._issue_repo = IntegrationIssueEventRepository(db)
         self._db = db
         self._registry = registry or IntegrationTaskRegistry
 
-    async def list_states(self, *, integration: Optional[str] = None) -> list[IntegrationStateRecord]:
+    async def list_states(
+        self, *, integration: Optional[str] = None
+    ) -> list[IntegrationStateRecord]:
         states = await self._state_repo.list_states(integration=integration)
         return [self._state_to_record(state) for state in states]
 

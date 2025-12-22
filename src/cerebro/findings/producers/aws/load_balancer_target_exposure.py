@@ -190,9 +190,7 @@ class AwsLoadBalancerTargetExposureProducer(BaseAWSProducer):
                         f"with {reason_text}"
                     )
             else:
-                exposure_targets = cast(
-                    list[str], exposure.get("publicTargets") or []
-                )
+                exposure_targets = cast(list[str], exposure.get("publicTargets") or [])
                 joined_targets = ", ".join(exposure_targets)
                 summary_parts.append(
                     "listener "

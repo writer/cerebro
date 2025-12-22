@@ -33,6 +33,7 @@ class AgentAuditEvent(Base):
     Separate from core AuditEvent table which handles provider-generated audit logs.
     This table is org-scoped while AuditEvent is account-scoped.
     """
+
     __tablename__ = "agent_audit_events"
 
     event_id: Mapped[UUID] = mapped_column(
@@ -73,7 +74,9 @@ class AgentAuditEvent(Base):
     )
 
     # Detailed event data
-    event_data: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    event_data: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
 
     # Performance tracking
     execution_time_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

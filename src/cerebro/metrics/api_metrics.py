@@ -77,10 +77,14 @@ class APIMetricsRecorder:
             "method": sample.method,
             "path_template": sample.path_template,
         }
-        _API_REQUEST_LATENCY_SECONDS.labels(**labels).observe(sample.duration_ms / 1000.0)
+        _API_REQUEST_LATENCY_SECONDS.labels(**labels).observe(
+            sample.duration_ms / 1000.0
+        )
         _API_REQUEST_TOTAL.labels(status_code=str(sample.status_code), **labels).inc()
 
-    def record(self, *, duration_ms: float, status_code: int, method: str, path_template: str) -> None:
+    def record(
+        self, *, duration_ms: float, status_code: int, method: str, path_template: str
+    ) -> None:
         """Record a single API request sample."""
 
         sample = _RequestSample(
@@ -121,12 +125,16 @@ class APIMetricsRecorder:
             durations = sorted(sample.duration_ms for sample in self._samples)
             p95 = self._percentile(durations, 0.95)
 
-            error_count = sum(1 for sample in self._samples if sample.status_code >= 500)
+            error_count = sum(
+                1 for sample in self._samples if sample.status_code >= 500
+            )
             window_minutes = self._window_seconds / 60.0
             rpm = count / window_minutes if window_minutes else float(count)
             error_rate = error_count / count if count else 0.0
 
-            endpoint_counts = Counter((sample.method, sample.path_template) for sample in self._samples)
+            endpoint_counts = Counter(
+                (sample.method, sample.path_template) for sample in self._samples
+            )
             top_endpoints = [
                 {
                     "method": method,

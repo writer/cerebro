@@ -15,35 +15,36 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import List, Dict, Any
 
+
 def generate_critical_iam_scenario() -> Dict[str, Any]:
     """Generate critical IAM scenario with overprivileged service accounts."""
-    
+
     # Organization
     org_id = uuid4()
     org = {
         "org_id": org_id,
         "name": "TechCorp Industries",
-        "created_at": datetime.now() - timedelta(days=365)
+        "created_at": datetime.now() - timedelta(days=365),
     }
-    
+
     # AWS Production Account
     aws_prod_account = {
         "account_id": uuid4(),
         "org_id": org_id,
         "provider": "aws",
         "external_id": "123456789012",
-        "display_name": "AWS Production"
+        "display_name": "AWS Production",
     }
-    
+
     # GCP Production Project
     gcp_prod_account = {
         "account_id": uuid4(),
         "org_id": org_id,
         "provider": "gcp",
         "external_id": "techcorp-prod-2024",
-        "display_name": "GCP Production"
+        "display_name": "GCP Production",
     }
-    
+
     # Critical Service Account - Analytics Pipeline
     analytics_service_account = {
         "principal_id": uuid4(),
@@ -53,9 +54,9 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
         "external_id": "analytics-pipeline-sa",
         "email": "analytics-pipeline@techcorp.iam.gserviceaccount.com",
         "display_name": "Analytics Pipeline Service Account",
-        "is_human": False
+        "is_human": False,
     }
-    
+
     # Overprivileged IAM Edges
     now = datetime.now()
     iam_edges = [
@@ -70,7 +71,7 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
             "via": "AdministratorAccess",
             "effective_at": now - timedelta(days=120),
             "expires_at": None,
-            "is_admin": True
+            "is_admin": True,
         },
         # S3 Full access - Used but excessive
         {
@@ -83,7 +84,7 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
             "via": "S3FullAccess",
             "effective_at": now - timedelta(days=120),
             "expires_at": None,
-            "is_admin": False
+            "is_admin": False,
         },
         # EC2 Full access - UNUSED for 90 days
         {
@@ -96,10 +97,10 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
             "via": "EC2FullAccess",
             "effective_at": now - timedelta(days=120),
             "expires_at": None,
-            "is_admin": False
-        }
+            "is_admin": False,
+        },
     ]
-    
+
     # Critical Resources
     prod_database = {
         "resource_id": uuid4(),
@@ -109,9 +110,9 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
         "external_id": "prod-customer-db",
         "name": "Production Customer Database",
         "parent_external_id": None,
-        "created_at": now - timedelta(days=200)
+        "created_at": now - timedelta(days=200),
     }
-    
+
     # Critical Findings
     findings = [
         {
@@ -136,8 +137,8 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
                 "unused_duration_days": 93,
                 "blast_radius_score": 95,
                 "affected_resources": 1247,
-                "similar_issues": 3
-            }
+                "similar_issues": 3,
+            },
         },
         {
             "finding_id": uuid4(),
@@ -150,7 +151,7 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
             "principal_id": analytics_service_account["principal_id"],
             "first_seen": now - timedelta(days=2),
             "last_seen": now,
-            "status": "open", 
+            "status": "open",
             "severity": "high",
             "fingerprint": "direct-database-access-service-account",
             "title": "Service Account Has Direct Database Access",
@@ -159,11 +160,11 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
                 "database_permissions": ["rds:Connect", "rds:Describe*"],
                 "customer_data_access": True,
                 "encryption_bypass": True,
-                "audit_trail_gaps": ["direct_connection_logs"]
-            }
-        }
+                "audit_trail_gaps": ["direct_connection_logs"],
+            },
+        },
     ]
-    
+
     # Supporting Rules
     rules = [
         {
@@ -187,10 +188,10 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
             "mitre_attack": ["T1098", "T1078"],
             "version": 1,
             "is_active": True,
-            "created_at": now - timedelta(days=30)
+            "created_at": now - timedelta(days=30),
         }
     ]
-    
+
     return {
         "scenario_name": "Critical IAM Finding",
         "organization": org,
@@ -205,33 +206,41 @@ def generate_critical_iam_scenario() -> Dict[str, Any]:
             "business_impact": "Potential for complete AWS account compromise",
             "remediation_effort": "2-4 hours",
             "stakeholders": ["Security Team", "DevOps", "Analytics Team"],
-            "compliance_risk": "SOX, PCI DSS violations if exploited"
+            "compliance_risk": "SOX, PCI DSS violations if exploited",
         },
         "agent_prompts": [
             "What are the most critical IAM findings that need immediate attention?",
             "Show me service accounts with administrative access",
             "Identify unused permissions that can be removed",
             "What's the blast radius if this service account is compromised?",
-            "Generate a remediation plan for overprivileged service accounts"
-        ]
+            "Generate a remediation plan for overprivileged service accounts",
+        ],
     }
+
 
 def print_scenario_summary(scenario: Dict[str, Any]):
     """Print a human-readable summary of the scenario."""
     print(f"=== {scenario['scenario_name']} ===")
     print(f"Organization: {scenario['organization']['name']}")
-    print(f"Accounts: {len(scenario['accounts'])} ({', '.join([a['provider'] for a in scenario['accounts']])})")
-    print(f"Critical Findings: {len([f for f in scenario['findings'] if f['severity'] == 'critical'])}")
-    print(f"High Findings: {len([f for f in scenario['findings'] if f['severity'] == 'high'])}")
+    print(
+        f"Accounts: {len(scenario['accounts'])} ({', '.join([a['provider'] for a in scenario['accounts']])})"
+    )
+    print(
+        f"Critical Findings: {len([f for f in scenario['findings'] if f['severity'] == 'critical'])}"
+    )
+    print(
+        f"High Findings: {len([f for f in scenario['findings'] if f['severity'] == 'high'])}"
+    )
     print(f"Investigation Priority: {scenario['investigation_notes']['priority']}")
     print(f"Business Impact: {scenario['investigation_notes']['business_impact']}")
     print()
-    
+
     print("Top Findings:")
-    for finding in scenario['findings']:
+    for finding in scenario["findings"]:
         print(f"  • [{finding['severity'].upper()}] {finding['title']}")
         print(f"    {finding['summary'][:100]}...")
     print()
+
 
 if __name__ == "__main__":
     scenario = generate_critical_iam_scenario()

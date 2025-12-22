@@ -10,6 +10,7 @@ import structlog
 
 from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.models import AgentSession, AgentType
+
 try:  # pragma: no cover - optional SDK
     from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
 except ImportError:  # pragma: no cover
@@ -29,8 +30,8 @@ class AgentRuntimeFacade:
 
     def __init__(self, default_runtime: Optional[str] = None) -> None:
         self.default_runtime: RuntimeKey = (
-            (default_runtime or settings.agent_default_runtime).lower()
-        )
+            default_runtime or settings.agent_default_runtime
+        ).lower()
         self._runtimes: Dict[RuntimeKey, Any] = {}
 
     async def create_session(
@@ -149,7 +150,9 @@ class AgentRuntimeFacade:
             message=message,
         )
 
-        desired_runtime = self._select_runtime(session.agent_type, context_snapshot, skill_tags)
+        desired_runtime = self._select_runtime(
+            session.agent_type, context_snapshot, skill_tags
+        )
         current_runtime = self._normalize_key(
             session.context.get("_runtime_engine") or self.default_runtime
         )
@@ -234,7 +237,7 @@ class AgentRuntimeFacade:
         finding_ids = context.get("finding_ids") or []
         incident_id = context.get("incident_id")
         remediation_goal = context.get("remediation_goal")
-        requested_tools = (context.get("requested_tools") or [])
+        requested_tools = context.get("requested_tools") or []
 
         if finding_ids:
             tags.append("analysis")

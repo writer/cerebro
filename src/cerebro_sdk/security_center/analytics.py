@@ -41,7 +41,9 @@ def _coerce_number(value: object, warnings: list[str], context: str) -> float | 
     return number
 
 
-def _classify_review_status(days: int | None) -> Literal["on_track", "due_soon", "overdue"]:
+def _classify_review_status(
+    days: int | None,
+) -> Literal["on_track", "due_soon", "overdue"]:
     if days is None:
         return "on_track"
     if days < 0:
@@ -222,8 +224,12 @@ def assess_vendor_health(
 ) -> VendorHealthAssessment:
     timestamp = _now(now)
     warnings: list[str] = []
-    inherent = _coerce_number(vendor.inherent_risk_score, warnings, f"vendor {vendor.vendor_id} inherent risk")
-    residual = _coerce_number(vendor.residual_risk_score, warnings, f"vendor {vendor.vendor_id} residual risk")
+    inherent = _coerce_number(
+        vendor.inherent_risk_score, warnings, f"vendor {vendor.vendor_id} inherent risk"
+    )
+    residual = _coerce_number(
+        vendor.residual_risk_score, warnings, f"vendor {vendor.vendor_id} residual risk"
+    )
     risk_delta = None
     if inherent is not None and residual is not None:
         risk_delta = residual - inherent
@@ -251,7 +257,13 @@ def summarize_vendor_portfolio(
     now: datetime | None = None,
 ) -> VendorPortfolioSummary:
     if not vendors:
-        return VendorPortfolioSummary(total=0, by_risk_level={}, overdue_reviews=0, due_soon_reviews=0, average_residual_risk=None)
+        return VendorPortfolioSummary(
+            total=0,
+            by_risk_level={},
+            overdue_reviews=0,
+            due_soon_reviews=0,
+            average_residual_risk=None,
+        )
 
     timestamp = _now(now)
     by_risk: dict[str, int] = {}
@@ -290,11 +302,19 @@ def assess_customer_health(
 ) -> CustomerHealthAssessment:
     timestamp = _now(now)
     warnings: list[str] = []
-    health_score = _coerce_number(customer.health_score, warnings, f"customer {customer.customer_id} health")
-    churn_risk = _coerce_number(customer.churn_risk_score, warnings, f"customer {customer.customer_id} churn risk")
+    health_score = _coerce_number(
+        customer.health_score, warnings, f"customer {customer.customer_id} health"
+    )
+    churn_risk = _coerce_number(
+        customer.churn_risk_score,
+        warnings,
+        f"customer {customer.customer_id} churn risk",
+    )
 
     last_engagement = _ensure_datetime(customer.last_engagement_at)
-    engagement_gap = _days_between(last_engagement, timestamp) if last_engagement else None
+    engagement_gap = (
+        _days_between(last_engagement, timestamp) if last_engagement else None
+    )
     next_qbr = _ensure_datetime(customer.next_qbr_at)
     next_qbr_in = _days_between(timestamp, next_qbr) if next_qbr else None
 
@@ -316,7 +336,13 @@ def summarize_customer_portfolio(
     now: datetime | None = None,
 ) -> CustomerPortfolioSummary:
     if not customers:
-        return CustomerPortfolioSummary(total=0, average_health_score=None, average_churn_risk=None, by_segment={}, at_risk_count=0)
+        return CustomerPortfolioSummary(
+            total=0,
+            average_health_score=None,
+            average_churn_risk=None,
+            by_segment={},
+            at_risk_count=0,
+        )
 
     timestamp = _now(now)
     by_segment: dict[str, int] = {}
@@ -371,9 +397,15 @@ def build_vendor_risk_dashboard(
     timestamp = _now(now)
     summary = summarize_vendor_portfolio(vendors, timestamp)
     assessments = [assess_vendor_health(vendor, timestamp) for vendor in vendors]
-    warnings = [warning for assessment in assessments for warning in assessment.warnings]
+    warnings = [
+        warning for assessment in assessments for warning in assessment.warnings
+    ]
 
-    high_risk = [assessment for assessment in assessments if _normalize(assessment.risk_level) == "high"]
+    high_risk = [
+        assessment
+        for assessment in assessments
+        if _normalize(assessment.risk_level) == "high"
+    ]
     critical = [
         assessment
         for assessment in assessments
@@ -381,7 +413,9 @@ def build_vendor_risk_dashboard(
         or _normalize(assessment.risk_level) == "high"
         or _normalize(assessment.business_criticality) == "high"
     ]
-    critical.sort(key=lambda assessment: assessment.residual_risk_score or 0.0, reverse=True)
+    critical.sort(
+        key=lambda assessment: assessment.residual_risk_score or 0.0, reverse=True
+    )
     critical = critical[:critical_limit]
 
     kpis = VendorRiskKpis(
@@ -411,8 +445,12 @@ def build_customer_risk_dashboard(
 ) -> CustomerRiskDashboard:
     timestamp = _now(now)
     summary = summarize_customer_portfolio(customers, timestamp)
-    assessments = [assess_customer_health(customer, timestamp) for customer in customers]
-    warnings = [warning for assessment in assessments for warning in assessment.warnings]
+    assessments = [
+        assess_customer_health(customer, timestamp) for customer in customers
+    ]
+    warnings = [
+        warning for assessment in assessments for warning in assessment.warnings
+    ]
 
     by_band: dict[str, int] = {}
     for customer in customers:
@@ -424,9 +462,14 @@ def build_customer_risk_dashboard(
         for assessment in assessments
         if _normalize(assessment.health_band) in {"at_risk", "critical"}
         or (assessment.health_score is not None and assessment.health_score < 0.6)
-        or (assessment.churn_risk_score is not None and assessment.churn_risk_score >= 0.5)
+        or (
+            assessment.churn_risk_score is not None
+            and assessment.churn_risk_score >= 0.5
+        )
     ]
-    at_risk_customers.sort(key=lambda assessment: assessment.churn_risk_score or 0.0, reverse=True)
+    at_risk_customers.sort(
+        key=lambda assessment: assessment.churn_risk_score or 0.0, reverse=True
+    )
     at_risk_customers = at_risk_customers[:at_risk_limit]
 
     healthy_count = by_band.get("healthy", 0)
@@ -457,9 +500,16 @@ def _compute_change(values: Iterable[float | None]) -> float | None:
     return filtered[-1] - filtered[0]
 
 
-def _filter_points_within(points: Sequence[Mapping[str, object]], now: datetime, window_seconds: int) -> list[Mapping[str, object]]:
+def _filter_points_within(
+    points: Sequence[Mapping[str, object]], now: datetime, window_seconds: int
+) -> list[Mapping[str, object]]:
     threshold = now.timestamp() - window_seconds
-    return [point for point in points if isinstance(point.get("timestamp"), datetime) and point["timestamp"].timestamp() >= threshold]
+    return [
+        point
+        for point in points
+        if isinstance(point.get("timestamp"), datetime)
+        and point["timestamp"].timestamp() >= threshold
+    ]
 
 
 def _derive_direction(
@@ -475,7 +525,9 @@ def _derive_direction(
     return "improving" if change < 0 else "declining"
 
 
-def compute_vendor_portfolio_trend(snapshots: Sequence[VendorPortfolioSnapshot]) -> VendorTrendSummary:
+def compute_vendor_portfolio_trend(
+    snapshots: Sequence[VendorPortfolioSnapshot],
+) -> VendorTrendSummary:
     points: list[VendorTrendPoint] = []
     for snapshot in sorted(snapshots, key=lambda entry: entry.timestamp):
         summary = summarize_vendor_portfolio(snapshot.vendors, snapshot.timestamp)
@@ -491,10 +543,14 @@ def compute_vendor_portfolio_trend(snapshots: Sequence[VendorPortfolioSnapshot])
 
     residual_change = _compute_change([point.average_residual_risk for point in points])
     direction = _derive_direction(residual_change, "lower_is_better")
-    return VendorTrendSummary(points=points, residual_risk_change=residual_change, direction=direction)
+    return VendorTrendSummary(
+        points=points, residual_risk_change=residual_change, direction=direction
+    )
 
 
-def compute_customer_health_trend(snapshots: Sequence[CustomerHealthSnapshot]) -> CustomerTrendSummary:
+def compute_customer_health_trend(
+    snapshots: Sequence[CustomerHealthSnapshot],
+) -> CustomerTrendSummary:
     points: list[CustomerTrendPoint] = []
     for snapshot in sorted(snapshots, key=lambda entry: entry.timestamp):
         summary = summarize_customer_portfolio(snapshot.customers, snapshot.timestamp)
@@ -510,7 +566,9 @@ def compute_customer_health_trend(snapshots: Sequence[CustomerHealthSnapshot]) -
 
     health_change = _compute_change([point.average_health_score for point in points])
     direction = _derive_direction(health_change, "higher_is_better")
-    return CustomerTrendSummary(points=points, health_score_change=health_change, direction=direction)
+    return CustomerTrendSummary(
+        points=points, health_score_change=health_change, direction=direction
+    )
 
 
 def analyze_vendor_snapshots(
@@ -527,8 +585,12 @@ def analyze_vendor_snapshots(
             for point in summary.points
             if point.timestamp.timestamp() >= timestamp.timestamp() - days * DAY_SECONDS
         ]
-        residual_change = _compute_change([point.average_residual_risk for point in window_points])
-        overdue_change = _compute_change([float(point.overdue_reviews) for point in window_points])
+        residual_change = _compute_change(
+            [point.average_residual_risk for point in window_points]
+        )
+        overdue_change = _compute_change(
+            [float(point.overdue_reviews) for point in window_points]
+        )
         window = VendorTrendWindow(
             window=cast(Literal["7d", "30d"], f"{days}d"),
             residual_risk_change=residual_change,
@@ -540,7 +602,11 @@ def analyze_vendor_snapshots(
     alerts: list[TrendAlert] = []
     window_map = {window.window: window for window in windows}
     last_30 = window_map.get("30d")
-    if last_30 and last_30.residual_risk_change is not None and last_30.residual_risk_change > 0.05:
+    if (
+        last_30
+        and last_30.residual_risk_change is not None
+        and last_30.residual_risk_change > 0.05
+    ):
         alerts.append(
             TrendAlert(
                 severity="warning",
@@ -548,17 +614,27 @@ def analyze_vendor_snapshots(
                 message=f"Vendor residual risk increased by {last_30.residual_risk_change * 100:.1f}pts in 30d",
             )
         )
-    if last_30 and last_30.overdue_review_change is not None and last_30.overdue_review_change > 0:
+    if (
+        last_30
+        and last_30.overdue_review_change is not None
+        and last_30.overdue_review_change > 0
+    ):
         alerts.append(
             TrendAlert(
-                severity="critical" if last_30.overdue_review_change >= 3 else "warning",
+                severity=(
+                    "critical" if last_30.overdue_review_change >= 3 else "warning"
+                ),
                 metric="vendor_overdue_reviews",
                 message=f"{int(last_30.overdue_review_change)} additional vendor reviews overdue over last 30d",
             )
         )
 
     last_7 = window_map.get("7d")
-    if last_7 and last_7.overdue_review_change is not None and last_7.overdue_review_change > 0:
+    if (
+        last_7
+        and last_7.overdue_review_change is not None
+        and last_7.overdue_review_change > 0
+    ):
         alerts.append(
             TrendAlert(
                 severity="warning",
@@ -584,8 +660,12 @@ def analyze_customer_snapshots(
             for point in summary.points
             if point.timestamp.timestamp() >= timestamp.timestamp() - days * DAY_SECONDS
         ]
-        health_change = _compute_change([point.average_health_score for point in window_points])
-        at_risk_change = _compute_change([float(point.at_risk_count) for point in window_points])
+        health_change = _compute_change(
+            [point.average_health_score for point in window_points]
+        )
+        at_risk_change = _compute_change(
+            [float(point.at_risk_count) for point in window_points]
+        )
         window = CustomerTrendWindow(
             window=cast(Literal["7d", "30d"], f"{days}d"),
             health_score_change=health_change,
@@ -597,7 +677,11 @@ def analyze_customer_snapshots(
     alerts: list[TrendAlert] = []
     window_map = {window.window: window for window in windows}
     last_30 = window_map.get("30d")
-    if last_30 and last_30.health_score_change is not None and last_30.health_score_change < -0.05:
+    if (
+        last_30
+        and last_30.health_score_change is not None
+        and last_30.health_score_change < -0.05
+    ):
         alerts.append(
             TrendAlert(
                 severity="warning",

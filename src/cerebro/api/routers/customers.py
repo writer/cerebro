@@ -27,7 +27,9 @@ class CustomerCreateRequest(BaseModel):
 
     name: str = Field(..., description="Customer name")
     account_manager: str = Field(..., description="Primary account manager email")
-    primary_contact: Optional[str] = Field(None, description="Primary customer contact email")
+    primary_contact: Optional[str] = Field(
+        None, description="Primary customer contact email"
+    )
     segment: str = Field(..., description="Customer segment identifier")
     industry: Optional[str] = None
     region: Optional[str] = None
@@ -99,7 +101,7 @@ def _serialize_customer(customer) -> CustomerResponse:
 async def register_customer(
     org_id: UUID,
     request: CustomerCreateRequest,
-    db = Depends(get_db),
+    db=Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Register a customer in the success registry."""
@@ -146,7 +148,7 @@ async def register_customer(
 @router.get("/organizations/{org_id}/customers")
 async def list_customers(
     org_id: UUID,
-    db = Depends(get_db),
+    db=Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """List customers with health summaries."""
@@ -157,12 +159,16 @@ async def list_customers(
 
     registry: CustomerRegistry = get_customer_registry()
     customers = [
-        customer for customer in registry.customers.values() if customer.org_id in {None, str(org_id)}
+        customer
+        for customer in registry.customers.values()
+        if customer.org_id in {None, str(org_id)}
     ]
 
     return {
         "count": len(customers),
-        "customers": [_serialize_customer(customer).model_dump() for customer in customers],
+        "customers": [
+            _serialize_customer(customer).model_dump() for customer in customers
+        ],
     }
 
 
@@ -170,7 +176,7 @@ async def list_customers(
 async def get_customer(
     org_id: UUID,
     customer_id: str,
-    db = Depends(get_db),
+    db=Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Retrieve a single customer record."""

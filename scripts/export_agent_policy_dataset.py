@@ -83,7 +83,9 @@ async def export_dataset(
     now = datetime.now(timezone.utc)
     filters = []
     if window_days > 0:
-        filters.append(FrontendObservationEvent.occurred_at >= now - timedelta(days=window_days))
+        filters.append(
+            FrontendObservationEvent.occurred_at >= now - timedelta(days=window_days)
+        )
 
     stmt = (
         select(FrontendObservationEvent)
@@ -99,9 +101,10 @@ async def export_dataset(
     total_events = 0
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    async with async_session_factory() as session, output_path.open(
-        "w", encoding="utf-8"
-    ) as handle:
+    async with (
+        async_session_factory() as session,
+        output_path.open("w", encoding="utf-8") as handle,
+    ):
         stream = await session.stream(stmt)
 
         current_session_id: Optional[str] = None

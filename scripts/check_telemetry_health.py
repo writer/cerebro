@@ -58,7 +58,9 @@ async def _run(args: argparse.Namespace) -> int:
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(snapshot.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(snapshot.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
         print(f"Snapshot written to {args.output}")
 
     issues = evaluate_health_thresholds(

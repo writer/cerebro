@@ -24,17 +24,13 @@ logger = structlog.get_logger(__name__)
 class SmartSummarizerInput(BaseModel):
     """Input parameters for smart summarization."""
 
-    finding_id: str = Field(
-        ...,
-        description="Finding ID to summarize"
-    )
+    finding_id: str = Field(..., description="Finding ID to summarize")
     audience: str = Field(
         default="technical",
-        description="Target audience: 'technical' (SOC analysts), 'executive' (leadership), or 'developer' (eng team)"
+        description="Target audience: 'technical' (SOC analysts), 'executive' (leadership), or 'developer' (eng team)",
     )
     include_remediation: bool = Field(
-        default=True,
-        description="Include step-by-step remediation guidance"
+        default=True, description="Include step-by-step remediation guidance"
     )
 
 
@@ -70,7 +66,9 @@ class SmartFindingSummarizerTool(StructuredTool):
     """
 
     tool_name = "summarize_finding"
-    tool_description = "Explain security findings in plain English tailored to different audiences"
+    tool_description = (
+        "Explain security findings in plain English tailored to different audiences"
+    )
     tool_version = "1.0.0"
     input_model = SmartSummarizerInput
     output_model = SmartSummarizerOutput
@@ -113,8 +111,7 @@ class SmartFindingSummarizerTool(StructuredTool):
 
                 if not finding:
                     return ToolResult(
-                        success=False,
-                        error=f"Finding {finding_id} not found"
+                        success=False, error=f"Finding {finding_id} not found"
                     )
 
                 # Generate plain English summary based on audience
@@ -129,23 +126,24 @@ class SmartFindingSummarizerTool(StructuredTool):
                     "resource_id": finding.resource_id,
                     "provider": finding.provider,
                     "rule_id": str(finding.rule_id) if finding.rule_id else None,
-                    "first_seen": finding.first_seen.isoformat() if finding.first_seen else None,
-                    "metadata": finding.metadata or {}
+                    "first_seen": (
+                        finding.first_seen.isoformat() if finding.first_seen else None
+                    ),
+                    "metadata": finding.metadata or {},
                 }
 
                 # Generate remediation steps if requested
                 remediation_steps = None
                 estimated_time = None
                 if include_remediation:
-                    remediation_steps = self._generate_remediation_steps(finding, audience)
+                    remediation_steps = self._generate_remediation_steps(
+                        finding, audience
+                    )
                     estimated_time = self._estimate_remediation_time(finding)
 
                 # Generate audience-tailored explanation
                 tailored_explanation = self._tailor_for_audience(
-                    finding,
-                    audience,
-                    plain_english,
-                    business_impact
+                    finding, audience, plain_english, business_impact
                 )
 
                 output = SmartSummarizerOutput(
@@ -157,7 +155,7 @@ class SmartFindingSummarizerTool(StructuredTool):
                     technical_details=technical_details,
                     remediation_steps=remediation_steps,
                     estimated_remediation_time=estimated_time,
-                    audience_tailored_explanation=tailored_explanation
+                    audience_tailored_explanation=tailored_explanation,
                 )
 
                 logger.info(
@@ -172,15 +170,14 @@ class SmartFindingSummarizerTool(StructuredTool):
                     metadata={
                         "finding_id": finding_id,
                         "severity": finding.severity,
-                        "audience": audience
-                    }
+                        "audience": audience,
+                    },
                 )
 
         except Exception as e:
             logger.error("Smart summarization failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False,
-                error=f"Smart summarization failed: {str(e)}"
+                success=False, error=f"Smart summarization failed: {str(e)}"
             )
 
     def _generate_summary(self, finding: Finding, audience: str) -> str:
@@ -222,28 +219,34 @@ class SmartFindingSummarizerTool(StructuredTool):
             "critical": {
                 "executive": "This represents an immediate threat to business operations and could lead to data breaches, regulatory fines, or service disruption. Immediate action required.",
                 "technical": "Critical security vulnerability that could be exploited to compromise systems, exfiltrate data, or cause significant service impact.",
-                "developer": "This is a severe security issue that could allow attackers to access sensitive data or take down services. Needs urgent fixing."
+                "developer": "This is a severe security issue that could allow attackers to access sensitive data or take down services. Needs urgent fixing.",
             },
             "high": {
                 "executive": "This is a serious security gap that increases risk of data exposure or unauthorized access. Should be addressed within days.",
                 "technical": "High-severity finding that represents significant security risk if exploited. Recommended remediation within 7 days.",
-                "developer": "This security flaw could be exploited by attackers to gain unauthorized access or privileges. Fix within the sprint."
+                "developer": "This security flaw could be exploited by attackers to gain unauthorized access or privileges. Fix within the sprint.",
             },
             "medium": {
                 "executive": "This security issue should be addressed to maintain our security posture, though not immediately critical.",
                 "technical": "Medium-severity finding that should be remediated to reduce attack surface. Standard SLA applies.",
-                "developer": "This is a security concern that should be fixed in the next few weeks to maintain good security hygiene."
+                "developer": "This is a security concern that should be fixed in the next few weeks to maintain good security hygiene.",
             },
             "low": {
                 "executive": "Minor security finding for tracking. Can be addressed as part of regular maintenance.",
                 "technical": "Low-severity finding for awareness. Address as capacity allows.",
-                "developer": "Low-priority security item. Add to backlog for future improvement."
-            }
+                "developer": "Low-priority security item. Add to backlog for future improvement.",
+            },
         }
 
-        audience_key = audience if audience in ["executive", "technical", "developer"] else "technical"
+        audience_key = (
+            audience
+            if audience in ["executive", "technical", "developer"]
+            else "technical"
+        )
 
-        return impact_templates.get(severity.lower(), impact_templates["medium"])[audience_key]
+        return impact_templates.get(severity.lower(), impact_templates["medium"])[
+            audience_key
+        ]
 
     def _generate_remediation_steps(self, finding: Finding, audience: str) -> List[str]:
         """Generate step-by-step remediation instructions."""
@@ -257,7 +260,7 @@ class SmartFindingSummarizerTool(StructuredTool):
                 "Remove any public access grants unless explicitly required for business purposes",
                 "Enable bucket encryption if not already configured",
                 "Set up access logging to monitor future access patterns",
-                "Verify that MFA Delete is enabled for production buckets"
+                "Verify that MFA Delete is enabled for production buckets",
             ]
         elif finding.resource_type and "iam" in finding.resource_type.lower():
             steps = [
@@ -265,15 +268,18 @@ class SmartFindingSummarizerTool(StructuredTool):
                 "Apply the principle of least privilege - remove unnecessary permissions",
                 "Check for overly broad wildcard (*) permissions",
                 "Set up permission boundaries if not already in place",
-                "Document the business justification for remaining permissions"
+                "Document the business justification for remaining permissions",
             ]
-        elif "oauth" in str(finding.title).lower() or "oauth" in str(finding.description).lower():
+        elif (
+            "oauth" in str(finding.title).lower()
+            or "oauth" in str(finding.description).lower()
+        ):
             steps = [
                 "Review the OAuth app and its requested scopes",
                 "Verify the app's legitimacy and business necessity",
                 "Revoke the app's access if it's not actively used",
                 "Implement OAuth app approval workflow if not already in place",
-                "Educate users about OAuth app risks"
+                "Educate users about OAuth app risks",
             ]
         else:
             # Generic remediation steps
@@ -282,7 +288,7 @@ class SmartFindingSummarizerTool(StructuredTool):
                 "Identify the specific security gap or misconfiguration",
                 "Apply security best practices for this resource type",
                 "Test the changes in a non-production environment first",
-                "Document the remediation for future reference"
+                "Document the remediation for future reference",
             ]
 
         # Tailor language to audience
@@ -291,7 +297,7 @@ class SmartFindingSummarizerTool(StructuredTool):
                 "Assign this to the appropriate security or engineering team",
                 "Set a deadline based on severity level",
                 "Track progress through your ticketing system",
-                "Verify completion with the security team"
+                "Verify completion with the security team",
             ]
 
         return steps
@@ -305,17 +311,13 @@ class SmartFindingSummarizerTool(StructuredTool):
             "critical": "30 minutes - 2 hours (immediate priority)",
             "high": "2-4 hours (same day)",
             "medium": "4-8 hours (within the week)",
-            "low": "1-2 days (as capacity allows)"
+            "low": "1-2 days (as capacity allows)",
         }
 
         return time_estimates.get(severity.lower(), "2-4 hours")
 
     def _tailor_for_audience(
-        self,
-        finding: Finding,
-        audience: str,
-        plain_summary: str,
-        business_impact: str
+        self, finding: Finding, audience: str, plain_summary: str, business_impact: str
     ) -> str:
         """Generate audience-specific tailored explanation."""
 
@@ -363,7 +365,9 @@ class SmartFindingSummarizerTool(StructuredTool):
         severity = finding.severity or "unknown"
 
         if severity.lower() == "critical":
-            return "Requires immediate attention from security and engineering leadership"
+            return (
+                "Requires immediate attention from security and engineering leadership"
+            )
         elif severity.lower() == "high":
             return "Schedule remediation this week with appropriate teams"
         else:

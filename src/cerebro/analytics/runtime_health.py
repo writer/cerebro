@@ -30,7 +30,9 @@ async def summarize_runtime_health(
     cutoff = now - timedelta(hours=max(hours, 1))
 
     dialect = get_dialect_name(db)
-    runtime_expr = json_text_extract_expr(column_expr="payload", key="runtime", dialect=dialect)
+    runtime_expr = json_text_extract_expr(
+        column_expr="payload", key="runtime", dialect=dialect
+    )
 
     base_stmt = text(
         f"""
@@ -66,7 +68,9 @@ async def summarize_runtime_health(
             "last_seen": last_seen,
         }
 
-    reason_expr = json_text_extract_expr(column_expr="payload", key="reason", dialect=dialect)
+    reason_expr = json_text_extract_expr(
+        column_expr="payload", key="reason", dialect=dialect
+    )
 
     warning_stmt = text(
         f"""

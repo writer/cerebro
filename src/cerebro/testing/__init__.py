@@ -10,11 +10,11 @@ from .test_entities import TestEntityManager, TestEntity
 from .test_execution import TestExecutor, TestResult
 
 __all__ = [
-    'TestRegistry',
-    'SecurityTest',
-    'TestStatus',
-    'TestEntityManager',
-    'TestEntity', 
-    'TestExecutor',
-    'TestResult'
+    "TestRegistry",
+    "SecurityTest",
+    "TestStatus",
+    "TestEntityManager",
+    "TestEntity",
+    "TestExecutor",
+    "TestResult",
 ]

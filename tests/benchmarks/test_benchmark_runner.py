@@ -67,9 +67,7 @@ def test_benchmark_runner_failure(tmp_path: Path) -> None:
                     "duration_ms": 75,
                 }
             ],
-            "assertions": [
-                {"type": "requires_outcome", "value": "SUCCESS"}
-            ],
+            "assertions": [{"type": "requires_outcome", "value": "SUCCESS"}],
         },
     )
 

@@ -187,7 +187,9 @@ def test_kandji_installed_packages_extracted() -> None:
         ],
     }
 
-    telemetry = ingestion._build_host_telemetry(device, collected_at=datetime.now(timezone.utc))
+    telemetry = ingestion._build_host_telemetry(
+        device, collected_at=datetime.now(timezone.utc)
+    )
     assert telemetry is not None
     assert telemetry.installed_packages is not None
     assert telemetry.installed_packages[0].name == "Safari"

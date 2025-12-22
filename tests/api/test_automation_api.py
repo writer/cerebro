@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
 
-from cerebro.automation.alerting import AlertResult, AlertRule, RuleComparison, RuleSeverity
+from cerebro.automation.alerting import (
+    AlertResult,
+    AlertRule,
+    RuleComparison,
+    RuleSeverity,
+)
 from cerebro.automation.telemetry_health import TelemetryHealthSnapshot
 
 
@@ -116,7 +121,9 @@ def test_alerts_preview_filters_rules(monkeypatch, client, admin_token) -> None:
     assert all(rule.rule_id == "low-events" for rule in captured[0])
 
 
-def test_alerts_preview_unknown_rule_returns_empty(monkeypatch, client, admin_token) -> None:
+def test_alerts_preview_unknown_rule_returns_empty(
+    monkeypatch, client, admin_token
+) -> None:
     from cerebro.api.routers import automation
 
     async def fake_collect(*args, **kwargs):

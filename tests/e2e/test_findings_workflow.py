@@ -22,15 +22,15 @@ async def test_list_findings(
     """Test listing findings with various filters."""
     if "Authorization" not in auth_client.headers:
         pytest.skip("Authentication not available")
-    
+
     # Basic listing
     response = await auth_client.get(
         "/api/v1/findings",
         params={"org_id": str(test_org_id)},
     )
-    
+
     assert response.status_code in (200, 403)
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "findings" in data or "items" in data or isinstance(data, list)
@@ -44,7 +44,7 @@ async def test_list_findings_with_severity_filter(
     """Test listing findings filtered by severity."""
     if "Authorization" not in auth_client.headers:
         pytest.skip("Authentication not available")
-    
+
     response = await auth_client.get(
         "/api/v1/findings",
         params={
@@ -52,9 +52,9 @@ async def test_list_findings_with_severity_filter(
             "severity": "critical",
         },
     )
-    
+
     assert response.status_code in (200, 403)
-    
+
     if response.status_code == 200:
         data = response.json()
         if isinstance(data, dict):
@@ -75,7 +75,7 @@ async def test_list_findings_with_provider_filter(
     """Test listing findings filtered by provider."""
     if "Authorization" not in auth_client.headers:
         pytest.skip("Authentication not available")
-    
+
     response = await auth_client.get(
         "/api/v1/findings",
         params={
@@ -83,7 +83,7 @@ async def test_list_findings_with_provider_filter(
             "provider": "aws",
         },
     )
-    
+
     assert response.status_code in (200, 403)
 
     if response.status_code == 200:
@@ -107,8 +107,10 @@ async def test_findings_statistics(
     """Test findings statistics endpoint."""
     if "Authorization" not in auth_client.headers:
         pytest.skip("Authentication not available")
-    
-    response = await auth_client.get(f"/api/v1/findings/organizations/{test_org_id}/stats")
+
+    response = await auth_client.get(
+        f"/api/v1/findings/organizations/{test_org_id}/stats"
+    )
     assert response.status_code in (200, 403)
 
     if response.status_code == 200:

@@ -116,8 +116,12 @@ class AuthSettings(BaseModel):
 
 class IntegrationRetrySettings(BaseModel):
     enabled: bool = Field(default=True, alias="integration_sync_retry_enabled")
-    cooldown_seconds: int = Field(default=3600, alias="integration_sync_retry_cooldown_seconds")
-    lookback_minutes: Optional[int] = Field(default=60, alias="integration_sync_retry_lookback_minutes")
+    cooldown_seconds: int = Field(
+        default=3600, alias="integration_sync_retry_cooldown_seconds"
+    )
+    lookback_minutes: Optional[int] = Field(
+        default=60, alias="integration_sync_retry_lookback_minutes"
+    )
 
     model_config = SettingsConfigDict(populate_by_name=True)
 
@@ -180,7 +184,9 @@ class APISettings(BaseModel):
 
     def get_default_rate_limits(self, environment: str) -> List[str]:
         env = environment.lower()
-        return self.api_default_rate_limits_overrides.get(env, self.api_default_rate_limits)
+        return self.api_default_rate_limits_overrides.get(
+            env, self.api_default_rate_limits
+        )
 
 
 class AgentRuntimeSettings(BaseModel):
@@ -359,7 +365,9 @@ class AgentRuntimeSettings(BaseModel):
     def validate_agent_default_runtime(cls, v: str) -> str:
         runtime = v.lower()
         if runtime not in {"claude", "openai"}:
-            raise ValueError("agent_default_runtime must be either 'claude' or 'openai'")
+            raise ValueError(
+                "agent_default_runtime must be either 'claude' or 'openai'"
+            )
         return runtime
 
 
@@ -531,11 +539,7 @@ class Settings(BaseSettings):
             ("operational_alerts", _OPERATIONAL_ALERT_FIELDS),
             ("self_play", _SELF_PLAY_FIELDS),
         ):
-            legacy_section = {
-                key: data.pop(key)
-                for key in field_names
-                if key in data
-            }
+            legacy_section = {key: data.pop(key) for key in field_names if key in data}
             if legacy_section:
                 section_data: Dict[str, Any] = data.setdefault(section_name, {})
                 section_data.update(legacy_section)
@@ -547,7 +551,7 @@ class Settings(BaseSettings):
     # Database (legacy PostgreSQL - deprecated, kept for migration)
     database_url: str = Field(
         default="postgresql://user:password@localhost/cerebro",
-        description="PostgreSQL database URL (deprecated - use DynamoDB tables)"
+        description="PostgreSQL database URL (deprecated - use DynamoDB tables)",
     )
 
     # Analytics warehouse
@@ -559,39 +563,37 @@ class Settings(BaseSettings):
     # DynamoDB Tables
     dynamodb_core_table: str = Field(
         default="cerebro-core",
-        description="DynamoDB table for core entities (orgs, accounts, findings)"
+        description="DynamoDB table for core entities (orgs, accounts, findings)",
     )
     dynamodb_audit_table: str = Field(
         default="cerebro-audit",
-        description="DynamoDB table for audit events and config snapshots"
+        description="DynamoDB table for audit events and config snapshots",
     )
     dynamodb_agents_table: str = Field(
         default="cerebro-agents",
-        description="DynamoDB table for agent sessions, messages, and tools"
+        description="DynamoDB table for agent sessions, messages, and tools",
     )
     dynamodb_notifications_table: str = Field(
         default="cerebro-notifications",
-        description="DynamoDB table for notification configs and delivery logs"
+        description="DynamoDB table for notification configs and delivery logs",
     )
     dynamodb_users_table: str = Field(
-        default="cerebro-users",
-        description="DynamoDB table for user auth and API keys"
+        default="cerebro-users", description="DynamoDB table for user auth and API keys"
     )
     dynamodb_endpoint_url: Optional[str] = Field(
-        default=None,
-        description="DynamoDB endpoint URL (for local development)"
+        default=None, description="DynamoDB endpoint URL (for local development)"
     )
 
     # Security
     auth: AuthSettings = Field(default_factory=AuthSettings)
     api: APISettings = Field(default_factory=APISettings)
-    
+
     # GitHub Integration
     github_token: Optional[str] = Field(
         default=None,
         description="GitHub personal access token used by the GitHub provider",
     )
-    
+
     # AWS Integration
     aws_access_key_id: Optional[str] = Field(
         default=None,
@@ -605,15 +607,13 @@ class Settings(BaseSettings):
         default="us-east-1",
         description="Fallback AWS region when an account does not specify one",
     )
-    
+
     # Google Cloud Integration
     google_application_credentials: Optional[str] = Field(
         default=None, description="Path to GCP service account credentials"
     )
-    gcp_project_id: Optional[str] = Field(
-        default=None, description="GCP project ID"
-    )
-    
+    gcp_project_id: Optional[str] = Field(default=None, description="GCP project ID")
+
     # Google Workspace Integration
     google_workspace_admin_email: Optional[str] = Field(
         default=None, description="Google Workspace admin email"
@@ -643,15 +643,13 @@ class Settings(BaseSettings):
         le=50,
         description="Maximum number of concurrent resource configuration fetches per provider",
     )
-    
+
     # Okta Integration
-    okta_api_token: Optional[str] = Field(
-        default=None, description="Okta API token"
-    )
+    okta_api_token: Optional[str] = Field(default=None, description="Okta API token")
     okta_domain: Optional[str] = Field(
         default=None, description="Okta domain (e.g., company.okta.com)"
     )
-    
+
     # Microsoft 365 Integration
     m365_tenant_id: Optional[str] = Field(
         default=None, description="Microsoft 365 tenant ID"
@@ -688,7 +686,8 @@ class Settings(BaseSettings):
         default=False, description="Enable Kandji device ingestion"
     )
     kandji_api_base_url: Optional[str] = Field(
-        default=None, description="Base URL for the Kandji tenant (https://subdomain.api.kandji.io)"
+        default=None,
+        description="Base URL for the Kandji tenant (https://subdomain.api.kandji.io)",
     )
     kandji_api_token: Optional[str] = Field(
         default=None, description="Kandji API token"
@@ -727,28 +726,30 @@ class Settings(BaseSettings):
         default=0.4,
         description="Coverage ratio threshold below which a critical alert is sent",
     )
-    integration_retry: IntegrationRetrySettings = Field(default_factory=IntegrationRetrySettings)
-    
+    integration_retry: IntegrationRetrySettings = Field(
+        default_factory=IntegrationRetrySettings
+    )
+
     # Logging
     log_level: str = Field(default="INFO", description="Log level")
     log_format: str = Field(default="json", description="Log format")
-    
+
     # Rule Engine
-    cel_cache_size: int = Field(
-        default=1000, description="CEL expression cache size"
-    )
+    cel_cache_size: int = Field(default=1000, description="CEL expression cache size")
     cel_compilation_timeout: int = Field(
         default=30, description="CEL compilation timeout in seconds"
     )
-    
+
     # Claude Code SDK / AI Agents
     anthropic_api_key: Optional[str] = Field(
         default=None, description="Anthropic API key for Claude integration"
     )
     agent: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
-    operational_alerts: OperationalAlertSettings = Field(default_factory=OperationalAlertSettings)
+    operational_alerts: OperationalAlertSettings = Field(
+        default_factory=OperationalAlertSettings
+    )
     self_play: SelfPlaySettings = Field(default_factory=SelfPlaySettings)
-    
+
     # Collection Performance (Phase 1)
     collection_batch_size: int = Field(
         default=500, description="Batch size for database operations during collection"
@@ -756,10 +757,11 @@ class Settings(BaseSettings):
     iam_edge_batch_size: int = Field(
         default=1000, description="Batch size for IAM edge insertions"
     )
-    
+
     # JWT Security (Phase 2)
     jwt_algorithm: str = Field(
-        default="RS256", description="JWT signing algorithm (RS256 recommended for production)"
+        default="RS256",
+        description="JWT signing algorithm (RS256 recommended for production)",
     )
     jwt_rotation_period_hours: int = Field(
         default=24, description="Hours between JWT key rotations"
@@ -826,13 +828,13 @@ class Settings(BaseSettings):
     # Environment and Debug Settings
     environment: str = Field(
         default="development",
-        description="Environment: dev, development, test, testing, production"
+        description="Environment: dev, development, test, testing, production",
     )
     enable_debug_endpoints: bool = Field(
         default=False,
-        description="Enable debug endpoints (should be False in production)"
+        description="Enable debug endpoints (should be False in production)",
     )
-    
+
     # Rate Limiting & Lockout (Phase 3)
     rate_limit_login_per_ip: int = Field(
         default=10, description="Login attempts per IP per minute"
@@ -852,28 +854,27 @@ class Settings(BaseSettings):
     lockout_max_duration_hours: int = Field(
         default=24, description="Maximum lockout duration for repeated offenses"
     )
-    
+
     # Credential Management (Phase 4)
     enable_provider_env_fallback: bool = Field(
-        default=False, description="Allow fallback to environment variables for provider credentials"
+        default=False,
+        description="Allow fallback to environment variables for provider credentials",
     )
     credential_refresh_threshold_hours: int = Field(
         default=1, description="Hours before expiry to refresh credentials"
     )
-    
+
     # Collectors
-    collector_batch_size: int = Field(
-        default=100, description="Collector batch size"
-    )
+    collector_batch_size: int = Field(default=100, description="Collector batch size")
 
     # Notifications
     notification_recipients: List[str] = Field(
         default=["admin@localhost"],
-        description="Email addresses for collection completion and error notifications"
+        description="Email addresses for collection completion and error notifications",
     )
     notification_sender_email: str = Field(
         default="noreply@cerebro.security",
-        description="Sender email address for notifications"
+        description="Sender email address for notifications",
     )
     collector_rate_limit: int = Field(
         default=10, description="Collector rate limit per second"
@@ -881,7 +882,7 @@ class Settings(BaseSettings):
     collector_timeout: int = Field(
         default=300, description="Collector timeout in seconds"
     )
-    
+
     # Redis/Celery Configuration
     redis_url: str = Field(
         default="redis://localhost:6379/0", description="Redis URL for Celery"
@@ -910,12 +911,13 @@ class Settings(BaseSettings):
 
     def get_default_rate_limits(self) -> List[str]:
         return self.api.get_default_rate_limits(self.environment)
-    
+
     # Key Management Service Configuration
     kms_provider: str = Field(
-        default="local", description="KMS provider (aws, gcp, azure, vault, local) - local only for development"
+        default="local",
+        description="KMS provider (aws, gcp, azure, vault, local) - local only for development",
     )
-    
+
     # AWS KMS
     aws_kms_key_id: Optional[str] = Field(
         default=None, description="AWS KMS key ID for envelope encryption"
@@ -923,12 +925,12 @@ class Settings(BaseSettings):
     aws_kms_region: Optional[str] = Field(
         default=None, description="AWS KMS region (defaults to aws_default_region)"
     )
-    
-    # GCP KMS  
+
+    # GCP KMS
     gcp_kms_key_name: Optional[str] = Field(
         default=None, description="GCP KMS key resource name"
     )
-    
+
     # Azure Key Vault
     azure_vault_url: Optional[str] = Field(
         default=None, description="Azure Key Vault URL"
@@ -936,26 +938,24 @@ class Settings(BaseSettings):
     azure_key_name: Optional[str] = Field(
         default=None, description="Azure Key Vault key name"
     )
-    
+
     # HashiCorp Vault
-    vault_url: Optional[str] = Field(
-        default=None, description="Vault server URL"
-    )
+    vault_url: Optional[str] = Field(default=None, description="Vault server URL")
     vault_mount_path: str = Field(
         default="transit", description="Vault transit mount path"
     )
     vault_key_name: Optional[str] = Field(
         default=None, description="Vault transit key name"
     )
-    
-    @field_validator('kms_provider')
+
+    @field_validator("kms_provider")
     @classmethod
     def validate_kms_provider(cls, v):
         """Validate KMS provider is secure for production environments."""
-        environment = os.getenv('ENVIRONMENT', 'development').lower()
+        environment = os.getenv("ENVIRONMENT", "development").lower()
 
         if v == "local":
-            if environment not in ['dev', 'development', 'test', 'testing']:
+            if environment not in ["dev", "development", "test", "testing"]:
                 raise ValueError(
                     "Local KMS provider is INSECURE and not allowed in production. "
                     "Local KMS uses predictable key derivation and is only suitable for development. "
@@ -963,6 +963,7 @@ class Settings(BaseSettings):
                 )
             # Warn even in development
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 "Using local KMS provider with predictable key derivation. "
@@ -970,7 +971,7 @@ class Settings(BaseSettings):
             )
 
         # Validate that the provider is supported
-        valid_providers = {'aws', 'gcp', 'azure', 'vault', 'local'}
+        valid_providers = {"aws", "gcp", "azure", "vault", "local"}
         if v not in valid_providers:
             raise ValueError(
                 f"Invalid KMS provider '{v}'. Must be one of: {', '.join(sorted(valid_providers))}"
@@ -978,47 +979,47 @@ class Settings(BaseSettings):
 
         return v
 
-    @field_validator('enable_provider_env_fallback')
+    @field_validator("enable_provider_env_fallback")
     @classmethod
     def validate_env_fallback(cls, v):
         """Validate provider env fallback is not enabled in production."""
-        environment = os.getenv('ENVIRONMENT', 'development').lower()
-        if v and environment not in ['dev', 'development', 'test', 'testing']:
+        environment = os.getenv("ENVIRONMENT", "development").lower()
+        if v and environment not in ["dev", "development", "test", "testing"]:
             raise ValueError(
                 "Provider environment variable fallback is not allowed in production. "
                 "Store credentials securely using the CredentialService with KMS encryption."
             )
         return v
 
-    @field_validator('enable_debug_endpoints')
+    @field_validator("enable_debug_endpoints")
     @classmethod
     def validate_debug_endpoints(cls, v):
         """Validate debug endpoints are not enabled in production."""
-        environment = os.getenv('ENVIRONMENT', 'development').lower()
-        if v and environment not in ['dev', 'development', 'test', 'testing']:
+        environment = os.getenv("ENVIRONMENT", "development").lower()
+        if v and environment not in ["dev", "development", "test", "testing"]:
             raise ValueError(
                 "Debug endpoints are not allowed in production for security reasons. "
                 "Set ENABLE_DEBUG_ENDPOINTS=false in production environments."
             )
         return v
 
-    @field_validator('auth_cookie_same_site')
+    @field_validator("auth_cookie_same_site")
     @classmethod
     def validate_same_site(cls, v: str) -> str:
-        allowed = {'lax', 'strict', 'none'}
+        allowed = {"lax", "strict", "none"}
         normalized = v.lower()
         if normalized not in allowed:
-            allowed_list = ', '.join(sorted(allowed))
+            allowed_list = ", ".join(sorted(allowed))
             raise ValueError(f"auth_cookie_same_site must be one of: {allowed_list}")
         return normalized
 
-    @field_validator('csrf_cookie_same_site')
+    @field_validator("csrf_cookie_same_site")
     @classmethod
     def validate_csrf_same_site(cls, v: str) -> str:
-        allowed = {'lax', 'strict', 'none'}
+        allowed = {"lax", "strict", "none"}
         normalized = v.lower()
         if normalized not in allowed:
-            allowed_list = ', '.join(sorted(allowed))
+            allowed_list = ", ".join(sorted(allowed))
             raise ValueError(f"csrf_cookie_same_site must be one of: {allowed_list}")
         return normalized
 
@@ -1045,7 +1046,9 @@ class Settings(BaseSettings):
     def _validate_snowflake(self) -> "Settings":
         env = (self.environment or "development").lower()
         if env not in _DEV_ENVIRONMENTS:
-            snowflake_url = (self.snowflake_database_url or os.getenv("SNOWFLAKE_DATABASE_URL") or "").strip()
+            snowflake_url = (
+                self.snowflake_database_url or os.getenv("SNOWFLAKE_DATABASE_URL") or ""
+            ).strip()
             if not snowflake_url:
                 raise ValueError(
                     "SNOWFLAKE_DATABASE_URL must be configured for non-development environments."
@@ -1091,7 +1094,9 @@ class Settings(BaseSettings):
             return getattr(self.operational_alerts, item)
         if item in _SELF_PLAY_FIELDS:
             return getattr(self.self_play, item)
-        raise AttributeError(f"{type(self).__name__!s} object has no attribute {item!r}")
+        raise AttributeError(
+            f"{type(self).__name__!s} object has no attribute {item!r}"
+        )
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in _API_SETTING_FIELDS:

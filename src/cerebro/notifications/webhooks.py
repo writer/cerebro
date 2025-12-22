@@ -1,4 +1,5 @@
 """Generic webhook notification service with Jinja2 templating and HMAC signatures."""
+
 import asyncio
 import hashlib
 import hmac
@@ -34,10 +35,7 @@ class WebhookPayloadTemplates:
         return {
             "event_type": "finding.created",
             "timestamp": "{{ timestamp }}",
-            "organization": {
-                "id": "{{ org_id }}",
-                "name": "{{ org_name }}"
-            },
+            "organization": {"id": "{{ org_id }}", "name": "{{ org_name }}"},
             "finding": {
                 "id": "{{ finding.finding_id }}",
                 "title": "{{ finding.title }}",
@@ -50,8 +48,8 @@ class WebhookPayloadTemplates:
                 "region": "{{ finding.region }}",
                 "compliance_frameworks": "{{ finding.compliance_frameworks | default([]) }}",
                 "ocsf_data": "{{ finding.ocsf_data | default({}) }}",
-                "created_at": "{{ finding.created_at }}"
-            }
+                "created_at": "{{ finding.created_at }}",
+            },
         }
 
     @staticmethod
@@ -60,10 +58,7 @@ class WebhookPayloadTemplates:
         return {
             "event_type": "compliance.check_failed",
             "timestamp": "{{ timestamp }}",
-            "organization": {
-                "id": "{{ org_id }}",
-                "name": "{{ org_name }}"
-            },
+            "organization": {"id": "{{ org_id }}", "name": "{{ org_name }}"},
             "compliance": {
                 "framework": "{{ framework }}",
                 "control_id": "{{ control_id }}",
@@ -71,8 +66,8 @@ class WebhookPayloadTemplates:
                 "status": "{{ status }}",
                 "severity": "{{ severity }}",
                 "findings_count": "{{ findings_count }}",
-                "account_id": "{{ account_id }}"
-            }
+                "account_id": "{{ account_id }}",
+            },
         }
 
     @staticmethod
@@ -81,17 +76,14 @@ class WebhookPayloadTemplates:
         return {
             "event_type": "monitoring.alert",
             "timestamp": "{{ timestamp }}",
-            "organization": {
-                "id": "{{ org_id }}",
-                "name": "{{ org_name }}"
-            },
+            "organization": {"id": "{{ org_id }}", "name": "{{ org_name }}"},
             "alert": {
                 "title": "{{ alert_title }}",
                 "description": "{{ alert_description }}",
                 "severity": "{{ severity }}",
                 "finding_id": "{{ finding_id | default('') }}",
-                "metadata": "{{ metadata | default({}) }}"
-            }
+                "metadata": "{{ metadata | default({}) }}",
+            },
         }
 
 
@@ -146,13 +138,15 @@ class WebhookNotificationService:
                 select(WebhookConfig).where(
                     WebhookConfig.org_id == org_id,
                     WebhookConfig.enabled == True,
-                    WebhookConfig.event_types.contains(["finding.created"])
+                    WebhookConfig.event_types.contains(["finding.created"]),
                 )
             )
             configs = configs_result.scalars().all()
 
             if not configs:
-                logger.debug(f"No webhook configs found for org {org_id} and event finding.created")
+                logger.debug(
+                    f"No webhook configs found for org {org_id} and event finding.created"
+                )
                 return
 
             # Prepare context for template rendering
@@ -166,14 +160,20 @@ class WebhookNotificationService:
             # Send to each configured webhook
             for config in configs:
                 # Check severity filter
-                if config.severity_filter and finding.severity not in config.severity_filter:
+                if (
+                    config.severity_filter
+                    and finding.severity not in config.severity_filter
+                ):
                     logger.debug(
                         f"Skipping webhook {config.config_id} - severity {finding.severity} not in filter"
                     )
                     continue
 
                 # Use custom template or default
-                payload_template = config.payload_template or WebhookPayloadTemplates.finding_created_template()
+                payload_template = (
+                    config.payload_template
+                    or WebhookPayloadTemplates.finding_created_template()
+                )
 
                 try:
                     payload = self._render_payload(payload_template, context)
@@ -192,7 +192,9 @@ class WebhookNotificationService:
                     )
 
         except Exception as e:
-            logger.error(f"Error sending finding webhook notifications: {e}", exc_info=True)
+            logger.error(
+                f"Error sending finding webhook notifications: {e}", exc_info=True
+            )
 
     async def send_compliance_alert(
         self,
@@ -234,13 +236,15 @@ class WebhookNotificationService:
                 select(WebhookConfig).where(
                     WebhookConfig.org_id == org_id,
                     WebhookConfig.enabled == True,
-                    WebhookConfig.event_types.contains(["compliance.check_failed"])
+                    WebhookConfig.event_types.contains(["compliance.check_failed"]),
                 )
             )
             configs = configs_result.scalars().all()
 
             if not configs:
-                logger.debug(f"No webhook configs found for org {org_id} and event compliance.check_failed")
+                logger.debug(
+                    f"No webhook configs found for org {org_id} and event compliance.check_failed"
+                )
                 return
 
             # Prepare context
@@ -263,7 +267,10 @@ class WebhookNotificationService:
                 if config.severity_filter and severity not in config.severity_filter:
                     continue
 
-                payload_template = config.payload_template or WebhookPayloadTemplates.compliance_failed_template()
+                payload_template = (
+                    config.payload_template
+                    or WebhookPayloadTemplates.compliance_failed_template()
+                )
 
                 try:
                     payload = self._render_payload(payload_template, context)
@@ -276,10 +283,15 @@ class WebhookNotificationService:
                         db=db,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to send webhook notification {config.config_id}: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to send webhook notification {config.config_id}: {e}",
+                        exc_info=True,
+                    )
 
         except Exception as e:
-            logger.error(f"Error sending compliance webhook notifications: {e}", exc_info=True)
+            logger.error(
+                f"Error sending compliance webhook notifications: {e}", exc_info=True
+            )
 
     async def send_monitoring_alert(
         self,
@@ -317,13 +329,15 @@ class WebhookNotificationService:
                 select(WebhookConfig).where(
                     WebhookConfig.org_id == org_id,
                     WebhookConfig.enabled == True,
-                    WebhookConfig.event_types.contains(["monitoring.alert"])
+                    WebhookConfig.event_types.contains(["monitoring.alert"]),
                 )
             )
             configs = configs_result.scalars().all()
 
             if not configs:
-                logger.debug(f"No webhook configs found for org {org_id} and event monitoring.alert")
+                logger.debug(
+                    f"No webhook configs found for org {org_id} and event monitoring.alert"
+                )
                 return
 
             # Prepare context
@@ -344,7 +358,10 @@ class WebhookNotificationService:
                 if config.severity_filter and severity not in config.severity_filter:
                     continue
 
-                payload_template = config.payload_template or WebhookPayloadTemplates.monitoring_alert_template()
+                payload_template = (
+                    config.payload_template
+                    or WebhookPayloadTemplates.monitoring_alert_template()
+                )
 
                 try:
                     payload = self._render_payload(payload_template, context)
@@ -357,12 +374,19 @@ class WebhookNotificationService:
                         db=db,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to send webhook notification {config.config_id}: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to send webhook notification {config.config_id}: {e}",
+                        exc_info=True,
+                    )
 
         except Exception as e:
-            logger.error(f"Error sending monitoring webhook notifications: {e}", exc_info=True)
+            logger.error(
+                f"Error sending monitoring webhook notifications: {e}", exc_info=True
+            )
 
-    def _render_payload(self, template: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    def _render_payload(
+        self, template: Dict[str, Any], context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Render Jinja2 template with context data.
 
         Args:
@@ -372,6 +396,7 @@ class WebhookNotificationService:
         Returns:
             Rendered payload dictionary
         """
+
         def render_value(value: Any, context: Dict[str, Any]) -> Any:
             """Recursively render values in the template."""
             if isinstance(value, str):
@@ -476,7 +501,10 @@ class WebhookNotificationService:
                 signature = self._generate_hmac_signature(payload_str, hmac_secret)
                 headers["X-Webhook-Signature"] = f"sha256={signature}"
             except Exception as e:
-                logger.error(f"HMAC secret decryption failed for config {config.config_id}: {e}", exc_info=True)
+                logger.error(
+                    f"HMAC secret decryption failed for config {config.config_id}: {e}",
+                    exc_info=True,
+                )
                 # Log failure and abort
                 notification = WebhookNotification(
                     notification_id=notification_id,
@@ -555,7 +583,9 @@ class WebhookNotificationService:
                     )
                     db.add(notification)
                     await db.commit()
-                    logger.info(f"Webhook notification sent successfully: {notification_id}")
+                    logger.info(
+                        f"Webhook notification sent successfully: {notification_id}"
+                    )
                     return
                 else:
                     last_error = f"HTTP {response.status_code}: {response.text[:200]}"
@@ -573,8 +603,10 @@ class WebhookNotificationService:
             # Retry logic
             retry_count = attempt
             if attempt < self.max_retries:
-                delay = self.retry_delay_seconds * (2 ** attempt)  # Exponential backoff
-                logger.info(f"Retrying webhook in {delay}s (attempt {attempt + 1}/{self.max_retries})")
+                delay = self.retry_delay_seconds * (2**attempt)  # Exponential backoff
+                logger.info(
+                    f"Retrying webhook in {delay}s (attempt {attempt + 1}/{self.max_retries})"
+                )
                 await asyncio.sleep(delay)
 
         # All retries failed - log failure
@@ -595,7 +627,9 @@ class WebhookNotificationService:
         )
         db.add(notification)
         await db.commit()
-        logger.error(f"Webhook notification failed after {retry_count} retries: {notification_id}")
+        logger.error(
+            f"Webhook notification failed after {retry_count} retries: {notification_id}"
+        )
 
     async def close(self):
         """Close the HTTP client."""

@@ -29,6 +29,7 @@ logger = structlog.get_logger(__name__)
 
 # ==================== Email Templates ====================
 
+
 class EmailTemplates:
     """HTML email templates for security notifications."""
 
@@ -179,6 +180,7 @@ class EmailTemplates:
 
 # ==================== Email Notification Service ====================
 
+
 class EmailNotificationService:
     """Service for sending email notifications with retry logic."""
 
@@ -219,7 +221,9 @@ class EmailNotificationService:
         if not getattr(config, "from_email", None):
             raise ValueError("from_email is required for email notifications")
 
-        if getattr(config, "digest_mode", False) and not getattr(config, "digest_frequency", None):
+        if getattr(config, "digest_mode", False) and not getattr(
+            config, "digest_frequency", None
+        ):
             raise ValueError("digest_frequency is required when digest_mode is enabled")
 
         config.to_emails = recipients
@@ -328,9 +332,7 @@ class EmailNotificationService:
             )
             configs = configs_result.scalars().all()
 
-            alert_configs = [
-                c for c in configs if "monitoring_alert" in c.event_types
-            ]
+            alert_configs = [c for c in configs if "monitoring_alert" in c.event_types]
 
             if not alert_configs:
                 return
@@ -363,7 +365,7 @@ class EmailNotificationService:
         """Send finding email with retry logic."""
         template = Template(EmailTemplates.finding_created_template())
 
-        description = getattr(finding, 'description', None)
+        description = getattr(finding, "description", None)
 
         html_body = template.render(
             org_name=org.name,
@@ -434,7 +436,9 @@ class EmailNotificationService:
         """Send monitoring alert email."""
         template = Template(EmailTemplates.monitoring_alert_template())
 
-        emoji = {"critical": "🚨", "high": "⚠️", "medium": "🔔", "low": "ℹ️"}.get(severity.lower(), "🔔")
+        emoji = {"critical": "🚨", "high": "⚠️", "medium": "🔔", "low": "ℹ️"}.get(
+            severity.lower(), "🔔"
+        )
 
         html_body = template.render(
             org_name=org.name,
@@ -552,7 +556,7 @@ class EmailNotificationService:
             # Retry logic
             if attempt < self.max_retries:
                 retry_count += 1
-                delay = self.retry_delay_seconds * (2 ** attempt)
+                delay = self.retry_delay_seconds * (2**attempt)
                 await asyncio.sleep(delay)
 
         # All retries failed - log failure
@@ -581,12 +585,20 @@ class EmailNotificationService:
         )
 
     def _send_smtp_email(
-        self, config: EmailConfig, subject: str, html_body: str, smtp_password: Optional[str] = None
+        self,
+        config: EmailConfig,
+        subject: str,
+        html_body: str,
+        smtp_password: Optional[str] = None,
     ) -> None:
         """Send email via SMTP (synchronous)."""
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"{config.from_name} <{config.from_email}>" if config.from_name else config.from_email
+        msg["From"] = (
+            f"{config.from_name} <{config.from_email}>"
+            if config.from_name
+            else config.from_email
+        )
         msg["To"] = ", ".join(config.to_emails)
         if config.cc_emails:
             msg["Cc"] = ", ".join(config.cc_emails)

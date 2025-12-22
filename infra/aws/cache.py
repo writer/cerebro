@@ -7,6 +7,7 @@ Creates:
 - Parameter groups for Redis tuning
 - Automatic failover and Multi-AZ
 """
+
 from typing import Optional
 
 import pulumi
@@ -185,15 +186,24 @@ def create_elasticache_redis(
 
     # Add auth token if transit encryption is enabled
     if transit_encryption_enabled and auth_token and not existing_replication_group_id:
+
         def _sanitize(token: str) -> str:
             # ElastiCache AUTH token allows alphanumeric and these symbols: !#$%&()*+,-.:;<=>?@[]^_{|}~
-            allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,-.:;<=>?@[]^_{|}~")
-            sanitized = ''.join(ch for ch in token if ch in allowed)
+            allowed = set(
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,-.:;<=>?@[]^_{|}~"
+            )
+            sanitized = "".join(ch for ch in token if ch in allowed)
             if len(sanitized) < 16:
-                raise ValueError("Redis auth token must be at least 16 characters of allowed charset")
+                raise ValueError(
+                    "Redis auth token must be at least 16 characters of allowed charset"
+                )
             return sanitized
 
-        replication_group_kwargs["auth_token"] = auth_token.apply(_sanitize) if isinstance(auth_token, pulumi.Output) else _sanitize(auth_token)
+        replication_group_kwargs["auth_token"] = (
+            auth_token.apply(_sanitize)
+            if isinstance(auth_token, pulumi.Output)
+            else _sanitize(auth_token)
+        )
 
     # Add KMS encryption if provided
     if kms_key_id and at_rest_encryption_enabled:
@@ -217,7 +227,9 @@ def create_elasticache_redis(
 
     replication_group_opts = None
     if existing_replication_group_id:
-        replication_group_opts = pulumi.ResourceOptions(import_=existing_replication_group_id, protect=True)
+        replication_group_opts = pulumi.ResourceOptions(
+            import_=existing_replication_group_id, protect=True
+        )
 
     replication_group = aws.elasticache.ReplicationGroup(
         f"{name}-redis",

@@ -8,7 +8,7 @@ and incident response capabilities.
 
 Key Components:
 - Runtime: Claude SDK integration with streaming and tool calling
-- Tools: Security-focused tools that interact with Cerebro APIs and provider services  
+- Tools: Security-focused tools that interact with Cerebro APIs and provider services
 - Models: SQLAlchemy models for agent sessions, messages, and audit trails
 - Service: High-level orchestration and session management
 - API: FastAPI endpoints for agent interactions
@@ -21,7 +21,7 @@ from .self_play import SelfPlayOrchestrator, SelfPlayScenario
 
 __all__ = [
     "CerebroClaudeRuntime",
-    "AgentSessionService", 
+    "AgentSessionService",
     "AgentSession",
     "AgentMessage",
     "ToolInvocation",

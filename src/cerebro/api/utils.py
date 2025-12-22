@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase
 from pydantic import BaseModel
 
-T = TypeVar('T', bound=DeclarativeBase)
-ResponseT = TypeVar('ResponseT', bound=BaseModel)
+T = TypeVar("T", bound=DeclarativeBase)
+ResponseT = TypeVar("ResponseT", bound=BaseModel)
 
 
 class StandardFilters:
@@ -18,9 +18,11 @@ class StandardFilters:
     def __init__(
         self,
         skip: int = Query(0, ge=0, description="Number of items to skip"),
-        limit: int = Query(100, ge=1, le=1000, description="Maximum number of items to return"),
+        limit: int = Query(
+            100, ge=1, le=1000, description="Maximum number of items to return"
+        ),
         account_id: Optional[UUID] = Query(None, description="Filter by account ID"),
-        provider: Optional[str] = Query(None, description="Filter by provider")
+        provider: Optional[str] = Query(None, description="Filter by provider"),
     ):
         self.skip = skip
         self.limit = limit
@@ -32,7 +34,7 @@ async def get_entity_by_id_or_404(
     db: AsyncSession,
     model: Type[T],
     entity_id: UUID,
-    error_message: Optional[str] = None
+    error_message: Optional[str] = None,
 ) -> T:
     """Get an entity by ID or raise 404 if not found."""
     entity = await db.get(model, entity_id)
@@ -45,16 +47,16 @@ async def get_entity_by_id_or_404(
 def build_filtered_query(
     model: Type[T],
     filters: StandardFilters,
-    additional_filters: Optional[Dict[str, Any]] = None
+    additional_filters: Optional[Dict[str, Any]] = None,
 ):
     """Build a filtered SQLAlchemy query with standard filters."""
     stmt = select(model)
 
     # Apply standard filters
     if filters.account_id:
-        stmt = stmt.where(getattr(model, 'account_id', None) == filters.account_id)
+        stmt = stmt.where(getattr(model, "account_id", None) == filters.account_id)
     if filters.provider:
-        stmt = stmt.where(getattr(model, 'provider', None) == filters.provider)
+        stmt = stmt.where(getattr(model, "provider", None) == filters.provider)
 
     # Apply additional filters
     if additional_filters:
@@ -71,7 +73,7 @@ async def paginated_list(
     filters: StandardFilters,
     additional_filters: Optional[Dict[str, Any]] = None,
     order_by_field: str = "created_at",
-    order_desc: bool = True
+    order_desc: bool = True,
 ) -> List[T]:
     """Execute a paginated list query with standard filters."""
     stmt = build_filtered_query(model, filters, additional_filters)
@@ -94,34 +96,22 @@ class StandardResponses:
     @staticmethod
     def not_found(entity_type: str) -> HTTPException:
         """Standard 404 response."""
-        return HTTPException(
-            status_code=404,
-            detail=f"{entity_type} not found"
-        )
+        return HTTPException(status_code=404, detail=f"{entity_type} not found")
 
     @staticmethod
     def bad_request(message: str) -> HTTPException:
         """Standard 400 response."""
-        return HTTPException(
-            status_code=400,
-            detail=message
-        )
+        return HTTPException(status_code=400, detail=message)
 
     @staticmethod
     def forbidden(message: str = "Forbidden") -> HTTPException:
         """Standard 403 response."""
-        return HTTPException(
-            status_code=403,
-            detail=message
-        )
+        return HTTPException(status_code=403, detail=message)
 
     @staticmethod
     def internal_error(message: str = "Internal server error") -> HTTPException:
         """Standard 500 response."""
-        return HTTPException(
-            status_code=500,
-            detail=message
-        )
+        return HTTPException(status_code=500, detail=message)
 
 
 def validate_uuid_or_400(uuid_str: str, field_name: str = "ID") -> UUID:
@@ -145,6 +135,7 @@ def handle_database_error(e: Exception, operation: str = "database operation"):
     else:
         # Log the full error for debugging
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Database error during {operation}: {e}")
         raise StandardResponses.internal_error(f"Failed to complete {operation}")

@@ -17,7 +17,9 @@ class TimestampToken:
 class TimestampService:
     """Minimal timestamp service placeholder."""
 
-    async def timestamp(self, payload: bytes, **metadata: Any) -> TimestampToken:  # pragma: no cover - simple utility
+    async def timestamp(
+        self, payload: bytes, **metadata: Any
+    ) -> TimestampToken:  # pragma: no cover - simple utility
         return TimestampToken(
             payload_hash=payload.hex() if isinstance(payload, bytes) else str(payload),
             timestamp=datetime.utcnow(),
@@ -28,7 +30,9 @@ class TimestampService:
 class RFC3161Timestamper(TimestampService):
     """Compatibility shim representing RFC-3161 timestamping."""
 
-    async def timestamp(self, payload: bytes, **metadata: Any) -> TimestampToken:  # pragma: no cover
+    async def timestamp(
+        self, payload: bytes, **metadata: Any
+    ) -> TimestampToken:  # pragma: no cover
         metadata = {"rfc3161": True, **metadata}
         return await super().timestamp(payload, **metadata)
 
@@ -43,4 +47,3 @@ def get_timestamp_service() -> TimestampService:
     if _DEFAULT_SERVICE is None:
         _DEFAULT_SERVICE = RFC3161Timestamper()
     return _DEFAULT_SERVICE
-

@@ -29,10 +29,15 @@ from cerebro.core.repositories.agents import (
 
 # Request/Response schemas
 
+
 class SessionCreate(BaseModel):
     """Request schema for creating a session."""
+
     org_id: UUID
-    agent_type: str = Field(..., pattern="^(security_analyst|incident_responder|identity_advisor|compliance_advisor|attack_path_analyst)$")
+    agent_type: str = Field(
+        ...,
+        pattern="^(security_analyst|incident_responder|identity_advisor|compliance_advisor|attack_path_analyst)$",
+    )
     created_by: str
     title: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
@@ -40,6 +45,7 @@ class SessionCreate(BaseModel):
 
 class SessionUpdate(BaseModel):
     """Request schema for updating a session."""
+
     title: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
@@ -47,6 +53,7 @@ class SessionUpdate(BaseModel):
 
 class SessionResponse(BaseModel):
     """Response schema for session."""
+
     id: UUID
     org_id: UUID
     agent_type: str
@@ -61,7 +68,11 @@ class SessionResponse(BaseModel):
         return cls(
             id=session.id,
             org_id=session.org_id,
-            agent_type=session.agent_type.value if hasattr(session.agent_type, 'value') else session.agent_type,
+            agent_type=(
+                session.agent_type.value
+                if hasattr(session.agent_type, "value")
+                else session.agent_type
+            ),
             created_at=session.created_at.isoformat(),
             created_by=session.created_by,
             title=session.title,
@@ -72,12 +83,14 @@ class SessionResponse(BaseModel):
 
 class MessageCreate(BaseModel):
     """Request schema for creating a message."""
+
     role: str = Field(..., pattern="^(user|assistant|tool|system)$")
     content: Dict[str, Any]
 
 
 class MessageResponse(BaseModel):
     """Response schema for message."""
+
     id: UUID
     session_id: UUID
     role: str
@@ -91,7 +104,7 @@ class MessageResponse(BaseModel):
         return cls(
             id=message.id,
             session_id=message.session_id,
-            role=message.role.value if hasattr(message.role, 'value') else message.role,
+            role=message.role.value if hasattr(message.role, "value") else message.role,
             content=message.content,
             created_at=message.created_at.isoformat(),
             input_tokens=message.input_tokens,
@@ -101,6 +114,7 @@ class MessageResponse(BaseModel):
 
 class ToolInvocationResponse(BaseModel):
     """Response schema for tool invocation."""
+
     id: UUID
     session_id: UUID
     tool_name: str
@@ -122,7 +136,7 @@ class ToolInvocationResponse(BaseModel):
             tool_version=inv.tool_version,
             input_data=inv.input_data,
             output_data=inv.output_data,
-            status=inv.status.value if hasattr(inv.status, 'value') else inv.status,
+            status=inv.status.value if hasattr(inv.status, "value") else inv.status,
             started_at=inv.started_at.isoformat(),
             completed_at=inv.completed_at.isoformat() if inv.completed_at else None,
             error_message=inv.error_message,
@@ -132,12 +146,14 @@ class ToolInvocationResponse(BaseModel):
 
 class SessionListResponse(BaseModel):
     """Response for listing sessions with pagination."""
+
     sessions: List[SessionResponse]
     total: int
 
 
 class TokenUsageResponse(BaseModel):
     """Response for token usage."""
+
     input_tokens: int
     output_tokens: int
     total_tokens: int
@@ -149,6 +165,7 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 
 
 # Session endpoints
+
 
 @router.post("/sessions", response_model=SessionResponse, status_code=201)
 async def create_session(
@@ -170,7 +187,10 @@ async def create_session(
 @router.get("/sessions/org/{org_id}", response_model=SessionListResponse)
 async def list_sessions(
     org_id: UUID,
-    agent_type: Optional[str] = Query(None, pattern="^(security_analyst|incident_responder|identity_advisor|compliance_advisor|attack_path_analyst)$"),
+    agent_type: Optional[str] = Query(
+        None,
+        pattern="^(security_analyst|incident_responder|identity_advisor|compliance_advisor|attack_path_analyst)$",
+    ),
     created_by: Optional[str] = None,
     active_only: bool = False,
     limit: int = Query(50, ge=1, le=100),
@@ -179,7 +199,7 @@ async def list_sessions(
 ) -> SessionListResponse:
     """List sessions for an organization."""
     agent_type_enum = AgentType(agent_type) if agent_type else None
-    
+
     sessions, total = await repo.list_by_org(
         org_id=org_id,
         agent_type=agent_type_enum,
@@ -188,7 +208,7 @@ async def list_sessions(
         limit=limit,
         offset=offset,
     )
-    
+
     return SessionListResponse(
         sessions=[SessionResponse.from_entity(s) for s in sessions],
         total=total,
@@ -217,18 +237,20 @@ async def update_session(
 ) -> SessionResponse:
     """Update a session."""
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
-    
+
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
-    
+
     session = await repo.update(session_id, org_id, **updates)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     return SessionResponse.from_entity(session)
 
 
-@router.post("/sessions/{org_id}/{session_id}/deactivate", response_model=SessionResponse)
+@router.post(
+    "/sessions/{org_id}/{session_id}/deactivate", response_model=SessionResponse
+)
 async def deactivate_session(
     org_id: UUID,
     session_id: UUID,
@@ -251,13 +273,18 @@ async def delete_session(
     session = await repo.get(session_id, org_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     await repo.delete(session_id, org_id)
 
 
 # Message endpoints
 
-@router.post("/sessions/{org_id}/{session_id}/messages", response_model=MessageResponse, status_code=201)
+
+@router.post(
+    "/sessions/{org_id}/{session_id}/messages",
+    response_model=MessageResponse,
+    status_code=201,
+)
 async def create_message(
     org_id: UUID,
     session_id: UUID,
@@ -270,7 +297,7 @@ async def create_message(
     session = await session_repo.get(session_id, org_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     message = AgentMessage(
         session_id=session_id,
         org_id=org_id,
@@ -281,7 +308,9 @@ async def create_message(
     return MessageResponse.from_entity(created)
 
 
-@router.get("/sessions/{org_id}/{session_id}/messages", response_model=List[MessageResponse])
+@router.get(
+    "/sessions/{org_id}/{session_id}/messages", response_model=List[MessageResponse]
+)
 async def list_messages(
     org_id: UUID,
     session_id: UUID,
@@ -294,12 +323,14 @@ async def list_messages(
     session = await session_repo.get(session_id, org_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     messages = await message_repo.list_by_session(session_id, limit)
     return [MessageResponse.from_entity(m) for m in messages]
 
 
-@router.get("/sessions/{org_id}/{session_id}/token-usage", response_model=TokenUsageResponse)
+@router.get(
+    "/sessions/{org_id}/{session_id}/token-usage", response_model=TokenUsageResponse
+)
 async def get_token_usage(
     org_id: UUID,
     session_id: UUID,
@@ -310,14 +341,17 @@ async def get_token_usage(
     session = await session_repo.get(session_id, org_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     usage = await message_repo.get_token_usage(session_id)
     return TokenUsageResponse(**usage)
 
 
 # Tool invocation endpoints
 
-@router.get("/sessions/{org_id}/{session_id}/tools", response_model=List[ToolInvocationResponse])
+
+@router.get(
+    "/sessions/{org_id}/{session_id}/tools", response_model=List[ToolInvocationResponse]
+)
 async def list_tool_invocations(
     org_id: UUID,
     session_id: UUID,
@@ -329,21 +363,27 @@ async def list_tool_invocations(
     session = await session_repo.get(session_id, org_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     invocations = await tool_repo.list_by_session(session_id, limit)
     return [ToolInvocationResponse.from_entity(inv) for inv in invocations]
 
 
-@router.get("/tools/org/{org_id}/{tool_name}", response_model=List[ToolInvocationResponse])
+@router.get(
+    "/tools/org/{org_id}/{tool_name}", response_model=List[ToolInvocationResponse]
+)
 async def list_tool_invocations_by_name(
     org_id: UUID,
     tool_name: str,
-    status: Optional[str] = Query(None, pattern="^(pending|running|success|error|dry_run|approval_required)$"),
+    status: Optional[str] = Query(
+        None, pattern="^(pending|running|success|error|dry_run|approval_required)$"
+    ),
     limit: int = Query(100, ge=1, le=1000),
     tool_repo: ToolInvocationRepository = Depends(tool_invocation_repository),
 ) -> List[ToolInvocationResponse]:
     """List tool invocations by tool name."""
     status_enum = ToolInvocationStatus(status) if status else None
-    
-    invocations = await tool_repo.list_by_tool_name(org_id, tool_name, status_enum, limit)
+
+    invocations = await tool_repo.list_by_tool_name(
+        org_id, tool_name, status_enum, limit
+    )
     return [ToolInvocationResponse.from_entity(inv) for inv in invocations]

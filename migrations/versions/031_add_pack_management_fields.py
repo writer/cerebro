@@ -24,7 +24,12 @@ def upgrade() -> None:
     )
     op.add_column(
         "artifact_packs",
-        sa.Column("approval_state", sa.String(length=32), nullable=False, server_default="draft"),
+        sa.Column(
+            "approval_state",
+            sa.String(length=32),
+            nullable=False,
+            server_default="draft",
+        ),
     )
     op.add_column(
         "artifact_packs",

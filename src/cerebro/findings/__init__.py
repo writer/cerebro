@@ -8,8 +8,8 @@ from .producers import producer_registry, register_producer, auto_discover_produ
 auto_discover_producers()
 
 __all__ = [
-    "FindingManager", 
-    "FindingResult", 
+    "FindingManager",
+    "FindingResult",
     "RuleEvaluator",
     "producer_registry",
     "register_producer",

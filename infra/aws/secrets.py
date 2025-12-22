@@ -7,6 +7,7 @@ Stores sensitive configuration including:
 - API keys
 - JWT secret keys
 """
+
 import pulumi
 import pulumi_aws as aws
 import json

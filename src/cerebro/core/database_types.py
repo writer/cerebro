@@ -71,12 +71,14 @@ class ArrayType(TypeDecorator):
 
     def load_dialect_impl(self, dialect: Dialect):
         """Load the appropriate type for the dialect."""
-        if dialect.name == 'postgresql':
+        if dialect.name == "postgresql":
             return dialect.type_descriptor(ARRAY(self.item_type))
         if dialect.name == "snowflake":
             from snowflake.sqlalchemy.custom_types import ARRAY as SnowflakeArray
 
-            item_type = self.item_type() if isinstance(self.item_type, type) else self.item_type
+            item_type = (
+                self.item_type() if isinstance(self.item_type, type) else self.item_type
+            )
             return dialect.type_descriptor(SnowflakeArray(item_type))
 
         return dialect.type_descriptor(JSON())
@@ -95,7 +97,7 @@ class ArrayType(TypeDecorator):
         """Process values being returned from the database."""
         if value is None:
             return None
-        if dialect.name == 'postgresql':
+        if dialect.name == "postgresql":
             return value
 
         if dialect.name == "snowflake":

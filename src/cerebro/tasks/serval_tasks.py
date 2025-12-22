@@ -69,7 +69,9 @@ def sync_serval_tickets(self) -> dict[str, object]:
                     if status_change is not None:
                         org_updates += 1
                         updated += 1
-                    if ts is not None and (latest_timestamp is None or ts > latest_timestamp):
+                    if ts is not None and (
+                        latest_timestamp is None or ts > latest_timestamp
+                    ):
                         latest_timestamp = ts
 
                 # Persist cursor metadata so subsequent runs only fetch incremental changes.

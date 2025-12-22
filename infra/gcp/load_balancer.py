@@ -8,6 +8,7 @@ Creates:
 - URL maps and forwarding rules
 - Cloud CDN integration
 """
+
 import pulumi
 import pulumi_gcp as gcp
 
@@ -39,9 +40,7 @@ def create_https_load_balancer(
         f"{name}-neg",
         name=f"{name}-neg",
         project=project,
-        region=cloud_run_service_url.apply(
-            lambda url: _extract_region_from_url(url)
-        ),
+        region=cloud_run_service_url.apply(lambda url: _extract_region_from_url(url)),
         network_endpoint_type="SERVERLESS",
         cloud_run=gcp.compute.RegionNetworkEndpointGroupCloudRunArgs(
             service=cloud_run_service_url.apply(
@@ -70,15 +69,13 @@ def create_https_load_balancer(
 
     # Add CDN policy if enabled
     if enable_cdn:
-        backend_service_args["cdn_policy"] = (
-            gcp.compute.BackendServiceCdnPolicyArgs(
-                cache_mode="CACHE_ALL_STATIC",
-                client_ttl=3600,
-                default_ttl=3600,
-                max_ttl=86400,
-                negative_caching=True,
-                serve_while_stale=86400,
-            )
+        backend_service_args["cdn_policy"] = gcp.compute.BackendServiceCdnPolicyArgs(
+            cache_mode="CACHE_ALL_STATIC",
+            client_ttl=3600,
+            default_ttl=3600,
+            max_ttl=86400,
+            negative_caching=True,
+            serve_while_stale=86400,
         )
         backend_service_args["enable_cdn"] = True
 

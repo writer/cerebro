@@ -28,9 +28,7 @@ async def _resolve_default_org_id() -> UUID | None:
 
     async with async_session_factory() as session:
         result = await session.execute(
-            select(Organization.org_id)
-            .order_by(Organization.created_at.asc())
-            .limit(1)
+            select(Organization.org_id).order_by(Organization.created_at.asc()).limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -58,9 +56,7 @@ def _build_configured_scenario(
         raise ValueError(f"missing required field: {exc.args[0]}") from exc
 
     max_turns = int(data.get("max_turns", settings.self_play_max_turns))
-    max_tool_calls = int(
-        data.get("max_tool_calls", settings.self_play_max_tool_calls)
-    )
+    max_tool_calls = int(data.get("max_tool_calls", settings.self_play_max_tool_calls))
 
     challenger_type = _parse_agent_type(
         data.get("challenger_agent_type"),

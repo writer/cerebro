@@ -4,12 +4,16 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
-from cerebro.findings.producers.aws.bucket_cleartext_key import BucketCleartextKeyProducer
+from cerebro.findings.producers.aws.bucket_cleartext_key import (
+    BucketCleartextKeyProducer,
+)
 from cerebro.findings.producers.aws.iam_user_without_mfa import (
     IAMUserWithoutMFAProducer,
 )
 from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProducer
-from cerebro.findings.producers.aws.storage_write_access import StorageWriteAccessProducer
+from cerebro.findings.producers.aws.storage_write_access import (
+    StorageWriteAccessProducer,
+)
 from cerebro.findings.producers.aws.codebuild_public_trigger import (
     CodeBuildPublicTriggerProducer,
 )
@@ -43,8 +47,12 @@ from cerebro.findings.producers.azure.storage_public_write import (
 from cerebro.findings.producers.azure.storage_secret_artifacts import (
     AzureStorageSecretArtifactProducer,
 )
-from cerebro.findings.producers.gcp.bucket_public_write import GCPBucketPublicWriteProducer
-from cerebro.findings.producers.gcp.bucket_secret_artifacts import GCPBucketSecretArtifactProducer
+from cerebro.findings.producers.gcp.bucket_public_write import (
+    GCPBucketPublicWriteProducer,
+)
+from cerebro.findings.producers.gcp.bucket_secret_artifacts import (
+    GCPBucketSecretArtifactProducer,
+)
 from cerebro.findings.producers.github.public_repo_no_branch_protection import (
     PublicRepoNoBranchProtectionProducer,
 )
@@ -70,7 +78,11 @@ from cerebro.findings.producers.m365.sharepoint_anonymous_link import (
 )
 from cerebro.findings.producers.okta.dormant_admin import OktaDormantAdminProducer
 from cerebro.findings.producers.telemetry.repo_secret_key import RepoSecretKeyProducer
-from cerebro.telemetry.schemas import HostTelemetry, NetworkConnection, SecretsScanResult
+from cerebro.telemetry.schemas import (
+    HostTelemetry,
+    NetworkConnection,
+    SecretsScanResult,
+)
 
 
 class TestGitHubProducers:
@@ -85,7 +97,7 @@ class TestGitHubProducers:
             external_id="test-org/public-repo",
             resource_type="github.repo",
             provider="github",
-            name="public-repo"
+            name="public-repo",
         )
 
         config = ConfigEntity(
@@ -96,8 +108,8 @@ class TestGitHubProducers:
                 "branchProtection": {"requirePR": False},
                 "archived": False,
                 "fullName": "test-org/public-repo",
-                "defaultBranch": "main"
-            }
+                "defaultBranch": "main",
+            },
         )
 
         context = {"rule_id": uuid4()}
@@ -118,7 +130,7 @@ class TestGitHubProducers:
             external_id="test-org/protected-repo",
             resource_type="github.repo",
             provider="github",
-            name="protected-repo"
+            name="protected-repo",
         )
 
         config = ConfigEntity(
@@ -127,8 +139,8 @@ class TestGitHubProducers:
             normalized_config={
                 "visibility": "public",
                 "branchProtection": {"requirePR": True, "requiredReviewers": 2},
-                "archived": False
-            }
+                "archived": False,
+            },
         )
 
         findings = producer.evaluate(resource, config)
@@ -363,7 +375,11 @@ class TestGitHubProducers:
             resource_external_id=resource.external_id,
             captured_at=datetime.utcnow(),
             normalized_config={
-                "runner": {"id": 101, "name": "shared-runner", "labels": ["linux", "x64"]},
+                "runner": {
+                    "id": 101,
+                    "name": "shared-runner",
+                    "labels": ["linux", "x64"],
+                },
                 "runner_group": {
                     "id": 5,
                     "name": "default",
@@ -428,7 +444,7 @@ class TestAWSProducers:
             external_id="test-public-bucket",
             resource_type="aws.s3.bucket",
             provider="aws",
-            name="test-public-bucket"
+            name="test-public-bucket",
         )
 
         config = ConfigEntity(
@@ -438,8 +454,8 @@ class TestAWSProducers:
                 "policyAllowsPublic": True,
                 "aclAllowsPublic": False,
                 "blockPublicAccess": {"effective": False},
-                "region": "us-east-1"
-            }
+                "region": "us-east-1",
+            },
         )
 
         context = {"rule_id": uuid4()}
@@ -466,8 +482,16 @@ class TestAWSProducers:
             captured_at=datetime.utcnow(),
             normalized_config={
                 "objectsSample": [
-                    {"key": "backups/api_keys.env", "size": 120, "modified": datetime.utcnow().isoformat()},
-                    {"key": "README.md", "size": 80, "modified": datetime.utcnow().isoformat()},
+                    {
+                        "key": "backups/api_keys.env",
+                        "size": 120,
+                        "modified": datetime.utcnow().isoformat(),
+                    },
+                    {
+                        "key": "README.md",
+                        "size": 80,
+                        "modified": datetime.utcnow().isoformat(),
+                    },
                 ],
                 "policyAllowsPublic": True,
                 "aclAllowsPublic": False,
@@ -836,9 +860,7 @@ class TestKubernetesProducers:
                         ],
                     }
                 ],
-                "tls": [
-                    {"hosts": ["secure.example.com"], "secretName": "tls-secret"}
-                ],
+                "tls": [{"hosts": ["secure.example.com"], "secretName": "tls-secret"}],
                 "loadBalancer": [
                     {"hostname": "abc123.elb.amazonaws.com", "ip": "203.0.113.10"}
                 ],
@@ -865,7 +887,11 @@ class TestKubernetesProducers:
             normalized_config={
                 "roleRef": {"kind": "ClusterRole", "name": "cluster-admin"},
                 "subjects": [
-                    {"kind": "ServiceAccount", "name": "builder", "namespace": "default"},
+                    {
+                        "kind": "ServiceAccount",
+                        "name": "builder",
+                        "namespace": "default",
+                    },
                     {"kind": "ServiceAccount", "name": "ci", "namespace": "prod"},
                 ],
             },
@@ -1269,7 +1295,10 @@ class TestKubernetesProducers:
                     ],
                 },
                 "attached_policies": [
-                    {"policy_name": "ReadOnlyAccess", "policy_arn": "arn:aws:iam::aws:policy/ReadOnlyAccess"}
+                    {
+                        "policy_name": "ReadOnlyAccess",
+                        "policy_arn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+                    }
                 ],
                 "inline_policies": {},
                 "last_used": None,
@@ -1378,7 +1407,7 @@ class TestKubernetesProducers:
             external_id="arn:aws:iam::123456789012:user/testuser",
             resource_type="aws.iam.user",
             provider="aws",
-            name="testuser"
+            name="testuser",
         )
 
         config = ConfigEntity(
@@ -1389,8 +1418,8 @@ class TestKubernetesProducers:
                 "mfa": {"enabled": False},
                 "password_last_used": "2024-01-01T10:00:00Z",
                 "attached_policies": ["ReadOnlyAccess"],
-                "groups": []
-            }
+                "groups": [],
+            },
         )
 
         context = {"rule_id": uuid4()}
@@ -1411,7 +1440,7 @@ class TestKubernetesProducers:
             external_id="arn:aws:iam::123456789012:user/admin",
             resource_type="aws.iam.user",
             provider="aws",
-            name="admin"
+            name="admin",
         )
 
         config = ConfigEntity(
@@ -1422,8 +1451,8 @@ class TestKubernetesProducers:
                 "mfa": {"enabled": False},
                 "password_last_used": "2024-01-01T10:00:00Z",
                 "attached_policies": ["AdministratorAccess"],
-                "groups": []
-            }
+                "groups": [],
+            },
         )
 
         context = {"rule_id": uuid4()}
@@ -1676,7 +1705,11 @@ class TestTelemetryProducers:
         finding = findings[0]
         assert finding.severity == Severity.CRITICAL
         assert "OpenAI API key" in finding.summary
-        assert finding.evidence["validation"]["status"] in {"format_match", "inferred", "verified"}
+        assert finding.evidence["validation"]["status"] in {
+            "format_match",
+            "inferred",
+            "verified",
+        }
 
 
 class TestIdentityProducers:
@@ -1809,7 +1842,9 @@ class TestIdentityProducers:
                 ],
                 "role_names": ["Global Administrator"],
                 "last_login": stale_login,
-                "created": (datetime.now(timezone.utc) - timedelta(days=200)).isoformat(),
+                "created": (
+                    datetime.now(timezone.utc) - timedelta(days=200)
+                ).isoformat(),
                 "user_principal_name": "admin@example.com",
                 "mfa_enrolled": False,
             },
@@ -1845,7 +1880,9 @@ class TestIdentityProducers:
                         "display_name": "Exchange Administrator",
                     }
                 ],
-                "last_login": (datetime.now(timezone.utc) - timedelta(days=10)).isoformat(),
+                "last_login": (
+                    datetime.now(timezone.utc) - timedelta(days=10)
+                ).isoformat(),
             },
         )
 

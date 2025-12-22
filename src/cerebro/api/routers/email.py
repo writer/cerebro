@@ -1,11 +1,19 @@
 """API endpoints for email notification configuration and management."""
+
 import logging
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator, ConfigDict
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    ValidationInfo,
+    field_validator,
+    ConfigDict,
+)
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import sqlalchemy as sa
@@ -27,14 +35,24 @@ limiter = Limiter(key_func=get_remote_address)
 class EmailConfigCreate(BaseModel):
     """Request model for creating email configuration."""
 
-    name: str = Field(..., min_length=1, max_length=255, description="Human-readable name")
-    smtp_host: str = Field(..., min_length=1, max_length=255, description="SMTP server host")
+    name: str = Field(
+        ..., min_length=1, max_length=255, description="Human-readable name"
+    )
+    smtp_host: str = Field(
+        ..., min_length=1, max_length=255, description="SMTP server host"
+    )
     smtp_port: int = Field(default=587, ge=1, le=65535, description="SMTP server port")
-    smtp_username: Optional[str] = Field(None, max_length=255, description="SMTP username")
+    smtp_username: Optional[str] = Field(
+        None, max_length=255, description="SMTP username"
+    )
     smtp_password: Optional[str] = Field(None, description="SMTP password (encrypted)")
     from_email: EmailStr = Field(..., description="Sender email address")
-    from_name: Optional[str] = Field(None, max_length=255, description="Sender display name")
-    to_emails: List[EmailStr] = Field(..., min_length=1, description="List of recipient emails")
+    from_name: Optional[str] = Field(
+        None, max_length=255, description="Sender display name"
+    )
+    to_emails: List[EmailStr] = Field(
+        ..., min_length=1, description="List of recipient emails"
+    )
     cc_emails: Optional[List[EmailStr]] = Field(None, description="CC recipient emails")
     use_tls: bool = Field(default=True, description="Use TLS for SMTP connection")
     enabled: bool = Field(default=True, description="Enable this email config")
@@ -42,13 +60,19 @@ class EmailConfigCreate(BaseModel):
         None, description="Filter by severity (critical, high, medium, low)"
     )
     event_types: List[str] = Field(
-        ..., min_length=1, description="Event types to send (finding.created, compliance.check_failed, etc.)"
+        ...,
+        min_length=1,
+        description="Event types to send (finding.created, compliance.check_failed, etc.)",
     )
-    digest_mode: bool = Field(default=False, description="Send digest instead of immediate")
+    digest_mode: bool = Field(
+        default=False, description="Send digest instead of immediate"
+    )
     digest_frequency: Optional[str] = Field(
         None, description="Digest frequency (daily, weekly) if digest_mode=true"
     )
-    email_metadata: Optional[dict] = Field(None, description="Additional configuration metadata")
+    email_metadata: Optional[dict] = Field(
+        None, description="Additional configuration metadata"
+    )
 
     @field_validator("digest_frequency", mode="after")
     @classmethod
@@ -205,7 +229,9 @@ async def create_email_config(
     if response_config.smtp_password:
         response_config.smtp_password = "********"
 
-    logger.info(f"Created email config {email_config.config_id} for org {current_user.org_id}")
+    logger.info(
+        f"Created email config {email_config.config_id} for org {current_user.org_id}"
+    )
     return response_config
 
 
@@ -234,7 +260,9 @@ async def list_email_configs(
     configs = result.scalars().all()
 
     # Mask passwords in response
-    response_configs = [EmailConfigResponse.model_validate(config) for config in configs]
+    response_configs = [
+        EmailConfigResponse.model_validate(config) for config in configs
+    ]
     for response_config in response_configs:
         if response_config.smtp_password:
             response_config.smtp_password = "********"
@@ -311,12 +339,14 @@ async def update_email_config(
 
     # Validate digest configuration before applying updates
     final_digest_mode = update_dict.get("digest_mode", config.digest_mode)
-    final_digest_frequency = update_dict.get("digest_frequency", config.digest_frequency)
+    final_digest_frequency = update_dict.get(
+        "digest_frequency", config.digest_frequency
+    )
 
     if final_digest_mode and not final_digest_frequency:
         raise HTTPException(
             status_code=400,
-            detail="digest_frequency is required when digest_mode is true"
+            detail="digest_frequency is required when digest_mode is true",
         )
 
     # Handle password encryption separately
@@ -421,15 +451,21 @@ async def test_email_config(
         return {"message": "Test email sent successfully"}
 
     except Exception:
-        logger.exception("Failed to send test email", extra={"config_id": str(config_id)})
+        logger.exception(
+            "Failed to send test email", extra={"config_id": str(config_id)}
+        )
         raise HTTPException(status_code=500, detail="Failed to send test email")
 
 
 @router.get("/notifications", response_model=List[EmailNotificationResponse])
 async def list_email_notifications(
     config_id: Optional[UUID] = Query(None, description="Filter by config ID"),
-    status: Optional[str] = Query(None, description="Filter by status (sent, failed, retrying)"),
-    limit: int = Query(100, ge=1, le=1000, description="Number of notifications to return"),
+    status: Optional[str] = Query(
+        None, description="Filter by status (sent, failed, retrying)"
+    ),
+    limit: int = Query(
+        100, ge=1, le=1000, description="Number of notifications to return"
+    ),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -447,7 +483,9 @@ async def list_email_notifications(
     Returns:
         List of email notifications
     """
-    query = select(EmailNotification).where(EmailNotification.org_id == current_user.org_id)
+    query = select(EmailNotification).where(
+        EmailNotification.org_id == current_user.org_id
+    )
 
     if config_id:
         query = query.where(EmailNotification.config_id == config_id)
@@ -481,9 +519,15 @@ async def get_email_notification_stats(
     """
     query = select(
         func.count(EmailNotification.notification_id).label("total"),
-        func.sum(func.cast(EmailNotification.status == "sent", sa.Integer)).label("sent"),
-        func.sum(func.cast(EmailNotification.status == "failed", sa.Integer)).label("failed"),
-        func.sum(func.cast(EmailNotification.status == "retrying", sa.Integer)).label("retrying"),
+        func.sum(func.cast(EmailNotification.status == "sent", sa.Integer)).label(
+            "sent"
+        ),
+        func.sum(func.cast(EmailNotification.status == "failed", sa.Integer)).label(
+            "failed"
+        ),
+        func.sum(func.cast(EmailNotification.status == "retrying", sa.Integer)).label(
+            "retrying"
+        ),
     ).where(EmailNotification.org_id == current_user.org_id)
 
     if config_id:

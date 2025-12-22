@@ -21,16 +21,19 @@ logger = logging.getLogger(__name__)
 
 def authenticated_method(func):
     """Decorator ensuring the provider is authenticated before executing a method."""
+
     @wraps(func)
     async def wrapper(self, *args, **kwargs):
         if not self._is_authenticated:
             await self.authenticate()
         return await func(self, *args, **kwargs)
+
     return wrapper
 
 
 class ProviderError(Exception):
     """Base exception for provider errors."""
+
     pass
 
 
@@ -97,6 +100,7 @@ class AuthenticationMixin:
 @dataclass
 class ResourceInfo:
     """Information about a discovered resource."""
+
     external_id: str
     name: Optional[str]
     resource_type: str
@@ -107,6 +111,7 @@ class ResourceInfo:
 @dataclass
 class PrincipalInfo:
     """Information about a discovered principal."""
+
     external_id: str
     principal_type: str  # user, group, service_account, app, role
     email: Optional[str] = None
@@ -118,6 +123,7 @@ class PrincipalInfo:
 @dataclass
 class ConfigurationSnapshot:
     """Configuration snapshot for a resource."""
+
     resource_external_id: str
     captured_at: datetime
     normalized_config: Dict[str, Any]
@@ -127,6 +133,7 @@ class ConfigurationSnapshot:
 @dataclass
 class IamPermission:
     """IAM permission edge."""
+
     principal_external_id: str
     resource_external_id: Optional[str]
     permission: str
@@ -145,23 +152,22 @@ class BaseProvider(AuthenticationMixin, ABC):
         self.account_id = account_id
         self.provider_name = self.name
         self._client = None
-        
+
     @property
     @abstractmethod
     def name(self) -> str:
         """Get the provider name (e.g., 'github', 'aws', 'gcp')."""
         pass
-    
+
     @abstractmethod
     async def authenticate(self) -> bool:
         """Authenticate with the provider."""
         pass
-    
+
     @abstractmethod
     @authenticated_method
     async def discover_resources(
-        self,
-        resource_types: Optional[List[str]] = None
+        self, resource_types: Optional[List[str]] = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover resources from the provider."""
         pass
@@ -175,8 +181,7 @@ class BaseProvider(AuthenticationMixin, ABC):
     @abstractmethod
     @authenticated_method
     async def get_resource_configuration(
-        self,
-        resource: ResourceInfo
+        self, resource: ResourceInfo
     ) -> ConfigurationSnapshot:
         """Get the current configuration for a resource."""
         pass
@@ -184,12 +189,11 @@ class BaseProvider(AuthenticationMixin, ABC):
     @abstractmethod
     @authenticated_method
     async def discover_iam_edges(
-        self,
-        resource: Optional[ResourceInfo] = None
+        self, resource: Optional[ResourceInfo] = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover IAM permissions/edges."""
         pass
-    
+
     async def test_connection(self) -> bool:
         """Test connection to the provider."""
         try:
@@ -197,18 +201,18 @@ class BaseProvider(AuthenticationMixin, ABC):
         except Exception as e:
             logger.error(f"Connection test failed for {self.provider_name}: {e}")
             return False
-    
+
     async def get_account_info(self) -> Dict[str, Any]:
         """Get account information."""
         return {
             "provider": self.name,
             "account_id": str(self.account_id),
         }
-    
+
     def normalize_resource_type(self, raw_type: str) -> str:
         """Normalize resource type name."""
         return f"{self.name}.{raw_type.lower()}"
-    
+
     def normalize_permission(self, permission: str) -> str:
         """Normalize permission name."""
         return permission.lower()

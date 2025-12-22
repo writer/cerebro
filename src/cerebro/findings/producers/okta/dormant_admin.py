@@ -128,9 +128,7 @@ class OktaDormantAdminProducer(BaseOktaProducer):
             self.create_finding(
                 resource=resource,
                 rule_id=rule_id,
-                title=(
-                    f"Okta admin {data.get('login') or resource.name} is inactive"
-                ),
+                title=(f"Okta admin {data.get('login') or resource.name} is inactive"),
                 summary=summary,
                 evidence=evidence,
                 severity=severity,

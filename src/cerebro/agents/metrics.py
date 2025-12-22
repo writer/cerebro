@@ -137,20 +137,22 @@ def record_runtime_metrics(
         return
 
     outcome = "success" if success else "error"
-    runtime_duration.labels(backend=backend, agent_type=agent_type, outcome=outcome).observe(
-        duration_seconds
-    )
+    runtime_duration.labels(
+        backend=backend, agent_type=agent_type, outcome=outcome
+    ).observe(duration_seconds)
 
     if input_tokens:
-        runtime_tokens.labels(backend=backend, agent_type=agent_type, direction="input").inc(
-            input_tokens
-        )
+        runtime_tokens.labels(
+            backend=backend, agent_type=agent_type, direction="input"
+        ).inc(input_tokens)
     if output_tokens:
-        runtime_tokens.labels(backend=backend, agent_type=agent_type, direction="output").inc(
-            output_tokens
-        )
+        runtime_tokens.labels(
+            backend=backend, agent_type=agent_type, direction="output"
+        ).inc(output_tokens)
     if tool_calls:
-        runtime_tool_calls.labels(backend=backend, agent_type=agent_type).inc(tool_calls)
+        runtime_tool_calls.labels(backend=backend, agent_type=agent_type).inc(
+            tool_calls
+        )
 
     if not success:
         runtime_errors.labels(

@@ -51,11 +51,11 @@ logger = structlog.get_logger(__name__)
 class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
     """
     Claude runtime for Cerebro security agents.
-    
+
     Provides streaming conversation capabilities with security-focused tools,
     audit logging, and integration with Cerebro's append-only architecture.
     """
-    
+
     def __init__(
         self,
         model: str = "claude-3-5-sonnet-20241022",
@@ -67,7 +67,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         self.temperature = temperature
         self.tool_executor = ToolExecutor()
         self.backend_name = "claude"
-    
+
     async def create_session(
         self,
         org_id: UUID,
@@ -103,13 +103,14 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         )
 
         return session
-    
+
     async def get_session(self, session_id: UUID) -> Optional[AgentSession]:
         """Get an existing agent session."""
         from cerebro.core.database import async_session_factory
+
         async with async_session_factory() as db_session:
             return await db_session.get(AgentSession, session_id)
-    
+
     async def send_message(
         self,
         session: AgentSession,
@@ -138,10 +139,14 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
             query=message,
         )
 
-        memory_ids = [entry.get("id") for entry in memory_context.entries if entry.get("id")]
+        memory_ids = [
+            entry.get("id") for entry in memory_context.entries if entry.get("id")
+        ]
         previous_ids = set(session.context.get("_recent_memory_ids", []))
         new_entries = [
-            entry for entry in memory_context.entries if entry.get("id") not in previous_ids
+            entry
+            for entry in memory_context.entries
+            if entry.get("id") not in previous_ids
         ]
         if new_entries:
             self._log_memory_activity(session, new_entries)
@@ -280,7 +285,9 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                                 {"_claude_session_id": claude_session_id},
                             )
                             options_metadata["claude_session_id"] = claude_session_id
-                    except Exception as create_error:  # pragma: no cover - defensive logging
+                    except (
+                        Exception
+                    ) as create_error:  # pragma: no cover - defensive logging
                         logger.debug(
                             "Failed to establish Claude SDK session",
                             session_id=session.id,
@@ -306,9 +313,11 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                                     yield {
                                         "type": "text",
                                         "content": block.text,
-                                        "metadata": {"streaming": True}
+                                        "metadata": {"streaming": True},
                                     }
-                                assistant_content.append({"type": "text", "text": block.text})
+                                assistant_content.append(
+                                    {"type": "text", "text": block.text}
+                                )
 
                             elif isinstance(block, ToolUseBlock):
                                 # Tool use - SDK handles execution automatically
@@ -332,15 +341,17 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                                             "tool_name": tool_name,
                                             "input": tool_input,
                                         },
-                                        "metadata": {"tool_call_id": tool_call_id}
+                                        "metadata": {"tool_call_id": tool_call_id},
                                     }
 
-                                assistant_content.append({
-                                    "type": "tool_use",
-                                    "tool_call_id": tool_call_id,
-                                    "tool_name": tool_name,
-                                    "input": tool_input,
-                                })
+                                assistant_content.append(
+                                    {
+                                        "type": "tool_use",
+                                        "tool_call_id": tool_call_id,
+                                        "tool_name": tool_name,
+                                        "input": tool_input,
+                                    }
+                                )
 
                     # Handle system messages
                     elif isinstance(response_msg, SystemMessage):
@@ -357,16 +368,16 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                                     "subtype": response_msg.subtype,
                                     "data": response_msg.data,
                                 },
-                                "metadata": {}
+                                "metadata": {},
                             }
 
                     # Handle result messages (token usage, completion)
                     elif isinstance(response_msg, ResultMessage):
                         # Extract token usage
-                        if hasattr(response_msg, 'usage') and response_msg.usage:
+                        if hasattr(response_msg, "usage") and response_msg.usage:
                             usage = response_msg.usage
-                            total_input_tokens = getattr(usage, 'input_tokens', 0)
-                            total_output_tokens = getattr(usage, 'output_tokens', 0)
+                            total_input_tokens = getattr(usage, "input_tokens", 0)
+                            total_output_tokens = getattr(usage, "output_tokens", 0)
 
                         logger.info(
                             "Result message received",
@@ -429,7 +440,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                             "message_stored": True,
                             "tool_calls_executed": tool_calls_count,
                         },
-                        "metadata": {"session_id": str(session.id)}
+                        "metadata": {"session_id": str(session.id)},
                     }
 
         except CLINotFoundError as cli_error:
@@ -527,7 +538,9 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
             return
 
         except Exception as e:
-            logger.exception("Agent message processing failed", session_id=session.id, error=str(e))
+            logger.exception(
+                "Agent message processing failed", session_id=session.id, error=str(e)
+            )
 
             # Store error message
             await self._store_message(
@@ -536,7 +549,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                 {
                     "error": str(e),
                     "type": "system_error",
-                }
+                },
             )
 
             await AgentAnalyticsService.record_event(
@@ -572,9 +585,9 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                     "message": "Agent processing failed",
                     "error": str(e),
                 },
-                "metadata": {"session_id": str(session.id)}
+                "metadata": {"session_id": str(session.id)},
             }
-    
+
     async def get_session_messages(
         self,
         session_id: UUID,
@@ -583,6 +596,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
     ) -> List[Dict[str, Any]]:
         """Get messages from a session."""
         from cerebro.core.database import async_session_factory
+
         async with async_session_factory() as db_session:
             stmt = (
                 select(
@@ -613,7 +627,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                 }
                 for row in rows
             ]
-    
+
     async def get_session_metrics(self, session_id: UUID) -> Dict[str, Any]:
         """Get metrics for a session."""
         metrics = await self._get_session_metrics(session_id)
@@ -636,7 +650,11 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         ]
 
         findings_tool = next(
-            (tool for tool in available_tools if getattr(tool, "name", None) == "findings_list"),
+            (
+                tool
+                for tool in available_tools
+                if getattr(tool, "name", None) == "findings_list"
+            ),
             None,
         )
 
@@ -660,7 +678,9 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                         for finding in findings[:3]:
                             fallback_lines.append(
                                 "- [{severity}] {title} (status: {status})".format(
-                                    severity=str(finding.get("severity", "unknown")).upper(),
+                                    severity=str(
+                                        finding.get("severity", "unknown")
+                                    ).upper(),
                                     title=finding.get("title", "Untitled Finding"),
                                     status=finding.get("status", "unknown"),
                                 )

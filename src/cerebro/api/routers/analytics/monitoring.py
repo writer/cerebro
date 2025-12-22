@@ -15,7 +15,10 @@ from cerebro.analytics.sql_dialect import (
     get_dialect_name,
     timestamp_minus_days_expr,
 )
-from cerebro.analytics.operations import gather_celery_status, collect_operational_health
+from cerebro.analytics.operations import (
+    gather_celery_status,
+    collect_operational_health,
+)
 from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.config import settings
@@ -48,7 +51,8 @@ async def get_sla_breach_analysis(
     low_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
 
     # Get SLA breaches by severity with details and ownership
-    sla_breach_query = text(f"""
+    sla_breach_query = text(
+        f"""
         SELECT
             f.finding_id,
             f.title,
@@ -86,18 +90,14 @@ async def get_sla_breach_analysis(
                 WHEN 'low' THEN 4
             END,
             f.first_seen
-    """)
+    """
+    )
 
     result = await analytics_db.execute(sla_breach_query, {"org_id": org_id})
     breaches = result.fetchall()
 
     # Organize by severity
-    breaches_by_severity = {
-        "critical": [],
-        "high": [],
-        "medium": [],
-        "low": []
-    }
+    breaches_by_severity = {"critical": [], "high": [], "medium": [], "low": []}
 
     for breach in breaches:
         breach_data = {
@@ -110,7 +110,7 @@ async def get_sla_breach_analysis(
             "days_overdue": int(breach.days_old) - breach.sla_days,
             "first_seen": breach.first_seen.isoformat(),
             "owner": breach.owner,
-            "backup_owner": breach.backup_owner
+            "backup_owner": breach.backup_owner,
         }
         breaches_by_severity[breach.severity].append(breach_data)
 
@@ -124,19 +124,34 @@ async def get_sla_breach_analysis(
             "total_sla_breaches": total_breaches,
             "critical_breaches": critical_breaches,
             "high_breaches": high_breaches,
-            "average_days_overdue": round(sum(int(b.days_old) - b.sla_days for b in breaches) / len(breaches), 1) if breaches else 0
+            "average_days_overdue": (
+                round(
+                    sum(int(b.days_old) - b.sla_days for b in breaches) / len(breaches),
+                    1,
+                )
+                if breaches
+                else 0
+            ),
         },
         "breaches_by_severity": breaches_by_severity,
         "urgent_actions": [
-            f"{critical_breaches} critical findings > 7 days old" if critical_breaches > 0 else None,
-            f"{high_breaches} high findings > 14 days old" if high_breaches > 0 else None
-        ]
+            (
+                f"{critical_breaches} critical findings > 7 days old"
+                if critical_breaches > 0
+                else None
+            ),
+            (
+                f"{high_breaches} high findings > 14 days old"
+                if high_breaches > 0
+                else None
+            ),
+        ],
     }
 
 
 @router.get("/heartbeat")
 async def get_heartbeat_chips(
-    current_user: User = Depends(require_scopes("read:findings"))
+    current_user: User = Depends(require_scopes("read:findings")),
 ) -> Dict[str, Any]:
     """Get Celery heartbeat status chips for dashboard monitoring."""
 
@@ -154,7 +169,9 @@ async def get_heartbeat_chips(
     elif summary["healthy_workers"] < summary["total_workers"]:
         system_status = "warning"
         status_color = "#ea580c"
-        status_message = f"{summary['healthy_workers']}/{summary['total_workers']} workers healthy"
+        status_message = (
+            f"{summary['healthy_workers']}/{summary['total_workers']} workers healthy"
+        )
     else:
         system_status = "healthy"
         status_color = "#22c55e"
@@ -181,7 +198,7 @@ async def get_heartbeat_chips(
             "color": status_color,
             "message": status_message,
             "click_through_url": "/admin/workers",
-            "last_updated": now.isoformat()
+            "last_updated": now.isoformat(),
         },
         {
             "type": "queue_depth",
@@ -191,7 +208,7 @@ async def get_heartbeat_chips(
             "color": queue_color,
             "message": f"{queue_depth} tasks pending",
             "click_through_url": "/admin/tasks",
-            "last_updated": now.isoformat()
+            "last_updated": now.isoformat(),
         },
         {
             "type": "active_tasks",
@@ -201,8 +218,8 @@ async def get_heartbeat_chips(
             "color": "#3b82f6",
             "message": f"{summary['total_active_tasks']} running tasks",
             "click_through_url": "/admin/tasks?status=active",
-            "last_updated": now.isoformat()
-        }
+            "last_updated": now.isoformat(),
+        },
     ]
 
     return {
@@ -212,10 +229,10 @@ async def get_heartbeat_chips(
             "last_check": now.isoformat(),
             "workers_online": summary["healthy_workers"],
             "total_workers": summary["total_workers"],
-            "queue_backlog": queue_depth > 20
+            "queue_backlog": queue_depth > 20,
         },
         "worker_details": celery_status["workers"],
-        "error": celery_status.get("error")
+        "error": celery_status.get("error"),
     }
 
 
@@ -228,7 +245,9 @@ async def get_warehouse_health(
     if not resolve_snowflake_database_url():
         env = (settings.environment or "development").lower()
         if env not in {"dev", "development", "test", "testing"}:
-            raise HTTPException(status_code=503, detail="SNOWFLAKE_DATABASE_URL is not configured")
+            raise HTTPException(
+                status_code=503, detail="SNOWFLAKE_DATABASE_URL is not configured"
+            )
         return {"configured": False, "error": "SNOWFLAKE_DATABASE_URL not configured"}
 
     try:
@@ -265,13 +284,25 @@ async def get_warehouse_health(
             job_names = ["refresh_rule_controls", "warehouse_data_quality_checks"]
             jobs: Dict[str, Any] = {}
             for job_name in job_names:
-                row = (await warehouse.execute(job_status_query, {"job_name": job_name})).mappings().first()
+                row = (
+                    (await warehouse.execute(job_status_query, {"job_name": job_name}))
+                    .mappings()
+                    .first()
+                )
                 if row:
                     jobs[job_name] = {
                         "status": row.get("status"),
                         "component": row.get("component"),
-                        "started_at": row.get("started_at").isoformat() if row.get("started_at") else None,
-                        "finished_at": row.get("finished_at").isoformat() if row.get("finished_at") else None,
+                        "started_at": (
+                            row.get("started_at").isoformat()
+                            if row.get("started_at")
+                            else None
+                        ),
+                        "finished_at": (
+                            row.get("finished_at").isoformat()
+                            if row.get("finished_at")
+                            else None
+                        ),
                         "row_count": row.get("row_count"),
                         "details": row.get("details"),
                     }
@@ -279,15 +310,19 @@ async def get_warehouse_health(
                     jobs[job_name] = None
 
             rule_controls_row = (
-                await warehouse.execute(
-                    text(
-                        """
+                (
+                    await warehouse.execute(
+                        text(
+                            """
                         SELECT MAX(created_at) AS last_refreshed_at, COUNT(*) AS row_count
                         FROM rule_controls
                         """
+                        )
                     )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
 
             rule_controls = {
                 "last_refreshed_at": (
@@ -295,29 +330,41 @@ async def get_warehouse_health(
                     if rule_controls_row and rule_controls_row.get("last_refreshed_at")
                     else None
                 ),
-                "row_count": int(rule_controls_row.get("row_count") or 0) if rule_controls_row else 0,
+                "row_count": (
+                    int(rule_controls_row.get("row_count") or 0)
+                    if rule_controls_row
+                    else 0
+                ),
             }
 
             # Use INFORMATION_SCHEMA to avoid expensive COUNT(*) on large tables.
             quoted_tables = ", ".join(f"'{name.upper()}'" for name in table_names)
             table_stats_rows = (
-                await warehouse.execute(
-                    text(
-                        f"""
+                (
+                    await warehouse.execute(
+                        text(
+                            f"""
                         SELECT table_name, row_count, bytes, last_altered
                         FROM information_schema.tables
                         WHERE table_schema = CURRENT_SCHEMA()
                           AND table_name IN ({quoted_tables})
                         """
+                        )
                     )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
 
             table_stats: Dict[str, Any] = {
                 row["table_name"].lower(): {
                     "row_count": int(row.get("row_count") or 0),
                     "bytes": int(row.get("bytes") or 0),
-                    "last_altered": row.get("last_altered").isoformat() if row.get("last_altered") else None,
+                    "last_altered": (
+                        row.get("last_altered").isoformat()
+                        if row.get("last_altered")
+                        else None
+                    ),
                 }
                 for row in table_stats_rows
             }

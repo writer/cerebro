@@ -71,6 +71,7 @@ class KubernetesProvider(BaseProvider):
             )
 
         try:
+
             def _load_config() -> tuple[client.ApiClient, dict[str, Any]]:
                 if not self.verify_ssl:
                     config.load_kube_config(
@@ -162,9 +163,11 @@ class KubernetesProvider(BaseProvider):
                     metadata={
                         "labels": metadata.labels or {},
                         "annotations": metadata.annotations or {},
-                        "creation_timestamp": metadata.creation_timestamp.isoformat()
-                        if metadata.creation_timestamp
-                        else None,
+                        "creation_timestamp": (
+                            metadata.creation_timestamp.isoformat()
+                            if metadata.creation_timestamp
+                            else None
+                        ),
                     },
                 )
 
@@ -300,9 +303,8 @@ class KubernetesProvider(BaseProvider):
                 metadata = ingress.metadata
                 external_id = f"{metadata.namespace}/{metadata.name}"
                 annotations = metadata.annotations or {}
-                ingress_class = (
-                    ingress.spec.ingress_class_name
-                    or annotations.get("kubernetes.io/ingress.class")
+                ingress_class = ingress.spec.ingress_class_name or annotations.get(
+                    "kubernetes.io/ingress.class"
                 )
                 yield ResourceInfo(
                     external_id=external_id,
@@ -316,9 +318,8 @@ class KubernetesProvider(BaseProvider):
                 )
 
         if (
-            (not resource_types or "k8s.network_policy" in resource_types)
-            and self._networking
-        ):
+            not resource_types or "k8s.network_policy" in resource_types
+        ) and self._networking:
             policies = await call_sync_with_retries(
                 lambda: self._networking.list_network_policy_for_all_namespaces(),
                 exceptions=(ApiException,),
@@ -370,9 +371,7 @@ class KubernetesProvider(BaseProvider):
         for service_account in service_accounts.items:
             metadata = service_account.metadata
             external_id = f"{metadata.namespace}:{metadata.name}"
-            secret_names = [
-                secret.name for secret in service_account.secrets or []
-            ]
+            secret_names = [secret.name for secret in service_account.secrets or []]
             yield PrincipalInfo(
                 external_id=external_id,
                 principal_type="service_account",
@@ -395,9 +394,11 @@ class KubernetesProvider(BaseProvider):
         if resource.resource_type == "k8s.cluster":
             normalized_config = {
                 "cluster": self.cluster_name,
-                "server": getattr(self._api_client.configuration, "host", None)
-                if self._api_client
-                else None,
+                "server": (
+                    getattr(self._api_client.configuration, "host", None)
+                    if self._api_client
+                    else None
+                ),
                 "version": self._cluster_version,
             }
         elif resource.resource_type == "k8s.namespace":
@@ -516,9 +517,11 @@ class KubernetesProvider(BaseProvider):
             "labels": metadata.labels or {},
             "annotations": metadata.annotations or {},
             "status": getattr(namespace.status, "phase", None),
-            "creation_timestamp": metadata.creation_timestamp.isoformat()
-            if metadata.creation_timestamp
-            else None,
+            "creation_timestamp": (
+                metadata.creation_timestamp.isoformat()
+                if metadata.creation_timestamp
+                else None
+            ),
             "networkPolicies": [
                 self._summarize_network_policy(policy)
                 for policy in network_policies or []
@@ -554,15 +557,17 @@ class KubernetesProvider(BaseProvider):
             "volumes": [
                 self._build_volume_config(volume) for volume in spec.volumes or []
             ],
-            "conditions": [
-                {
-                    "type": condition.type,
-                    "status": condition.status,
-                }
-                for condition in status.conditions or []
-            ]
-            if status
-            else [],
+            "conditions": (
+                [
+                    {
+                        "type": condition.type,
+                        "status": condition.status,
+                    }
+                    for condition in status.conditions or []
+                ]
+                if status
+                else []
+            ),
         }
 
     def _build_ingress_config(self, ingress: client.V1Ingress) -> dict[str, Any]:
@@ -604,8 +609,8 @@ class KubernetesProvider(BaseProvider):
             )
 
         annotations = metadata.annotations or {}
-        ingress_class = (
-            spec.ingress_class_name or annotations.get("kubernetes.io/ingress.class")
+        ingress_class = spec.ingress_class_name or annotations.get(
+            "kubernetes.io/ingress.class"
         )
 
         return {
@@ -707,9 +712,11 @@ class KubernetesProvider(BaseProvider):
             "addresses": addresses,
             "taints": taints,
             "conditions": conditions,
-            "creation_timestamp": metadata.creation_timestamp.isoformat()
-            if metadata.creation_timestamp
-            else None,
+            "creation_timestamp": (
+                metadata.creation_timestamp.isoformat()
+                if metadata.creation_timestamp
+                else None
+            ),
         }
 
     def _build_cluster_role_binding_config(
@@ -760,12 +767,14 @@ class KubernetesProvider(BaseProvider):
                         "namespaceSelector": self._describe_label_selector(
                             getattr(peer, "namespace_selector", None)
                         ),
-                        "ipBlock": {
-                            "cidr": getattr(peer.ip_block, "cidr", None),
-                            "except": getattr(peer.ip_block, "_except", None) or [],
-                        }
-                        if getattr(peer, "ip_block", None)
-                        else None,
+                        "ipBlock": (
+                            {
+                                "cidr": getattr(peer.ip_block, "cidr", None),
+                                "except": getattr(peer.ip_block, "_except", None) or [],
+                            }
+                            if getattr(peer, "ip_block", None)
+                            else None
+                        ),
                     }
                 )
             return summarized
@@ -951,12 +960,14 @@ class KubernetesProvider(BaseProvider):
 
         return {
             "name": volume.name,
-            "hostPath": {
-                "path": host_path.path,
-                "type": host_path.type,
-            }
-            if host_path
-            else None,
+            "hostPath": (
+                {
+                    "path": host_path.path,
+                    "type": host_path.type,
+                }
+                if host_path
+                else None
+            ),
             "projectedSources": projected_sources,
         }
 

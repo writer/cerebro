@@ -14,7 +14,9 @@ def test_get_resource_not_found(client: TestClient, admin_token: str) -> None:
     assert response.status_code == 404
 
 
-def test_resource_configuration_requires_existing_resource(client: TestClient, admin_token: str) -> None:
+def test_resource_configuration_requires_existing_resource(
+    client: TestClient, admin_token: str
+) -> None:
     response = client.get(
         "/api/v1/resources/00000000-0000-0000-0000-000000000000/configurations",
         headers={"Authorization": f"Bearer {admin_token}"},

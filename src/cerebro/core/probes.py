@@ -85,7 +85,9 @@ async def check_broker_connection(timeout: float = 2.0) -> Tuple[bool, Optional[
     return True, None
 
 
-async def _run_target(target: str, timeout: float) -> Tuple[bool, Dict[str, Dict[str, Optional[str]]]]:
+async def _run_target(
+    target: str, timeout: float
+) -> Tuple[bool, Dict[str, Dict[str, Optional[str]]]]:
     if target == "api-ready":
         db_ok, db_error = await check_database(timeout)
         celery_ok, celery_error = await check_celery_workers(timeout)

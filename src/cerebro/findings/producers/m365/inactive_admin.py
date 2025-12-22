@@ -88,7 +88,10 @@ class M365InactivePrivilegedUserProducer(BaseFindingProducer):
         last_login = self._parse_ts(data.get("last_login"))
         created = self._parse_ts(data.get("created"))
 
-        if last_login and datetime.now(timezone.utc) - last_login <= self._MAX_INACTIVITY:
+        if (
+            last_login
+            and datetime.now(timezone.utc) - last_login <= self._MAX_INACTIVITY
+        ):
             return findings
 
         if (
@@ -117,10 +120,15 @@ class M365InactivePrivilegedUserProducer(BaseFindingProducer):
             ),
         )
 
-        severity = Severity.CRITICAL if any(
-            (name or "").lower() in {"global administrator", "company administrator"}
-            for name in role_names
-        ) else self.severity
+        severity = (
+            Severity.CRITICAL
+            if any(
+                (name or "").lower()
+                in {"global administrator", "company administrator"}
+                for name in role_names
+            )
+            else self.severity
+        )
 
         summary = (
             "Privileged Microsoft 365 account has no successful sign-in within "

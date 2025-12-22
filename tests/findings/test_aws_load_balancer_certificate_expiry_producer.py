@@ -20,7 +20,9 @@ def _make_resource(lb_arn: str) -> ResourceEntity:
 
 
 def _make_cert(days_until_expiry: int) -> dict[str, str | None]:
-    expiry = datetime.now(timezone.utc) + timedelta(days=days_until_expiry)  # noqa: UP017
+    expiry = datetime.now(timezone.utc) + timedelta(
+        days=days_until_expiry
+    )  # noqa: UP017
     return {
         "certificateArn": "arn:aws:acm:cert/example",
         "isDefault": True,

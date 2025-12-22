@@ -68,7 +68,9 @@ def test_runtime_health_summary_endpoint(client, test_db, test_org, test_token):
     runtimes = payload.get("runtimes", [])
     assert runtimes, "Expected at least one runtime summary"
 
-    claude_summary = next((item for item in runtimes if item["runtime"] == "claude"), None)
+    claude_summary = next(
+        (item for item in runtimes if item["runtime"] == "claude"), None
+    )
     assert claude_summary, payload
 
     events = claude_summary.get("events", {})

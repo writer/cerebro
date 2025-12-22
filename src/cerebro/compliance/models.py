@@ -17,6 +17,7 @@ import json
 
 class EvidenceStatus(Enum):
     """Lifecycle status of evidence items."""
+
     PENDING = "pending"
     COLLECTING = "collecting"
     COLLECTED = "collected"
@@ -28,6 +29,7 @@ class EvidenceStatus(Enum):
 
 class EvidenceCategory(Enum):
     """Standardized evidence categories."""
+
     CONFIGURATION = "configuration"
     ACCESS_LOG = "access_log"
     AUDIT_LOG = "audit_log"
@@ -46,6 +48,7 @@ class EvidenceCategory(Enum):
 
 class EvidenceCollectionMethod(Enum):
     """How the evidence was collected."""
+
     API_QUERY = "api_query"
     SQL_QUERY = "sql_query"
     FILE_UPLOAD = "file_upload"
@@ -57,6 +60,7 @@ class EvidenceCollectionMethod(Enum):
 
 class RetentionClass(Enum):
     """Evidence retention classification."""
+
     STANDARD = "standard"  # 3 years
     LONG_TERM = "long_term"  # 7 years
     PERMANENT = "permanent"  # Indefinite
@@ -66,6 +70,7 @@ class RetentionClass(Enum):
 @dataclass
 class ChainOfCustodyEntry:
     """Single entry in the chain of custody."""
+
     action: str
     actor_id: str
     actor_type: str  # "user", "system", "integration"
@@ -78,6 +83,7 @@ class ChainOfCustodyEntry:
 @dataclass
 class CryptographicProof:
     """Cryptographic integrity proof for evidence."""
+
     content_hash: str  # SHA-256 of content
     signature: Optional[str] = None
     signature_algorithm: Optional[str] = None
@@ -122,7 +128,9 @@ class BaseEvidenceMetadata:
 
     # Data classification
     pii_detected: bool = False
-    sensitivity_level: str = "internal"  # "public", "internal", "confidential", "restricted"
+    sensitivity_level: str = (
+        "internal"  # "public", "internal", "confidential", "restricted"
+    )
     encryption_required: bool = False
 
     # Relationships and context
@@ -130,14 +138,16 @@ class BaseEvidenceMetadata:
     related_evidence_ids: List[str] = field(default_factory=list)
     parent_bundle_id: Optional[str] = None
 
-    def add_custody_entry(self, action: str, actor_id: str, actor_type: str = "user", **details):
+    def add_custody_entry(
+        self, action: str, actor_id: str, actor_type: str = "user", **details
+    ):
         """Add an entry to the chain of custody."""
         entry = ChainOfCustodyEntry(
             action=action,
             actor_id=actor_id,
             actor_type=actor_type,
             timestamp=datetime.utcnow(),
-            details=details
+            details=details,
         )
         self.chain_of_custody.append(entry)
 
@@ -145,9 +155,9 @@ class BaseEvidenceMetadata:
         """Calculate and set content hash."""
         if isinstance(content, dict):
             content_str = json.dumps(content, sort_keys=True)
-            content_bytes = content_str.encode('utf-8')
+            content_bytes = content_str.encode("utf-8")
         elif isinstance(content, str):
-            content_bytes = content.encode('utf-8')
+            content_bytes = content.encode("utf-8")
         else:
             content_bytes = content
 
@@ -165,7 +175,7 @@ class BaseEvidenceMetadata:
                 RetentionClass.STANDARD: 3,
                 RetentionClass.LONG_TERM: 7,
                 RetentionClass.GDPR_RESTRICTED: 2,
-                RetentionClass.PERMANENT: None
+                RetentionClass.PERMANENT: None,
             }
             period = retention_periods.get(self.retention_class)
             if period:
@@ -193,7 +203,9 @@ class ComplianceEvidenceMetadata(BaseEvidenceMetadata):
     data_source_tables: List[str] = field(default_factory=list)
 
     # Compliance status
-    control_status: str = "testing"  # "compliant", "non_compliant", "testing", "not_applicable"
+    control_status: str = (
+        "testing"  # "compliant", "non_compliant", "testing", "not_applicable"
+    )
     findings_count: int = 0
     exceptions_count: int = 0
 
@@ -218,7 +230,9 @@ class ForensicEvidenceMetadata(BaseEvidenceMetadata):
     work_product_protection: bool = False
 
     # Forensic properties
-    acquisition_method: str = "live_api"  # "live_api", "disk_image", "memory_dump", "network_capture"
+    acquisition_method: str = (
+        "live_api"  # "live_api", "disk_image", "memory_dump", "network_capture"
+    )
     evidence_integrity_verified: bool = False
     hash_verification_passed: bool = False
 
@@ -240,13 +254,17 @@ class AuditEvidenceMetadata(BaseEvidenceMetadata):
     # Audit period and scope
     audit_year: Optional[int] = None
     audit_quarter: Optional[str] = None
-    audit_scope: List[str] = field(default_factory=list)  # Business units, systems, processes
+    audit_scope: List[str] = field(
+        default_factory=list
+    )  # Business units, systems, processes
 
     # Delivery and access
     provided_to_auditor: bool = False
     auditor_access_granted: bool = False
     access_granted_to: List[str] = field(default_factory=list)
-    delivery_method: str = "secure_portal"  # "secure_portal", "encrypted_email", "physical_media"
+    delivery_method: str = (
+        "secure_portal"  # "secure_portal", "encrypted_email", "physical_media"
+    )
 
     # Review status
     auditor_reviewed: bool = False
@@ -363,12 +381,16 @@ class EvidenceRepository(ABC):
     """Abstract interface for evidence storage backends."""
 
     @abstractmethod
-    async def store_evidence(self, content: bytes, metadata: BaseEvidenceMetadata) -> str:
+    async def store_evidence(
+        self, content: bytes, metadata: BaseEvidenceMetadata
+    ) -> str:
         """Store evidence and return evidence ID."""
         pass
 
     @abstractmethod
-    async def get_evidence(self, evidence_id: str) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
+    async def get_evidence(
+        self, evidence_id: str
+    ) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
         """Retrieve evidence content and metadata."""
         pass
 
@@ -394,13 +416,15 @@ class EvidenceRepository(ABC):
 
 
 # Factory functions for creating evidence metadata
-def create_compliance_evidence(control_id: str, framework_name: str, **kwargs) -> ComplianceEvidenceMetadata:
+def create_compliance_evidence(
+    control_id: str, framework_name: str, **kwargs
+) -> ComplianceEvidenceMetadata:
     """Create compliance evidence metadata."""
     metadata = ComplianceEvidenceMetadata(
         control_id=control_id,
         framework_name=framework_name,
         category=EvidenceCategory.CONTROL_TEST,
-        **kwargs
+        **kwargs,
     )
     metadata.add_custody_entry("created", "system", "system")
     return metadata
@@ -412,7 +436,7 @@ def create_forensic_evidence(incident_id: str, **kwargs) -> ForensicEvidenceMeta
         incident_id=incident_id,
         category=EvidenceCategory.AUDIT_LOG,
         retention_class=RetentionClass.LONG_TERM,
-        **kwargs
+        **kwargs,
     )
     metadata.add_custody_entry("created", "system", "system")
     return metadata
@@ -424,7 +448,7 @@ def create_audit_evidence(audit_firm: str, **kwargs) -> AuditEvidenceMetadata:
         audit_firm=audit_firm,
         category=EvidenceCategory.SYSTEM_REPORT,
         retention_class=RetentionClass.LONG_TERM,
-        **kwargs
+        **kwargs,
     )
     metadata.add_custody_entry("created", "system", "system")
     return metadata
@@ -529,7 +553,11 @@ def create_customer_evidence(
 ) -> CustomerEvidenceMetadata:
     """Create customer evidence metadata capturing account health signals."""
 
-    tag_payload = {"customer_id": customer_id, "entity_type": "customer", "segment": segment}
+    tag_payload = {
+        "customer_id": customer_id,
+        "entity_type": "customer",
+        "segment": segment,
+    }
     if tags:
         tag_payload.update(tags)
 

@@ -13,7 +13,10 @@ from cerebro.core.models import Organization
 from cerebro.api.auth import get_current_user, require_scopes, User
 from cerebro.api.org_access import require_org_access
 from cerebro.analytics.risk_scoring import RiskScoringEngine
-from cerebro.analytics.identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector
+from cerebro.analytics.identity_analytics import (
+    IdentityAnalyzer,
+    PrivilegeSprawlDetector,
+)
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -44,11 +47,11 @@ async def get_organization_risk_score(
             "identity_hygiene": risk_score.identity_score,
             "access_control": risk_score.access_control_score,
             "compliance_posture": risk_score.compliance_score,
-            "operational_security": risk_score.operational_score
+            "operational_security": risk_score.operational_score,
         },
         "trend_analysis": {
             "score_trend": risk_score.score_trend,
-            "trend_confidence": risk_score.trend_confidence
+            "trend_confidence": risk_score.trend_confidence,
         },
         "risk_factors": [
             {
@@ -57,15 +60,15 @@ async def get_organization_risk_score(
                 "current_value": factor.current_value,
                 "risk_contribution": factor.risk_contribution,
                 "description": factor.description,
-                "remediation_suggestions": factor.remediation_suggestions
+                "remediation_suggestions": factor.remediation_suggestions,
             }
             for factor in risk_score.risk_factors
         ],
         "actionable_insights": {
             "top_risks": risk_score.top_risks,
             "quick_wins": risk_score.quick_wins,
-            "strategic_initiatives": risk_score.strategic_initiatives
-        }
+            "strategic_initiatives": risk_score.strategic_initiatives,
+        },
     }
 
 
@@ -89,7 +92,7 @@ async def get_risk_heatmap(
         "org_id": str(heatmap.org_id),
         "heatmap_data": heatmap.heatmap_data,
         "high_risk_areas": heatmap.high_risk_areas,
-        "improvement_opportunities": heatmap.improvement_opportunities
+        "improvement_opportunities": heatmap.improvement_opportunities,
     }
 
 
@@ -115,7 +118,9 @@ async def get_identity_analytics(
 @router.get("/organizations/{org_id}/risky-identities")
 async def get_risky_identities(
     org_id: UUID,
-    limit: int = Query(default=20, description="Maximum number of risky identities to return"),
+    limit: int = Query(
+        default=20, description="Maximum number of risky identities to return"
+    ),
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
@@ -127,7 +132,9 @@ async def get_risky_identities(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     identity_analyzer = IdentityAnalyzer(analytics_db, core_db_session=db)
-    risky_identities = await identity_analyzer.analyze_risky_identities(org_id, limit=limit)
+    risky_identities = await identity_analyzer.analyze_risky_identities(
+        org_id, limit=limit
+    )
 
     return [
         {
@@ -143,7 +150,7 @@ async def get_risky_identities(
             "mfa_status": identity.mfa_status,
             "provider_access": identity.provider_access,
             "risk_factors": identity.risk_factors,
-            "remediation_actions": identity.remediation_actions
+            "remediation_actions": identity.remediation_actions,
         }
         for identity in risky_identities
     ]
@@ -172,8 +179,10 @@ async def get_privilege_sprawl_analysis(
             "total_identities": sprawl_analysis.total_identities,
             "high_privilege_identities": sprawl_analysis.high_privilege_identities,
             "cross_provider_identities": sprawl_analysis.cross_provider_identities,
-            "avg_permissions_per_identity": round(sprawl_analysis.avg_permissions_per_identity, 1),
-            "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity
+            "avg_permissions_per_identity": round(
+                sprawl_analysis.avg_permissions_per_identity, 1
+            ),
+            "max_permissions_per_identity": sprawl_analysis.max_permissions_per_identity,
         },
         "privilege_distribution": sprawl_analysis.privilege_distribution,
         "provider_breakdown": sprawl_analysis.provider_privilege_breakdown,
@@ -183,10 +192,10 @@ async def get_privilege_sprawl_analysis(
                 "display_name": identity.display_name,
                 "risk_score": round(identity.risk_score, 1),
                 "risk_level": identity.risk_level.value,
-                "cross_provider_access": identity.cross_provider_access
+                "cross_provider_access": identity.cross_provider_access,
             }
             for identity in sprawl_analysis.top_risky_identities[:10]
-        ]
+        ],
     }
 
 
@@ -205,7 +214,8 @@ async def get_top_organizational_risks(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     # Get top risks with business context
-    top_risks_query = text("""
+    top_risks_query = text(
+        """
         WITH risk_aggregation AS (
             SELECT
                 r.name as risk_name,
@@ -234,9 +244,12 @@ async def get_top_organizational_risks(
         FROM risk_aggregation
         ORDER BY risk_impact_score DESC, finding_count DESC
         LIMIT :limit
-    """)
+    """
+    )
 
-    result = await analytics_db.execute(top_risks_query, {"org_id": org_id, "limit": limit})
+    result = await analytics_db.execute(
+        top_risks_query, {"org_id": org_id, "limit": limit}
+    )
 
     top_risks = []
     for i, row in enumerate(result.fetchall(), 1):
@@ -261,21 +274,23 @@ async def get_top_organizational_risks(
         else:
             urgency = "normal"
 
-        top_risks.append({
-            "rank": i,
-            "risk_name": row.risk_name,
-            "description": row.description,
-            "severity": row.severity,
-            "provider": row.provider,
-            "finding_count": row.finding_count,
-            "risk_impact_score": row.risk_impact_score,
-            "business_impact": impact_desc,
-            "first_seen": row.first_occurrence.isoformat(),
-            "latest_occurrence": row.latest_occurrence.isoformat(),
-            "days_since_first": days_since_first,
-            "remediation_urgency": urgency,
-            "affected_resources": row.affected_resources,
-            "affected_identities": row.affected_identities
-        })
+        top_risks.append(
+            {
+                "rank": i,
+                "risk_name": row.risk_name,
+                "description": row.description,
+                "severity": row.severity,
+                "provider": row.provider,
+                "finding_count": row.finding_count,
+                "risk_impact_score": row.risk_impact_score,
+                "business_impact": impact_desc,
+                "first_seen": row.first_occurrence.isoformat(),
+                "latest_occurrence": row.latest_occurrence.isoformat(),
+                "days_since_first": days_since_first,
+                "remediation_urgency": urgency,
+                "affected_resources": row.affected_resources,
+                "affected_identities": row.affected_identities,
+            }
+        )
 
     return top_risks

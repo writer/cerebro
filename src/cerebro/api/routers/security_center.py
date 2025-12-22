@@ -13,7 +13,11 @@ from ...core.database import get_db
 from ...core.models import Organization
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...vendor_management.vendor_registry import get_vendor_registry, Vendor, VendorRiskLevel
+from ...vendor_management.vendor_registry import (
+    get_vendor_registry,
+    Vendor,
+    VendorRiskLevel,
+)
 from ...customer_management.customer_registry import (
     get_customer_registry,
     Customer,
@@ -95,13 +99,17 @@ class SecurityCenterOverview(BaseModel):
     customerInsights: List[CustomerInsight]
 
 
-def _filter_vendors_by_org(vendors: List[Vendor], org_id: Optional[str]) -> List[Vendor]:
+def _filter_vendors_by_org(
+    vendors: List[Vendor], org_id: Optional[str]
+) -> List[Vendor]:
     if org_id is None:
         return vendors
     return [vendor for vendor in vendors if vendor.org_id in {None, org_id}]
 
 
-def _filter_customers_by_org(customers: List[Customer], org_id: Optional[str]) -> List[Customer]:
+def _filter_customers_by_org(
+    customers: List[Customer], org_id: Optional[str]
+) -> List[Customer]:
     if org_id is None:
         return customers
     return [customer for customer in customers if customer.org_id in {None, org_id}]
@@ -115,18 +123,35 @@ def _format_timestamp(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat()
 
 
-def _build_metrics(vendors: List[Vendor], customers: List[Customer]) -> List[DashboardMetric]:
-    critically_scored = sum(1 for vendor in vendors if vendor.risk_level in {VendorRiskLevel.HIGH, VendorRiskLevel.CRITICAL})
-    overdue_reviews = sum(1 for vendor in vendors if vendor.next_review_due < datetime.now())
+def _build_metrics(
+    vendors: List[Vendor], customers: List[Customer]
+) -> List[DashboardMetric]:
+    critically_scored = sum(
+        1
+        for vendor in vendors
+        if vendor.risk_level in {VendorRiskLevel.HIGH, VendorRiskLevel.CRITICAL}
+    )
+    overdue_reviews = sum(
+        1 for vendor in vendors if vendor.next_review_due < datetime.now()
+    )
 
-    at_risk_customers = sum(1 for customer in customers if customer.health_band == CustomerHealthBand.AT_RISK)
+    at_risk_customers = sum(
+        1
+        for customer in customers
+        if customer.health_band == CustomerHealthBand.AT_RISK
+    )
     qbr_soon = sum(
         1
         for customer in customers
-        if customer.next_qbr_at and 0 <= (customer.next_qbr_at - datetime.now()).days <= 45
+        if customer.next_qbr_at
+        and 0 <= (customer.next_qbr_at - datetime.now()).days <= 45
     )
 
-    watchlist_customers = sum(1 for customer in customers if customer.health_band == CustomerHealthBand.WATCHLIST)
+    watchlist_customers = sum(
+        1
+        for customer in customers
+        if customer.health_band == CustomerHealthBand.WATCHLIST
+    )
 
     return [
         DashboardMetric(
@@ -147,7 +172,9 @@ def _build_metrics(vendors: List[Vendor], customers: List[Customer]) -> List[Das
     ]
 
 
-def _build_recent_activity(vendors: List[Vendor], customers: List[Customer]) -> List[RecentActivityEntry]:
+def _build_recent_activity(
+    vendors: List[Vendor], customers: List[Customer]
+) -> List[RecentActivityEntry]:
     events: List[RecentActivityEntry] = []
     for vendor in sorted(vendors, key=lambda v: v.updated_at, reverse=True)[:3]:
         events.append(
@@ -170,7 +197,9 @@ def _build_recent_activity(vendors: List[Vendor], customers: List[Customer]) -> 
     return events[:6]
 
 
-def _build_upcoming_expirations(vendors: List[Vendor], customers: List[Customer]) -> List[UpcomingExpirationEntry]:
+def _build_upcoming_expirations(
+    vendors: List[Vendor], customers: List[Customer]
+) -> List[UpcomingExpirationEntry]:
     upcoming: List[UpcomingExpirationEntry] = []
     now = datetime.now()
     for vendor in vendors:
@@ -197,7 +226,9 @@ def _build_upcoming_expirations(vendors: List[Vendor], customers: List[Customer]
     return upcoming[:6]
 
 
-def _build_submissions(vendors: List[Vendor], customers: List[Customer]) -> List[SubmissionSummary]:
+def _build_submissions(
+    vendors: List[Vendor], customers: List[Customer]
+) -> List[SubmissionSummary]:
     submissions: List[SubmissionSummary] = []
     now = datetime.now(timezone.utc)
     for vendor in vendors[:3]:
@@ -214,7 +245,8 @@ def _build_submissions(vendors: List[Vendor], customers: List[Customer]) -> List
                 infoSecApprover="infosec-duty",
                 dueDate=_format_timestamp(vendor.next_review_due),
                 requiresApproval=True,
-                autoReleaseEligible=vendor.risk_level in {VendorRiskLevel.LOW, VendorRiskLevel.MEDIUM},
+                autoReleaseEligible=vendor.risk_level
+                in {VendorRiskLevel.LOW, VendorRiskLevel.MEDIUM},
                 kbSummary=f"Latest assessment {vendor.last_assessment_date.strftime('%Y-%m-%d')}",
                 requesterEmail="security-tech@writer.com",
             )
@@ -229,8 +261,16 @@ def _build_submissions(vendors: List[Vendor], customers: List[Customer]) -> List
                 ownerEmail=customer.account_manager,
                 ownerTeam="customer-success",
                 submittedAt=now.isoformat(),
-                status="pending" if customer.health_band != CustomerHealthBand.HEALTHY else "approved",
-                knowledgeBaseType="draft" if customer.health_band == CustomerHealthBand.AT_RISK else "known",
+                status=(
+                    "pending"
+                    if customer.health_band != CustomerHealthBand.HEALTHY
+                    else "approved"
+                ),
+                knowledgeBaseType=(
+                    "draft"
+                    if customer.health_band == CustomerHealthBand.AT_RISK
+                    else "known"
+                ),
                 infoSecApprover="trust-center",
                 dueDate=_format_timestamp(customer.next_qbr_at),
                 requiresApproval=customer.health_band != CustomerHealthBand.HEALTHY,
@@ -240,7 +280,8 @@ def _build_submissions(vendors: List[Vendor], customers: List[Customer]) -> List
                     if customer.health_band == CustomerHealthBand.WATCHLIST
                     else "Healthy customer automation"
                 ),
-                requesterEmail=customer.primary_contact or "customer-success@writer.com",
+                requesterEmail=customer.primary_contact
+                or "customer-success@writer.com",
             )
         )
 
@@ -283,7 +324,7 @@ def _serialize_customer(customer: Customer) -> CustomerInsight:
 @router.get("/organizations/{org_id}/overview")
 async def get_security_center_overview(
     org_id: UUID,
-    db = Depends(get_db),
+    db=Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     """Return aggregated dashboard data for the Writer Security Center."""
@@ -297,7 +338,9 @@ async def get_security_center_overview(
 
     org_key = str(org_id)
     vendors = _filter_vendors_by_org(list(vendor_registry.vendors.values()), org_key)
-    customers = _filter_customers_by_org(list(customer_registry.customers.values()), org_key)
+    customers = _filter_customers_by_org(
+        list(customer_registry.customers.values()), org_key
+    )
 
     overview = SecurityCenterOverview(
         metrics=_build_metrics(vendors, customers),
@@ -314,7 +357,7 @@ async def get_security_center_overview(
 @router.get("/organizations/{org_id}/vendors")
 async def list_security_center_vendors(
     org_id: UUID,
-    db = Depends(get_db),
+    db=Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     organization = await db.get(Organization, org_id)
@@ -322,7 +365,9 @@ async def list_security_center_vendors(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     vendor_registry = get_vendor_registry()
-    vendors = _filter_vendors_by_org(list(vendor_registry.vendors.values()), str(org_id))
+    vendors = _filter_vendors_by_org(
+        list(vendor_registry.vendors.values()), str(org_id)
+    )
     return {
         "count": len(vendors),
         "vendors": [_serialize_vendor(vendor).model_dump() for vendor in vendors],
@@ -332,7 +377,7 @@ async def list_security_center_vendors(
 @router.get("/organizations/{org_id}/customers")
 async def list_security_center_customers(
     org_id: UUID,
-    db = Depends(get_db),
+    db=Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
     organization = await db.get(Organization, org_id)
@@ -340,8 +385,12 @@ async def list_security_center_customers(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     customer_registry = get_customer_registry()
-    customers = _filter_customers_by_org(list(customer_registry.customers.values()), str(org_id))
+    customers = _filter_customers_by_org(
+        list(customer_registry.customers.values()), str(org_id)
+    )
     return {
         "count": len(customers),
-        "customers": [_serialize_customer(customer).model_dump() for customer in customers],
+        "customers": [
+            _serialize_customer(customer).model_dump() for customer in customers
+        ],
     }

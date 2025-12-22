@@ -8,6 +8,7 @@ Creates:
 - Read replicas for scaling
 - Automated backups and snapshots
 """
+
 import pulumi
 import pulumi_aws as aws
 from typing import Optional
@@ -75,14 +76,22 @@ def create_rds_postgres(
 
     if existing_db_instance_id:
         db_instance = aws.rds.Instance.get(f"{name}-db", existing_db_instance_id)
-        parameter_group = aws.rds.ParameterGroup.get(
-            f"{name}-db-params",
-            existing_parameter_group_id,
-        ) if existing_parameter_group_id else None
-        subnet_group = aws.rds.SubnetGroup.get(
-            f"{name}-db-subnet-group",
-            existing_subnet_group_id,
-        ) if existing_subnet_group_id else None
+        parameter_group = (
+            aws.rds.ParameterGroup.get(
+                f"{name}-db-params",
+                existing_parameter_group_id,
+            )
+            if existing_parameter_group_id
+            else None
+        )
+        subnet_group = (
+            aws.rds.SubnetGroup.get(
+                f"{name}-db-subnet-group",
+                existing_subnet_group_id,
+            )
+            if existing_subnet_group_id
+            else None
+        )
 
         return {
             "db_instance": db_instance,

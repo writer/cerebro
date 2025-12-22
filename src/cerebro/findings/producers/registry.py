@@ -57,7 +57,7 @@ def auto_discover_producers(package_name: str = "cerebro.findings.producers") ->
                     # Skip non-class attributes
                     if not isinstance(attr, type):
                         continue
-                    
+
                     # Check if it's a subclass of BaseFindingProducer
                     # Use try-except because some type-like objects fail issubclass()
                     try:

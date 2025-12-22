@@ -138,7 +138,11 @@ async def get_organization_dashboard(
                 if isinstance(value, str):
                     providers.add(value)
 
-    integration_coverage = dashboard_data.get("integration_coverage") if isinstance(dashboard_data, dict) else None
+    integration_coverage = (
+        dashboard_data.get("integration_coverage")
+        if isinstance(dashboard_data, dict)
+        else None
+    )
     if isinstance(integration_coverage, list):
         for entry in integration_coverage:
             if isinstance(entry, dict):
@@ -150,7 +154,9 @@ async def get_organization_dashboard(
     freshness_map = await freshness_service.provider_freshness(providers)
     freshness_payload = {
         provider: {
-            "last_synced_at": summary.last_synced_at.isoformat() if summary.last_synced_at else None,
+            "last_synced_at": (
+                summary.last_synced_at.isoformat() if summary.last_synced_at else None
+            ),
             "age_seconds": summary.age_seconds,
             "age_human": summary.age_human,
             "status": summary.status,
@@ -158,7 +164,9 @@ async def get_organization_dashboard(
         }
         for provider, summary in freshness_map.items()
     }
-    warnings = [summary.warning for summary in freshness_map.values() if summary.warning]
+    warnings = [
+        summary.warning for summary in freshness_map.values() if summary.warning
+    ]
 
     if isinstance(dashboard_data, dict):
         dashboard_data.setdefault("metadata", {})
@@ -168,7 +176,11 @@ async def get_organization_dashboard(
                 "providers": freshness_payload,
                 "warnings": warnings,
             }
-            freshest = [summary.last_synced_at for summary in freshness_map.values() if summary.last_synced_at]
+            freshest = [
+                summary.last_synced_at
+                for summary in freshness_map.values()
+                if summary.last_synced_at
+            ]
             if freshest:
                 metadata["data_as_of"] = max(freshest).isoformat()
         dashboard_data["freshness"] = freshness_payload
@@ -208,9 +220,9 @@ async def get_executive_summary(
         "progress_indicators": {
             "findings_burned_down_30d": executive_summary.findings_burned_down_30d,
             "new_controls_implemented": executive_summary.new_controls_implemented,
-            "risk_score_change_30d": executive_summary.risk_score_change_30d
+            "risk_score_change_30d": executive_summary.risk_score_change_30d,
         },
-        "recommended_investments": executive_summary.recommended_investments
+        "recommended_investments": executive_summary.recommended_investments,
     }
 
 
@@ -322,4 +334,3 @@ async def add_remediation_note(
 
     await db.commit()
     return repository.serialize_remediation_action(action)
-

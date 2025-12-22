@@ -98,7 +98,12 @@ from .security_center import (
     summarize_evidence_set,
     extract_evidence_artifacts,
 )
-from .client import UnifiedCerebroSDK, UnifiedCerebroSDKContext, AgentFacades, AnalyticsFacades
+from .client import (
+    UnifiedCerebroSDK,
+    UnifiedCerebroSDKContext,
+    AgentFacades,
+    AnalyticsFacades,
+)
 from .pagination import (
     PageRequest,
     CursorPage,

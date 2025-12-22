@@ -23,7 +23,9 @@ from cerebro.agents.models import (
 )
 from cerebro.agents.runtime_facade import AgentRuntimeFacade
 from cerebro.agents.review_service import AgentReviewService
-from cerebro.agents.analytics_service import AgentAnalyticsService as RuntimeAnalyticsService
+from cerebro.agents.analytics_service import (
+    AgentAnalyticsService as RuntimeAnalyticsService,
+)
 from cerebro.agents.notification_service import NotificationService
 from cerebro.rules.engine import RuleEngine, EvaluationContext, CompilationError
 
@@ -32,7 +34,7 @@ logger = structlog.get_logger(__name__)
 
 class AgentSessionService:
     """Service for managing agent sessions and conversations."""
-    
+
     def __init__(
         self,
         runtime: Optional[AgentRuntimeFacade] = None,
@@ -41,7 +43,7 @@ class AgentSessionService:
         self.runtime = runtime or AgentRuntimeFacade()
         self._rule_engine = RuleEngine()
         self._repository = repository or AgentSessionRepository()
-    
+
     async def create_session(
         self,
         org_id: UUID,
@@ -51,13 +53,13 @@ class AgentSessionService:
         title: Optional[str] = None,
     ) -> AgentSession:
         """Create a new agent session."""
-        
+
         # Validate agent type
         try:
             agent_type_enum = AgentType(agent_type)
         except ValueError:
             raise ValueError(f"Invalid agent type: {agent_type}")
-        
+
         session = await self.runtime.create_session(
             org_id=org_id,
             agent_type=agent_type_enum,
@@ -65,7 +67,7 @@ class AgentSessionService:
             context=context,
             title=title,
         )
-        
+
         logger.info(
             "Agent session created",
             session_id=session.id,
@@ -73,18 +75,18 @@ class AgentSessionService:
             org_id=org_id,
             created_by=created_by,
         )
-        
+
         return session
-    
+
     async def get_session(
         self,
         session_id: UUID,
         org_id: Optional[UUID] = None,
     ) -> Optional[AgentSession]:
         """Get an agent session by ID, optionally filtered by org."""
-        
+
         return await self._repository.get_session(session_id=session_id, org_id=org_id)
-    
+
     async def list_sessions(
         self,
         org_id: UUID,
@@ -94,7 +96,7 @@ class AgentSessionService:
         offset: int = 0,
     ) -> tuple[List[AgentSession], int]:
         """List agent sessions for an organization."""
-        
+
         agent_type_enum: Optional[AgentType] = None
         if agent_type:
             try:
@@ -111,7 +113,7 @@ class AgentSessionService:
         )
 
         return list(sessions), total_count
-    
+
     async def send_message(
         self,
         session_id: UUID,
@@ -121,7 +123,7 @@ class AgentSessionService:
         stream: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Send a message to an agent session."""
-        
+
         # Get session
         session = await self.get_session(session_id, org_id)
         if not session:
@@ -131,7 +133,7 @@ class AgentSessionService:
                 "metadata": {"session_id": str(session_id)},
             }
             return
-        
+
         # Send message through runtime
         async for response in self.runtime.send_message(
             session=session,
@@ -140,7 +142,7 @@ class AgentSessionService:
             stream=stream,
         ):
             yield response
-    
+
     async def get_session_messages(
         self,
         session_id: UUID,
@@ -149,12 +151,12 @@ class AgentSessionService:
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """Get messages from an agent session."""
-        
+
         # Verify session access
         session = await self.get_session(session_id, org_id)
         if not session:
             return []
-        
+
         return await self.runtime.get_session_messages(session, limit, offset)
 
     async def get_session_memory(
@@ -256,7 +258,9 @@ class AgentSessionService:
 
             for scope in entry.scopes or []:
                 scope_type = (scope.get("type") or "unknown").lower()
-                scope_distribution[scope_type] = scope_distribution.get(scope_type, 0) + 1
+                scope_distribution[scope_type] = (
+                    scope_distribution.get(scope_type, 0) + 1
+                )
 
             metadata = entry.extra_metadata or {}
             if int(metadata.get("presented_count", 0) or 0) > 0:
@@ -273,7 +277,9 @@ class AgentSessionService:
                 scope_type = scope.get("type")
                 value = scope.get("value")
                 if scope_type and scope_type != "session":
-                    scope_labels.append(f"{scope_type}:{value}" if value else scope_type)
+                    scope_labels.append(
+                        f"{scope_type}:{value}" if value else scope_type
+                    )
 
             highlights.append(
                 {
@@ -300,7 +306,7 @@ class AgentSessionService:
             "scope_distribution": scope_distribution,
             "top_memories": highlights[:5],
         }
-    
+
     async def list_review_tasks(
         self,
         org_id: UUID,
@@ -430,7 +436,11 @@ class AgentSessionService:
                 "status": notification.status,
                 "payload": notification.payload,
                 "created_at": notification.created_at.isoformat(),
-                "delivered_at": notification.delivered_at.isoformat() if notification.delivered_at else None,
+                "delivered_at": (
+                    notification.delivered_at.isoformat()
+                    if notification.delivered_at
+                    else None
+                ),
             }
             for notification in notifications
         ]
@@ -477,7 +487,9 @@ class AgentSessionService:
         org_id: UUID,
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
-        suggestions = await self._repository.list_policy_suggestions(org_id, limit=limit)
+        suggestions = await self._repository.list_policy_suggestions(
+            org_id, limit=limit
+        )
 
         ranked: List[Dict[str, Any]] = []
         for suggestion in suggestions:
@@ -564,8 +576,16 @@ class AgentSessionService:
                         "tool_name": invocation.tool_name,
                         "matched": matched_flag,
                         "status": invocation.status.value,
-                        "started_at": invocation.started_at.isoformat() if invocation.started_at else None,
-                        "completed_at": invocation.completed_at.isoformat() if invocation.completed_at else None,
+                        "started_at": (
+                            invocation.started_at.isoformat()
+                            if invocation.started_at
+                            else None
+                        ),
+                        "completed_at": (
+                            invocation.completed_at.isoformat()
+                            if invocation.completed_at
+                            else None
+                        ),
                         "input_data": invocation.input_data,
                         "output_data": invocation.output_data,
                         "cel_context": cel_context,
@@ -589,7 +609,7 @@ class AgentSessionService:
         message_limit: int = 50,
     ) -> Optional[Dict[str, Any]]:
         """Get session with its recent messages."""
-        
+
         session = await self._repository.get_session_with_relations(
             session_id=session_id,
             org_id=org_id,
@@ -600,9 +620,7 @@ class AgentSessionService:
 
         # Get recent messages
         recent_messages = sorted(
-            session.messages,
-            key=lambda m: m.created_at,
-            reverse=True
+            session.messages, key=lambda m: m.created_at, reverse=True
         )[:message_limit]
 
         return {
@@ -614,7 +632,9 @@ class AgentSessionService:
                 "context": session.context,
                 "created_at": session.created_at.isoformat(),
                 "created_by": session.created_by,
-                "status": session.status.value if hasattr(session, "status") else "active",
+                "status": (
+                    session.status.value if hasattr(session, "status") else "active"
+                ),
             },
             "messages": [
                 {
@@ -633,7 +653,9 @@ class AgentSessionService:
                     "tool_name": inv.tool_name,
                     "status": inv.status.value,
                     "started_at": inv.started_at.isoformat(),
-                    "completed_at": inv.completed_at.isoformat() if inv.completed_at else None,
+                    "completed_at": (
+                        inv.completed_at.isoformat() if inv.completed_at else None
+                    ),
                     "error_message": inv.error_message,
                 }
                 for inv in session.tool_invocations
@@ -663,7 +685,7 @@ class AgentSessionService:
             "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
             "resolution_notes": task.resolution_notes,
         }
-    
+
     async def delete_session(
         self,
         session_id: UUID,
@@ -671,7 +693,9 @@ class AgentSessionService:
         deleted_by: str,
     ) -> bool:
         """Delete an agent session (for development/testing only)."""
-        deleted = await self._repository.delete_session(session_id=session_id, org_id=org_id)
+        deleted = await self._repository.delete_session(
+            session_id=session_id, org_id=org_id
+        )
         if deleted:
             logger.info(
                 "Agent session deleted",
@@ -687,7 +711,7 @@ class ToolApprovalService:
 
     def __init__(self, repository: Optional[ToolApprovalRepository] = None) -> None:
         self._repository = repository or ToolApprovalRepository()
-    
+
     async def list_pending_approvals(
         self,
         org_id: UUID,
@@ -695,23 +719,23 @@ class ToolApprovalService:
         offset: int = 0,
     ) -> tuple[List[ToolApproval], int]:
         """List pending tool approvals for an organization."""
-        
+
         approvals, total_count = await self._repository.list_pending(
             org_id,
             limit=limit,
             offset=offset,
         )
         return approvals, total_count
-    
+
     async def get_approval(
         self,
         approval_id: UUID,
         org_id: UUID,
     ) -> Optional[ToolApproval]:
         """Get a specific tool approval."""
-        
+
         return await self._repository.get(approval_id, org_id)
-    
+
     async def approve_tool_invocation(
         self,
         approval_id: UUID,
@@ -720,8 +744,11 @@ class ToolApprovalService:
         decision_reason: Optional[str] = None,
     ) -> Optional[ToolApproval]:
         """Approve a tool invocation."""
-        
-        async with self._repository.approval_scope(approval_id, org_id) as (approval, db_session):
+
+        async with self._repository.approval_scope(approval_id, org_id) as (
+            approval,
+            db_session,
+        ):
             if not approval or approval.status != ApprovalStatus.PENDING:
                 return None
 
@@ -737,10 +764,14 @@ class ToolApprovalService:
             # Update tool invocation status and re-execute if needed
             if approval.tool_invocation:
                 from cerebro.agents.tools import tool_registry
-                from cerebro.agents.tools.base import ToolExecutor, AgentContext, ToolPermissionLevel
-                
+                from cerebro.agents.tools.base import (
+                    ToolExecutor,
+                    AgentContext,
+                    ToolPermissionLevel,
+                )
+
                 tool_invocation = approval.tool_invocation
-                
+
                 # Re-execute the tool with approval context
                 tool = tool_registry.get(tool_invocation.tool_name)
                 if tool:
@@ -751,9 +782,9 @@ class ToolApprovalService:
                         user_id=approved_by,
                         agent_type="approved_action",
                         permission_level=ToolPermissionLevel.WRITE_DESTRUCTIVE,  # Elevated for approved actions
-                        cel_context={"approved": True, "approval_id": str(approval_id)}
+                        cel_context={"approved": True, "approval_id": str(approval_id)},
                     )
-                    
+
                     # Execute the tool with original inputs but approval context
                     tool_executor = ToolExecutor()
                     try:
@@ -763,17 +794,22 @@ class ToolApprovalService:
                             context=execution_context,
                             dry_run=False,  # Execute for real since approved
                         )
-                        
+
                         # Update tool invocation with new results
                         tool_invocation.output_data = re_execution_result.model_dump()
                         tool_invocation.status = (
-                            ToolInvocationStatus.SUCCESS if re_execution_result.success
+                            ToolInvocationStatus.SUCCESS
+                            if re_execution_result.success
                             else ToolInvocationStatus.ERROR
                         )
                         tool_invocation.completed_at = datetime.now(timezone.utc)
-                        
+
                     except Exception as e:
-                        logger.exception("Tool re-execution failed", tool_name=tool_invocation.tool_name, error=str(e))
+                        logger.exception(
+                            "Tool re-execution failed",
+                            tool_name=tool_invocation.tool_name,
+                            error=str(e),
+                        )
                         tool_invocation.status = ToolInvocationStatus.ERROR
                         tool_invocation.error_message = f"Re-execution failed: {str(e)}"
                         tool_invocation.completed_at = datetime.now(timezone.utc)
@@ -786,7 +822,7 @@ class ToolApprovalService:
             )
 
             return approval
-    
+
     async def reject_tool_invocation(
         self,
         approval_id: UUID,
@@ -795,8 +831,11 @@ class ToolApprovalService:
         decision_reason: str,
     ) -> Optional[ToolApproval]:
         """Reject a tool invocation."""
-        
-        async with self._repository.approval_scope(approval_id, org_id) as (approval, _):
+
+        async with self._repository.approval_scope(approval_id, org_id) as (
+            approval,
+            _,
+        ):
             if not approval or approval.status != ApprovalStatus.PENDING:
                 return None
 
@@ -818,17 +857,21 @@ class ToolApprovalService:
 
 class AgentAnalyticsService:
     """Service for agent usage analytics and insights."""
-    
+
     async def get_org_agent_usage(
         self,
         org_id: UUID,
         days: int = 30,
     ) -> Dict[str, Any]:
         """Get agent usage analytics for an organization."""
-        
+
         from cerebro.core.database import async_session_factory
+
         async with async_session_factory() as db_session:
-            from cerebro.analytics.sql_dialect import get_dialect_name, minutes_between_expr
+            from cerebro.analytics.sql_dialect import (
+                get_dialect_name,
+                minutes_between_expr,
+            )
 
             cutoff = datetime.now(timezone.utc) - timedelta(days=max(days, 0))
             dialect = get_dialect_name(db_session)
@@ -855,7 +898,7 @@ class AgentAnalyticsService:
                 ),
                 {"org_id": org_id, "cutoff": cutoff},
             )
-            
+
             # Tool usage stats
             tool_stats = await db_session.execute(
                 text(
@@ -874,8 +917,8 @@ class AgentAnalyticsService:
                 ),
                 {"org_id": org_id, "cutoff": cutoff},
             )
-            
-            # Token usage stats  
+
+            # Token usage stats
             token_stats = await db_session.execute(
                 text(
                     """
@@ -894,7 +937,7 @@ class AgentAnalyticsService:
                 ),
                 {"org_id": org_id, "cutoff": cutoff},
             )
-            
+
             # Approval workflow stats
             approval_stats = await db_session.execute(
                 text(
@@ -907,10 +950,11 @@ class AgentAnalyticsService:
                 WHERE org_id = :org_id
                     AND requested_at >= :cutoff
                 GROUP BY status
-                    """),
+                    """
+                ),
                 {"org_id": org_id, "cutoff": cutoff},
             )
-            
+
             return {
                 "org_id": str(org_id),
                 "analysis_period_days": days,

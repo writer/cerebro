@@ -130,9 +130,7 @@ class TestQueryEngine:
         assert result.rows[0]["active"] is True
 
     async def test_column_selection(self, query_engine: QueryEngine) -> None:
-        result = await query_engine.execute_query(
-            "SELECT id, name FROM test_table"
-        )
+        result = await query_engine.execute_query("SELECT id, name FROM test_table")
 
         assert result.errors == []
         assert result.columns == ["id", "name"]

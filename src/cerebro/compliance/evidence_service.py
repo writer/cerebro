@@ -12,9 +12,14 @@ from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 
 from .models import (
-    BaseEvidenceMetadata, ComplianceEvidenceMetadata, EvidenceStatus, EvidenceCategory, EvidenceCollectionMethod,
-    EvidenceRepository, EvidenceBundle,
-    create_compliance_evidence
+    BaseEvidenceMetadata,
+    ComplianceEvidenceMetadata,
+    EvidenceStatus,
+    EvidenceCategory,
+    EvidenceCollectionMethod,
+    EvidenceRepository,
+    EvidenceBundle,
+    create_compliance_evidence,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,11 +27,13 @@ logger = logging.getLogger(__name__)
 
 class EvidenceCollectionError(Exception):
     """Raised when evidence collection fails."""
+
     pass
 
 
 class EvidenceStorageError(Exception):
     """Raised when evidence storage fails."""
+
     pass
 
 
@@ -38,7 +45,9 @@ class EvidenceService:
     dependency injection and pluggable storage backends.
     """
 
-    def __init__(self, repository: EvidenceRepository, query_engine=None, crypto_service=None):
+    def __init__(
+        self, repository: EvidenceRepository, query_engine=None, crypto_service=None
+    ):
         """
         Initialize evidence service.
 
@@ -56,7 +65,7 @@ class EvidenceService:
             "total_collected": 0,
             "successful": 0,
             "failed": 0,
-            "avg_collection_time_ms": 0
+            "avg_collection_time_ms": 0,
         }
 
     async def collect_compliance_evidence(
@@ -65,7 +74,7 @@ class EvidenceService:
         framework_name: str,
         queries: List[str],
         collector_id: str = "system",
-        test_run_id: Optional[str] = None
+        test_run_id: Optional[str] = None,
     ) -> List[str]:
         """
         Collect evidence for compliance controls.
@@ -86,7 +95,9 @@ class EvidenceService:
         evidence_ids = []
         collection_start = datetime.utcnow()
 
-        logger.info(f"Collecting compliance evidence for control {control_id} in framework {framework_name}")
+        logger.info(
+            f"Collecting compliance evidence for control {control_id} in framework {framework_name}"
+        )
 
         for i, query in enumerate(queries):
             try:
@@ -98,15 +109,19 @@ class EvidenceService:
                     collection_method=EvidenceCollectionMethod.SQL_QUERY,
                     test_run_id=test_run_id,
                     query_used=query,
-                    status=EvidenceStatus.COLLECTING
+                    status=EvidenceStatus.COLLECTING,
                 )
-                metadata.add_custody_entry("collection_started", collector_id, "system", query=query)
+                metadata.add_custody_entry(
+                    "collection_started", collector_id, "system", query=query
+                )
 
                 # Execute query
                 query_start = datetime.utcnow()
                 try:
                     result = await self.query_engine.execute_query(query)
-                    query_duration = (datetime.utcnow() - query_start).total_seconds() * 1000
+                    query_duration = (
+                        datetime.utcnow() - query_start
+                    ).total_seconds() * 1000
                     metadata.query_execution_time_ms = int(query_duration)
 
                     # Prepare evidence content
@@ -120,8 +135,8 @@ class EvidenceService:
                             "columns": result.columns,
                             "rows": result.rows,
                             "total_rows": result.total_rows,
-                            "tables_queried": result.tables_queried
-                        }
+                            "tables_queried": result.tables_queried,
+                        },
                     }
 
                     # Update metadata based on results
@@ -138,7 +153,9 @@ class EvidenceService:
                         metadata.remediation_required = True
 
                 except Exception as query_error:
-                    logger.error(f"Query execution failed for control {control_id}: {query_error}")
+                    logger.error(
+                        f"Query execution failed for control {control_id}: {query_error}"
+                    )
 
                     # Store error as evidence
                     evidence_content = {
@@ -147,7 +164,7 @@ class EvidenceService:
                         "query": query,
                         "collected_at": datetime.utcnow().isoformat(),
                         "error": str(query_error),
-                        "error_type": type(query_error).__name__
+                        "error_type": type(query_error).__name__,
                     }
 
                     metadata.status = EvidenceStatus.COLLECTED
@@ -157,31 +174,42 @@ class EvidenceService:
 
                 # Calculate content hash
                 metadata.calculate_content_hash(evidence_content)
-                metadata.add_custody_entry("collection_completed", collector_id, "system")
+                metadata.add_custody_entry(
+                    "collection_completed", collector_id, "system"
+                )
 
                 # Store evidence
                 evidence_id = await self._store_evidence_safely(
-                    json.dumps(evidence_content, indent=2),
-                    metadata
+                    json.dumps(evidence_content, indent=2), metadata
                 )
                 evidence_ids.append(evidence_id)
 
                 self._collection_stats["successful"] += 1
 
             except Exception as e:
-                logger.error(f"Failed to collect evidence for query {i+1} in control {control_id}: {e}")
+                logger.error(
+                    f"Failed to collect evidence for query {i+1} in control {control_id}: {e}"
+                )
                 self._collection_stats["failed"] += 1
 
-        collection_duration = (datetime.utcnow() - collection_start).total_seconds() * 1000
+        collection_duration = (
+            datetime.utcnow() - collection_start
+        ).total_seconds() * 1000
         self._collection_stats["total_collected"] += len(evidence_ids)
 
         if self._collection_stats["total_collected"] > 0:
             self._collection_stats["avg_collection_time_ms"] = int(
-                (self._collection_stats["avg_collection_time_ms"] * (self._collection_stats["total_collected"] - len(evidence_ids)) +
-                 collection_duration) / self._collection_stats["total_collected"]
+                (
+                    self._collection_stats["avg_collection_time_ms"]
+                    * (self._collection_stats["total_collected"] - len(evidence_ids))
+                    + collection_duration
+                )
+                / self._collection_stats["total_collected"]
             )
 
-        logger.info(f"Collected {len(evidence_ids)} evidence items for control {control_id}")
+        logger.info(
+            f"Collected {len(evidence_ids)} evidence items for control {control_id}"
+        )
         return evidence_ids
 
     async def collect_configuration_evidence(
@@ -190,7 +218,7 @@ class EvidenceService:
         provider: str,
         configuration_data: Dict[str, Any],
         collector_id: str = "system",
-        **metadata_kwargs
+        **metadata_kwargs,
     ) -> str:
         """
         Collect configuration evidence for resources.
@@ -211,25 +239,32 @@ class EvidenceService:
             collection_method=EvidenceCollectionMethod.API_QUERY,
             source_system=provider,
             status=EvidenceStatus.COLLECTING,
-            **metadata_kwargs
+            **metadata_kwargs,
         )
 
         # Add resource context to tags
-        metadata.tags.update({
-            "resource_id": resource_id,
-            "provider": provider,
-            "resource_type": configuration_data.get("resource_type", "unknown")
-        })
+        metadata.tags.update(
+            {
+                "resource_id": resource_id,
+                "provider": provider,
+                "resource_type": configuration_data.get("resource_type", "unknown"),
+            }
+        )
 
-        metadata.add_custody_entry("collection_started", collector_id, "system",
-                                 resource_id=resource_id, provider=provider)
+        metadata.add_custody_entry(
+            "collection_started",
+            collector_id,
+            "system",
+            resource_id=resource_id,
+            provider=provider,
+        )
 
         # Prepare evidence content
         evidence_content = {
             "resource_id": resource_id,
             "provider": provider,
             "collected_at": datetime.utcnow().isoformat(),
-            "configuration": configuration_data
+            "configuration": configuration_data,
         }
 
         # Update metadata
@@ -240,8 +275,7 @@ class EvidenceService:
 
         # Store evidence
         evidence_id = await self._store_evidence_safely(
-            json.dumps(evidence_content, indent=2),
-            metadata
+            json.dumps(evidence_content, indent=2), metadata
         )
 
         return evidence_id
@@ -252,7 +286,7 @@ class EvidenceService:
         log_type: str,
         source_system: str,
         collector_id: str = "system",
-        **metadata_kwargs
+        **metadata_kwargs,
     ) -> str:
         """
         Collect log evidence (access logs, audit logs, etc.).
@@ -272,7 +306,7 @@ class EvidenceService:
             "access": EvidenceCategory.ACCESS_LOG,
             "audit": EvidenceCategory.AUDIT_LOG,
             "security": EvidenceCategory.AUDIT_LOG,
-            "system": EvidenceCategory.SYSTEM_REPORT
+            "system": EvidenceCategory.SYSTEM_REPORT,
         }
         category = category_mapping.get(log_type.lower(), EvidenceCategory.AUDIT_LOG)
 
@@ -282,17 +316,24 @@ class EvidenceService:
             collection_method=EvidenceCollectionMethod.API_QUERY,
             source_system=source_system,
             status=EvidenceStatus.COLLECTING,
-            **metadata_kwargs
+            **metadata_kwargs,
         )
 
-        metadata.tags.update({
-            "log_type": log_type,
-            "entry_count": str(len(log_entries)),
-            "source_system": source_system
-        })
+        metadata.tags.update(
+            {
+                "log_type": log_type,
+                "entry_count": str(len(log_entries)),
+                "source_system": source_system,
+            }
+        )
 
-        metadata.add_custody_entry("collection_started", collector_id, "system",
-                                 log_type=log_type, entry_count=len(log_entries))
+        metadata.add_custody_entry(
+            "collection_started",
+            collector_id,
+            "system",
+            log_type=log_type,
+            entry_count=len(log_entries),
+        )
 
         # Check for PII in logs
         pii_patterns = ["email", "phone", "ssn", "credit_card", "password"]
@@ -305,7 +346,7 @@ class EvidenceService:
             "source_system": source_system,
             "collected_at": datetime.utcnow().isoformat(),
             "entry_count": len(log_entries),
-            "entries": log_entries
+            "entries": log_entries,
         }
 
         # Update metadata
@@ -316,8 +357,7 @@ class EvidenceService:
 
         # Store evidence
         evidence_id = await self._store_evidence_safely(
-            json.dumps(evidence_content, indent=2),
-            metadata
+            json.dumps(evidence_content, indent=2), metadata
         )
 
         return evidence_id
@@ -328,7 +368,7 @@ class EvidenceService:
         document_name: str,
         document_type: str,
         collector_id: str,
-        **metadata_kwargs
+        **metadata_kwargs,
     ) -> str:
         """
         Collect document evidence (policies, procedures, etc.).
@@ -348,24 +388,28 @@ class EvidenceService:
             collector_id=collector_id,
             collection_method=EvidenceCollectionMethod.FILE_UPLOAD,
             status=EvidenceStatus.COLLECTING,
-            **metadata_kwargs
+            **metadata_kwargs,
         )
 
-        metadata.tags.update({
-            "document_name": document_name,
-            "document_type": document_type
-        })
+        metadata.tags.update(
+            {"document_name": document_name, "document_type": document_type}
+        )
 
         # Determine content type
         if isinstance(document_content, str):
             metadata.content_type = "text/plain"
-            content_bytes = document_content.encode('utf-8')
+            content_bytes = document_content.encode("utf-8")
         else:
             metadata.content_type = "application/octet-stream"
             content_bytes = document_content
 
-        metadata.add_custody_entry("collection_started", collector_id, "user",
-                                 document_name=document_name, document_type=document_type)
+        metadata.add_custody_entry(
+            "collection_started",
+            collector_id,
+            "user",
+            document_name=document_name,
+            document_type=document_type,
+        )
 
         # Update metadata
         metadata.status = EvidenceStatus.COLLECTED
@@ -402,10 +446,13 @@ class EvidenceService:
                 # Get evidence content for signing
                 content, _ = await self.repository.get_evidence(evidence_id)
                 if content:
-                    signature = await self.crypto_service.sign_data(content, evidence_id)
+                    signature = await self.crypto_service.sign_data(
+                        content, evidence_id
+                    )
                     if signature:
                         if not metadata.crypto_proof:
                             from .models import CryptographicProof
+
                             metadata.crypto_proof = CryptographicProof(
                                 content_hash=metadata.content_hash
                             )
@@ -434,7 +481,7 @@ class EvidenceService:
         control_ids: List[str],
         evidence_ids: List[str],
         created_by: str,
-        **bundle_kwargs
+        **bundle_kwargs,
     ) -> str:
         """
         Create evidence bundle for audit delivery.
@@ -456,7 +503,7 @@ class EvidenceService:
             control_ids=control_ids,
             evidence_ids=evidence_ids,
             created_by=created_by,
-            **bundle_kwargs
+            **bundle_kwargs,
         )
 
         # Calculate bundle hash
@@ -475,26 +522,23 @@ class EvidenceService:
             "framework": framework_name,
             "controls": control_ids,
             "evidence_count": len(evidence_ids),
-            "bundle_hash": bundle.bundle_hash
+            "bundle_hash": bundle.bundle_hash,
         }
 
         # Store bundle
         bundle_id = await self.repository.create_bundle(bundle)
 
-        logger.info(f"Created evidence bundle {bundle_id} with {len(evidence_ids)} items")
+        logger.info(
+            f"Created evidence bundle {bundle_id} with {len(evidence_ids)} items"
+        )
         return bundle_id
 
     async def get_collection_stats(self) -> Dict[str, Any]:
         """Get evidence collection statistics."""
-        return {
-            **self._collection_stats,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        return {**self._collection_stats, "timestamp": datetime.utcnow().isoformat()}
 
     async def _store_evidence_safely(
-        self,
-        content: Union[str, bytes],
-        metadata: BaseEvidenceMetadata
+        self, content: Union[str, bytes], metadata: BaseEvidenceMetadata
     ) -> str:
         """
         Safely store evidence with error handling and retry logic.
@@ -510,7 +554,7 @@ class EvidenceService:
             EvidenceStorageError: If storage fails after retries
         """
         if isinstance(content, str):
-            content_bytes = content.encode('utf-8')
+            content_bytes = content.encode("utf-8")
         else:
             content_bytes = content
 
@@ -518,23 +562,31 @@ class EvidenceService:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                evidence_id = await self.repository.store_evidence(content_bytes, metadata)
+                evidence_id = await self.repository.store_evidence(
+                    content_bytes, metadata
+                )
 
                 # Verify storage
                 stored_metadata = await self.repository.get_metadata(evidence_id)
                 if not stored_metadata:
-                    raise EvidenceStorageError("Evidence metadata not found after storage")
+                    raise EvidenceStorageError(
+                        "Evidence metadata not found after storage"
+                    )
 
                 return evidence_id
 
             except Exception as e:
                 if attempt == max_retries - 1:
-                    logger.error(f"Failed to store evidence after {max_retries} attempts: {e}")
+                    logger.error(
+                        f"Failed to store evidence after {max_retries} attempts: {e}"
+                    )
                     raise EvidenceStorageError(f"Storage failed: {e}")
 
                 # Wait before retry (exponential backoff)
-                await asyncio.sleep(2 ** attempt)
-                logger.warning(f"Evidence storage attempt {attempt + 1} failed, retrying: {e}")
+                await asyncio.sleep(2**attempt)
+                logger.warning(
+                    f"Evidence storage attempt {attempt + 1} failed, retrying: {e}"
+                )
 
         raise EvidenceStorageError("Storage failed after all retries")
 
@@ -546,9 +598,7 @@ class EvidenceQueryService:
         self.repository = repository
 
     async def get_evidence_by_control(
-        self,
-        control_id: str,
-        framework_name: Optional[str] = None
+        self, control_id: str, framework_name: Optional[str] = None
     ) -> List[BaseEvidenceMetadata]:
         """Get all evidence for a specific control."""
         filters = {"tags.control_id": control_id}
@@ -557,7 +607,9 @@ class EvidenceQueryService:
 
         return await self.repository.search_evidence(**filters)
 
-    async def get_evidence_by_bundle(self, bundle_id: str) -> List[BaseEvidenceMetadata]:
+    async def get_evidence_by_bundle(
+        self, bundle_id: str
+    ) -> List[BaseEvidenceMetadata]:
         """Get all evidence in a bundle."""
         bundle = await self.repository.get_bundle(bundle_id)
         if not bundle:
@@ -577,7 +629,7 @@ class EvidenceQueryService:
         control_id: Optional[str] = None,
         date_range: Optional[tuple[datetime, datetime]] = None,
         status: Optional[EvidenceStatus] = None,
-        category: Optional[EvidenceCategory] = None
+        category: Optional[EvidenceCategory] = None,
     ) -> List[BaseEvidenceMetadata]:
         """Search evidence with multiple filters."""
         filters = {}

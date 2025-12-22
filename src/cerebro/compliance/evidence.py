@@ -33,7 +33,9 @@ class EvidenceCollector:
         """Run the supplied SQL queries and capture results as evidence items."""
 
         if self.query_engine is None:
-            raise ValueError("EvidenceCollector requires a query_engine before collecting evidence")
+            raise ValueError(
+                "EvidenceCollector requires a query_engine before collecting evidence"
+            )
 
         evidence: List[EvidenceItem] = []
 

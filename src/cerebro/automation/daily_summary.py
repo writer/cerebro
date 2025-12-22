@@ -203,11 +203,14 @@ def build_slack_payload(
     """Render a Slack message payload summarizing the findings."""
 
     severity_totals = summary.severity_totals()
-    totals_line = ", ".join(
-        f"{level.capitalize()}: {count}"
-        for level, count in severity_totals.items()
-        if count
-    ) or "No open findings"
+    totals_line = (
+        ", ".join(
+            f"{level.capitalize()}: {count}"
+            for level, count in severity_totals.items()
+            if count
+        )
+        or "No open findings"
+    )
 
     fallback_text = (
         f"Daily security summary for {summary.org_name}: {summary.total_findings()} hot "
@@ -220,7 +223,9 @@ def build_slack_payload(
         last_seen = finding.last_seen
         if last_seen.tzinfo is None:
             last_seen = last_seen.replace(tzinfo=timezone.utc)
-        last_seen_text = last_seen.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        last_seen_text = last_seen.astimezone(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M UTC"
+        )
         findings_lines.append(
             f"• *{finding.severity.upper()}* — {finding.title} ({account_ref})\n"
             f"  Last seen: {last_seen_text}"
@@ -232,7 +237,10 @@ def build_slack_payload(
     blocks: List[Dict[str, Any]] = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"Daily Security Kickoff — {summary.org_name}"},
+            "text": {
+                "type": "plain_text",
+                "text": f"Daily Security Kickoff — {summary.org_name}",
+            },
         },
         {
             "type": "section",

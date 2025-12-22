@@ -21,7 +21,9 @@ class BenchmarkCaseSummary:
     average_score: Optional[float]
 
     @classmethod
-    def from_mapping(cls, case_id: str, payload: Dict[str, Any]) -> "BenchmarkCaseSummary":
+    def from_mapping(
+        cls, case_id: str, payload: Dict[str, Any]
+    ) -> "BenchmarkCaseSummary":
         return cls(
             case_id=case_id,
             passed=bool(payload.get("passed", False)),
@@ -55,7 +57,9 @@ class BenchmarkSummary:
         return any(not case.passed for case in self.cases)
 
     def average_duration_ms(self) -> Optional[float]:
-        durations = [case.total_duration_ms for case in self.cases if case.total_duration_ms]
+        durations = [
+            case.total_duration_ms for case in self.cases if case.total_duration_ms
+        ]
         if not durations:
             return None
         return mean(durations)
@@ -82,7 +86,9 @@ def load_benchmark_summary(scorecard_path: Path) -> BenchmarkSummary:
 
 
 def _format_failed_case(case: BenchmarkCaseSummary) -> str:
-    assertions = ", ".join(case.failed_assertions) if case.failed_assertions else "unknown"
+    assertions = (
+        ", ".join(case.failed_assertions) if case.failed_assertions else "unknown"
+    )
     duration = f"{case.total_duration_ms:.0f}ms" if case.total_duration_ms else "n/a"
     return (
         f"• *{case.case_id}* — failed assertions: {assertions} | turns: {case.turn_count or 'n/a'} | "
@@ -96,7 +102,9 @@ def build_slack_payload(
     run_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     status_line = (
-        "All benchmark cases passed" if not summary.has_failures else f"{len(summary.failed_cases)} case(s) failing"
+        "All benchmark cases passed"
+        if not summary.has_failures
+        else f"{len(summary.failed_cases)} case(s) failing"
     )
 
     fallback = f"Benchmark results: {status_line}; total cases {summary.total_cases}"
@@ -121,7 +129,9 @@ def build_slack_payload(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "\n".join(_format_failed_case(case) for case in summary.failed_cases[:10]),
+                    "text": "\n".join(
+                        _format_failed_case(case) for case in summary.failed_cases[:10]
+                    ),
                 },
             }
         )
@@ -129,7 +139,10 @@ def build_slack_payload(
         blocks.append(
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": ":tada: All benchmark cases are passing."},
+                "text": {
+                    "type": "mrkdwn",
+                    "text": ":tada: All benchmark cases are passing.",
+                },
             }
         )
 

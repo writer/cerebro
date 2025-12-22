@@ -28,7 +28,12 @@ class CLINotFoundError(RuntimeError):
 class ClaudeSDKClient:
     """Minimal stub implementation used for tests."""
 
-    def __init__(self, api_key: str | None = None, options: Optional[ClaudeAgentOptions] = None, **kwargs: Any):  # pragma: no cover
+    def __init__(
+        self,
+        api_key: str | None = None,
+        options: Optional[ClaudeAgentOptions] = None,
+        **kwargs: Any,
+    ):  # pragma: no cover
         self.api_key = api_key
         self.options = options or ClaudeAgentOptions()
         self.kwargs = kwargs
@@ -43,7 +48,9 @@ class ClaudeSDKClient:
     async def connect(self):  # pragma: no cover
         raise CLINotFoundError("Claude CLI not available in test environment")
 
-    async def query(self, message: str, session_id: str | None = None):  # pragma: no cover
+    async def query(
+        self, message: str, session_id: str | None = None
+    ):  # pragma: no cover
         self._messages.append(message)
         return {"session_id": session_id, "message": message}
 
@@ -52,7 +59,9 @@ class ClaudeSDKClient:
             yield None
         return
 
-    async def create_session(self, options: ClaudeAgentOptions, **kwargs: Any) -> Dict[str, Any]:  # pragma: no cover
+    async def create_session(
+        self, options: ClaudeAgentOptions, **kwargs: Any
+    ) -> Dict[str, Any]:  # pragma: no cover
         return {
             "session_id": "stub-session",
             "options": options,

@@ -19,7 +19,9 @@ class ServerSentEvent:
     raw: str = ""
 
 
-async def parse_server_sent_events(source: AsyncIterable[SSEChunk]) -> AsyncIterator[ServerSentEvent]:
+async def parse_server_sent_events(
+    source: AsyncIterable[SSEChunk],
+) -> AsyncIterator[ServerSentEvent]:
     """Parse an async iterable of SSE chunks into structured events."""
 
     buffer = ""
@@ -44,7 +46,9 @@ async def parse_server_sent_events(source: AsyncIterable[SSEChunk]) -> AsyncIter
             yield event
 
 
-def to_server_sent_event_iterator(source: AsyncIterable[SSEChunk]) -> AsyncIterator[ServerSentEvent]:
+def to_server_sent_event_iterator(
+    source: AsyncIterable[SSEChunk],
+) -> AsyncIterator[ServerSentEvent]:
     """Helper alias mirroring the TypeScript SDK naming."""
 
     return parse_server_sent_events(source)

@@ -586,9 +586,7 @@ def _summarize_exposure(entry: Mapping[str, Any]) -> NetworkExposureDetail:
         result["hosts"] = list(islice(hosts, 20))
     ports = entry.get("ports")
     if isinstance(ports, Iterable) and not isinstance(ports, (str, bytes)):
-        result["ports"] = [
-            port for port in islice(ports, 20) if isinstance(port, int)
-        ]
+        result["ports"] = [port for port in islice(ports, 20) if isinstance(port, int)]
     if "port" in entry and isinstance(entry.get("port"), int):
         result["port"] = entry.get("port")
     if "service_port" in entry and isinstance(entry.get("service_port"), int):
@@ -631,8 +629,7 @@ def build_network_exposure_evidence(
     """
 
     exposure_entries = [
-        _summarize_exposure(entry)
-        for entry in islice(exposures, limit)
+        _summarize_exposure(entry) for entry in islice(exposures, limit)
     ]
 
     evidence: NetworkExposureEvidence = {
@@ -743,9 +740,7 @@ def build_security_group_exposure(
         )
 
     if public_rules is not None:
-        summarized = [
-            _summarize_rule(rule) for rule in islice(public_rules, limit)
-        ]
+        summarized = [_summarize_rule(rule) for rule in islice(public_rules, limit)]
         evidence["public_rules"] = summarized
 
     if metadata:
@@ -788,9 +783,7 @@ def build_workflow_permission_evidence(
     if default_permissions:
         default_permissions_dict = dict(default_permissions)
         evidence["default_permissions"] = default_permissions_dict
-        default_workflow = default_permissions_dict.get(
-            "default_workflow_permissions"
-        )
+        default_workflow = default_permissions_dict.get("default_workflow_permissions")
         if default_workflow is not None:
             evidence["default_workflow_permissions"] = default_workflow
     if workflow_access:
@@ -804,9 +797,7 @@ def build_workflow_permission_evidence(
                 "can_approve_pull_request_reviews"
             ]
     if pinned_workflows is not None:
-        evidence["pinned_workflows"] = _clip_generic_sequence(
-            pinned_workflows, limit
-        )
+        evidence["pinned_workflows"] = _clip_generic_sequence(pinned_workflows, limit)
     risk_list = _coerce_str_list(risk_factors)
     if risk_list:
         evidence["risk_factors"] = risk_list
@@ -858,9 +849,7 @@ def build_telemetry_incident_evidence(
         evidence["commit_sha"] = commit_sha
 
     if graph_controls is not None:
-        evidence["graph_controls"] = _clip_generic_sequence(
-            graph_controls, limit
-        )
+        evidence["graph_controls"] = _clip_generic_sequence(graph_controls, limit)
 
     if metadata:
         evidence["metadata"] = dict(metadata)

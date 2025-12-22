@@ -117,10 +117,14 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
             query=message,
         )
 
-        memory_ids = [entry.get("id") for entry in memory_context.entries if entry.get("id")]
+        memory_ids = [
+            entry.get("id") for entry in memory_context.entries if entry.get("id")
+        ]
         previous_ids = set(session.context.get("_recent_memory_ids", []))
         new_entries = [
-            entry for entry in memory_context.entries if entry.get("id") not in previous_ids
+            entry
+            for entry in memory_context.entries
+            if entry.get("id") not in previous_ids
         ]
         if new_entries:
             self._log_memory_activity(session, new_entries)
@@ -264,7 +268,9 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                         assistant_blocks.append(
                             {
                                 "type": "tool_use",
-                                "tool_name": getattr(run_item.raw_item, "name", "unknown"),
+                                "tool_name": getattr(
+                                    run_item.raw_item, "name", "unknown"
+                                ),
                                 "tool_call_id": getattr(run_item.raw_item, "id", None),
                                 "input": payload,
                             }
@@ -274,11 +280,15 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                             yield {
                                 "type": "tool_use",
                                 "content": {
-                                    "tool_name": getattr(run_item.raw_item, "name", "unknown"),
+                                    "tool_name": getattr(
+                                        run_item.raw_item, "name", "unknown"
+                                    ),
                                     "input": payload,
                                 },
                                 "metadata": {
-                                    "tool_call_id": getattr(run_item.raw_item, "id", None),
+                                    "tool_call_id": getattr(
+                                        run_item.raw_item, "id", None
+                                    ),
                                 },
                             }
                         continue
@@ -332,12 +342,16 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
 
             if not assistant_blocks:
                 if isinstance(run_result.final_output, str):
-                    assistant_blocks.append({"type": "text", "text": run_result.final_output})
+                    assistant_blocks.append(
+                        {"type": "text", "text": run_result.final_output}
+                    )
                 elif run_result.final_output is not None:
                     assistant_blocks.append(
                         {
                             "type": "text",
-                            "text": json.dumps(run_result.final_output, ensure_ascii=False),
+                            "text": json.dumps(
+                                run_result.final_output, ensure_ascii=False
+                            ),
                         }
                     )
 
@@ -458,7 +472,9 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                     _tool=tool,
                 ) -> str:
                     try:
-                        parsed_arguments = json.loads(raw_arguments) if raw_arguments else {}
+                        parsed_arguments = (
+                            json.loads(raw_arguments) if raw_arguments else {}
+                        )
                     except json.JSONDecodeError:
                         parsed_arguments = {}
 

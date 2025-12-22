@@ -39,7 +39,9 @@ def _build_metric_accessors() -> Dict[str, MetricAccessor]:
         "unique_sessions": lambda snap: float(snap.unique_sessions),
         "missing_metadata_ratio": lambda snap: snap.missing_metadata_ratio(),
         "missing_component_ratio": lambda snap: snap.missing_component_ratio(),
-        "average_events_per_session": lambda snap: float(snap.average_events_per_session),
+        "average_events_per_session": lambda snap: float(
+            snap.average_events_per_session
+        ),
     }
 
 

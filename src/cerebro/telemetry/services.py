@@ -81,7 +81,9 @@ class TelemetryIngestionService:
 
             if payload.secrets_scan:
                 for secret in payload.secrets_scan:
-                    finding = await self._create_secret_finding(secret, payload, context)
+                    finding = await self._create_secret_finding(
+                        secret, payload, context
+                    )
                     if finding:
                         findings.append(finding)
 
@@ -100,15 +102,21 @@ class TelemetryIngestionService:
                     "timestamp": payload.timestamp,
                     "sha": payload.sha,
                 }
-                for secret in self._iter_secret_evidence(structured_payload, detector_hint=hint):
-                    finding = await self._create_secret_finding(secret, telemetry_stub, context)
+                for secret in self._iter_secret_evidence(
+                    structured_payload, detector_hint=hint
+                ):
+                    finding = await self._create_secret_finding(
+                        secret, telemetry_stub, context
+                    )
                     if finding:
                         findings.append(finding)
 
             if payload.dependencies:
                 vulnerabilities = self._extract_vulnerabilities(payload.dependencies)
                 for vuln in vulnerabilities:
-                    finding = await self._create_dependency_finding(vuln, payload, context)
+                    finding = await self._create_dependency_finding(
+                        vuln, payload, context
+                    )
                     if finding:
                         findings.append(finding)
 
@@ -152,13 +160,17 @@ class TelemetryIngestionService:
                 for event in payload.security_events:
                     if not self._is_suspicious_event(event):
                         continue
-                    finding = await self._create_runtime_event_finding(event, payload, context)
+                    finding = await self._create_runtime_event_finding(
+                        event, payload, context
+                    )
                     if finding:
                         findings.append(finding)
 
             if payload.configuration_drift:
                 for drift in payload.configuration_drift:
-                    finding = await self._create_config_drift_finding(drift, payload, context)
+                    finding = await self._create_config_drift_finding(
+                        drift, payload, context
+                    )
                     if finding:
                         findings.append(finding)
 
@@ -193,7 +205,9 @@ class TelemetryIngestionService:
         """Persist a frontend observation emitted by an analyst workflow."""
 
         if org_id is None:
-            raise TelemetryProcessingError("Frontend observation missing organization context")
+            raise TelemetryProcessingError(
+                "Frontend observation missing organization context"
+            )
 
         occurred_at = payload.occurred_at
         if occurred_at is None:
@@ -244,7 +258,9 @@ class TelemetryIngestionService:
 
         try:
             context = await self._ensure_host_context(payload)
-            snapshot_id = await self._persist_host_snapshot(context, payload, collected_at)
+            snapshot_id = await self._persist_host_snapshot(
+                context, payload, collected_at
+            )
             findings: list[UUID] = []
 
             if payload.security_events:
@@ -425,7 +441,9 @@ class TelemetryIngestionService:
             select(ArtifactPackTarget)
             .options(
                 selectinload(ArtifactPackTarget.pack).selectinload(ArtifactPack.tasks),
-                selectinload(ArtifactPackTarget.pack).selectinload(ArtifactPack.triggers),
+                selectinload(ArtifactPackTarget.pack).selectinload(
+                    ArtifactPack.triggers
+                ),
             )
             .join(ArtifactPack, ArtifactPack.pack_id == ArtifactPackTarget.pack_id)
             .where(
@@ -461,7 +479,9 @@ class TelemetryIngestionService:
 
         return eligible
 
-    async def process_compliance_evidence(self, payload: ComplianceEvidence) -> Dict[str, Any]:
+    async def process_compliance_evidence(
+        self, payload: ComplianceEvidence
+    ) -> Dict[str, Any]:
         """Persist compliance evidence metadata."""
 
         logger.info(
@@ -480,8 +500,12 @@ class TelemetryIngestionService:
 
             findings: list[UUID] = []
 
-            for secret in self._iter_secret_evidence(payload.evidence, detector_hint=payload.framework):
-                finding_id = await self._create_secret_finding(secret, telemetry_stub, context)
+            for secret in self._iter_secret_evidence(
+                payload.evidence, detector_hint=payload.framework
+            ):
+                finding_id = await self._create_secret_finding(
+                    secret, telemetry_stub, context
+                )
                 if finding_id:
                     findings.append(finding_id)
 
@@ -509,7 +533,9 @@ class TelemetryIngestionService:
             logger.exception("Compliance evidence ingestion failed", exc_info=exc)
             raise TelemetryProcessingError(str(exc)) from exc
 
-    async def process_dependency_graph(self, payload: DependencyGraph) -> Dict[str, Any]:
+    async def process_dependency_graph(
+        self, payload: DependencyGraph
+    ) -> Dict[str, Any]:
         """Ingest dependency graph telemetry."""
 
         logger.info(
@@ -541,8 +567,12 @@ class TelemetryIngestionService:
                 "sha": None,
             }
 
-            for secret in self._iter_secret_evidence(payload.dependency_graph, detector_hint="dependency_graph"):
-                finding_id = await self._create_secret_finding(secret, secret_stub, context)
+            for secret in self._iter_secret_evidence(
+                payload.dependency_graph, detector_hint="dependency_graph"
+            ):
+                finding_id = await self._create_secret_finding(
+                    secret, secret_stub, context
+                )
                 if finding_id:
                     findings.append(finding_id)
 
@@ -595,9 +625,13 @@ class TelemetryIngestionService:
             metadata={},
         )
 
-    async def _ensure_runtime_context(self, payload: RuntimeTelemetry) -> RuntimeContext:
+    async def _ensure_runtime_context(
+        self, payload: RuntimeTelemetry
+    ) -> RuntimeContext:
         org = await self._get_or_create_org("runtime-services")
-        account = await self._get_or_create_account(org.org_id, "runtime", "runtime-services")
+        account = await self._get_or_create_account(
+            org.org_id, "runtime", "runtime-services"
+        )
         identifier = f"{payload.service}-{payload.environment}"
         resource = await self._get_or_create_resource(
             account.account_id,
@@ -690,7 +724,9 @@ class TelemetryIngestionService:
 
         return True
 
-    async def _apply_pack_triggers(self, context: HostContext, events: List[HostEvent]) -> None:
+    async def _apply_pack_triggers(
+        self, context: HostContext, events: List[HostEvent]
+    ) -> None:
         """Evaluate automation triggers against a batch of events.
 
         Any trigger that matches will create (or refresh) a host-specific target
@@ -709,7 +745,9 @@ class TelemetryIngestionService:
             select(ArtifactPackTrigger)
             .options(
                 selectinload(ArtifactPackTrigger.pack).selectinload(ArtifactPack.tasks),
-                selectinload(ArtifactPackTrigger.pack).selectinload(ArtifactPack.triggers),
+                selectinload(ArtifactPackTrigger.pack).selectinload(
+                    ArtifactPack.triggers
+                ),
             )
             .join(ArtifactPack, ArtifactPackTrigger.pack_id == ArtifactPack.pack_id)
             .where(
@@ -739,7 +777,10 @@ class TelemetryIngestionService:
 
             if trigger.minimum_severity:
                 min_rank = self._severity_rank(trigger.minimum_severity)
-                if not any(self._severity_rank(event.severity) >= min_rank for event in matched_events):
+                if not any(
+                    self._severity_rank(event.severity) >= min_rank
+                    for event in matched_events
+                ):
                     continue
 
             await self._assign_pack_target(pack, context, trigger)
@@ -751,24 +792,25 @@ class TelemetryIngestionService:
         trigger: ArtifactPackTrigger,
     ) -> None:
         """Create or refresh a target instructing the host to run ``pack``."""
-        stmt = (
-            select(ArtifactPackTarget)
-            .where(
-                ArtifactPackTarget.pack_id == pack.pack_id,
-                ArtifactPackTarget.host_id == context.host_id,
-                ArtifactPackTarget.fulfilled_at.is_(None),
-            )
+        stmt = select(ArtifactPackTarget).where(
+            ArtifactPackTarget.pack_id == pack.pack_id,
+            ArtifactPackTarget.host_id == context.host_id,
+            ArtifactPackTarget.fulfilled_at.is_(None),
         )
         existing = await self.db.scalar(stmt)
         if existing:
             if trigger.expires_after_seconds and existing.expires_at is None:
                 # Backfill an expiry when we promote a previously open-ended target.
-                existing.expires_at = datetime.now(timezone.utc) + timedelta(seconds=trigger.expires_after_seconds)
+                existing.expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=trigger.expires_after_seconds
+                )
             return
 
         expires_at = None
         if trigger.expires_after_seconds:
-            expires_at = datetime.now(timezone.utc) + timedelta(seconds=trigger.expires_after_seconds)
+            expires_at = datetime.now(timezone.utc) + timedelta(
+                seconds=trigger.expires_after_seconds
+            )
 
         target = ArtifactPackTarget(
             pack_id=pack.pack_id,
@@ -970,16 +1012,23 @@ class TelemetryIngestionService:
 
         snapshot: Dict[str, Any] = {
             "host": {k: v for k, v in host_info.items() if v is not None},
-            "health": payload.health.model_dump(exclude_none=True) if payload.health else None,
-            "processes": [proc.model_dump(exclude_none=True) for proc in payload.processes],
+            "health": (
+                payload.health.model_dump(exclude_none=True) if payload.health else None
+            ),
+            "processes": [
+                proc.model_dump(exclude_none=True) for proc in payload.processes
+            ],
             "network_connections": [
-                conn.model_dump(exclude_none=True) for conn in (payload.network_connections or [])
+                conn.model_dump(exclude_none=True)
+                for conn in (payload.network_connections or [])
             ],
             "installed_packages": [
-                pkg.model_dump(exclude_none=True) for pkg in (payload.installed_packages or [])
+                pkg.model_dump(exclude_none=True)
+                for pkg in (payload.installed_packages or [])
             ],
             "threats": [
-                threat.model_dump(exclude_none=True) for threat in (payload.threats or [])
+                threat.model_dump(exclude_none=True)
+                for threat in (payload.threats or [])
             ],
         }
 
@@ -1026,7 +1075,9 @@ class TelemetryIngestionService:
             provider="telemetry",
         )
 
-        from cerebro.findings.producers.telemetry.repo_secret_key import RepoSecretKeyProducer
+        from cerebro.findings.producers.telemetry.repo_secret_key import (
+            RepoSecretKeyProducer,
+        )
         from cerebro.domain.entities import ResourceEntity
 
         resource_entity = ResourceEntity(
@@ -1052,7 +1103,9 @@ class TelemetryIngestionService:
             rule_id=rule.rule_id,
         )
 
-        existing = await self._get_existing_finding(context.org_id, finding_entity.fingerprint)
+        existing = await self._get_existing_finding(
+            context.org_id, finding_entity.fingerprint
+        )
         if existing:
             existing.last_seen = timestamp
             return existing.finding_id
@@ -1099,8 +1152,16 @@ class TelemetryIngestionService:
             provider="telemetry",
         )
 
-        repo = telemetry["repository"] if isinstance(telemetry, dict) else telemetry.repository
-        timestamp = telemetry["timestamp"] if isinstance(telemetry, dict) else telemetry.timestamp
+        repo = (
+            telemetry["repository"]
+            if isinstance(telemetry, dict)
+            else telemetry.repository
+        )
+        timestamp = (
+            telemetry["timestamp"]
+            if isinstance(telemetry, dict)
+            else telemetry.timestamp
+        )
 
         fingerprint = self._fingerprint(
             "telemetry-vuln",
@@ -1450,8 +1511,7 @@ class TelemetryIngestionService:
                 yield DependencyVulnerability(
                     package_name=pkg_name,
                     package_version=vuln_data.get("version", "unknown"),
-                    vulnerability_id=
-                    (
+                    vulnerability_id=(
                         vuln_data.get("via", [{}])[0].get("url", "CVE-UNKNOWN")
                         if isinstance(vuln_data.get("via"), list)
                         else "CVE-UNKNOWN"
@@ -1471,7 +1531,9 @@ class TelemetryIngestionService:
 
         # TODO: Parse pip-audit, go, maven vulnerability formats.
 
-    async def _get_existing_finding(self, org_id: UUID, fingerprint: str) -> Optional[Finding]:
+    async def _get_existing_finding(
+        self, org_id: UUID, fingerprint: str
+    ) -> Optional[Finding]:
         stmt = select(Finding).where(
             Finding.org_id == org_id,
             Finding.fingerprint == fingerprint,
@@ -1495,7 +1557,10 @@ class TelemetryIngestionService:
             "data_exfiltration",
             "malicious_payload",
         }
-        return event.event_type in suspicious_types or event.severity.lower() in {"high", "critical"}
+        return event.event_type in suspicious_types or event.severity.lower() in {
+            "high",
+            "critical",
+        }
 
     @staticmethod
     def _snapshot_default(value: Any) -> Any:

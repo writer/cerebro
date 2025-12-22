@@ -387,10 +387,7 @@ class SelfPlayOrchestrator:
                     if extracted["tools"]:
                         tool_events = extracted["tools"]
                 tool_calls_declared = raw_message.get("tool_calls")
-                if (
-                    isinstance(tool_calls_declared, int)
-                    and tool_calls_declared >= 0
-                ):
+                if isinstance(tool_calls_declared, int) and tool_calls_declared >= 0:
                     tool_events = tool_events[:tool_calls_declared]
                 token_usage = {
                     "input_tokens": raw_message.get("token_usage", {}).get(
@@ -528,9 +525,7 @@ class SelfPlayOrchestrator:
             turns=turns,
             tool_calls=tool_calls,
             success=indicated_success,
-            fail_reason=None
-            if indicated_success
-            else stop_reason or "unknown",
+            fail_reason=None if indicated_success else stop_reason or "unknown",
             transcript=transcript,
             started_at=started_at,
             ended_at=ended_at,

@@ -38,12 +38,16 @@ def _get_retry_task(integration: str):
             return None, None
         kwargs: dict[str, Any] = {}
         if settings.integration_sync_retry_lookback_minutes:
-            kwargs["lookback_minutes"] = settings.integration_sync_retry_lookback_minutes
+            kwargs["lookback_minutes"] = (
+                settings.integration_sync_retry_lookback_minutes
+            )
         return sync_sentinelone, kwargs
     return None, None
 
 
-def _maybe_queue_auto_retry(state, issue, now: datetime, metadata: dict[str, Any] | None) -> dict[str, Any]:
+def _maybe_queue_auto_retry(
+    state, issue, now: datetime, metadata: dict[str, Any] | None
+) -> dict[str, Any]:
     if not settings.integration_sync_retry_enabled:
         return {}
 
@@ -110,7 +114,9 @@ def _determine_coverage_severity(summary: dict[str, Any]) -> str | None:
     status = summary.get("status")
 
     warning_threshold = getattr(settings, "integration_coverage_warning_threshold", 0.7)
-    critical_threshold = getattr(settings, "integration_coverage_critical_threshold", 0.4)
+    critical_threshold = getattr(
+        settings, "integration_coverage_critical_threshold", 0.4
+    )
 
     if status in {"critical", "missing"}:
         return "critical"
@@ -125,7 +131,9 @@ def _determine_coverage_severity(summary: dict[str, Any]) -> str | None:
     return None
 
 
-async def _send_coverage_alert(webhook_url: str, summary: dict[str, Any], severity: str) -> None:
+async def _send_coverage_alert(
+    webhook_url: str, summary: dict[str, Any], severity: str
+) -> None:
     integration = summary.get("integration", "unknown")
     scopes = summary.get("scopes", {})
     healthy = scopes.get("healthy", 0)
@@ -134,7 +142,11 @@ async def _send_coverage_alert(webhook_url: str, summary: dict[str, Any], severi
     ratio_pct = f"{ratio * 100:.1f}%" if isinstance(ratio, (int, float)) else "N/A"
     providers = ", ".join(summary.get("providers", [])) or "n/a"
     evaluated_at = summary.get("evaluated_at")
-    evaluated_str = evaluated_at.isoformat() if isinstance(evaluated_at, datetime) else str(evaluated_at)
+    evaluated_str = (
+        evaluated_at.isoformat()
+        if isinstance(evaluated_at, datetime)
+        else str(evaluated_at)
+    )
 
     color = "#d32f2f" if severity == "critical" else "#f57c00"
 
@@ -205,6 +217,7 @@ async def _send_coverage_alert(webhook_url: str, summary: dict[str, Any], severi
         response = await client.post(webhook_url, json=payload)
         response.raise_for_status()
 
+
 @celery_app.task(bind=True, name="cerebro.tasks.integration.monitor_sync_health")
 def monitor_sync_health(self):
     async def _run():
@@ -217,7 +230,9 @@ def monitor_sync_health(self):
             states = await repo.list_states()
 
             for state in states:
-                issue = analyze_state(state, now, settings.integration_sync_stale_seconds)
+                issue = analyze_state(
+                    state, now, settings.integration_sync_stale_seconds
+                )
                 if not issue:
                     continue
 
@@ -236,7 +251,9 @@ def monitor_sync_health(self):
                             settings.integration_sync_alert_webhook,
                             issue,
                         )
-                    except Exception:  # pragma: no cover - alert failures shouldn't stop monitoring
+                    except (
+                        Exception
+                    ):  # pragma: no cover - alert failures shouldn't stop monitoring
                         logger.exception(
                             "Failed to send integration sync alert for %s:%s",
                             issue.integration,
@@ -251,7 +268,9 @@ def monitor_sync_health(self):
                     "last_alert_sent_at": now.isoformat(),
                 }
 
-                metadata_update.update(_maybe_queue_auto_retry(state, issue, now, metadata))
+                metadata_update.update(
+                    _maybe_queue_auto_retry(state, issue, now, metadata)
+                )
 
                 await repo.upsert_state(
                     integration=state.integration,
@@ -285,8 +304,12 @@ def monitor_sync_health(self):
                     coverage_state = await repo.get_state(integration, "__coverage__")
                     metadata = coverage_state.state_metadata if coverage_state else {}
                     last_status = (metadata or {}).get("last_coverage_status")
-                    last_alert_severity = (metadata or {}).get("last_coverage_alert_status")
-                    last_alert_at = _parse_iso_datetime((metadata or {}).get("last_coverage_alert_at"))
+                    last_alert_severity = (metadata or {}).get(
+                        "last_coverage_alert_status"
+                    )
+                    last_alert_at = _parse_iso_datetime(
+                        (metadata or {}).get("last_coverage_alert_at")
+                    )
 
                     cooldown_seconds = getattr(
                         settings,
@@ -329,9 +352,13 @@ def monitor_sync_health(self):
                 await db.commit()
 
         if issues_handled:
-            logger.warning("Integration sync health check surfaced %s issue(s)", issues_handled)
+            logger.warning(
+                "Integration sync health check surfaced %s issue(s)", issues_handled
+            )
         if webhook_url and coverage_alerts:
-            logger.warning("Integration coverage alerts dispatched: %s", coverage_alerts)
+            logger.warning(
+                "Integration coverage alerts dispatched: %s", coverage_alerts
+            )
         return {"issues": issues_handled, "coverage_alerts": coverage_alerts}
 
     return asyncio.run(_run())

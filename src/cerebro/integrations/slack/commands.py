@@ -64,7 +64,9 @@ class SlackCommandResponse:
 class SlackRequestParser:
     """Parse and validate Slack slash command requests."""
 
-    def __init__(self, signing_secret: Optional[str], tolerance_seconds: int = 300) -> None:
+    def __init__(
+        self, signing_secret: Optional[str], tolerance_seconds: int = 300
+    ) -> None:
         self.signing_secret = signing_secret
         self.tolerance_seconds = tolerance_seconds
 
@@ -80,7 +82,10 @@ class SlackRequestParser:
         if self.signing_secret:
             self._verify_signature(timestamp, signature, body)
         else:
-            logger.warning("slack_signing_secret_missing", message="Skipping signature verification for Slack command")
+            logger.warning(
+                "slack_signing_secret_missing",
+                message="Skipping signature verification for Slack command",
+            )
 
         form = parse_qs(body)
 
@@ -107,7 +112,9 @@ class SlackRequestParser:
             user_name=_get("user_name") or None,
         )
 
-    def _verify_signature(self, timestamp: Optional[str], signature: Optional[str], body: str) -> None:
+    def _verify_signature(
+        self, timestamp: Optional[str], signature: Optional[str], body: str
+    ) -> None:
         if not timestamp or not signature:
             raise SlackCommandError("Missing Slack signature headers.")
 
@@ -135,11 +142,15 @@ class SlackRequestParser:
 class SlackCommandService:
     """Handle Slack slash command actions."""
 
-    def __init__(self, *, default_org_id: Optional[UUID] = None, max_findings: int = 5) -> None:
+    def __init__(
+        self, *, default_org_id: Optional[UUID] = None, max_findings: int = 5
+    ) -> None:
         self.default_org_id = UUID(str(default_org_id)) if default_org_id else None
         self.max_findings = max_findings
 
-    async def handle_command(self, payload: SlackSlashCommand, db: AsyncSession) -> SlackCommandResponse:
+    async def handle_command(
+        self, payload: SlackSlashCommand, db: AsyncSession
+    ) -> SlackCommandResponse:
         args = payload.arguments
         if not args:
             return SlackCommandResponse(text=self._help_text())
@@ -173,9 +184,7 @@ class SlackCommandService:
         allowed = {"critical", "high", "medium", "low", "all"}
         if normalized not in allowed:
             return SlackCommandResponse(
-                text=(
-                    "Invalid severity. Use one of: critical, high, medium, low, all."
-                )
+                text=("Invalid severity. Use one of: critical, high, medium, low, all.")
             )
 
         org = await self._resolve_org(payload.team_id, db)
@@ -218,7 +227,9 @@ class SlackCommandService:
             blocks=blocks,
         )
 
-    async def _resolve_org(self, team_id: str, db: AsyncSession) -> Optional[Organization]:
+    async def _resolve_org(
+        self, team_id: str, db: AsyncSession
+    ) -> Optional[Organization]:
         if self.default_org_id:
             org = await db.get(Organization, self.default_org_id)
             if org:

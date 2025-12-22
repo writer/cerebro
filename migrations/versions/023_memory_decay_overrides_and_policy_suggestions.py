@@ -31,9 +31,16 @@ def upgrade() -> None:
         sa.Column("scope_type", sa.String(length=50), nullable=False),
         sa.Column("scope_value", sa.String(length=255), nullable=True),
         sa.Column("half_life_hours", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["org_id"], ["organizations.org_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.org_id"], ondelete="CASCADE"
+        ),
     )
     op.create_index(
         "ix_agent_memory_decay_overrides_org_scope",
@@ -50,10 +57,27 @@ def upgrade() -> None:
         sa.Column("cel_expression", sa.Text(), nullable=False),
         sa.Column("support_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("reject_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("metadata", json_type, nullable=False, server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb")),
-        sa.Column("last_seen", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.ForeignKeyConstraint(["org_id"], ["organizations.org_id"], ondelete="CASCADE"),
+        sa.Column(
+            "metadata",
+            json_type,
+            nullable=False,
+            server_default=sa.text("'{}'" if is_sqlite else "'{}'::jsonb"),
+        ),
+        sa.Column(
+            "last_seen",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.org_id"], ondelete="CASCADE"
+        ),
     )
     op.create_index(
         "ix_agent_policy_suggestions_org_tool",
@@ -63,7 +87,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_agent_policy_suggestions_org_tool", table_name="agent_policy_suggestions")
+    op.drop_index(
+        "ix_agent_policy_suggestions_org_tool", table_name="agent_policy_suggestions"
+    )
     op.drop_table("agent_policy_suggestions")
-    op.drop_index("ix_agent_memory_decay_overrides_org_scope", table_name="agent_memory_decay_overrides")
+    op.drop_index(
+        "ix_agent_memory_decay_overrides_org_scope",
+        table_name="agent_memory_decay_overrides",
+    )
     op.drop_table("agent_memory_decay_overrides")

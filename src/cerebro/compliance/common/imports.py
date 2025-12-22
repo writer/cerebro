@@ -20,7 +20,7 @@ Based on Vanta MCP server patterns.
 # Re-export all utilities
 from .utils import *
 
-# Re-export all common descriptions  
+# Re-export all common descriptions
 from .descriptions import *
 
 # Re-export schema factories

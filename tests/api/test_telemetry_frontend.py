@@ -39,7 +39,9 @@ def test_frontend_observation_ingestion(
     loop = asyncio.get_event_loop()
     result = loop.run_until_complete(
         test_db.execute(
-            select(FrontendObservationEvent).where(FrontendObservationEvent.event_id == event_id)
+            select(FrontendObservationEvent).where(
+                FrontendObservationEvent.event_id == event_id
+            )
         )
     )
     stored_event = result.scalar_one()
@@ -78,7 +80,9 @@ def test_frontend_observation_with_agent_session(
     loop = asyncio.get_event_loop()
     result = loop.run_until_complete(
         test_db.execute(
-            select(FrontendObservationEvent).where(FrontendObservationEvent.event_id == event_id)
+            select(FrontendObservationEvent).where(
+                FrontendObservationEvent.event_id == event_id
+            )
         )
     )
     stored_event = result.scalar_one()
@@ -111,9 +115,13 @@ async def test_process_frontend_observation_normalizes_datetime(
     event_id = UUID(result["event_id"])
 
     row = await test_db.execute(
-        select(FrontendObservationEvent).where(FrontendObservationEvent.event_id == event_id)
+        select(FrontendObservationEvent).where(
+            FrontendObservationEvent.event_id == event_id
+        )
     )
     stored_event = row.scalar_one()
 
-    assert stored_event.occurred_at.strftime("%Y-%m-%dT%H:%M:%S") == "2024-10-22T13:00:00"
+    assert (
+        stored_event.occurred_at.strftime("%Y-%m-%dT%H:%M:%S") == "2024-10-22T13:00:00"
+    )
     assert stored_event.event_type == "page_view"

@@ -57,7 +57,10 @@ async def run_telemetry_alerts(
         http_client = httpx.AsyncClient(timeout=10.0)
 
     if email_sender is None:
-        async def email_sender(recipients: Sequence[str], subject: str, body: str) -> None:
+
+        async def email_sender(
+            recipients: Sequence[str], subject: str, body: str
+        ) -> None:
             logger.info(
                 "telemetry_alert_email recipients=%s subject=%s preview=%s",
                 list(recipients),
@@ -97,7 +100,9 @@ async def run_telemetry_alerts(
 
             if email_recipients:
                 try:
-                    await send_email_alert(email_sender, email_recipients, alert, snapshot)
+                    await send_email_alert(
+                        email_sender, email_recipients, alert, snapshot
+                    )
                 except Exception:  # pragma: no cover - defensive logging
                     logger.exception(
                         "telemetry_alert_email_failed recipients=%s",

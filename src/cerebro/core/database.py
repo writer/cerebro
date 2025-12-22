@@ -4,7 +4,12 @@ from typing import AsyncGenerator, Tuple
 
 from sqlalchemy import event
 from sqlalchemy.engine.url import URL, make_url
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 
 from cerebro.core.config import settings
@@ -23,9 +28,11 @@ def _build_engine() -> Tuple["AsyncEngine", URL]:
 
     url = make_url(database_url)
 
-    async_database_url = database_url.replace(
-        "postgresql://", "postgresql+asyncpg://"
-    ) if url.drivername.startswith("postgresql") else database_url
+    async_database_url = (
+        database_url.replace("postgresql://", "postgresql+asyncpg://")
+        if url.drivername.startswith("postgresql")
+        else database_url
+    )
 
     engine_options = {
         "echo": False,
@@ -72,6 +79,7 @@ if _engine_url.drivername.startswith("sqlite"):
             agent_models.Base.metadata.create_all(bind=connection)
 
         connection.info["_schema_initialized"] = True
+
 
 # Create session factory
 async_session_factory = async_sessionmaker(

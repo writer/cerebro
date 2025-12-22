@@ -56,7 +56,9 @@ def test_principal_risk_respects_service_account_bonus():
 def test_resource_risk_production_bonus():
     scorer = AttackGraphScoring()
     base = scorer.resource_risk(DummyResource("aws.s3.bucket"))
-    prod = scorer.resource_risk(DummyResource("aws.s3.bucket", metadata={"environment": "production"}))
+    prod = scorer.resource_risk(
+        DummyResource("aws.s3.bucket", metadata={"environment": "production"})
+    )
     assert prod > base
 
 

@@ -21,42 +21,38 @@ router = APIRouter(tags=["Authentication"])
 async def get_jwks(db: AsyncSession = Depends(get_db)) -> JSONResponse:
     """
     Get JSON Web Key Set (JWKS) for token verification.
-    
+
     This endpoint provides public keys that can be used to verify JWT tokens
     issued by this service. It follows the JWKS specification (RFC 7517).
-    
+
     The response includes:
     - Current active signing keys
-    - Recently rotated keys (within overlap period) 
+    - Recently rotated keys (within overlap period)
     - Key metadata for proper verification
-    
+
     Clients should cache this response and refresh periodically.
     """
     with jwt_metrics.time_jwks_request():
         try:
             key_store = JWTKeyStore(db)
-            
+
             # Get JWKS response with public keys
             jwks_response = await key_store.get_jwks_response()
-            
+
             # Add cache headers for performance
             headers = {
                 "Cache-Control": f"public, max-age={settings.jwks_cache_ttl_seconds}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             }
-            
+
             logger.debug(f"Served JWKS with {len(jwks_response.get('keys', []))} keys")
-            
-            return JSONResponse(
-                content=jwks_response,
-                headers=headers
-            )
-            
+
+            return JSONResponse(content=jwks_response, headers=headers)
+
         except Exception as e:
             logger.error(f"Failed to serve JWKS: {e}")
             raise HTTPException(
-                status_code=500,
-                detail="Failed to retrieve public keys"
+                status_code=500, detail="Failed to retrieve public keys"
             )
 
 
@@ -79,24 +75,28 @@ async def get_openid_configuration() -> Dict[str, Any]:
             "id_token_signing_alg_values_supported": [settings.jwt_algorithm],
             "token_endpoint_auth_methods_supported": ["client_secret_post"],
             "scopes_supported": [
-                "openid", "read:organizations", "write:organizations",
-                "read:findings", "write:findings", "read:rules", "write:rules",
-                "collect:data", "query:execute"
-            ]
+                "openid",
+                "read:organizations",
+                "write:organizations",
+                "read:findings",
+                "write:findings",
+                "read:rules",
+                "write:rules",
+                "collect:data",
+                "query:execute",
+            ],
         }
 
     except Exception as e:
         logger.error(f"Failed to serve OpenID configuration: {e}")
         raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve OpenID configuration"
+            status_code=500, detail="Failed to retrieve OpenID configuration"
         )
 
 
 @router.get("/auth/jwks-debug")
 async def debug_jwks(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)
 ) -> Dict[str, Any]:
     """
     Debug endpoint for JWT key information (admin only, development environments only).
@@ -107,31 +107,40 @@ async def debug_jwks(
     # Security check: only enable in development environments
     if not settings.enable_debug_endpoints:
         logger.warning(f"Debug endpoint access attempted by user {current_user.email}")
-        raise HTTPException(
-            status_code=404,
-            detail="Endpoint not found"
-        )
+        raise HTTPException(status_code=404, detail="Endpoint not found")
     try:
         key_store = JWTKeyStore(db)
-        
+
         # Get current signing key
         current_key = await key_store.get_current_signing_key()
         verification_keys = await key_store.get_verification_keys()
-        
+
         return {
-            "current_key": {
-                "kid": current_key.kid if current_key else None,
-                "algorithm": current_key.algorithm if current_key else None,
-                "created_at": current_key.created_at.isoformat() if current_key else None,
-                "expires_at": current_key.expires_at.isoformat() if current_key and current_key.expires_at else None,
-            } if current_key else None,
+            "current_key": (
+                {
+                    "kid": current_key.kid if current_key else None,
+                    "algorithm": current_key.algorithm if current_key else None,
+                    "created_at": (
+                        current_key.created_at.isoformat() if current_key else None
+                    ),
+                    "expires_at": (
+                        current_key.expires_at.isoformat()
+                        if current_key and current_key.expires_at
+                        else None
+                    ),
+                }
+                if current_key
+                else None
+            ),
             "verification_keys_count": len(verification_keys),
             "verification_keys": [
                 {
                     "kid": key.kid,
                     "algorithm": key.algorithm,
                     "created_at": key.created_at.isoformat(),
-                    "expires_at": key.expires_at.isoformat() if key.expires_at else None,
+                    "expires_at": (
+                        key.expires_at.isoformat() if key.expires_at else None
+                    ),
                 }
                 for key in verification_keys
             ],
@@ -139,12 +148,11 @@ async def debug_jwks(
                 "jwt_algorithm": settings.jwt_algorithm,
                 "rotation_period_hours": settings.jwt_rotation_period_hours,
                 "key_overlap_hours": settings.jwt_key_overlap_hours,
-            }
+            },
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to serve JWKS debug info: {e}")
         raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve key debug information"
+            status_code=500, detail="Failed to retrieve key debug information"
         )

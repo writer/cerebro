@@ -3,6 +3,7 @@ Main Pulumi program for Cerebro infrastructure on GCP.
 
 Deploys production-ready infrastructure on Google Cloud Platform.
 """
+
 import pulumi
 import pulumi_gcp as gcp
 import pulumi_random as random
@@ -47,19 +48,25 @@ kms_stack = kms.create_kms_key(
 )
 
 # Generate database password if not provided
-db_password = config.get_secret("dbPassword") or random.RandomPassword(
-    "db-password",
-    length=32,
-    special=True,
-    override_special="!#$%&*()-_=+[]{}<>:?",
-).result
+db_password = (
+    config.get_secret("dbPassword")
+    or random.RandomPassword(
+        "db-password",
+        length=32,
+        special=True,
+        override_special="!#$%&*()-_=+[]{}<>:?",
+    ).result
+)
 
 # Generate Redis password if not provided
-redis_password = config.get_secret("redisPassword") or random.RandomPassword(
-    "redis-password",
-    length=32,
-    special=False,
-).result
+redis_password = (
+    config.get_secret("redisPassword")
+    or random.RandomPassword(
+        "redis-password",
+        length=32,
+        special=False,
+    ).result
+)
 
 # Store secrets in Secret Manager
 secret_resources = secrets.create_secrets(

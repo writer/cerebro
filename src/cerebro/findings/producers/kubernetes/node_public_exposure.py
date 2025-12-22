@@ -112,9 +112,7 @@ class K8sNodePublicExposureProducer(BaseFindingProducer):
         namespace_posture = get_namespace_network_posture(run_context, namespace)
 
         severity = (
-            Severity.CRITICAL
-            if exposures_contain_public(exposures)
-            else self.severity
+            Severity.CRITICAL if exposures_contain_public(exposures) else self.severity
         )
 
         severity = downgrade_severity_for_namespace_policy(

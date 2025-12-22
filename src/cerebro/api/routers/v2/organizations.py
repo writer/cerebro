@@ -16,20 +16,24 @@ from cerebro.core.repositories.organization import Organization, OrganizationRep
 
 # Request/Response schemas
 
+
 class OrganizationCreate(BaseModel):
     """Request schema for creating an organization."""
+
     name: str = Field(..., min_length=1, max_length=255)
     slack_config: Optional[Dict[str, Any]] = None
 
 
 class OrganizationUpdate(BaseModel):
     """Request schema for updating an organization."""
+
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     slack_config: Optional[Dict[str, Any]] = None
 
 
 class OrganizationResponse(BaseModel):
     """Response schema for organization."""
+
     org_id: UUID
     name: str
     slack_config: Optional[Dict[str, Any]] = None
@@ -98,14 +102,14 @@ async def update_organization(
     """Update an organization."""
     # Build updates dict from non-None values
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
-    
+
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
-    
+
     org = await repo.update(org_id, **updates)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     return OrganizationResponse.from_entity(org)
 
 
@@ -119,5 +123,5 @@ async def delete_organization(
     org = await repo.get(org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     await repo.delete(org_id)

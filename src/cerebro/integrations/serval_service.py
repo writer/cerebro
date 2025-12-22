@@ -81,8 +81,12 @@ class ServalIntegrationRepository:
         priority_map: Optional[Dict[str, str]] = None,
     ) -> ServalIntegrationSettings:
         """Create or update the configuration while rotating stored credentials."""
-        encrypted_client_id, encrypted_client_id_dek = await self._encryption.encrypt_secret(client_id)
-        encrypted_client_secret, encrypted_client_secret_dek = await self._encryption.encrypt_secret(client_secret)
+        encrypted_client_id, encrypted_client_id_dek = (
+            await self._encryption.encrypt_secret(client_id)
+        )
+        encrypted_client_secret, encrypted_client_secret_dek = (
+            await self._encryption.encrypt_secret(client_secret)
+        )
 
         stmt = select(ServalIntegration).where(ServalIntegration.org_id == org_id)
         result = await self._db.execute(stmt)
@@ -137,7 +141,9 @@ class ServalIntegrationRepository:
         await self._db.delete(record)
         await self._db.commit()
 
-    async def _record_to_settings(self, record: ServalIntegration) -> ServalIntegrationSettings:
+    async def _record_to_settings(
+        self, record: ServalIntegration
+    ) -> ServalIntegrationSettings:
         """Convert a SQLAlchemy row into the decrypted settings dataclass."""
         client_id = await self._encryption.decrypt_secret(
             record.encrypted_client_id,

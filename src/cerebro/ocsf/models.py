@@ -13,8 +13,10 @@ from pydantic import BaseModel
 
 # ==================== OCSF Enums ====================
 
+
 class OCSFSeverity(IntEnum):
     """OCSF Severity Levels."""
+
     UNKNOWN = 0
     INFORMATIONAL = 1
     LOW = 2
@@ -26,6 +28,7 @@ class OCSFSeverity(IntEnum):
 
 class OCSFStatus(IntEnum):
     """OCSF Activity Status."""
+
     UNKNOWN = 0
     SUCCESS = 1
     FAILURE = 2
@@ -33,6 +36,7 @@ class OCSFStatus(IntEnum):
 
 class OCSFActivityID(IntEnum):
     """OCSF Finding Activity IDs (Category 2)."""
+
     UNKNOWN = 0
     CREATE = 1
     UPDATE = 2
@@ -42,6 +46,7 @@ class OCSFActivityID(IntEnum):
 
 class OCSFComplianceStatus(str):
     """OCSF Compliance Status."""
+
     PASS = "Pass"
     FAIL = "Fail"
     NOT_APPLICABLE = "Not Applicable"
@@ -50,8 +55,10 @@ class OCSFComplianceStatus(str):
 
 # ==================== OCSF Base Objects ====================
 
+
 class OCSFMetadata(BaseModel):
     """OCSF Metadata Object."""
+
     version: str = "1.4.0"
     product: OCSFProduct
     profiles: List[str] = []
@@ -65,6 +72,7 @@ class OCSFMetadata(BaseModel):
 
 class OCSFProduct(BaseModel):
     """OCSF Product Object."""
+
     name: str = "Cerebro"
     version: str = "1.0.0"
     vendor_name: str = "Cerebro Security"
@@ -73,6 +81,7 @@ class OCSFProduct(BaseModel):
 
 class OCSFActor(BaseModel):
     """OCSF Actor Object (User/Process/Device)."""
+
     user: Optional[OCSFUser] = None
     process: Optional[OCSFProcess] = None
     session: Optional[Dict[str, Any]] = None
@@ -81,6 +90,7 @@ class OCSFActor(BaseModel):
 
 class OCSFUser(BaseModel):
     """OCSF User Object."""
+
     name: Optional[str] = None
     uid: Optional[str] = None
     email_addr: Optional[str] = None
@@ -93,6 +103,7 @@ class OCSFUser(BaseModel):
 
 class OCSFProcess(BaseModel):
     """OCSF Process Object."""
+
     name: Optional[str] = None
     pid: Optional[int] = None
     file: Optional[Dict[str, Any]] = None
@@ -102,6 +113,7 @@ class OCSFProcess(BaseModel):
 
 class OCSFResource(BaseModel):
     """OCSF Resource Object."""
+
     name: Optional[str] = None
     uid: Optional[str] = None
     type: Optional[str] = None
@@ -112,6 +124,7 @@ class OCSFResource(BaseModel):
 
 class OCSFCloud(BaseModel):
     """OCSF Cloud Object."""
+
     provider: str  # AWS, Azure, GCP, etc.
     region: Optional[str] = None
     account: Optional[OCSFAccount] = None
@@ -121,6 +134,7 @@ class OCSFCloud(BaseModel):
 
 class OCSFAccount(BaseModel):
     """OCSF Account Object."""
+
     name: Optional[str] = None
     type: Optional[str] = None
     type_id: Optional[int] = None
@@ -129,6 +143,7 @@ class OCSFAccount(BaseModel):
 
 class OCSFObservables(BaseModel):
     """OCSF Observables Array."""
+
     name: str
     type: str
     type_id: int
@@ -138,8 +153,10 @@ class OCSFObservables(BaseModel):
 
 # ==================== OCSF Event Classes ====================
 
+
 class OCSFEvent(BaseModel):
     """Base OCSF Event."""
+
     class_uid: int  # Event class UID
     class_name: str  # Event class name
     category_uid: int  # Category UID (1-8)
@@ -168,6 +185,7 @@ class OCSFFinding(OCSFEvent):
     Represents security findings like vulnerabilities, misconfigurations,
     compliance violations, and other security issues.
     """
+
     # Override base class defaults
     class_uid: int = 2001
     class_name: str = "Security Finding"
@@ -197,6 +215,7 @@ class OCSFFinding(OCSFEvent):
 
 class OCSFFindingInfo(BaseModel):
     """OCSF Finding Info Object."""
+
     title: str
     desc: Optional[str] = None
     uid: str
@@ -211,6 +230,7 @@ class OCSFFindingInfo(BaseModel):
 
 class OCSFRemediation(BaseModel):
     """OCSF Remediation Object."""
+
     desc: str
     kb_articles: Optional[List[str]] = []
     references: Optional[List[str]] = []
@@ -218,6 +238,7 @@ class OCSFRemediation(BaseModel):
 
 class OCSFCompliance(BaseModel):
     """OCSF Compliance Object."""
+
     requirements: List[str] = []  # e.g., ["CIS AWS 1.1", "NIST CSF PR.AC-4"]
     status: str  # Pass, Fail, Not Applicable
     status_detail: Optional[str] = None
@@ -225,6 +246,7 @@ class OCSFCompliance(BaseModel):
 
 class OCSFVulnerability(BaseModel):
     """OCSF Vulnerability Object."""
+
     cve_uid: Optional[str] = None  # CVE-2024-1234
     cwe_uid: Optional[str] = None  # CWE-79
     title: Optional[str] = None
@@ -239,6 +261,7 @@ class OCSFComplianceFinding(OCSFFinding):
 
     Specialized finding for compliance control test results.
     """
+
     class_uid: int = 2003
     class_name: str = "Compliance Finding"
 
@@ -253,6 +276,7 @@ class OCSFIdentityActivity(OCSFEvent):
     Represents IAM-related events like authentication, authorization,
     entity changes, account activity, and group management.
     """
+
     category_uid: int = 3
     category_name: str = "Identity & Access Management"
 
@@ -268,6 +292,7 @@ class OCSFIdentityActivity(OCSFEvent):
 
 
 # ==================== Helper Classes ====================
+
 
 class OCSFTypeUID:
     """OCSF Type UID Calculator."""

@@ -7,6 +7,7 @@ Creates:
 - SNS topics for alarm notifications
 - Log metric filters
 """
+
 import pulumi
 import pulumi_aws as aws
 import json
@@ -493,7 +494,11 @@ def _create_dashboard(
                 "height": 6,
                 "properties": {
                     "metrics": [
-                        ["AWS/DynamoDB", "SuccessfulRequestLatency", {"stat": "Average"}],
+                        [
+                            "AWS/DynamoDB",
+                            "SuccessfulRequestLatency",
+                            {"stat": "Average"},
+                        ],
                         [".", "SuccessfulRequestLatency", {"stat": "p99"}],
                     ],
                     "period": 300,

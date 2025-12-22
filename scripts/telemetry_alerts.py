@@ -13,7 +13,9 @@ from cerebro.automation.alerting import RuleSeverity, run_telemetry_alerts
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run telemetry alert evaluation")
-    parser.add_argument("--window-days", type=int, default=1, help="Lookback window in days")
+    parser.add_argument(
+        "--window-days", type=int, default=1, help="Lookback window in days"
+    )
     parser.add_argument(
         "--slack-webhook",
         action="append",
@@ -27,8 +29,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Email recipient for alert delivery (can be used multiple times)",
     )
     parser.add_argument("--redis-url", help="Redis URL for cooldown tracking")
-    parser.add_argument("--dry-run", action="store_true", help="Evaluate alerts without sending notifications")
-    parser.add_argument("--print-snapshot", action="store_true", help="Print telemetry snapshot JSON")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Evaluate alerts without sending notifications",
+    )
+    parser.add_argument(
+        "--print-snapshot", action="store_true", help="Print telemetry snapshot JSON"
+    )
     parser.add_argument(
         "--fail-on-alerts",
         action="store_true",
@@ -57,7 +65,9 @@ async def _run_async(args: argparse.Namespace) -> int:
     if alerts:
         print(f"Triggered {len(alerts)} telemetry alerts")
         for alert in alerts:
-            print(f" - [{alert.severity.value.upper()}] {alert.rule.rule_id}: {alert.message}")
+            print(
+                f" - [{alert.severity.value.upper()}] {alert.rule.rule_id}: {alert.message}"
+            )
     else:
         print("No telemetry alerts triggered")
 

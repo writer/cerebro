@@ -101,6 +101,8 @@ async def test_tool_executor_rate_limits_by_session(monkeypatch, test_db):
     ok = await executor.execute_tool(_InstantTool(), raw_inputs={}, context=context)
     assert ok.success is True
 
-    blocked = await executor.execute_tool(_InstantTool(), raw_inputs={}, context=context)
+    blocked = await executor.execute_tool(
+        _InstantTool(), raw_inputs={}, context=context
+    )
     assert blocked.success is False
     assert (blocked.metadata or {}).get("error_code") == "TOOL_RATE_LIMITED"

@@ -144,7 +144,11 @@ class AgentSession(DynamoDBAgentModel):
         return build_sk(AgentEntityType.SESSION.value, self.id)
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
-        agent_type_val = self.agent_type.value if isinstance(self.agent_type, Enum) else self.agent_type
+        agent_type_val = (
+            self.agent_type.value
+            if isinstance(self.agent_type, Enum)
+            else self.agent_type
+        )
 
         return {
             "PK": self.get_pk(),
@@ -283,7 +287,9 @@ class ToolInvocation(DynamoDBAgentModel):
             "output_data": self.output_data,
             "status": status_val,
             "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "cel_policy_key": self.cel_policy_key,
             "cel_expression": self.cel_expression,
             "cel_result": self.cel_result,
@@ -311,7 +317,11 @@ class ToolInvocation(DynamoDBAgentModel):
             output_data=item.get("output_data"),
             status=ToolInvocationStatus(item["status"]),
             started_at=datetime.fromisoformat(item["started_at"]),
-            completed_at=datetime.fromisoformat(item["completed_at"]) if item.get("completed_at") else None,
+            completed_at=(
+                datetime.fromisoformat(item["completed_at"])
+                if item.get("completed_at")
+                else None
+            ),
             cel_policy_key=item.get("cel_policy_key"),
             cel_expression=item.get("cel_expression"),
             cel_result=item.get("cel_result"),
@@ -386,9 +396,17 @@ class ToolApproval(DynamoDBAgentModel):
             risk_assessment=item["risk_assessment"],
             status=ApprovalStatus(item["status"]),
             decided_by=item.get("decided_by"),
-            decided_at=datetime.fromisoformat(item["decided_at"]) if item.get("decided_at") else None,
+            decided_at=(
+                datetime.fromisoformat(item["decided_at"])
+                if item.get("decided_at")
+                else None
+            ),
             decision_reason=item.get("decision_reason"),
-            expires_at=datetime.fromisoformat(item["expires_at"]) if item.get("expires_at") else None,
+            expires_at=(
+                datetime.fromisoformat(item["expires_at"])
+                if item.get("expires_at")
+                else None
+            ),
         )
 
 
@@ -436,7 +454,9 @@ class AgentReviewTask(DynamoDBAgentModel):
             "org_id": str(self.org_id),
             "session_id": str(self.session_id),
             "message_id": str(self.message_id) if self.message_id else None,
-            "tool_invocation_id": str(self.tool_invocation_id) if self.tool_invocation_id else None,
+            "tool_invocation_id": (
+                str(self.tool_invocation_id) if self.tool_invocation_id else None
+            ),
             "title": self.title,
             "summary": self.summary,
             "payload": self.payload,
@@ -470,12 +490,18 @@ class AgentReviewTask(DynamoDBAgentModel):
             org_id=UUID(item["org_id"]),
             session_id=UUID(item["session_id"]),
             message_id=UUID(item["message_id"]) if item.get("message_id") else None,
-            tool_invocation_id=UUID(item["tool_invocation_id"]) if item.get("tool_invocation_id") else None,
+            tool_invocation_id=(
+                UUID(item["tool_invocation_id"])
+                if item.get("tool_invocation_id")
+                else None
+            ),
             title=item["title"],
             summary=item.get("summary"),
             payload=item.get("payload", {}),
             priority=item.get("priority"),
-            due_at=datetime.fromisoformat(item["due_at"]) if item.get("due_at") else None,
+            due_at=(
+                datetime.fromisoformat(item["due_at"]) if item.get("due_at") else None
+            ),
             escalated_to=item.get("escalated_to"),
             notification_channel=item.get("notification_channel"),
             ticket_reference=item.get("ticket_reference"),
@@ -485,9 +511,17 @@ class AgentReviewTask(DynamoDBAgentModel):
             promotion_target=item.get("promotion_target"),
             resolution_notes=item.get("resolution_notes"),
             resolved_by=item.get("resolved_by"),
-            resolved_at=datetime.fromisoformat(item["resolved_at"]) if item.get("resolved_at") else None,
+            resolved_at=(
+                datetime.fromisoformat(item["resolved_at"])
+                if item.get("resolved_at")
+                else None
+            ),
             assigned_to=item.get("assigned_to"),
-            assigned_at=datetime.fromisoformat(item["assigned_at"]) if item.get("assigned_at") else None,
+            assigned_at=(
+                datetime.fromisoformat(item["assigned_at"])
+                if item.get("assigned_at")
+                else None
+            ),
             assigned_by=item.get("assigned_by"),
         )
 
@@ -510,7 +544,9 @@ class AgentMemoryEntry(DynamoDBAgentModel):
     embedding_norm: Optional[float] = None
     extra_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     decay_score: float = 1.0
-    last_accessed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_accessed_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -546,7 +582,11 @@ class AgentMemoryEntry(DynamoDBAgentModel):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             # GSI1 for querying by session
-            "GSI1PK": f"SESSION#{self.session_id}" if self.session_id else f"ORG#{self.org_id}#GLOBAL",
+            "GSI1PK": (
+                f"SESSION#{self.session_id}"
+                if self.session_id
+                else f"ORG#{self.org_id}#GLOBAL"
+            ),
             "GSI1SK": f"MEMORY#{self.created_at.isoformat()}",
             # GSI2 for querying by decay score (for pruning)
             "GSI2PK": f"ORG#{self.org_id}#MEMORY",

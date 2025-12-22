@@ -21,29 +21,62 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "artifact_pack_tasks",
-        sa.Column("discovery", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "discovery",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
     )
     op.add_column(
         "artifact_pack_tasks",
-        sa.Column("parameters", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "parameters",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
     )
     op.add_column(
         "artifact_pack_tasks",
-        sa.Column("parameter_values", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "parameter_values",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
     )
     op.add_column(
         "artifact_pack_tasks",
-        sa.Column("resources", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "resources",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
     )
     op.add_column(
         "artifact_pack_tasks",
-        sa.Column("tools", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "tools",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
     )
 
-    op.execute("UPDATE artifact_pack_tasks SET discovery = '[]'::jsonb WHERE discovery IS NULL")
-    op.execute("UPDATE artifact_pack_tasks SET parameters = '[]'::jsonb WHERE parameters IS NULL")
-    op.execute("UPDATE artifact_pack_tasks SET parameter_values = '{}'::jsonb WHERE parameter_values IS NULL")
-    op.execute("UPDATE artifact_pack_tasks SET resources = '{}'::jsonb WHERE resources IS NULL")
+    op.execute(
+        "UPDATE artifact_pack_tasks SET discovery = '[]'::jsonb WHERE discovery IS NULL"
+    )
+    op.execute(
+        "UPDATE artifact_pack_tasks SET parameters = '[]'::jsonb WHERE parameters IS NULL"
+    )
+    op.execute(
+        "UPDATE artifact_pack_tasks SET parameter_values = '{}'::jsonb WHERE parameter_values IS NULL"
+    )
+    op.execute(
+        "UPDATE artifact_pack_tasks SET resources = '{}'::jsonb WHERE resources IS NULL"
+    )
     op.execute("UPDATE artifact_pack_tasks SET tools = '[]'::jsonb WHERE tools IS NULL")
 
 

@@ -12,7 +12,12 @@ from uuid import uuid4
 
 from cerebro.agents.runtime import CerebroClaudeRuntime
 from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
-from cerebro.agents.models import AgentSession, AgentType, MessageRole, AgentRuntimeEvent
+from cerebro.agents.models import (
+    AgentSession,
+    AgentType,
+    MessageRole,
+    AgentRuntimeEvent,
+)
 from cerebro.agents.tools import AgentContext, ToolPermissionLevel
 from cerebro.agents.tools.findings_list import FindingsListTool
 from cerebro.agents.tools.query import QueryTool
@@ -246,7 +251,9 @@ class TestAgentTools:
         from sqlalchemy import select
 
         async with async_session_factory() as session:
-            check_query = select(Finding).where(Finding.finding_id == test_finding.finding_id)
+            check_query = select(Finding).where(
+                Finding.finding_id == test_finding.finding_id
+            )
             check_result = await session.execute(check_query)
             finding = check_result.scalar_one()
 
@@ -321,7 +328,9 @@ class TestAgentRuntime:
         refreshed_session = await runtime.get_session(test_session.id)
         assert refreshed_session is not None
         context_snapshot = refreshed_session.context or {}
-        assert context_snapshot.get("_claude_session_id") or context_snapshot.get("_claude_cli_unavailable")
+        assert context_snapshot.get("_claude_session_id") or context_snapshot.get(
+            "_claude_cli_unavailable"
+        )
 
         from cerebro.core.database import async_session_factory
         from sqlalchemy import select
@@ -374,7 +383,9 @@ class TestAgentRuntime:
                     self.raw_responses: List[Any] = []
                     self.final_output = "Stub OpenAI output"
                     self.context_wrapper = RunContextWrapper(context=context)
-                    usage = Usage(requests=1, input_tokens=12, output_tokens=18, total_tokens=30)
+                    usage = Usage(
+                        requests=1, input_tokens=12, output_tokens=18, total_tokens=30
+                    )
                     self.context_wrapper.usage = usage
 
                 async def stream_events(self):
@@ -388,7 +399,9 @@ class TestAgentRuntime:
 
             return StubRunResult()
 
-        monkeypatch.setattr(openai_runtime_module.Runner, "run_streamed", fake_run_streamed)
+        monkeypatch.setattr(
+            openai_runtime_module.Runner, "run_streamed", fake_run_streamed
+        )
 
         message_stream = runtime.send_message(
             session=test_session,
@@ -509,7 +522,11 @@ class TestSecurityFeatures:
 
         result = await executor.execute_tool(
             tool=tool,
-            raw_inputs={"finding_id": str(uuid4()), "status": "fixed", "comment": "test"},
+            raw_inputs={
+                "finding_id": str(uuid4()),
+                "status": "fixed",
+                "comment": "test",
+            },
             context=context,
         )
 

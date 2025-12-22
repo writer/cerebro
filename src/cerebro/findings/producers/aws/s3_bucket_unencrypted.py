@@ -111,10 +111,7 @@ class S3BucketUnencryptedProducer(BaseAWSProducer):
             finding = self.create_finding(
                 resource=resource,
                 rule_id=rule_id,
-                title=(
-                    "S3 bucket "
-                    f"{bucket_name} is not encrypted"
-                ),
+                title=("S3 bucket " f"{bucket_name} is not encrypted"),
                 summary=(
                     "S3 bucket "
                     f"{bucket_name} lacks default encryption. Risk factors: "

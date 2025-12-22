@@ -6,7 +6,12 @@ from typing import List
 import httpx
 import pytest
 
-from cerebro.automation.alerting import AlertResult, AlertRule, RuleComparison, RuleSeverity
+from cerebro.automation.alerting import (
+    AlertResult,
+    AlertRule,
+    RuleComparison,
+    RuleSeverity,
+)
 from cerebro.automation.alerting.notify import send_email_alert, send_slack_alert
 from cerebro.automation.telemetry_health import TelemetryHealthSnapshot
 
@@ -65,7 +70,9 @@ async def test_send_slack_alert_posts_payload(monkeypatch) -> None:
     async with httpx.AsyncClient() as client:
         monkeypatch.setattr(client, "post", fake_post)  # type: ignore[arg-type]
 
-        await send_slack_alert("https://slack.example", _result(_rule()), session=client)
+        await send_slack_alert(
+            "https://slack.example", _result(_rule()), session=client
+        )
 
     assert calls
     payload = calls[0]["json"]
@@ -79,7 +86,9 @@ async def test_send_email_alert_calls_sender(monkeypatch) -> None:
     async def fake_send(recipients, subject, body):
         captured.append((tuple(recipients), subject, body))
 
-    await send_email_alert(fake_send, ["test@example.com"], _result(_rule()), _snapshot())
+    await send_email_alert(
+        fake_send, ["test@example.com"], _result(_rule()), _snapshot()
+    )
 
     assert captured
     recipients, subject, body = captured[0]

@@ -98,9 +98,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_artifact_pack_targets_pack_host", table_name="artifact_pack_targets")
-    op.drop_index("ix_artifact_pack_targets_host_id", table_name="artifact_pack_targets")
-    op.drop_index("ix_artifact_pack_targets_pack_id", table_name="artifact_pack_targets")
-    op.drop_index("ix_artifact_pack_triggers_pack_id", table_name="artifact_pack_triggers")
+    op.drop_index(
+        "ix_artifact_pack_targets_pack_host", table_name="artifact_pack_targets"
+    )
+    op.drop_index(
+        "ix_artifact_pack_targets_host_id", table_name="artifact_pack_targets"
+    )
+    op.drop_index(
+        "ix_artifact_pack_targets_pack_id", table_name="artifact_pack_targets"
+    )
+    op.drop_index(
+        "ix_artifact_pack_triggers_pack_id", table_name="artifact_pack_triggers"
+    )
     op.drop_table("artifact_pack_targets")
     op.drop_table("artifact_pack_triggers")

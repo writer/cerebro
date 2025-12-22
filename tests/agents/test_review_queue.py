@@ -61,7 +61,9 @@ class _DummyDestructiveTool(Tool):
 
 
 class _ScoredTool(Tool):
-    def __init__(self, name: str, permission: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY):
+    def __init__(
+        self, name: str, permission: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY
+    ):
         self._name = name
         self._permission = permission
 
@@ -102,7 +104,7 @@ async def test_destructive_tool_execution_enqueues_review_task():
             agent_type=AgentType.SECURITY_ANALYST,
             created_by="operator@example.com",
             title="Review Session",
-            context={}
+            context={},
         )
         db_session.add(session)
         await db_session.commit()
@@ -156,7 +158,7 @@ async def test_review_task_resolution_updates_status():
             agent_type=AgentType.SECURITY_ANALYST,
             created_by="reviewer@example.com",
             title="Resolve Session",
-            context={}
+            context={},
         )
         db_session.add(session)
         await db_session.commit()
@@ -201,9 +203,15 @@ async def test_tool_performance_tracker_sorts_by_success_rate():
     fast_tool = _ScoredTool("fast")
     slow_tool = _ScoredTool("slow")
 
-    await performance_tracker.record(tool_name="fast", success=True, duration_seconds=0.1)
-    await performance_tracker.record(tool_name="fast", success=True, duration_seconds=0.2)
-    await performance_tracker.record(tool_name="slow", success=False, duration_seconds=0.05)
+    await performance_tracker.record(
+        tool_name="fast", success=True, duration_seconds=0.1
+    )
+    await performance_tracker.record(
+        tool_name="fast", success=True, duration_seconds=0.2
+    )
+    await performance_tracker.record(
+        tool_name="slow", success=False, duration_seconds=0.05
+    )
 
     ordered = performance_tracker.sort_tools([slow_tool, fast_tool], "security_analyst")
     assert ordered[0].name == "fast"

@@ -44,10 +44,7 @@ def build_task(created_at: datetime):
 @pytest.mark.asyncio
 async def test_list_tasks_page_returns_cursor():
     now = datetime.now(timezone.utc)
-    tasks = [
-        build_task(now - timedelta(minutes=idx))
-        for idx in range(3)
-    ]
+    tasks = [build_task(now - timedelta(minutes=idx)) for idx in range(3)]
 
     stub_session = StubSession(tasks)
     manager = AgentReviewManager(stub_session)

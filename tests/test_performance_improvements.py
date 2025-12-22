@@ -47,7 +47,7 @@ class TestBulkOperations:
                 "captured_at": datetime.utcnow(),
                 "config_sha": config_hash,
                 "normalized_config": test_config,
-                "collector_version": "1.0.0"
+                "collector_version": "1.0.0",
             }
         ]
 
@@ -75,7 +75,7 @@ class TestBulkOperations:
             account_id=test_aws_account.account_id,
             provider="aws",
             principal_type="user",
-            external_id="test-user"
+            external_id="test-user",
         )
         test_db.add(principal)
         await test_db.commit()
@@ -92,7 +92,7 @@ class TestBulkOperations:
                 "via": "IAMRole",
                 "effective_at": datetime.utcnow(),
                 "expires_at": None,
-                "is_admin": False
+                "is_admin": False,
             }
         ]
 
@@ -118,7 +118,7 @@ class TestBulkOperations:
                 account_id=test_aws_account.account_id,
                 provider="aws",
                 principal_type="user",
-                external_id=f"test-user-{i}"
+                external_id=f"test-user-{i}",
             )
             principals.append(principal)
             test_db.add(principal)
@@ -152,7 +152,7 @@ class TestBulkOperations:
                 account_id=test_aws_account.account_id,
                 provider="aws",
                 resource_type="s3.bucket",
-                external_id=f"test-bucket-{i}"
+                external_id=f"test-bucket-{i}",
             )
             resources.append(resource)
             test_db.add(resource)
@@ -290,7 +290,7 @@ class TestConcurrentCollection:
             await asyncio.sleep(0.1)
             return MagicMock(
                 captured_at=datetime.utcnow(),
-                normalized_config={"bucket": resource_info.external_id}
+                normalized_config={"bucket": resource_info.external_id},
             )
 
         mock_provider.get_resource_configuration = mock_get_config
@@ -316,7 +316,7 @@ class TestConcurrentCollection:
             account_id=test_aws_account.account_id,
             provider="aws",
             principal_type="user",
-            external_id="test-user"
+            external_id="test-user",
         )
         test_db.add(principal)
         await test_db.commit()
@@ -348,8 +348,7 @@ class TestConcurrentCollection:
 
         # Test IAM edge collection
         result = CollectionResult(
-            account_id=test_aws_account.account_id,
-            provider="aws"
+            account_id=test_aws_account.account_id, provider="aws"
         )
 
         await collector._collect_iam_edges(mock_provider, test_aws_account, result)
@@ -381,7 +380,7 @@ class TestFindingStatsPerformance:
                 status="open" if i < 5 else "fixed",
                 severity="high" if i < 3 else "medium",
                 fingerprint=f"test-fingerprint-{i}",
-                title=f"Test Finding {i}"
+                title=f"Test Finding {i}",
             )
             findings.append(finding)
             test_db.add(finding)

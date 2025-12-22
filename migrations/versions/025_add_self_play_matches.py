@@ -57,7 +57,9 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["org_id"], ["orgs.org_id"], ondelete="CASCADE"),
     )
-    op.create_index("ix_self_play_matches_scenario_id", "self_play_matches", ["scenario_id"])
+    op.create_index(
+        "ix_self_play_matches_scenario_id", "self_play_matches", ["scenario_id"]
+    )
     op.create_index("ix_self_play_matches_org_id", "self_play_matches", ["org_id"])
 
 

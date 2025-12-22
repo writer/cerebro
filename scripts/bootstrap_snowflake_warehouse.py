@@ -36,10 +36,20 @@ def _get_int_env(name: str) -> int | None:
 def _default_query_tag() -> str:
     base = "cerebro"
     environment = (os.getenv("ENVIRONMENT") or "unknown").strip().lower()
-    component = (os.getenv("CEREBRO_PROCESS_ROLE") or os.getenv("CEREBRO_COMPONENT") or "bootstrap").strip().lower()
+    component = (
+        (
+            os.getenv("CEREBRO_PROCESS_ROLE")
+            or os.getenv("CEREBRO_COMPONENT")
+            or "bootstrap"
+        )
+        .strip()
+        .lower()
+    )
 
     def sanitize(value: str) -> str:
-        return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in value).strip("-")
+        return "".join(
+            ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in value
+        ).strip("-")
 
     return f"{base}:{sanitize(environment)}:{sanitize(component)}"
 
@@ -269,7 +279,9 @@ def _execute_all(conn, statements: Iterable[str]) -> None:
 
 
 def _show_table(conn, table_name: str) -> Optional[Mapping[str, object]]:
-    rows = conn.execute(text(f"SHOW TABLES LIKE '{table_name.upper()}'")).mappings().all()
+    rows = (
+        conn.execute(text(f"SHOW TABLES LIKE '{table_name.upper()}'")).mappings().all()
+    )
     if not rows:
         return None
     return rows[0]
@@ -329,7 +341,9 @@ def _apply_constraints(conn) -> None:
         if not pk_name:
             continue
         conn.execute(
-            text(f"ALTER TABLE {table_name} MODIFY CONSTRAINT {_quote_ident(pk_name)} RELY")
+            text(
+                f"ALTER TABLE {table_name} MODIFY CONSTRAINT {_quote_ident(pk_name)} RELY"
+            )
         )
 
     foreign_keys = [
@@ -477,7 +491,9 @@ def _apply_search_optimization(conn) -> None:
         if enabled == "ON":
             continue
 
-        conn.execute(text(f"ALTER TABLE {table_name} ADD SEARCH OPTIMIZATION ON {config}"))
+        conn.execute(
+            text(f"ALTER TABLE {table_name} ADD SEARCH OPTIMIZATION ON {config}")
+        )
 
 
 def _refresh_rule_controls(conn) -> None:
@@ -497,7 +513,11 @@ def _refresh_rule_controls(conn) -> None:
 
     # Build into a staging table then atomically swap, so readers never observe an empty table.
     # COPY GRANTS ensures the swapped-in table retains the grants readers expect.
-    conn.execute(text("CREATE OR REPLACE TABLE rule_controls_staging LIKE rule_controls COPY GRANTS"))
+    conn.execute(
+        text(
+            "CREATE OR REPLACE TABLE rule_controls_staging LIKE rule_controls COPY GRANTS"
+        )
+    )
     conn.execute(text("TRUNCATE TABLE rule_controls_staging"))
     conn.execute(
         text(
@@ -520,7 +540,9 @@ def _refresh_rule_controls(conn) -> None:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Bootstrap the Cerebro Snowflake warehouse schema")
+    parser = argparse.ArgumentParser(
+        description="Bootstrap the Cerebro Snowflake warehouse schema"
+    )
     parser.add_argument(
         "--url",
         default=os.getenv("SNOWFLAKE_DATABASE_URL"),
@@ -579,7 +601,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if not args.url:
-        raise SystemExit("Snowflake URL not provided; set SNOWFLAKE_DATABASE_URL or pass --url")
+        raise SystemExit(
+            "Snowflake URL not provided; set SNOWFLAKE_DATABASE_URL or pass --url"
+        )
 
     ddl = _build_ddl()
     if args.dry_run:
@@ -589,13 +613,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     url = make_url(args.url)
     query_tag = os.getenv(SNOWFLAKE_QUERY_TAG_ENV) or _default_query_tag()
     application = os.getenv(SNOWFLAKE_APPLICATION_ENV, "cerebro")
-    component = (os.getenv("CEREBRO_PROCESS_ROLE") or os.getenv("CEREBRO_COMPONENT") or "bootstrap").strip().upper()
+    component = (
+        (
+            os.getenv("CEREBRO_PROCESS_ROLE")
+            or os.getenv("CEREBRO_COMPONENT")
+            or "bootstrap"
+        )
+        .strip()
+        .upper()
+    )
     session_parameters: dict[str, object] = {
         "QUERY_TAG": query_tag,
         "TIMEZONE": os.getenv(SNOWFLAKE_TIMEZONE_ENV, "UTC"),
     }
 
-    per_component_timeout = _get_int_env(f"{SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV}_{component}")
+    per_component_timeout = _get_int_env(
+        f"{SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS_ENV}_{component}"
+    )
     statement_timeout = (
         per_component_timeout
         if per_component_timeout is not None
@@ -638,13 +672,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.database:
                 conn.execute(text(f"USE DATABASE {_quote_ident(args.database)}"))
             if args.schema:
-                conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(args.schema)}"))
+                conn.execute(
+                    text(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(args.schema)}")
+                )
                 conn.execute(text(f"USE SCHEMA {_quote_ident(args.schema)}"))
 
-            current = conn.execute(
-                text("SELECT CURRENT_DATABASE() AS db, CURRENT_SCHEMA() AS schema")
-            ).mappings().one()
-            print(f"Using Snowflake database={current['db']} schema={current['schema']}")
+            current = (
+                conn.execute(
+                    text("SELECT CURRENT_DATABASE() AS db, CURRENT_SCHEMA() AS schema")
+                )
+                .mappings()
+                .one()
+            )
+            print(
+                f"Using Snowflake database={current['db']} schema={current['schema']}"
+            )
 
             _execute_all(conn, ddl)
 

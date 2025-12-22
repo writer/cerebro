@@ -8,6 +8,7 @@ Creates:
 - Firewall rules for ingress/egress
 - Cloud Router for NAT
 """
+
 import pulumi
 import pulumi_gcp as gcp
 

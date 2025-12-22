@@ -6,7 +6,9 @@ import os
 from typing import AsyncGenerator, Generator, Optional
 
 os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true")
+os.environ.setdefault(
+    "DATABASE_URL", "sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true"
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -42,12 +44,12 @@ pwd_context = user_service_module.pwd_context
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Setup test environment variables."""
-    os.environ['ENVIRONMENT'] = 'test'
+    os.environ["ENVIRONMENT"] = "test"
     os.environ.setdefault("ENABLE_AGENT_TELEMETRY", "true")
     os.environ.setdefault("AGENT_OTEL_ENDPOINT", "http://localhost:4318/v1/traces")
     yield
     # Cleanup after tests
-    os.environ.pop('ENVIRONMENT', None)
+    os.environ.pop("ENVIRONMENT", None)
 
 
 @pytest.fixture(scope="session")
@@ -67,18 +69,18 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
         poolclass=StaticPool,
         echo=False,
     )
-    
+
     # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(AgentsBase.metadata.create_all)
-    
+
     # Create session
     async_session = async_sessionmaker(engine, expire_on_commit=False)
-    
+
     async with async_session() as session:
         yield session
-    
+
     await engine.dispose()
 
 
@@ -96,7 +98,9 @@ def client(test_db: AsyncSession):
     class _ClientProxy:
         def __init__(self):
             self._transport = transport
-            self._client = httpx.AsyncClient(transport=self._transport, base_url="http://testserver")
+            self._client = httpx.AsyncClient(
+                transport=self._transport, base_url="http://testserver"
+            )
             self._csrf_token: Optional[str] = None
 
         def _prepare_request(self, method: str, kwargs):
@@ -156,7 +160,6 @@ def client(test_db: AsyncSession):
         app.dependency_overrides.pop(get_db, None)
 
 
-
 @pytest.fixture
 async def test_org(test_db: AsyncSession) -> Organization:
     """Create test organization."""
@@ -174,7 +177,7 @@ async def test_github_account(test_db: AsyncSession, test_org: Organization) -> 
         org_id=test_org.org_id,
         provider="github",
         external_id="test-org",
-        display_name="Test GitHub Organization"
+        display_name="Test GitHub Organization",
     )
     test_db.add(account)
     await test_db.commit()
@@ -189,7 +192,7 @@ async def test_aws_account(test_db: AsyncSession, test_org: Organization) -> Acc
         org_id=test_org.org_id,
         provider="aws",
         external_id="123456789012",
-        display_name="Test AWS Account"
+        display_name="Test AWS Account",
     )
     test_db.add(account)
     await test_db.commit()
@@ -211,12 +214,12 @@ async def test_user(test_db: AsyncSession) -> User:
     """Create test user."""
     user_service = UserService(test_db)
     await user_service.create_default_scopes()
-    
+
     user = await user_service.create_user(
         username="testuser",
         email="test@example.com",
         password="testpass123",
-        scopes=["read:findings", "read:rules", "write:findings"]
+        scopes=["read:findings", "read:rules", "write:findings"],
     )
     user.org_id = await test_db.scalar(select(Organization.org_id).limit(1))
     await test_db.commit()
@@ -237,11 +240,9 @@ async def test_admin_user(test_db: AsyncSession) -> User:
     """Create test admin user."""
     user_service = UserService(test_db)
     await user_service.create_default_scopes()
-    
+
     admin_result = await user_service.create_admin_user(
-        username="testadmin",
-        email="admin@example.com",
-        password="admin-test-pass"
+        username="testadmin", email="admin@example.com", password="admin-test-pass"
     )
     admin = admin_result.user
     admin.org_id = await test_db.scalar(select(Organization.org_id).limit(1))
@@ -250,7 +251,9 @@ async def test_admin_user(test_db: AsyncSession) -> User:
 
 
 @pytest.fixture
-async def test_principal(test_db: AsyncSession, test_github_account: Account) -> Principal:
+async def test_principal(
+    test_db: AsyncSession, test_github_account: Account
+) -> Principal:
     principal = Principal(
         account_id=test_github_account.account_id,
         provider="github",
@@ -267,7 +270,9 @@ async def test_principal(test_db: AsyncSession, test_github_account: Account) ->
 
 
 @pytest.fixture
-async def test_resource(test_db: AsyncSession, test_github_account: Account) -> Resource:
+async def test_resource(
+    test_db: AsyncSession, test_github_account: Account
+) -> Resource:
     resource = Resource(
         account_id=test_github_account.account_id,
         provider="github",
@@ -305,7 +310,9 @@ async def test_token(test_db: AsyncSession, test_user: User, jwt_service: JWTSer
 
     user_service = UserService(test_db)
     scopes = await user_service.get_user_scopes(test_user.user_id)
-    org_id = test_user.org_id or await test_db.scalar(select(Organization.org_id).limit(1))
+    org_id = test_user.org_id or await test_db.scalar(
+        select(Organization.org_id).limit(1)
+    )
 
     return await jwt_service.create_token(
         username=test_user.username,
@@ -315,12 +322,16 @@ async def test_token(test_db: AsyncSession, test_user: User, jwt_service: JWTSer
 
 
 @pytest.fixture
-async def admin_token(test_db: AsyncSession, test_admin_user: User, jwt_service: JWTService):
+async def admin_token(
+    test_db: AsyncSession, test_admin_user: User, jwt_service: JWTService
+):
     """Create admin JWT token."""
 
     user_service = UserService(test_db)
     scopes = await user_service.get_user_scopes(test_admin_user.user_id)
-    org_id = test_admin_user.org_id or await test_db.scalar(select(Organization.org_id).limit(1))
+    org_id = test_admin_user.org_id or await test_db.scalar(
+        select(Organization.org_id).limit(1)
+    )
 
     return await jwt_service.create_token(
         username=test_admin_user.username,

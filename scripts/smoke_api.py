@@ -29,8 +29,12 @@ class Endpoint:
 ENDPOINTS = {
     "core": Endpoint(name="core", path="/health", description="Core service health"),
     "db": Endpoint(name="db", path="/health/db", description="Database connectivity"),
-    "encryption": Endpoint(name="encryption", path="/health/encryption", description="Encryption service"),
-    "celery": Endpoint(name="celery", path="/health/celery", description="Celery worker status"),
+    "encryption": Endpoint(
+        name="encryption", path="/health/encryption", description="Encryption service"
+    ),
+    "celery": Endpoint(
+        name="celery", path="/health/celery", description="Celery worker status"
+    ),
 }
 
 
@@ -107,9 +111,13 @@ def parse_args() -> argparse.Namespace:
 
 def resolve_targets(targets_arg: str) -> List[Endpoint]:
     targets: List[Endpoint] = []
-    for name in [item.strip().lower() for item in targets_arg.split(",") if item.strip()]:
+    for name in [
+        item.strip().lower() for item in targets_arg.split(",") if item.strip()
+    ]:
         if name not in ENDPOINTS:
-            raise SystemExit(f"Unknown smoke target '{name}'. Valid options: {', '.join(ENDPOINTS)}")
+            raise SystemExit(
+                f"Unknown smoke target '{name}'. Valid options: {', '.join(ENDPOINTS)}"
+            )
         targets.append(ENDPOINTS[name])
     if not targets:
         targets = [ENDPOINTS[name] for name in DEFAULT_TARGETS]
@@ -156,7 +164,9 @@ async def run_http_checks(
                     )
                 )
                 break
-            except httpx.RequestError as exc:  # pragma: no cover - exercised in CI/real runs
+            except (
+                httpx.RequestError
+            ) as exc:  # pragma: no cover - exercised in CI/real runs
                 last_error = str(exc)
                 if attempt == retries:
                     results.append(
@@ -182,7 +192,9 @@ async def run_http_checks(
     return results
 
 
-async def run_smoke(args: argparse.Namespace, endpoints: List[Endpoint]) -> List[CheckResult]:
+async def run_smoke(
+    args: argparse.Namespace, endpoints: List[Endpoint]
+) -> List[CheckResult]:
     if args.mode == "asgi":
         from cerebro.api.main import app  # Imported lazily after env configuration
 
@@ -211,9 +223,13 @@ def print_results(results: List[CheckResult], emit_json: bool) -> int:
     else:
         for result in results:
             status = "✅" if result.ok else "❌"
-            status_code = result.status_code if result.status_code is not None else "n/a"
+            status_code = (
+                result.status_code if result.status_code is not None else "n/a"
+            )
             detail = f" ({result.detail})" if result.detail else ""
-            print(f"{status} {result.endpoint.name:<10} {result.endpoint.path:<18} [{status_code}] {detail}")
+            print(
+                f"{status} {result.endpoint.name:<10} {result.endpoint.path:<18} [{status_code}] {detail}"
+            )
 
     return 0 if all(result.ok for result in results) else 1
 

@@ -43,8 +43,12 @@ def upgrade() -> None:
         sa.Column("agent_session_id", uuid_type, nullable=True),
         sa.Column("event_type", sa.String(length=150), nullable=False),
         sa.Column("component", sa.String(length=200), nullable=True),
-        sa.Column("context_data", json_type, nullable=False, server_default=context_default),
-        sa.Column("metadata", json_type, nullable=False, server_default=metadata_default),
+        sa.Column(
+            "context_data", json_type, nullable=False, server_default=context_default
+        ),
+        sa.Column(
+            "metadata", json_type, nullable=False, server_default=metadata_default
+        ),
         sa.Column(
             "occurred_at",
             sa.DateTime(timezone=True),

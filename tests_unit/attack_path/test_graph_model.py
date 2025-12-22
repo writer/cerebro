@@ -48,7 +48,9 @@ def build_service_edge(
 async def test_attack_graph_ingests_service_identity_edges():
     edge = build_service_edge()
     mapper = StubServiceIdentityMapper([edge])
-    graph = AttackGraph("org-1", scoring=AttackGraphScoring(), service_identity_mapper=mapper)
+    graph = AttackGraph(
+        "org-1", scoring=AttackGraphScoring(), service_identity_mapper=mapper
+    )
 
     await graph._add_service_identity_edges()
 
@@ -56,7 +58,9 @@ async def test_attack_graph_ingests_service_identity_edges():
     assert edge.edge_id in graph.edges
     attack_edge = graph.edges[edge.edge_id]
     assert attack_edge.edge_type == EdgeType.OIDC_FEDERATION
-    assert attack_edge.metadata["trust_mechanism"] == TrustMechanism.OIDC_FEDERATION.value
+    assert (
+        attack_edge.metadata["trust_mechanism"] == TrustMechanism.OIDC_FEDERATION.value
+    )
 
     # Source node created as service type
     assert "github_actions_service" in graph.nodes

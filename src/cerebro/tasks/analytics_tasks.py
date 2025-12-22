@@ -21,7 +21,11 @@ from cerebro.analytics.time_series import (
     TimeSeriesCollector,
     store_snapshot_to_warehouse,
 )
-from cerebro.analytics.risk_scoring import RiskScoringEngine, RiskFactor, OrganizationRiskScore
+from cerebro.analytics.risk_scoring import (
+    RiskScoringEngine,
+    RiskFactor,
+    OrganizationRiskScore,
+)
 from cerebro.analytics.dashboard_repository import DashboardRepository
 
 logger = logging.getLogger(__name__)
@@ -74,7 +78,9 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
 
             repository = DashboardRepository(analytics_db)
             compliance_score = await repository.calculate_compliance_score(org.org_id)
-            framework_compliance = await repository.get_compliance_by_framework(org.org_id)
+            framework_compliance = await repository.get_compliance_by_framework(
+                org.org_id
+            )
 
             collector_writer = TimeSeriesCollector(db)
 

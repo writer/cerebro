@@ -8,6 +8,7 @@ Creates:
 - Automated backups and maintenance
 - Read replicas for scaling
 """
+
 import pulumi
 import pulumi_gcp as gcp
 import pulumi_random as random

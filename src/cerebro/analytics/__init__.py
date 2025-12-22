@@ -3,14 +3,18 @@
 from .time_series import TimeSeriesCollector, TrendAnalyzer, MetricSnapshot
 from .risk_scoring import RiskScoringEngine, OrganizationRiskScore, RiskHeatmap
 from .identity_analytics import IdentityAnalyzer, PrivilegeSprawlDetector, RiskyIdentity
-from .compliance_analytics import ComplianceAnalyzer, EvidenceFreshnessTracker, ControlOwnership
+from .compliance_analytics import (
+    ComplianceAnalyzer,
+    EvidenceFreshnessTracker,
+    ControlOwnership,
+)
 from .investigation_tools import InvestigationEngine, FindingTimeline, EventCorrelation
 from .dashboard_analytics import DashboardAnalytics, ExecutiveSummary, SecurityMetrics
 from .datasets import DatasetBuilder, DatasetRecord
 
 __all__ = [
     "TimeSeriesCollector",
-    "TrendAnalyzer", 
+    "TrendAnalyzer",
     "MetricSnapshot",
     "RiskScoringEngine",
     "OrganizationRiskScore",

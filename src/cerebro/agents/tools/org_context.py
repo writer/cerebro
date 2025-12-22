@@ -26,25 +26,22 @@ class OrgContextInput(BaseModel):
     """Input for organization context retrieval."""
 
     include_repositories: bool = Field(
-        default=True,
-        description="Include repository metadata"
+        default=True, description="Include repository metadata"
     )
     include_providers: bool = Field(
-        default=True,
-        description="Include connected provider information"
+        default=True, description="Include connected provider information"
     )
     include_statistics: bool = Field(
-        default=True,
-        description="Include resource/principal counts"
+        default=True, description="Include resource/principal counts"
     )
     include_tools: bool = Field(
-        default=True,
-        description="Include available agent tools"
+        default=True, description="Include available agent tools"
     )
 
 
 class RepositoryInfo(BaseModel):
     """Repository metadata."""
+
     name: str
     path: str
     type: str
@@ -56,6 +53,7 @@ class RepositoryInfo(BaseModel):
 
 class ProviderInfo(BaseModel):
     """Provider connection info."""
+
     provider: str
     account_count: int
     resource_count: int
@@ -109,7 +107,9 @@ class GetOrgContextTool(StructuredTool):
     """
 
     tool_name = "get_org_context"
-    tool_description = "Get organizational context including repos, providers, tools, and system info"
+    tool_description = (
+        "Get organizational context including repos, providers, tools, and system info"
+    )
     tool_version = "1.0.0"
     input_model = OrgContextInput
     output_model = OrgContextOutput
@@ -150,8 +150,7 @@ class GetOrgContextTool(StructuredTool):
                 org = await db_session.get(Organization, context.org_id)
                 if not org:
                     return ToolResult(
-                        success=False,
-                        error=f"Organization {context.org_id} not found"
+                        success=False, error=f"Organization {context.org_id} not found"
                     )
 
                 output_data = {
@@ -165,11 +164,18 @@ class GetOrgContextTool(StructuredTool):
 
                 # 2. Provider Information
                 if include_providers:
-                    provider_info = await self._get_provider_info(db_session, context.org_id)
+                    provider_info = await self._get_provider_info(
+                        db_session, context.org_id
+                    )
                     output_data["providers_connected"] = provider_info
                     output_data["providers_supported"] = [
-                        "AWS", "GitHub", "Okta", "Google Workspace",
-                        "Microsoft 365", "GCP", "Azure"
+                        "AWS",
+                        "GitHub",
+                        "Okta",
+                        "Google Workspace",
+                        "Microsoft 365",
+                        "GCP",
+                        "Azure",
                     ]
 
                 # 3. Statistics
@@ -181,6 +187,7 @@ class GetOrgContextTool(StructuredTool):
                 # 4. Agent Tools
                 if include_tools:
                     from cerebro.agents.tools import tool_registry
+
                     tools = tool_registry.list_tools()
                     output_data["agent_tools_count"] = len(tools)
                     output_data["agent_tools_available"] = [t.name for t in tools]
@@ -203,14 +210,14 @@ class GetOrgContextTool(StructuredTool):
                     metadata={
                         "org_id": str(context.org_id),
                         "context_complete": True,
-                    }
+                    },
                 )
 
         except Exception as e:
             logger.error("Failed to get org context", error=str(e), exc_info=True)
             return ToolResult(
                 success=False,
-                error=f"Failed to retrieve organization context: {str(e)}"
+                error=f"Failed to retrieve organization context: {str(e)}",
             )
 
     async def _get_repository_info(self) -> List[Dict[str, Any]]:
@@ -221,116 +228,126 @@ class GetOrgContextTool(StructuredTool):
         # Backend Repository
         backend_path = Path("/app") if Path("/app").exists() else Path.cwd()
         if (backend_path / "src" / "cerebro").exists():
-            repos.append({
-                "name": "cerebro",
-                "path": str(backend_path),
-                "type": "backend",
-                "primary_language": "Python",
-                "framework": "FastAPI",
-                "description": "Enterprise security system of record with AI agent integration",
-                "key_modules": [
-                    "agents/ - AI security agents with curated core toolset",
-                    "api/ - REST API endpoints",
-                    "collectors/ - Multi-provider data collection",
-                    "rules/ - CEL policy engine",
-                    "query/ - Zero-ETL security analytics",
-                    "analytics/ - Runtime telemetry & observability",
-                    "memory/ - Long-term contextual memory",
-                    "analysis/ - Timeline reconstruction & risk insights"
-                ]
-            })
+            repos.append(
+                {
+                    "name": "cerebro",
+                    "path": str(backend_path),
+                    "type": "backend",
+                    "primary_language": "Python",
+                    "framework": "FastAPI",
+                    "description": "Enterprise security system of record with AI agent integration",
+                    "key_modules": [
+                        "agents/ - AI security agents with curated core toolset",
+                        "api/ - REST API endpoints",
+                        "collectors/ - Multi-provider data collection",
+                        "rules/ - CEL policy engine",
+                        "query/ - Zero-ETL security analytics",
+                        "analytics/ - Runtime telemetry & observability",
+                        "memory/ - Long-term contextual memory",
+                        "analysis/ - Timeline reconstruction & risk insights",
+                    ],
+                }
+            )
 
         # Check for frontend (common paths)
         frontend_paths = [
             Path("/app/cerebro-frontend"),
             Path.cwd().parent / "cerebro-frontend",
-            Path.cwd() / "../cerebro-frontend"
+            Path.cwd() / "../cerebro-frontend",
         ]
 
         for frontend_path in frontend_paths:
             if frontend_path.exists() and (frontend_path / "src" / "app").exists():
-                repos.append({
-                    "name": "cerebro-frontend",
-                    "path": str(frontend_path),
-                    "type": "frontend",
-                    "primary_language": "TypeScript",
-                    "framework": "Next.js 15 + React 19",
-                    "description": "Modern web interface with real-time agent chat and security modules",
-                    "key_modules": [
-                        "app/agents - AI agent chat interface with SSE streaming",
-                        "app/dashboard - Security posture overview",
-                        "app/findings - Finding management",
-                        "app/identity - Identity governance",
-                        "app/compliance - Compliance hub",
-                        "app/investigation - Forensic investigation",
-                        "app/oauth-risk - OAuth risk center",
-                        "app/vendors - Vendor management"
-                    ]
-                })
+                repos.append(
+                    {
+                        "name": "cerebro-frontend",
+                        "path": str(frontend_path),
+                        "type": "frontend",
+                        "primary_language": "TypeScript",
+                        "framework": "Next.js 15 + React 19",
+                        "description": "Modern web interface with real-time agent chat and security modules",
+                        "key_modules": [
+                            "app/agents - AI agent chat interface with SSE streaming",
+                            "app/dashboard - Security posture overview",
+                            "app/findings - Finding management",
+                            "app/identity - Identity governance",
+                            "app/compliance - Compliance hub",
+                            "app/investigation - Forensic investigation",
+                            "app/oauth-risk - OAuth risk center",
+                            "app/vendors - Vendor management",
+                        ],
+                    }
+                )
                 break
 
         return repos
 
     async def _get_provider_info(
-        self,
-        db_session,
-        org_id: UUID
+        self, db_session, org_id: UUID
     ) -> List[Dict[str, Any]]:
         """Get connected provider information from database."""
 
         # Query accounts by provider
-        provider_query = select(
-            Account.provider,
-            func.count(distinct(Account.account_id)).label("account_count")
-        ).where(
-            Account.org_id == org_id
-        ).group_by(Account.provider)
+        provider_query = (
+            select(
+                Account.provider,
+                func.count(distinct(Account.account_id)).label("account_count"),
+            )
+            .where(Account.org_id == org_id)
+            .group_by(Account.provider)
+        )
 
         result = await db_session.execute(provider_query)
         provider_accounts = {row.provider: row.account_count for row in result}
 
         # Get resource counts per provider
-        resource_query = select(
-            Resource.provider,
-            func.count(distinct(Resource.resource_id)).label("resource_count")
-        ).where(
-            Resource.org_id == org_id
-        ).group_by(Resource.provider)
+        resource_query = (
+            select(
+                Resource.provider,
+                func.count(distinct(Resource.resource_id)).label("resource_count"),
+            )
+            .where(Resource.org_id == org_id)
+            .group_by(Resource.provider)
+        )
 
         result = await db_session.execute(resource_query)
         provider_resources = {row.provider: row.resource_count for row in result}
 
         # Get principal counts per provider
-        principal_query = select(
-            Principal.provider,
-            func.count(distinct(Principal.principal_id)).label("principal_count")
-        ).where(
-            Principal.org_id == org_id
-        ).group_by(Principal.provider)
+        principal_query = (
+            select(
+                Principal.provider,
+                func.count(distinct(Principal.principal_id)).label("principal_count"),
+            )
+            .where(Principal.org_id == org_id)
+            .group_by(Principal.provider)
+        )
 
         result = await db_session.execute(principal_query)
         provider_principals = {row.provider: row.principal_count for row in result}
 
         # Combine into provider info
         providers = []
-        all_providers = set(provider_accounts.keys()) | set(provider_resources.keys()) | set(provider_principals.keys())
+        all_providers = (
+            set(provider_accounts.keys())
+            | set(provider_resources.keys())
+            | set(provider_principals.keys())
+        )
 
         for provider in all_providers:
-            providers.append({
-                "provider": provider,
-                "account_count": provider_accounts.get(provider, 0),
-                "resource_count": provider_resources.get(provider, 0),
-                "principal_count": provider_principals.get(provider, 0),
-                "last_collected": None  # TODO: Add from collection metadata
-            })
+            providers.append(
+                {
+                    "provider": provider,
+                    "account_count": provider_accounts.get(provider, 0),
+                    "resource_count": provider_resources.get(provider, 0),
+                    "principal_count": provider_principals.get(provider, 0),
+                    "last_collected": None,  # TODO: Add from collection metadata
+                }
+            )
 
         return sorted(providers, key=lambda x: x["resource_count"], reverse=True)
 
-    async def _get_statistics(
-        self,
-        db_session,
-        org_id: UUID
-    ) -> Dict[str, int]:
+    async def _get_statistics(self, db_session, org_id: UUID) -> Dict[str, int]:
         """Get resource/principal statistics."""
 
         stats = {}
@@ -355,6 +372,7 @@ class GetOrgContextTool(StructuredTool):
 
         # Total findings
         from cerebro.core.models import Finding
+
         finding_count = await db_session.scalar(
             select(func.count(Finding.finding_id)).where(Finding.org_id == org_id)
         )
@@ -363,8 +381,7 @@ class GetOrgContextTool(StructuredTool):
         # Open findings
         open_finding_count = await db_session.scalar(
             select(func.count(Finding.finding_id)).where(
-                Finding.org_id == org_id,
-                Finding.status == "open"
+                Finding.org_id == org_id, Finding.status == "open"
             )
         )
         stats["open_findings"] = open_finding_count or 0
@@ -387,9 +404,9 @@ class GetOrgContextTool(StructuredTool):
                 "OAuth Risk Management",
                 "Vendor Risk Intelligence",
                 "CEL Policy Engine",
-                "Cryptographic Audit Trail"
+                "Cryptographic Audit Trail",
             ],
             "deployment_type": "self-hosted",
             "data_sovereignty": "full",
-            "audit_trail": "append-only with cryptographic integrity"
+            "audit_trail": "append-only with cryptographic integrity",
         }

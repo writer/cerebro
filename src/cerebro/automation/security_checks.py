@@ -54,7 +54,9 @@ async def find_stale_admins(
     ]
 
 
-async def has_cel_canary(db: AsyncSession, rule_name: str = "cel.canary.policy") -> bool:
+async def has_cel_canary(
+    db: AsyncSession, rule_name: str = "cel.canary.policy"
+) -> bool:
     query = select(Rule).where(Rule.name == rule_name, Rule.is_active == True)
     result = await db.execute(query)
     return result.scalar_one_or_none() is not None
@@ -64,10 +66,14 @@ def tools_missing_attestation() -> List[str]:
     registry = get_tool_registry()
     issues: List[str] = []
     for tool in registry.list_tools():
-        if tool.permission_level in (
-            ToolPermissionLevel.WRITE_SAFE,
-            ToolPermissionLevel.WRITE_DESTRUCTIVE,
-            ToolPermissionLevel.ADMIN,
-        ) and not tool.cel_policy_key:
+        if (
+            tool.permission_level
+            in (
+                ToolPermissionLevel.WRITE_SAFE,
+                ToolPermissionLevel.WRITE_DESTRUCTIVE,
+                ToolPermissionLevel.ADMIN,
+            )
+            and not tool.cel_policy_key
+        ):
             issues.append(tool.name)
     return issues

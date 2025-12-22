@@ -55,7 +55,9 @@ def test_task_manager_enqueue(mock_celery):
     submission = manager.enqueue("cerebro.tasks.integration.sync_kandji")
 
     assert isinstance(submission, TaskSubmission)
-    mock_celery.tasks["cerebro.tasks.integration.sync_kandji"].apply_async.assert_called_once()
+    mock_celery.tasks[
+        "cerebro.tasks.integration.sync_kandji"
+    ].apply_async.assert_called_once()
 
 
 def test_task_manager_send_task(mock_celery):

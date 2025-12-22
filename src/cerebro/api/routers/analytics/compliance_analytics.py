@@ -41,7 +41,8 @@ async def get_severity_breakdown_chips(
     low_cutoff = timestamp_minus_days_expr(days=90, dialect=dialect)
 
     # Get counts by severity and SLA breach status
-    severity_query = text(f"""
+    severity_query = text(
+        f"""
         WITH finding_counts AS (
             SELECT
                 f.severity,
@@ -92,7 +93,8 @@ async def get_severity_breakdown_chips(
                 WHEN 'medium' THEN 3
                 WHEN 'low' THEN 4
             END
-    """)
+    """
+    )
 
     result = await analytics_db.execute(severity_query, {"org_id": org_id})
     severity_data = result.fetchall()
@@ -105,23 +107,25 @@ async def get_severity_breakdown_chips(
         "critical": {"code": "C", "color": "#dc2626", "bg_color": "#fee2e2"},
         "high": {"code": "H", "color": "#ea580c", "bg_color": "#fed7aa"},
         "medium": {"code": "M", "color": "#ca8a04", "bg_color": "#fef3c7"},
-        "low": {"code": "L", "color": "#65a30d", "bg_color": "#ecfccb"}
+        "low": {"code": "L", "color": "#65a30d", "bg_color": "#ecfccb"},
     }
 
     for row in severity_data:
         config = severity_config[row.severity]
         total_sla_breaches += row.sla_breach_count
 
-        chips.append({
-            "severity": row.severity,
-            "code": config["code"],
-            "total_count": row.total_count,
-            "sla_breach_count": row.sla_breach_count,
-            "color": config["color"],
-            "background_color": config["bg_color"],
-            "filter_url": f"/findings?severity={row.severity}&status=open",
-            "sla_filter_url": f"/findings?severity={row.severity}&status=open&sla_breach=true"
-        })
+        chips.append(
+            {
+                "severity": row.severity,
+                "code": config["code"],
+                "total_count": row.total_count,
+                "sla_breach_count": row.sla_breach_count,
+                "color": config["color"],
+                "background_color": config["bg_color"],
+                "filter_url": f"/findings?severity={row.severity}&status=open",
+                "sla_filter_url": f"/findings?severity={row.severity}&status=open&sla_breach=true",
+            }
+        )
 
     return {
         "severity_chips": chips,
@@ -129,15 +133,17 @@ async def get_severity_breakdown_chips(
         "sla_breach_summary": {
             "count": total_sla_breaches,
             "filter_url": "/findings?status=open&sla_breach=true",
-            "badge_text": f"SLA-breaching: {total_sla_breaches}"
-        }
+            "badge_text": f"SLA-breaching: {total_sla_breaches}",
+        },
     }
 
 
 @router.get("/organizations/{org_id}/compliance-evidence")
 async def get_compliance_evidence_status(
     org_id: UUID,
-    framework: Optional[str] = Query(None, description="Filter by compliance framework"),
+    framework: Optional[str] = Query(
+        None, description="Filter by compliance framework"
+    ),
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
@@ -149,10 +155,13 @@ async def get_compliance_evidence_status(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     dialect = get_dialect_name(analytics_db)
-    evidence_age_expr = days_since_expr(column_expr="MAX(cs.captured_at)", dialect=dialect)
+    evidence_age_expr = days_since_expr(
+        column_expr="MAX(cs.captured_at)", dialect=dialect
+    )
 
     # Get evidence freshness by framework
-    evidence_query = text(f"""
+    evidence_query = text(
+        f"""
         WITH evidence_freshness AS (
             SELECT
                 CASE
@@ -188,16 +197,21 @@ async def get_compliance_evidence_status(
         WHERE (:framework IS NULL OR framework = :framework)
         GROUP BY framework
         ORDER BY framework
-    """)
+    """
+    )
 
-    result = await analytics_db.execute(evidence_query, {
-        "org_id": org_id,
-        "framework": framework.upper() if framework else None
-    })
+    result = await analytics_db.execute(
+        evidence_query,
+        {"org_id": org_id, "framework": framework.upper() if framework else None},
+    )
 
     compliance_evidence = {}
     for row in result.fetchall():
-        compliance_percentage = (row.compliant_controls / row.total_controls * 100) if row.total_controls > 0 else 0
+        compliance_percentage = (
+            (row.compliant_controls / row.total_controls * 100)
+            if row.total_controls > 0
+            else 0
+        )
 
         compliance_evidence[row.framework] = {
             "total_controls": row.total_controls,
@@ -205,7 +219,11 @@ async def get_compliance_evidence_status(
             "compliance_percentage": round(compliance_percentage, 1),
             "avg_evidence_age_days": round(row.avg_evidence_age_days or 0, 1),
             "stale_evidence_controls": row.stale_evidence_controls,
-            "evidence_freshness_status": "fresh" if (row.avg_evidence_age_days or 0) < 7 else "stale" if (row.avg_evidence_age_days or 0) > 30 else "aging"
+            "evidence_freshness_status": (
+                "fresh"
+                if (row.avg_evidence_age_days or 0) < 7
+                else "stale" if (row.avg_evidence_age_days or 0) > 30 else "aging"
+            ),
         }
 
     return {
@@ -213,9 +231,22 @@ async def get_compliance_evidence_status(
         "frameworks": compliance_evidence,
         "summary": {
             "total_frameworks": len(compliance_evidence),
-            "overall_compliance": round(sum(data["compliance_percentage"] for data in compliance_evidence.values()) / len(compliance_evidence), 1) if compliance_evidence else 0,
-            "stale_evidence_count": sum(data["stale_evidence_controls"] for data in compliance_evidence.values())
-        }
+            "overall_compliance": (
+                round(
+                    sum(
+                        data["compliance_percentage"]
+                        for data in compliance_evidence.values()
+                    )
+                    / len(compliance_evidence),
+                    1,
+                )
+                if compliance_evidence
+                else 0
+            ),
+            "stale_evidence_count": sum(
+                data["stale_evidence_controls"] for data in compliance_evidence.values()
+            ),
+        },
     }
 
 
@@ -233,7 +264,9 @@ async def get_evidence_freshness_donut(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     dialect = get_dialect_name(analytics_db)
-    evidence_age_expr = days_since_expr(column_expr="MAX(cs.captured_at)", dialect=dialect)
+    evidence_age_expr = days_since_expr(
+        column_expr="MAX(cs.captured_at)", dialect=dialect
+    )
     sample_controls_expr = array_agg_ordered_expr(
         value_expr="control_name",
         order_by_expr="evidence_age_days DESC",
@@ -241,7 +274,8 @@ async def get_evidence_freshness_donut(
     )
 
     # Get evidence freshness categorization
-    freshness_query = text(f"""
+    freshness_query = text(
+        f"""
         WITH evidence_analysis AS (
             SELECT
                 r.rule_id,
@@ -281,7 +315,8 @@ async def get_evidence_freshness_donut(
                 WHEN freshness_status = 'aging' THEN 3
                 WHEN freshness_status = 'fresh' THEN 4
             END
-    """)
+    """
+    )
 
     result = await analytics_db.execute(freshness_query, {"org_id": org_id})
     freshness_data = result.fetchall()
@@ -291,7 +326,7 @@ async def get_evidence_freshness_donut(
         "fresh": {"color": "#22c55e", "label": "Fresh (≤7 days)", "priority": 4},
         "aging": {"color": "#f59e0b", "label": "Aging (8-30 days)", "priority": 3},
         "stale": {"color": "#ef4444", "label": "Stale (>30 days)", "priority": 2},
-        "missing": {"color": "#6b7280", "label": "Missing Evidence", "priority": 1}
+        "missing": {"color": "#6b7280", "label": "Missing Evidence", "priority": 1},
     }
 
     donut_segments = []
@@ -299,18 +334,26 @@ async def get_evidence_freshness_donut(
 
     for row in freshness_data:
         config = freshness_config[row.freshness_status]
-        percentage = round((row.control_count / total_controls * 100), 1) if total_controls > 0 else 0
+        percentage = (
+            round((row.control_count / total_controls * 100), 1)
+            if total_controls > 0
+            else 0
+        )
 
-        donut_segments.append({
-            "status": row.freshness_status,
-            "label": config["label"],
-            "count": row.control_count,
-            "percentage": percentage,
-            "color": config["color"],
-            "priority": config["priority"],
-            "click_through_url": f"/compliance/controls?evidence_freshness={row.freshness_status}",
-            "sample_controls": row.sample_controls[:5] if row.sample_controls else []
-        })
+        donut_segments.append(
+            {
+                "status": row.freshness_status,
+                "label": config["label"],
+                "count": row.control_count,
+                "percentage": percentage,
+                "color": config["color"],
+                "priority": config["priority"],
+                "click_through_url": f"/compliance/controls?evidence_freshness={row.freshness_status}",
+                "sample_controls": (
+                    row.sample_controls[:5] if row.sample_controls else []
+                ),
+            }
+        )
 
     # Sort by priority (most critical first)
     donut_segments.sort(key=lambda x: x["priority"])
@@ -323,16 +366,30 @@ async def get_evidence_freshness_donut(
             "center_metric": {
                 "value": total_controls,
                 "label": "Total Controls",
-                "subtitle": f"{sum(s['count'] for s in donut_segments if s['status'] in ['fresh', 'aging'])} monitored"
-            }
+                "subtitle": f"{sum(s['count'] for s in donut_segments if s['status'] in ['fresh', 'aging'])} monitored",
+            },
         },
         "summary_stats": {
-            "fresh_percentage": next((s["percentage"] for s in donut_segments if s["status"] == "fresh"), 0),
-            "needs_attention": sum(s["count"] for s in donut_segments if s["status"] in ["stale", "missing"]),
-            "most_critical": donut_segments[0]["status"] if donut_segments else "fresh"
+            "fresh_percentage": next(
+                (s["percentage"] for s in donut_segments if s["status"] == "fresh"), 0
+            ),
+            "needs_attention": sum(
+                s["count"]
+                for s in donut_segments
+                if s["status"] in ["stale", "missing"]
+            ),
+            "most_critical": donut_segments[0]["status"] if donut_segments else "fresh",
         },
         "quick_actions": [
-            f"Fix {sum(s['count'] for s in donut_segments if s['status'] == 'missing')} missing evidence collectors" if any(s['status'] == 'missing' for s in donut_segments) else None,
-            f"Refresh {sum(s['count'] for s in donut_segments if s['status'] == 'stale')} stale evidence sources" if any(s['status'] == 'stale' for s in donut_segments) else None
-        ]
+            (
+                f"Fix {sum(s['count'] for s in donut_segments if s['status'] == 'missing')} missing evidence collectors"
+                if any(s["status"] == "missing" for s in donut_segments)
+                else None
+            ),
+            (
+                f"Refresh {sum(s['count'] for s in donut_segments if s['status'] == 'stale')} stale evidence sources"
+                if any(s["status"] == "stale" for s in donut_segments)
+                else None
+            ),
+        ],
     }

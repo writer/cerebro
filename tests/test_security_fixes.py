@@ -279,9 +279,11 @@ class TestAPIAuthentication:
 
             for endpoint in endpoints_to_test:
                 response = await client.get(endpoint)
-                assert response.status_code in [401, 403, 422], (
-                    f"Endpoint {endpoint} should require auth"
-                )
+                assert response.status_code in [
+                    401,
+                    403,
+                    422,
+                ], f"Endpoint {endpoint} should require auth"
 
 
 @pytest.mark.asyncio

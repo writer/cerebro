@@ -60,7 +60,9 @@ async def _run(args: argparse.Namespace) -> int:
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True, default=str), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(report, indent=2, sort_keys=True, default=str), encoding="utf-8"
+        )
         print(f"Report written to {args.output}")
 
     issues_detected = bool(stale_admins or not canary_present or attestation_gaps)

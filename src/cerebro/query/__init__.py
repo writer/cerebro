@@ -10,4 +10,4 @@ from .registry import TableRegistry
 from .table import SecurityTable
 from .schema import SecuritySchema
 
-__all__ = ['QueryEngine', 'TableRegistry', 'SecurityTable', 'SecuritySchema']
+__all__ = ["QueryEngine", "TableRegistry", "SecurityTable", "SecuritySchema"]

@@ -28,14 +28,14 @@ from cerebro.core import database as core_database
 from cerebro.core.models import Organization, Account, Finding, Policy
 from cerebro.core.user_models import User
 from cerebro.agents.models import (
-    AgentSession, 
-    AgentMessage, 
+    AgentSession,
+    AgentMessage,
     AgentType,
     MessageRole,
     ToolInvocation,
     ToolInvocationStatus,
     ToolApproval,
-    ApprovalStatus
+    ApprovalStatus,
 )
 from cerebro.agents.service import AgentSessionService, ToolApprovalService
 from cerebro.agents.tools import get_tool_registry
@@ -72,7 +72,9 @@ async def create_session_record(
         return session
 
 
-async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessionService:
+async def configure_agent_service(
+    mock_runtime, db: AsyncSession
+) -> AgentSessionService:
     engine = db.bind
     session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -80,6 +82,7 @@ async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessio
 
     # Ensure analytics and tool infrastructure reuse the in-memory test database
     from cerebro.agents import analytics_service as analytics_module
+
     analytics_module.async_session_factory = session_factory
 
     from cerebro.agents.repositories import (
@@ -93,6 +96,7 @@ async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessio
     analytics_repo_module.async_session_factory = session_factory
 
     from cerebro.agents.tools import base as tools_base_module
+
     tools_base_module.async_session_factory = session_factory
 
     def normalize_chunk(raw_chunk: Any) -> Optional[Dict[str, Any]]:
@@ -116,7 +120,9 @@ async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessio
             self._base = base_runtime
             self._factory = factory
 
-        async def create_session(self, org_id, agent_type, created_by, context, title=None):
+        async def create_session(
+            self, org_id, agent_type, created_by, context, title=None
+        ):
             return await create_session_record(
                 self._factory,
                 org_id=org_id,
@@ -133,7 +139,13 @@ async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessio
                     await session_ctx.refresh(session_obj)
                 return session_obj
 
-        async def send_message(self, session: AgentSession, message: str, user_id: str, stream: bool = False):
+        async def send_message(
+            self,
+            session: AgentSession,
+            message: str,
+            user_id: str,
+            stream: bool = False,
+        ):
             async with self._factory() as session_ctx:
                 user_message = AgentMessage(
                     session_id=session.id,
@@ -209,30 +221,30 @@ async def configure_agent_service(mock_runtime, db: AsyncSession) -> AgentSessio
 
 class MockClaudeResponse:
     """Mock Claude API response for consistent testing."""
-    
+
     def __init__(self, content: str, tool_calls: List[Dict] = None):
         self.content = content
         self.tool_calls = tool_calls or []
         self.usage = {"input_tokens": 100, "output_tokens": 50}
-    
+
     async def __aiter__(self):
         """Simulate streaming response."""
         if self.tool_calls:
             for tool_call in self.tool_calls:
                 yield MockStreamChunk("tool_use", tool_call)
-        
+
         # Stream content in chunks
         words = self.content.split()
         for i, word in enumerate(words):
             chunk_content = word + (" " if i < len(words) - 1 else "")
             yield MockStreamChunk("text", {"text": chunk_content})
-        
+
         yield MockStreamChunk("message_stop", {"usage": self.usage})
 
 
 class MockStreamChunk:
     """Mock streaming chunk."""
-    
+
     def __init__(self, type_: str, data: Any):
         self.type = type_
         self.data = data
@@ -300,16 +312,16 @@ async def sample_findings(
             title="GitHub Repository Without Branch Protection",
             summary="Repository allows direct pushes without review",
             evidence={"branch_protection": False, "required_reviews": 0},
-        )
+        ),
     ]
-    
+
     for finding in findings:
         test_db.add(finding)
     await test_db.commit()
-    
+
     for finding in findings:
         await test_db.refresh(finding)
-    
+
     return findings
 
 
@@ -340,15 +352,15 @@ async def sample_rules(
             expression_lang="cel",
             expression='resource.type == "s3:bucket" && resource.encryption_enabled == false',
             severity=Severity.MEDIUM.value,
-        )
+        ),
     ]
-    
+
     for rule in rules:
         test_db.add(rule)
     await test_db.commit()
     for rule in rules:
         await test_db.refresh(rule)
-    
+
     return rules
 
 
@@ -369,23 +381,23 @@ def mock_claude_runtime():
 # Test Classes
 class TestAgentSystemSetup:
     """Test environment setup and configuration."""
-    
+
     async def test_database_initialization(self, test_db: AsyncSession):
         """Test that database tables are properly initialized."""
         # Check that agent tables exist by attempting queries
         result = await test_db.execute(select(func.count()).select_from(AgentSession))
         assert result.scalar() == 0
-        
+
         result = await test_db.execute(select(func.count()).select_from(AgentMessage))
         assert result.scalar() == 0
-        
+
         result = await test_db.execute(select(func.count()).select_from(ToolInvocation))
         assert result.scalar() == 0
-    
+
     async def test_tool_registry_initialization(self):
         """Test that all tools are properly registered."""
         registry = get_tool_registry()
-        
+
         # Check that expected tools are available
         expected_tools = [
             "findings_list",
@@ -396,15 +408,17 @@ class TestAgentSystemSetup:
             "security_analysis",
             "remediation_suggestions",
         ]
-        
+
         for tool_name in expected_tools:
-            assert registry.get(tool_name) is not None, f"Tool {tool_name} not found in registry"
-    
+            assert (
+                registry.get(tool_name) is not None
+            ), f"Tool {tool_name} not found in registry"
+
     async def test_agent_types_configuration(self):
         """Test that all agent types are properly configured."""
         for agent_type in AgentType:
             assert agent_type.value, f"Agent type {agent_type} has empty value"
-        
+
         # Verify specific agent types exist
         assert AgentType.SECURITY_ANALYST in AgentType
         assert AgentType.INCIDENT_RESPONDER in AgentType
@@ -413,13 +427,13 @@ class TestAgentSystemSetup:
 
 class TestAgentSessionManagement:
     """Test agent session creation and management."""
-    
+
     async def test_create_agent_session(
-        self, 
-        test_db: AsyncSession, 
+        self,
+        test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test creating a new agent session."""
         service = await configure_agent_service(mock_claude_runtime, test_db)
@@ -429,7 +443,7 @@ class TestAgentSessionManagement:
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
             context={"focus_area": "iam_analysis"},
-            title="IAM Security Review"
+            title="IAM Security Review",
         )
 
         assert session.org_id == test_org.org_id
@@ -438,13 +452,13 @@ class TestAgentSessionManagement:
         assert session.title == "IAM Security Review"
         assert session.context["focus_area"] == "iam_analysis"
         assert session.is_active
-    
+
     async def test_invalid_agent_type(
-        self, 
+        self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test creating session with invalid agent type."""
         service = await configure_agent_service(mock_claude_runtime, test_db)
@@ -454,20 +468,20 @@ class TestAgentSessionManagement:
                 org_id=test_org.org_id,
                 agent_type="invalid_agent",
                 created_by=test_user.username,
-                context={}
+                context={},
             )
 
 
 class TestToolUsageAndApprovals:
     """Test tool execution and approval workflows."""
-    
+
     async def test_findings_query_tool(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
         sample_findings: List[Finding],
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test the findings query tool execution."""
         mock_response = MockClaudeResponse(
@@ -480,10 +494,10 @@ class TestToolUsageAndApprovals:
                     "input": {
                         "org_id": str(test_org.org_id),
                         "filters": {"severity": ["HIGH", "MEDIUM"]},
-                        "limit": 10
-                    }
+                        "limit": 10,
+                    },
                 }
-            ]
+            ],
         )
         mock_claude_runtime.send_message.return_value = mock_response
 
@@ -493,7 +507,7 @@ class TestToolUsageAndApprovals:
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={"focus_area": "vulnerability_analysis"}
+            context={"focus_area": "vulnerability_analysis"},
         )
 
         message = "Please analyze high and medium severity findings"
@@ -510,7 +524,7 @@ class TestToolUsageAndApprovals:
             result = await session_ctx.execute(
                 select(ToolInvocation).where(
                     ToolInvocation.session_id == session.session_id,
-                    ToolInvocation.tool_name == "findings_list"
+                    ToolInvocation.tool_name == "findings_list",
                 )
             )
             tool_invocation = result.scalar_one_or_none()
@@ -523,7 +537,7 @@ class TestToolUsageAndApprovals:
         }
         severity_filters = tool_invocation.input_data.get("filters", {})
         assert "severity" in severity_filters
-    
+
     async def test_approval_workflow(
         self,
         test_db: AsyncSession,
@@ -531,7 +545,7 @@ class TestToolUsageAndApprovals:
         test_user: User,
         test_admin_user: User,
         sample_findings: List[Finding],
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test tool approval workflow."""
         service = await configure_agent_service(mock_claude_runtime, test_db)
@@ -540,7 +554,7 @@ class TestToolUsageAndApprovals:
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         tool_invocation = ToolInvocation(
@@ -594,7 +608,9 @@ class TestToolUsageAndApprovals:
         assert updated_approval.status == ApprovalStatus.APPROVED
         assert updated_approval.decision_reason == "Verified finding is resolved"
 
-        refreshed_approval = await approval_service.get_approval(approval.id, test_org.org_id)
+        refreshed_approval = await approval_service.get_approval(
+            approval.id, test_org.org_id
+        )
         assert refreshed_approval is not None
         assert refreshed_approval.tool_invocation is not None
         assert refreshed_approval.tool_invocation.status in {
@@ -606,27 +622,27 @@ class TestToolUsageAndApprovals:
 
 class TestStreamingResponses:
     """Test real-time streaming capabilities."""
-    
+
     async def test_streaming_message_response(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test streaming response from agent."""
         mock_response = MockClaudeResponse(
             "I'll help you analyze the security findings in your environment. Let me start by querying the current findings."
         )
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         message = "Analyze current security posture"
@@ -648,18 +664,18 @@ class TestStreamingResponses:
         result = await test_db.execute(
             select(AgentMessage).where(
                 AgentMessage.session_id == session.session_id,
-                AgentMessage.role == MessageRole.USER
+                AgentMessage.role == MessageRole.USER,
             )
         )
         user_message = result.scalar_one()
         assert user_message.content == message
-    
+
     async def test_streaming_with_tool_calls(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test streaming response that includes tool calls."""
         mock_response = MockClaudeResponse(
@@ -669,19 +685,19 @@ class TestStreamingResponses:
                     "type": "tool_use",
                     "id": "tool_1",
                     "name": "findings_list",
-                    "input": {"org_id": str(test_org.org_id), "limit": 5}
+                    "input": {"org_id": str(test_org.org_id), "limit": 5},
                 }
-            ]
+            ],
         )
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         chunks: List[Dict[str, Any]] = []
@@ -702,25 +718,27 @@ class TestStreamingResponses:
 
 class TestAuditTrails:
     """Test audit logging and traceability."""
-    
+
     async def test_message_audit_trail(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test that all messages are properly audited."""
-        mock_response = MockClaudeResponse("I understand. Let me help you with that analysis.")
+        mock_response = MockClaudeResponse(
+            "I understand. Let me help you with that analysis."
+        )
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={"audit_test": True}
+            context={"audit_test": True},
         )
 
         user_message = "Perform security analysis"
@@ -749,13 +767,13 @@ class TestAuditTrails:
         assistant_msg = next(m for m in message_list if m.role == MessageRole.ASSISTANT)
         assert assistant_msg.content is not None
         assert assistant_msg.created_at is not None
-    
+
     async def test_tool_invocation_audit(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test tool invocation audit trail."""
         mock_response = MockClaudeResponse(
@@ -765,19 +783,19 @@ class TestAuditTrails:
                     "type": "tool_use",
                     "id": "test_tool",
                     "name": "test_rule",
-                    "input": {"rule_expression": "resource.type == 'S3::Bucket'"}
+                    "input": {"rule_expression": "resource.type == 'S3::Bucket'"},
                 }
-            ]
+            ],
         )
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         async for chunk in service.send_message(
@@ -805,27 +823,25 @@ class TestAuditTrails:
 
 class TestPerformanceMetrics:
     """Test performance monitoring and metrics collection."""
-    
+
     async def test_response_time_measurement(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test response time measurement."""
-        mock_response = MockClaudeResponse(
-            "Quick response for performance testing"
-        )
+        mock_response = MockClaudeResponse("Quick response for performance testing")
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         start_time = time.time()
@@ -843,26 +859,26 @@ class TestPerformanceMetrics:
 
         assert response_time < 2.0
         assert len(chunks) > 0
-    
+
     async def test_token_usage_tracking(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test token usage tracking."""
         mock_response = MockClaudeResponse("Test response")
         mock_response.usage = {"input_tokens": 150, "output_tokens": 75}
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         async for chunk in service.send_message(
@@ -885,24 +901,24 @@ class TestPerformanceMetrics:
 
 class TestErrorHandlingAndRecovery:
     """Test error handling and recovery mechanisms."""
-    
+
     async def test_claude_api_error_handling(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test handling of Claude API errors."""
         mock_claude_runtime.send_message.side_effect = Exception("Claude API error")
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         with pytest.raises(Exception, match="Claude API error"):
@@ -912,13 +928,13 @@ class TestErrorHandlingAndRecovery:
                 user_id=test_user.username,
             ):
                 pass
-    
+
     async def test_tool_execution_error_handling(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test handling of tool execution errors."""
         mock_response = MockClaudeResponse(
@@ -928,19 +944,19 @@ class TestErrorHandlingAndRecovery:
                     "type": "tool_use",
                     "id": "error_tool",
                     "name": "nonexistent_tool",
-                    "input": {"param": "value"}
+                    "input": {"param": "value"},
                 }
-            ]
+            ],
         )
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.SECURITY_ANALYST.value,
             created_by=test_user.username,
-            context={}
+            context={},
         )
 
         chunks: List[Dict[str, Any]] = []
@@ -954,7 +970,7 @@ class TestErrorHandlingAndRecovery:
         result = await test_db.execute(
             select(ToolInvocation).where(
                 ToolInvocation.session_id == session.session_id,
-                ToolInvocation.tool_name == "nonexistent_tool"
+                ToolInvocation.tool_name == "nonexistent_tool",
             )
         )
         tool_invocation = result.scalar_one_or_none()
@@ -969,7 +985,7 @@ class TestErrorHandlingAndRecovery:
 
 class TestEndToEndScenarios:
     """End-to-end test scenarios demonstrating complete workflows."""
-    
+
     async def test_security_incident_analysis_workflow(
         self,
         test_db: AsyncSession,
@@ -977,10 +993,10 @@ class TestEndToEndScenarios:
         test_admin_user: User,
         sample_findings: List[Finding],
         sample_rules: List[Rule],
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test complete security incident analysis workflow."""
-        
+
         # Mock multiple responses for the conversation
         responses = [
             MockClaudeResponse(
@@ -990,41 +1006,44 @@ class TestEndToEndScenarios:
                         "type": "tool_use",
                         "id": "query_1",
                         "name": "findings_list",
-                        "input": {"org_id": str(test_org.org_id), "filters": {"status": ["OPEN"]}}
+                        "input": {
+                            "org_id": str(test_org.org_id),
+                            "filters": {"status": ["OPEN"]},
+                        },
                     }
-                ]
+                ],
             ),
             MockClaudeResponse(
                 "Based on the findings, I recommend reviewing the IAM permissions. Let me build a timeline.",
                 [
                     {
-                        "type": "tool_use", 
+                        "type": "tool_use",
                         "id": "timeline_1",
                         "name": "timeline",
                         "input": {
                             "org_id": str(test_org.org_id),
                             "resource_ids": ["user/john.doe"],
-                            "start_time": "2024-01-01T00:00:00Z"
-                        }
+                            "start_time": "2024-01-01T00:00:00Z",
+                        },
                     }
-                ]
+                ],
             ),
             MockClaudeResponse(
                 "I'll now update the high-priority finding status to in-progress as we investigate.",
                 [
                     {
                         "type": "tool_use",
-                        "id": "update_1", 
+                        "id": "update_1",
                         "name": "finding_update_status",
                         "input": {
                             "finding_id": str(sample_findings[0].finding_id),
-                            "status": "IN_PROGRESS"
-                        }
+                            "status": "IN_PROGRESS",
+                        },
                     }
-                ]
-            )
+                ],
+            ),
         ]
-        
+
         mock_claude_runtime.send_message.side_effect = responses
 
         service = await configure_agent_service(mock_claude_runtime, test_db)
@@ -1033,11 +1052,8 @@ class TestEndToEndScenarios:
             org_id=test_org.org_id,
             agent_type=AgentType.INCIDENT_RESPONDER.value,
             created_by=test_admin_user.username,
-            context={
-                "incident_type": "privilege_escalation",
-                "urgency": "high"
-            },
-            title="Privilege Escalation Investigation"
+            context={"incident_type": "privilege_escalation", "urgency": "high"},
+            title="Privilege Escalation Investigation",
         )
 
         async for chunk in service.send_message(
@@ -1086,17 +1102,17 @@ class TestEndToEndScenarios:
         assert "findings_list" in tool_names
         assert "timeline" in tool_names
         assert "finding_update_status" in tool_names
-    
+
     async def test_compliance_audit_workflow(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
         sample_findings: List[Finding],
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test compliance audit workflow."""
-        
+
         mock_response = MockClaudeResponse(
             "I'll perform a compliance audit focusing on data protection requirements.",
             [
@@ -1107,24 +1123,21 @@ class TestEndToEndScenarios:
                     "input": {
                         "org_id": str(test_org.org_id),
                         "filters": {"tags": ["encryption", "data-protection"]},
-                        "compliance_framework": "PCI_DSS"
-                    }
+                        "compliance_framework": "PCI_DSS",
+                    },
                 }
-            ]
+            ],
         )
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         session = await service.create_session(
             org_id=test_org.org_id,
             agent_type=AgentType.COMPLIANCE_ADVISOR.value,
             created_by=test_user.username,
-            context={
-                "framework": "PCI_DSS",
-                "audit_scope": "data_protection"
-            },
-            title="PCI DSS Compliance Audit"
+            context={"framework": "PCI_DSS", "audit_scope": "data_protection"},
+            title="PCI DSS Compliance Audit",
         )
 
         async for chunk in service.send_message(
@@ -1147,11 +1160,11 @@ async def test_comprehensive_system_integration():
     Cerebro Claude agent ecosystem works together properly.
     """
     logger.info("Starting comprehensive system integration test")
-    
+
     # This test would normally create real database connections and
     # potentially make actual API calls in a staging environment
     # For now, we'll validate the test framework is working
-    
+
     test_results = {
         "agent_types_tested": len(AgentType),
         "tool_registry_loaded": len(get_tool_registry().list_tools()) > 0,
@@ -1160,11 +1173,11 @@ async def test_comprehensive_system_integration():
         "audit_trails_enabled": True,
         "approval_workflows_configured": True,
         "performance_monitoring": True,
-        "error_handling_robust": True
+        "error_handling_robust": True,
     }
-    
+
     logger.info("System integration test completed", **test_results)
-    
+
     # Verify all major components are properly integrated
     assert test_results["agent_types_tested"] >= 5
     assert test_results["tool_registry_loaded"]
@@ -1175,18 +1188,18 @@ async def test_comprehensive_system_integration():
 @pytest.mark.performance
 class TestPerformanceBenchmarks:
     """Performance benchmark tests."""
-    
+
     async def test_concurrent_agent_sessions(
         self,
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        mock_claude_runtime
+        mock_claude_runtime,
     ):
         """Test handling multiple concurrent agent sessions."""
         mock_response = MockClaudeResponse("Concurrent response")
         mock_claude_runtime.send_message.return_value = mock_response
-        
+
         service = await configure_agent_service(mock_claude_runtime, test_db)
 
         tasks = []
@@ -1196,26 +1209,28 @@ class TestPerformanceBenchmarks:
                 agent_type=AgentType.SECURITY_ANALYST.value,
                 created_by=test_user.username,
                 context={"session_id": i},
-                title=f"Concurrent Session {i}"
+                title=f"Concurrent Session {i}",
             )
             tasks.append(task)
-        
+
         start_time = time.time()
         sessions = await asyncio.gather(*tasks)
         end_time = time.time()
-        
+
         assert len(sessions) == 10
         assert end_time - start_time < 5.0
-        
+
         session_ids = [s.session_id for s in sessions]
         assert len(set(session_ids)) == 10
 
 
 if __name__ == "__main__":
     # Run the tests
-    pytest.main([
-        "tests/integration/test_live_agents.py",
-        "-v",
-        "--tb=short",
-        "--disable-warnings"
-    ])
+    pytest.main(
+        [
+            "tests/integration/test_live_agents.py",
+            "-v",
+            "--tb=short",
+            "--disable-warnings",
+        ]
+    )

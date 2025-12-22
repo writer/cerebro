@@ -25,21 +25,17 @@ class AttackPathSimulatorInput(BaseModel):
 
     start_principal: Optional[str] = Field(
         None,
-        description="Starting principal ID or email (e.g., 'user@company.com', 'arn:aws:iam::123:role/admin')"
+        description="Starting principal ID or email (e.g., 'user@company.com', 'arn:aws:iam::123:role/admin')",
     )
     target_resource: Optional[str] = Field(
         None,
-        description="Target resource ID or ARN (e.g., 'arn:aws:s3:::prod-data', 's3://prod-data')"
+        description="Target resource ID or ARN (e.g., 'arn:aws:s3:::prod-data', 's3://prod-data')",
     )
     max_depth: int = Field(
-        default=5,
-        description="Maximum path length (number of hops)",
-        ge=1,
-        le=10
+        default=5, description="Maximum path length (number of hops)", ge=1, le=10
     )
     include_privilege_escalation: bool = Field(
-        default=True,
-        description="Include privilege escalation paths"
+        default=True, description="Include privilege escalation paths"
     )
 
 
@@ -100,7 +96,7 @@ class AttackPathSimulatorTool(StructuredTool):
             if not start_principal and not target_resource:
                 return ToolResult(
                     success=False,
-                    error="Must specify either start_principal or target_resource (or both)"
+                    error="Must specify either start_principal or target_resource (or both)",
                 )
 
             logger.info(
@@ -115,7 +111,7 @@ class AttackPathSimulatorTool(StructuredTool):
                 attack_graph = await get_attack_graph(
                     db_session=db_session,
                     org_id=context.org_id,
-                    provider_scope=context.provider_scope
+                    provider_scope=context.provider_scope,
                 )
 
                 # Initialize path analyzer
@@ -136,7 +132,7 @@ class AttackPathSimulatorTool(StructuredTool):
                     max_path_length=max_depth,
                     path_type=path_type,
                     min_privilege_level=0,
-                    exclude_conditions=[]
+                    exclude_conditions=[],
                 )
 
                 # Find paths
@@ -151,16 +147,18 @@ class AttackPathSimulatorTool(StructuredTool):
                             "query_info": {
                                 "start": start_principal,
                                 "target": target_resource,
-                                "max_depth": max_depth
-                            }
-                        }
+                                "max_depth": max_depth,
+                            },
+                        },
                     )
 
                 # Format most critical path with full details
                 most_critical = paths[0]  # Already sorted by exploitability
                 critical_path_details = {
                     "severity": most_critical.severity.value,
-                    "exploitability_score": round(most_critical.exploitability_score, 2),
+                    "exploitability_score": round(
+                        most_critical.exploitability_score, 2
+                    ),
                     "impact_score": round(most_critical.impact_score, 2),
                     "path_length": most_critical.path_length,
                     "total_difficulty": round(most_critical.total_difficulty, 2),
@@ -173,11 +171,11 @@ class AttackPathSimulatorTool(StructuredTool):
                             "privilege_level": step.privilege_level,
                             "description": step.description,
                             "difficulty": round(step.difficulty_score, 2),
-                            "conditions": step.conditions
+                            "conditions": step.conditions,
                         }
                         for step in most_critical.steps
                     ],
-                    "mitigations": most_critical.mitigations
+                    "mitigations": most_critical.mitigations,
                 }
 
                 # Summarize all paths (limit to top 10 to avoid token overload)
@@ -191,7 +189,7 @@ class AttackPathSimulatorTool(StructuredTool):
                         "target": path.target_resource,
                         "key_permissions": [
                             step.permission for step in path.steps[:3]  # First 3 steps
-                        ]
+                        ],
                     }
                     for idx, path in enumerate(paths[:10])
                 ]
@@ -200,10 +198,7 @@ class AttackPathSimulatorTool(StructuredTool):
                 choke_points = self._identify_choke_points(paths)
 
                 # Generate recommendations
-                recommendations = self._generate_recommendations(
-                    paths,
-                    choke_points
-                )
+                recommendations = self._generate_recommendations(paths, choke_points)
 
                 output = AttackPathSimulatorOutput(
                     paths_found=len(paths),
@@ -215,8 +210,8 @@ class AttackPathSimulatorTool(StructuredTool):
                         "start_principal": start_principal,
                         "target_resource": target_resource,
                         "max_depth": max_depth,
-                        "include_privilege_escalation": include_privilege_escalation
-                    }
+                        "include_privilege_escalation": include_privilege_escalation,
+                    },
                 )
 
                 logger.info(
@@ -230,15 +225,14 @@ class AttackPathSimulatorTool(StructuredTool):
                     data=output.model_dump(),
                     metadata={
                         "paths_analyzed": len(paths),
-                        "max_severity": most_critical.severity.value
-                    }
+                        "max_severity": most_critical.severity.value,
+                    },
                 )
 
         except Exception as e:
             logger.error("Attack path simulation failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False,
-                error=f"Attack path simulation failed: {str(e)}"
+                success=False, error=f"Attack path simulation failed: {str(e)}"
             )
 
     def _identify_choke_points(self, paths: List) -> List[str]:
@@ -260,16 +254,13 @@ class AttackPathSimulatorTool(StructuredTool):
         # Return nodes that appear in >30% of paths
         threshold = max(1, len(paths) * 0.3)
         choke_points = [
-            node for node, freq in node_frequency.items()
-            if freq >= threshold
+            node for node, freq in node_frequency.items() if freq >= threshold
         ]
 
         return choke_points[:10]  # Limit to top 10
 
     def _generate_recommendations(
-        self,
-        paths: List,
-        choke_points: List[str]
+        self, paths: List, choke_points: List[str]
     ) -> List[str]:
         """Generate security recommendations based on paths found."""
         recommendations = []
@@ -299,8 +290,7 @@ class AttackPathSimulatorTool(StructuredTool):
 
         # Privilege escalation
         priv_esc_paths = [
-            p for p in paths
-            if any(step.privilege_level > 5 for step in p.steps)
+            p for p in paths if any(step.privilege_level > 5 for step in p.steps)
         ]
         if priv_esc_paths:
             recommendations.append(
@@ -326,14 +316,20 @@ class BlastRadiusTool(StructuredTool):
     """
 
     tool_name = "calculate_blast_radius"
-    tool_description = "Calculate the full impact scope if a given identity is compromised"
+    tool_description = (
+        "Calculate the full impact scope if a given identity is compromised"
+    )
     tool_version = "1.0.0"
     required_permission = ToolPermissionLevel.READ_ONLY
 
     class Input(BaseModel):
         principal_id: str = Field(..., description="Principal/identity to analyze")
-        max_hops: int = Field(default=5, description="Maximum hops to traverse", ge=1, le=10)
-        include_transitive: bool = Field(default=True, description="Include transitive access")
+        max_hops: int = Field(
+            default=5, description="Maximum hops to traverse", ge=1, le=10
+        )
+        include_transitive: bool = Field(
+            default=True, description="Include transitive access"
+        )
 
     class Output(BaseModel):
         principal_id: str
@@ -369,7 +365,7 @@ class BlastRadiusTool(StructuredTool):
                 attack_graph = await get_attack_graph(
                     db_session=db_session,
                     org_id=context.org_id,
-                    provider_scope=context.provider_scope
+                    provider_scope=context.provider_scope,
                 )
 
                 # Compute reachability
@@ -377,7 +373,7 @@ class BlastRadiusTool(StructuredTool):
                 blast_radius = await reachability.compute_blast_radius(
                     principal_id=principal_id,
                     max_hops=max_hops,
-                    include_transitive=include_transitive
+                    include_transitive=include_transitive,
                 )
 
                 # Identify high-value targets at risk
@@ -385,12 +381,16 @@ class BlastRadiusTool(StructuredTool):
                 for resource_id in blast_radius.reachable_resources[:20]:  # Top 20
                     resource_node = attack_graph.get_node(resource_id)
                     if resource_node and resource_node.get("risk_score", 0) > 7:
-                        high_value_targets.append({
-                            "resource_id": resource_id,
-                            "resource_type": resource_node.get("resource_type"),
-                            "risk_score": resource_node.get("risk_score"),
-                            "hops_away": blast_radius.get_distance(principal_id, resource_id)
-                        })
+                        high_value_targets.append(
+                            {
+                                "resource_id": resource_id,
+                                "resource_type": resource_node.get("resource_type"),
+                                "risk_score": resource_node.get("risk_score"),
+                                "hops_away": blast_radius.get_distance(
+                                    principal_id, resource_id
+                                ),
+                            }
+                        )
 
                 # Generate containment recommendations
                 containment = [
@@ -417,7 +417,7 @@ class BlastRadiusTool(StructuredTool):
                         r for r in blast_radius.critical_resources[:10]
                     ],
                     high_value_targets=high_value_targets,
-                    recommended_containment=containment
+                    recommended_containment=containment,
                 )
 
                 logger.info(
@@ -429,12 +429,11 @@ class BlastRadiusTool(StructuredTool):
                 return ToolResult(
                     success=True,
                     data=output.model_dump(),
-                    metadata={"principal_id": principal_id, "max_hops": max_hops}
+                    metadata={"principal_id": principal_id, "max_hops": max_hops},
                 )
 
         except Exception as e:
             logger.error("Blast radius calculation failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False,
-                error=f"Blast radius calculation failed: {str(e)}"
+                success=False, error=f"Blast radius calculation failed: {str(e)}"
             )

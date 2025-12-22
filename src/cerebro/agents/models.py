@@ -30,13 +30,15 @@ from cerebro.core.models import Organization
 
 class Base(DeclarativeBase):
     """Base class for all Cerebro agent models."""
+
     pass
 
 
 class AgentType(str, Enum):
     """Types of security agents available in Cerebro."""
+
     SECURITY_ANALYST = "security_analyst"
-    INCIDENT_RESPONDER = "incident_responder" 
+    INCIDENT_RESPONDER = "incident_responder"
     IDENTITY_ADVISOR = "identity_advisor"
     COMPLIANCE_ADVISOR = "compliance_advisor"
     ATTACK_PATH_ANALYST = "attack_path_analyst"
@@ -44,6 +46,7 @@ class AgentType(str, Enum):
 
 class MessageRole(str, Enum):
     """Role types for agent messages."""
+
     USER = "user"
     ASSISTANT = "assistant"
     TOOL = "tool"
@@ -52,6 +55,7 @@ class MessageRole(str, Enum):
 
 class ToolInvocationStatus(str, Enum):
     """Status of tool invocations."""
+
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -62,6 +66,7 @@ class ToolInvocationStatus(str, Enum):
 
 class ApprovalStatus(str, Enum):
     """Status of approval requests."""
+
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -105,10 +110,11 @@ class MemoryScope(str, Enum):
 class AgentSession(Base):
     """
     Represents an agent conversation session.
-    
+
     Sessions are scoped to an organization and maintain context about the
     security scope (findings, incidents, etc.) that the agent is working with.
     """
+
     __tablename__ = "agent_sessions"
 
     id: Mapped[UUID] = mapped_column(
@@ -132,21 +138,23 @@ class AgentSession(Base):
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    context: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    context: Mapped[Dict[str, Any]] = mapped_column(
+        JSONType, nullable=False, default=dict
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
         server_default=expression.true(),
     )
-    
+
     # Context may include:
     # - finding_ids: List[UUID] - findings being analyzed
-    # - incident_id: UUID - incident being investigated  
+    # - incident_id: UUID - incident being investigated
     # - provider_scope: List[str] - providers to focus on
     # - time_window: dict - temporal analysis window
     # - compliance_frameworks: List[str] - frameworks to map to
-    
+
     # Relationships
     messages: Mapped[list["AgentMessage"]] = relationship(
         "AgentMessage",
@@ -182,10 +190,11 @@ class AgentSession(Base):
 class AgentMessage(Base):
     """
     Individual messages in an agent conversation.
-    
+
     Messages are append-only and maintain the complete conversation history
     including tool calls, results, and assistant responses.
     """
+
     __tablename__ = "agent_messages"
 
     id: Mapped[UUID] = mapped_column(
@@ -208,18 +217,20 @@ class AgentMessage(Base):
         server_default=func.now(),
         index=True,
     )
-    
+
     # Content structure varies by role:
     # - user/assistant: {"text": str, "attachments": [...]}
     # - tool: {"tool_name": str, "input": {...}, "output": {...}}
     # - system: {"instruction": str, "metadata": {...}}
-    
+
     # Token usage tracking
     input_tokens: Mapped[Optional[int]] = mapped_column(nullable=True)
     output_tokens: Mapped[Optional[int]] = mapped_column(nullable=True)
-    
+
     # Relationships
-    session: Mapped["AgentSession"] = relationship("AgentSession", back_populates="messages")
+    session: Mapped["AgentSession"] = relationship(
+        "AgentSession", back_populates="messages"
+    )
 
     @property
     def message_id(self) -> UUID:
@@ -285,8 +296,12 @@ class AgentMemoryEntry(Base):
         index=True,
     )
     agent_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    role: Mapped[Optional[MessageRole]] = mapped_column(SqlEnum(MessageRole), nullable=True)
-    scopes: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
+    role: Mapped[Optional[MessageRole]] = mapped_column(
+        SqlEnum(MessageRole), nullable=True
+    )
+    scopes: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=False, default=list
+    )
     scope_priority: Mapped[int] = mapped_column(
         nullable=False,
         default=0,
@@ -294,11 +309,15 @@ class AgentMemoryEntry(Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSONType, nullable=True)
     embedding_norm: Mapped[Optional[float]] = mapped_column(nullable=True)
-    extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True, default=dict)
+    extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True, default=dict
+    )
     decay_score: Mapped[float] = mapped_column(nullable=False, default=1.0)
     last_accessed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -327,10 +346,11 @@ class AgentMemoryEntry(Base):
 class ToolInvocation(Base):
     """
     Detailed tracking of tool invocations by agents.
-    
+
     This provides a detailed audit trail of all tool calls, their inputs/outputs,
     CEL policy evaluations, and approval workflows.
     """
+
     __tablename__ = "tool_invocations"
 
     id: Mapped[UUID] = mapped_column(
@@ -347,17 +367,19 @@ class ToolInvocation(Base):
     )
     tool_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     tool_version: Mapped[str] = mapped_column(String(20), nullable=False, default="1.0")
-    
+
     # Tool execution details
     input_data: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
-    output_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    output_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True
+    )
     status: Mapped[ToolInvocationStatus] = mapped_column(
         SqlEnum(ToolInvocationStatus),
         nullable=False,
         default=ToolInvocationStatus.PENDING,
         index=True,
     )
-    
+
     # Timing
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -368,22 +390,28 @@ class ToolInvocation(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-    
+
     # CEL policy enforcement
     cel_policy_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     cel_expression: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cel_result: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    cel_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
-    
+    cel_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=True
+    )
+
     # Error handling
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    
+
     # Celery task tracking (for async operations)
-    celery_task_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
-    
+    celery_task_id: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, index=True
+    )
+
     # Relationships
-    session: Mapped["AgentSession"] = relationship("AgentSession", back_populates="tool_invocations")
+    session: Mapped["AgentSession"] = relationship(
+        "AgentSession", back_populates="tool_invocations"
+    )
     approval: Mapped[Optional["ToolApproval"]] = relationship(
         "ToolApproval",
         back_populates="tool_invocation",
@@ -402,10 +430,11 @@ class ToolInvocation(Base):
 class ToolApproval(Base):
     """
     Human-in-the-loop approval workflow for potentially destructive tool actions.
-    
+
     Certain tool invocations require human approval before execution, especially
     those that modify production systems or access sensitive data.
     """
+
     __tablename__ = "tool_approvals"
 
     id: Mapped[UUID] = mapped_column(
@@ -427,7 +456,7 @@ class ToolApproval(Base):
         unique=True,
         index=True,
     )
-    
+
     # Approval request details
     requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
     requested_at: Mapped[datetime] = mapped_column(
@@ -437,7 +466,7 @@ class ToolApproval(Base):
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     risk_assessment: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
-    
+
     # Approval decision
     status: Mapped[ApprovalStatus] = mapped_column(
         SqlEnum(ApprovalStatus),
@@ -451,15 +480,15 @@ class ToolApproval(Base):
         nullable=True,
     )
     decision_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    
+
     # Expiry
     expires_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         index=True,
     )
-    
-    # Relationships  
+
+    # Relationships
     tool_invocation: Mapped["ToolInvocation"] = relationship(
         "ToolInvocation",
         back_populates="approval",
@@ -504,11 +533,17 @@ class AgentReviewTask(Base):
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    payload: Mapped[Dict[str, Any]] = mapped_column(
+        JSONType, nullable=False, default=dict
+    )
     priority: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     escalated_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    notification_channel: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    notification_channel: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
     ticket_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     status: Mapped[ReviewTaskStatus] = mapped_column(
@@ -533,8 +568,12 @@ class AgentReviewTask(Base):
     )
 
     # Assignment fields
-    assigned_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
-    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    assigned_to: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, index=True
+    )
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     assigned_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     session: Mapped["AgentSession"] = relationship("AgentSession")
@@ -568,7 +607,9 @@ class AgentReviewTask(Base):
         return self.resolved_at
 
     @updated_at.setter
-    def updated_at(self, value: Optional[datetime]) -> None:  # pragma: no cover - compatibility shim
+    def updated_at(
+        self, value: Optional[datetime]
+    ) -> None:  # pragma: no cover - compatibility shim
         self.resolved_at = value
 
 
@@ -601,15 +642,21 @@ class AgentReviewNotification(Base):
         nullable=False,
         default=NotificationStatus.PENDING,
     )
-    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    payload: Mapped[Dict[str, Any]] = mapped_column(
+        JSONType, nullable=False, default=dict
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
     )
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    task: Mapped[AgentReviewTask] = relationship("AgentReviewTask", back_populates="notifications")
+    task: Mapped[AgentReviewTask] = relationship(
+        "AgentReviewTask", back_populates="notifications"
+    )
 
 
 class AgentReviewTicket(Base):
@@ -653,9 +700,13 @@ class AgentReviewTicket(Base):
         nullable=False,
         server_default=func.now(),
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    task: Mapped[AgentReviewTask] = relationship("AgentReviewTask", back_populates="tickets")
+    task: Mapped[AgentReviewTask] = relationship(
+        "AgentReviewTask", back_populates="tickets"
+    )
 
 
 class AgentSessionContext(Base):
@@ -665,6 +716,7 @@ class AgentSessionContext(Base):
     Stores learned facts, user preferences, corrections, and environment details
     that agents should remember across sessions for continuity and personalization.
     """
+
     __tablename__ = "agent_session_context"
 
     id: Mapped[UUID] = mapped_column(
@@ -760,7 +812,9 @@ class AgentRuntimeEvent(Base):
         index=True,
     )
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    payload: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    payload: Mapped[Dict[str, Any]] = mapped_column(
+        JSONType, nullable=False, default=dict
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -792,15 +846,21 @@ class AgentSelfServiceQuestion(Base):
         nullable=True,
         index=True,
     )
-    user_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, index=True
+    )
     question: Mapped[str] = mapped_column(Text, nullable=False)
     question_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     question_intent: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     handler_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     answer_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    evidence: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
-    details: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    evidence: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=False, default=list
+    )
+    details: Mapped[Dict[str, Any]] = mapped_column(
+        JSONType, nullable=False, default=dict
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -826,10 +886,16 @@ class AgentSelfServiceReport(Base):
         nullable=False,
         index=True,
     )
-    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    period_end: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    question_breakdown: Mapped[List[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
+    question_breakdown: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=False, default=list
+    )
     recommendations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -863,7 +929,9 @@ class AgentMemoryDecayOverride(Base):
         nullable=False,
         server_default=func.now(),
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class AgentReviewComment(Base):
@@ -995,6 +1063,7 @@ class AgentRecommendation(Base):
     Agents can generate actionable recommendations for remediation, policy changes,
     or process improvements based on their analysis.
     """
+
     __tablename__ = "agent_recommendations"
 
     id: Mapped[UUID] = mapped_column(
@@ -1015,23 +1084,35 @@ class AgentRecommendation(Base):
         nullable=False,
         index=True,
     )
-    
+
     # Recommendation details
-    type: Mapped[str] = mapped_column(String(50), nullable=False)  # remediation, policy, rule, process
+    type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # remediation, policy, rule, process
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    priority: Mapped[str] = mapped_column(String(20), nullable=False)  # critical, high, medium, low
-    
+    priority: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # critical, high, medium, low
+
     # Implementation guidance
-    action_items: Mapped[list[Dict[str, Any]]] = mapped_column(JSONType, nullable=False, default=list)
+    action_items: Mapped[list[Dict[str, Any]]] = mapped_column(
+        JSONType, nullable=False, default=list
+    )
     estimated_effort: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    implementation_timeline: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    
+    implementation_timeline: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )
+
     # Framework mappings
-    cis_controls: Mapped[list[str]] = mapped_column(JSONType, nullable=False, default=list)
-    nist_controls: Mapped[list[str]] = mapped_column(JSONType, nullable=False, default=list)
+    cis_controls: Mapped[list[str]] = mapped_column(
+        JSONType, nullable=False, default=list
+    )
+    nist_controls: Mapped[list[str]] = mapped_column(
+        JSONType, nullable=False, default=list
+    )
     cwe_ids: Mapped[list[int]] = mapped_column(JSONType, nullable=False, default=list)
-    
+
     # Tracking
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

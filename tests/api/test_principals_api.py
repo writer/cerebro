@@ -1,4 +1,3 @@
-
 from fastapi.testclient import TestClient
 
 
@@ -7,7 +6,9 @@ def test_principals_require_auth(client: TestClient) -> None:
     assert response.status_code in {401, 403}
 
 
-def test_principal_flow(client: TestClient, admin_token: str, test_principal, test_resource, test_rule) -> None:
+def test_principal_flow(
+    client: TestClient, admin_token: str, test_principal, test_resource, test_rule
+) -> None:
     list_response = client.get(
         "/api/v1/principals/",
         headers={"Authorization": f"Bearer {admin_token}"},

@@ -117,13 +117,27 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
         )
 
     async def _fake_compliance(self, org_id):
-        return {"CIS": {"total_controls": 10, "compliant_controls": 9, "compliance_percentage": 90.0, "status": "partial"}}
+        return {
+            "CIS": {
+                "total_controls": 10,
+                "compliant_controls": 9,
+                "compliance_percentage": 90.0,
+                "status": "partial",
+            }
+        }
 
     async def _fake_compliance_trends(self, org_id, framework_status):
-        return {"overall": [], "frameworks": {framework: [] for framework in framework_status}}
+        return {
+            "overall": [],
+            "frameworks": {framework: [] for framework in framework_status},
+        }
 
-    monkeypatch.setattr(DashboardAnalytics, "generate_security_metrics", _fake_security_metrics)
-    monkeypatch.setattr(DashboardAnalytics, "generate_executive_summary", _fake_executive_summary)
+    monkeypatch.setattr(
+        DashboardAnalytics, "generate_security_metrics", _fake_security_metrics
+    )
+    monkeypatch.setattr(
+        DashboardAnalytics, "generate_executive_summary", _fake_executive_summary
+    )
     monkeypatch.setattr(
         IdentityAnalyzer,
         "generate_identity_dashboard_data",

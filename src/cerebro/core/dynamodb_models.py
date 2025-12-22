@@ -192,11 +192,22 @@ class Account(DynamoDBModel):
             "entity_type": EntityType.ACCOUNT.value,
             "account_id": str(self.account_id),
             "org_id": str(self.org_id),
-            "provider": self.provider.value if isinstance(self.provider, Enum) else self.provider,
+            "provider": (
+                self.provider.value
+                if isinstance(self.provider, Enum)
+                else self.provider
+            ),
             "external_id": self.external_id,
             "display_name": self.display_name,
             # GSI1 for querying by provider
-            "GSI1PK": build_gsi1_pk("PROVIDER", self.provider.value if isinstance(self.provider, Enum) else self.provider),
+            "GSI1PK": build_gsi1_pk(
+                "PROVIDER",
+                (
+                    self.provider.value
+                    if isinstance(self.provider, Enum)
+                    else self.provider
+                ),
+            ),
             "GSI1SK": build_gsi1_sk(EntityType.ACCOUNT.value, self.account_id),
         }
 
@@ -238,8 +249,16 @@ class Principal(DynamoDBModel):
             "principal_id": str(self.principal_id),
             "account_id": str(self.account_id),
             "org_id": str(self.org_id),
-            "provider": self.provider.value if isinstance(self.provider, Enum) else self.provider,
-            "principal_type": self.principal_type.value if isinstance(self.principal_type, Enum) else self.principal_type,
+            "provider": (
+                self.provider.value
+                if isinstance(self.provider, Enum)
+                else self.provider
+            ),
+            "principal_type": (
+                self.principal_type.value
+                if isinstance(self.principal_type, Enum)
+                else self.principal_type
+            ),
             "external_id": self.external_id,
             "email": self.email,
             "display_name": self.display_name,
@@ -291,7 +310,11 @@ class Resource(DynamoDBModel):
             "resource_id": str(self.resource_id),
             "account_id": str(self.account_id),
             "org_id": str(self.org_id),
-            "provider": self.provider.value if isinstance(self.provider, Enum) else self.provider,
+            "provider": (
+                self.provider.value
+                if isinstance(self.provider, Enum)
+                else self.provider
+            ),
             "resource_type": self.resource_type,
             "external_id": self.external_id,
             "name": self.name,
@@ -354,9 +377,17 @@ class Rule(DynamoDBModel):
             "description": self.description,
             "provider": self.provider,
             "resource_types": self.resource_types,
-            "expression_lang": self.expression_lang.value if isinstance(self.expression_lang, Enum) else self.expression_lang,
+            "expression_lang": (
+                self.expression_lang.value
+                if isinstance(self.expression_lang, Enum)
+                else self.expression_lang
+            ),
             "expression": self.expression,
-            "severity": self.severity.value if isinstance(self.severity, Enum) else self.severity,
+            "severity": (
+                self.severity.value
+                if isinstance(self.severity, Enum)
+                else self.severity
+            ),
             "cwe": self.cwe,
             "cis": self.cis,
             "nist_800_53": self.nist_800_53,
@@ -419,8 +450,12 @@ class Finding(DynamoDBModel):
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
         status_val = self.status.value if isinstance(self.status, Enum) else self.status
-        severity_val = self.severity.value if isinstance(self.severity, Enum) else self.severity
-        provider_val = self.provider.value if isinstance(self.provider, Enum) else self.provider
+        severity_val = (
+            self.severity.value if isinstance(self.severity, Enum) else self.severity
+        )
+        provider_val = (
+            self.provider.value if isinstance(self.provider, Enum) else self.provider
+        )
 
         return {
             "PK": self.get_pk(),
@@ -463,7 +498,9 @@ class Finding(DynamoDBModel):
             rule_id=UUID(item["rule_id"]),
             rule_version=item["rule_version"],
             resource_id=UUID(item["resource_id"]) if item.get("resource_id") else None,
-            principal_id=UUID(item["principal_id"]) if item.get("principal_id") else None,
+            principal_id=(
+                UUID(item["principal_id"]) if item.get("principal_id") else None
+            ),
             first_seen=datetime.fromisoformat(item["first_seen"]),
             last_seen=datetime.fromisoformat(item["last_seen"]),
             status=FindingStatus(item["status"]),
@@ -558,7 +595,11 @@ class Suppression(DynamoDBModel):
             resource_pattern=item.get("resource_pattern"),
             principal_pattern=item.get("principal_pattern"),
             reason=item["reason"],
-            expires_at=datetime.fromisoformat(item["expires_at"]) if item.get("expires_at") else None,
+            expires_at=(
+                datetime.fromisoformat(item["expires_at"])
+                if item.get("expires_at")
+                else None
+            ),
             created_at=datetime.fromisoformat(item["created_at"]),
         )
 
@@ -632,7 +673,9 @@ class IamEdge(DynamoDBModel):
         return build_sk(EntityType.IAM_EDGE.value, self.edge_id)
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
-        provider_val = self.provider.value if isinstance(self.provider, Enum) else self.provider
+        provider_val = (
+            self.provider.value if isinstance(self.provider, Enum) else self.provider
+        )
 
         return {
             "PK": self.get_pk(),
@@ -666,7 +709,11 @@ class IamEdge(DynamoDBModel):
             permission=item["permission"],
             via=item.get("via"),
             effective_at=datetime.fromisoformat(item["effective_at"]),
-            expires_at=datetime.fromisoformat(item["expires_at"]) if item.get("expires_at") else None,
+            expires_at=(
+                datetime.fromisoformat(item["expires_at"])
+                if item.get("expires_at")
+                else None
+            ),
             is_admin=item.get("is_admin", False),
         )
 
@@ -692,7 +739,9 @@ class AuditEvent(DynamoDBModel):
         return f"AUDIT#{self.occurred_at.isoformat()}#{self.event_id}"
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
-        provider_val = self.provider.value if isinstance(self.provider, Enum) else self.provider
+        provider_val = (
+            self.provider.value if isinstance(self.provider, Enum) else self.provider
+        )
 
         item = {
             "PK": self.get_pk(),

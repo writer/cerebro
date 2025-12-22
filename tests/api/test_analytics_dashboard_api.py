@@ -23,7 +23,9 @@ def test_dashboard_endpoint_includes_identity_and_heatmap(
         payload["executive_summary"]["org_id"] = str(org_id)
         return payload
 
-    monkeypatch.setattr(DashboardAnalytics, "generate_comprehensive_dashboard", _fake_dashboard)
+    monkeypatch.setattr(
+        DashboardAnalytics, "generate_comprehensive_dashboard", _fake_dashboard
+    )
 
     response = client.get(
         f"/api/v1/analytics/organizations/{test_org.org_id}/dashboard",
@@ -101,7 +103,9 @@ def test_provider_findings_endpoint_returns_details(
         assert limit == 10
         return sample_findings[:limit]
 
-    monkeypatch.setattr(DashboardRepository, "get_findings_by_provider", _fake_provider_findings)
+    monkeypatch.setattr(
+        DashboardRepository, "get_findings_by_provider", _fake_provider_findings
+    )
 
     response = client.get(
         f"/api/v1/analytics/organizations/{test_org.org_id}/providers/github/findings?limit=10",
@@ -205,7 +209,9 @@ def test_remediation_action_endpoints(
         action_state.updated_at = now
         return action_state
 
-    monkeypatch.setattr(DashboardRepository, "update_remediation_action_status", _fake_update)
+    monkeypatch.setattr(
+        DashboardRepository, "update_remediation_action_status", _fake_update
+    )
     monkeypatch.setattr(DashboardRepository, "add_remediation_note", _fake_add_note)
 
     accept_response = client.post(
@@ -268,7 +274,9 @@ def test_bulk_remediation_action_endpoints(
             updated_at=now,
         )
 
-    action_state = {aid: _make_action(aid, pid) for aid, pid in zip(action_ids, principal_ids)}
+    action_state = {
+        aid: _make_action(aid, pid) for aid, pid in zip(action_ids, principal_ids)
+    }
 
     async def _fake_bulk_update(
         self,
@@ -306,7 +314,9 @@ def test_bulk_remediation_action_endpoints(
             updated.append(action)
         return updated
 
-    monkeypatch.setattr(DashboardRepository, "update_remediation_actions_status_bulk", _fake_bulk_update)
+    monkeypatch.setattr(
+        DashboardRepository, "update_remediation_actions_status_bulk", _fake_bulk_update
+    )
 
     accept_response = client.post(
         f"/api/v1/analytics/organizations/{test_org.org_id}/remediation/actions/bulk/accept",

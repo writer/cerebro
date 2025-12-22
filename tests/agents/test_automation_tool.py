@@ -8,7 +8,12 @@ import pytest
 
 from cerebro.agents.tools.automation_summary import TelemetryAutomationSummaryTool
 from cerebro.agents.tools.base import AgentContext
-from cerebro.automation.alerting import AlertResult, AlertRule, RuleComparison, RuleSeverity
+from cerebro.automation.alerting import (
+    AlertResult,
+    AlertRule,
+    RuleComparison,
+    RuleSeverity,
+)
 from cerebro.automation.telemetry_health import TelemetryHealthSnapshot
 
 
@@ -69,7 +74,9 @@ async def test_automation_tool_returns_summary(monkeypatch) -> None:
 
     monkeypatch.setattr(module, "default_rules", lambda: (warning_rule,))
     monkeypatch.setattr(module, "collect_telemetry_alerts", fake_collect)
-    monkeypatch.setattr(module, "evaluate_health_thresholds", lambda snapshot, **_: ["missing metadata"])
+    monkeypatch.setattr(
+        module, "evaluate_health_thresholds", lambda snapshot, **_: ["missing metadata"]
+    )
     monkeypatch.setattr(module, "async_session_factory", lambda: _DummySession())
 
     tool = TelemetryAutomationSummaryTool()

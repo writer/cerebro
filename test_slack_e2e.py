@@ -169,6 +169,7 @@ def print_sample_message():
     message = SlackMessageFormatter.format_finding_created(finding, org.name)
 
     import json
+
     print(json.dumps(message, indent=2))
 
     print("\n" + "=" * 60)
@@ -213,6 +214,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

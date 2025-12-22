@@ -436,7 +436,9 @@ def test_account(dynamodb_core_helper, test_org_id, test_account_id) -> Dict[str
 
 
 @pytest.fixture
-def test_findings(dynamodb_core_helper, test_org_id, test_account_id) -> List[Dict[str, Any]]:
+def test_findings(
+    dynamodb_core_helper, test_org_id, test_account_id
+) -> List[Dict[str, Any]]:
     """Create and return test findings."""
     rule_id = uuid4()
     findings = [

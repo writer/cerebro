@@ -7,6 +7,7 @@ Creates customer-managed KMS keys for encrypting:
 - Secrets Manager secrets
 - EBS volumes
 """
+
 import pulumi
 import pulumi_aws as aws
 

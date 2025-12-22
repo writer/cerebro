@@ -25,15 +25,14 @@ class ForensicReplayInput(BaseModel):
 
     timestamp: str = Field(
         ...,
-        description="ISO 8601 timestamp to replay state (e.g., '2024-12-01T15:30:00Z')"
+        description="ISO 8601 timestamp to replay state (e.g., '2024-12-01T15:30:00Z')",
     )
     scope: Optional[Dict[str, Any]] = Field(
         default_factory=dict,
-        description="Scope filters: providers (list), resource_types (list), principal_ids (list)"
+        description="Scope filters: providers (list), resource_types (list), principal_ids (list)",
     )
     include_changes: bool = Field(
-        default=False,
-        description="Include what changed since this timestamp"
+        default=False, description="Include what changed since this timestamp"
     )
 
 
@@ -95,7 +94,7 @@ class ForensicReplayTool(StructuredTool):
         """
         try:
             # Parse timestamp
-            target_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            target_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
 
             logger.info(
                 "Forensic replay requested",
@@ -109,9 +108,7 @@ class ForensicReplayTool(StructuredTool):
 
                 # Reconstruct state at target time
                 historical_state = await engine.reconstruct_state_at_time(
-                    org_id=context.org_id,
-                    target_time=target_time,
-                    scope=scope or {}
+                    org_id=context.org_id, target_time=target_time, scope=scope or {}
                 )
 
                 # Optionally compute changes since then
@@ -121,7 +118,7 @@ class ForensicReplayTool(StructuredTool):
                         org_id=context.org_id,
                         from_time=target_time,
                         to_time=datetime.utcnow(),
-                        scope=scope or {}
+                        scope=scope or {},
                     )
 
                 # Format output for agent consumption
@@ -132,7 +129,6 @@ class ForensicReplayTool(StructuredTool):
                     resources_count=len(historical_state.resources),
                     active_findings_count=len(historical_state.active_findings),
                     security_summary=historical_state.security_summary,
-
                     # Provide samples for context (limit to avoid token overload)
                     principals_sample=[
                         {
@@ -142,11 +138,10 @@ class ForensicReplayTool(StructuredTool):
                             "provider": p.provider,
                             "was_active": p.was_active,
                             "permissions_count": len(p.permissions),
-                            "groups": p.groups[:5]  # Limit groups
+                            "groups": p.groups[:5],  # Limit groups
                         }
                         for p in historical_state.principals[:10]  # Top 10
                     ],
-
                     resources_sample=[
                         {
                             "external_id": r.external_id,
@@ -154,11 +149,10 @@ class ForensicReplayTool(StructuredTool):
                             "type": r.resource_type,
                             "provider": r.provider,
                             "access_count": len(r.who_had_access),
-                            "security_posture": r.security_posture
+                            "security_posture": r.security_posture,
                         }
                         for r in historical_state.resources[:10]  # Top 10
                     ],
-
                     # All findings (usually not too many)
                     active_findings=[
                         {
@@ -166,12 +160,11 @@ class ForensicReplayTool(StructuredTool):
                             "title": f["title"],
                             "severity": f["severity"],
                             "resource": f.get("resource"),
-                            "description": f.get("description", "")[:200]  # Truncate
+                            "description": f.get("description", "")[:200],  # Truncate
                         }
                         for f in historical_state.active_findings
                     ],
-
-                    changes_since=changes_since if include_changes else None
+                    changes_since=changes_since if include_changes else None,
                 )
 
                 logger.info(
@@ -187,23 +180,20 @@ class ForensicReplayTool(StructuredTool):
                     metadata={
                         "timestamp": timestamp,
                         "scope": scope,
-                        "included_changes": include_changes
-                    }
+                        "included_changes": include_changes,
+                    },
                 )
 
         except ValueError as e:
             logger.error("Invalid timestamp format", error=str(e))
             return ToolResult(
                 success=False,
-                error=f"Invalid timestamp format: {str(e)}. Use ISO 8601 format."
+                error=f"Invalid timestamp format: {str(e)}. Use ISO 8601 format.",
             )
 
         except Exception as e:
             logger.error("Forensic replay failed", error=str(e), exc_info=True)
-            return ToolResult(
-                success=False,
-                error=f"Forensic replay failed: {str(e)}"
-            )
+            return ToolResult(success=False, error=f"Forensic replay failed: {str(e)}")
 
 
 class ChangeReplayTool(StructuredTool):
@@ -226,8 +216,7 @@ class ChangeReplayTool(StructuredTool):
         start_time: str = Field(..., description="Start timestamp (ISO 8601)")
         end_time: str = Field(..., description="End timestamp (ISO 8601)")
         scope: Optional[Dict[str, Any]] = Field(
-            default_factory=dict,
-            description="Scope filters"
+            default_factory=dict, description="Scope filters"
         )
 
     class Output(BaseModel):
@@ -268,8 +257,8 @@ class ChangeReplayTool(StructuredTool):
             from cerebro.analysis.change_replay import ChangeReplayEngine
 
             # Parse timestamps
-            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+            start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
 
             logger.info(
                 "Change replay requested",
@@ -286,20 +275,24 @@ class ChangeReplayTool(StructuredTool):
                     org_id=context.org_id,
                     start_time=start_dt,
                     end_time=end_dt,
-                    scope=scope or {}
+                    scope=scope or {},
                 )
 
                 # Build timeline
                 timeline = []
                 for change in changes.changes[:100]:  # Limit to 100 events
-                    timeline.append({
-                        "timestamp": change.timestamp.isoformat(),
-                        "change_type": change.change_type,
-                        "entity_type": change.entity_type,
-                        "entity_id": change.entity_id,
-                        "description": change.description,
-                        "severity": change.severity if hasattr(change, 'severity') else None
-                    })
+                    timeline.append(
+                        {
+                            "timestamp": change.timestamp.isoformat(),
+                            "change_type": change.change_type,
+                            "entity_type": change.entity_type,
+                            "entity_id": change.entity_id,
+                            "description": change.description,
+                            "severity": (
+                                change.severity if hasattr(change, "severity") else None
+                            ),
+                        }
+                    )
 
                 time_span = (end_dt - start_dt).total_seconds() / 3600  # hours
 
@@ -313,7 +306,7 @@ class ChangeReplayTool(StructuredTool):
                     findings_created=changes.findings_created,
                     findings_resolved=changes.findings_resolved,
                     change_summary=changes.summary,
-                    timeline=timeline
+                    timeline=timeline,
                 )
 
                 logger.info(
@@ -328,13 +321,10 @@ class ChangeReplayTool(StructuredTool):
                     metadata={
                         "start_time": start_time,
                         "end_time": end_time,
-                        "scope": scope
-                    }
+                        "scope": scope,
+                    },
                 )
 
         except Exception as e:
             logger.error("Change replay failed", error=str(e), exc_info=True)
-            return ToolResult(
-                success=False,
-                error=f"Change replay failed: {str(e)}"
-            )
+            return ToolResult(success=False, error=f"Change replay failed: {str(e)}")

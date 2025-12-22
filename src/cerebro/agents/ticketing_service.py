@@ -80,7 +80,9 @@ class TicketingService:
                 # Preserve upstream payload and identifiers for agents and UI surfaces.
                 serval_details.update(serval_overrides)
                 serval_details.setdefault("team_id", serval_overrides.get("team_id"))
-                serval_details.setdefault("friendly_identifier", result.payload.get("friendlyIdentifier"))
+                serval_details.setdefault(
+                    "friendly_identifier", result.payload.get("friendlyIdentifier")
+                )
                 serval_details["ticket"] = result.payload
                 ticket.details = payload
             await db_session.commit()
@@ -88,7 +90,9 @@ class TicketingService:
             return ticket
 
     @staticmethod
-    async def close_ticket(*, ticket_id: UUID, external_id: Optional[str] = None) -> Optional[AgentReviewTicket]:
+    async def close_ticket(
+        *, ticket_id: UUID, external_id: Optional[str] = None
+    ) -> Optional[AgentReviewTicket]:
         async with async_session_factory() as db_session:
             ticket = await db_session.get(AgentReviewTicket, ticket_id)
             if not ticket:
@@ -110,7 +114,10 @@ class TicketingService:
                         status_key="closed",
                     )
                 except (ServalError, ValueError):
-                    logger.exception("Failed to update Serval ticket status for %s", ticket.external_id)
+                    logger.exception(
+                        "Failed to update Serval ticket status for %s",
+                        ticket.external_id,
+                    )
 
             await db_session.commit()
             await db_session.refresh(ticket)

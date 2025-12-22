@@ -14,6 +14,7 @@ def test_sync_serval_tickets_updates_state(monkeypatch, test_db, test_org):
 
     async def _list_all(self):  # type: ignore[override]
         from cerebro.integrations.serval_service import ServalIntegrationSettings
+
         return [
             ServalIntegrationSettings(
                 org_id=org_id,

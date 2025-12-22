@@ -68,10 +68,18 @@ def upgrade() -> None:
         sa.Column("resolution_notes", sa.Text(), nullable=True),
         sa.Column("resolved_by", sa.String(length=255), nullable=True),
         sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["org_id"], ["organizations.org_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["session_id"], ["agent_sessions.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["message_id"], ["agent_messages.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["tool_invocation_id"], ["tool_invocations.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.org_id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["session_id"], ["agent_sessions.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["message_id"], ["agent_messages.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tool_invocation_id"], ["tool_invocations.id"], ondelete="SET NULL"
+        ),
     )
 
     op.create_index(
@@ -109,7 +117,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_agent_review_tasks_created_at", table_name="agent_review_tasks")
     op.drop_index("ix_agent_review_tasks_status", table_name="agent_review_tasks")
-    op.drop_index("ix_agent_review_tasks_tool_invocation_id", table_name="agent_review_tasks")
+    op.drop_index(
+        "ix_agent_review_tasks_tool_invocation_id", table_name="agent_review_tasks"
+    )
     op.drop_index("ix_agent_review_tasks_message_id", table_name="agent_review_tasks")
     op.drop_index("ix_agent_review_tasks_session_id", table_name="agent_review_tasks")
     op.drop_index("ix_agent_review_tasks_org_id", table_name="agent_review_tasks")

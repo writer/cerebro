@@ -80,14 +80,16 @@ async def test_access_question_logs_answer(test_db):
 
     stub = _StubQueryEngine(
         {
-            "iam_edges": _query_result([
-                {
-                    "principal_id": "alice@example.com",
-                    "resource_id": "arn:aws:s3:::customer-data",
-                    "permission": "s3:*",
-                    "path_length": 1,
-                }
-            ])
+            "iam_edges": _query_result(
+                [
+                    {
+                        "principal_id": "alice@example.com",
+                        "resource_id": "arn:aws:s3:::customer-data",
+                        "permission": "s3:*",
+                        "path_length": 1,
+                    }
+                ]
+            )
         }
     )
     service = SelfServiceKnowledgeService(
@@ -106,7 +108,7 @@ async def test_access_question_logs_answer(test_db):
     assert "alice@example.com" in answer.summary.lower()
     assert answer.evidence
 
-    rows = list((await test_db.execute(select(AgentSelfServiceQuestion)) ).scalars())
+    rows = list((await test_db.execute(select(AgentSelfServiceQuestion))).scalars())
     assert len(rows) == 1
     assert rows[0].question_type == QuestionType.ACCESS.value
     assert rows[0].answer_summary

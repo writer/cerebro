@@ -126,7 +126,9 @@ async def get_current_user(
     credentials_token = _extract_token_from_request(request)
 
     try:
-        payload = await jwt_service.verify_token(credentials_token, expected_type="access")
+        payload = await jwt_service.verify_token(
+            credentials_token, expected_type="access"
+        )
     except Exception as exc:  # JWTService raises JWTError internally
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -167,7 +169,9 @@ async def get_current_user(
     )
 
 
-async def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
+async def get_current_admin_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
     """Ensure the caller has administrative privileges."""
 
     if not current_user.is_admin:
@@ -182,7 +186,9 @@ def require_scopes(*required_scopes: str):
     """Declare that an endpoint requires the given scopes."""
 
     def scope_checker(current_user: User = Depends(get_current_user)) -> User:
-        missing = [scope for scope in required_scopes if scope not in current_user.scopes]
+        missing = [
+            scope for scope in required_scopes if scope not in current_user.scopes
+        ]
         if missing:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -202,7 +208,9 @@ require_collect = require_scopes("collect:data")
 require_admin = get_current_admin_user
 
 
-def verify_webhook_signature(secret: str, payload: bytes, signature: str, prefix: str = "sha256=") -> bool:
+def verify_webhook_signature(
+    secret: str, payload: bytes, signature: str, prefix: str = "sha256="
+) -> bool:
     """Validate webhook signatures using HMAC-SHA256."""
 
     import hashlib

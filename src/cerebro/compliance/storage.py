@@ -15,8 +15,10 @@ import aiofiles
 import hashlib
 
 from .models import (
-    BaseEvidenceMetadata, EvidenceRepository, EvidenceBundle,
-    EvidenceStatus
+    BaseEvidenceMetadata,
+    EvidenceRepository,
+    EvidenceBundle,
+    EvidenceStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,10 +55,17 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 
     def _ensure_directories(self):
         """Ensure storage directory structure exists."""
-        for path in [self.storage_path, self.metadata_path, self.content_path, self.bundles_path]:
+        for path in [
+            self.storage_path,
+            self.metadata_path,
+            self.content_path,
+            self.bundles_path,
+        ]:
             path.mkdir(parents=True, exist_ok=True)
 
-    async def store_evidence(self, content: bytes, metadata: BaseEvidenceMetadata) -> str:
+    async def store_evidence(
+        self, content: bytes, metadata: BaseEvidenceMetadata
+    ) -> str:
         """Store evidence content and metadata."""
         try:
             # Generate ID if not set
@@ -71,7 +80,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             content_file = self._get_content_path(metadata.content_hash)
             if not content_file.exists():  # Only write if not exists (deduplication)
                 content_file.parent.mkdir(parents=True, exist_ok=True)
-                async with aiofiles.open(content_file, 'wb') as f:
+                async with aiofiles.open(content_file, "wb") as f:
                     await f.write(content)
 
             # Seal with crypto if available
@@ -85,20 +94,24 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             metadata_file = self.metadata_path / f"{metadata.id}.json"
             metadata_dict = self._metadata_to_dict(metadata)
 
-            async with aiofiles.open(metadata_file, 'w') as f:
+            async with aiofiles.open(metadata_file, "w") as f:
                 await f.write(json.dumps(metadata_dict, indent=2, default=str))
 
             # Cache metadata
             self._metadata_cache[metadata.id] = metadata
 
-            logger.debug(f"Stored evidence {metadata.id} with hash {metadata.content_hash}")
+            logger.debug(
+                f"Stored evidence {metadata.id} with hash {metadata.content_hash}"
+            )
             return metadata.id
 
         except Exception as e:
             logger.error(f"Failed to store evidence: {e}")
             raise
 
-    async def get_evidence(self, evidence_id: str) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
+    async def get_evidence(
+        self, evidence_id: str
+    ) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
         """Retrieve evidence content and metadata."""
         try:
             # Get metadata first
@@ -112,7 +125,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
                 logger.warning(f"Content file not found for evidence {evidence_id}")
                 return None
 
-            async with aiofiles.open(content_file, 'rb') as f:
+            async with aiofiles.open(content_file, "rb") as f:
                 content = await f.read()
 
             # Verify content integrity
@@ -139,7 +152,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             if not metadata_file.exists():
                 return None
 
-            async with aiofiles.open(metadata_file, 'r') as f:
+            async with aiofiles.open(metadata_file, "r") as f:
                 metadata_dict = json.loads(await f.read())
 
             metadata = self._dict_to_metadata(metadata_dict)
@@ -158,7 +171,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             # Load all metadata files (in production, would use database index)
             for metadata_file in self.metadata_path.glob("*.json"):
                 try:
-                    async with aiofiles.open(metadata_file, 'r') as f:
+                    async with aiofiles.open(metadata_file, "r") as f:
                         metadata_dict = json.loads(await f.read())
 
                     metadata = self._dict_to_metadata(metadata_dict)
@@ -188,7 +201,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             bundle_file = self.bundles_path / f"{bundle.id}.json"
             bundle_dict = self._bundle_to_dict(bundle)
 
-            async with aiofiles.open(bundle_file, 'w') as f:
+            async with aiofiles.open(bundle_file, "w") as f:
                 await f.write(json.dumps(bundle_dict, indent=2, default=str))
 
             self._bundle_cache[bundle.id] = bundle
@@ -211,7 +224,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             if not bundle_file.exists():
                 return None
 
-            async with aiofiles.open(bundle_file, 'r') as f:
+            async with aiofiles.open(bundle_file, "r") as f:
                 bundle_dict = json.loads(await f.read())
 
             bundle = self._dict_to_bundle(bundle_dict)
@@ -226,14 +239,19 @@ class FileBasedEvidenceRepository(EvidenceRepository):
         """Get content file path using hash-based directory structure."""
         return self.content_path / content_hash[:2] / f"{content_hash}.bin"
 
-    def _matches_filters(self, metadata: BaseEvidenceMetadata, filters: Dict[str, Any]) -> bool:
+    def _matches_filters(
+        self, metadata: BaseEvidenceMetadata, filters: Dict[str, Any]
+    ) -> bool:
         """Check if metadata matches search filters."""
         for key, value in filters.items():
             if key == "framework_name":
-                if hasattr(metadata, 'framework_name') and metadata.framework_name != value:
+                if (
+                    hasattr(metadata, "framework_name")
+                    and metadata.framework_name != value
+                ):
                     return False
             elif key == "control_id":
-                if hasattr(metadata, 'control_id') and metadata.control_id != value:
+                if hasattr(metadata, "control_id") and metadata.control_id != value:
                     return False
             elif key == "category":
                 if metadata.category != value:
@@ -265,12 +283,18 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             "content_size": metadata.content_size,
             "content_hash": metadata.content_hash,
             "created_at": metadata.created_at.isoformat(),
-            "collected_at": metadata.collected_at.isoformat() if metadata.collected_at else None,
-            "verified_at": metadata.verified_at.isoformat() if metadata.verified_at else None,
+            "collected_at": (
+                metadata.collected_at.isoformat() if metadata.collected_at else None
+            ),
+            "verified_at": (
+                metadata.verified_at.isoformat() if metadata.verified_at else None
+            ),
             "sealed_at": metadata.sealed_at.isoformat() if metadata.sealed_at else None,
             "status": metadata.status.value,
             "retention_class": metadata.retention_class.value,
-            "expires_at": metadata.expires_at.isoformat() if metadata.expires_at else None,
+            "expires_at": (
+                metadata.expires_at.isoformat() if metadata.expires_at else None
+            ),
             "pii_detected": metadata.pii_detected,
             "sensitivity_level": metadata.sensitivity_level,
             "encryption_required": metadata.encryption_required,
@@ -285,10 +309,10 @@ class FileBasedEvidenceRepository(EvidenceRepository):
                     "timestamp": entry.timestamp.isoformat(),
                     "details": entry.details,
                     "ip_address": entry.ip_address,
-                    "location": entry.location
+                    "location": entry.location,
                 }
                 for entry in metadata.chain_of_custody
-            ]
+            ],
         }
 
         # Add crypto proof if present
@@ -299,15 +323,15 @@ class FileBasedEvidenceRepository(EvidenceRepository):
                 "signature_algorithm": metadata.crypto_proof.signature_algorithm,
                 "timestamp_token": metadata.crypto_proof.timestamp_token,
                 "merkle_root": metadata.crypto_proof.merkle_root,
-                "chain_hash": metadata.crypto_proof.chain_hash
+                "chain_hash": metadata.crypto_proof.chain_hash,
             }
 
         # Add type-specific fields
-        if hasattr(metadata, 'control_id'):
+        if hasattr(metadata, "control_id"):
             result["control_id"] = metadata.control_id
-        if hasattr(metadata, 'framework_name'):
+        if hasattr(metadata, "framework_name"):
             result["framework_name"] = metadata.framework_name
-        if hasattr(metadata, 'query_used'):
+        if hasattr(metadata, "query_used"):
             result["query_used"] = metadata.query_used
 
         return result
@@ -316,9 +340,14 @@ class FileBasedEvidenceRepository(EvidenceRepository):
         """Convert dictionary to metadata object."""
         # Import here to avoid circular imports
         from .models import (
-            BaseEvidenceMetadata, ComplianceEvidenceMetadata,
-            EvidenceCategory, EvidenceCollectionMethod, EvidenceStatus,
-            RetentionClass, ChainOfCustodyEntry, CryptographicProof
+            BaseEvidenceMetadata,
+            ComplianceEvidenceMetadata,
+            EvidenceCategory,
+            EvidenceCollectionMethod,
+            EvidenceStatus,
+            RetentionClass,
+            ChainOfCustodyEntry,
+            CryptographicProof,
         )
 
         # Determine metadata type and create appropriate instance
@@ -335,23 +364,39 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 
         # Parse timestamps
         created_at = datetime.fromisoformat(data["created_at"])
-        collected_at = datetime.fromisoformat(data["collected_at"]) if data.get("collected_at") else None
-        verified_at = datetime.fromisoformat(data["verified_at"]) if data.get("verified_at") else None
-        sealed_at = datetime.fromisoformat(data["sealed_at"]) if data.get("sealed_at") else None
-        expires_at = datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None
+        collected_at = (
+            datetime.fromisoformat(data["collected_at"])
+            if data.get("collected_at")
+            else None
+        )
+        verified_at = (
+            datetime.fromisoformat(data["verified_at"])
+            if data.get("verified_at")
+            else None
+        )
+        sealed_at = (
+            datetime.fromisoformat(data["sealed_at"]) if data.get("sealed_at") else None
+        )
+        expires_at = (
+            datetime.fromisoformat(data["expires_at"])
+            if data.get("expires_at")
+            else None
+        )
 
         # Parse chain of custody
         chain_of_custody = []
         for entry_data in data.get("chain_of_custody", []):
-            chain_of_custody.append(ChainOfCustodyEntry(
-                action=entry_data["action"],
-                actor_id=entry_data["actor_id"],
-                actor_type=entry_data["actor_type"],
-                timestamp=datetime.fromisoformat(entry_data["timestamp"]),
-                details=entry_data.get("details", {}),
-                ip_address=entry_data.get("ip_address"),
-                location=entry_data.get("location")
-            ))
+            chain_of_custody.append(
+                ChainOfCustodyEntry(
+                    action=entry_data["action"],
+                    actor_id=entry_data["actor_id"],
+                    actor_type=entry_data["actor_type"],
+                    timestamp=datetime.fromisoformat(entry_data["timestamp"]),
+                    details=entry_data.get("details", {}),
+                    ip_address=entry_data.get("ip_address"),
+                    location=entry_data.get("location"),
+                )
+            )
 
         # Parse crypto proof
         crypto_proof = None
@@ -363,7 +408,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
                 signature_algorithm=crypto_data.get("signature_algorithm"),
                 timestamp_token=crypto_data.get("timestamp_token"),
                 merkle_root=crypto_data.get("merkle_root"),
-                chain_hash=crypto_data.get("chain_hash")
+                chain_hash=crypto_data.get("chain_hash"),
             )
 
         # Create metadata instance
@@ -391,15 +436,15 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             encryption_required=data.get("encryption_required", False),
             tags=data.get("tags", {}),
             related_evidence_ids=data.get("related_evidence_ids", []),
-            parent_bundle_id=data.get("parent_bundle_id")
+            parent_bundle_id=data.get("parent_bundle_id"),
         )
 
         # Set type-specific fields
-        if hasattr(metadata, 'control_id') and "control_id" in data:
+        if hasattr(metadata, "control_id") and "control_id" in data:
             metadata.control_id = data["control_id"]
-        if hasattr(metadata, 'framework_name') and "framework_name" in data:
+        if hasattr(metadata, "framework_name") and "framework_name" in data:
             metadata.framework_name = data["framework_name"]
-        if hasattr(metadata, 'query_used') and "query_used" in data:
+        if hasattr(metadata, "query_used") and "query_used" in data:
             metadata.query_used = data["query_used"]
 
         return metadata
@@ -414,7 +459,9 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             "framework_name": bundle.framework_name,
             "control_ids": bundle.control_ids,
             "evidence_ids": bundle.evidence_ids,
-            "period_start": bundle.period_start.isoformat() if bundle.period_start else None,
+            "period_start": (
+                bundle.period_start.isoformat() if bundle.period_start else None
+            ),
             "period_end": bundle.period_end.isoformat() if bundle.period_end else None,
             "created_at": bundle.created_at.isoformat(),
             "created_by": bundle.created_by,
@@ -422,22 +469,42 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             "bundle_hash": bundle.bundle_hash,
             "manifest": bundle.manifest,
             "sealed": bundle.sealed,
-            "exported_at": bundle.exported_at.isoformat() if bundle.exported_at else None,
+            "exported_at": (
+                bundle.exported_at.isoformat() if bundle.exported_at else None
+            ),
             "export_format": bundle.export_format,
             "access_granted_to": bundle.access_granted_to,
             "delivery_confirmation": bundle.delivery_confirmation,
             "retention_years": bundle.retention_years,
             "legal_hold": bundle.legal_hold,
-            "destruction_date": bundle.destruction_date.isoformat() if bundle.destruction_date else None
+            "destruction_date": (
+                bundle.destruction_date.isoformat() if bundle.destruction_date else None
+            ),
         }
 
     def _dict_to_bundle(self, data: Dict[str, Any]) -> EvidenceBundle:
         """Convert dictionary to bundle object."""
         created_at = datetime.fromisoformat(data["created_at"])
-        period_start = datetime.fromisoformat(data["period_start"]) if data.get("period_start") else None
-        period_end = datetime.fromisoformat(data["period_end"]) if data.get("period_end") else None
-        exported_at = datetime.fromisoformat(data["exported_at"]) if data.get("exported_at") else None
-        destruction_date = datetime.fromisoformat(data["destruction_date"]) if data.get("destruction_date") else None
+        period_start = (
+            datetime.fromisoformat(data["period_start"])
+            if data.get("period_start")
+            else None
+        )
+        period_end = (
+            datetime.fromisoformat(data["period_end"])
+            if data.get("period_end")
+            else None
+        )
+        exported_at = (
+            datetime.fromisoformat(data["exported_at"])
+            if data.get("exported_at")
+            else None
+        )
+        destruction_date = (
+            datetime.fromisoformat(data["destruction_date"])
+            if data.get("destruction_date")
+            else None
+        )
 
         return EvidenceBundle(
             id=data["id"],
@@ -461,7 +528,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             delivery_confirmation=data.get("delivery_confirmation"),
             retention_years=data.get("retention_years", 7),
             legal_hold=data.get("legal_hold", False),
-            destruction_date=destruction_date
+            destruction_date=destruction_date,
         )
 
 
@@ -472,7 +539,9 @@ class InMemoryEvidenceRepository(EvidenceRepository):
         self._evidence: Dict[str, tuple[bytes, BaseEvidenceMetadata]] = {}
         self._bundles: Dict[str, EvidenceBundle] = {}
 
-    async def store_evidence(self, content: bytes, metadata: BaseEvidenceMetadata) -> str:
+    async def store_evidence(
+        self, content: bytes, metadata: BaseEvidenceMetadata
+    ) -> str:
         if not metadata.id:
             metadata.id = str(uuid4())
 
@@ -480,7 +549,9 @@ class InMemoryEvidenceRepository(EvidenceRepository):
         self._evidence[metadata.id] = (content, metadata)
         return metadata.id
 
-    async def get_evidence(self, evidence_id: str) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
+    async def get_evidence(
+        self, evidence_id: str
+    ) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
         return self._evidence.get(evidence_id)
 
     async def get_metadata(self, evidence_id: str) -> Optional[BaseEvidenceMetadata]:

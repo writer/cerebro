@@ -1,4 +1,5 @@
 """Secret encryption service using envelope encryption with Fernet."""
+
 import asyncio
 import base64
 import hashlib
@@ -105,19 +106,23 @@ class SecretEncryptionService:
 
             # Step 2: Encrypt the secret with the DEK
             fernet = await self._get_fernet(dek)
-            encrypted_secret = fernet.encrypt(plaintext.encode('utf-8'))
+            encrypted_secret = fernet.encrypt(plaintext.encode("utf-8"))
 
             # Step 3: Encrypt the DEK with KMS KEK
             encrypted_dek = await self.kms.encrypt(dek)
 
-            logger.debug(f"Encrypted secret (length={len(plaintext)}) with envelope encryption")
+            logger.debug(
+                f"Encrypted secret (length={len(plaintext)}) with envelope encryption"
+            )
             return encrypted_secret, encrypted_dek
 
         except Exception as e:
             logger.error(f"Failed to encrypt secret: {e}", exc_info=True)
             raise
 
-    async def decrypt_secret(self, encrypted_secret: bytes, encrypted_dek: bytes) -> str:
+    async def decrypt_secret(
+        self, encrypted_secret: bytes, encrypted_dek: bytes
+    ) -> str:
         """Decrypt a secret using envelope encryption with audit logging.
 
         Args:
@@ -136,9 +141,11 @@ class SecretEncryptionService:
                 "secret_decryption_attempt",
                 extra={
                     "kms_provider": self.kms.name,
-                    "encrypted_dek_hash": hashlib.sha256(encrypted_dek).hexdigest()[:16],
+                    "encrypted_dek_hash": hashlib.sha256(encrypted_dek).hexdigest()[
+                        :16
+                    ],
                     "encrypted_data_size": len(encrypted_secret),
-                }
+                },
             )
 
             # Step 1: Decrypt the DEK using KMS KEK
@@ -155,10 +162,10 @@ class SecretEncryptionService:
                     "kms_provider": self.kms.name,
                     "decrypted_length": len(plaintext_bytes),
                     "cache_stats": self.get_cache_stats(),
-                }
+                },
             )
 
-            return plaintext_bytes.decode('utf-8')
+            return plaintext_bytes.decode("utf-8")
 
         except Exception as e:
             # Audit log: Decryption failure (security-relevant)
@@ -169,14 +176,12 @@ class SecretEncryptionService:
                     "error_type": type(e).__name__,
                     "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise
 
     async def rotate_dek(
-        self,
-        encrypted_secret: bytes,
-        old_encrypted_dek: bytes
+        self, encrypted_secret: bytes, old_encrypted_dek: bytes
     ) -> Tuple[bytes, bytes]:
         """Rotate the DEK for a secret without changing the secret itself.
 
@@ -194,7 +199,9 @@ class SecretEncryptionService:
             plaintext = await self.decrypt_secret(encrypted_secret, old_encrypted_dek)
 
             # Step 2: Re-encrypt with new DEK
-            new_encrypted_secret, new_encrypted_dek = await self.encrypt_secret(plaintext)
+            new_encrypted_secret, new_encrypted_dek = await self.encrypt_secret(
+                plaintext
+            )
 
             logger.info("Successfully rotated DEK for secret")
             return new_encrypted_secret, new_encrypted_dek
@@ -267,19 +274,21 @@ class FallbackEncryptionService:
         Args:
             secret_key: Base secret key. If None, uses SECRET_KEY env var.
         """
-        secret_key = secret_key or os.getenv('SECRET_KEY')
+        secret_key = secret_key or os.getenv("SECRET_KEY")
         if not secret_key:
-            raise ValueError("SECRET_KEY environment variable required for fallback encryption")
+            raise ValueError(
+                "SECRET_KEY environment variable required for fallback encryption"
+            )
 
         # Derive Fernet key from SECRET_KEY using PBKDF2
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b'cerebro-fallback-salt',  # Static salt for deterministic key
+            salt=b"cerebro-fallback-salt",  # Static salt for deterministic key
             iterations=100000,
-            backend=default_backend()
+            backend=default_backend(),
         )
-        derived_key = kdf.derive(secret_key.encode('utf-8'))
+        derived_key = kdf.derive(secret_key.encode("utf-8"))
         fernet_key = base64.urlsafe_b64encode(derived_key)
         self.fernet = Fernet(fernet_key)
 
@@ -292,7 +301,7 @@ class FallbackEncryptionService:
         Returns:
             Encrypted secret (no separate DEK)
         """
-        return self.fernet.encrypt(plaintext.encode('utf-8'))
+        return self.fernet.encrypt(plaintext.encode("utf-8"))
 
     def decrypt_secret(self, encrypted_secret: bytes) -> str:
         """Decrypt secret with direct Fernet encryption.
@@ -303,7 +312,7 @@ class FallbackEncryptionService:
         Returns:
             Decrypted plaintext
         """
-        return self.fernet.decrypt(encrypted_secret).decode('utf-8')
+        return self.fernet.decrypt(encrypted_secret).decode("utf-8")
 
 
 # Global service instance

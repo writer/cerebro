@@ -128,7 +128,9 @@ class AgentReviewManager(AsyncManagerBase):
             last = page_rows[-1]
             next_cursor = encode_cursor(
                 {
-                    "created_at": last.created_at.isoformat() if last.created_at else None,
+                    "created_at": (
+                        last.created_at.isoformat() if last.created_at else None
+                    ),
                     "task_id": str(last.id),
                 }
             )
@@ -256,7 +258,9 @@ class AgentReviewManager(AsyncManagerBase):
             if include_comments:
                 comments = await self.list_comments(task_id=task.task_id)
             if include_history:
-                history = await self.list_history(task_id=task.task_id, limit=history_limit)
+                history = await self.list_history(
+                    task_id=task.task_id, limit=history_limit
+                )
             exports.append(
                 AgentReviewExportRecord(
                     task=task,
@@ -385,7 +389,9 @@ class AgentReviewManager(AsyncManagerBase):
         comments = list(await self._db.scalars(stmt))
         return [self._comment_to_record(comment) for comment in comments]
 
-    async def list_history(self, *, task_id: UUID, limit: int = 100) -> list[AgentReviewHistoryRecord]:
+    async def list_history(
+        self, *, task_id: UUID, limit: int = 100
+    ) -> list[AgentReviewHistoryRecord]:
         stmt = (
             select(AgentReviewHistory)
             .where(AgentReviewHistory.task_id == task_id)

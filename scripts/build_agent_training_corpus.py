@@ -108,7 +108,9 @@ async def _fetch_events(window_days: int) -> Iterable[FrontendObservationEvent]:
     now = datetime.now(timezone.utc)
     filters = []
     if window_days > 0:
-        filters.append(FrontendObservationEvent.occurred_at >= now - timedelta(days=window_days))
+        filters.append(
+            FrontendObservationEvent.occurred_at >= now - timedelta(days=window_days)
+        )
 
     stmt = (
         select(FrontendObservationEvent)
@@ -172,9 +174,13 @@ async def build_corpus(
             label_counts[label] = label_counts.get(label, 0) + 1
 
             telemetry_event = TrainingEvent(
-                session_id=str(event.agent_session_id) if event.agent_session_id else "unknown",
+                session_id=(
+                    str(event.agent_session_id) if event.agent_session_id else "unknown"
+                ),
                 event_id=str(event.event_id),
-                occurred_at=event.occurred_at.isoformat() if event.occurred_at else None,
+                occurred_at=(
+                    event.occurred_at.isoformat() if event.occurred_at else None
+                ),
                 label=label,
                 event_type=event.event_type,
                 component=event.component,
@@ -188,7 +194,9 @@ async def build_corpus(
 
     # Filter label counts based on threshold
     filtered_counts = {
-        label: count for label, count in label_counts.items() if count >= min_label_count
+        label: count
+        for label, count in label_counts.items()
+        if count >= min_label_count
     }
 
     return {

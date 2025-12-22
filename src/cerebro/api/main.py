@@ -66,6 +66,7 @@ from .routers import jwks
 configure_structlog()
 logger = structlog.get_logger(__name__)
 
+
 # Create FastAPI app
 @asynccontextmanager
 async def _app_lifespan(_: FastAPI):
@@ -159,10 +160,19 @@ def custom_openapi() -> Dict:
 
     schema.setdefault("security", [{"HTTPBearer": []}])
 
-    schema.setdefault("x-websocket-endpoints", [
-        {"url": "wss://api.cerebro.yourdomain.com/ws/events", "description": "Streaming events"},
-        {"url": "ws://localhost:8000/ws/events", "description": "Local development events"},
-    ])
+    schema.setdefault(
+        "x-websocket-endpoints",
+        [
+            {
+                "url": "wss://api.cerebro.yourdomain.com/ws/events",
+                "description": "Streaming events",
+            },
+            {
+                "url": "ws://localhost:8000/ws/events",
+                "description": "Local development events",
+            },
+        ],
+    )
 
     def _inject_example(path: str, method: str, example: Dict) -> None:
         paths = schema.get("paths", {})
@@ -178,15 +188,38 @@ def custom_openapi() -> Dict:
     _inject_example(
         "/api/v1/auth/token",
         "post",
-        {"access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", "token_type": "bearer", "expires_in": 3600},
+        {
+            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "token_type": "bearer",
+            "expires_in": 3600,
+        },
     )
 
     _inject_example(
         "/api/v1/analytics/organizations/{org_id}/dashboard",
         "get",
         {
-            "executive_summary": {"org_id": "11111111-1111-1111-1111-111111111111", "overall_risk_score": 67, "risk_level": "medium"},
-            "security_metrics": {"findings": {"total": 120, "critical": 2, "high": 8, "open": 54, "trend_7d": -3, "critical_trend_7d": 0}, "sla_performance": {"breaches": 1, "mttr_hours": 12, "new_24h": 3, "resolved_24h": 6}},
+            "executive_summary": {
+                "org_id": "11111111-1111-1111-1111-111111111111",
+                "overall_risk_score": 67,
+                "risk_level": "medium",
+            },
+            "security_metrics": {
+                "findings": {
+                    "total": 120,
+                    "critical": 2,
+                    "high": 8,
+                    "open": 54,
+                    "trend_7d": -3,
+                    "critical_trend_7d": 0,
+                },
+                "sla_performance": {
+                    "breaches": 1,
+                    "mttr_hours": 12,
+                    "new_24h": 3,
+                    "resolved_24h": 6,
+                },
+            },
             "compliance_status": {},
             "compliance_trends": {"overall": [{"date": "2024-10-01", "score": 0.82}]},
             "investment_recommendations": [],
@@ -196,7 +229,10 @@ def custom_openapi() -> Dict:
             "integration_coverage": {},
             "freshness": {},
             "freshness_warnings": [],
-            "metadata": {"generated_at": "2024-10-16T00:00:00Z", "component_timings": {"total": 0.17}},
+            "metadata": {
+                "generated_at": "2024-10-16T00:00:00Z",
+                "component_timings": {"total": 0.17},
+            },
         },
     )
 
@@ -285,164 +321,133 @@ async def record_request_metrics(request: Request, call_next):
         except Exception:  # pragma: no cover - metrics should not break requests
             logger.debug("api_metrics_record_failed", path=path_template)
 
+
 # Include routers
 app.include_router(
-    auth.router,
-    prefix=f"{settings.api_v1_prefix}/auth",
-    tags=["authentication"]
+    auth.router, prefix=f"{settings.api_v1_prefix}/auth", tags=["authentication"]
 )
 
 app.include_router(
-    organizations.router, 
+    organizations.router,
     prefix=f"{settings.api_v1_prefix}/organizations",
-    tags=["organizations"]
+    tags=["organizations"],
 )
 
 app.include_router(
-    accounts.router,
-    prefix=f"{settings.api_v1_prefix}/accounts", 
-    tags=["accounts"]
+    accounts.router, prefix=f"{settings.api_v1_prefix}/accounts", tags=["accounts"]
 )
 
 app.include_router(
-    resources.router,
-    prefix=f"{settings.api_v1_prefix}/resources",
-    tags=["resources"]
+    resources.router, prefix=f"{settings.api_v1_prefix}/resources", tags=["resources"]
 )
 
 app.include_router(
     principals.router,
-    prefix=f"{settings.api_v1_prefix}/principals", 
-    tags=["principals"]
+    prefix=f"{settings.api_v1_prefix}/principals",
+    tags=["principals"],
 )
 
 app.include_router(
-    rules.router,
-    prefix=f"{settings.api_v1_prefix}/rules",
-    tags=["rules"]
+    rules.router, prefix=f"{settings.api_v1_prefix}/rules", tags=["rules"]
 )
 
 app.include_router(
-    findings.router,
-    prefix=f"{settings.api_v1_prefix}/findings",
-    tags=["findings"]
+    findings.router, prefix=f"{settings.api_v1_prefix}/findings", tags=["findings"]
 )
 
 app.include_router(
     collectors.router,
     prefix=f"{settings.api_v1_prefix}/collectors",
-    tags=["collectors"]
+    tags=["collectors"],
 )
 
 app.include_router(
-    analysis.router,
-    prefix=f"{settings.api_v1_prefix}/analysis",
-    tags=["analysis"]
+    analysis.router, prefix=f"{settings.api_v1_prefix}/analysis", tags=["analysis"]
 )
 
 app.include_router(
-    agents.router,
-    prefix=f"{settings.api_v1_prefix}/agents",
-    tags=["agents"]
+    agents.router, prefix=f"{settings.api_v1_prefix}/agents", tags=["agents"]
 )
 
-app.include_router(
-    query.router,
-    prefix=f"{settings.api_v1_prefix}",
-    tags=["query"]
-)
+app.include_router(query.router, prefix=f"{settings.api_v1_prefix}", tags=["query"])
 
 app.include_router(
     identity_governance.router,
     prefix=f"{settings.api_v1_prefix}/identity-governance",
-    tags=["identity-governance"]
+    tags=["identity-governance"],
 )
 
 app.include_router(
     oauth_risk.router,
     prefix=f"{settings.api_v1_prefix}/oauth-risk",
-    tags=["oauth-risk"]
+    tags=["oauth-risk"],
 )
 
 app.include_router(
     attack_path.router,
     prefix=f"{settings.api_v1_prefix}/attack-path",
-    tags=["attack-path"]
+    tags=["attack-path"],
 )
 
 app.include_router(
-    vendors.router,
-    prefix=f"{settings.api_v1_prefix}/vendors",
-    tags=["vendors"]
+    vendors.router, prefix=f"{settings.api_v1_prefix}/vendors", tags=["vendors"]
 )
 
 app.include_router(
-    customers.router,
-    prefix=f"{settings.api_v1_prefix}/customers",
-    tags=["customers"]
+    customers.router, prefix=f"{settings.api_v1_prefix}/customers", tags=["customers"]
 )
 
 app.include_router(
     security_center.router,
     prefix=f"{settings.api_v1_prefix}/security-center",
-    tags=["security-center"]
+    tags=["security-center"],
 )
 
 app.include_router(
-    tests.router,
-    prefix=f"{settings.api_v1_prefix}/tests", 
-    tags=["tests"]
+    tests.router, prefix=f"{settings.api_v1_prefix}/tests", tags=["tests"]
 )
 
 app.include_router(
-    analytics.router,
-    prefix=f"{settings.api_v1_prefix}/analytics",
-    tags=["analytics"]
+    analytics.router, prefix=f"{settings.api_v1_prefix}/analytics", tags=["analytics"]
 )
 
-app.include_router(
-    websockets.router,
-    tags=["websockets"]
-)
+app.include_router(websockets.router, tags=["websockets"])
 
 # JWKS and OpenID Connect endpoints (no prefix - served at root)
-app.include_router(
-    jwks.router,
-    tags=["authentication"]
-)
+app.include_router(jwks.router, tags=["authentication"])
 
 app.include_router(
     compliance.router,
     prefix=f"{settings.api_v1_prefix}/compliance",
-    tags=["compliance"]
+    tags=["compliance"],
 )
 
 # Unified compliance API with new architecture
 app.include_router(
     compliance_unified.router,
     prefix=f"{settings.api_v1_prefix}/compliance/unified",
-    tags=["compliance", "unified"]
+    tags=["compliance", "unified"],
 )
 
 # Slack integration API
 app.include_router(
     slack.router,
     prefix=f"{settings.api_v1_prefix}/slack",
-    tags=["slack", "notifications"]
+    tags=["slack", "notifications"],
 )
 
 # Email notification API
 app.include_router(
     email.router,
     prefix=f"{settings.api_v1_prefix}/notifications",
-    tags=["email", "notifications"]
+    tags=["email", "notifications"],
 )
 
 # Generic webhook notification API
 app.include_router(
     webhooks.router,
     prefix=f"{settings.api_v1_prefix}/notifications",
-    tags=["webhooks", "notifications"]
+    tags=["webhooks", "notifications"],
 )
 
 if settings.enable_agent_metrics:
@@ -454,71 +459,60 @@ if settings.enable_agent_metrics:
         )
     else:
 
-        @app.get(settings.agent_metrics_path, include_in_schema=False, tags=["observability"])
+        @app.get(
+            settings.agent_metrics_path, include_in_schema=False, tags=["observability"]
+        )
         async def agent_metrics() -> Response:
             registry = get_registry()
             if registry is None:
-                raise HTTPException(status_code=503, detail="Metrics registry unavailable")
+                raise HTTPException(
+                    status_code=503, detail="Metrics registry unavailable"
+                )
             payload = generate_latest(registry)
             return Response(payload, media_type=CONTENT_TYPE_LATEST)
+
 
 # Forklift webhook receiver (intelligence integration)
 app.include_router(
     forklift_webhooks.router,
     prefix=f"{settings.api_v1_prefix}",
-    tags=["forklift", "integrations"]
+    tags=["forklift", "integrations"],
 )
 
 app.include_router(
-    packs.router,
-    prefix=f"{settings.api_v1_prefix}/packs",
-    tags=["packs"]
+    packs.router, prefix=f"{settings.api_v1_prefix}/packs", tags=["packs"]
 )
 
 app.include_router(
-    integrations.router,
-    prefix=f"{settings.api_v1_prefix}",
-    tags=["integrations"]
+    integrations.router, prefix=f"{settings.api_v1_prefix}", tags=["integrations"]
 )
 
 app.include_router(
-    serval.router,
-    prefix=f"{settings.api_v1_prefix}",
-    tags=["integrations"]
+    serval.router, prefix=f"{settings.api_v1_prefix}", tags=["integrations"]
 )
 
 # Telemetry API (repository and runtime intelligence)
 app.include_router(
     telemetry.router,
     prefix=f"{settings.api_v1_prefix}",
-    tags=["telemetry", "intelligence"]
+    tags=["telemetry", "intelligence"],
 )
 
 app.include_router(
     automation.router,
     prefix=f"{settings.api_v1_prefix}",
-    tags=["automation", "telemetry"]
+    tags=["automation", "telemetry"],
 )
 
 # V2 API routers using DynamoDB backend
 # These are parallel to V1 endpoints and can be used for gradual migration
 app.include_router(
-    organizations_v2.router,
-    prefix="/api/v2",
-    tags=["v2", "organizations"]
+    organizations_v2.router, prefix="/api/v2", tags=["v2", "organizations"]
 )
 
-app.include_router(
-    findings_v2.router,
-    prefix="/api/v2",
-    tags=["v2", "findings"]
-)
+app.include_router(findings_v2.router, prefix="/api/v2", tags=["v2", "findings"])
 
-app.include_router(
-    agents_v2.router,
-    prefix="/api/v2",
-    tags=["v2", "agents"]
-)
+app.include_router(agents_v2.router, prefix="/api/v2", tags=["v2", "agents"])
 
 
 _rotation_task: asyncio.Task | None = None
@@ -549,7 +543,7 @@ async def root():
     return {
         "message": "Cerebro Security System of Record API",
         "version": "0.1.0",
-        "docs": "/docs"
+        "docs": "/docs",
     }
 
 
@@ -588,13 +582,14 @@ async def health_db():
     """Database health check endpoint."""
     from cerebro.core.database import async_session_factory
     from sqlalchemy import text
-    
+
     try:
         async with async_session_factory() as db:
             await db.execute(text("SELECT 1"))
             return {"status": "healthy", "database": "connected"}
     except Exception as e:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=503, detail=f"Database unhealthy: {str(e)}")
 
 
@@ -604,8 +599,9 @@ async def health_celery():
     from datetime import datetime, timezone
     import asyncio
     from cerebro.tasks.celery_app import celery_app
-    
+
     try:
+
         def get_celery_status():
             inspect = celery_app.control.inspect(timeout=5.0)  # type: ignore[arg-type]
             if inspect is None:
@@ -637,7 +633,7 @@ async def health_celery():
                     "last_heartbeat": datetime.now(timezone.utc).isoformat(),
                     "active_tasks": len(active_tasks.get(worker, [])),
                     "reserved_tasks": len(reserved_tasks.get(worker, [])),
-                    "total_tasks": stats.get('total', 0)
+                    "total_tasks": stats.get("total", 0),
                 }
                 worker_heartbeats.append(heartbeats)
 
@@ -647,38 +643,31 @@ async def health_celery():
                 "workers": {
                     "total_workers": len(worker_heartbeats),
                     "active_workers": len(worker_heartbeats),
-                    "worker_details": worker_heartbeats
+                    "worker_details": worker_heartbeats,
                 },
                 "queues": {
                     "total_active_tasks": total_active,
                     "total_reserved_tasks": total_reserved,
-                    "total_pending": total_active + total_reserved
+                    "total_pending": total_active + total_reserved,
                 },
-                "last_check": datetime.now(timezone.utc).isoformat()
+                "last_check": datetime.now(timezone.utc).isoformat(),
             }
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, get_celery_status)
 
         if result["status"] == "degraded":
-            raise HTTPException(
-                status_code=503,
-                detail="No Celery workers available"
-            )
+            raise HTTPException(status_code=503, detail="No Celery workers available")
 
         return result
 
     except HTTPException:
         raise
     except asyncio.TimeoutError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Celery inspect timed out"
-        ) from exc
+        raise HTTPException(status_code=503, detail="Celery inspect timed out") from exc
     except Exception as e:
         raise HTTPException(
-            status_code=503,
-            detail=f"Celery health check failed: {str(e)}"
+            status_code=503, detail=f"Celery health check failed: {str(e)}"
         )
 
 
@@ -695,9 +684,9 @@ async def health_encryption():
 
         if not is_healthy:
             from fastapi import HTTPException
+
             raise HTTPException(
-                status_code=503,
-                detail="Encryption service test failed"
+                status_code=503, detail="Encryption service test failed"
             )
 
         return {
@@ -708,9 +697,9 @@ async def health_encryption():
 
     except Exception as e:
         from fastapi import HTTPException
+
         raise HTTPException(
-            status_code=503,
-            detail=f"Encryption health check failed: {str(e)}"
+            status_code=503, detail=f"Encryption health check failed: {str(e)}"
         )
 
 
@@ -721,7 +710,7 @@ async def health_dynamodb():
 
     try:
         result = await health_check()
-        
+
         if not result["healthy"]:
             raise HTTPException(
                 status_code=503,
@@ -729,9 +718,9 @@ async def health_dynamodb():
                     "status": "unhealthy",
                     "tables": result["tables"],
                     "errors": result["errors"],
-                }
+                },
             )
-        
+
         return {
             "status": "healthy",
             "tables": result["tables"],
@@ -740,11 +729,11 @@ async def health_dynamodb():
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=503,
-            detail=f"DynamoDB health check failed: {str(e)}"
+            status_code=503, detail=f"DynamoDB health check failed: {str(e)}"
         )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -4,8 +4,6 @@ These dependencies provide DynamoDB repository instances for API routes.
 They can be used alongside or instead of the SQLAlchemy-based dependencies.
 """
 
-
-
 from cerebro.core.repositories import (
     AccountRepository,
     FindingRepository,
@@ -153,7 +151,7 @@ def reset_repositories() -> None:
     """Reset all repository singletons (for testing)."""
     global _org_repo, _account_repo, _finding_repo, _rule_repo
     global _principal_repo, _resource_repo, _session_repo, _message_repo, _tool_repo
-    
+
     _org_repo = None
     _account_repo = None
     _finding_repo = None

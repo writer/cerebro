@@ -78,7 +78,9 @@ class RuntimeHealthClient:
 
             window_start = payload.get("window_start")
             window_end = payload.get("window_end")
-            if not isinstance(window_start, datetime) or not isinstance(window_end, datetime):
+            if not isinstance(window_start, datetime) or not isinstance(
+                window_end, datetime
+            ):
                 continue
 
             summary.append(
@@ -160,7 +162,11 @@ class IntegrationCoverageClient:
 
             summary.append(
                 IntegrationCoverageRecord(
-                    integration=str(payload.get("integration")) if payload.get("integration") else "unknown",
+                    integration=(
+                        str(payload.get("integration"))
+                        if payload.get("integration")
+                        else "unknown"
+                    ),
                     providers=list(payload.get("providers") or []),
                     status=str(payload.get("status") or "unknown"),
                     scopes=breakdown,

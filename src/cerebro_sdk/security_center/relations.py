@@ -47,7 +47,9 @@ def _as_list(value: Iterable[object] | None) -> list[object]:
     return [value]
 
 
-async def _resolve(source: Callable[..., Iterable[object] | Awaitable[Iterable[object]]], *args) -> list[object]:
+async def _resolve(
+    source: Callable[..., Iterable[object] | Awaitable[Iterable[object]]], *args
+) -> list[object]:
     result = source(*args)
     if isinstance(result, Awaitable):
         resolved = await result
@@ -72,6 +74,7 @@ class IntegrationCoverageHealth:
     critical_percentage: float
     overall_score: float
 
+
 def _to_ratio(value: int | float | None, total: int | float | None) -> float:
     if total is None or not isinstance(total, (int, float)) or total <= 0:
         return 0.0
@@ -79,7 +82,9 @@ def _to_ratio(value: int | float | None, total: int | float | None) -> float:
     return numerator / float(total)
 
 
-def compute_coverage_health(record: IntegrationCoverageRecord) -> IntegrationCoverageHealth:
+def compute_coverage_health(
+    record: IntegrationCoverageRecord,
+) -> IntegrationCoverageHealth:
     total_scopes = record.scopes.total or 0
     healthy_percentage = _to_ratio(record.scopes.healthy, total_scopes)
     warning_percentage = _to_ratio(record.scopes.warning, total_scopes)
@@ -107,10 +112,24 @@ ConsumerFn = Callable[..., Union[Awaitable[None], None]]
 
 @dataclass
 class RelationsContext:
-    fetch_vendors: Callable[[str], Iterable[SecurityCenterVendorInsight] | Awaitable[Iterable[SecurityCenterVendorInsight]]]
-    fetch_customers: Callable[[str], Iterable[SecurityCenterCustomerInsight] | Awaitable[Iterable[SecurityCenterCustomerInsight]]]
-    fetch_coverage: Callable[[], Iterable[IntegrationCoverageRecord] | Awaitable[Iterable[IntegrationCoverageRecord]]]
-    fetch_findings: Callable[[str], Iterable[FindingRecord] | Awaitable[Iterable[FindingRecord]]]
+    fetch_vendors: Callable[
+        [str],
+        Iterable[SecurityCenterVendorInsight]
+        | Awaitable[Iterable[SecurityCenterVendorInsight]],
+    ]
+    fetch_customers: Callable[
+        [str],
+        Iterable[SecurityCenterCustomerInsight]
+        | Awaitable[Iterable[SecurityCenterCustomerInsight]],
+    ]
+    fetch_coverage: Callable[
+        [],
+        Iterable[IntegrationCoverageRecord]
+        | Awaitable[Iterable[IntegrationCoverageRecord]],
+    ]
+    fetch_findings: Callable[
+        [str], Iterable[FindingRecord] | Awaitable[Iterable[FindingRecord]]
+    ]
     provider_aliases: Mapping[str, Sequence[str]] | None = None
 
 
@@ -181,7 +200,9 @@ class OrgExposureDashboard:
     alerts: list[TrendAlert]
 
 
-async def build_relations_index(org_id: str, context: RelationsContext) -> RelationsIndex:
+async def build_relations_index(
+    org_id: str, context: RelationsContext
+) -> RelationsIndex:
     vendors = [
         entry
         for entry in await _resolve(context.fetch_vendors, org_id)
@@ -268,8 +289,12 @@ async def get_vendor_exposure(
         for record in relations.coverage
         if _has_provider_match(record, provider_keys, relations.provider_aliases)
     ]
-    coverage_health = [compute_coverage_health(record) for record in related_integrations]
-    related_findings = _collect_findings_for_providers(provider_keys, relations.findings_by_provider)
+    coverage_health = [
+        compute_coverage_health(record) for record in related_integrations
+    ]
+    related_findings = _collect_findings_for_providers(
+        provider_keys, relations.findings_by_provider
+    )
 
     dashboard = build_vendor_risk_dashboard([vendor])
 
@@ -299,7 +324,9 @@ async def get_customer_engagement(
         for record in relations.coverage
         if _has_provider_match(record, provider_keys, relations.provider_aliases)
     ]
-    related_findings = _collect_findings_for_providers(provider_keys, relations.findings_by_provider)
+    related_findings = _collect_findings_for_providers(
+        provider_keys, relations.findings_by_provider
+    )
     dashboard = build_customer_risk_dashboard([customer])
 
     return CustomerEngagement(
@@ -323,7 +350,8 @@ async def build_org_exposure_dashboard(
     coverage_health = [compute_coverage_health(record) for record in relations.coverage]
     degraded = sum(1 for entry in coverage_health if _normalize(entry.status) != "ok")
     average_coverage_ratio = (
-        sum(entry.coverage_ratio or 0.0 for entry in relations.coverage) / len(relations.coverage)
+        sum(entry.coverage_ratio or 0.0 for entry in relations.coverage)
+        / len(relations.coverage)
         if relations.coverage
         else None
     )
@@ -374,13 +402,17 @@ async def build_org_exposure_dashboard(
         for customer in top_customers
     ]
 
-    exposures = ExposureCollections(top_vendors=vendor_exposures, top_customers=customer_engagements)
+    exposures = ExposureCollections(
+        top_vendors=vendor_exposures, top_customers=customer_engagements
+    )
 
     alerts: list[TrendAlert] = []
     for warning in vendor_dashboard.warnings:
         alerts.append(TrendAlert(severity="warning", metric="vendor", message=warning))
     for warning in customer_dashboard.warnings:
-        alerts.append(TrendAlert(severity="warning", metric="customer", message=warning))
+        alerts.append(
+            TrendAlert(severity="warning", metric="customer", message=warning)
+        )
     if degraded:
         severity = "critical" if degraded >= 3 else "warning"
         alerts.append(
@@ -432,14 +464,24 @@ def annotate_agent_event(
     if event.type == "message":
         metadata = payload.get("metadata")
         if isinstance(metadata, Mapping):
-            _collect_matching_entities(metadata, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+            _collect_matching_entities(
+                metadata, vendor_by_id, customer_by_id, vendor_matches, customer_matches
+            )
     elif event.type == "tool":
         input_data = payload.get("input_data") or payload.get("inputData")
         if isinstance(input_data, Mapping):
-            _collect_matching_entities(input_data, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+            _collect_matching_entities(
+                input_data,
+                vendor_by_id,
+                customer_by_id,
+                vendor_matches,
+                customer_matches,
+            )
 
     if isinstance(payload, Mapping):
-        _collect_matching_entities(payload, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+        _collect_matching_entities(
+            payload, vendor_by_id, customer_by_id, vendor_matches, customer_matches
+        )
 
     summary = EntityAnnotationSummary(
         vendors=[
@@ -462,7 +504,9 @@ def annotate_agent_event(
         ],
     )
 
-    return EntityAnnotation(event=event, vendors=vendor_matches, customers=customer_matches, summary=summary)
+    return EntityAnnotation(
+        event=event, vendors=vendor_matches, customers=customer_matches, summary=summary
+    )
 
 
 def annotate_agent_events(
@@ -545,11 +589,21 @@ def _collect_matching_entities(
 
     for value in payload.values():
         if isinstance(value, Mapping):
-            _collect_matching_entities(value, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            _collect_matching_entities(
+                value, vendor_by_id, customer_by_id, vendor_matches, customer_matches
+            )
+        elif isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
             for item in value:
                 if isinstance(item, Mapping):
-                    _collect_matching_entities(item, vendor_by_id, customer_by_id, vendor_matches, customer_matches)
+                    _collect_matching_entities(
+                        item,
+                        vendor_by_id,
+                        customer_by_id,
+                        vendor_matches,
+                        customer_matches,
+                    )
 
 
 def _collect_findings_for_providers(
@@ -573,17 +627,26 @@ def _collect_findings_for_providers(
 def _derive_vendor_provider_keys(vendor: SecurityCenterVendorInsight) -> set[str]:
     keys: set[str] = {_normalize(vendor.category)}
     metadata = vendor.metadata or {}
-    integration = metadata.get("integration") or metadata.get("integration_summary") or {}
+    integration = (
+        metadata.get("integration") or metadata.get("integration_summary") or {}
+    )
 
-    integration_type = integration.get("integration_type") or integration.get("integrationType")
+    integration_type = integration.get("integration_type") or integration.get(
+        "integrationType"
+    )
     if isinstance(integration_type, str):
         keys.add(_normalize(integration_type))
 
-    for method in _as_list(integration.get("authentication_methods") or integration.get("authenticationMethods")):
+    for method in _as_list(
+        integration.get("authentication_methods")
+        or integration.get("authenticationMethods")
+    ):
         if isinstance(method, str):
             keys.add(_normalize(method))
 
-    for access in _as_list(integration.get("network_access") or integration.get("networkAccess")):
+    for access in _as_list(
+        integration.get("network_access") or integration.get("networkAccess")
+    ):
         if isinstance(access, str):
             keys.add(_normalize(access))
 
@@ -613,7 +676,9 @@ def _derive_customer_provider_keys(customer: SecurityCenterCustomerInsight) -> s
             keys.add(_normalize(str(metric)))
 
     engagement = metadata.get("engagement") or {}
-    tickets = engagement.get("open_support_tickets") or engagement.get("openSupportTickets")
+    tickets = engagement.get("open_support_tickets") or engagement.get(
+        "openSupportTickets"
+    )
     if isinstance(tickets, int) and tickets > 0:
         keys.add("support")
 
