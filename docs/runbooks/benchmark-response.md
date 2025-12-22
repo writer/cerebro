@@ -27,7 +27,7 @@ Operational steps for responding to benchmark regressions detected by CI workflo
 |----------|--------|
 | Did a specific scenario flip from pass → fail? | Review scenario logs in `benchmarks/logs/<scenario>.log`, bisect recent code touching related components. |
 | Are multiple scenarios failing with similar symptoms? | Look for shared dependencies (e.g., KMS providers, session factories) and validate configuration defaults. |
-| Do failures reproduce locally? | Run `uv run make benchmarks` or the individual scenario shell script inside the container image. |
+| Do failures reproduce locally? | Run `make benchmarks` or the individual scenario shell script inside the container image. |
 
 ## Remediation Steps
 1. Capture regression details in the engineering tracker with links to the failing run and scorecard diff.

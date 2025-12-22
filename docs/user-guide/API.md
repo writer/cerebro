@@ -159,7 +159,7 @@ Authorization: Bearer <token>
 - `security_analysis` tool → Backend analysis engine
 - `remediation_suggestions` tool → Knowledge base + findings
 
-See [AI Agents Documentation](./agents/README.md) for complete guide.
+See [AI Agents Documentation](../agents/README.md) for complete guide.
 
 ## 🏢 Organizations
 
@@ -596,4 +596,4 @@ Use the interactive documentation at `http://localhost:8000/docs` to explore all
 
 ---
 
-**For complete deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md)**
+**For complete deployment instructions, see [DEPLOYMENT.md](../developer-guide/DEPLOYMENT.md)**

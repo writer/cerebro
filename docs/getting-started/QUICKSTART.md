@@ -37,11 +37,6 @@ make serve
 
 # Worker (Celery, optional)
 make worker
-
-# Frontend (Next.js)
-cd frontend
-npm install
-npm run dev
 ```
 
 ## 5. Ingest Sample Data
@@ -59,9 +54,9 @@ uv run python -m cerebro.cli collect "My Company" --provider aws
 uv run python -m cerebro.cli findings generate --org-name "My Company"
 ```
 
-## 6. Access the UI
+## 6. Access the API
 
-Open <http://localhost:3000>. Development authentication is enabled by default; adjust `.env` if you need stricter settings.
+Open <http://localhost:8000/docs> for interactive API documentation. Development authentication is enabled by default; adjust `.env` if you need stricter settings.
 
 ## Interfaces
 
@@ -99,7 +94,8 @@ curl -X POST "http://localhost:8000/api/v1/query/execute" \
 # Create a session
 cerebro agents create --type security_analyst --title "AWS Security Review"
 
-# Converse in the web UI at http://localhost:3000/agents
+# Chat with the agent via CLI
+cerebro agents chat <session-id>
 ```
 
 Sample prompts:

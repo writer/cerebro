@@ -600,7 +600,7 @@ Features from SDK roadmap that Cerebro should adopt:
 - [Claude Agent SDK GitHub](https://github.com/anthropics/claude-agent-sdk-python)
 - [MCP Protocol Spec](https://spec.modelcontextprotocol.io)
 - [Claude API Documentation](https://docs.anthropic.com/claude/reference)
-- [Cerebro Agent Fixes Summary](../agents/fixes-summary.md)
+- [Cerebro Agent Guide](../agents/README.md)
 
 ---
 

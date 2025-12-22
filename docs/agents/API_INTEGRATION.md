@@ -525,5 +525,4 @@ curl http://localhost:8000/health
 
 - [Agent Architecture](./README.md)
 - [Tool Development Guide](./tool-development.md)
-- [SDK Integration Details](./fixes-summary.md)
-- [Security Model](../architecture/security.md)
+- [Claude SDK Integration](../architecture/claude-sdk-integration.md)

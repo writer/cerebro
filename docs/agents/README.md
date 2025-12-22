@@ -280,10 +280,9 @@ CREATE INDEX idx_findings_org_status_severity
 
 ## Related Documentation
 
-- [Agent fixes summary](./fixes-summary.md)
-- [Agent architecture](../architecture/agents.md)
-- [Tool development guide](./tools.md)
-- [Security model](../architecture/security.md)
+- [Tool development guide](./tool-development.md)
+- [API integration](./API_INTEGRATION.md)
+- [Claude SDK integration](../architecture/claude-sdk-integration.md)
 
 ## Support
 

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Install the project toolchain (`uv`, Python 3.9/3.11, Node) and bootstrap the repo with `uv sync --extra dev`.
+- Install the project toolchain (`uv`, Python 3.11+, Node) and bootstrap the repo with `uv sync --extra dev`.
 - Familiarize yourself with the producer architecture in `src/cerebro/findings/producers` and the shared utilities under `src/cerebro/findings/producers/utils`.
 - Ensure you can run the focused test suites locally (`uv run pytest tests/findings`).
 

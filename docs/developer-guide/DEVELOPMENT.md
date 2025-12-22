@@ -2,7 +2,7 @@
 
 This document provides development instructions and commonly used commands for working on Cerebro Security System of Record.
 
-> **Note:** This is a general development guide. For information about Cerebro's AI agent system (Claude-powered conversational interface), see [docs/agents/README.md](./agents/README.md).
+> **Note:** This is a general development guide. For information about Cerebro's AI agent system (Claude-powered conversational interface), see [Agents Guide](../agents/README.md).
 
 ## Frequently Used Commands
 

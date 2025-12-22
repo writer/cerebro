@@ -6,11 +6,13 @@ The SDK provides typed, async facades over the same services that power the Cere
 
 ## Getting Started
 
-Reference the SDK from another project via a path dependency:
+Reference the SDK from another project via a path dependency in `pyproject.toml`:
 
 ```toml
-[tool.poetry.dependencies]
-cerebro-sdk = { path = "../cerebro", develop = true }
+[project]
+dependencies = [
+    "cerebro-sdk @ file:///path/to/cerebro",
+]
 ```
 
 Or install directly in a virtual environment:
