@@ -697,4 +697,4 @@ app.listen(5000, () => {
 
 ---
 
-**Need Help?** Check [Troubleshooting Guide](/docs/user-guide/TROUBLESHOOTING.md) or open an issue on [GitHub](https://github.com/haasonsaas/cerebro/issues)
+**Need Help?** Check [Troubleshooting Guide](/docs/user-guide/TROUBLESHOOTING.md) or open an issue on [GitHub](https://github.com/WriterInternal/cerebro/issues)

@@ -437,5 +437,5 @@ pulumi up
 ## Support
 
 For issues or questions:
-- GitHub: https://github.com/haasonsaas/cerebro/issues
+- GitHub: https://github.com/WriterInternal/cerebro/issues
 - Docs: [Deployment Guide](../docs/developer-guide/DEPLOYMENT.md)

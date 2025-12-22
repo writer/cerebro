@@ -33,7 +33,7 @@ uv --version
 ### **Quick Start**
 ```bash
 # Clone repository
-git clone https://github.com/haasonsaas/cerebro.git
+git clone https://github.com/WriterInternal/cerebro.git
 cd cerebro
 
 # Install all dependencies (including dev)

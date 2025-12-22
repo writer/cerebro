@@ -359,4 +359,4 @@ gcloud run services get-iam-policy cerebro-production-api
 - [Full Documentation](README.md)
 - [GCP Architecture Center](https://cloud.google.com/architecture)
 - [Pulumi GCP Provider](https://www.pulumi.com/registry/packages/gcp/)
-- [Cerebro GitHub](https://github.com/haasonsaas/cerebro)
+- [Cerebro GitHub](https://github.com/WriterInternal/cerebro)

@@ -345,4 +345,4 @@ pulumi up
 - [Full Documentation](README.md)
 - [AWS Architecture](https://docs.aws.amazon.com/architecture/)
 - [Pulumi Docs](https://www.pulumi.com/docs/)
-- [Cerebro GitHub](https://github.com/haasonsaas/cerebro)
+- [Cerebro GitHub](https://github.com/WriterInternal/cerebro)

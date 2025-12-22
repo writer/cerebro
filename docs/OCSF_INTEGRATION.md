@@ -397,7 +397,7 @@ ocsf_compliance = await mapper.compliance_result_to_ocsf(
 ## Support
 
 For OCSF-related issues or questions:
-- File issues at https://github.com/haasonsaas/cerebro/issues
+- File issues at https://github.com/WriterInternal/cerebro/issues
 - Tag with `ocsf` label
 - Include OCSF version and target platform (AWS Security Lake, Splunk, etc.)
 

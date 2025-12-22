@@ -236,10 +236,10 @@ cerebro/
 - [Quickstart](docs/getting-started/QUICKSTART.md)
 - [API Reference](docs/user-guide/API.md)
 - [Agents Guide](docs/agents/README.md)
-- [Query Engine](docs/QUERY_ENGINE.md)
+- [Query Engine](docs/user-guide/QUERY_ENGINE.md)
 - [Database Schema](docs/developer-guide/DATABASE_SCHEMA.md)
-- [Development Guide](docs/DEVELOPMENT.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Development Guide](docs/developer-guide/DEVELOPMENT.md)
+- [Deployment Guide](docs/developer-guide/DEPLOYMENT.md)
 
 ## Internal Use Only
 

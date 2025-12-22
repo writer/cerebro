@@ -635,8 +635,8 @@ grep "Collection completed" /var/log/cerebro/collector.log | tail -10
 ### Support Resources
 
 **Community Support:**
-- GitHub Issues: https://github.com/haasonsaas/cerebro/issues
-- Documentation: https://github.com/haasonsaas/cerebro/tree/main/docs
+- GitHub Issues: https://github.com/WriterInternal/cerebro/issues
+- Documentation: https://github.com/WriterInternal/cerebro/tree/main/docs
 
 **Enterprise Support:**
 - Priority support available for production deployments
