@@ -662,23 +662,23 @@ class OAuthAppRegistry:
         }
 
         # Provider breakdown
-        provider_stats = {}
+        provider_stats: Dict[str, int] = {}
         for app in apps:
             provider_stats[app.provider] = provider_stats.get(app.provider, 0) + 1
 
         # Category breakdown
-        category_stats = {}
+        category_stats: Dict[str, int] = {}
         for app in apps:
             category_stats[app.category.value] = (
                 category_stats.get(app.category.value, 0) + 1
             )
 
         # Risk factor analysis
-        all_risk_factors = []
+        all_risk_factors: List[str] = []
         for app in apps:
             all_risk_factors.extend(app.risk_factors)
 
-        risk_factor_counts = {}
+        risk_factor_counts: Dict[str, int] = {}
         for factor in all_risk_factors:
             risk_factor_counts[factor] = risk_factor_counts.get(factor, 0) + 1
 

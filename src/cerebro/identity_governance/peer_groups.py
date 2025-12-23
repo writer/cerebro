@@ -225,7 +225,7 @@ class PeerGroupAnalyzer:
         self, identity_data: List[Dict[str, Any]]
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Group principals by department and role for peer analysis."""
-        groups = {}
+        groups: Dict[str, List[Dict[str, Any]]] = {}
 
         for identity in identity_data:
             department = identity["department"]
@@ -248,8 +248,8 @@ class PeerGroupAnalyzer:
         department = DepartmentType(department_str)
 
         # Collect all permissions for principals in this group
-        all_permissions = []
-        permission_counts = {}
+        all_permissions: List[str] = []
+        permission_counts: Dict[str, int] = {}
         admin_count = 0
 
         for principal in principals:

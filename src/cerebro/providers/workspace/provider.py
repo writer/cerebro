@@ -775,7 +775,7 @@ class GoogleWorkspaceProvider(BaseProvider):
                         )
 
                     # Get group settings if possible
-                    group_settings = {}
+                    group_settings: Dict[str, Any] = {}
                     try:
                         if self._groups_settings_service:
                             settings_result = await loop.run_in_executor(

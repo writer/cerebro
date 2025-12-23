@@ -168,7 +168,7 @@ class ComplianceAnalytics:
         # Initialize default KPIs and templates
         self._kpis = self._load_default_kpis()
         self._templates = self._load_default_templates()
-        self._widget_cache = {}
+        self._widget_cache: Dict[str, Any] = {}
 
     def generate_executive_dashboard(
         self, time_period_days: int = 30, frameworks: Optional[List[str]] = None
@@ -540,10 +540,10 @@ class ComplianceAnalytics:
             ),
         }
 
-    def _calculate_freshness_by_source(self, evidence_records) -> Dict[str, float]:
+    def _calculate_freshness_by_source(self, evidence_records: Any) -> Dict[str, float]:
         """Calculate evidence freshness by source system."""
 
-        source_freshness = {}
+        source_freshness: Dict[str, List[float]] = {}
         now = datetime.now()
 
         for record in evidence_records:

@@ -265,7 +265,7 @@ class OCSFExporter:
     ) -> Dict[str, Any]:
         """Flatten nested dictionary with dot notation."""
 
-        items = []
+        items: List[tuple[str, Any]] = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
 

@@ -185,11 +185,11 @@ class SQLParser:
 
         raise ValueError("No table name found in query")
 
-    def _extract_selected_columns(self, parsed) -> List[str]:
+    def _extract_selected_columns(self, parsed: Any) -> List[str]:
         """Extract selected columns from parsed SQL."""
         select_seen = False
-        columns = []
-        current_column = []
+        columns: List[str] = []
+        current_column: List[str] = []
 
         for token in parsed.flatten():
             # Check for SELECT keyword (can be Keyword.DML)
@@ -442,11 +442,11 @@ class SQLParser:
 
         raise ValueError(f"Could not parse timestamp: {value_str}")
 
-    def _extract_order_by(self, parsed) -> Optional[List[str]]:
+    def _extract_order_by(self, parsed: Any) -> Optional[List[str]]:
         """Extract ORDER BY clause from parsed SQL."""
         order_by_seen = False
-        order_columns = []
-        current_column = []
+        order_columns: List[str] = []
+        current_column: List[str] = []
 
         for token in parsed.flatten():
             if (
@@ -530,7 +530,7 @@ class QueryEngine:
             QueryResult with rows, metadata, and any errors
         """
         start_time = datetime.now()
-        errors = []
+        errors: List[str] = []
 
         try:
             # Substitute parameters safely
