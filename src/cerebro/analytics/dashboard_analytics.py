@@ -151,7 +151,7 @@ class DashboardAnalytics:
             """
             SELECT DATE(captured_at) as date, value
             FROM security_metric_snapshots
-            WHERE org_id = :org_id 
+            WHERE org_id = :org_id
                 AND metric_type = 'critical_finding_count'
                 AND captured_at >= :since_date
             ORDER BY captured_at
@@ -313,8 +313,8 @@ class DashboardAnalytics:
         risks_query = text(
             f"""
             WITH risk_analysis AS (
-                SELECT 
-                    CASE 
+                SELECT
+                    CASE
                         WHEN {public_match} OR {exposed_match} THEN 'Data Exposure'
                         WHEN {admin_match} OR {privilege_match} THEN 'Privilege Escalation'
                         WHEN {mfa_match} OR {auth_match} THEN 'Authentication Weaknesses'
@@ -323,7 +323,7 @@ class DashboardAnalytics:
                         ELSE 'Other Security Issues'
                     END as risk_category,
                     COUNT(*) as finding_count,
-                    AVG(CASE f.severity 
+                    AVG(CASE f.severity
                         WHEN 'critical' THEN 4
                         WHEN 'high' THEN 3
                         WHEN 'medium' THEN 2
@@ -336,7 +336,7 @@ class DashboardAnalytics:
                 WHERE a.org_id = :org_id AND f.status = 'open'
                 GROUP BY risk_category
             )
-            SELECT 
+            SELECT
                 risk_category,
                 finding_count,
                 avg_severity,
@@ -411,7 +411,7 @@ class DashboardAnalytics:
             """
             SELECT value, captured_at
             FROM security_metric_snapshots
-            WHERE org_id = :org_id 
+            WHERE org_id = :org_id
                 AND metric_type = 'overall_risk_score'
                 AND captured_at >= :since_date
             ORDER BY captured_at
@@ -443,7 +443,7 @@ class DashboardAnalytics:
         investment_analysis_query = text(
             """
             WITH provider_risk AS (
-                SELECT 
+                SELECT
                     a.provider,
                     COUNT(*) as finding_count,
                     COUNT(CASE WHEN f.severity IN ('critical', 'high') THEN 1 END) as high_risk_count
@@ -452,7 +452,7 @@ class DashboardAnalytics:
                 WHERE a.org_id = :org_id AND f.status = 'open'
                 GROUP BY a.provider
             )
-            SELECT 
+            SELECT
                 provider,
                 finding_count,
                 high_risk_count,

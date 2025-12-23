@@ -108,7 +108,7 @@ class PeerGroupAnalyzer:
                 """
                 SELECT user_id, username, email, display_name, status,
                        job_title, department, groups, attributes
-                FROM okta_user 
+                FROM okta_user
                 WHERE status = 'active'
             """
             )
@@ -321,8 +321,8 @@ class PeerGroupAnalyzer:
         try:
             github_result = await self.query_engine.execute_query(
                 f"""
-                SELECT repository, permissions 
-                FROM github_repository 
+                SELECT repository, permissions
+                FROM github_repository
                 WHERE owner = (
                     SELECT username FROM github_user WHERE user_id = '{principal_id}'
                 )
@@ -345,8 +345,8 @@ class PeerGroupAnalyzer:
         try:
             aws_result = await self.query_engine.execute_query(
                 f"""
-                SELECT user_name, attached_policies 
-                FROM aws_iam_user 
+                SELECT user_name, attached_policies
+                FROM aws_iam_user
                 WHERE user_id = '{principal_id}'
             """
             )
@@ -616,8 +616,8 @@ class PeerGroupAnalyzer:
 # CEL rules for peer group violations
 PEER_GROUP_CEL_RULES = {
     "finance_github_admin": """
-        principal.department == "Finance" && 
-        principal.has("GitHub:admin") && 
+        principal.department == "Finance" &&
+        principal.has("GitHub:admin") &&
         peer_group_rate(principal.department, "GitHub:admin") < 0.1 ->
         violation("GitHub admin access unusual for Finance department")
     """,
@@ -628,7 +628,7 @@ PEER_GROUP_CEL_RULES = {
         violation("AWS billing access unusual for Engineering")
     """,
     "excessive_admin_permissions": """
-        count(principal.admin_permissions()) > 
+        count(principal.admin_permissions()) >
         peer_group_average(principal.department, "admin_count") * 2 ->
         violation("Excessive admin permissions compared to peer group")
     """,

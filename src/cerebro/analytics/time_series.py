@@ -678,7 +678,7 @@ class SecurityTrendCollector:
         # Critical finding count (for immediate response)
         critical_query = text(
             """
-            SELECT COUNT(*) FROM findings 
+            SELECT COUNT(*) FROM findings
             WHERE org_id = :org_id AND severity = 'critical' AND status = 'open'
         """
         )

@@ -885,11 +885,11 @@ class AgentAnalyticsService:
             agent_type_stats = await db_session.execute(
                 text(
                     """
-                SELECT 
+                SELECT
                     agent_type,
                     COUNT(*) as session_count,
                     COUNT(DISTINCT created_by) as unique_users
-                FROM agent_sessions 
+                FROM agent_sessions
                 WHERE org_id = :org_id
                     AND created_at >= :cutoff
                 GROUP BY agent_type
@@ -903,7 +903,7 @@ class AgentAnalyticsService:
             tool_stats = await db_session.execute(
                 text(
                     """
-                SELECT 
+                SELECT
                     ti.tool_name,
                     ti.status,
                     COUNT(*) as invocation_count
@@ -922,7 +922,7 @@ class AgentAnalyticsService:
             token_stats = await db_session.execute(
                 text(
                     """
-                SELECT 
+                SELECT
                     s.agent_type,
                     SUM(COALESCE(m.input_tokens, 0)) as total_input_tokens,
                     SUM(COALESCE(m.output_tokens, 0)) as total_output_tokens,
@@ -942,7 +942,7 @@ class AgentAnalyticsService:
             approval_stats = await db_session.execute(
                 text(
                     f"""
-                SELECT 
+                SELECT
                     status,
                     COUNT(*) as count,
                     AVG({decision_minutes_expr}) as avg_decision_time_minutes

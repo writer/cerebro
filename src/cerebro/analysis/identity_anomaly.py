@@ -226,8 +226,8 @@ class IdentityAnomalyDetector:
             result = await self.query_engine.execute_query(
                 f"""
                 SELECT username, last_login, status, metadata
-                FROM okta_user 
-                WHERE user_id = '{principal_id}' 
+                FROM okta_user
+                WHERE user_id = '{principal_id}'
                   AND last_login >= '{start_date.isoformat()}'
                   AND last_login <= '{end_date.isoformat()}'
             """

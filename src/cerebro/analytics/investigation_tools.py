@@ -160,7 +160,7 @@ class InvestigationEngine:
 
         config_timeline_query = text(
             f"""
-            SELECT 
+            SELECT
                 cs.snapshot_id,
                 cs.captured_at,
                 cs.normalized_config,
@@ -214,7 +214,7 @@ class InvestigationEngine:
 
         permission_timeline_query = text(
             f"""
-            SELECT 
+            SELECT
                 ie.edge_id,
                 ie.permission,
                 ie.effective_at,
@@ -303,43 +303,6 @@ class InvestigationEngine:
 
         return events
 
-    async def _get_related_findings(
-        self, finding_id: UUID, rule_id: UUID, resource_id: Optional[UUID]
-    ) -> List[Dict[str, Any]]:
-        """Get findings related to the current finding."""
-
-        related_query = text(
-            """
-            SELECT f.finding_id, f.title, f.severity, f.status, f.first_seen
-            FROM findings f
-            WHERE (f.rule_id = :rule_id OR f.resource_id = :resource_id)
-                AND f.finding_id != :finding_id
-            ORDER BY f.first_seen DESC
-            LIMIT 10
-        """
-        )
-
-        result = await self.db.execute(
-            related_query,
-            {"rule_id": rule_id, "resource_id": resource_id, "finding_id": finding_id},
-        )
-
-        return [
-            {
-                "finding_id": str(row.finding_id),
-                "title": row.title,
-                "severity": row.severity,
-                "status": row.status,
-                "first_seen": row.first_seen.isoformat(),
-                "relationship": (
-                    "same_rule"
-                    if str(row.finding_id) == str(rule_id)
-                    else "same_resource"
-                ),
-            }
-            for row in result.fetchall()
-        ]
-
     async def _get_affected_resources(
         self, resource_id: Optional[UUID]
     ) -> List[Dict[str, Any]]:
@@ -351,7 +314,7 @@ class InvestigationEngine:
         # Get resource details and related resources
         resource_query = text(
             """
-            SELECT 
+            SELECT
                 r.resource_id,
                 r.external_id,
                 r.name,
@@ -360,7 +323,7 @@ class InvestigationEngine:
                 COUNT(f.finding_id) as finding_count
             FROM resources r
             LEFT JOIN findings f ON r.resource_id = f.resource_id AND f.status = 'open'
-            WHERE r.resource_id = :resource_id 
+            WHERE r.resource_id = :resource_id
                 OR r.parent_external_id = (
                     SELECT external_id FROM resources WHERE resource_id = :resource_id
                 )
@@ -399,7 +362,7 @@ class InvestigationEngine:
 
         identity_query = text(
             f"""
-            SELECT 
+            SELECT
                 p.principal_id,
                 p.display_name,
                 p.email,
@@ -455,7 +418,7 @@ class InvestigationEngine:
             f"""
             WITH recent_events AS (
                 -- Findings created
-                SELECT 
+                SELECT
                     {finding_id_str} as event_id,
                     'finding_created' as event_type,
                     f.first_seen as timestamp,
@@ -470,11 +433,11 @@ class InvestigationEngine:
                 FROM findings f
                 JOIN accounts a ON f.account_id = a.account_id
                 WHERE a.org_id = :org_id AND f.first_seen >= :since_time
-                
+
                 UNION ALL
-                
+
                 -- Permission grants (recent IAM edges)
-                SELECT 
+                SELECT
                     {edge_id_str} as event_id,
                     'permission_granted' as event_type,
                     ie.effective_at as timestamp,
@@ -576,7 +539,7 @@ class InvestigationEngine:
 
         related_query = text(
             """
-            SELECT 
+            SELECT
                 f.finding_id,
                 f.title,
                 f.severity,
@@ -631,7 +594,7 @@ class InvestigationEngine:
                 "template": """
                     SELECT DISTINCT p.display_name, p.email, ie.provider, ie.permission
                     FROM principals p
-                    JOIN accounts a ON p.account_id = a.account_id  
+                    JOIN accounts a ON p.account_id = a.account_id
                     JOIN iam_edges ie ON p.principal_id = ie.principal_id
                     WHERE a.org_id = '{org_id}'
                         AND ie.is_admin = true

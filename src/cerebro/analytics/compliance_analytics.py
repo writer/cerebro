@@ -113,7 +113,7 @@ class ComplianceAnalyzer:
             evidence_query = text(
                 f"""
                 WITH control_evidence AS (
-                    SELECT 
+                    SELECT
                         r.rule_id,
                         r.name as control_name,
                         {framework_expr} as framework,
@@ -131,13 +131,13 @@ class ComplianceAnalyzer:
                         )
                     GROUP BY r.rule_id, r.name, framework
                 )
-                SELECT 
+                SELECT
                     rule_id,
                     control_name,
                     framework,
                     last_evidence_collected,
                     COALESCE(age_days, 999) as age_days,
-                    CASE 
+                    CASE
                         WHEN last_evidence_collected IS NULL THEN 'missing'
                         WHEN age_days <= 7 THEN 'fresh'
                         WHEN age_days <= 30 THEN 'aging'

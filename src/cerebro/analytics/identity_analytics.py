@@ -114,7 +114,7 @@ class IdentityAnalyzer:
         identity_risk_query = text(
             f"""
             WITH identity_stats AS (
-                SELECT 
+                SELECT
                     p.principal_id,
                     p.display_name,
                     p.email,
@@ -126,7 +126,7 @@ class IdentityAnalyzer:
                 FROM principals p
                 JOIN accounts a ON p.account_id = a.account_id
                 LEFT JOIN iam_edges ie ON p.principal_id = ie.principal_id
-                WHERE a.org_id = :org_id 
+                WHERE a.org_id = :org_id
                     AND p.is_human = true
                     AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id, p.display_name, p.email
@@ -135,7 +135,7 @@ class IdentityAnalyzer:
                 -- Risk scoring algorithm
                 (provider_count * 10.0 +           -- Cross-provider access risk
                  permission_count * 0.5 +          -- Permission volume risk
-                 admin_count * 15.0 +              -- Admin access risk  
+                 admin_count * 15.0 +              -- Admin access risk
                  stale_count * 2.0) as risk_score  -- Stale permission risk
             FROM identity_stats
             WHERE permission_count > 0
@@ -257,7 +257,7 @@ class IdentityAnalyzer:
 
         provider_query = text(
             f"""
-            SELECT 
+            SELECT
                 ie.provider,
                 COUNT(DISTINCT ie.permission) as permission_count,
                 COUNT(CASE WHEN ie.is_admin THEN 1 END) as admin_count,
@@ -358,7 +358,7 @@ class PrivilegeSprawlDetector:
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
             JOIN iam_edges ie ON p.principal_id = ie.principal_id
-            WHERE a.org_id = :org_id 
+            WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id
@@ -381,7 +381,7 @@ class PrivilegeSprawlDetector:
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
             JOIN iam_edges ie ON p.principal_id = ie.principal_id
-            WHERE a.org_id = :org_id 
+            WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY p.principal_id
@@ -405,7 +405,7 @@ class PrivilegeSprawlDetector:
                 FROM principals p
                 JOIN accounts a ON p.account_id = a.account_id
                 JOIN iam_edges ie ON p.principal_id = ie.principal_id
-                WHERE a.org_id = :org_id 
+                WHERE a.org_id = :org_id
                     AND p.is_human = true
                     AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
@@ -429,7 +429,7 @@ class PrivilegeSprawlDetector:
                 FROM principals p
                 JOIN accounts a ON p.account_id = a.account_id
                 JOIN iam_edges ie ON p.principal_id = ie.principal_id
-                WHERE a.org_id = :org_id 
+                WHERE a.org_id = :org_id
                     AND p.is_human = true
                     AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
@@ -448,20 +448,20 @@ class PrivilegeSprawlDetector:
         query = text(
             f"""
             WITH identity_privilege_counts AS (
-                SELECT 
+                SELECT
                     p.principal_id,
                     COUNT(DISTINCT ie.permission) as permission_count,
                     MAX(CASE WHEN ie.is_admin THEN 1 ELSE 0 END) as has_admin
                 FROM principals p
                 JOIN accounts a ON p.account_id = a.account_id
                 JOIN iam_edges ie ON p.principal_id = ie.principal_id
-                WHERE a.org_id = :org_id 
+                WHERE a.org_id = :org_id
                     AND p.is_human = true
                     AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
                 GROUP BY p.principal_id
             )
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN has_admin = 1 THEN 'admin'
                     WHEN permission_count > 50 THEN 'high_privilege'
                     WHEN permission_count > 20 THEN 'medium_privilege'
@@ -470,8 +470,8 @@ class PrivilegeSprawlDetector:
                 END as privilege_level,
                 COUNT(*) as identity_count
             FROM identity_privilege_counts
-            GROUP BY 
-                CASE 
+            GROUP BY
+                CASE
                     WHEN has_admin = 1 THEN 'admin'
                     WHEN permission_count > 50 THEN 'high_privilege'
                     WHEN permission_count > 20 THEN 'medium_privilege'
@@ -494,19 +494,19 @@ class PrivilegeSprawlDetector:
 
         query = text(
             f"""
-            SELECT 
+            SELECT
                 ie.provider,
                 COUNT(DISTINCT ie.principal_id) as identity_count,
                 COUNT(DISTINCT ie.permission) as unique_permissions,
                 COUNT(CASE WHEN ie.is_admin THEN 1 END) as admin_grants,
-                AVG(CASE 
+                AVG(CASE
                     WHEN ie.effective_at > {last_30_days} THEN 1.0
                     ELSE 0.0
                 END) as recent_activity_ratio
             FROM iam_edges ie
             JOIN accounts a ON ie.account_id = a.account_id
             JOIN principals p ON ie.principal_id = p.principal_id
-            WHERE a.org_id = :org_id 
+            WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND (ie.expires_at IS NULL OR ie.expires_at > {now_expr})
             GROUP BY ie.provider
@@ -543,7 +543,7 @@ class PrivilegeSprawlDetector:
         # Orphaned permissions (identities with permissions but no recent activity)
         orphaned_query = text(
             f"""
-            SELECT 
+            SELECT
                 p.principal_id,
                 p.display_name,
                 p.email,
@@ -583,7 +583,7 @@ class PrivilegeSprawlDetector:
         # Unusual cross-provider admin access
         cross_admin_query = text(
             f"""
-            SELECT 
+            SELECT
                 p.principal_id,
                 p.display_name,
                 COUNT(DISTINCT ie.provider) as admin_provider_count,
@@ -683,18 +683,18 @@ class PrivilegeSprawlDetector:
         # This is a simplified implementation - in practice you'd check provider-specific MFA settings
         mfa_query = text(
             f"""
-            SELECT 
+            SELECT
                 ie.provider,
                 COUNT(DISTINCT p.principal_id) as total_users,
-                COUNT(DISTINCT CASE 
-                    WHEN f.finding_id IS NULL THEN p.principal_id 
+                COUNT(DISTINCT CASE
+                    WHEN f.finding_id IS NULL THEN p.principal_id
                 END) as mfa_enabled_users
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
             JOIN iam_edges ie ON p.principal_id = ie.principal_id
-            LEFT JOIN findings f ON p.principal_id = f.principal_id 
+            LEFT JOIN findings f ON p.principal_id = f.principal_id
                 AND f.rule_id IN (
-                    SELECT rule_id FROM rules 
+                    SELECT rule_id FROM rules
                     WHERE {name_match} OR {desc_match}
                 )
                 AND f.status = 'open'
@@ -904,15 +904,15 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
         risk_level_query = text(
             f"""
             WITH identity_stats AS (
-                SELECT 
+                SELECT
                     p.principal_id,
                     COUNT(DISTINCT ie.provider) AS provider_count,
                     COUNT(DISTINCT ie.permission) AS permission_count,
                     SUM(CASE WHEN ie.is_admin THEN 1 ELSE 0 END) AS admin_count,
                     SUM(
-                        CASE 
-                            WHEN ie.effective_at < {stale_cutoff} THEN 1 
-                            ELSE 0 
+                        CASE
+                            WHEN ie.effective_at < {stale_cutoff} THEN 1
+                            ELSE 0
                         END
                     ) AS stale_count
                 FROM principals p

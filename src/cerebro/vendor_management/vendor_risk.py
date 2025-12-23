@@ -369,9 +369,9 @@ class VendorRiskManager:
         """Generate risk dashboard data for an organization."""
         # Get latest assessments for each vendor
         latest_assessments_query = """
-        SELECT DISTINCT ON (vendor_id) 
+        SELECT DISTINCT ON (vendor_id)
                vendor_id, assessment_id, overall_risk_score, risk_level, assessment_date
-        FROM vendor_risk_assessments 
+        FROM vendor_risk_assessments
         WHERE org_id = :org_id AND is_active = true
         ORDER BY vendor_id, assessment_date DESC
         """

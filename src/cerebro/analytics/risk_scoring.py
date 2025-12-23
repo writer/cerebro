@@ -177,7 +177,7 @@ class RiskScoringEngine:
         severity_query = text(
             """
             SELECT severity, COUNT(*) as count
-            FROM findings 
+            FROM findings
             WHERE org_id = :org_id AND status = 'open'
             GROUP BY severity
         """
@@ -225,12 +225,12 @@ class RiskScoringEngine:
             SELECT COUNT(DISTINCT p.principal_id)
             FROM principals p
             JOIN accounts a ON p.account_id = a.account_id
-            WHERE a.org_id = :org_id 
+            WHERE a.org_id = :org_id
                 AND p.is_human = true
                 AND p.principal_id NOT IN (
-                    SELECT principal_id FROM findings 
+                    SELECT principal_id FROM findings
                     WHERE rule_id IN (
-                        SELECT rule_id FROM rules 
+                        SELECT rule_id FROM rules
                         WHERE name LIKE '%MFA%' OR description LIKE '%multi-factor%'
                     )
                 )
@@ -363,7 +363,7 @@ class RiskScoringEngine:
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id
                 AND f.status = 'open'
-                AND (f.title LIKE '%logging%' OR f.title LIKE '%monitoring%' 
+                AND (f.title LIKE '%logging%' OR f.title LIKE '%monitoring%'
                      OR f.title LIKE '%backup%' OR f.title LIKE '%encryption%')
         """
         )
@@ -432,9 +432,9 @@ class RiskScoringEngine:
                 AND ie.is_admin = true
                 AND p.is_human = true
                 AND ie.principal_id NOT IN (
-                    SELECT principal_id FROM findings 
+                    SELECT principal_id FROM findings
                     WHERE rule_id IN (
-                        SELECT rule_id FROM rules 
+                        SELECT rule_id FROM rules
                         WHERE name LIKE '%MFA%'
                     )
                 )
@@ -525,10 +525,10 @@ class RiskScoringEngine:
             JOIN accounts a ON f.account_id = a.account_id
             WHERE a.org_id = :org_id AND f.status = 'open'
             GROUP BY r.name, r.severity
-            ORDER BY 
-                CASE r.severity 
+            ORDER BY
+                CASE r.severity
                     WHEN 'critical' THEN 4
-                    WHEN 'high' THEN 3  
+                    WHEN 'high' THEN 3
                     WHEN 'medium' THEN 2
                     WHEN 'low' THEN 1
                     ELSE 0
@@ -566,7 +566,7 @@ class RiskScoringEngine:
                 FROM findings f
                 JOIN rules r ON f.rule_id = r.rule_id
                 JOIN accounts a ON f.account_id = a.account_id
-                WHERE a.org_id = :org_id 
+                WHERE a.org_id = :org_id
                     AND f.status = 'open'
                     AND (r.name ~* :pattern OR r.description ~* :pattern)
             """
@@ -628,11 +628,11 @@ class RiskScoringEngine:
 
         heatmap_query = text(
             """
-            SELECT 
+            SELECT
                 r.provider,
                 r.resource_type,
                 COUNT(f.finding_id) as finding_count,
-                AVG(CASE f.severity 
+                AVG(CASE f.severity
                     WHEN 'critical' THEN 4
                     WHEN 'high' THEN 3
                     WHEN 'medium' THEN 2

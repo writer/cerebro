@@ -394,9 +394,9 @@ def _show_chat_help():
     """Show chat session help."""
     help_panel = Panel(
         """[bold]Chat Commands:[/bold]
-        
+
 [cyan]help[/cyan] - Show this help message
-[cyan]status[/cyan] - Show session status and metrics  
+[cyan]status[/cyan] - Show session status and metrics
 [cyan]quit[/cyan] / [cyan]exit[/cyan] / [cyan]q[/cyan] - End chat session
 
 [bold]Tips:[/bold]

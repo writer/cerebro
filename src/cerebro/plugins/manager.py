@@ -277,7 +277,7 @@ from cerebro.providers.base import BaseProvider, ResourceInfo, PrincipalInfo, Co
 
 PLUGIN_METADATA = {{
     "name": "{plugin_name}",
-    "version": "0.1.0", 
+    "version": "0.1.0",
     "description": "Custom {plugin_type} plugin",
     "author": "Your Name",
     "type": "{plugin_type}",
@@ -287,33 +287,33 @@ PLUGIN_METADATA = {{
 
 class {class_name}(BaseProvider):
     """Custom provider for {plugin_name}."""
-    
+
     @property
     def name(self) -> str:
         return "{plugin_name}"
-    
+
     async def authenticate(self) -> bool:
         """Authenticate with {plugin_name}."""
         # Implement authentication logic
         return True
-    
+
     async def discover_resources(
-        self, 
+        self,
         resource_types: Optional[List[str]] = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover resources from {plugin_name}."""
         # Implement resource discovery
         return
         yield  # Make this an async generator
-    
+
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover principals from {plugin_name}."""
         # Implement principal discovery
         return
         yield  # Make this an async generator
-    
+
     async def get_resource_configuration(
-        self, 
+        self,
         resource: ResourceInfo
     ) -> ConfigurationSnapshot:
         """Get resource configuration from {plugin_name}."""
@@ -323,7 +323,7 @@ class {class_name}(BaseProvider):
             captured_at=datetime.utcnow(),
             normalized_config={{}}
         )
-    
+
     async def discover_iam_edges(
         self,
         resource: Optional[ResourceInfo] = None
@@ -345,7 +345,7 @@ from cerebro.domain.entities import ResourceEntity, ConfigEntity, FindingEntity,
 PLUGIN_METADATA = {{
     "name": "{plugin_name}",
     "version": "0.1.0",
-    "description": "Custom {plugin_type} plugin", 
+    "description": "Custom {plugin_type} plugin",
     "author": "Your Name",
     "type": "{plugin_type}",
     "class_name": "{class_name}"
@@ -355,31 +355,31 @@ PLUGIN_METADATA = {{
 @register_producer
 class {class_name}(BaseFindingProducer):
     """Custom finding producer for {plugin_name}."""
-    
+
     @property
     def desired_sources(self) -> Set[str]:
         return {{"custom_provider"}}
-    
+
     @property
     def resource_types(self) -> Set[str]:
         return {{"custom.resource.type"}}
-    
+
     @property
     def finding_name(self) -> str:
         return "Custom: {plugin_name} Security Issue"
-    
+
     @property
     def rule_name(self) -> str:
         return "{plugin_name}_security_rule"
-    
+
     @property
     def severity(self) -> Severity:
         return Severity.MEDIUM
-    
+
     @property
     def description(self) -> str:
         return "Detects {plugin_name} security issues"
-    
+
     def evaluate(
         self,
         resource: ResourceEntity,
@@ -388,7 +388,7 @@ class {class_name}(BaseFindingProducer):
     ) -> List[FindingEntity]:
         """Evaluate resource for {plugin_name} security issues."""
         findings = []
-        
+
         # Implement your security logic here
         # Example:
         # if config.normalized_config.get("insecure_setting"):
@@ -398,7 +398,7 @@ class {class_name}(BaseFindingProducer):
         #         evidence={{"issue": "insecure_setting_detected"}}
         #     )
         #     findings.append(finding)
-        
+
         return findings
 '''
 

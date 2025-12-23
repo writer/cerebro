@@ -191,9 +191,9 @@ class JMLCampaignManager:
             # Query current Okta users
             result = await self.query_engine.execute_query(
                 """
-                SELECT user_id, username, display_name, status, 
+                SELECT user_id, username, display_name, status,
                        job_title, department, attributes, updated_at
-                FROM okta_user 
+                FROM okta_user
                 WHERE updated_at >= '%s'
             """
                 % start_date.isoformat()
@@ -232,7 +232,7 @@ class JMLCampaignManager:
             # Query M365 users with recent updates
             result = await self.query_engine.execute_query(
                 """
-                SELECT user_id, user_principal_name, display_name, 
+                SELECT user_id, user_principal_name, display_name,
                        job_title, department, account_enabled, updated_at
                 FROM m365_user
                 WHERE updated_at >= '%s'
@@ -656,12 +656,12 @@ class JMLCampaignManager:
 # CEL rule examples for JML detection
 JML_CEL_RULES = {
     "finance_github_admin": """
-        principal.department == "Finance" && 
-        principal.has("GitHub:admin") -> 
+        principal.department == "Finance" &&
+        principal.has("GitHub:admin") ->
         violation("Outlier admin outside peer group")
     """,
     "terminated_user_access": """
-        principal.status == "terminated" && 
+        principal.status == "terminated" &&
         principal.has_any_access() ->
         violation("Terminated user still has access")
     """,

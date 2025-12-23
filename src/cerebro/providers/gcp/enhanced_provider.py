@@ -424,10 +424,10 @@ class EnhancedGCPProvider(BaseProvider):
                 None, self._iam_client.list_service_accounts, request
             )
 
-            for service_account in response.accounts:
+            for sa in response.accounts:
                 # Get service account keys
                 keys_request = iam_v1.ListServiceAccountKeysRequest(
-                    name=service_account.name
+                    name=sa.name
                 )
                 keys_response = await loop.run_in_executor(
                     None, self._iam_client.list_service_account_keys, keys_request
@@ -445,20 +445,20 @@ class EnhancedGCPProvider(BaseProvider):
                     keys_info.append(key_info)
 
                 yield ResourceInfo(
-                    external_id=service_account.name,
-                    name=service_account.display_name or service_account.email,
+                    external_id=sa.name,
+                    name=sa.display_name or sa.email,
                     resource_type="gcp.iam.service_account",
                     region="global",
                     tags={},
                     created_at=datetime.utcnow(),  # Service accounts don't have creation time in API
                     account_id=self.account_id,
                     metadata={
-                        "email": service_account.email,
-                        "unique_id": service_account.unique_id,
-                        "project_id": service_account.project_id,
-                        "description": service_account.description,
-                        "disabled": service_account.disabled,
-                        "oauth2_client_id": service_account.oauth2_client_id,
+                        "email": sa.email,
+                        "unique_id": sa.unique_id,
+                        "project_id": sa.project_id,
+                        "description": sa.description,
+                        "disabled": sa.disabled,
+                        "oauth2_client_id": sa.oauth2_client_id,
                         "keys": keys_info,
                         "key_count": len(keys_info),
                     },

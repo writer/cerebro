@@ -355,9 +355,9 @@ class ToxicCombinationDetector:
 TOXIC_COMBINATION_SQL_QUERIES = {
     "high_scope_apps_no_owner": """
         SELECT app_name, scopes, last_used_at, owner
-        FROM oauth_app 
-        WHERE scopes ILIKE '%files:read%' 
-          AND owner IS NULL 
+        FROM oauth_app
+        WHERE scopes ILIKE '%files:read%'
+          AND owner IS NULL
           AND last_used_at > now() - interval '30 days'
     """,
     "slack_apps_file_access": """

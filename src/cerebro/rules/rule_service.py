@@ -300,6 +300,5 @@ async def get_rule_by_name_async(rule_name: str, db_session: AsyncSession) -> UU
 
 def invalidate_rule_cache():
     """Invalidate the rule name cache."""
-    global _rule_name_cache
     _rule_name_cache.clear()
     logger.info("Rule name cache invalidated")
