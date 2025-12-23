@@ -171,7 +171,7 @@ class ComplianceAnalytics:
         self._widget_cache = {}
 
     def generate_executive_dashboard(
-        self, time_period_days: int = 30, frameworks: List[str] = None
+        self, time_period_days: int = 30, frameworks: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Generate executive-level compliance dashboard."""
 
@@ -418,7 +418,7 @@ class ComplianceAnalytics:
             raise ValueError(f"Unsupported export format: {format}")
 
     def _calculate_compliance_overview(
-        self, frameworks: List[str] = None
+        self, frameworks: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Calculate high-level compliance overview metrics."""
 

@@ -83,7 +83,7 @@ def create_id_with_pagination_schema(
     return IdWithPaginationSchema
 
 
-def create_filter_schema(custom_fields: Dict[str, Any] = None) -> Type[BaseModel]:
+def create_filter_schema(custom_fields: Optional[Dict[str, Any]] = None) -> Type[BaseModel]:
     """Creates a base schema that can be extended with custom fields."""
 
     class FilterSchema(BaseModel):

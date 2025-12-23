@@ -165,7 +165,7 @@ class BaseEvidenceMetadata:
         self.content_size = len(content_bytes)
         return self.content_hash
 
-    def set_retention_period(self, years: int = None):
+    def set_retention_period(self, years: Optional[int] = None) -> None:
         """Set retention period based on classification."""
         if years:
             self.expires_at = self.created_at + timedelta(days=years * 365)

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Real GCP client implementation
 class GCPClient:
-    def __init__(self, project_id: str = None):
+    def __init__(self, project_id: Optional[str] = None):
         self.project_id = project_id
         self._compute_client = None
         self._storage_client = None

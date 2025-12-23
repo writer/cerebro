@@ -70,7 +70,7 @@ class SecurityTable(ABC):
         This is the main method providers implement to hydrate table data.
         Similar to Steampipe's hydrate functions.
         """
-        pass
+        yield  # type: ignore[misc]  # Abstract method - subclasses must yield actual data
 
     async def get_resource(self, resource_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -283,7 +283,7 @@ class ProviderSecurityTable(SecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch raw data from provider API."""
-        pass
+        yield  # type: ignore[misc]  # Abstract method - subclasses must yield actual data
 
     async def list_resources(
         self, ctx: QueryContext

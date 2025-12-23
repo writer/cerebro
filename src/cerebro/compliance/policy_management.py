@@ -532,7 +532,7 @@ class PolicyManagementSystem:
         )
 
         # Group by policy
-        policy_stats = {}
+        policy_stats: Dict[str, Dict[str, Any]] = {}
         for attestation in self._attestations.values():
             policy_id = attestation.policy_id
             if policy_id not in policy_stats:

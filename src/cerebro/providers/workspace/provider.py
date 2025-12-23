@@ -9,6 +9,7 @@ import asyncio
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 import logging
 
 from google.oauth2 import service_account
@@ -78,7 +79,7 @@ class GoogleWorkspaceProvider(BaseProvider):
 
     def __init__(
         self,
-        account_id: str,
+        account_id: UUID,
         domain: str,
         service_account_file: str,
         delegate_user: str,

@@ -157,11 +157,13 @@ class AuditRequestList:
     # Framework and scope
     framework_name: str
     request_type: RequestListType
-    scope_description: str = ""
 
     # Audit period
     period_start: datetime
     period_end: datetime
+
+    # Optional fields with defaults
+    scope_description: str = ""
     opinion_date: Optional[datetime] = None  # For Type II audits
 
     # Tasks and evidence

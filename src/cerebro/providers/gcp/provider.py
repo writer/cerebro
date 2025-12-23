@@ -74,7 +74,7 @@ class GCPProvider(BaseProvider):
                 if hasattr(response, "instances") and response.instances:
                     for instance in response.instances:
                         yield ResourceInfo(
-                            resource_id=str(instance.id),
+                            external_id=str(instance.id),
                             resource_type="gcp.compute.instance",
                             name=instance.name,
                             region=zone.split("/")[-1] if zone else "unknown",
@@ -108,15 +108,16 @@ class GCPProvider(BaseProvider):
 
             for service_account in page_result:
                 yield PrincipalInfo(
-                    principal_id=service_account.unique_id,
+                    external_id=service_account.email,
                     principal_type="service_account",
-                    name=service_account.display_name
+                    display_name=service_account.display_name
                     or service_account.name.split("/")[-1],
                     email=service_account.email,
-                    enabled=not service_account.disabled,
-                    created_at=service_account.oauth2_client_id,  # Placeholder
-                    external_id=service_account.email,
                     account_id=self.account_id,
+                    metadata={
+                        "unique_id": service_account.unique_id,
+                        "enabled": not service_account.disabled,
+                    },
                 )
 
         except ImportError:

@@ -16,7 +16,7 @@ from ...query.schema import SecurityColumn, ColumnType
 
 # Real GitHub API client implementation
 class GitHubClient:
-    def __init__(self, org_name: str = None, token: str = None):
+    def __init__(self, org_name: Optional[str] = None, token: Optional[str] = None):
         self.org_name = org_name
         self.token = token
         self._github = None

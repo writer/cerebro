@@ -60,13 +60,13 @@ class OrganizationFacade:
         self._pg_repo = None
         self._dynamo_repo = None
 
-    def _get_pg_session(self):
+    def _get_pg_session(self) -> Any:
         """Get PostgreSQL session."""
         from cerebro.core.database import async_session_factory
 
         return async_session_factory()
 
-    def _get_dynamo_repo(self):
+    def _get_dynamo_repo(self) -> Any:
         """Get DynamoDB repository."""
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import OrganizationRepository

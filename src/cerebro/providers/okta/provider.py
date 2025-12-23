@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from datetime import datetime
+from uuid import UUID
 import logging
 
 import httpx
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 class OktaProvider(BaseProvider):
     """Okta provider for collecting users, groups, and applications."""
 
-    def __init__(self, account_id, domain: str, api_token: str = None, **kwargs):
+    def __init__(self, account_id: UUID, domain: str, api_token: Optional[str] = None, **kwargs: Any) -> None:
         """Initialize Okta provider."""
         super().__init__(account_id, **kwargs)
         self.domain = domain

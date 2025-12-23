@@ -423,9 +423,8 @@ class IdentityStitcherAdapter:
                     external_id=principal.external_id,
                     provider=principal.provider,
                     principal_type=principal.principal_type,
-                    name=principal.name,
+                    display_name=principal.name,
                     email=principal.email,
-                    status=principal.status,
                     metadata=principal.metadata or {},
                 )
                 principal_entities.append(principal_entity)

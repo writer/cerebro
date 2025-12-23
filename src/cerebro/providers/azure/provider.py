@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import AsyncGenerator, Dict, List, Optional
+from uuid import UUID
 
 from azure.core.exceptions import AzureError, HttpResponseError
 from azure.identity import DefaultAzureCredential
@@ -34,7 +35,7 @@ class AzureProvider(BaseProvider):
 
     def __init__(
         self,
-        account_id: str,
+        account_id: UUID,
         subscription_id: str,
         **kwargs,
     ) -> None:

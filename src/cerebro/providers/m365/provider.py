@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from datetime import datetime
+from uuid import UUID
 import logging
 
 import httpx
@@ -24,12 +25,12 @@ class M365Provider(BaseProvider):
 
     def __init__(
         self,
-        account_id,
+        account_id: UUID,
         tenant_id: str,
-        client_id: str = None,
-        client_secret: str = None,
-        **kwargs,
-    ):
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize M365 provider."""
         super().__init__(account_id, **kwargs)
         self.tenant_id = tenant_id

@@ -160,7 +160,7 @@ class RequirementMappingService:
         self,
         requirement_id: str,
         framework_name: str,
-        target_frameworks: List[str] = None,
+        target_frameworks: Optional[List[str]] = None,
     ) -> List[Tuple[RequirementDefinition, MappingConfidence]]:
         """Find equivalent requirements across frameworks."""
 

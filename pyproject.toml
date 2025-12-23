@@ -118,6 +118,9 @@ multi_line_output = 3
 
 [tool.mypy]
 python_version = "3.11"
+plugins = ["pydantic.mypy"]
+# Relaxed settings - these cause many errors but don't catch real bugs
+# TODO: Gradually enable these as type coverage improves
 warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -164,43 +167,6 @@ module = [
     "dateutil.*",
 ]
 ignore_missing_imports = true
-
-# Modules with complex types or third-party API interactions - relax type checking
-# TODO: Gradually re-enable type checking for these modules
-[[tool.mypy.overrides]]
-module = [
-    "cerebro.integrations.*",
-    "cerebro.providers.*",
-    "cerebro.ocsf.*",
-    "cerebro.agents.*",
-    "cerebro.analysis.*",
-    "cerebro.analytics.*",
-    "cerebro.auditability.*",
-    "cerebro.testing.*",
-    "cerebro.attack_path.*",
-    "cerebro.infrastructure.*",
-    "cerebro.compliance.*",
-    "cerebro.cli.*",
-    "cerebro.core.*",
-    "cerebro.api.*",
-    "cerebro.tasks.*",
-    "cerebro.query.*",
-    "cerebro.oauth_risk.*",
-    "cerebro.identity_governance.*",
-    "cerebro.collectors.*",
-    "cerebro.notifications.*",
-    "cerebro.rules.*",
-    "cerebro.application.*",
-    "cerebro.telemetry.*",
-    "cerebro.kms.*",
-    "cerebro.plugins.*",
-    "cerebro.automation.*",
-    "cerebro.vendor_management.*",
-    "cerebro.findings.*",
-    "cerebro.domain.*",
-    "cerebro_sdk.*",
-]
-ignore_errors = true
 
 [tool.ruff]
 target-version = "py311"

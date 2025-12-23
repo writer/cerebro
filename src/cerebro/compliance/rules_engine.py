@@ -290,7 +290,7 @@ class PolicyStatementParser:
             conditions=conditions,
             requirements=requirements,
             policy_statement=statement,
-            derived_from_policy=True,
+            derived_from_policy="policy-derived",
         )
 
         return rule
@@ -311,7 +311,7 @@ class NoCodeRulesEngine:
         template_name: str,
         rule_name: str,
         parameters: Dict[str, Any],
-        requirements: List[str] = None,
+        requirements: Optional[List[str]] = None,
     ) -> RuleDefinition:
         """Create a rule from a predefined template."""
 
@@ -358,7 +358,7 @@ class NoCodeRulesEngine:
         description: str,
         conditions: List[Dict[str, Any]],
         evidence_filters: Dict[str, Any],
-        requirements: List[str] = None,
+        requirements: Optional[List[str]] = None,
         severity: str = "medium",
     ) -> RuleDefinition:
         """Create a custom rule with specific conditions."""
@@ -472,7 +472,7 @@ class NoCodeRulesEngine:
         return result
 
     def evaluate_all_rules(
-        self, entity_id: Optional[str] = None, requirements: List[str] = None
+        self, entity_id: Optional[str] = None, requirements: Optional[List[str]] = None
     ) -> List[RuleResult]:
         """Evaluate all enabled rules."""
 

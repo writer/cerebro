@@ -17,6 +17,8 @@ spec = importlib.util.spec_from_file_location(
     "cerebro.compliance._frameworks_defs",
     __file__.rsplit("/", 1)[0] + "/../frameworks.py",
 )
+if spec is None or spec.loader is None:
+    raise ImportError("Could not load frameworks module")
 _frameworks_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(_frameworks_module)
 

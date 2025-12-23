@@ -190,11 +190,11 @@ class ConfigCollector:
 
             if resources:
                 # Bulk upsert resources
-                bulk_result = await self.bulk_ops.bulk_upsert_resources(
+                processed_count = await self.bulk_ops.bulk_upsert_resources(
                     account.account_id, provider.name, resources
                 )
-                result.resources_discovered += bulk_result["processed"]
-                logger.info(f"Bulk processed {bulk_result['processed']} resources")
+                result.resources_discovered += processed_count
+                logger.info(f"Bulk processed {processed_count} resources")
 
         except Exception as e:
             error_msg = f"Failed to collect resources: {e}"
@@ -226,11 +226,11 @@ class ConfigCollector:
 
             if principals:
                 # Bulk upsert principals
-                bulk_result = await self.bulk_ops.bulk_upsert_principals(
+                processed_count = await self.bulk_ops.bulk_upsert_principals(
                     account.account_id, provider.name, principals
                 )
-                result.principals_discovered += bulk_result["processed"]
-                logger.info(f"Bulk processed {bulk_result['processed']} principals")
+                result.principals_discovered += processed_count
+                logger.info(f"Bulk processed {processed_count} principals")
 
         except Exception as e:
             error_msg = f"Failed to collect principals: {e}"
@@ -281,7 +281,7 @@ class ConfigCollector:
                 for i, config_result in enumerate(config_results):
                     resource = resources[i]
 
-                    if isinstance(config_result, Exception):
+                    if isinstance(config_result, BaseException):
                         error_msg = f"Failed to collect config for resource {resource.external_id}: {config_result}"
                         logger.warning(error_msg)
                         result.errors.append(error_msg)

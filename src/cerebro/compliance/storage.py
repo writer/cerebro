@@ -77,6 +77,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
                 metadata.calculate_content_hash(content)
 
             # Store content using hash-based path for deduplication
+            assert metadata.content_hash is not None  # Set by calculate_content_hash
             content_file = self._get_content_path(metadata.content_hash)
             if not content_file.exists():  # Only write if not exists (deduplication)
                 content_file.parent.mkdir(parents=True, exist_ok=True)
@@ -120,6 +121,9 @@ class FileBasedEvidenceRepository(EvidenceRepository):
                 return None
 
             # Get content
+            if not metadata.content_hash:
+                logger.warning(f"No content hash for evidence {evidence_id}")
+                return None
             content_file = self._get_content_path(metadata.content_hash)
             if not content_file.exists():
                 logger.warning(f"Content file not found for evidence {evidence_id}")

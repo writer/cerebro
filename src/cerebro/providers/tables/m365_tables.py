@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 # Real Microsoft Graph client implementation
 class M365Client:
     def __init__(
-        self, tenant_id: str = None, client_id: str = None, client_secret: str = None
+        self,
+        tenant_id: Optional[str] = None,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
     ):
         self.tenant_id = tenant_id
         self.client_id = client_id

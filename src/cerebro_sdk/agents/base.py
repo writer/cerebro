@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Type, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro_sdk.agents.types import AgentInvalidStatusError, AgentValidationError
 
 
-EnumT = TypeVar("EnumT")
+EnumT = TypeVar("EnumT", bound=Enum)
 
 
 class AsyncManagerBase:
@@ -28,7 +29,7 @@ class AsyncManagerBase:
         if isinstance(value, enum_cls):
             return value
         try:
-            return enum_cls(value)  # type: ignore[arg-type]
+            return enum_cls(value)
         except ValueError as exc:  # pragma: no cover - exercised via callers
             raise AgentValidationError(message) from exc
 
@@ -37,6 +38,6 @@ class AsyncManagerBase:
         if isinstance(value, enum_cls):
             return value
         try:
-            return enum_cls(value)  # type: ignore[arg-type]
+            return enum_cls(value)
         except ValueError as exc:
             raise AgentInvalidStatusError(message) from exc

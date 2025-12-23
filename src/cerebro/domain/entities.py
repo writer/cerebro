@@ -223,7 +223,7 @@ class CollectionJobEntity:
     """Domain entity representing a collection job."""
 
     job_id: UUID = field(default_factory=uuid4)
-    org_id: UUID = None
+    org_id: Optional[UUID] = None
     provider: Optional[str] = None
     resource_types: List[str] = field(default_factory=list)
     status: str = "pending"  # pending, running, completed, failed

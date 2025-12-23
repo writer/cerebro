@@ -15,7 +15,7 @@ from ...query.schema import SecurityColumn, ColumnType, SecuritySchema
 
 # Real Okta API client implementation
 class OktaClient:
-    def __init__(self, domain: str = None, api_token: str = None):
+    def __init__(self, domain: Optional[str] = None, api_token: Optional[str] = None):
         self.domain = domain
         self.api_token = api_token
         self.base_url = f"https://{domain}" if domain else None

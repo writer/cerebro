@@ -52,12 +52,19 @@ class AuthenticationMixin:
                 return True
 
             return await self.safe_authenticate(_auth_impl)
+
+    Note: This mixin expects to be used with a class that has a `name` property.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._is_authenticated = False
         self._auth_lock = asyncio.Lock()
+
+    @property
+    def name(self) -> str:
+        """Provider name - to be overridden by subclass."""
+        raise NotImplementedError("Subclass must implement name property")
 
     async def safe_authenticate(self, auth_func, *args, **kwargs) -> bool:
         """Common authentication pattern with error handling and logging."""
@@ -106,6 +113,11 @@ class ResourceInfo:
     resource_type: str
     parent_external_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    region: Optional[str] = None
+    tags: Optional[Dict[str, str]] = None
+    created_at: Optional[datetime] = None
+    account_id: Optional[UUID] = None
+    resource_id: Optional[str] = None
 
 
 @dataclass
@@ -118,6 +130,7 @@ class PrincipalInfo:
     display_name: Optional[str] = None
     is_human: Optional[bool] = None
     metadata: Optional[Dict[str, Any]] = None
+    account_id: Optional[UUID] = None
 
 
 @dataclass
@@ -138,9 +151,10 @@ class IamPermission:
     resource_external_id: Optional[str]
     permission: str
     via: Optional[str] = None
-    effective_at: datetime = None
+    effective_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     is_admin: bool = False
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class BaseProvider(AuthenticationMixin, ABC):

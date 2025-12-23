@@ -400,7 +400,7 @@ class RiskManagementSystem:
         description: str,
         assigned_to: str,
         target_completion_date: datetime,
-        related_controls: List[str] = None,
+        related_controls: Optional[List[str]] = None,
     ) -> RiskTreatment:
         """Create a risk treatment action."""
 
@@ -461,12 +461,12 @@ class RiskManagementSystem:
         # Analyze treatments
         treatment_effectiveness = []
         for treatment in self._treatments.values():
-            risk = self._risks.get(treatment.risk_id)
-            if risk and treatment.actual_risk_reduction:
+            related_risk = self._risks.get(treatment.risk_id)
+            if related_risk and treatment.actual_risk_reduction:
                 treatment_effectiveness.append(
                     {
                         "treatment_title": treatment.title,
-                        "risk_title": risk.title,
+                        "risk_title": related_risk.title,
                         "reduction_achieved": treatment.actual_risk_reduction,
                         "cost": treatment.actual_cost,
                     }
