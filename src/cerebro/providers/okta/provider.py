@@ -29,12 +29,19 @@ class OktaProvider(BaseProvider):
         self.domain = domain
         self.api_token = api_token or getattr(settings, "okta_api_token", None)
         self.base_url = f"https://{domain}"
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: Optional[httpx.AsyncClient] = None  # type: ignore[assignment]
 
     @property
     def name(self) -> str:
         """Get provider name."""
         return "okta"
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        """Get the authenticated HTTP client, raising if not authenticated."""
+        if self._client is None:
+            raise ProviderError("Okta provider not authenticated")
+        return self._client
 
     async def authenticate(self) -> bool:
         """Authenticate with Okta."""
@@ -53,7 +60,7 @@ class OktaProvider(BaseProvider):
             )
 
             # Test authentication by getting org info
-            response = await self._client.get("/api/v1/org")
+            response = await self.client.get("/api/v1/org")
             response.raise_for_status()
 
             org_info = response.json()
@@ -99,7 +106,7 @@ class OktaProvider(BaseProvider):
     async def _discover_applications(self) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Okta applications."""
         try:
-            response = await self._client.get("/api/v1/apps")
+            response = await self.client.get("/api/v1/apps")
             response.raise_for_status()
             apps = response.json()
 
@@ -127,7 +134,7 @@ class OktaProvider(BaseProvider):
             policy_types = ["OKTA_SIGN_ON", "PASSWORD", "MFA_ENROLL", "ACCESS_POLICY"]
 
             for policy_type in policy_types:
-                response = await self._client.get(
+                response = await self.client.get(
                     f"/api/v1/policies?type={policy_type}"
                 )
                 response.raise_for_status()
@@ -153,7 +160,7 @@ class OktaProvider(BaseProvider):
     async def _discover_network_zones(self) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Okta network zones."""
         try:
-            response = await self._client.get("/api/v1/zones")
+            response = await self.client.get("/api/v1/zones")
             response.raise_for_status()
             zones = response.json()
 
@@ -178,10 +185,10 @@ class OktaProvider(BaseProvider):
         """Discover Okta users as resources."""
         try:
             url = "/api/v1/users"
-            params = {"limit": 200}
+            params: Optional[Dict[str, int]] = {"limit": 200}
 
             while url:
-                response = await self._client.get(
+                response = await self.client.get(
                     url,
                     params=params if not url.startswith("http") else None,
                 )
@@ -231,7 +238,7 @@ class OktaProvider(BaseProvider):
 
         # Discover users
         try:
-            response = await self._client.get("/api/v1/users")
+            response = await self.client.get("/api/v1/users")
             response.raise_for_status()
             users = response.json()
 
@@ -259,7 +266,7 @@ class OktaProvider(BaseProvider):
 
         # Discover groups
         try:
-            response = await self._client.get("/api/v1/groups")
+            response = await self.client.get("/api/v1/groups")
             response.raise_for_status()
             groups = response.json()
 
@@ -309,12 +316,12 @@ class OktaProvider(BaseProvider):
     async def _get_app_config(self, app_id: str) -> Dict[str, Any]:
         """Get application configuration."""
         try:
-            response = await self._client.get(f"/api/v1/apps/{app_id}")
+            response = await self.client.get(f"/api/v1/apps/{app_id}")
             response.raise_for_status()
             app = response.json()
 
             # Get app users
-            users_response = await self._client.get(f"/api/v1/apps/{app_id}/users")
+            users_response = await self.client.get(f"/api/v1/apps/{app_id}/users")
             users_response.raise_for_status()
             app_users = users_response.json()
 
@@ -339,7 +346,7 @@ class OktaProvider(BaseProvider):
     async def _get_user_config(self, user_id: str) -> Dict[str, Any]:
         """Get detailed user configuration for identity hygiene checks."""
         try:
-            user_response = await self._client.get(f"/api/v1/users/{user_id}")
+            user_response = await self.client.get(f"/api/v1/users/{user_id}")
             user_response.raise_for_status()
             user = user_response.json()
 
@@ -442,7 +449,7 @@ class OktaProvider(BaseProvider):
     async def _safe_get(self, path: str) -> Optional[Any]:
         """Fetch auxiliary Okta data with graceful fallback."""
         try:
-            response = await self._client.get(path)
+            response = await self.client.get(path)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as exc:
@@ -460,12 +467,12 @@ class OktaProvider(BaseProvider):
     async def _get_policy_config(self, policy_id: str) -> Dict[str, Any]:
         """Get policy configuration."""
         try:
-            response = await self._client.get(f"/api/v1/policies/{policy_id}")
+            response = await self.client.get(f"/api/v1/policies/{policy_id}")
             response.raise_for_status()
             policy = response.json()
 
             # Get policy rules
-            rules_response = await self._client.get(
+            rules_response = await self.client.get(
                 f"/api/v1/policies/{policy_id}/rules"
             )
             rules_response.raise_for_status()
@@ -491,7 +498,7 @@ class OktaProvider(BaseProvider):
     async def _get_zone_config(self, zone_id: str) -> Dict[str, Any]:
         """Get network zone configuration."""
         try:
-            response = await self._client.get(f"/api/v1/zones/{zone_id}")
+            response = await self.client.get(f"/api/v1/zones/{zone_id}")
             response.raise_for_status()
             zone = response.json()
 
@@ -520,7 +527,7 @@ class OktaProvider(BaseProvider):
 
         try:
             # Get user-group memberships
-            users_response = await self._client.get("/api/v1/users")
+            users_response = await self.client.get("/api/v1/users")
             users_response.raise_for_status()
             users = users_response.json()
 
@@ -528,7 +535,7 @@ class OktaProvider(BaseProvider):
                 user_id = user["id"]
 
                 # Get user's group memberships
-                groups_response = await self._client.get(
+                groups_response = await self.client.get(
                     f"/api/v1/users/{user_id}/groups"
                 )
                 groups_response.raise_for_status()
@@ -546,7 +553,7 @@ class OktaProvider(BaseProvider):
                     )
 
                 # Get user's app assignments
-                apps_response = await self._client.get(
+                apps_response = await self.client.get(
                     f"/api/v1/users/{user_id}/appLinks"
                 )
                 apps_response.raise_for_status()

@@ -135,7 +135,7 @@ class FindingStatusUpdateTool(Tool):
                 )
 
                 result = await session.execute(query)
-                finding = result.scalar_one_or_none()
+                finding: Optional[Finding] = result.scalar_one_or_none()  # type: ignore[assignment]
 
                 if not finding:
                     return ToolResult(

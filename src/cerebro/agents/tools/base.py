@@ -17,7 +17,7 @@ import os
 import time
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
 from uuid import UUID
 
 import anyio
@@ -85,18 +85,18 @@ class AgentContext:
     agent_type: str
 
     # Security context
-    provider_scope: List[str] = None  # aws, github, gcp, azure
-    finding_ids: List[UUID] = None
+    provider_scope: Optional[List[str]] = None  # aws, github, gcp, azure
+    finding_ids: Optional[List[UUID]] = None
     incident_id: Optional[UUID] = None
-    memory_entries: List[Dict[str, Any]] = None
+    memory_entries: Optional[List[Dict[str, Any]]] = None
 
     # Permissions and policies
     permission_level: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY
-    cel_context: Dict[str, Any] = None
+    cel_context: Optional[Dict[str, Any]] = None
 
     # Execution controls
     dry_run: bool = True  # Default to dry-run for safety
-    roles: List[str] = None  # User roles for RBAC
+    roles: Optional[List[str]] = None  # User roles for RBAC
 
     def __post_init__(self):
         if self.provider_scope is None:
@@ -110,7 +110,7 @@ class AgentContext:
         if self.memory_entries is None:
             self.memory_entries = []
 
-    def build_cel_context(self, inputs: Dict[str, Any] = None) -> Dict[str, Any]:
+    def build_cel_context(self, inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Build CEL evaluation context with session and input data."""
         context = {
             "org_id": str(self.org_id),
@@ -125,11 +125,12 @@ class AgentContext:
         }
 
         # Add custom context
-        context.update(self.cel_context)
+        if self.cel_context:
+            context.update(self.cel_context)
 
         # Add tool inputs if provided
         if inputs:
-            context["inputs"] = inputs
+            context["inputs"] = inputs  # type: ignore[assignment]
 
         return context
 
@@ -349,6 +350,9 @@ class ToolExecutor:
     Handles CEL policy enforcement, approval workflows, audit logging,
     and error handling for all tool invocations.
     """
+
+    _rate_lock: asyncio.Lock
+    _rate_buckets: Dict[str, Any]
 
     def __init__(self, rule_engine: Optional[RuleEngine] = None):
         self.rule_engine = rule_engine or RuleEngine()
@@ -996,7 +1000,7 @@ def tool(
     permission_level: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY,
     cel_policy_key: Optional[str] = None,
     cel_expression: Optional[str] = None,
-) -> callable:
+) -> Callable[[Any], Any]:
     """
     Decorator to register a function as a tool.
 
@@ -1010,11 +1014,11 @@ def tool(
             return await func(*args, **kwargs)
 
         # Add tool metadata to function
-        wrapper._tool_name = name
-        wrapper._tool_description = description
-        wrapper._tool_permission_level = permission_level
-        wrapper._tool_cel_policy_key = cel_policy_key
-        wrapper._tool_cel_expression = cel_expression
+        setattr(wrapper, "_tool_name", name)
+        setattr(wrapper, "_tool_description", description)
+        setattr(wrapper, "_tool_permission_level", permission_level)
+        setattr(wrapper, "_tool_cel_policy_key", cel_policy_key)
+        setattr(wrapper, "_tool_cel_expression", cel_expression)
 
         return wrapper
 
