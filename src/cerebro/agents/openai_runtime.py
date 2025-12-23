@@ -210,7 +210,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 session=session,
                 memory_snippets=memory_context.prompt_snippets,
             ),
-            tools=tools,
+            tools=tools,  # type: ignore[arg-type]
             model=self.model,
         )
 
@@ -261,7 +261,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                     if event.name == "tool_called":
                         tool_calls_count += 1
                         try:
-                            payload = run_item.raw_item.model_dump(exclude_unset=True)  # type: ignore[attr-defined]
+                            payload = run_item.raw_item.model_dump(exclude_unset=True)  # type: ignore[union-attr]
                         except AttributeError:
                             payload = {}
 

@@ -33,7 +33,7 @@ class OpenAIAgentConversationSession(Session):
             async with engine.begin() as connection:
                 await connection.run_sync(
                     Base.metadata.create_all,
-                    tables=[AgentConversationItem.__table__],
+                    tables=[AgentConversationItem.__table__],  # type: ignore[list-item]
                 )
             cls._tables_ready = True
 
@@ -110,7 +110,7 @@ class OpenAIAgentConversationSession(Session):
     @staticmethod
     def _normalize_item(item: TResponseInputItem) -> Dict[str, Any]:
         if hasattr(item, "model_dump"):
-            return item.model_dump(exclude_unset=True)  # type: ignore[return-value]
+            return item.model_dump(exclude_unset=True)  # type: ignore[union-attr,return-value]
         if isinstance(item, dict):
             return dict(item)
         return {"value": item}

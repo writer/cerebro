@@ -497,7 +497,7 @@ def status(
 
         # Session context info
         if hasattr(session, "context") and session.context:
-            context_keys = list(session.context.keys())
+            context_keys = [k for k in session.context.keys()]
             table.add_row("Context Keys", f"{len(context_keys)} keys")
 
         console.print(table)
@@ -805,7 +805,7 @@ def pending(
                         else "Unknown"
                     ),
                     approval.requested_by,
-                    approval.risk_level.upper(),
+                    (approval.risk_level or "unknown").upper(),
                     approval.requested_at.strftime("%m-%d %H:%M"),
                     expires_str,
                     justification,

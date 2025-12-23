@@ -186,6 +186,18 @@ class AgentSession(Base):
     def session_id(self, value: UUID) -> None:
         self.id = value
 
+    @property
+    def message_count(self) -> int:
+        """Return the number of messages in this session."""
+        return len(self.messages) if self.messages else 0
+
+    @property
+    def last_activity_at(self) -> Optional[datetime]:
+        """Return the timestamp of the last activity in this session."""
+        if self.messages:
+            return max(m.created_at for m in self.messages)
+        return self.created_at
+
 
 class AgentMessage(Base):
     """
@@ -426,6 +438,11 @@ class ToolInvocation(Base):
     def invocation_id(self, value: UUID) -> None:  # pragma: no cover - legacy alias
         self.id = value
 
+    @property
+    def input(self) -> Dict[str, Any]:
+        """Alias for input_data for compatibility."""
+        return self.input_data
+
 
 class ToolApproval(Base):
     """
@@ -493,6 +510,18 @@ class ToolApproval(Base):
         "ToolInvocation",
         back_populates="approval",
     )
+
+    @property
+    def risk_level(self) -> Optional[str]:
+        """Extract risk level from risk_assessment."""
+        if self.risk_assessment:
+            return self.risk_assessment.get("level")
+        return None
+
+    @property
+    def justification(self) -> Optional[str]:
+        """Alias for decision_reason for compatibility."""
+        return self.decision_reason
 
 
 class AgentReviewTask(Base):
