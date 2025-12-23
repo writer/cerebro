@@ -46,6 +46,20 @@ class GitHubProvider(BaseProvider):
         """Get provider name."""
         return "github"
 
+    @property
+    def github(self) -> Github:
+        """Get the authenticated GitHub client, raising if not authenticated."""
+        if self._github is None:
+            raise ProviderError("GitHub provider not authenticated")
+        return self._github
+
+    @property
+    def org(self) -> Organization:
+        """Get the authenticated organization, raising if not authenticated."""
+        if self._org is None:
+            raise ProviderError("GitHub provider not authenticated")
+        return self._org
+
     async def authenticate(self) -> bool:
         """Authenticate with GitHub and prime org context."""
         try:
@@ -86,16 +100,16 @@ class GitHubProvider(BaseProvider):
         # Organization resource
         if not resource_types or "github.org" in resource_types:
             org_metadata = {
-                "id": getattr(self._org, "id", None),
-                "login": self._org.login,
-                "description": getattr(self._org, "description", None),
-                "html_url": getattr(self._org, "html_url", None),
-                "is_verified": getattr(self._org, "is_verified", None),
+                "id": getattr(self.org, "id", None),
+                "login": self.org.login,
+                "description": getattr(self.org, "description", None),
+                "html_url": getattr(self.org, "html_url", None),
+                "is_verified": getattr(self.org, "is_verified", None),
             }
 
             yield ResourceInfo(
-                external_id=self._org.login,
-                name=self._org.name or self._org.login,
+                external_id=self.org.login,
+                name=self.org.name or self.org.login,
                 resource_type="github.org",
                 metadata=org_metadata,
             )
@@ -104,7 +118,7 @@ class GitHubProvider(BaseProvider):
         if not resource_types or "github.repo" in resource_types:
 
             def _get_repos():
-                return list(self._org.get_repos())
+                return list(self.org.get_repos())
 
             repos = await call_sync_with_retries(
                 _get_repos,
@@ -130,7 +144,7 @@ class GitHubProvider(BaseProvider):
         if not resource_types or "github.team" in resource_types:
 
             def _get_teams():
-                return list(self._org.get_teams())
+                return list(self.org.get_teams())
 
             teams = await call_sync_with_retries(
                 _get_teams,
@@ -162,7 +176,7 @@ class GitHubProvider(BaseProvider):
 
         # Discover organization members
         def _get_members():
-            return list(self._org.get_members())
+            return list(self.org.get_members())
 
         members = await call_sync_with_retries(
             _get_members,
@@ -186,7 +200,7 @@ class GitHubProvider(BaseProvider):
 
         # Discover teams (as group principals)
         def _get_teams():
-            return list(self._org.get_teams())
+            return list(self.org.get_teams())
 
         teams = await call_sync_with_retries(
             _get_teams,
@@ -218,7 +232,7 @@ class GitHubProvider(BaseProvider):
         if resource.resource_type == "github.repo":
 
             def _get_repo_config():
-                repo = self._github.get_repo(resource.external_id)
+                repo = self.github.get_repo(resource.external_id)
 
                 # Get branch protection for default branch
                 branch_protection = None
@@ -245,9 +259,9 @@ class GitHubProvider(BaseProvider):
                                 else False
                             ),
                             "enforceAdmins": (
-                                protection.enforce_admins.enabled
-                                if protection.enforce_admins
-                                else False
+                                protection.enforce_admins.enabled  # type: ignore[attr-defined]
+                                if protection.enforce_admins and hasattr(protection.enforce_admins, "enabled")
+                                else bool(protection.enforce_admins)
                             ),
                         }
                 except Exception as e:
@@ -307,7 +321,7 @@ class GitHubProvider(BaseProvider):
         elif resource.resource_type == "github.team":
 
             def _get_team_config():
-                team = self._org.get_team(int(resource.external_id))
+                team = self.org.get_team(int(resource.external_id))
                 return {
                     "name": team.name,
                     "slug": team.slug,
@@ -347,17 +361,19 @@ class GitHubProvider(BaseProvider):
         if resource and resource.resource_type == "github.repo":
             # Repository-specific permissions
             def _get_repo_permissions():
-                repo = self._github.get_repo(resource.external_id)
+                repo = self.github.get_repo(resource.external_id)
                 collaborators = repo.get_collaborators()
 
                 permissions = []
                 for collab in collaborators:
                     perm = repo.get_collaborator_permission(collab)
+                    # perm can be a string or an object with permission attribute
+                    perm_str = perm.permission if hasattr(perm, "permission") else str(perm)
                     permissions.append(
                         {
                             "principal": collab.login,
-                            "permission": perm.permission,
-                            "is_admin": perm.permission == "admin",
+                            "permission": perm_str,
+                            "is_admin": perm_str == "admin",
                         }
                     )
 
@@ -380,11 +396,11 @@ class GitHubProvider(BaseProvider):
 
         # Organization-level permissions
         def _get_org_permissions():
-            members = self._org.get_members()
+            members = self.org.get_members()
             permissions = []
 
             for member in members:
-                membership = self._org.get_membership(member)
+                membership = self.org.get_membership(member)  # type: ignore[attr-defined]
                 permissions.append(
                     {
                         "principal": member.login,

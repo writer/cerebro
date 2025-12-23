@@ -111,6 +111,27 @@ class GoogleWorkspaceProvider(BaseProvider):
         """Get provider name."""
         return "workspace"
 
+    @property
+    def admin_service(self) -> Any:
+        """Get the Admin SDK service, raising if not authenticated."""
+        if self._admin_service is None:
+            raise ProviderError("Google Workspace provider not authenticated")
+        return self._admin_service
+
+    @property
+    def reports_service(self) -> Any:
+        """Get the Reports service, raising if not authenticated."""
+        if self._reports_service is None:
+            raise ProviderError("Google Workspace provider not authenticated")
+        return self._reports_service
+
+    @property
+    def groups_settings_service(self) -> Any:
+        """Get the Groups Settings service, raising if not authenticated."""
+        if self._groups_settings_service is None:
+            raise ProviderError("Google Workspace provider not authenticated")
+        return self._groups_settings_service
+
     async def authenticate(self) -> bool:
         """
         Authenticate using service account with domain-wide delegation.
@@ -139,7 +160,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             loop = asyncio.get_event_loop()
 
             # Admin SDK Directory API
-            self._admin_service = await loop.run_in_executor(
+            self._admin_service = await loop.run_in_executor(  # type: ignore[func-returns-value]
                 None,
                 lambda: build(
                     "admin",
@@ -150,7 +171,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             )
 
             # Admin SDK Reports API
-            self._reports_service = await loop.run_in_executor(
+            self._reports_service = await loop.run_in_executor(  # type: ignore[func-returns-value]
                 None,
                 lambda: build(
                     "admin",
@@ -161,7 +182,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             )
 
             # Groups Settings API
-            self._groups_settings_service = await loop.run_in_executor(
+            self._groups_settings_service = await loop.run_in_executor(  # type: ignore[func-returns-value]
                 None,
                 lambda: build(
                     "groupssettings",
@@ -174,7 +195,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             # Test authentication with a simple API call
             await loop.run_in_executor(
                 None,
-                lambda: self._admin_service.users()
+                lambda: self.admin_service.users()
                 .list(domain=self.domain, maxResults=1)
                 .execute(),
             )
@@ -232,7 +253,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
-                lambda: self._admin_service.orgunits()
+                lambda: self.admin_service.orgunits()
                 .list(customerId="my_customer", type="all")
                 .execute(),
             )
@@ -279,7 +300,7 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self._admin_service.chromeosdevices()
+                    lambda: self.admin_service.chromeosdevices()
                     .list(**request_params)
                     .execute(),
                 )
@@ -412,7 +433,7 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self._admin_service.mobiledevices()
+                    lambda: self.admin_service.mobiledevices()
                     .list(**request_params)
                     .execute(),
                 )
@@ -513,7 +534,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
-                lambda: self._admin_service.domains()
+                lambda: self.admin_service.domains()
                 .list(customer="my_customer")
                 .execute(),
             )
@@ -552,7 +573,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
-                lambda: self._admin_service.roles()
+                lambda: self.admin_service.roles()
                 .list(customer="my_customer")
                 .execute(),
             )
@@ -626,7 +647,7 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self._admin_service.users()
+                    lambda: self.admin_service.users()
                     .list(**request_params)
                     .execute(),
                 )
@@ -743,7 +764,7 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self._admin_service.groups()
+                    lambda: self.admin_service.groups()
                     .list(**request_params)
                     .execute(),
                 )
@@ -756,7 +777,7 @@ class GoogleWorkspaceProvider(BaseProvider):
                     try:
                         members_result = await loop.run_in_executor(
                             None,
-                            lambda: self._admin_service.members()
+                            lambda: self.admin_service.members()
                             .list(groupKey=group_email)
                             .execute(),
                         )
@@ -917,7 +938,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             # Get all admin roles
             roles_result = await loop.run_in_executor(
                 None,
-                lambda: self._admin_service.roles()
+                lambda: self.admin_service.roles()
                 .list(customer="my_customer")
                 .execute(),
             )
@@ -931,7 +952,7 @@ class GoogleWorkspaceProvider(BaseProvider):
                 try:
                     assignments_result = await loop.run_in_executor(
                         None,
-                        lambda: self._admin_service.roleAssignments()
+                        lambda: self.admin_service.roleAssignments()
                         .list(customer="my_customer", roleId=role_id)
                         .execute(),
                     )
@@ -971,7 +992,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             # Get all groups
             groups_result = await loop.run_in_executor(
                 None,
-                lambda: self._admin_service.groups().list(domain=self.domain).execute(),
+                lambda: self.admin_service.groups().list(domain=self.domain).execute(),
             )
 
             for group in groups_result.get("groups", []):
@@ -982,7 +1003,7 @@ class GoogleWorkspaceProvider(BaseProvider):
                 try:
                     members_result = await loop.run_in_executor(
                         None,
-                        lambda: self._admin_service.members()
+                        lambda: self.admin_service.members()
                         .list(groupKey=group_email)
                         .execute(),
                     )

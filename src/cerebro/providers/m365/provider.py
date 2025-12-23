@@ -39,12 +39,19 @@ class M365Provider(BaseProvider):
             settings, "m365_client_secret", None
         )
         self._access_token: Optional[str] = None
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: Optional[httpx.AsyncClient] = None  # type: ignore[assignment]
 
     @property
     def name(self) -> str:
         """Get provider name."""
         return "m365"
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        """Get the authenticated HTTP client, raising if not authenticated."""
+        if self._client is None:
+            raise ProviderError("M365 provider not authenticated")
+        return self._client
 
     async def authenticate(self) -> bool:
         """Authenticate with Microsoft 365."""
@@ -81,7 +88,7 @@ class M365Provider(BaseProvider):
             )
 
             # Test authentication
-            response = await self._client.get("/organization")
+            response = await self.client.get("/organization")
             response.raise_for_status()
 
             logger.info(f"Authenticated with M365 tenant: {self.tenant_id}")
@@ -124,7 +131,7 @@ class M365Provider(BaseProvider):
     async def _discover_sharepoint_sites(self) -> AsyncGenerator[ResourceInfo, None]:
         """Discover SharePoint sites."""
         try:
-            response = await self._client.get("/sites")
+            response = await self.client.get("/sites")
             response.raise_for_status()
             sites = response.json()
 
@@ -146,7 +153,7 @@ class M365Provider(BaseProvider):
     async def _discover_teams(self) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Microsoft Teams."""
         try:
-            response = await self._client.get("/teams")
+            response = await self.client.get("/teams")
             response.raise_for_status()
             teams = response.json()
 
@@ -169,7 +176,7 @@ class M365Provider(BaseProvider):
     async def _discover_mailboxes(self) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Exchange mailboxes."""
         try:
-            response = await self._client.get("/users")
+            response = await self.client.get("/users")
             response.raise_for_status()
             users = response.json()
 
@@ -199,7 +206,7 @@ class M365Provider(BaseProvider):
 
         # Discover users
         try:
-            response = await self._client.get("/users")
+            response = await self.client.get("/users")
             response.raise_for_status()
             users = response.json()
 
@@ -227,7 +234,7 @@ class M365Provider(BaseProvider):
 
         # Discover groups
         try:
-            response = await self._client.get("/groups")
+            response = await self.client.get("/groups")
             response.raise_for_status()
             groups = response.json()
 
@@ -278,12 +285,12 @@ class M365Provider(BaseProvider):
         """Get SharePoint site configuration."""
         try:
             # Get site details
-            response = await self._client.get(f"/sites/{site_id}")
+            response = await self.client.get(f"/sites/{site_id}")
             response.raise_for_status()
             site = response.json()
 
             # Get site permissions
-            perms_response = await self._client.get(f"/sites/{site_id}/permissions")
+            perms_response = await self.client.get(f"/sites/{site_id}/permissions")
             perms_response.raise_for_status()
             permissions = perms_response.json()
 
@@ -306,13 +313,13 @@ class M365Provider(BaseProvider):
         """Discover Microsoft 365 users as resources."""
         try:
             url = "/users"
-            params = {
+            params: Optional[Dict[str, Any]] = {
                 "$top": 100,
                 "$select": "id,displayName,userPrincipalName,mail,userType,accountEnabled,signInActivity",
             }
 
             while url:
-                response = await self._client.get(
+                response = await self.client.get(
                     url,
                     params=params if not url.startswith("http") else None,
                 )
@@ -350,7 +357,7 @@ class M365Provider(BaseProvider):
                 "createdDateTime,lastPasswordChangeDateTime,signInActivity,usageLocation,department,jobTitle"
             )
 
-            user_response = await self._client.get(
+            user_response = await self.client.get(
                 f"/users/{user_id}",
                 params={"$select": select_fields},
             )
@@ -442,7 +449,7 @@ class M365Provider(BaseProvider):
     ) -> Optional[Dict[str, Any]]:
         """Perform Graph API GET with graceful handling."""
         try:
-            response = await self._client.get(path, params=params)
+            response = await self.client.get(path, params=params)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as exc:
@@ -458,12 +465,12 @@ class M365Provider(BaseProvider):
     async def _get_teams_config(self, team_id: str) -> Dict[str, Any]:
         """Get Teams configuration."""
         try:
-            response = await self._client.get(f"/teams/{team_id}")
+            response = await self.client.get(f"/teams/{team_id}")
             response.raise_for_status()
             team = response.json()
 
             # Get team members
-            members_response = await self._client.get(f"/teams/{team_id}/members")
+            members_response = await self.client.get(f"/teams/{team_id}/members")
             members_response.raise_for_status()
             members = members_response.json()
 
@@ -489,7 +496,7 @@ class M365Provider(BaseProvider):
         """Get Exchange mailbox configuration."""
         try:
             # Get user details
-            response = await self._client.get(f"/users/{user_id}")
+            response = await self.client.get(f"/users/{user_id}")
             response.raise_for_status()
             user = response.json()
 
@@ -520,13 +527,13 @@ class M365Provider(BaseProvider):
 
         try:
             # Get directory role assignments
-            response = await self._client.get("/directoryRoles")
+            response = await self.client.get("/directoryRoles")
             response.raise_for_status()
             roles = response.json()
 
             for role in roles.get("value", []):
                 # Get role members
-                members_response = await self._client.get(
+                members_response = await self.client.get(
                     f"/directoryRoles/{role['id']}/members"
                 )
                 members_response.raise_for_status()

@@ -63,6 +63,34 @@ class KubernetesProvider(BaseProvider):
     def name(self) -> str:
         return "kubernetes"
 
+    @property
+    def core(self) -> client.CoreV1Api:
+        """Get the CoreV1Api client, raising if not authenticated."""
+        if self._core is None:
+            raise ProviderError("Kubernetes provider not authenticated")
+        return self._core
+
+    @property
+    def apps(self) -> client.AppsV1Api:
+        """Get the AppsV1Api client, raising if not authenticated."""
+        if self._apps is None:
+            raise ProviderError("Kubernetes provider not authenticated")
+        return self._apps
+
+    @property
+    def networking(self) -> client.NetworkingV1Api:
+        """Get the NetworkingV1Api client, raising if not authenticated."""
+        if self._networking is None:
+            raise ProviderError("Kubernetes provider not authenticated")
+        return self._networking
+
+    @property
+    def rbac(self) -> client.RbacAuthorizationV1Api:
+        """Get the RbacAuthorizationV1Api client, raising if not authenticated."""
+        if self._rbac is None:
+            raise ProviderError("Kubernetes provider not authenticated")
+        return self._rbac
+
     async def authenticate(self) -> bool:
         if not _K8S_AVAILABLE:
             raise ProviderError(
@@ -149,7 +177,7 @@ class KubernetesProvider(BaseProvider):
 
         if not resource_types or "k8s.namespace" in resource_types:
             namespaces = await call_sync_with_retries(
-                lambda: self._core.list_namespace(),
+                lambda: self.core.list_namespace(),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -173,7 +201,7 @@ class KubernetesProvider(BaseProvider):
 
         if not resource_types or "k8s.node" in resource_types:
             nodes = await call_sync_with_retries(
-                lambda: self._core.list_node(),
+                lambda: self.core.list_node(),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -218,7 +246,7 @@ class KubernetesProvider(BaseProvider):
 
         if not resource_types or "k8s.pod" in resource_types:
             pods = await call_sync_with_retries(
-                lambda: self._core.list_pod_for_all_namespaces(),
+                lambda: self.core.list_pod_for_all_namespaces(),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -242,7 +270,7 @@ class KubernetesProvider(BaseProvider):
 
         if not resource_types or "k8s.service" in resource_types:
             services = await call_sync_with_retries(
-                lambda: self._core.list_service_for_all_namespaces(),
+                lambda: self.core.list_service_for_all_namespaces(),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -294,7 +322,7 @@ class KubernetesProvider(BaseProvider):
 
         if not resource_types or "k8s.ingress" in resource_types:
             ingresses = await call_sync_with_retries(
-                lambda: self._networking.list_ingress_for_all_namespaces(),
+                lambda: self.networking.list_ingress_for_all_namespaces(),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -321,7 +349,7 @@ class KubernetesProvider(BaseProvider):
             not resource_types or "k8s.network_policy" in resource_types
         ) and self._networking:
             policies = await call_sync_with_retries(
-                lambda: self._networking.list_network_policy_for_all_namespaces(),
+                lambda: self.networking.list_network_policy_for_all_namespaces(),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -341,7 +369,7 @@ class KubernetesProvider(BaseProvider):
 
         if not resource_types or "k8s.cluster_role_binding" in resource_types:
             cluster_role_bindings = await call_sync_with_retries(
-                lambda: self._rbac.list_cluster_role_binding(),
+                lambda: self.rbac.list_cluster_role_binding(),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -363,7 +391,7 @@ class KubernetesProvider(BaseProvider):
             await self.authenticate()
 
         service_accounts = await call_sync_with_retries(
-            lambda: self._core.list_service_account_for_all_namespaces(),
+            lambda: self.core.list_service_account_for_all_namespaces(),
             exceptions=(ApiException,),
             logger=logger,
         )
@@ -403,7 +431,7 @@ class KubernetesProvider(BaseProvider):
             }
         elif resource.resource_type == "k8s.namespace":
             namespace = await call_sync_with_retries(
-                lambda: self._core.read_namespace(name=resource.external_id),
+                lambda: self.core.read_namespace(name=resource.external_id),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -411,7 +439,7 @@ class KubernetesProvider(BaseProvider):
             if self._networking:
                 try:
                     policy_list = await call_sync_with_retries(
-                        lambda: self._networking.list_namespaced_network_policy(
+                        lambda: self.networking.list_namespaced_network_policy(
                             namespace=resource.external_id
                         ),
                         exceptions=(ApiException,),
@@ -432,7 +460,7 @@ class KubernetesProvider(BaseProvider):
         elif resource.resource_type == "k8s.pod":
             namespace, name = self._split_namespaced_name(resource.external_id)
             pod = await call_sync_with_retries(
-                lambda: self._core.read_namespaced_pod(name=name, namespace=namespace),
+                lambda: self.core.read_namespaced_pod(name=name, namespace=namespace),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -440,7 +468,7 @@ class KubernetesProvider(BaseProvider):
         elif resource.resource_type == "k8s.ingress":
             namespace, name = self._split_namespaced_name(resource.external_id)
             ingress = await call_sync_with_retries(
-                lambda: self._networking.read_namespaced_ingress(
+                lambda: self.networking.read_namespaced_ingress(
                     name=name, namespace=namespace
                 ),
                 exceptions=(ApiException,),
@@ -450,7 +478,7 @@ class KubernetesProvider(BaseProvider):
         elif resource.resource_type == "k8s.service":
             namespace, name = self._split_namespaced_name(resource.external_id)
             service = await call_sync_with_retries(
-                lambda: self._core.read_namespaced_service(
+                lambda: self.core.read_namespaced_service(
                     name=name, namespace=namespace
                 ),
                 exceptions=(ApiException,),
@@ -459,14 +487,14 @@ class KubernetesProvider(BaseProvider):
             normalized_config = self._build_service_config(service)
         elif resource.resource_type == "k8s.node":
             node = await call_sync_with_retries(
-                lambda: self._core.read_node(name=resource.external_id),
+                lambda: self.core.read_node(name=resource.external_id),
                 exceptions=(ApiException,),
                 logger=logger,
             )
             normalized_config = self._build_node_config(node)
         elif resource.resource_type == "k8s.cluster_role_binding":
             binding = await call_sync_with_retries(
-                lambda: self._rbac.read_cluster_role_binding(name=resource.external_id),
+                lambda: self.rbac.read_cluster_role_binding(name=resource.external_id),
                 exceptions=(ApiException,),
                 logger=logger,
             )
@@ -474,7 +502,7 @@ class KubernetesProvider(BaseProvider):
         elif resource.resource_type == "k8s.network_policy" and self._networking:
             namespace, name = self._split_namespaced_name(resource.external_id)
             policy = await call_sync_with_retries(
-                lambda: self._networking.read_namespaced_network_policy(
+                lambda: self.networking.read_namespaced_network_policy(
                     name=name, namespace=namespace
                 ),
                 exceptions=(ApiException,),
