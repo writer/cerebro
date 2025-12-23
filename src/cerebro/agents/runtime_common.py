@@ -66,18 +66,22 @@ class AgentRuntimePersistenceMixin:
             system_context_tool = GetSystemContextTool()
 
             org_context_result = await org_context_tool.execute(
+                inputs=org_context_tool.input_model(
+                    include_repositories=True,
+                    include_providers=True,
+                    include_statistics=True,
+                    include_tools=True,
+                ),
                 context=temp_context,
-                include_repositories=True,
-                include_providers=True,
-                include_statistics=True,
-                include_tools=True,
             )
             system_context_result = await system_context_tool.execute(
+                inputs=system_context_tool.input_model(
+                    include_database=True,
+                    include_environment=True,
+                    include_providers=True,
+                    include_health=True,
+                ),
                 context=temp_context,
-                include_database=True,
-                include_environment=True,
-                include_providers=True,
-                include_health=True,
             )
 
             if org_context_result.success and system_context_result.success:
@@ -86,15 +90,16 @@ class AgentRuntimePersistenceMixin:
                     system_context_result.data
                 )
 
+                org_data = org_context_result.data or {}
                 logger.info(
                     "Auto-loaded context for agent session",
                     org_id=org_id,
                     agent_type=agent_type.value,
-                    org_name=org_context_result.data.get("org_name"),
+                    org_name=org_data.get("org_name"),
                     providers_count=len(
-                        org_context_result.data.get("providers_connected", [])
+                        org_data.get("providers_connected", [])
                     ),
-                    tools_count=org_context_result.data.get("agent_tools_count"),
+                    tools_count=org_data.get("agent_tools_count"),
                 )
             else:
                 logger.warning(
@@ -341,23 +346,23 @@ class AgentRuntimePersistenceMixin:
         try:
             store = await AgentMemoryStore.shared()
             limit = min(limit, settings.agent_memory_max_snippets)
-            entries = await store.retrieve_relevant(
+            # retrieve_relevant returns List[str] (the snippets themselves)
+            prompt_snippets = await store.retrieve_relevant(
                 session=session,
                 query=query,
                 limit=limit,
             )
-            prompt_snippets = [entry["snippet"] for entry in entries]
-            if entries:
+            if prompt_snippets:
                 await AgentAnalyticsService.record_event(
                     org_id=session.org_id,
                     session_id=session.id,
                     event_type="memory_retrieved",
                     payload={
-                        "count": len(entries),
-                        "entry_ids": [entry.get("id") for entry in entries],
-                        "scores": [entry.get("score") for entry in entries],
+                        "count": len(prompt_snippets),
                     },
                 )
+            # Convert snippets to entry dicts for compatibility
+            entries = [{"snippet": s} for s in prompt_snippets]
             return RetrievedMemory(prompt_snippets=prompt_snippets, entries=entries)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug(

@@ -98,7 +98,7 @@ class SelfServiceClassification:
     intent: Optional[str] = None
     subject_user: Optional[str] = None
     subject_resource: Optional[str] = None
-    additional_context: Dict[str, Any] = None
+    additional_context: Optional[Dict[str, Any]] = None
 
     def to_log_payload(self) -> Dict[str, Any]:
         return {
@@ -180,7 +180,7 @@ class SelfServiceQuestionClassifier:
             QuestionType.COMPLIANCE: self._score(normalized, self.COMPLIANCE_KEYWORDS),
         }
 
-        question_type = max(scores, key=scores.get)
+        question_type = max(scores, key=lambda k: scores[k])
         confidence = scores[question_type]
 
         if confidence == 0:
@@ -212,10 +212,11 @@ class SelfServiceQuestionClassifier:
         )
 
     def _score(self, question: str, keywords: Iterable[str]) -> float:
-        hits = sum(1 for keyword in keywords if keyword in question)
+        keyword_list = list(keywords)
+        hits = sum(1 for keyword in keyword_list if keyword in question)
         if hits == 0:
             return 0.0
-        return round(min(1.0, hits / max(len(keywords), 4)), 2)
+        return round(min(1.0, hits / max(len(keyword_list), 4)), 2)
 
     def _classify_access(
         self, question: str
@@ -473,7 +474,7 @@ class SelfServiceKnowledgeService:
             stmt = select(Finding).where(Finding.org_id == org_id)
             if severity:
                 stmt = stmt.where(func.lower(Finding.severity) == severity.lower())
-            stmt = stmt.order_by(Finding.created_at.desc()).limit(20)
+            stmt = stmt.order_by(Finding.first_seen.desc()).limit(20)
             findings = list((await session.execute(stmt)).scalars())
 
         evidence = [
@@ -544,7 +545,7 @@ class SelfServiceKnowledgeService:
                 else:
                     summary = "No future audits are scheduled."
             elif intent == "failing_controls":
-                stmt = (
+                control_stmt = (
                     select(PreAuditControlFinding)
                     .join(PreAuditRun, PreAuditControlFinding.run_id == PreAuditRun.id)
                     .join(
@@ -563,7 +564,7 @@ class SelfServiceKnowledgeService:
                     .order_by(PreAuditControlFinding.created_at.desc())
                     .limit(20)
                 )
-                failing = list((await session.execute(stmt)).scalars())
+                failing = list((await session.execute(control_stmt)).scalars())
                 evidence = [
                     {
                         "control_id": finding.control_id,
@@ -584,7 +585,7 @@ class SelfServiceKnowledgeService:
                 if classification.additional_context:
                     framework = classification.additional_context.get("framework")
 
-                stmt = (
+                run_stmt = (
                     select(PreAuditRun)
                     .join(
                         ComplianceAuditSchedule,
@@ -594,12 +595,12 @@ class SelfServiceKnowledgeService:
                     .order_by(PreAuditRun.run_at.desc())
                 )
                 if framework:
-                    stmt = stmt.where(
+                    run_stmt = run_stmt.where(
                         func.lower(
                             cast(ComplianceAuditSchedule.frameworks, String)
                         ).like(f"%{framework.lower()}%")
                     )
-                run = (await session.execute(stmt.limit(1))).scalars().first()
+                run = (await session.execute(run_stmt.limit(1))).scalars().first()
                 if run:
                     summary = (
                         f"Latest pre-audit run estimates {run.estimated_outcome.lower()} "
@@ -782,14 +783,14 @@ class SelfServiceAnalytics:
             .where(AgentSelfServiceQuestion.created_at >= period_start)
             .where(AgentSelfServiceQuestion.created_at < period_end)
         )
-        total = (await session.execute(total_stmt)).scalar_one()
+        total: int = (await session.execute(total_stmt)).scalar_one()
 
         breakdown = [
             {
                 "question": row.question,
                 "question_type": row.question_type,
                 "count": row.count,
-                "percentage": round((row.count / total) * 100, 2) if total else 0.0,
+                "percentage": round((row.count / total) * 100, 2) if total else 0.0,  # type: ignore[operator]
             }
             for row in top_entries
         ]

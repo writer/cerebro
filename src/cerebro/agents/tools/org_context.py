@@ -120,24 +120,22 @@ class GetOrgContextTool(StructuredTool):
     async def _run(
         self,
         context: AgentContext,
-        include_repositories: bool = True,
-        include_providers: bool = True,
-        include_statistics: bool = True,
-        include_tools: bool = True,
+        **kwargs: Any,
     ) -> ToolResult:
         """
         Execute organization context retrieval.
 
         Args:
             context: Agent execution context
-            include_repositories: Include repo metadata
-            include_providers: Include provider info
-            include_statistics: Include stats
-            include_tools: Include tool list
+            **kwargs: include_repositories, include_providers, include_statistics, include_tools
 
         Returns:
             ToolResult with comprehensive org context
         """
+        include_repositories: bool = kwargs.get("include_repositories", True)
+        include_providers: bool = kwargs.get("include_providers", True)
+        include_statistics: bool = kwargs.get("include_statistics", True)
+        include_tools: bool = kwargs.get("include_tools", True)
         try:
             logger.info(
                 "Organization context requested",
@@ -153,7 +151,7 @@ class GetOrgContextTool(StructuredTool):
                         success=False, error=f"Organization {context.org_id} not found"
                     )
 
-                output_data = {
+                output_data: Dict[str, Any] = {
                     "org_name": org.name,
                     "org_id": str(org.org_id),
                 }
@@ -306,7 +304,8 @@ class GetOrgContextTool(StructuredTool):
                 Resource.provider,
                 func.count(distinct(Resource.resource_id)).label("resource_count"),
             )
-            .where(Resource.org_id == org_id)
+            .join(Account, Resource.account_id == Account.account_id)
+            .where(Account.org_id == org_id)
             .group_by(Resource.provider)
         )
 
@@ -319,7 +318,8 @@ class GetOrgContextTool(StructuredTool):
                 Principal.provider,
                 func.count(distinct(Principal.principal_id)).label("principal_count"),
             )
-            .where(Principal.org_id == org_id)
+            .join(Account, Principal.account_id == Account.account_id)
+            .where(Account.org_id == org_id)
             .group_by(Principal.provider)
         )
 
@@ -360,13 +360,17 @@ class GetOrgContextTool(StructuredTool):
 
         # Total resources
         resource_count = await db_session.scalar(
-            select(func.count(Resource.resource_id)).where(Resource.org_id == org_id)
+            select(func.count(Resource.resource_id))
+            .join(Account, Resource.account_id == Account.account_id)
+            .where(Account.org_id == org_id)
         )
         stats["total_resources"] = resource_count or 0
 
         # Total principals
         principal_count = await db_session.scalar(
-            select(func.count(Principal.principal_id)).where(Principal.org_id == org_id)
+            select(func.count(Principal.principal_id))
+            .join(Account, Principal.account_id == Account.account_id)
+            .where(Account.org_id == org_id)
         )
         stats["total_principals"] = principal_count or 0
 
