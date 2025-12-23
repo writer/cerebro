@@ -407,7 +407,7 @@ class VendorRegistry:
         }
 
         # Category distribution
-        category_distribution = {}
+        category_distribution: Dict[str, int] = {}
         for vendor in vendors:
             category = vendor.category.value
             category_distribution[category] = category_distribution.get(category, 0) + 1

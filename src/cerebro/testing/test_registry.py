@@ -275,21 +275,21 @@ class TestRegistry:
         failing = await self.get_failing_tests()
 
         # Status distribution
-        status_counts = {}
+        status_counts: Dict[str, int] = {}
         for test in tests:
             status_counts[test.status.value] = (
                 status_counts.get(test.status.value, 0) + 1
             )
 
         # Type distribution
-        type_counts = {}
+        type_counts: Dict[str, int] = {}
         for test in tests:
             type_counts[test.test_type.value] = (
                 type_counts.get(test.test_type.value, 0) + 1
             )
 
         # Framework coverage
-        framework_coverage = {}
+        framework_coverage: Dict[str, int] = {}
         for test in tests:
             for framework in test.framework_mappings.keys():
                 framework_coverage[framework] = framework_coverage.get(framework, 0) + 1
