@@ -43,6 +43,13 @@ class AWSProvider(BaseProvider):
         """Get provider name."""
         return "aws"
 
+    @property
+    def session(self) -> boto3.Session:
+        """Get the authenticated boto3 session, raising if not authenticated."""
+        if self._session is None:
+            raise ProviderError("AWS provider not authenticated")
+        return self._session
+
     async def authenticate(self) -> bool:
         """Authenticate with AWS and verify the expected account id."""
         try:
@@ -87,7 +94,7 @@ class AWSProvider(BaseProvider):
 
         # S3 Buckets
         if not resource_types or "aws.s3.bucket" in resource_types:
-            s3_client = self._session.client("s3")
+            s3_client = self.session.client("s3")
 
             buckets = await call_sync_with_retries(
                 lambda: s3_client.list_buckets().get("Buckets", []),
@@ -105,7 +112,7 @@ class AWSProvider(BaseProvider):
 
         # EC2 Instances
         if not resource_types or "aws.ec2.instance" in resource_types:
-            ec2_client = self._session.client("ec2")
+            ec2_client = self.session.client("ec2")
             paginator = ec2_client.get_paginator("describe_instances")
 
             instances = []
@@ -138,7 +145,7 @@ class AWSProvider(BaseProvider):
 
         # VPCs
         if not resource_types or "aws.ec2.vpc" in resource_types:
-            ec2_client = self._session.client("ec2")
+            ec2_client = self.session.client("ec2")
             vpcs = await call_sync_with_retries(
                 lambda: ec2_client.describe_vpcs().get("Vpcs", []),
                 exceptions=(ClientError, BotoCoreError),
@@ -165,7 +172,7 @@ class AWSProvider(BaseProvider):
 
         # Security Groups
         if not resource_types or "aws.ec2.security_group" in resource_types:
-            ec2_client = self._session.client("ec2")
+            ec2_client = self.session.client("ec2")
             paginator = ec2_client.get_paginator("describe_security_groups")
 
             async for page in iterate_sync_iterator(
@@ -188,7 +195,7 @@ class AWSProvider(BaseProvider):
 
         # Load Balancers (Application/Network)
         if not resource_types or "aws.elbv2.load_balancer" in resource_types:
-            elb_client = self._session.client("elbv2")
+            elb_client = self.session.client("elbv2")
             paginator = elb_client.get_paginator("describe_load_balancers")
 
             async for page in iterate_sync_iterator(
@@ -211,7 +218,7 @@ class AWSProvider(BaseProvider):
 
         # CodeBuild projects
         if not resource_types or "aws.codebuild.project" in resource_types:
-            codebuild_client = self._session.client("codebuild")
+            codebuild_client = self.session.client("codebuild")
             paginator = codebuild_client.get_paginator("list_projects")
 
             project_names: List[str] = []
@@ -228,10 +235,11 @@ class AWSProvider(BaseProvider):
                 if not batch:
                     continue
 
+                def _batch_get(names: List[str] = batch) -> Dict[str, Any]:
+                    return codebuild_client.batch_get_projects(names=names)
+
                 response = await call_sync_with_retries(
-                    lambda names=batch: codebuild_client.batch_get_projects(
-                        names=names
-                    ),
+                    _batch_get,
                     exceptions=(ClientError, BotoCoreError),
                     logger=logger,
                 )
@@ -282,7 +290,7 @@ class AWSProvider(BaseProvider):
 
         # IAM Roles (service accounts)
         if not resource_types or "aws.iam.role" in resource_types:
-            iam_client = self._session.client("iam")
+            iam_client = self.session.client("iam")
             role_paginator = iam_client.get_paginator("list_roles")
 
             roles: List[Dict[str, Any]] = []
@@ -310,7 +318,7 @@ class AWSProvider(BaseProvider):
         if not self._session:
             await self.authenticate()
 
-        iam_client = self._session.client("iam")
+        iam_client = self.session.client("iam")
         user_paginator = iam_client.get_paginator("list_users")
         users = []
         async for page in iterate_sync_iterator(
@@ -416,7 +424,7 @@ class AWSProvider(BaseProvider):
         """Get Security Group configuration."""
 
         def _describe_security_group():
-            ec2 = self._session.client("ec2")
+            ec2 = self.session.client("ec2")
             response = ec2.describe_security_groups(GroupIds=[group_id])
             groups = response.get("SecurityGroups", [])
             if not groups:
@@ -449,13 +457,13 @@ class AWSProvider(BaseProvider):
         """Get load balancer configuration."""
 
         def _describe_load_balancer():
-            elb = self._session.client("elbv2")
+            elb = self.session.client("elbv2")
             try:
-                acm_client = self._session.client("acm")
+                acm_client = self.session.client("acm")
             except (ClientError, BotoCoreError):
                 acm_client = None
             try:
-                ec2_client = self._session.client("ec2")
+                ec2_client = self.session.client("ec2")
             except (ClientError, BotoCoreError):
                 ec2_client = None
             response = elb.describe_load_balancers(LoadBalancerArns=[lb_arn])
@@ -745,10 +753,10 @@ class AWSProvider(BaseProvider):
     async def _get_s3_bucket_config(self, bucket_name: str) -> Dict[str, Any]:
         """Get S3 bucket configuration."""
 
-        def _get_config():
-            s3 = self._session.client("s3")
+        def _get_config() -> Dict[str, Any]:
+            s3 = self.session.client("s3")
 
-            config = {"name": bucket_name}
+            config: Dict[str, Any] = {"name": bucket_name}
 
             try:
                 policy = s3.get_bucket_policy(Bucket=bucket_name)
@@ -899,7 +907,7 @@ class AWSProvider(BaseProvider):
         """Fetch CodeBuild project configuration."""
 
         def _get_project():
-            codebuild = self._session.client("codebuild")
+            codebuild = self.session.client("codebuild")
             response = codebuild.batch_get_projects(names=[project_name])
             projects = response.get("projects", [])
             if not projects:
@@ -993,7 +1001,7 @@ class AWSProvider(BaseProvider):
         """Fetch IAM role configuration, including trust and permission policies."""
 
         def _get_role():
-            iam = self._session.client("iam")
+            iam = self.session.client("iam")
 
             role_name = role_arn.split("/")[-1]
             role_response = iam.get_role(RoleName=role_name)
@@ -1112,12 +1120,13 @@ class AWSProvider(BaseProvider):
         if principals == "*":
             return True
         if isinstance(principals, dict):
-            if principals.get("AWS") == "*":
+            aws_principal = principals.get("AWS")
+            if aws_principal == "*":
                 return True
             uri = principals.get("URI")
             if isinstance(uri, str) and uri.endswith("AllUsers"):
                 return True
-            if isinstance(principals.get("AWS"), list) and "*" in principals.get("AWS"):
+            if isinstance(aws_principal, list) and "*" in aws_principal:
                 return True
         if isinstance(principals, list):
             return any(self._principal_allows_public(p) for p in principals)
@@ -1191,7 +1200,7 @@ class AWSProvider(BaseProvider):
         """Get EC2 instance configuration."""
 
         def _get_config():
-            ec2 = self._session.client("ec2")
+            ec2 = self.session.client("ec2")
             response = ec2.describe_instances(InstanceIds=[instance_id])
 
             instance = response["Reservations"][0]["Instances"][0]
@@ -1221,7 +1230,7 @@ class AWSProvider(BaseProvider):
         """Get VPC configuration."""
 
         def _get_config():
-            ec2 = self._session.client("ec2")
+            ec2 = self.session.client("ec2")
             response = ec2.describe_vpcs(VpcIds=[vpc_id])
 
             vpc = response["Vpcs"][0]
@@ -1249,7 +1258,7 @@ class AWSProvider(BaseProvider):
 
         # Comprehensive IAM analysis
         def _get_comprehensive_iam_permissions():
-            iam = self._session.client("iam")
+            iam = self.session.client("iam")
             permissions = []
 
             # 1. User permissions

@@ -650,8 +650,8 @@ class RiskScoringEngine:
 
         result = await self.db.execute(heatmap_query, {"org_id": org_id})
 
-        heatmap_data = {}
-        high_risk_areas = []
+        heatmap_data: Dict[str, Dict[str, float]] = {}
+        high_risk_areas: List[Dict[str, Any]] = []
 
         for row in result.fetchall():
             provider = row.provider

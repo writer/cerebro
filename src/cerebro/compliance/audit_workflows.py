@@ -432,8 +432,8 @@ class AuditWorkflowManager:
         request_list = self._request_lists[request_list_id]
 
         # Count tasks by status
-        task_statuses = {}
-        overdue_tasks = []
+        task_statuses: Dict[str, int] = {}
+        overdue_tasks: List[str] = []
 
         for task_id in request_list.task_ids:
             if task_id in self._tasks:

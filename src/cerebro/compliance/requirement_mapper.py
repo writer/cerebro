@@ -192,7 +192,7 @@ class RequirementMappingService:
         """Analyze how evidence can be reused across requirements."""
 
         # Group requirements by framework
-        reqs_by_framework = {}
+        reqs_by_framework: Dict[str, List[str]] = {}
         for req_id in requirements:
             # Parse framework from requirement ID format
             framework = self._extract_framework_from_req(req_id)
@@ -201,9 +201,9 @@ class RequirementMappingService:
             reqs_by_framework[framework].append(req_id)
 
         # Find cross-framework mappings
-        reuse_opportunities = []
-        duplicated_evidence = []
-        missing_evidence = []
+        reuse_opportunities: List[Dict[str, Any]] = []
+        duplicated_evidence: List[str] = []
+        missing_evidence: List[str] = []
 
         for source_framework, source_reqs in reqs_by_framework.items():
             for target_framework, target_reqs in reqs_by_framework.items():

@@ -654,7 +654,7 @@ class NoCodeRulesEngine:
         """Extract field value from evidence record using dot notation."""
 
         # Start with the record
-        current = {
+        current: Dict[str, Any] = {
             "id": str(record.id),
             "entity_id": record.entity_id,
             "entity_name": record.entity_name,

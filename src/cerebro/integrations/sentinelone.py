@@ -527,26 +527,17 @@ class SentinelOneIngestion:
         if not isinstance(threat, dict):
             return None
 
-        info = (
-            threat.get("threatInfo")
-            if isinstance(threat.get("threatInfo"), dict)
-            else {}
-        )
-        detection = (
-            threat.get("agentDetectionInfo")
-            if isinstance(threat.get("agentDetectionInfo"), dict)
-            else {}
-        )
-        realtime = (
-            threat.get("agentRealtimeInfo")
-            if isinstance(threat.get("agentRealtimeInfo"), dict)
-            else {}
-        )
-        mitigation = (
-            threat.get("mitigationStatus")
-            if isinstance(threat.get("mitigationStatus"), dict)
-            else {}
-        )
+        threat_info = threat.get("threatInfo")
+        info: Dict[str, Any] = threat_info if isinstance(threat_info, dict) else {}
+
+        agent_detection = threat.get("agentDetectionInfo")
+        detection: Dict[str, Any] = agent_detection if isinstance(agent_detection, dict) else {}
+
+        agent_realtime = threat.get("agentRealtimeInfo")
+        realtime: Dict[str, Any] = agent_realtime if isinstance(agent_realtime, dict) else {}
+
+        mitigation_status = threat.get("mitigationStatus")
+        mitigation: Dict[str, Any] = mitigation_status if isinstance(mitigation_status, dict) else {}
 
         threat_id = info.get("threatId") or threat.get("id") or threat.get("threatId")
         if not threat_id:
@@ -723,15 +714,15 @@ class SentinelOneIngestion:
         if value is None:
             return []
         if isinstance(value, (list, tuple, set)):
-            result: List[str] = []
+            list_result: List[str] = []
             for item in value:
-                result.extend(SentinelOneIngestion._ensure_list(item))
-            return result
+                list_result.extend(SentinelOneIngestion._ensure_list(item))
+            return list_result
         if isinstance(value, dict):
-            result: List[str] = []
+            dict_result: List[str] = []
             for item in value.values():
-                result.extend(SentinelOneIngestion._ensure_list(item))
-            return result
+                dict_result.extend(SentinelOneIngestion._ensure_list(item))
+            return dict_result
         return [str(value)] if value not in ("",) else []
 
     def _extract_indicator_details(
@@ -745,11 +736,8 @@ class SentinelOneIngestion:
         c2_domains: set[str] = set()
         source_ips: set[str] = set()
 
-        threat_info = (
-            threat.get("threatInfo")
-            if isinstance(threat.get("threatInfo"), dict)
-            else {}
-        )
+        _threat_info = threat.get("threatInfo")
+        threat_info: Dict[str, Any] = _threat_info if isinstance(_threat_info, dict) else {}
         indicators = threat.get("indicators")
         if isinstance(indicators, dict):
             categories.update(
@@ -1078,7 +1066,8 @@ class SentinelOneIngestion:
         if not activity_id:
             return None
 
-        data = activity.get("data") if isinstance(activity.get("data"), dict) else {}
+        _data = activity.get("data")
+        data: Dict[str, Any] = _data if isinstance(_data, dict) else {}
         agent_id = (
             activity.get("agentId")
             or data.get("agentId")

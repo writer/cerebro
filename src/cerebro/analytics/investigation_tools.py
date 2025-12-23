@@ -491,7 +491,7 @@ class InvestigationEngine:
         correlations = []
 
         # Group events by time windows (1-hour buckets)
-        time_buckets = {}
+        time_buckets: Dict[datetime, List[SecurityEvent]] = {}
         for event in events:
             bucket_key = event.timestamp.replace(minute=0, second=0, microsecond=0)
             if bucket_key not in time_buckets:
@@ -503,7 +503,7 @@ class InvestigationEngine:
             if len(bucket_events) >= 3:  # Threshold for correlation
 
                 # Check for principal-based correlation
-                principals = {}
+                principals: Dict[str, List[SecurityEvent]] = {}
                 for event in bucket_events:
                     if event.principal_id:
                         principal_key = str(event.principal_id)

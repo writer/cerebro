@@ -579,10 +579,10 @@ class EvidenceDataFabric:
     ) -> Dict[str, Any]:
         """Analyze MFA compliance across identity systems."""
 
-        mfa_data = []
+        mfa_data: List[Dict[str, Any]] = []
         for record in evidence_records:
             if record.entity_type == EvidenceEntityType.IDENTITY.value:
-                normalized = record.normalized_data or {}
+                normalized: Dict[str, Any] = record.normalized_data or {}
                 mfa_enabled = normalized.get("mfa_enabled", False)
                 mfa_data.append(
                     {
@@ -595,7 +595,7 @@ class EvidenceDataFabric:
                 )
 
         # Cross-system analysis
-        entities_by_id = {}
+        entities_by_id: Dict[str, List[Dict[str, Any]]] = {}
         for item in mfa_data:
             entity_id = item["entity_id"]
             if entity_id not in entities_by_id:

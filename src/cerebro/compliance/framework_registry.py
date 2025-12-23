@@ -332,8 +332,8 @@ class FrameworkRegistry:
                 frameworks[framework_id] = framework
 
         # Analyze control overlaps and gaps
-        all_control_types = set()
-        framework_controls = {}
+        all_control_types: set[str] = set()
+        framework_controls: Dict[str, Dict[str, Any]] = {}
 
         for framework_id, framework in frameworks.items():
             framework_controls[framework_id] = {
