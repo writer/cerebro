@@ -494,13 +494,13 @@ class AgentSessionFacade:
 class DBFacade:
     """Unified database facade providing access to all entity facades."""
 
-    def __init__(self, backend: Optional[DBBackend] = None):
+    def __init__(self, backend: Optional[DBBackend] = None) -> None:
         self._backend = backend or get_db_backend()
-        self._organizations = None
-        self._accounts = None
-        self._findings = None
-        self._rules = None
-        self._agent_sessions = None
+        self._organizations: Optional[OrganizationFacade] = None
+        self._accounts: Optional[AccountFacade] = None
+        self._findings: Optional[FindingFacade] = None
+        self._rules: Optional[RuleFacade] = None
+        self._agent_sessions: Optional[AgentSessionFacade] = None
 
     @property
     def backend(self) -> DBBackend:

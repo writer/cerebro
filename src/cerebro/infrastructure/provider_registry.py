@@ -168,8 +168,8 @@ def create_github_provider(account_id: str, org_name: str, **kwargs):
 
 
 def create_aws_provider(
-    account_id: str, aws_account_id: str, region: str = None, **kwargs
-):
+    account_id: str, aws_account_id: str, region: Optional[str] = None, **kwargs: Any
+) -> "AWSProvider":
     """Factory for AWS provider."""
     from cerebro.providers.aws import AWSProvider
 

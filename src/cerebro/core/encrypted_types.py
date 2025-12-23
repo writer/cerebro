@@ -24,9 +24,9 @@ Recommended pattern:
 """
 
 import asyncio
-from typing import Optional
+from typing import Optional, Tuple
 
-from sqlalchemy import LargeBinary, TypeDecorator
+from sqlalchemy import Column, LargeBinary, TypeDecorator
 
 from cerebro.core.encryption import (
     get_encryption_service,
@@ -67,8 +67,10 @@ class EncryptedText(EncryptedString):
 
 
 def create_encrypted_field_pair(
-    field_name: str, data_column_name: str = None, dek_column_name: str = None
-):
+    field_name: str,
+    data_column_name: Optional[str] = None,
+    dek_column_name: Optional[str] = None,
+) -> Tuple[str, str]:
     """Helper to create an encrypted field with automatic DEK management.
 
     Args:

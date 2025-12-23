@@ -1,6 +1,6 @@
 """Database configuration and session management."""
 
-from typing import AsyncGenerator, Tuple
+from typing import Any, AsyncGenerator, Dict, Tuple
 
 from sqlalchemy import event
 from sqlalchemy.engine.url import URL, make_url
@@ -34,7 +34,7 @@ def _build_engine() -> Tuple["AsyncEngine", URL]:
         else database_url
     )
 
-    engine_options = {
+    engine_options: Dict[str, Any] = {
         "echo": False,
         "pool_pre_ping": True,
     }

@@ -1,6 +1,6 @@
 """Account management endpoints."""
 
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,12 +50,12 @@ async def create_account(
 
 @router.get("/", response_model=List[AccountResponse])
 async def list_accounts(
-    org_id: UUID = None,
-    provider: str = None,
+    org_id: Optional[UUID] = None,
+    provider: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
-):
+) -> List[AccountResponse]:
     """List accounts."""
     stmt = select(Account)
 
