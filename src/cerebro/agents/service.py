@@ -89,13 +89,16 @@ class AgentSessionService:
 
     async def list_sessions(
         self,
-        org_id: UUID,
+        org_id: Optional[UUID],
         agent_type: Optional[str] = None,
         created_by: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[List[AgentSession], int]:
         """List agent sessions for an organization."""
+
+        if org_id is None:
+            return [], 0
 
         agent_type_enum: Optional[AgentType] = None
         if agent_type:
@@ -309,10 +312,13 @@ class AgentSessionService:
 
     async def list_review_tasks(
         self,
-        org_id: UUID,
+        org_id: Optional[UUID],
         status: Optional[str] = None,
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
+        if org_id is None:
+            return []
+
         status_enum: Optional[ReviewTaskStatus] = None
         if status:
             try:
@@ -329,12 +335,15 @@ class AgentSessionService:
 
     async def list_review_tasks_page(
         self,
-        org_id: UUID,
+        org_id: Optional[UUID],
         *,
         status: Optional[str] = None,
         limit: int = 50,
         cursor: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if org_id is None:
+            return {"items": [], "next_cursor": None}
+
         status_enum: Optional[ReviewTaskStatus] = None
         if status:
             try:
@@ -418,10 +427,13 @@ class AgentSessionService:
     async def list_review_notifications(
         self,
         *,
-        org_id: UUID,
+        org_id: Optional[UUID],
         status: Optional[str] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
+        if org_id is None:
+            return []
+
         notifications = await NotificationService.list_notifications(
             org_id=org_id,
             status=status,
@@ -484,9 +496,12 @@ class AgentSessionService:
     async def list_policy_suggestions(
         self,
         *,
-        org_id: UUID,
+        org_id: Optional[UUID],
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
+        if org_id is None:
+            return []
+
         suggestions = await self._repository.list_policy_suggestions(
             org_id, limit=limit
         )
@@ -513,11 +528,14 @@ class AgentSessionService:
     async def simulate_policy_expression(
         self,
         *,
-        org_id: UUID,
+        org_id: Optional[UUID],
         expression: str,
         tool_name: Optional[str] = None,
         limit: int = 50,
     ) -> Dict[str, Any]:
+        if org_id is None:
+            return {"allowed": 0, "denied": 0, "error": 0, "examples": []}
+
         if not expression or not expression.strip():
             raise ValueError("CEL expression is required")
 

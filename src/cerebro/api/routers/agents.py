@@ -404,13 +404,16 @@ async def create_agent_session(
     The agent session maintains conversation context and enables multi-turn
     interactions with tool execution capabilities.
     """
+    if current_user.org_id is None:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+
     service = AgentSessionService()
 
     try:
         session = await service.create_session(
             org_id=current_user.org_id,
             agent_type=request.agent_type,
-            created_by=current_user.user_id,
+            created_by=str(current_user.user_id),
             context=request.context,
             title=request.title,
         )
@@ -606,7 +609,7 @@ async def send_message_to_agent(
             async for event in service.send_message(
                 session_id=session_id,
                 message=request.message,
-                user_id=current_user.user_id,
+                user_id=str(current_user.user_id),
                 org_id=current_user.org_id,
                 stream=False,
             ):
@@ -641,7 +644,7 @@ async def send_message_to_agent(
                 async for event in service.send_message(
                     session_id=session_id,
                     message=request.message,
-                    user_id=current_user.user_id,
+                    user_id=str(current_user.user_id),
                     org_id=current_user.org_id,
                     stream=True,
                 ):
@@ -886,7 +889,7 @@ async def resolve_review_task(
     service = AgentSessionService()
     task = await service.resolve_review_task(
         task_id=task_id,
-        resolved_by=current_user.user_id,
+        resolved_by=str(current_user.user_id),
         status=request.status,
         notes=request.notes,
     )
@@ -903,12 +906,15 @@ async def bulk_update_review_tasks(
 ):
     """Apply bulk status updates, escalations, or ticket actions to review tasks."""
 
+    if current_user.org_id is None:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+
     service = AgentSessionService()
     tasks = await service.bulk_update_review_tasks(
         org_id=current_user.org_id,
         task_ids=request.task_ids,
         status=request.status,
-        resolved_by=current_user.user_id,
+        resolved_by=str(current_user.user_id) if request.status else None,
         notes=request.notes,
         escalated_to=request.escalated_to,
         due_at=request.due_at,

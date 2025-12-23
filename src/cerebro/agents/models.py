@@ -198,6 +198,18 @@ class AgentSession(Base):
             return max(m.created_at for m in self.messages)
         return self.created_at
 
+    @property
+    def status(self) -> "SessionStatus":
+        """Return the session status based on is_active flag."""
+        return SessionStatus.ACTIVE if self.is_active else SessionStatus.INACTIVE
+
+
+class SessionStatus(str, Enum):
+    """Status of an agent session."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
 
 class AgentMessage(Base):
     """
