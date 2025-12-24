@@ -4,21 +4,21 @@ Session Memory Tools
 Enables agents to remember context across sessions and retrieve conversation history.
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_, or_
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import selectinload
 
+from cerebro.agents.models import AgentSession, AgentSessionContext
 from cerebro.agents.tools.base import (
-    StructuredTool,
-    ToolResult,
     AgentContext,
+    StructuredTool,
     ToolPermissionLevel,
+    ToolResult,
 )
-from cerebro.agents.models import AgentSessionContext, AgentSession
 from cerebro.core.database import async_session_factory
 
 logger = structlog.get_logger(__name__)
@@ -35,7 +35,7 @@ class RememberContextInput(BaseModel):
         min_length=1,
         max_length=255,
     )
-    context_value: Dict[str, Any] = Field(
+    context_value: dict[str, Any] = Field(
         description="Value to remember (can be any JSON structure)",
     )
     context_type: str = Field(
@@ -46,13 +46,13 @@ class RememberContextInput(BaseModel):
         description="How was this learned: user_conversation, tool_execution, external_source",
         pattern="^(user_conversation|tool_execution|external_source)$",
     )
-    confidence: Optional[float] = Field(
+    confidence: float | None = Field(
         default=1.0,
         description="Confidence score 0-1 for learned facts",
         ge=0.0,
         le=1.0,
     )
-    expires_in_days: Optional[int] = Field(
+    expires_in_days: int | None = Field(
         default=None,
         description="Optional: expire this context after N days",
         gt=0,
@@ -63,9 +63,9 @@ class RememberContextOutput(BaseModel):
     """Output for remember_context tool."""
 
     success: bool
-    context_id: Optional[str]
+    context_id: str | None
     message: str
-    previous_value: Optional[Dict[str, Any]] = None  # If key already existed
+    previous_value: dict[str, Any] | None = None  # If key already existed
 
 
 class GetSessionHistoryInput(BaseModel):
@@ -81,7 +81,7 @@ class GetSessionHistoryInput(BaseModel):
         default=True,
         description="Include message content from sessions",
     )
-    context_keys: Optional[List[str]] = Field(
+    context_keys: list[str] | None = Field(
         default=None,
         description="Optional: filter to specific context keys",
     )
@@ -92,11 +92,11 @@ class SessionInfo(BaseModel):
 
     session_id: str
     agent_type: str
-    title: Optional[str]
+    title: str | None
     created_at: str
     message_count: int
-    recent_messages: List[Dict[str, Any]] = []
-    learned_context: List[Dict[str, Any]] = []
+    recent_messages: list[dict[str, Any]] = []
+    learned_context: list[dict[str, Any]] = []
 
 
 class GetSessionHistoryOutput(BaseModel):
@@ -105,9 +105,9 @@ class GetSessionHistoryOutput(BaseModel):
     success: bool
     org_name: str
     sessions_retrieved: int
-    sessions: List[SessionInfo]
+    sessions: list[SessionInfo]
     total_context_entries: int
-    common_context_keys: List[str]
+    common_context_keys: list[str]
 
 
 # ==================== Tools ====================
@@ -140,11 +140,11 @@ will be useful in future conversations. This enables continuity and personalizat
         self,
         context: AgentContext,
         context_key: str,
-        context_value: Dict[str, Any],
+        context_value: dict[str, Any],
         context_type: str,
         learned_from: str,
         confidence: float = 1.0,
-        expires_in_days: Optional[int] = None,
+        expires_in_days: int | None = None,
     ) -> ToolResult:
         """Store context for cross-session memory."""
 
@@ -178,7 +178,7 @@ will be useful in future conversations. This enables continuity and personalizat
                 # Calculate expiration
                 expires_at = None
                 if expires_in_days:
-                    expires_at = datetime.now(timezone.utc) + timedelta(
+                    expires_at = datetime.now(UTC) + timedelta(
                         days=expires_in_days
                     )
 
@@ -237,7 +237,7 @@ will be useful in future conversations. This enables continuity and personalizat
             output = RememberContextOutput(
                 success=False,
                 context_id=None,
-                message=f"Failed to remember context: {str(e)}",
+                message=f"Failed to remember context: {e!s}",
             )
 
             return ToolResult(
@@ -272,7 +272,7 @@ and what preferences the user expressed. Essential for continuity across session
         context: AgentContext,
         lookback_sessions: int = 5,
         include_messages: bool = True,
-        context_keys: Optional[List[str]] = None,
+        context_keys: list[str] | None = None,
     ) -> ToolResult:
         """Retrieve session history and learned context."""
 
@@ -310,7 +310,7 @@ and what preferences the user expressed. Essential for continuity across session
                         # Only non-expired context
                         or_(
                             AgentSessionContext.expires_at.is_(None),
-                            AgentSessionContext.expires_at > datetime.now(timezone.utc),
+                            AgentSessionContext.expires_at > datetime.now(UTC),
                         ),
                     )
                 )
@@ -373,7 +373,7 @@ and what preferences the user expressed. Essential for continuity across session
                     )
 
                 # Find common context keys
-                context_key_counts: Dict[str, int] = {}
+                context_key_counts: dict[str, int] = {}
                 for entry in context_entries:
                     context_key_counts[entry.context_key] = (
                         context_key_counts.get(entry.context_key, 0) + 1

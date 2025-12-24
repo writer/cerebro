@@ -5,19 +5,20 @@ Provides pluggable storage backends that fix the architectural violations
 in the original evidence storage implementations.
 """
 
+import hashlib
 import json
 import logging
-from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
+
 import aiofiles
-import hashlib
 
 from .models import (
     BaseEvidenceMetadata,
-    EvidenceRepository,
     EvidenceBundle,
+    EvidenceRepository,
     EvidenceStatus,
 )
 
@@ -50,8 +51,8 @@ class FileBasedEvidenceRepository(EvidenceRepository):
         self._ensure_directories()
 
         # In-memory cache for performance
-        self._metadata_cache: Dict[str, BaseEvidenceMetadata] = {}
-        self._bundle_cache: Dict[str, EvidenceBundle] = {}
+        self._metadata_cache: dict[str, BaseEvidenceMetadata] = {}
+        self._bundle_cache: dict[str, EvidenceBundle] = {}
 
     def _ensure_directories(self):
         """Ensure storage directory structure exists."""
@@ -112,7 +113,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 
     async def get_evidence(
         self, evidence_id: str
-    ) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
+    ) -> tuple[bytes, BaseEvidenceMetadata] | None:
         """Retrieve evidence content and metadata."""
         try:
             # Get metadata first
@@ -144,7 +145,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             logger.error(f"Failed to retrieve evidence {evidence_id}: {e}")
             return None
 
-    async def get_metadata(self, evidence_id: str) -> Optional[BaseEvidenceMetadata]:
+    async def get_metadata(self, evidence_id: str) -> BaseEvidenceMetadata | None:
         """Get evidence metadata."""
         try:
             # Check cache first
@@ -156,7 +157,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             if not metadata_file.exists():
                 return None
 
-            async with aiofiles.open(metadata_file, "r") as f:
+            async with aiofiles.open(metadata_file) as f:
                 metadata_dict = json.loads(await f.read())
 
             metadata = self._dict_to_metadata(metadata_dict)
@@ -167,7 +168,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             logger.error(f"Failed to get metadata for {evidence_id}: {e}")
             return None
 
-    async def search_evidence(self, **filters) -> List[BaseEvidenceMetadata]:
+    async def search_evidence(self, **filters) -> list[BaseEvidenceMetadata]:
         """Search evidence by filters."""
         try:
             results = []
@@ -175,7 +176,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             # Load all metadata files (in production, would use database index)
             for metadata_file in self.metadata_path.glob("*.json"):
                 try:
-                    async with aiofiles.open(metadata_file, "r") as f:
+                    async with aiofiles.open(metadata_file) as f:
                         metadata_dict = json.loads(await f.read())
 
                     metadata = self._dict_to_metadata(metadata_dict)
@@ -216,7 +217,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             logger.error(f"Failed to create bundle: {e}")
             raise
 
-    async def get_bundle(self, bundle_id: str) -> Optional[EvidenceBundle]:
+    async def get_bundle(self, bundle_id: str) -> EvidenceBundle | None:
         """Get evidence bundle."""
         try:
             # Check cache first
@@ -228,7 +229,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             if not bundle_file.exists():
                 return None
 
-            async with aiofiles.open(bundle_file, "r") as f:
+            async with aiofiles.open(bundle_file) as f:
                 bundle_dict = json.loads(await f.read())
 
             bundle = self._dict_to_bundle(bundle_dict)
@@ -244,7 +245,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
         return self.content_path / content_hash[:2] / f"{content_hash}.bin"
 
     def _matches_filters(
-        self, metadata: BaseEvidenceMetadata, filters: Dict[str, Any]
+        self, metadata: BaseEvidenceMetadata, filters: dict[str, Any]
     ) -> bool:
         """Check if metadata matches search filters."""
         for key, value in filters.items():
@@ -274,7 +275,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 
         return True
 
-    def _metadata_to_dict(self, metadata: BaseEvidenceMetadata) -> Dict[str, Any]:
+    def _metadata_to_dict(self, metadata: BaseEvidenceMetadata) -> dict[str, Any]:
         """Convert metadata to dictionary for storage."""
         result = {
             "id": metadata.id,
@@ -340,18 +341,18 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 
         return result
 
-    def _dict_to_metadata(self, data: Dict[str, Any]) -> BaseEvidenceMetadata:
+    def _dict_to_metadata(self, data: dict[str, Any]) -> BaseEvidenceMetadata:
         """Convert dictionary to metadata object."""
         # Import here to avoid circular imports
         from .models import (
             BaseEvidenceMetadata,
+            ChainOfCustodyEntry,
             ComplianceEvidenceMetadata,
+            CryptographicProof,
             EvidenceCategory,
             EvidenceCollectionMethod,
             EvidenceStatus,
             RetentionClass,
-            ChainOfCustodyEntry,
-            CryptographicProof,
         )
 
         # Determine metadata type and create appropriate instance
@@ -453,7 +454,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 
         return metadata
 
-    def _bundle_to_dict(self, bundle: EvidenceBundle) -> Dict[str, Any]:
+    def _bundle_to_dict(self, bundle: EvidenceBundle) -> dict[str, Any]:
         """Convert bundle to dictionary for storage."""
         return {
             "id": bundle.id,
@@ -486,7 +487,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             ),
         }
 
-    def _dict_to_bundle(self, data: Dict[str, Any]) -> EvidenceBundle:
+    def _dict_to_bundle(self, data: dict[str, Any]) -> EvidenceBundle:
         """Convert dictionary to bundle object."""
         created_at = datetime.fromisoformat(data["created_at"])
         period_start = (
@@ -540,8 +541,8 @@ class InMemoryEvidenceRepository(EvidenceRepository):
     """In-memory evidence repository for testing."""
 
     def __init__(self):
-        self._evidence: Dict[str, tuple[bytes, BaseEvidenceMetadata]] = {}
-        self._bundles: Dict[str, EvidenceBundle] = {}
+        self._evidence: dict[str, tuple[bytes, BaseEvidenceMetadata]] = {}
+        self._bundles: dict[str, EvidenceBundle] = {}
 
     async def store_evidence(
         self, content: bytes, metadata: BaseEvidenceMetadata
@@ -555,16 +556,16 @@ class InMemoryEvidenceRepository(EvidenceRepository):
 
     async def get_evidence(
         self, evidence_id: str
-    ) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
+    ) -> tuple[bytes, BaseEvidenceMetadata] | None:
         return self._evidence.get(evidence_id)
 
-    async def get_metadata(self, evidence_id: str) -> Optional[BaseEvidenceMetadata]:
+    async def get_metadata(self, evidence_id: str) -> BaseEvidenceMetadata | None:
         evidence = self._evidence.get(evidence_id)
         return evidence[1] if evidence else None
 
-    async def search_evidence(self, **filters) -> List[BaseEvidenceMetadata]:
+    async def search_evidence(self, **filters) -> list[BaseEvidenceMetadata]:
         results = []
-        for content, metadata in self._evidence.values():
+        for _content, metadata in self._evidence.values():
             # Simple filter matching - would be more sophisticated in production
             matches = True
             for key, value in filters.items():
@@ -584,5 +585,5 @@ class InMemoryEvidenceRepository(EvidenceRepository):
         self._bundles[bundle.id] = bundle
         return bundle.id
 
-    async def get_bundle(self, bundle_id: str) -> Optional[EvidenceBundle]:
+    async def get_bundle(self, bundle_id: str) -> EvidenceBundle | None:
         return self._bundles.get(bundle_id)

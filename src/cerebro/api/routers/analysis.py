@@ -1,32 +1,32 @@
 """Advanced analysis endpoints."""
 
-from typing import List, Optional
-from uuid import UUID
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
+from datetime import datetime, timedelta
+from uuid import UUID
 
-from cerebro.core.database import get_db
-from cerebro.core.models import Organization, Principal
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cerebro.analysis.blast_radius import BlastRadiusAnalyzer
+from cerebro.analysis.change_replay import ChangeReplayEngine
+from cerebro.analysis.forensic_replay import ForensicReplayEngine
 from cerebro.api.auth import User, require_read_findings
 from cerebro.api.org_access import require_org_access
-from cerebro.analysis.blast_radius import BlastRadiusAnalyzer
-from cerebro.analysis.forensic_replay import ForensicReplayEngine
-from cerebro.analysis.change_replay import ChangeReplayEngine
+from cerebro.core.database import get_db
+from cerebro.core.models import Organization, Principal
 
 try:
-    from cerebro.analysis.identity_anomaly import IdentityAnomalyDetector, AnomalyResult
+    from cerebro.analysis.identity_anomaly import AnomalyResult, IdentityAnomalyDetector
 
     IDENTITY_ANOMALY_AVAILABLE = True
 except ImportError:
     IdentityAnomalyDetector = None  # type: ignore[misc, assignment]
     AnomalyResult = None  # type: ignore[misc, assignment]
     IDENTITY_ANOMALY_AVAILABLE = False
-from cerebro.compliance.generator import ComplianceEvidenceGenerator
-from cerebro.compliance.frameworks import list_frameworks, get_framework
 from cerebro.compliance.framework_registry import AutomationLevel
+from cerebro.compliance.frameworks import get_framework, list_frameworks
+from cerebro.compliance.generator import ComplianceEvidenceGenerator
 from cerebro.rules.engine import rule_engine
 
 router = APIRouter()
@@ -36,24 +36,24 @@ logger = logging.getLogger(__name__)
 class BlastRadiusRequest(BaseModel):
     principal_id: UUID
     scenario_type: str = "credential_theft"
-    at_time: Optional[datetime] = None
+    at_time: datetime | None = None
 
 
 class ForensicReplayRequest(BaseModel):
     target_time: datetime
-    scope: Optional[dict] = None
+    scope: dict | None = None
 
 
 class ChangeReplayRequest(BaseModel):
     rule_expression: str
     start_time: datetime
     end_time: datetime
-    providers: Optional[List[str]] = None
+    providers: list[str] | None = None
 
 
 class IdentityAnomalyRequest(BaseModel):
     org_id: UUID
-    principal_id: Optional[UUID] = None
+    principal_id: UUID | None = None
     lookback_days: int = 30
 
 
@@ -275,7 +275,7 @@ async def get_rule_effectiveness(
 async def what_if_rule_analysis(
     org_id: UUID,
     rule_expression: str,
-    providers: List[str],
+    providers: list[str],
     time_period_days: int = Query(default=30, description="Days to analyze"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
@@ -300,7 +300,7 @@ async def what_if_rule_analysis(
 @router.get("/organizations/{org_id}/identity/anomalies")
 async def get_identity_anomalies(
     org_id: UUID,
-    principal_id: Optional[UUID] = Query(
+    principal_id: UUID | None = Query(
         None, description="Specific principal to analyze"
     ),
     lookback_days: int = Query(
@@ -559,10 +559,10 @@ async def get_compliance_framework(
 async def generate_compliance_evidence(
     org_id: UUID,
     framework_name: str,
-    period_start: Optional[str] = Query(
+    period_start: str | None = Query(
         None, description="Evidence period start (ISO format)"
     ),
-    period_end: Optional[str] = Query(
+    period_end: str | None = Query(
         None, description="Evidence period end (ISO format)"
     ),
     db: AsyncSession = Depends(get_db),

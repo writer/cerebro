@@ -3,7 +3,6 @@
 import base64
 import logging
 import os
-from typing import Optional
 
 import httpx
 
@@ -20,7 +19,7 @@ class VaultTransitKMS(BaseKMS):
         vault_url: str,
         mount_path: str,
         key_name: str,
-        token: Optional[str] = None,
+        token: str | None = None,
     ):
         """Initialize Vault Transit KMS.
 

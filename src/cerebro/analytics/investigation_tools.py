@@ -1,14 +1,14 @@
 """Investigation tools for security incident analysis and correlation."""
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .sql_dialect import (
     cast_to_string_expr,
@@ -42,11 +42,11 @@ class SecurityEvent:
     event_id: str
     event_type: EventType
     timestamp: datetime
-    principal_id: Optional[UUID]
-    resource_id: Optional[UUID]
+    principal_id: UUID | None
+    resource_id: UUID | None
     description: str
-    metadata: Dict[str, Any]
-    correlation_id: Optional[str]
+    metadata: dict[str, Any]
+    correlation_id: str | None
 
 
 @dataclass
@@ -56,10 +56,10 @@ class FindingTimeline:
     finding_id: UUID
     finding_title: str
     created_at: datetime
-    events: List[SecurityEvent]
-    related_findings: List[Dict[str, Any]]
-    affected_resources: List[Dict[str, Any]]
-    involved_identities: List[Dict[str, Any]]
+    events: list[SecurityEvent]
+    related_findings: list[dict[str, Any]]
+    affected_resources: list[dict[str, Any]]
+    involved_identities: list[dict[str, Any]]
 
 
 @dataclass
@@ -67,10 +67,10 @@ class EventCorrelation:
     """Correlation analysis between security events."""
 
     correlation_id: str
-    event_cluster: List[SecurityEvent]
+    event_cluster: list[SecurityEvent]
     correlation_strength: float
     pattern_type: str
-    risk_indicators: List[str]
+    risk_indicators: list[str]
     investigation_priority: str
 
 
@@ -152,7 +152,7 @@ class InvestigationEngine:
 
     async def _get_resource_config_timeline(
         self, resource_id: UUID
-    ) -> List[SecurityEvent]:
+    ) -> list[SecurityEvent]:
         """Get configuration change timeline for a resource."""
 
         dialect = get_dialect_name(self.db)
@@ -206,7 +206,7 @@ class InvestigationEngine:
 
     async def _get_principal_permission_timeline(
         self, principal_id: UUID
-    ) -> List[SecurityEvent]:
+    ) -> list[SecurityEvent]:
         """Get permission change timeline for a principal."""
 
         dialect = get_dialect_name(self.db)
@@ -259,7 +259,7 @@ class InvestigationEngine:
 
     async def _get_related_finding_events(
         self, finding_id: UUID, rule_id: UUID
-    ) -> List[SecurityEvent]:
+    ) -> list[SecurityEvent]:
         """Get events from related findings (same rule)."""
 
         dialect = get_dialect_name(self.db)
@@ -304,8 +304,8 @@ class InvestigationEngine:
         return events
 
     async def _get_affected_resources(
-        self, resource_id: Optional[UUID]
-    ) -> List[Dict[str, Any]]:
+        self, resource_id: UUID | None
+    ) -> list[dict[str, Any]]:
         """Get resources affected by or related to the finding."""
 
         if not resource_id:
@@ -349,8 +349,8 @@ class InvestigationEngine:
         ]
 
     async def _get_involved_identities(
-        self, principal_id: Optional[UUID]
-    ) -> List[Dict[str, Any]]:
+        self, principal_id: UUID | None
+    ) -> list[dict[str, Any]]:
         """Get identities involved in or related to the finding."""
 
         if not principal_id:
@@ -401,7 +401,7 @@ class InvestigationEngine:
 
     async def correlate_security_events(
         self, org_id: UUID, time_window_hours: int = 24
-    ) -> List[EventCorrelation]:
+    ) -> list[EventCorrelation]:
         """Correlate security events to identify patterns and incidents."""
 
         since_time = datetime.utcnow() - timedelta(hours=time_window_hours)
@@ -484,14 +484,14 @@ class InvestigationEngine:
         return correlations
 
     async def _correlate_events(
-        self, events: List[SecurityEvent]
-    ) -> List[EventCorrelation]:
+        self, events: list[SecurityEvent]
+    ) -> list[EventCorrelation]:
         """Correlate events to identify patterns."""
 
         correlations = []
 
         # Group events by time windows (1-hour buckets)
-        time_buckets: Dict[datetime, List[SecurityEvent]] = {}
+        time_buckets: dict[datetime, list[SecurityEvent]] = {}
         for event in events:
             bucket_key = event.timestamp.replace(minute=0, second=0, microsecond=0)
             if bucket_key not in time_buckets:
@@ -503,7 +503,7 @@ class InvestigationEngine:
             if len(bucket_events) >= 3:  # Threshold for correlation
 
                 # Check for principal-based correlation
-                principals: Dict[str, List[SecurityEvent]] = {}
+                principals: dict[str, list[SecurityEvent]] = {}
                 for event in bucket_events:
                     if event.principal_id:
                         principal_key = str(event.principal_id)
@@ -533,8 +533,8 @@ class InvestigationEngine:
         return correlations
 
     async def _get_related_findings(
-        self, finding_id: UUID, rule_id: UUID, resource_id: Optional[UUID]
-    ) -> List[Dict[str, Any]]:
+        self, finding_id: UUID, rule_id: UUID, resource_id: UUID | None
+    ) -> list[dict[str, Any]]:
         """Get findings related by rule or resource."""
 
         related_query = text(
@@ -580,7 +580,7 @@ class InvestigationEngine:
             for row in result.fetchall()
         ]
 
-    async def get_temporal_query_interface(self, org_id: UUID) -> Dict[str, Any]:
+    async def get_temporal_query_interface(self, org_id: UUID) -> dict[str, Any]:
         """Get interface for temporal security queries."""
 
         dialect = get_dialect_name(self.db)

@@ -5,21 +5,22 @@ Provides REST API for attack path queries, blast radius analysis,
 and service identity mapping.
 """
 
-from typing import Optional, Dict, Any
-from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
 import logging
+from typing import Any
+from uuid import UUID
 
-from ...core.database import get_db
-from ...core.models import Organization
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...attack_path.reachability import get_reachability_analyzer
-from ...attack_path.path_analysis import get_path_analyzer, PathQuery, PathType
 from ...attack_path.graph_model import get_attack_graph
+from ...attack_path.path_analysis import PathQuery, PathType, get_path_analyzer
+from ...attack_path.reachability import get_reachability_analyzer
 from ...attack_path.service_identity import get_service_identity_mapper
+from ...core.database import get_db
+from ...core.models import Organization
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -28,8 +29,8 @@ logger = logging.getLogger(__name__)
 class AttackPathQuery(BaseModel):
     """Request for attack path analysis."""
 
-    source_principal: Optional[str] = Field(None, description="Source principal ID")
-    target_resource: Optional[str] = Field(None, description="Target resource ID")
+    source_principal: str | None = Field(None, description="Source principal ID")
+    target_resource: str | None = Field(None, description="Target resource ID")
     max_path_length: int = Field(5, description="Maximum path length", ge=1, le=10)
     path_type: str = Field("shortest_path", description="Type of path analysis")
     min_privilege_level: int = Field(
@@ -51,7 +52,7 @@ class WhatIfScenario(BaseModel):
     """What-if simulation scenario."""
 
     scenario_type: str = Field(..., description="Scenario type")
-    parameters: Dict[str, Any] = Field(..., description="Scenario parameters")
+    parameters: dict[str, Any] = Field(..., description="Scenario parameters")
 
 
 @router.post("/organizations/{org_id}/attack-paths/analyze")
@@ -167,7 +168,7 @@ async def analyze_blast_radius(
                 },
                 "blast_radius": {
                     "total_reachable_resources": result.blast_radius_size,
-                    "critical_resources": len([p for p in result.critical_paths]),
+                    "critical_resources": len(list(result.critical_paths)),
                     "shortest_path_length": result.shortest_path_length,
                     "overall_risk_score": result.overall_risk_score,
                 },
@@ -222,8 +223,8 @@ async def get_attack_graph_summary(
 @router.get("/organizations/{org_id}/service-identities")
 async def get_service_identities(
     org_id: UUID,
-    risk_level: Optional[str] = Query(None, description="Filter by risk level"),
-    trust_mechanism: Optional[str] = Query(
+    risk_level: str | None = Query(None, description="Filter by risk level"),
+    trust_mechanism: str | None = Query(
         None, description="Filter by trust mechanism"
     ),
     db: AsyncSession = Depends(get_db),

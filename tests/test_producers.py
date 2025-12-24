@@ -1,18 +1,11 @@
 """Test finding producers."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
 from cerebro.findings.producers.aws.bucket_cleartext_key import (
     BucketCleartextKeyProducer,
-)
-from cerebro.findings.producers.aws.iam_user_without_mfa import (
-    IAMUserWithoutMFAProducer,
-)
-from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProducer
-from cerebro.findings.producers.aws.storage_write_access import (
-    StorageWriteAccessProducer,
 )
 from cerebro.findings.producers.aws.codebuild_public_trigger import (
     CodeBuildPublicTriggerProducer,
@@ -20,26 +13,15 @@ from cerebro.findings.producers.aws.codebuild_public_trigger import (
 from cerebro.findings.producers.aws.codebuild_source_credential import (
     CodeBuildSharedCredentialProducer,
 )
+from cerebro.findings.producers.aws.iam_user_without_mfa import (
+    IAMUserWithoutMFAProducer,
+)
+from cerebro.findings.producers.aws.s3_bucket_public import S3BucketPublicProducer
 from cerebro.findings.producers.aws.service_account_open_assume import (
     AwsServiceAccountOpenAssumeProducer,
 )
-from cerebro.findings.producers.kubernetes.privileged_pod import (
-    K8sPrivilegedPodProducer,
-)
-from cerebro.findings.producers.kubernetes.ingress_public_exposure import (
-    K8sIngressPublicExposureProducer,
-)
-from cerebro.findings.producers.kubernetes.cluster_admin_binding import (
-    K8sClusterAdminServiceAccountProducer,
-)
-from cerebro.findings.producers.kubernetes.cluster_admin_wildcard import (
-    K8sClusterAdminWildcardBindingProducer,
-)
-from cerebro.findings.producers.kubernetes.node_public_exposure import (
-    K8sNodePublicExposureProducer,
-)
-from cerebro.findings.producers.kubernetes.service_public_exposure import (
-    K8sServicePublicExposureProducer,
+from cerebro.findings.producers.aws.storage_write_access import (
+    StorageWriteAccessProducer,
 )
 from cerebro.findings.producers.azure.storage_public_write import (
     AzureStoragePublicWriteProducer,
@@ -53,8 +35,14 @@ from cerebro.findings.producers.gcp.bucket_public_write import (
 from cerebro.findings.producers.gcp.bucket_secret_artifacts import (
     GCPBucketSecretArtifactProducer,
 )
+from cerebro.findings.producers.github.org_workflow_permissions import (
+    GithubOrgWorkflowRiskProducer,
+)
 from cerebro.findings.producers.github.public_repo_no_branch_protection import (
     PublicRepoNoBranchProtectionProducer,
+)
+from cerebro.findings.producers.github.repo_runner_group_scope import (
+    GithubRepoRunnerGroupScopeProducer,
 )
 from cerebro.findings.producers.github.runner_exposure import (
     GithubRunnerNetworkExposureProducer,
@@ -63,11 +51,23 @@ from cerebro.findings.producers.github.runner_exposure import (
 from cerebro.findings.producers.github.workflow_permissions import (
     GithubWorkflowDefaultWriteProducer,
 )
-from cerebro.findings.producers.github.org_workflow_permissions import (
-    GithubOrgWorkflowRiskProducer,
+from cerebro.findings.producers.kubernetes.cluster_admin_binding import (
+    K8sClusterAdminServiceAccountProducer,
 )
-from cerebro.findings.producers.github.repo_runner_group_scope import (
-    GithubRepoRunnerGroupScopeProducer,
+from cerebro.findings.producers.kubernetes.cluster_admin_wildcard import (
+    K8sClusterAdminWildcardBindingProducer,
+)
+from cerebro.findings.producers.kubernetes.ingress_public_exposure import (
+    K8sIngressPublicExposureProducer,
+)
+from cerebro.findings.producers.kubernetes.node_public_exposure import (
+    K8sNodePublicExposureProducer,
+)
+from cerebro.findings.producers.kubernetes.privileged_pod import (
+    K8sPrivilegedPodProducer,
+)
+from cerebro.findings.producers.kubernetes.service_public_exposure import (
+    K8sServicePublicExposureProducer,
 )
 from cerebro.findings.producers.m365.guest_admin import M365GuestAdminProducer
 from cerebro.findings.producers.m365.inactive_admin import (
@@ -1725,8 +1725,8 @@ class TestIdentityProducers:
             name="admin@example.com",
         )
 
-        old_login = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
-        created = (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()
+        old_login = (datetime.now(UTC) - timedelta(days=120)).isoformat()
+        created = (datetime.now(UTC) - timedelta(days=200)).isoformat()
 
         config = ConfigEntity(
             resource_external_id="00u123",
@@ -1764,7 +1764,7 @@ class TestIdentityProducers:
             name="ops@example.com",
         )
 
-        recent_login = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+        recent_login = (datetime.now(UTC) - timedelta(days=5)).isoformat()
 
         config = ConfigEntity(
             resource_external_id="00u456",
@@ -1827,7 +1827,7 @@ class TestIdentityProducers:
             name="admin@example.com",
         )
 
-        stale_login = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+        stale_login = (datetime.now(UTC) - timedelta(days=120)).isoformat()
 
         config = ConfigEntity(
             resource_external_id="user-admin-1",
@@ -1843,7 +1843,7 @@ class TestIdentityProducers:
                 "role_names": ["Global Administrator"],
                 "last_login": stale_login,
                 "created": (
-                    datetime.now(timezone.utc) - timedelta(days=200)
+                    datetime.now(UTC) - timedelta(days=200)
                 ).isoformat(),
                 "user_principal_name": "admin@example.com",
                 "mfa_enrolled": False,
@@ -1881,7 +1881,7 @@ class TestIdentityProducers:
                     }
                 ],
                 "last_login": (
-                    datetime.now(timezone.utc) - timedelta(days=10)
+                    datetime.now(UTC) - timedelta(days=10)
                 ).isoformat(),
             },
         )

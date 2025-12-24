@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
 
 from cerebro.compliance.pre_audit_service import PreAuditHealthCheckService
 from cerebro.tasks.celery_app import celery_app
-
 
 logger = structlog.get_logger(__name__)
 _service = PreAuditHealthCheckService()
@@ -20,7 +19,7 @@ _service = PreAuditHealthCheckService()
 def scan_due_pre_audit_schedules() -> list[str]:
     """Identify schedules that require a pre-audit run and enqueue execution tasks."""
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     schedules = asyncio.run(_service.due_schedules(as_of=now))
 
     for schedule in schedules:

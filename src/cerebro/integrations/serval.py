@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional, Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 def _serialize_datetime(value: Any) -> str:
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return str(value)
 
 
@@ -55,15 +56,15 @@ class ServalClient:
         self,
         config: ServalConfig,
         *,
-        client: Optional[httpx.AsyncClient] = None,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self._config = config
         self._client = client
         self._owns_client = client is None
-        self._token: Optional[_Token] = None
+        self._token: _Token | None = None
         self._token_lock = asyncio.Lock()
 
-    async def __aenter__(self) -> "ServalClient":
+    async def __aenter__(self) -> ServalClient:
         self._ensure_client_initialized()
         return self
 
@@ -95,15 +96,15 @@ class ServalClient:
     async def list_tickets(
         self,
         *,
-        team_id: Optional[str] = None,
-        since: Optional[datetime] = None,
+        team_id: str | None = None,
+        since: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Return tickets filtered by team and updated timestamp for incremental sync."""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if team_id:
             params["teamId"] = team_id
         if since is not None:
-            since_utc = since.astimezone(timezone.utc)
+            since_utc = since.astimezone(UTC)
             params["startTime.seconds"] = str(int(since_utc.timestamp()))
             params["startTime.nanos"] = str(int(since_utc.microsecond * 1000))
 
@@ -127,14 +128,14 @@ class ServalClient:
         name: str,
         description: str,
         created_by_user_id: str,
-        assigned_to_user_id: Optional[str] = None,
-        requester_user_id: Optional[str] = None,
-        parent_ticket_id: Optional[str] = None,
-        channel_sync_targets: Optional[Sequence[Dict[str, Any]]] = None,
-        created_at: Optional[Any] = None,
+        assigned_to_user_id: str | None = None,
+        requester_user_id: str | None = None,
+        parent_ticket_id: str | None = None,
+        channel_sync_targets: Sequence[dict[str, Any]] | None = None,
+        created_at: Any | None = None,
     ) -> dict[str, Any]:
         """Create a Serval ticket and return the normalized response payload."""
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "teamId": team_id,
             "name": name,
             "description": description,
@@ -161,19 +162,19 @@ class ServalClient:
         self,
         ticket_id: str,
         *,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        statusId: Optional[str] = None,
-        priorityId: Optional[str] = None,
-        assignedToUserId: Optional[str] = None,
-        labelIds: Optional[list[str]] = None,
-        slaStartedAt: Optional[Any] = None,
-        slaBreachesAt: Optional[Any] = None,
-        escalationLevel: Optional[str] = None,
-        requesterUserId: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        statusId: str | None = None,
+        priorityId: str | None = None,
+        assignedToUserId: str | None = None,
+        labelIds: list[str] | None = None,
+        slaStartedAt: Any | None = None,
+        slaBreachesAt: Any | None = None,
+        escalationLevel: str | None = None,
+        requesterUserId: str | None = None,
     ) -> dict[str, Any]:
         """Patch mutable ticket fields and return the updated ticket body."""
-        body: Dict[str, Any] = {}
+        body: dict[str, Any] = {}
         if name is not None:
             body["name"] = name
         if description is not None:
@@ -205,10 +206,10 @@ class ServalClient:
         raise ServalError("Serval update ticket response missing data")
 
     async def list_statuses(
-        self, *, team_id: Optional[str] = None
+        self, *, team_id: str | None = None
     ) -> list[dict[str, Any]]:
         """Fetch available workflow statuses from Serval."""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if team_id:
             params["teamId"] = team_id
         payload = await self._request_json("GET", "/v2/statuses", params=params or None)
@@ -218,10 +219,10 @@ class ServalClient:
         return []
 
     async def list_priorities(
-        self, *, team_id: Optional[str] = None
+        self, *, team_id: str | None = None
     ) -> list[dict[str, Any]]:
         """Fetch available priority options for configuration surfaces."""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if team_id:
             params["teamId"] = team_id
         payload = await self._request_json(
@@ -244,7 +245,7 @@ class ServalClient:
             return token
 
     def _token_expired(self, token: _Token) -> bool:
-        return datetime.now(timezone.utc) >= token.expires_at
+        return datetime.now(UTC) >= token.expires_at
 
     async def _fetch_token(self) -> _Token:
         client = self._get_client()
@@ -277,13 +278,13 @@ class ServalClient:
         expires_in = int(payload.get("expires_in") or 0)
         if not access_token:
             raise ServalError("Serval token response missing access_token")
-        expires_at = datetime.now(timezone.utc) + timedelta(
+        expires_at = datetime.now(UTC) + timedelta(
             seconds=max(expires_in - self._config.token_grace_seconds, 1)
         )
         return _Token(value=access_token, token_type=token_type, expires_at=expires_at)
 
     def _build_basic_auth_header(self) -> str:
-        raw = f"{self._config.client_id}:{self._config.client_secret}".encode("utf-8")
+        raw = f"{self._config.client_id}:{self._config.client_secret}".encode()
         encoded = base64.b64encode(raw).decode("ascii")
         return f"Basic {encoded}"
 

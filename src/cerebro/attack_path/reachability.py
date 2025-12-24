@@ -6,12 +6,12 @@ CLI integration and what-if simulation capabilities.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from .graph_model import get_attack_graph
-from .path_analysis import get_path_analyzer, PathQuery, PathType, AttackPath
+from .path_analysis import AttackPath, PathQuery, PathType, get_path_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -21,28 +21,28 @@ class ReachabilityResult:
     """Result of reachability analysis."""
 
     query_id: str
-    source_principal: Optional[str]
-    target_resource: Optional[str]
+    source_principal: str | None
+    target_resource: str | None
     analysis_type: str
 
     # Results
-    paths_found: List[AttackPath]
+    paths_found: list[AttackPath]
     total_paths: int
-    shortest_path_length: Optional[int]
-    most_exploitable_path: Optional[AttackPath]
+    shortest_path_length: int | None
+    most_exploitable_path: AttackPath | None
 
     # Risk assessment
     overall_risk_score: float
     blast_radius_size: int
-    critical_paths: List[AttackPath]
+    critical_paths: list[AttackPath]
 
     # Recommendations
-    mitigations: List[str]
-    monitoring_recommendations: List[str]
+    mitigations: list[str]
+    monitoring_recommendations: list[str]
 
     # Metadata
     analysis_duration_ms: float
-    graph_stats: Dict[str, Any]
+    graph_stats: dict[str, Any]
     generated_at: datetime
 
 
@@ -241,8 +241,8 @@ class ReachabilityAnalyzer:
         return result
 
     async def what_if_simulation(
-        self, org_id: str, scenario: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, org_id: str, scenario: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Perform what-if simulation for attack scenarios.
 
@@ -286,7 +286,7 @@ class ReachabilityAnalyzer:
                             p
                             for p in result.paths_found
                             if len(
-                                set(step.source_node.split("_")[0] for step in p.steps)
+                                {step.source_node.split("_")[0] for step in p.steps}
                             )
                             > 1
                         ]
@@ -301,7 +301,7 @@ class ReachabilityAnalyzer:
             raise ValueError(f"Unknown simulation scenario type: {scenario_type}")
 
     def _calculate_overall_risk_score(
-        self, paths: List[AttackPath], simulation_result: Dict[str, Any]
+        self, paths: list[AttackPath], simulation_result: dict[str, Any]
     ) -> float:
         """Calculate overall risk score from analysis results."""
         if not paths:
@@ -330,7 +330,7 @@ class ReachabilityAnalyzer:
         return min(overall_score, 1.0)
 
     def _calculate_resource_exposure_risk(
-        self, resource_id: str, paths: List[AttackPath]
+        self, resource_id: str, paths: list[AttackPath]
     ) -> float:
         """Calculate exposure risk for a specific resource."""
         if not paths:
@@ -353,8 +353,8 @@ class ReachabilityAnalyzer:
         return min(exposure_risk, 1.0)
 
     def _generate_comprehensive_mitigations(
-        self, paths: List[AttackPath], simulation_result: Dict[str, Any]
-    ) -> List[str]:
+        self, paths: list[AttackPath], simulation_result: dict[str, Any]
+    ) -> list[str]:
         """Generate comprehensive mitigation recommendations."""
         all_mitigations = []
 
@@ -376,7 +376,7 @@ class ReachabilityAnalyzer:
             )
 
         # Deduplicate and prioritize by frequency
-        mitigation_counts: Dict[str, int] = {}
+        mitigation_counts: dict[str, int] = {}
         for mitigation in all_mitigations:
             mitigation_counts[mitigation] = mitigation_counts.get(mitigation, 0) + 1
 
@@ -388,8 +388,8 @@ class ReachabilityAnalyzer:
         return [mitigation for mitigation, count in sorted_mitigations[:15]]
 
     def _generate_monitoring_recommendations(
-        self, principal_id: str, paths: List[AttackPath]
-    ) -> List[str]:
+        self, principal_id: str, paths: list[AttackPath]
+    ) -> list[str]:
         """Generate monitoring recommendations for principal."""
         recommendations = [
             f"Monitor {principal_id} for unusual access patterns",
@@ -411,8 +411,8 @@ class ReachabilityAnalyzer:
         return recommendations
 
     def _generate_resource_protection_mitigations(
-        self, resource_id: str, paths: List[AttackPath]
-    ) -> List[str]:
+        self, resource_id: str, paths: list[AttackPath]
+    ) -> list[str]:
         """Generate resource-specific protection recommendations."""
         mitigations = [
             f"Implement access logging for {resource_id}",
@@ -435,8 +435,8 @@ class ReachabilityAnalyzer:
         return mitigations
 
     def _generate_resource_monitoring_recommendations(
-        self, resource_id: str, paths: List[AttackPath]
-    ) -> List[str]:
+        self, resource_id: str, paths: list[AttackPath]
+    ) -> list[str]:
         """Generate resource-specific monitoring recommendations."""
         recommendations = [
             f"Monitor all access to {resource_id}",

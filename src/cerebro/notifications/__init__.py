@@ -1,5 +1,5 @@
 """Notification system for Cerebro - Slack, Email, PagerDuty, etc."""
 
-from .slack import SlackNotificationService, SlackMessageFormatter
+from .slack import SlackMessageFormatter, SlackNotificationService
 
-__all__ = ["SlackNotificationService", "SlackMessageFormatter"]
+__all__ = ["SlackMessageFormatter", "SlackNotificationService"]

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import List
 
 
 def cosine_similarity(
-    query: List[float],
+    query: list[float],
     query_norm: float,
-    stored: List[float],
+    stored: list[float],
     stored_norm: float,
 ) -> float:
     if query_norm == 0 or stored_norm == 0:
@@ -38,7 +37,7 @@ def summarize_text(text: str, max_chars: int) -> str:
         return cleaned
 
     sentences = re.split(r"(?<=[.!?])\s+", cleaned)
-    summary_parts: List[str] = []
+    summary_parts: list[str] = []
     for sentence in sentences:
         if not sentence:
             continue

@@ -1,28 +1,28 @@
 """Resource management endpoints."""
 
-from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
 
-from cerebro.core.database import get_db
-from cerebro.core.models import Resource, ConfigSnapshot
-from cerebro.api.schemas import ResourceResponse, ConfigSnapshotResponse
-from cerebro.api.auth import get_current_user, User
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cerebro.api.auth import User, get_current_user
+from cerebro.api.schemas import ConfigSnapshotResponse, ResourceResponse
 from cerebro.api.utils import (
     StandardFilters,
+    StandardResponses,
     get_entity_by_id_or_404,
     paginated_list,
-    StandardResponses,
 )
+from cerebro.core.database import get_db
+from cerebro.core.models import ConfigSnapshot, Resource
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
-@router.get("/", response_model=List[ResourceResponse])
+@router.get("/", response_model=list[ResourceResponse])
 async def list_resources(
-    resource_type: Optional[str] = Query(None, description="Filter by resource type"),
+    resource_type: str | None = Query(None, description="Filter by resource type"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     filters: StandardFilters = Depends(),
@@ -46,7 +46,7 @@ async def get_resource(resource_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get(
-    "/{resource_id}/configurations", response_model=List[ConfigSnapshotResponse]
+    "/{resource_id}/configurations", response_model=list[ConfigSnapshotResponse]
 )
 async def get_resource_configurations(
     resource_id: UUID,

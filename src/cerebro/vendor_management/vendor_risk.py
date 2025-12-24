@@ -6,20 +6,20 @@ and risk quantification for vendor management.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func
+from sqlalchemy import Boolean, DateTime, Float, String, Text, and_, desc, func, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from cerebro.core.database_types import JSONType
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Boolean, Text, Float
 
 from cerebro.core.database import Base
+from cerebro.core.database_types import JSONType
+
 from .vendor_registry import VendorRiskLevel
 
 logger = logging.getLogger(__name__)
@@ -95,9 +95,9 @@ class RiskScenario:
     business_impact: str
 
     # Mitigation
-    existing_controls: List[str]
+    existing_controls: list[str]
     residual_risk_score: float
-    recommended_actions: List[str]
+    recommended_actions: list[str]
 
     # Metadata
     last_assessed: datetime
@@ -140,19 +140,19 @@ class VendorRiskAssessment(Base):
     operational_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
     # Assessment details
-    methodology: Mapped[Optional[str]] = mapped_column(Text)
-    scope: Mapped[Optional[str]] = mapped_column(Text)
-    assumptions: Mapped[Optional[str]] = mapped_column(Text)
-    limitations: Mapped[Optional[str]] = mapped_column(Text)
+    methodology: Mapped[str | None] = mapped_column(Text)
+    scope: Mapped[str | None] = mapped_column(Text)
+    assumptions: Mapped[str | None] = mapped_column(Text)
+    limitations: Mapped[str | None] = mapped_column(Text)
 
     # Results and recommendations
-    key_findings: Mapped[Optional[str]] = mapped_column(Text)
-    recommendations: Mapped[Optional[str]] = mapped_column(Text)
-    risk_scenarios: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
-    mitigation_plan: Mapped[Optional[str]] = mapped_column(Text)
+    key_findings: Mapped[str | None] = mapped_column(Text)
+    recommendations: Mapped[str | None] = mapped_column(Text)
+    risk_scenarios: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
+    mitigation_plan: Mapped[str | None] = mapped_column(Text)
 
     # Timeline
-    next_assessment_due: Mapped[Optional[datetime]] = mapped_column(
+    next_assessment_due: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
     assessment_frequency_days: Mapped[int] = mapped_column(default=365)
@@ -208,7 +208,7 @@ class VendorRiskManager:
         compliance: float,
         business_continuity: float,
         operational: float,
-        weights: Optional[Dict[str, float]] = None,
+        weights: dict[str, float] | None = None,
     ) -> tuple[float, str]:
         """Calculate overall risk score and level."""
 
@@ -244,7 +244,7 @@ class VendorRiskManager:
         return overall_score, risk_level
 
     async def update_assessment_scores(
-        self, assessment_id: UUID, domain_scores: Dict[str, float]
+        self, assessment_id: UUID, domain_scores: dict[str, float]
     ) -> bool:
         """Update domain-specific scores for an assessment."""
         assessment = await self.db.get(VendorRiskAssessment, assessment_id)
@@ -319,7 +319,7 @@ class VendorRiskManager:
 
     async def get_vendor_risk_history(
         self, vendor_id: str, org_id: UUID, limit: int = 12
-    ) -> List[VendorRiskAssessment]:
+    ) -> list[VendorRiskAssessment]:
         """Get risk assessment history for a vendor."""
         stmt = (
             select(VendorRiskAssessment)
@@ -327,7 +327,7 @@ class VendorRiskManager:
                 and_(
                     VendorRiskAssessment.vendor_id == vendor_id,
                     VendorRiskAssessment.org_id == org_id,
-                    VendorRiskAssessment.is_active == True,
+                    VendorRiskAssessment.is_active,
                 )
             )
             .order_by(desc(VendorRiskAssessment.assessment_date))
@@ -336,7 +336,7 @@ class VendorRiskManager:
 
         return list(await self.db.scalars(stmt))
 
-    async def get_high_risk_vendors(self, org_id: UUID) -> List[Dict[str, Any]]:
+    async def get_high_risk_vendors(self, org_id: UUID) -> list[dict[str, Any]]:
         """Get vendors with high or critical risk levels."""
         stmt = (
             select(VendorRiskAssessment)
@@ -346,7 +346,7 @@ class VendorRiskManager:
                     VendorRiskAssessment.risk_level.in_(
                         [VendorRiskLevel.HIGH.value, VendorRiskLevel.CRITICAL.value]
                     ),
-                    VendorRiskAssessment.is_active == True,
+                    VendorRiskAssessment.is_active,
                 )
             )
             .order_by(desc(VendorRiskAssessment.overall_risk_score))
@@ -365,7 +365,7 @@ class VendorRiskManager:
             for assessment in assessments
         ]
 
-    async def generate_risk_dashboard(self, org_id: UUID) -> Dict[str, Any]:
+    async def generate_risk_dashboard(self, org_id: UUID) -> dict[str, Any]:
         """Generate risk dashboard data for an organization."""
         # Get latest assessments for each vendor
         latest_assessments_query = """
@@ -381,7 +381,7 @@ class VendorRiskManager:
         latest_assessments = result.fetchall()
 
         # Calculate risk distribution
-        risk_distribution: Dict[str, int] = {}
+        risk_distribution: dict[str, int] = {}
         total_vendors = len(latest_assessments)
 
         for assessment in latest_assessments:
@@ -584,7 +584,7 @@ class VendorRiskCalculator:
         return max(5.0, residual_risk)  # Minimum 5% residual risk
 
     @staticmethod
-    def generate_default_scenarios(vendor_id: str) -> List[RiskScenario]:
+    def generate_default_scenarios(vendor_id: str) -> list[RiskScenario]:
         """Generate default risk scenarios for a vendor."""
         return [
             RiskScenarioTemplate.get_data_breach_scenario(vendor_id),

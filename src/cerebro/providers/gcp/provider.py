@@ -1,15 +1,15 @@
 """GCP provider implementation."""
 
-from typing import List, Optional, AsyncGenerator
-from datetime import datetime
 import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
 
 from ..base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
     IamPermission,
+    PrincipalInfo,
+    ResourceInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,8 @@ class GCPProvider(BaseProvider):
     async def authenticate(self) -> bool:
         """Authenticate with GCP."""
         try:
-            from google.cloud import compute_v1
             from google.auth import default
+            from google.cloud import compute_v1
 
             # Attempt to get default credentials
             credentials, project = default()
@@ -56,12 +56,12 @@ class GCPProvider(BaseProvider):
             return False
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover GCP resources."""
         try:
-            from google.cloud import compute_v1
             from google.auth import default
+            from google.cloud import compute_v1
 
             credentials, _ = default()
             client = compute_v1.InstancesClient(credentials=credentials)
@@ -93,8 +93,8 @@ class GCPProvider(BaseProvider):
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover GCP principals (service accounts and users)."""
         try:
-            from google.cloud import iam_admin_v1
             from google.auth import default
+            from google.cloud import iam_admin_v1
 
             credentials, _ = default()
             iam_client = iam_admin_v1.IAMClient(credentials=credentials)
@@ -134,8 +134,8 @@ class GCPProvider(BaseProvider):
     ) -> ConfigurationSnapshot:
         """Get GCP resource configuration."""
         try:
-            from google.cloud import compute_v1
             from google.auth import default
+            from google.cloud import compute_v1
 
             if resource.resource_type == "gcp.compute.instance":
                 credentials, _ = default()
@@ -230,13 +230,13 @@ class GCPProvider(BaseProvider):
         )
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover GCP IAM permissions."""
         try:
+            from google.auth import default
             from google.cloud import resourcemanager_v3
             from google.iam.v1 import iam_policy_pb2
-            from google.auth import default
 
             credentials, _ = default()
 
@@ -258,7 +258,7 @@ class GCPProvider(BaseProvider):
                 for member in binding.members:
                     # Extract principal info from member string
                     # Members are in format: "user:email", "serviceAccount:email", etc.
-                    member_type, principal_external_id = (
+                    _member_type, principal_external_id = (
                         member.split(":", 1) if ":" in member else ("user", member)
                     )
 
@@ -286,7 +286,7 @@ class GCPProvider(BaseProvider):
             logger.error(f"Failed to discover GCP IAM edges: {e}")
             return
 
-    def _map_gcp_role_to_permissions(self, role: str) -> List[str]:
+    def _map_gcp_role_to_permissions(self, role: str) -> list[str]:
         """Map GCP IAM role to simplified permission names."""
         # Basic role mapping - in production this would be more comprehensive
         role_mapping = {

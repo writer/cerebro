@@ -7,15 +7,16 @@ across all providers in real-time.
 
 import logging
 import os
-import sqlparse
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from .bootstrap import ensure_tables_registered
-from .registry import get_registry, TableRegistry
-from .table import QueryContext, QueryFilter
+import sqlparse
+
 from ..core.events import emit_event
+from .bootstrap import ensure_tables_registered
+from .registry import TableRegistry, get_registry
+from .table import QueryContext, QueryFilter
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,12 @@ class QueryError(Exception):
 class QueryResult:
     """Result of a SQL query execution."""
 
-    columns: List[str]
-    rows: List[Dict[str, Any]]
+    columns: list[str]
+    rows: list[dict[str, Any]]
     total_rows: int
     execution_time_ms: float
-    tables_queried: List[str]
-    errors: List[str]
+    tables_queried: list[str]
+    errors: list[str]
 
 
 @dataclass
@@ -43,13 +44,13 @@ class QueryPlan:
     """Execution plan for a SQL query."""
 
     table_name: str
-    selected_columns: List[str]
-    filters: List[QueryFilter]
-    order_by: Optional[List[str]]
-    limit: Optional[int]
-    offset: Optional[int]
-    estimated_rows: Optional[int]
-    wildcard_tables: Optional[List[str]] = None  # Tables matched by wildcard pattern
+    selected_columns: list[str]
+    filters: list[QueryFilter]
+    order_by: list[str] | None
+    limit: int | None
+    offset: int | None
+    estimated_rows: int | None
+    wildcard_tables: list[str] | None = None  # Tables matched by wildcard pattern
 
 
 class SQLParser:
@@ -134,7 +135,7 @@ class SQLParser:
     def _extract_table_name(self, parsed) -> str:
         """Extract table name from parsed SQL."""
         from_seen = False
-        table_parts: List[str] = []
+        table_parts: list[str] = []
         stop_keywords = {"WHERE", "ORDER", "GROUP", "HAVING", "LIMIT", "OFFSET"}
 
         for token in parsed.flatten():
@@ -185,11 +186,11 @@ class SQLParser:
 
         raise ValueError("No table name found in query")
 
-    def _extract_selected_columns(self, parsed: Any) -> List[str]:
+    def _extract_selected_columns(self, parsed: Any) -> list[str]:
         """Extract selected columns from parsed SQL."""
         select_seen = False
-        columns: List[str] = []
-        current_column: List[str] = []
+        columns: list[str] = []
+        current_column: list[str] = []
 
         for token in parsed.flatten():
             # Check for SELECT keyword (can be Keyword.DML)
@@ -236,7 +237,7 @@ class SQLParser:
         # No columns found means SELECT * implicitly
         return ["*"]
 
-    def _extract_filters(self, parsed) -> List[QueryFilter]:
+    def _extract_filters(self, parsed) -> list[QueryFilter]:
         """Extract WHERE clause filters from parsed SQL."""
         filters = []
         where_seen = False
@@ -264,7 +265,7 @@ class SQLParser:
 
         return filters
 
-    def _parse_filter_conditions(self, filter_text: str) -> List[QueryFilter]:
+    def _parse_filter_conditions(self, filter_text: str) -> list[QueryFilter]:
         """Parse individual filter conditions."""
         filters = []
 
@@ -329,7 +330,7 @@ class SQLParser:
             return relative_ts
 
         if value_str.lower() in {"now()", "current_timestamp", "current_timestamp()"}:
-            return datetime.now(timezone.utc)
+            return datetime.now(UTC)
 
         # Handle IN operator (list values)
         if operator == "IN":
@@ -352,7 +353,7 @@ class SQLParser:
         else:
             return value_str
 
-    def _parse_relative_timestamp(self, value_str: str) -> Optional[datetime]:
+    def _parse_relative_timestamp(self, value_str: str) -> datetime | None:
         """Parse expressions like NOW() - INTERVAL '24 hours' into a datetime."""
 
         lowered = value_str.lower()
@@ -390,7 +391,7 @@ class SQLParser:
         amount = int(amount_raw)
         unit = unit_raw.strip()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if unit.startswith("day"):
             return now - timedelta(days=amount)
         if unit.startswith("hour"):
@@ -442,11 +443,11 @@ class SQLParser:
 
         raise ValueError(f"Could not parse timestamp: {value_str}")
 
-    def _extract_order_by(self, parsed: Any) -> Optional[List[str]]:
+    def _extract_order_by(self, parsed: Any) -> list[str] | None:
         """Extract ORDER BY clause from parsed SQL."""
         order_by_seen = False
-        order_columns: List[str] = []
-        current_column: List[str] = []
+        order_columns: list[str] = []
+        current_column: list[str] = []
 
         for token in parsed.flatten():
             if (
@@ -476,7 +477,7 @@ class SQLParser:
 
         return order_columns if order_columns else None
 
-    def _extract_limit(self, parsed) -> Optional[int]:
+    def _extract_limit(self, parsed) -> int | None:
         """Extract LIMIT clause from parsed SQL."""
         limit_seen = False
         for token in parsed.flatten():
@@ -489,7 +490,7 @@ class SQLParser:
                 return int(token.value)
         return None
 
-    def _extract_offset(self, parsed) -> Optional[int]:
+    def _extract_offset(self, parsed) -> int | None:
         """Extract OFFSET clause from parsed SQL."""
         offset_seen = False
         for token in parsed.flatten():
@@ -511,13 +512,13 @@ class QueryEngine:
     using a SQL interface, inspired by Steampipe's Zero-ETL approach.
     """
 
-    def __init__(self, registry: Optional[TableRegistry] = None):
+    def __init__(self, registry: TableRegistry | None = None):
         ensure_tables_registered(registry=registry)
         self.registry = registry or get_registry()
         self.parser = SQLParser()
 
     async def execute_query(
-        self, sql: str, params: Optional[List[Any]] = None
+        self, sql: str, params: list[Any] | None = None
     ) -> QueryResult:
         """
         Execute a SQL query against registered security tables.
@@ -530,7 +531,7 @@ class QueryEngine:
             QueryResult with rows, metadata, and any errors
         """
         start_time = datetime.now()
-        errors: List[str] = []
+        errors: list[str] = []
 
         try:
             # Substitute parameters safely
@@ -601,7 +602,7 @@ class QueryEngine:
                 errors=[str(e)],
             )
 
-    def _validate_query(self, plan: QueryPlan) -> List[str]:
+    def _validate_query(self, plan: QueryPlan) -> list[str]:
         """Validate query plan against registered tables."""
         errors = []
 
@@ -628,7 +629,7 @@ class QueryEngine:
 
         return errors
 
-    async def _execute_query_plan(self, plan: QueryPlan) -> List[Dict[str, Any]]:
+    async def _execute_query_plan(self, plan: QueryPlan) -> list[dict[str, Any]]:
         """Execute a validated query plan."""
         # Handle wildcard tables with UNION ALL behavior
         if plan.wildcard_tables:
@@ -672,7 +673,7 @@ class QueryEngine:
 
         return rows
 
-    async def _execute_wildcard_query(self, plan: QueryPlan) -> List[Dict[str, Any]]:
+    async def _execute_wildcard_query(self, plan: QueryPlan) -> list[dict[str, Any]]:
         """Execute query against multiple tables (UNION ALL behavior)."""
         all_rows = []
 
@@ -735,8 +736,8 @@ class QueryEngine:
         return all_rows
 
     def _sort_rows(
-        self, rows: List[Dict[str, Any]], order_by: List[str]
-    ) -> List[Dict[str, Any]]:
+        self, rows: list[dict[str, Any]], order_by: list[str]
+    ) -> list[dict[str, Any]]:
         """Sort rows by specified columns."""
         if not rows or not order_by:
             return rows
@@ -756,11 +757,11 @@ class QueryEngine:
 
         return rows
 
-    async def describe_table(self, table_name: str) -> Optional[Dict[str, Any]]:
+    async def describe_table(self, table_name: str) -> dict[str, Any] | None:
         """Get detailed schema information for a table."""
         return self.registry.get_table_info(table_name)
 
-    async def list_tables(self, provider: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_tables(self, provider: str | None = None) -> list[dict[str, Any]]:
         """List all available tables with basic information."""
         table_names = self.registry.list_tables(provider)
         tables_info = []
@@ -783,7 +784,7 @@ class QueryEngine:
         return tables_info
 
     async def execute_count_query(
-        self, table_name: str, filters: Optional[List[QueryFilter]] = None
+        self, table_name: str, filters: list[QueryFilter] | None = None
     ) -> int:
         """Execute a count query against a table."""
         table = self.registry.get_table(table_name)
@@ -793,7 +794,7 @@ class QueryEngine:
         ctx = QueryContext(filters=filters or [])
         return await table.count_resources(ctx)
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check health of the query engine."""
         return {
             "status": "healthy",
@@ -802,7 +803,7 @@ class QueryEngine:
             "version": "1.0.0",
         }
 
-    def _substitute_parameters(self, sql: str, params: List[Any]) -> str:
+    def _substitute_parameters(self, sql: str, params: list[Any]) -> str:
         """
         Safely substitute parameters in SQL query.
 
@@ -855,9 +856,9 @@ class QueryEngine:
 
 
 async def query_security_alerts(
-    provider: Optional[str] = None,
-    severity: Optional[str] = None,
-    since: Optional[datetime] = None,
+    provider: str | None = None,
+    severity: str | None = None,
+    since: datetime | None = None,
     limit: int = 100,
 ) -> QueryResult:
     """Query security alerts with common filters."""
@@ -879,9 +880,9 @@ async def query_security_alerts(
 
 
 async def query_user_activity(
-    user_id: Optional[str] = None,
-    provider: Optional[str] = None,
-    since: Optional[datetime] = None,
+    user_id: str | None = None,
+    provider: str | None = None,
+    since: datetime | None = None,
     limit: int = 100,
 ) -> QueryResult:
     """Query user identity and activity data."""

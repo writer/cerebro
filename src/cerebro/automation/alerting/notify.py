@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional, Sequence
 
 import httpx
 
@@ -21,7 +21,7 @@ async def send_slack_alert(
     webhook_url: str,
     alert: AlertResult,
     *,
-    session: Optional[httpx.AsyncClient] = None,
+    session: httpx.AsyncClient | None = None,
     timeout: float = 10.0,
 ) -> None:
     payload = {

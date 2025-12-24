@@ -5,20 +5,21 @@ Translate natural language questions to SQL queries and execute them.
 Enables users to query security data without knowing SQL syntax.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import structlog
 from pydantic import BaseModel, Field
 
 from cerebro.agents.tools.base import (
-    StructuredTool,
-    ToolResult,
     AgentContext,
+    StructuredTool,
     ToolPermissionLevel,
+    ToolResult,
 )
 from cerebro.core.config import settings
 from cerebro.query.bootstrap import get_query_engine
 
-from .nl_translator import build_translator, TranslationError
+from .nl_translator import TranslationError, build_translator
 
 logger = structlog.get_logger(__name__)
 
@@ -39,7 +40,7 @@ class NLQueryInput(BaseModel):
             "Find critical findings from the last 7 days",
         ],
     )
-    limit: Optional[int] = Field(
+    limit: int | None = Field(
         default=100,
         description="Maximum number of results to return",
         ge=1,
@@ -53,7 +54,7 @@ class NLQueryOutput(BaseModel):
     success: bool
     question: str
     sql_query: str
-    results: List[Dict[str, Any]]
+    results: list[dict[str, Any]]
     result_count: int
     execution_time_ms: float
     explanation: str

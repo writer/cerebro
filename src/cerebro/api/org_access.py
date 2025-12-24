@@ -6,13 +6,13 @@ These helpers ensure the authenticated user is allowed to access the requested o
 
 from __future__ import annotations
 
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 
 from cerebro.api.auth import User, get_current_user
-
 
 UserDep = TypeVar("UserDep", bound=Callable[..., User])
 

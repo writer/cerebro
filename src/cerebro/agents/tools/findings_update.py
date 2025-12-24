@@ -5,8 +5,7 @@ Provides secure, audited access to updating finding status with proper RBAC,
 dry-run support, and audit trail creation.
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -16,7 +15,7 @@ from sqlalchemy import select
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding
 
-from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
+from .base import AgentContext, Tool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -27,7 +26,7 @@ class UpdateFindingStatusInput(BaseModel):
     finding_id: str = Field(description="Finding ID to update")
     status: str = Field(description="New status for the finding")
     comment: str = Field(description="Comment explaining the status change")
-    assignee: Optional[str] = Field(None, description="User to assign the finding to")
+    assignee: str | None = Field(None, description="User to assign the finding to")
 
 
 class UpdateFindingStatusOutput(BaseModel):
@@ -40,7 +39,7 @@ class UpdateFindingStatusOutput(BaseModel):
     updated_at: str  # ISO format
     updated_by: str
     dry_run: bool
-    audit_event_id: Optional[UUID] = None
+    audit_event_id: UUID | None = None
 
 
 class FindingStatusUpdateTool(Tool):
@@ -67,11 +66,11 @@ class FindingStatusUpdateTool(Tool):
         return ToolPermissionLevel.WRITE_SAFE
 
     @property
-    def cel_policy_key(self) -> Optional[str]:
+    def cel_policy_key(self) -> str | None:
         return "tools.findings.update_status"
 
     @property
-    def cel_expression(self) -> Optional[str]:
+    def cel_expression(self) -> str | None:
         # Require security analyst role and proper org ownership
         return """
         has(roles) && ('security_analyst' in roles || 'security_admin' in roles) &&
@@ -135,7 +134,7 @@ class FindingStatusUpdateTool(Tool):
                 )
 
                 result = await session.execute(query)
-                finding: Optional[Finding] = result.scalar_one_or_none()  # type: ignore[assignment]
+                finding: Finding | None = result.scalar_one_or_none()  # type: ignore[assignment]
 
                 if not finding:
                     return ToolResult(
@@ -173,7 +172,7 @@ class FindingStatusUpdateTool(Tool):
                             old_status=old_status,
                             new_status=update_inputs.status,
                             comment=update_inputs.comment,
-                            updated_at=datetime.now(timezone.utc).isoformat(),
+                            updated_at=datetime.now(UTC).isoformat(),
                             updated_by=context.user_id,
                             dry_run=True,
                         ).model_dump(),
@@ -193,12 +192,12 @@ class FindingStatusUpdateTool(Tool):
 
                 # Perform actual update
                 finding.status = update_inputs.status
-                finding.last_seen = datetime.now(timezone.utc)
+                finding.last_seen = datetime.now(UTC)
 
                 # Set resolved timestamp if marking as fixed
                 if update_inputs.status == "fixed" and old_status != "fixed":
                     if hasattr(finding, "resolved_at"):
-                        finding.resolved_at = datetime.now(timezone.utc)
+                        finding.resolved_at = datetime.now(UTC)
 
                 # Create comprehensive agent audit event
                 from cerebro.agents.audit import log_agent_event
@@ -263,7 +262,7 @@ class FindingStatusUpdateTool(Tool):
             )
             return ToolResult(
                 success=False,
-                error=f"Failed to update finding status: {str(e)}",
+                error=f"Failed to update finding status: {e!s}",
                 metadata={
                     "error_type": "database_error",
                     "finding_id": update_inputs.finding_id,

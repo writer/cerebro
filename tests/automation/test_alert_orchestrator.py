@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import pytest
 
@@ -24,7 +23,7 @@ class _DummySession:
 
 
 def _snapshot() -> TelemetryHealthSnapshot:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TelemetryHealthSnapshot(
         generated_at=now,
         window_start=now,
@@ -52,7 +51,7 @@ def _alert() -> AlertResult:
         severity=RuleSeverity.WARNING,
         description="Total events below threshold",
     )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return AlertResult(
         rule=rule,
         metric_value=20,
@@ -70,7 +69,7 @@ async def test_run_telemetry_alerts_no_alerts(monkeypatch) -> None:
     monkeypatch.setattr(orchestrator, "async_session_factory", lambda: _DummySession())
 
     async def fake_collect(**kwargs):
-        return tuple(), _snapshot()
+        return (), _snapshot()
 
     monkeypatch.setattr(orchestrator, "collect_telemetry_alerts", fake_collect)
 
@@ -91,14 +90,14 @@ async def test_run_telemetry_alerts_delivers_notifications(monkeypatch) -> None:
 
     monkeypatch.setattr(orchestrator, "collect_telemetry_alerts", fake_collect)
 
-    slack_calls: List[str] = []
+    slack_calls: list[str] = []
 
     async def fake_slack(webhook, alert, session=None):
         slack_calls.append(webhook)
 
     monkeypatch.setattr(orchestrator, "send_slack_alert", fake_slack)
 
-    email_calls: List[str] = []
+    email_calls: list[str] = []
 
     async def fake_email(recipients, subject, body):
         email_calls.extend(recipients)

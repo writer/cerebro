@@ -32,30 +32,29 @@ ISO27001Framework = _frameworks_module.ISO27001Framework
 PCIDSSFramework = _frameworks_module.PCIDSSFramework
 
 # Import providers after the base classes are available
-from .soc2_provider import SOC2FrameworkProvider
-from .iso27001_provider import ISO27001FrameworkProvider
-
 # Auto-register providers with the global registry
 from ..framework_registry import (
-    register_framework_provider,
     get_framework,
     list_frameworks,
+    register_framework_provider,
 )
+from .iso27001_provider import ISO27001FrameworkProvider
+from .soc2_provider import SOC2FrameworkProvider
 
 # Register all providers
 register_framework_provider(SOC2FrameworkProvider())
 register_framework_provider(ISO27001FrameworkProvider())
 
 __all__ = [
-    "SOC2FrameworkProvider",
+    "ComplianceControl",
+    "ComplianceFramework",
+    "ControlType",
+    "EvidenceType",
+    "ISO27001Framework",
     "ISO27001FrameworkProvider",
+    "PCIDSSFramework",
+    "SOC2Framework",
+    "SOC2FrameworkProvider",
     "get_framework",
     "list_frameworks",
-    "ComplianceFramework",
-    "ComplianceControl",
-    "EvidenceType",
-    "ControlType",
-    "SOC2Framework",
-    "ISO27001Framework",
-    "PCIDSSFramework",
 ]

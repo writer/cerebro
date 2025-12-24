@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
@@ -23,7 +23,7 @@ def test_malware_producer_flags_active_threat() -> None:
     producer = SentinelOneMalwareProducer()
 
     resource = _make_endpoint_resource()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     config = ConfigEntity(
         resource_external_id=resource.external_id,
         captured_at=now,
@@ -58,7 +58,7 @@ def test_command_control_limits_evidence_lists() -> None:
     producer = SentinelOneCommandControlProducer()
 
     resource = _make_endpoint_resource()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     domains = [f"c2-{i}.example.com" for i in range(12)]
     config = ConfigEntity(
         resource_external_id=resource.external_id,

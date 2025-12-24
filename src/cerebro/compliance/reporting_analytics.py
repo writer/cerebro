@@ -14,13 +14,14 @@ Key features:
 - Integration with BI tools (Tableau, Power BI)
 """
 
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
-from enum import Enum
-import matplotlib.pyplot as plt  # type: ignore[import-not-found]
-from io import BytesIO
 import base64
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from io import BytesIO
+from typing import Any
+
+import matplotlib.pyplot as plt  # type: ignore[import-not-found]
 
 from .evidence_data_fabric import EvidenceDataFabric, EvidenceQuery
 from .risk_management import RiskManagementSystem
@@ -78,15 +79,15 @@ class ReportWidget:
 
     # Data configuration
     data_source: str  # evidence_fabric, risk_management, rules_engine
-    query_config: Dict[str, Any] = field(default_factory=dict)
+    query_config: dict[str, Any] = field(default_factory=dict)
 
     # Display configuration
     size: str = "medium"  # small, medium, large, full_width
-    position: Dict[str, int] = field(default_factory=dict)  # row, col, span
+    position: dict[str, int] = field(default_factory=dict)  # row, col, span
 
     # Formatting
-    color_scheme: Optional[str] = None
-    thresholds: Dict[str, Any] = field(default_factory=dict)  # For colored indicators
+    color_scheme: str | None = None
+    thresholds: dict[str, Any] = field(default_factory=dict)  # For colored indicators
 
     # Refresh settings
     refresh_frequency: ReportFrequency = ReportFrequency.DAILY
@@ -105,22 +106,22 @@ class ReportTemplate:
     report_type: ReportType
 
     # Layout and content
-    widgets: List[ReportWidget] = field(default_factory=list)
-    sections: List[Dict[str, Any]] = field(default_factory=list)
+    widgets: list[ReportWidget] = field(default_factory=list)
+    sections: list[dict[str, Any]] = field(default_factory=list)
 
     # Target audience and access
-    target_audience: List[str] = field(
+    target_audience: list[str] = field(
         default_factory=list
     )  # executives, auditors, managers
     access_level: str = "internal"  # internal, external, public
 
     # Generation settings
     frequency: ReportFrequency = ReportFrequency.MONTHLY
-    distribution_list: List[str] = field(default_factory=list)
+    distribution_list: list[str] = field(default_factory=list)
 
     # Customization
-    customizable_filters: List[str] = field(default_factory=list)
-    export_formats: List[str] = field(default_factory=lambda: ["pdf", "html", "excel"])
+    customizable_filters: list[str] = field(default_factory=list)
+    export_formats: list[str] = field(default_factory=lambda: ["pdf", "html", "excel"])
 
     created_at: datetime = field(default_factory=datetime.now)
     created_by: str = ""
@@ -137,13 +138,13 @@ class ComplianceKPI:
     # Calculation
     calculation_method: str  # percentage, count, ratio, average
     data_source: str
-    query_config: Dict[str, Any] = field(default_factory=dict)
+    query_config: dict[str, Any] = field(default_factory=dict)
 
     # Targets and thresholds
-    target_value: Optional[float] = None
-    green_threshold: Optional[float] = None
-    yellow_threshold: Optional[float] = None
-    red_threshold: Optional[float] = None
+    target_value: float | None = None
+    green_threshold: float | None = None
+    yellow_threshold: float | None = None
+    red_threshold: float | None = None
 
     # Metadata
     unit: str = ""  # %, count, days, etc.
@@ -168,11 +169,11 @@ class ComplianceAnalytics:
         # Initialize default KPIs and templates
         self._kpis = self._load_default_kpis()
         self._templates = self._load_default_templates()
-        self._widget_cache: Dict[str, Any] = {}
+        self._widget_cache: dict[str, Any] = {}
 
     def generate_executive_dashboard(
-        self, time_period_days: int = 30, frameworks: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        self, time_period_days: int = 30, frameworks: list[str] | None = None
+    ) -> dict[str, Any]:
         """Generate executive-level compliance dashboard."""
 
         end_date = datetime.now()
@@ -229,7 +230,7 @@ class ComplianceAnalytics:
 
     def generate_audit_readiness_report(
         self, framework: str, audit_period_start: datetime, audit_period_end: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate comprehensive audit readiness report."""
 
         # Evidence coverage analysis
@@ -276,7 +277,7 @@ class ComplianceAnalytics:
 
     def create_board_presentation(
         self, quarter: str, include_appendix: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create board of directors presentation on compliance posture."""
 
         # High-level metrics for board consumption
@@ -361,7 +362,7 @@ class ComplianceAnalytics:
 
         return presentation
 
-    def calculate_compliance_kpis(self) -> Dict[str, Any]:
+    def calculate_compliance_kpis(self) -> dict[str, Any]:
         """Calculate all defined compliance KPIs."""
 
         kpi_results = {}
@@ -402,7 +403,7 @@ class ComplianceAnalytics:
 
     def export_report(
         self,
-        report_data: Dict[str, Any],
+        report_data: dict[str, Any],
         format: str = "pdf",
         template_name: str = "default",
     ) -> bytes:
@@ -418,8 +419,8 @@ class ComplianceAnalytics:
             raise ValueError(f"Unsupported export format: {format}")
 
     def _calculate_compliance_overview(
-        self, frameworks: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        self, frameworks: list[str] | None = None
+    ) -> dict[str, Any]:
         """Calculate high-level compliance overview metrics."""
 
         # Get recent rule evaluation results
@@ -464,7 +465,7 @@ class ComplianceAnalytics:
 
     def _analyze_control_effectiveness(
         self, start_date: datetime, end_date: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Analyze the effectiveness of security controls over time."""
 
         # This would query historical control test results
@@ -491,7 +492,7 @@ class ComplianceAnalytics:
 
     def _analyze_evidence_freshness(
         self, start_date: datetime, end_date: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Analyze freshness of evidence across different sources."""
 
         # Query evidence fabric for freshness metrics
@@ -540,10 +541,10 @@ class ComplianceAnalytics:
             ),
         }
 
-    def _calculate_freshness_by_source(self, evidence_records: Any) -> Dict[str, float]:
+    def _calculate_freshness_by_source(self, evidence_records: Any) -> dict[str, float]:
         """Calculate evidence freshness by source system."""
 
-        source_freshness: Dict[str, List[float]] = {}
+        source_freshness: dict[str, list[float]] = {}
         now = datetime.now()
 
         for record in evidence_records:
@@ -568,7 +569,7 @@ class ComplianceAnalytics:
             for source, scores in source_freshness.items()
         }
 
-    def _calculate_compliance_trends(self, time_period_days: int) -> Dict[str, Any]:
+    def _calculate_compliance_trends(self, time_period_days: int) -> dict[str, Any]:
         """Calculate compliance trends over time."""
 
         # This would query historical data
@@ -596,7 +597,7 @@ class ComplianceAnalytics:
 
     def _identify_key_actions(
         self, compliance_data, risk_data, control_data
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Identify key actions needed based on analysis."""
 
         actions = []
@@ -641,7 +642,7 @@ class ComplianceAnalytics:
 
         return actions
 
-    def _load_default_kpis(self) -> Dict[str, ComplianceKPI]:
+    def _load_default_kpis(self) -> dict[str, ComplianceKPI]:
         """Load default compliance KPIs."""
 
         kpis = {}
@@ -678,7 +679,7 @@ class ComplianceAnalytics:
 
         return kpis
 
-    def _load_default_templates(self) -> Dict[str, ReportTemplate]:
+    def _load_default_templates(self) -> dict[str, ReportTemplate]:
         """Load default report templates."""
 
         templates = {}
@@ -724,12 +725,12 @@ class ComplianceAnalytics:
             return value > threshold
 
     def _create_compliance_scorecard_visual(
-        self, dashboard_data: Dict[str, Any]
+        self, dashboard_data: dict[str, Any]
     ) -> str:
         """Create base64-encoded visualization for compliance scorecard."""
 
         # Create a simple gauge chart
-        fig, ax = plt.subplots(figsize=(8, 6))
+        _fig, ax = plt.subplots(figsize=(8, 6))
 
         score = dashboard_data["executive_summary"]["overall_compliance_score"]
 
@@ -742,7 +743,7 @@ class ComplianceAnalytics:
         ]
         colors = ["#ff4444", "#ffaa00", "#ffdd00", "#44aa44"]
 
-        wedges, texts = ax.pie(
+        _wedges, _texts = ax.pie(
             [60, 15, 10, 15],
             labels=categories,
             colors=colors,
@@ -771,11 +772,11 @@ class ComplianceAnalytics:
 
         return f"data:image/png;base64,{image_base64}"
 
-    def _create_risk_heatmap_visual(self, risk_data: Dict[str, Any]) -> str:
+    def _create_risk_heatmap_visual(self, risk_data: dict[str, Any]) -> str:
         """Create base64-encoded risk heatmap visualization."""
 
         # Simplified risk heatmap
-        fig, ax = plt.subplots(figsize=(10, 6))
+        _fig, ax = plt.subplots(figsize=(10, 6))
 
         # Sample risk matrix data
         impact_levels = ["Minimal", "Low", "Medium", "High", "Critical"]
@@ -816,7 +817,7 @@ class ComplianceAnalytics:
         frameworks = ["SOC 2", "ISO 27001", "PCI DSS"]
         coverage = [92, 87, 75]
 
-        fig, ax = plt.subplots(figsize=(8, 6))
+        _fig, ax = plt.subplots(figsize=(8, 6))
         bars = ax.bar(frameworks, coverage, color=["#4CAF50", "#2196F3", "#FF9800"])
 
         ax.set_ylabel("Coverage %")
@@ -824,7 +825,7 @@ class ComplianceAnalytics:
         ax.set_ylim(0, 100)
 
         # Add percentage labels on bars
-        for bar, pct in zip(bars, coverage):
+        for bar, pct in zip(bars, coverage, strict=False):
             height = bar.get_height()
             ax.text(
                 bar.get_x() + bar.get_width() / 2.0,
@@ -846,82 +847,82 @@ class ComplianceAnalytics:
     # Stub implementations for missing methods
     def _analyze_evidence_coverage_for_audit(
         self, framework: str, start: datetime, end: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Analyze evidence coverage for audit period."""
         return {"coverage_score": 0.0, "gaps": []}
 
     def _get_control_test_results(
         self, framework: str, start: datetime, end: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get control test results for period."""
         return {"tests": [], "pass_rate": 0.0}
 
     def _identify_audit_gaps(
-        self, framework: str, coverage: Dict[str, Any], results: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, framework: str, coverage: dict[str, Any], results: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Identify gaps in audit readiness."""
         return []
 
     def _calculate_audit_readiness_score(
-        self, coverage: Dict[str, Any], results: Dict[str, Any], gaps: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, coverage: dict[str, Any], results: dict[str, Any], gaps: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Calculate overall audit readiness score."""
         return {"score": 0.0, "package_completeness": 0.0}
 
     def _estimate_remediation_timeline(
-        self, gaps: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, gaps: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Estimate timeline for gap remediation."""
         return {"estimated_days": 0, "items": []}
 
     def _get_framework_coverage_summary(
-        self, framework: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, framework: str | None = None
+    ) -> dict[str, Any]:
         """Get framework coverage summary."""
         return {"covered": 0, "total": 0, "percentage": 0.0}
 
-    def _get_upcoming_audit_schedule(self) -> List[Dict[str, Any]]:
+    def _get_upcoming_audit_schedule(self) -> list[dict[str, Any]]:
         """Get upcoming audit schedule."""
         return []
 
     def _create_board_appendix(
-        self, report_data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, report_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Create board appendix for report."""
         return {}
 
     def _identify_key_accomplishments(
-        self, report_data: Dict[str, Any]
-    ) -> List[str]:
+        self, report_data: dict[str, Any]
+    ) -> list[str]:
         """Identify key accomplishments for reporting period."""
         return []
 
     def _identify_areas_of_concern(
-        self, report_data: Dict[str, Any], risk_data: Optional[Dict[str, Any]] = None
-    ) -> List[str]:
+        self, report_data: dict[str, Any], risk_data: dict[str, Any] | None = None
+    ) -> list[str]:
         """Identify areas of concern."""
         return []
 
     def _generate_strategic_recommendations(
-        self, report_data: Dict[str, Any]
-    ) -> List[str]:
+        self, report_data: dict[str, Any]
+    ) -> list[str]:
         """Generate strategic recommendations."""
         return []
 
     def _export_to_pdf(
-        self, report_data: Dict[str, Any], template_name: str
+        self, report_data: dict[str, Any], template_name: str
     ) -> bytes:
         """Export report to PDF format."""
         raise NotImplementedError("PDF export not yet implemented")
 
     def _export_to_excel(
-        self, report_data: Dict[str, Any]
+        self, report_data: dict[str, Any]
     ) -> bytes:
         """Export report to Excel format."""
         raise NotImplementedError("Excel export not yet implemented")
 
     def _export_to_html(
-        self, report_data: Dict[str, Any], template_name: str
+        self, report_data: dict[str, Any], template_name: str
     ) -> str:
         """Export report to HTML format."""
         raise NotImplementedError("HTML export not yet implemented")

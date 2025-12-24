@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,7 +12,7 @@ from cerebro.agents.self_play import SelfPlayOrchestrator, SelfPlayScenario
 
 
 class _AnalyticsStub:
-    events: List[Dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
 
     @staticmethod
     async def record_event(
@@ -20,7 +20,7 @@ class _AnalyticsStub:
         org_id: UUID,
         session_id: UUID,
         event_type: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
     ) -> None:
         _AnalyticsStub.events.append({"event_type": event_type, "payload": payload})
 
@@ -30,11 +30,11 @@ class _AnalyticsStub:
 
 
 class _RuntimeFacadeStub:
-    def __init__(self, scripted_responses: Dict[str, List[Dict[str, Any]]]):
+    def __init__(self, scripted_responses: dict[str, list[dict[str, Any]]]):
         self._scripted = {
             role: list(responses) for role, responses in scripted_responses.items()
         }
-        self._history: Dict[UUID, List[Dict[str, Any]]] = {}
+        self._history: dict[UUID, list[dict[str, Any]]] = {}
 
     async def create_session(
         self,
@@ -42,7 +42,7 @@ class _RuntimeFacadeStub:
         org_id: UUID,
         agent_type: AgentType,
         created_by: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         title: str | None = None,
     ) -> SimpleNamespace:
         session = SimpleNamespace(
@@ -81,7 +81,7 @@ class _RuntimeFacadeStub:
                 ),
                 "token_usage": scripted.get("token_usage", {}),
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "input_tokens": scripted.get("token_usage", {}).get("input_tokens"),
             "output_tokens": scripted.get("token_usage", {}).get("output_tokens"),
         }
@@ -95,7 +95,7 @@ class _RuntimeFacadeStub:
         session: SimpleNamespace,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         return list(self._history[session.id])[:limit]
 
 

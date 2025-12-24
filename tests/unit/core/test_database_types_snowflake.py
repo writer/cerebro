@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import String
-from sqlalchemy.dialects.sqlite import dialect as SQLiteDialect
-
 from snowflake.sqlalchemy.custom_types import ARRAY as SnowflakeArray
 from snowflake.sqlalchemy.custom_types import VARIANT as SnowflakeVariant
 from snowflake.sqlalchemy.snowdialect import SnowflakeDialect
+from sqlalchemy import String
+from sqlalchemy.dialects.sqlite import dialect as SQLiteDialect
 
 from cerebro.core.database_types import ArrayType, JSONType
 

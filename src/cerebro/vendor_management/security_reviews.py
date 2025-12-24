@@ -6,17 +6,16 @@ for vendor risk management and compliance requirements.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc
+from sqlalchemy import Boolean, DateTime, String, Text, and_, desc, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Boolean, Text
 from sqlalchemy.sql import func
 
 from cerebro.core.database import Base
@@ -67,10 +66,10 @@ class SecurityControlResult:
     control_name: str
     description: str
     status: str  # "compliant", "non_compliant", "partial", "not_applicable"
-    evidence: List[str]
+    evidence: list[str]
     remediation_required: bool
-    remediation_deadline: Optional[datetime] = None
-    notes: Optional[str] = None
+    remediation_deadline: datetime | None = None
+    notes: str | None = None
 
 
 @dataclass
@@ -109,25 +108,25 @@ class SecurityReview(Base):
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Review details
-    scope: Mapped[Optional[str]] = mapped_column(Text)
-    objectives: Mapped[Optional[str]] = mapped_column(Text)
-    methodology: Mapped[Optional[str]] = mapped_column(Text)
+    scope: Mapped[str | None] = mapped_column(Text)
+    objectives: Mapped[str | None] = mapped_column(Text)
+    methodology: Mapped[str | None] = mapped_column(Text)
 
     # Results
-    overall_score: Mapped[Optional[float]] = mapped_column()
-    risk_rating: Mapped[Optional[str]] = mapped_column(String(20))
-    findings_summary: Mapped[Optional[str]] = mapped_column(Text)
-    remediation_plan: Mapped[Optional[str]] = mapped_column(Text)
+    overall_score: Mapped[float | None] = mapped_column()
+    risk_rating: Mapped[str | None] = mapped_column(String(20))
+    findings_summary: Mapped[str | None] = mapped_column(Text)
+    remediation_plan: Mapped[str | None] = mapped_column(Text)
 
     # Tracking
-    reviewer_id: Mapped[Optional[str]] = mapped_column(String(100))
-    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
-    next_review_due: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    reviewer_id: Mapped[str | None] = mapped_column(String(100))
+    approved_by: Mapped[str | None] = mapped_column(String(100))
+    next_review_due: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
@@ -152,29 +151,29 @@ class SecurityReviewControl(Base):
     # Control details
     control_reference: Mapped[str] = mapped_column(String(50), nullable=False)
     control_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    control_description: Mapped[Optional[str]] = mapped_column(Text)
-    control_category: Mapped[Optional[str]] = mapped_column(String(100))
+    control_description: Mapped[str | None] = mapped_column(Text)
+    control_category: Mapped[str | None] = mapped_column(String(100))
 
     # Assessment
     assessment_status: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # compliant, non_compliant, etc.
-    assessment_notes: Mapped[Optional[str]] = mapped_column(Text)
-    evidence_links: Mapped[Optional[str]] = mapped_column(
+    assessment_notes: Mapped[str | None] = mapped_column(Text)
+    evidence_links: Mapped[str | None] = mapped_column(
         Text
     )  # JSON array of URLs/references
 
     # Remediation
     remediation_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    remediation_priority: Mapped[Optional[str]] = mapped_column(String(20))
-    remediation_deadline: Mapped[Optional[datetime]] = mapped_column(
+    remediation_priority: Mapped[str | None] = mapped_column(String(20))
+    remediation_deadline: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
-    remediation_status: Mapped[Optional[str]] = mapped_column(String(50))
+    remediation_status: Mapped[str | None] = mapped_column(String(50))
 
     # Tracking
-    assessed_by: Mapped[Optional[str]] = mapped_column(String(100))
-    assessed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    assessed_by: Mapped[str | None] = mapped_column(String(100))
+    assessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
@@ -196,9 +195,9 @@ class SecurityReviewManager:
         org_id: UUID,
         review_type: ReviewType,
         framework: SecurityFramework,
-        scope: Optional[str] = None,
-        due_date: Optional[datetime] = None,
-        reviewer_id: Optional[str] = None,
+        scope: str | None = None,
+        due_date: datetime | None = None,
+        reviewer_id: str | None = None,
     ) -> SecurityReview:
         """Create a new security review."""
 
@@ -230,19 +229,19 @@ class SecurityReviewManager:
         )
         return review
 
-    async def get_review(self, review_id: UUID) -> Optional[SecurityReview]:
+    async def get_review(self, review_id: UUID) -> SecurityReview | None:
         """Get security review by ID."""
         return await self.db.get(SecurityReview, review_id)
 
     async def list_reviews(
         self,
         org_id: UUID,
-        vendor_id: Optional[str] = None,
-        status: Optional[ReviewStatus] = None,
-        framework: Optional[SecurityFramework] = None,
+        vendor_id: str | None = None,
+        status: ReviewStatus | None = None,
+        framework: SecurityFramework | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[SecurityReview]:
+    ) -> list[SecurityReview]:
         """List security reviews with filtering."""
         stmt = select(SecurityReview).where(SecurityReview.org_id == org_id)
 
@@ -280,7 +279,7 @@ class SecurityReviewManager:
         overall_score: float,
         risk_rating: str,
         findings_summary: str,
-        remediation_plan: Optional[str] = None,
+        remediation_plan: str | None = None,
     ) -> bool:
         """Complete a security review with results."""
         review = await self.get_review(review_id)
@@ -342,10 +341,10 @@ class SecurityReviewManager:
         control_ref: str,
         control_name: str,
         assessment_status: str,
-        evidence_links: Optional[List[str]] = None,
-        notes: Optional[str] = None,
+        evidence_links: list[str] | None = None,
+        notes: str | None = None,
         remediation_required: bool = False,
-        assessor_id: Optional[str] = None,
+        assessor_id: str | None = None,
     ) -> SecurityReviewControl:
         """Add a control assessment to a security review."""
 
@@ -368,7 +367,7 @@ class SecurityReviewManager:
         logger.debug(f"Added control assessment {control_ref} to review {review_id}")
         return control
 
-    async def get_review_controls(self, review_id: UUID) -> List[SecurityReviewControl]:
+    async def get_review_controls(self, review_id: UUID) -> list[SecurityReviewControl]:
         """Get all control assessments for a review."""
         stmt = (
             select(SecurityReviewControl)
@@ -395,7 +394,7 @@ class SecurityReviewManager:
             )
 
         # Count control statuses
-        status_counts: Dict[str, int] = {}
+        status_counts: dict[str, int] = {}
         remediation_count = 0
 
         for control in controls:
@@ -440,7 +439,7 @@ class SecurityReviewManager:
             risk_rating=risk_rating,
         )
 
-    async def get_overdue_reviews(self, org_id: UUID) -> List[SecurityReview]:
+    async def get_overdue_reviews(self, org_id: UUID) -> list[SecurityReview]:
         """Get security reviews that are overdue."""
         now = datetime.utcnow()
 
@@ -462,7 +461,7 @@ class SecurityReviewManager:
 
     async def get_upcoming_reviews(
         self, org_id: UUID, days_ahead: int = 30
-    ) -> List[SecurityReview]:
+    ) -> list[SecurityReview]:
         """Get security reviews due in the next N days."""
         now = datetime.utcnow()
         future_date = now + timedelta(days=days_ahead)
@@ -484,7 +483,7 @@ class SecurityReviewManager:
 
         return list(await self.db.scalars(stmt))
 
-    async def generate_review_report(self, review_id: UUID) -> Dict[str, Any]:
+    async def generate_review_report(self, review_id: UUID) -> dict[str, Any]:
         """Generate comprehensive review report."""
         review = await self.get_review(review_id)
         if not review:
@@ -494,7 +493,7 @@ class SecurityReviewManager:
         metrics = await self.calculate_review_metrics(review_id)
 
         # Group controls by category
-        controls_by_category: Dict[str, List[Dict[str, Any]]] = {}
+        controls_by_category: dict[str, list[dict[str, Any]]] = {}
         for control in controls:
             category = control.control_category or "General"
             if category not in controls_by_category:
@@ -555,7 +554,7 @@ class SecurityReviewManager:
         }
 
     async def update_review_status(
-        self, review_id: UUID, status: ReviewStatus, notes: Optional[str] = None
+        self, review_id: UUID, status: ReviewStatus, notes: str | None = None
     ) -> bool:
         """Update security review status."""
         review = await self.get_review(review_id)
@@ -577,7 +576,7 @@ class SecurityReviewManager:
 
     async def schedule_next_review(
         self, vendor_id: str, org_id: UUID, base_review_id: UUID
-    ) -> Optional[SecurityReview]:
+    ) -> SecurityReview | None:
         """Schedule the next periodic review for a vendor."""
         base_review = await self.get_review(base_review_id)
         if not base_review:
@@ -604,7 +603,7 @@ class SecurityReviewManager:
         )
         return next_review
 
-    async def get_review_dashboard(self, org_id: UUID) -> Dict[str, Any]:
+    async def get_review_dashboard(self, org_id: UUID) -> dict[str, Any]:
         """Get dashboard data for security reviews.
 
         Uses SQL aggregation for efficient counting on large datasets.

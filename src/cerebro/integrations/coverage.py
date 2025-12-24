@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Mapping
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.automation.integration_sync import analyze_state
+from cerebro.core.config import settings
 from cerebro.core.models import Account
 from cerebro.integrations.state import IntegrationStateRepository
-from cerebro.core.config import settings
 
-
-INTEGRATION_PROVIDER_MAPPING: Mapping[str, List[str]] = {
+INTEGRATION_PROVIDER_MAPPING: Mapping[str, list[str]] = {
     "kandji": ["kandji"],
     "sentinelone": ["sentinelone"],
 }
@@ -26,11 +26,11 @@ async def summarize_integration_coverage(
     *,
     provider_mapping: Mapping[str, Iterable[str]] | None = None,
     stale_seconds: int | None = None,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Summarize integration coverage against connected accounts."""
 
     mapping = provider_mapping or INTEGRATION_PROVIDER_MAPPING
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     threshold = (
         stale_seconds
         if stale_seconds is not None
@@ -40,7 +40,7 @@ async def summarize_integration_coverage(
     repo = IntegrationStateRepository(db)
     states = await repo.list_states()
 
-    grouped_states: Dict[str, List[Any]] = defaultdict(list)
+    grouped_states: dict[str, list[Any]] = defaultdict(list)
     for state in states:
         if state.scope and state.scope.startswith("__"):
             continue
@@ -50,11 +50,11 @@ async def summarize_integration_coverage(
         Account.provider, func.count().label("account_count")
     ).group_by(Account.provider)
     account_rows = await db.execute(account_stmt)
-    account_counts: Dict[str, int] = {
+    account_counts: dict[str, int] = {
         row.provider: int(row.account_count or 0) for row in account_rows
     }
 
-    summaries: List[Dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
     integrations = set(grouped_states.keys()) | set(mapping.keys())
 
     for integration in sorted(integrations):
@@ -69,9 +69,9 @@ async def summarize_integration_coverage(
             if state.last_timestamp:
                 state_ts = state.last_timestamp
                 if state_ts.tzinfo is None:
-                    state_ts = state_ts.replace(tzinfo=timezone.utc)
+                    state_ts = state_ts.replace(tzinfo=UTC)
                 else:
-                    state_ts = state_ts.astimezone(timezone.utc)
+                    state_ts = state_ts.astimezone(UTC)
                 if last_success is None or state_ts > last_success:
                     last_success = state_ts
 

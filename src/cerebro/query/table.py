@@ -8,9 +8,10 @@ import logging
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
-from typing import Any, Dict, List, Optional, AsyncGenerator, Union
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from .schema import SecurityColumn, SecuritySchema
 
@@ -21,19 +22,19 @@ class QueryFilter:
 
     column: str
     operator: str  # =, >, <, >=, <=, LIKE, ILIKE, IN
-    value: Union[str, int, bool, datetime, List[Any]]
+    value: str | int | bool | datetime | list[Any]
 
 
 @dataclass
 class QueryContext:
     """Context information for executing a query."""
 
-    filters: List[QueryFilter]
-    limit: Optional[int] = None
-    offset: Optional[int] = None
-    order_by: Optional[List[str]] = None
-    columns: Optional[List[str]] = None  # Specific columns to select
-    config: Optional[Dict[str, Any]] = (
+    filters: list[QueryFilter]
+    limit: int | None = None
+    offset: int | None = None
+    order_by: list[str] | None = None
+    columns: list[str] | None = None  # Specific columns to select
+    config: dict[str, Any] | None = (
         None  # Configuration (e.g., provider credentials)
     )
 
@@ -50,7 +51,7 @@ class SecurityTable(ABC):
         self,
         name: str,
         description: str,
-        columns: Optional[List[SecurityColumn]] = None,
+        columns: list[SecurityColumn] | None = None,
     ):
         self.name = name
         self.description = description
@@ -63,7 +64,7 @@ class SecurityTable(ABC):
     @abstractmethod
     async def list_resources(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Fetch resources from the provider API and yield them as dictionaries.
 
@@ -72,7 +73,7 @@ class SecurityTable(ABC):
         """
         yield  # type: ignore[misc]  # Abstract method - subclasses must yield actual data
 
-    async def get_resource(self, resource_id: str) -> Optional[Dict[str, Any]]:
+    async def get_resource(self, resource_id: str) -> dict[str, Any] | None:
         """
         Fetch a specific resource by ID.
 
@@ -85,15 +86,15 @@ class SecurityTable(ABC):
                 return resource
         return None
 
-    def get_column_names(self) -> List[str]:
+    def get_column_names(self) -> list[str]:
         """Get list of column names for this table."""
         return [col.name for col in self.columns]
 
-    def get_filterable_columns(self) -> List[str]:
+    def get_filterable_columns(self) -> list[str]:
         """Get list of columns that can be used in WHERE clauses."""
         return [col.name for col in self.columns if col.filterable]
 
-    def validate_query(self, ctx: QueryContext) -> List[str]:
+    def validate_query(self, ctx: QueryContext) -> list[str]:
         """
         Validate query context and return list of error messages.
 
@@ -138,7 +139,7 @@ class SecurityTable(ABC):
             count += 1
         return count
 
-    def transform_resource(self, raw_resource: Dict[str, Any]) -> Dict[str, Any]:
+    def transform_resource(self, raw_resource: dict[str, Any]) -> dict[str, Any]:
         """
         Transform raw provider data to match table schema.
 
@@ -203,7 +204,7 @@ class SecurityTable(ABC):
         return defaults.get(column.type, None)
 
     def apply_filters(
-        self, resource: Dict[str, Any], filters: List[QueryFilter]
+        self, resource: dict[str, Any], filters: list[QueryFilter]
     ) -> bool:
         """
         Apply filter conditions to a resource.
@@ -216,7 +217,7 @@ class SecurityTable(ABC):
         return True
 
     def _apply_single_filter(
-        self, resource: Dict[str, Any], filter_condition: QueryFilter
+        self, resource: dict[str, Any], filter_condition: QueryFilter
     ) -> bool:
         """Apply a single filter condition."""
         resource_value = resource.get(filter_condition.column)
@@ -273,7 +274,7 @@ class ProviderSecurityTable(SecurityTable):
         name: str,
         description: str,
         provider_name: str,
-        columns: Optional[List[SecurityColumn]] = None,
+        columns: list[SecurityColumn] | None = None,
     ):
         super().__init__(name, description, columns)
         self.provider_name = provider_name
@@ -281,13 +282,13 @@ class ProviderSecurityTable(SecurityTable):
     @abstractmethod
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch raw data from provider API."""
         yield  # type: ignore[misc]  # Abstract method - subclasses must yield actual data
 
     async def list_resources(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Standard implementation that fetches from API and transforms data.
         """

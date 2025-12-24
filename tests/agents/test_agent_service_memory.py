@@ -1,5 +1,6 @@
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from cerebro.agents.memory_store import AgentMemoryStore
 from cerebro.agents.models import AgentSession, AgentType, MessageRole
@@ -15,7 +16,7 @@ async def test_get_session_memory_returns_entries():
     async with async_session_factory() as db_session:
         org = Organization(
             name="Memory Service Org",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(org)
         await db_session.commit()
@@ -59,7 +60,7 @@ async def test_get_session_memory_stats():
     async with async_session_factory() as db_session:
         org = Organization(
             name="Memory Stats Org",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(org)
         await db_session.commit()

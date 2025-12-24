@@ -1,7 +1,7 @@
 """Identity stitching database models."""
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String
@@ -29,7 +29,7 @@ class IdentityCluster(Base):
     stitching_method: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # email, name, manual
-    stitching_evidence: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    stitching_evidence: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
@@ -39,7 +39,7 @@ class IdentityCluster(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # Relationships
-    cluster_members: Mapped[List["IdentityClusterMember"]] = relationship(
+    cluster_members: Mapped[list["IdentityClusterMember"]] = relationship(
         back_populates="cluster", cascade="all, delete-orphan"
     )
 
@@ -60,7 +60,7 @@ class IdentityClusterMember(Base):
         PGUUID(as_uuid=True), ForeignKey("principals.principal_id", ondelete="CASCADE")
     )
     confidence_score: Mapped[float] = mapped_column(Float, nullable=False)
-    evidence: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
@@ -90,10 +90,10 @@ class IdentityStitchingLog(Base):
         PGUUID(as_uuid=True),
         ForeignKey("identity_clusters.cluster_id", ondelete="SET NULL"),
     )
-    principals_affected: Mapped[List[str]] = mapped_column(JSONType, nullable=False)
+    principals_affected: Mapped[list[str]] = mapped_column(JSONType, nullable=False)
     confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False)
     algorithm_version: Mapped[str] = mapped_column(String(20), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    operation_metadata: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=True)
+    operation_metadata: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=True)

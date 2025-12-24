@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Mapping, Tuple
+from typing import Any
 
 from .rules import AlertRule, RuleSeverity
 
@@ -18,7 +19,7 @@ class AlertResult:
     triggered_at: datetime
     message: str
     severity: RuleSeverity
-    channels: Tuple[str, ...]
+    channels: tuple[str, ...]
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

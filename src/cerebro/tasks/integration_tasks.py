@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from cerebro.auditability.transparency_log import get_transparency_log, LogEntryType
+from cerebro.auditability.transparency_log import LogEntryType, get_transparency_log
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
 from cerebro.integrations.kandji import KandjiClient, KandjiIngestion
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 async def _log_integration_sync(
     *,
     integration: str,
-    scope: Optional[str],
+    scope: str | None,
     status: str,
     payload: dict[str, Any],
 ) -> None:
@@ -54,7 +54,7 @@ async def _log_integration_sync(
 
     metadata_update: dict[str, Any] = {
         "last_status": status,
-        "last_status_at": datetime.now(timezone.utc).isoformat(),
+        "last_status_at": datetime.now(UTC).isoformat(),
     }
     if payload:
         metadata_update["last_payload"] = payload
@@ -65,7 +65,7 @@ async def _log_integration_sync(
     if isinstance(payload, dict) and "last_sync_unix" in payload:
         try:
             sync_ts = datetime.fromtimestamp(
-                float(payload["last_sync_unix"]), tz=timezone.utc
+                float(payload["last_sync_unix"]), tz=UTC
             )
         except Exception:  # pragma: no cover - defensive only
             sync_ts = None
@@ -129,11 +129,11 @@ async def _log_integration_sync(
 
 
 @celery_app.task(bind=True, name="cerebro.tasks.integration.sync_sentinelone")
-def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
+def sync_sentinelone(self, lookback_minutes: int | None = 30) -> Any:
     """Poll SentinelOne for recent activities and persist them as host events."""
 
     async def _run() -> Any:
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         integration_scope = settings.sentinelone_org_name or "sentinelone"
         integration_id = "sentinelone.activities"
         if not settings.sentinelone_enabled:
@@ -161,7 +161,7 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
         # Apply a defensive default window so recurring schedules can omit an
         # explicit lookback while still bounding the API request size.
         window = lookback_minutes if lookback_minutes and lookback_minutes > 0 else 30
-        since = datetime.now(timezone.utc) - timedelta(minutes=window)
+        since = datetime.now(UTC) - timedelta(minutes=window)
 
         config = SentinelOneConfig(
             base_url=settings.sentinelone_api_base_url,
@@ -183,7 +183,7 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
                 "error": str(exc),
                 "lookback_minutes": window,
                 "duration_seconds": (
-                    datetime.now(timezone.utc) - started_at
+                    datetime.now(UTC) - started_at
                 ).total_seconds(),
             }
             await _log_integration_sync(
@@ -196,7 +196,7 @@ def sync_sentinelone(self, lookback_minutes: Optional[int] = 30) -> Any:
 
         result.update({"status": "ok", "lookback_minutes": window})
         result["duration_seconds"] = (
-            datetime.now(timezone.utc) - started_at
+            datetime.now(UTC) - started_at
         ).total_seconds()
         await _log_integration_sync(
             integration=integration_id,
@@ -214,7 +214,7 @@ def sync_kandji(self) -> Any:
     """Synchronize Kandji device inventory and vulnerability detections."""
 
     async def _run() -> Any:
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         integration_scope = settings.kandji_org_name or "kandji"
         integration_id = "kandji.detections"
         if not settings.kandji_enabled:
@@ -258,7 +258,7 @@ def sync_kandji(self) -> Any:
                     "status": "error",
                     "error": str(exc),
                     "duration_seconds": (
-                        datetime.now(timezone.utc) - started_at
+                        datetime.now(UTC) - started_at
                     ).total_seconds(),
                 }
                 await _log_integration_sync(
@@ -272,7 +272,7 @@ def sync_kandji(self) -> Any:
         # monitoring dashboards can surface progress without parsing logs.
         result.update({"status": "ok"})
         result["duration_seconds"] = (
-            datetime.now(timezone.utc) - started_at
+            datetime.now(UTC) - started_at
         ).total_seconds()
         await _log_integration_sync(
             integration=integration_id,

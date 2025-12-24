@@ -1,43 +1,42 @@
 """Finding management endpoints."""
 
 from dataclasses import asdict
-from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from cerebro.core.database import get_db
-from cerebro.core.models import Finding, Organization
-from cerebro.api.schemas import (
-    FindingResponse,
-    FindingUpdate,
-    FindingStats,
-    FindingPageResponse,
-)
-from cerebro.api.dependencies import get_finding_manager
-from cerebro.findings.manager import FindingManager
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from cerebro.api.auth import (
+    User,
     get_current_user,
     require_read_findings,
     require_write_findings,
-    User,
 )
+from cerebro.api.dependencies import get_finding_manager
+from cerebro.api.org_access import enforce_org_access, require_org_access
+from cerebro.api.schemas import (
+    FindingPageResponse,
+    FindingResponse,
+    FindingStats,
+    FindingUpdate,
+)
+from cerebro.core.database import get_db
+from cerebro.core.models import Finding, Organization
+from cerebro.findings.manager import FindingManager
+from cerebro.integrations.freshness import IntegrationFreshnessService
 from cerebro_sdk.findings import FindingService
 from cerebro_sdk.pagination import PageRequest
-
-from cerebro.integrations.freshness import IntegrationFreshnessService
-from cerebro.api.org_access import enforce_org_access, require_org_access
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
-@router.get("/", response_model=List[FindingResponse])
+@router.get("/", response_model=list[FindingResponse])
 async def list_findings(
-    org_id: Optional[UUID] = None,
-    status: Optional[str] = None,
-    severity: Optional[str] = None,
-    provider: Optional[str] = None,
+    org_id: UUID | None = None,
+    status: str | None = None,
+    severity: str | None = None,
+    provider: str | None = None,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
@@ -67,11 +66,11 @@ async def list_findings(
 
 @router.get("/page", response_model=FindingPageResponse)
 async def list_findings_page(
-    org_id: Optional[UUID] = None,
-    status: Optional[str] = None,
-    severity: Optional[str] = None,
-    provider: Optional[str] = None,
-    cursor: Optional[str] = Query(default=None),
+    org_id: UUID | None = None,
+    status: str | None = None,
+    severity: str | None = None,
+    provider: str | None = None,
+    cursor: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_read_findings),
@@ -229,8 +228,8 @@ async def get_finding_stats(
 @router.post("/organizations/{org_id}/generate")
 async def generate_findings(
     org_id: UUID,
-    provider: Optional[str] = None,
-    resource_types: Optional[List[str]] = None,
+    provider: str | None = None,
+    resource_types: list[str] | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_write_findings)),
 ):
@@ -257,8 +256,8 @@ async def generate_findings(
 
 @router.get("/mttr")
 async def get_mttr_metrics(
-    severity: Optional[str] = None,
-    provider: Optional[str] = None,
+    severity: str | None = None,
+    provider: str | None = None,
     timeframe_days: int = 30,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_read_findings),

@@ -1,21 +1,21 @@
 """Application service for configuration collection."""
 
-from typing import List, Optional, Dict, Any
-from uuid import UUID
 import logging
+from typing import Any
+from uuid import UUID
 
 from cerebro.domain.entities import (
     CollectionJobEntity,
-    ResourceEntity,
-    PrincipalEntity,
     ConfigEntity,
     IamPermissionEntity,
+    PrincipalEntity,
+    ResourceEntity,
 )
 from cerebro.domain.ports import (
-    ProviderPort,
-    RepositoryPort,
     IdentityStitcherPort,
     NotificationPort,
+    ProviderPort,
+    RepositoryPort,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class CollectionService:
         self,
         repository: RepositoryPort,
         identity_stitcher: IdentityStitcherPort,
-        notification: Optional[NotificationPort] = None,
+        notification: NotificationPort | None = None,
     ):
         """Initialize collection service."""
         self.repository = repository
@@ -40,7 +40,7 @@ class CollectionService:
         account_id: UUID,
         org_id: UUID,
         provider: ProviderPort,
-        resource_types: Optional[List[str]] = None,
+        resource_types: list[str] | None = None,
     ) -> CollectionJobEntity:
         """Collect all data for an account."""
         job = CollectionJobEntity(
@@ -107,8 +107,8 @@ class CollectionService:
         return job
 
     async def _collect_resources(
-        self, provider: ProviderPort, resource_types: Optional[List[str]]
-    ) -> List[ResourceEntity]:
+        self, provider: ProviderPort, resource_types: list[str] | None
+    ) -> list[ResourceEntity]:
         """Collect resources from provider."""
         resources = []
         try:
@@ -122,7 +122,7 @@ class CollectionService:
 
     async def _collect_principals(
         self, provider: ProviderPort
-    ) -> List[PrincipalEntity]:
+    ) -> list[PrincipalEntity]:
         """Collect principals from provider."""
         principals = []
         try:
@@ -135,8 +135,8 @@ class CollectionService:
         return principals
 
     async def _collect_configurations(
-        self, provider: ProviderPort, resources: List[ResourceEntity]
-    ) -> List[ConfigEntity]:
+        self, provider: ProviderPort, resources: list[ResourceEntity]
+    ) -> list[ConfigEntity]:
         """Collect configurations for resources."""
         configs = []
 
@@ -151,8 +151,8 @@ class CollectionService:
         return configs
 
     async def _collect_iam_permissions(
-        self, provider: ProviderPort, resources: List[ResourceEntity]
-    ) -> List[IamPermissionEntity]:
+        self, provider: ProviderPort, resources: list[ResourceEntity]
+    ) -> list[IamPermissionEntity]:
         """Collect IAM permissions."""
         permissions = []
 
@@ -172,7 +172,7 @@ class CollectionService:
         return permissions
 
     async def _stitch_identities(
-        self, org_id: UUID, principals: List[PrincipalEntity]
+        self, org_id: UUID, principals: list[PrincipalEntity]
     ) -> None:
         """Perform identity stitching across providers."""
         if not self.identity_stitcher:
@@ -212,7 +212,7 @@ class CollectionOrchestrator:
     """Orchestrates collection across multiple providers."""
 
     def __init__(
-        self, collection_service: CollectionService, providers: Dict[str, ProviderPort]
+        self, collection_service: CollectionService, providers: dict[str, ProviderPort]
     ):
         """Initialize collection orchestrator."""
         self.collection_service = collection_service
@@ -221,9 +221,9 @@ class CollectionOrchestrator:
     async def collect_organization(
         self,
         org_id: UUID,
-        accounts: List[Dict[str, Any]],
-        provider_filter: Optional[List[str]] = None,
-    ) -> List[CollectionJobEntity]:
+        accounts: list[dict[str, Any]],
+        provider_filter: list[str] | None = None,
+    ) -> list[CollectionJobEntity]:
         """Collect data for all accounts in an organization."""
         jobs = []
 

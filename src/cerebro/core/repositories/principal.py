@@ -1,8 +1,8 @@
 """Principal repository for DynamoDB."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -40,16 +40,16 @@ class Principal(BaseModel):
     provider: str
     principal_type: PrincipalType
     external_id: str
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    is_human: Optional[bool] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    email: str | None = None
+    display_name: str | None = None
+    is_human: bool | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Config:
         from_attributes = True
         use_enum_values = True
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         principal_id = str(self.principal_id)
         account_id = str(self.account_id)
@@ -80,7 +80,7 @@ class Principal(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Principal":
+    def from_item(cls, item: dict[str, Any]) -> "Principal":
         """Create from DynamoDB item."""
         return cls(
             principal_id=UUID(item["principal_id"]),
@@ -95,7 +95,7 @@ class Principal(BaseModel):
             created_at=(
                 datetime.fromisoformat(item["created_at"])
                 if item.get("created_at")
-                else datetime.now(timezone.utc)
+                else datetime.now(UTC)
             ),
         )
 
@@ -105,7 +105,7 @@ class PrincipalRepository:
 
     _table = TableName.CORE
 
-    async def get(self, principal_id: UUID, org_id: UUID) -> Optional[Principal]:
+    async def get(self, principal_id: UUID, org_id: UUID) -> Principal | None:
         """Get principal by ID."""
         item = await get_item(
             self._table,
@@ -121,7 +121,7 @@ class PrincipalRepository:
 
     async def update(
         self, principal_id: UUID, org_id: UUID, **updates
-    ) -> Optional[Principal]:
+    ) -> Principal | None:
         """Update principal."""
         result = await update_item(
             self._table,
@@ -139,7 +139,7 @@ class PrincipalRepository:
             sk("PRINCIPAL", str(principal_id)),
         )
 
-    async def list_by_org(self, org_id: UUID, limit: int = 100) -> List[Principal]:
+    async def list_by_org(self, org_id: UUID, limit: int = 100) -> list[Principal]:
         """List principals for an organization."""
         items = await query(
             self._table,
@@ -151,7 +151,7 @@ class PrincipalRepository:
 
     async def list_by_account(
         self, account_id: UUID, limit: int = 100
-    ) -> List[Principal]:
+    ) -> list[Principal]:
         """List principals for an account."""
         items = await query(
             self._table,
@@ -167,7 +167,7 @@ class PrincipalRepository:
         org_id: UUID,
         provider: str,
         external_id: str,
-    ) -> Optional[Principal]:
+    ) -> Principal | None:
         """Get principal by external ID.
 
         Note: Scans principals. Consider adding GSI on external_id for better performance.
@@ -191,7 +191,7 @@ class PrincipalRepository:
                 break
         return None
 
-    async def get_by_email(self, org_id: UUID, email: str) -> Optional[Principal]:
+    async def get_by_email(self, org_id: UUID, email: str) -> Principal | None:
         """Get principal by email.
 
         Note: Scans principals. Consider adding GSI on email for better performance.
@@ -212,20 +212,20 @@ class PrincipalRepository:
                 break
         return None
 
-    async def bulk_upsert(self, principals: List[Principal]) -> int:
+    async def bulk_upsert(self, principals: list[Principal]) -> int:
         """Bulk upsert principals."""
         items = [p.to_item() for p in principals]
         await batch_write(self._table, put_items=items)
         return len(principals)
 
-    async def list_humans(self, org_id: UUID, limit: int = 100) -> List[Principal]:
+    async def list_humans(self, org_id: UUID, limit: int = 100) -> list[Principal]:
         """List human principals."""
         principals = await self.list_by_org(org_id, limit=limit * 2)
         return [p for p in principals if p.is_human is True][:limit]
 
     async def list_service_accounts(
         self, org_id: UUID, limit: int = 100
-    ) -> List[Principal]:
+    ) -> list[Principal]:
         """List service accounts."""
         principals = await self.list_by_org(org_id, limit=limit * 2)
         return [

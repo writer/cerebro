@@ -1,25 +1,25 @@
 """Infrastructure adapters implementing domain ports."""
 
-from typing import List, Dict, Any, Optional
-from uuid import UUID
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import Any
+from uuid import UUID
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
-from cerebro.domain.entities import (
-    ResourceEntity,
-    PrincipalEntity,
-    ConfigEntity,
-    IamPermissionEntity,
-    FindingEntity,
-    RuleEntity,
-    IdentityClusterEntity,
-)
-from cerebro.core.models import Finding
 from cerebro.core.bulk_operations import BulkOperations
-from cerebro.rules.engine import RuleEngine, EvaluationContext
+from cerebro.core.models import Finding
+from cerebro.domain.entities import (
+    ConfigEntity,
+    FindingEntity,
+    IamPermissionEntity,
+    IdentityClusterEntity,
+    PrincipalEntity,
+    ResourceEntity,
+    RuleEntity,
+)
+from cerebro.rules.engine import EvaluationContext, RuleEngine
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ class SQLAlchemyRepository:
         self.bulk_ops = BulkOperations(db_session)
 
     async def save_resources(
-        self, account_id: UUID, resources: List[ResourceEntity]
-    ) -> Dict[str, UUID]:
+        self, account_id: UUID, resources: list[ResourceEntity]
+    ) -> dict[str, UUID]:
         """Save resources and return mapping of external_id -> resource_id."""
         if not resources:
             return {}
@@ -65,8 +65,8 @@ class SQLAlchemyRepository:
         )
 
     async def save_principals(
-        self, account_id: UUID, principals: List[PrincipalEntity]
-    ) -> Dict[str, UUID]:
+        self, account_id: UUID, principals: list[PrincipalEntity]
+    ) -> dict[str, UUID]:
         """Save principals and return mapping of external_id -> principal_id."""
         if not principals:
             return {}
@@ -98,7 +98,7 @@ class SQLAlchemyRepository:
         )
 
     async def save_configurations(
-        self, resource_id_map: Dict[str, UUID], configs: List[ConfigEntity]
+        self, resource_id_map: dict[str, UUID], configs: list[ConfigEntity]
     ) -> int:
         """Save configuration snapshots."""
         if not configs:
@@ -134,9 +134,9 @@ class SQLAlchemyRepository:
     async def save_iam_permissions(
         self,
         account_id: UUID,
-        resource_id_map: Dict[str, UUID],
-        principal_id_map: Dict[str, UUID],
-        permissions: List[IamPermissionEntity],
+        resource_id_map: dict[str, UUID],
+        principal_id_map: dict[str, UUID],
+        permissions: list[IamPermissionEntity],
     ) -> int:
         """Save IAM permission edges."""
         if not permissions:
@@ -180,7 +180,7 @@ class SQLAlchemyRepository:
 
     async def get_findings_by_status(
         self, org_id: UUID, status: str, limit: int = 100, offset: int = 0
-    ) -> List[FindingEntity]:
+    ) -> list[FindingEntity]:
         """Get findings by status."""
         stmt = (
             select(Finding)
@@ -251,7 +251,7 @@ class SQLAlchemyRepository:
         await self.db.commit()
 
     async def save_identity_clusters(
-        self, org_id: UUID, clusters: List[IdentityClusterEntity]
+        self, org_id: UUID, clusters: list[IdentityClusterEntity]
     ) -> int:
         """Save identity clusters."""
         from cerebro.core.repositories_sqlalchemy import IdentityRepository
@@ -305,11 +305,11 @@ class CELRuleEngineAdapter:
     async def evaluate_rule(
         self,
         rule: RuleEntity,
-        resource: Optional[ResourceEntity] = None,
-        config: Optional[ConfigEntity] = None,
-        principal: Optional[PrincipalEntity] = None,
-        iam_permission: Optional[IamPermissionEntity] = None,
-        context: Optional[Dict[str, Any]] = None,
+        resource: ResourceEntity | None = None,
+        config: ConfigEntity | None = None,
+        principal: PrincipalEntity | None = None,
+        iam_permission: IamPermissionEntity | None = None,
+        context: dict[str, Any] | None = None,
     ) -> bool:
         """Evaluate a rule against given entities."""
         # Build evaluation context
@@ -364,11 +364,11 @@ class CELRuleEngineAdapter:
 
     async def evaluate_rules_batch(
         self,
-        rules: List[RuleEntity],
-        resources: List[ResourceEntity],
-        configs: Dict[str, ConfigEntity],
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[UUID, List[bool]]:
+        rules: list[RuleEntity],
+        resources: list[ResourceEntity],
+        configs: dict[str, ConfigEntity],
+        context: dict[str, Any] | None = None,
+    ) -> dict[UUID, list[bool]]:
         """Batch evaluate multiple rules against multiple resources."""
         results = {}
 
@@ -400,8 +400,8 @@ class IdentityStitcherAdapter:
         self.db = db_session
 
     async def find_identity_clusters(
-        self, org_id: UUID, principals: List[PrincipalEntity]
-    ) -> List[IdentityClusterEntity]:
+        self, org_id: UUID, principals: list[PrincipalEntity]
+    ) -> list[IdentityClusterEntity]:
         """Find identity clusters for given principals."""
         from cerebro.core.identity import IdentityStitcher
 
@@ -441,7 +441,7 @@ class IdentityStitcherAdapter:
 
     async def get_unified_identity(
         self, principal: PrincipalEntity
-    ) -> Optional[IdentityClusterEntity]:
+    ) -> IdentityClusterEntity | None:
         """Get unified identity for a principal."""
         # This would require additional implementation in the core IdentityStitcher
         # For now, return None as this is not implemented

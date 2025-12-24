@@ -8,11 +8,12 @@ Provides comprehensive security analysis capabilities including:
 - Security posture assessment
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import structlog
 from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
-import structlog
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -24,11 +25,11 @@ class SecurityAnalysisInput(BaseModel):
         ...,
         description="Type of analysis: attack_surface, risk_score, compliance_gaps, posture_assessment",
     )
-    scope: Optional[Dict[str, Any]] = Field(
+    scope: dict[str, Any] | None = Field(
         default_factory=dict,
         description="Scope parameters (providers, resource types, time range)",
     )
-    filters: Optional[Dict[str, Any]] = Field(
+    filters: dict[str, Any] | None = Field(
         default_factory=dict, description="Additional filters for analysis"
     )
 
@@ -38,11 +39,11 @@ class SecurityAnalysisOutput(BaseModel):
 
     analysis_type: str
     summary: str
-    score: Optional[float] = None
+    score: float | None = None
     findings_count: int
-    critical_items: List[Dict[str, Any]]
-    recommendations: List[str]
-    details: Dict[str, Any]
+    critical_items: list[dict[str, Any]]
+    recommendations: list[str]
+    details: dict[str, Any]
 
 
 class SecurityAnalysisTool(StructuredTool):
@@ -64,8 +65,8 @@ class SecurityAnalysisTool(StructuredTool):
         self,
         context: AgentContext,
         analysis_type: str,
-        scope: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        scope: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> ToolResult:
         """
         Execute security analysis.
@@ -122,19 +123,20 @@ class SecurityAnalysisTool(StructuredTool):
             )
             return ToolResult(
                 success=False,
-                error=f"Security analysis failed: {str(e)}",
+                error=f"Security analysis failed: {e!s}",
             )
 
     async def _analyze_attack_surface(
         self,
         context: AgentContext,
-        scope: Dict[str, Any],
-        filters: Dict[str, Any],
+        scope: dict[str, Any],
+        filters: dict[str, Any],
     ) -> SecurityAnalysisOutput:
         """Analyze attack surface."""
+        from sqlalchemy import func, select
+
         from cerebro.core.database import async_session_factory
-        from cerebro.core.models import Resource, Finding
-        from sqlalchemy import select, func
+        from cerebro.core.models import Finding, Resource
 
         async with async_session_factory() as db:
             # Get exposed resources
@@ -200,13 +202,14 @@ class SecurityAnalysisTool(StructuredTool):
     async def _calculate_risk_score(
         self,
         context: AgentContext,
-        scope: Dict[str, Any],
-        filters: Dict[str, Any],
+        scope: dict[str, Any],
+        filters: dict[str, Any],
     ) -> SecurityAnalysisOutput:
         """Calculate overall risk score."""
+        from sqlalchemy import func, select
+
         from cerebro.core.database import async_session_factory
         from cerebro.core.models import Finding
-        from sqlalchemy import select, func
 
         async with async_session_factory() as db:
             # Get finding counts by severity
@@ -218,7 +221,7 @@ class SecurityAnalysisTool(StructuredTool):
             )
 
             result = await db.execute(query)
-            severity_counts: Dict[str, int] = dict(result.all())  # type: ignore[arg-type]
+            severity_counts: dict[str, int] = dict(result.all())  # type: ignore[arg-type]
 
             # Calculate weighted risk score
             weights = {"critical": 10, "high": 5, "medium": 2, "low": 1}
@@ -262,13 +265,14 @@ class SecurityAnalysisTool(StructuredTool):
     async def _analyze_compliance_gaps(
         self,
         context: AgentContext,
-        scope: Dict[str, Any],
-        filters: Dict[str, Any],
+        scope: dict[str, Any],
+        filters: dict[str, Any],
     ) -> SecurityAnalysisOutput:
         """Analyze compliance gaps."""
+        from sqlalchemy import select
+
         from cerebro.core.database import async_session_factory
         from cerebro.core.models import Finding
-        from sqlalchemy import select
 
         async with async_session_factory() as db:
             # Get findings mapped to compliance frameworks
@@ -285,7 +289,7 @@ class SecurityAnalysisTool(StructuredTool):
             findings = result.scalars().all()
 
             # Group by compliance framework
-            framework_gaps: Dict[str, List[Any]] = {}
+            framework_gaps: dict[str, list[Any]] = {}
             for finding in findings:
                 # This would map findings to frameworks
                 # Simplified for demo
@@ -324,13 +328,14 @@ class SecurityAnalysisTool(StructuredTool):
     async def _assess_security_posture(
         self,
         context: AgentContext,
-        scope: Dict[str, Any],
-        filters: Dict[str, Any],
+        scope: dict[str, Any],
+        filters: dict[str, Any],
     ) -> SecurityAnalysisOutput:
         """Assess overall security posture."""
+        from sqlalchemy import func, select
+
         from cerebro.core.database import async_session_factory
-        from cerebro.core.models import Finding, Resource, Account
-        from sqlalchemy import select, func
+        from cerebro.core.models import Account, Finding, Resource
 
         async with async_session_factory() as db:
             # Get metrics

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -28,9 +28,9 @@ class RepositoryContext:
     resource_id: UUID
     resource_type: str
     resource_external_id: str
-    resource_name: Optional[str]
+    resource_name: str | None
     received_at: datetime
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,7 @@ class RuntimeContext:
     service_name: str
     environment: str
     received_at: datetime
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ class HostContext:
     host_id: str
     hostname: str
     received_at: datetime
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -65,8 +65,8 @@ class TelemetryResult:
 
     findings_created: int = 0
     findings_updated: int = 0
-    findings: Tuple[UUID, ...] = field(default_factory=tuple)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    findings: tuple[UUID, ...] = field(default_factory=tuple)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class HostTelemetryEvent(Base):
@@ -86,29 +86,29 @@ class HostTelemetryEvent(Base):
         nullable=False,
         index=True,
     )
-    account_id: Mapped[Optional[UUID]] = mapped_column(
+    account_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("accounts.account_id", ondelete="SET NULL"),
         nullable=True,
     )
-    resource_id: Mapped[Optional[UUID]] = mapped_column(
+    resource_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("resources.resource_id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     host_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    hostname: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(String(128), nullable=False)
-    severity: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    process_id: Mapped[Optional[int]] = mapped_column(nullable=True)
-    parent_pid: Mapped[Optional[int]] = mapped_column(nullable=True)
-    user: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    command_line: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    severity: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    process_id: Mapped[int | None] = mapped_column(nullable=True)
+    parent_pid: Mapped[int | None] = mapped_column(nullable=True)
+    user: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    command_line: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(128), nullable=False)
-    agent_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True, default=dict
     )
     observed_at: Mapped[datetime] = mapped_column(
@@ -119,7 +119,7 @@ class HostTelemetryEvent(Base):
     )
 
     organization: Mapped[Organization] = relationship("Organization")
-    resource: Mapped[Optional[Resource]] = relationship("Resource")
+    resource: Mapped[Resource | None] = relationship("Resource")
 
 
 class ArtifactPack(Base):
@@ -140,9 +140,9 @@ class ArtifactPack(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
-    version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    selectors: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selectors: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True, default=dict
     )
     enabled: Mapped[bool] = mapped_column(
@@ -151,11 +151,11 @@ class ArtifactPack(Base):
     approval_state: Mapped[str] = mapped_column(
         String(32), nullable=False, default="draft", server_default="draft"
     )
-    approval_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    schedule_interval_seconds: Mapped[Optional[int]] = mapped_column(
+    approval_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    schedule_interval_seconds: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
-    last_deployed_at: Mapped[Optional[datetime]] = mapped_column(
+    last_deployed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -169,21 +169,21 @@ class ArtifactPack(Base):
     )
 
     organization: Mapped[Organization] = relationship("Organization")
-    tasks: Mapped[list["ArtifactPackTask"]] = relationship(
+    tasks: Mapped[list[ArtifactPackTask]] = relationship(
         "ArtifactPackTask",
         back_populates="pack",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
     # Automation rules that determine when this pack should execute.
-    triggers: Mapped[list["ArtifactPackTrigger"]] = relationship(
+    triggers: Mapped[list[ArtifactPackTrigger]] = relationship(
         "ArtifactPackTrigger",
         back_populates="pack",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
     # Host-specific assignments created by the control plane.
-    targets: Mapped[list["ArtifactPackTarget"]] = relationship(
+    targets: Mapped[list[ArtifactPackTarget]] = relationship(
         "ArtifactPackTarget",
         back_populates="pack",
         cascade="all, delete-orphan",
@@ -210,26 +210,26 @@ class ArtifactPackTask(Base):
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     collector: Mapped[str] = mapped_column(String(128), nullable=False)
-    interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    tags: Mapped[Optional[Dict[str, str]]] = mapped_column(
+    interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tags: Mapped[dict[str, str] | None] = mapped_column(
         JSONType, nullable=True, default=dict
     )
-    config: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    config: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True, default=dict
     )
-    discovery: Mapped[Optional[List[str]]] = mapped_column(
+    discovery: Mapped[list[str] | None] = mapped_column(
         JSONType, nullable=True, default=list
     )
-    parameters: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(
+    parameters: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONType, nullable=True, default=list
     )
-    parameter_values: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    parameter_values: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True, default=dict
     )
-    resources: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    resources: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True, default=dict
     )
-    tools: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(
+    tools: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONType, nullable=True, default=list
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -266,12 +266,12 @@ class ArtifactPackTrigger(Base):
         nullable=False,
         doc="Concrete value that must be matched by incoming telemetry",
     )
-    minimum_severity: Mapped[Optional[str]] = mapped_column(
+    minimum_severity: Mapped[str | None] = mapped_column(
         String(16),
         nullable=True,
         doc="Optional severity threshold that must be met or exceeded",
     )
-    expires_after_seconds: Mapped[Optional[int]] = mapped_column(
+    expires_after_seconds: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
         doc="How long the trigger assignment remains valid for a host",
@@ -306,7 +306,7 @@ class ArtifactPackTarget(Base):
         index=True,
         doc="Stable identifier for the endpoint that must run the pack",
     )
-    hostname: Mapped[Optional[str]] = mapped_column(
+    hostname: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
         doc="Friendly host name recorded when the target was issued",
@@ -317,12 +317,12 @@ class ArtifactPackTarget(Base):
         default=datetime.utcnow,
         doc="When the target was generated",
     )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
+    expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         doc="Optional expiry timestamp after which the target is ignored",
     )
-    fulfilled_at: Mapped[Optional[datetime]] = mapped_column(
+    fulfilled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         doc="Moment the agent acknowledged or completed the pack execution",

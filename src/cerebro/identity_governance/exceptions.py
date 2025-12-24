@@ -5,13 +5,13 @@ Implements exception workflows with SLAs, auto-expiry, and revalidation.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
 from ..auditability.attestation import get_attestation_service
-from ..auditability.transparency_log import get_transparency_log, LogEntryType
+from ..auditability.transparency_log import LogEntryType, get_transparency_log
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +56,12 @@ class AccessException:
     requested_at: datetime
     justification: str
     business_need: str
-    project_reference: Optional[str]
+    project_reference: str | None
 
     # Approval workflow
-    approver: Optional[str]
-    approved_at: Optional[datetime]
-    approval_justification: Optional[str]
+    approver: str | None
+    approved_at: datetime | None
+    approval_justification: str | None
 
     # Time limits
     start_date: datetime
@@ -69,15 +69,15 @@ class AccessException:
     max_duration_days: int
 
     # Monitoring
-    last_used: Optional[datetime]
+    last_used: datetime | None
     usage_count: int
-    revalidation_due: Optional[datetime]
+    revalidation_due: datetime | None
 
     # Attestation
-    attestation_id: Optional[str]
+    attestation_id: str | None
 
     # Metadata
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class ExceptionManager:
@@ -103,7 +103,7 @@ class ExceptionManager:
         business_need: str,
         exception_type: ExceptionType,
         duration_days: int,
-        project_reference: Optional[str] = None,
+        project_reference: str | None = None,
     ) -> AccessException:
         """
         Request a time-boxed access exception.
@@ -277,7 +277,7 @@ class ExceptionManager:
 
         return exception
 
-    async def process_expired_exceptions(self, org_id: str) -> Dict[str, Any]:
+    async def process_expired_exceptions(self, org_id: str) -> dict[str, Any]:
         """
         Process expired exceptions and auto-revoke access.
 
@@ -433,7 +433,7 @@ class ExceptionManager:
 
     async def _get_expired_exceptions(
         self, org_id: str, current_time: datetime
-    ) -> List[AccessException]:
+    ) -> list[AccessException]:
         """Get expired exceptions for organization."""
         # In production, would query database for expired exceptions
         # For now, return empty list

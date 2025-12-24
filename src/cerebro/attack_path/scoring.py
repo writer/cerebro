@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ..core.models import Principal, Resource
 from .service_identity import ServiceIdentityEdge, TrustMechanism
 
-
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "principal": {
         "base": 0.5,
         "service_account_bonus": 0.2,
@@ -59,14 +58,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
-def _lookup(mapping: Dict[str, Any], key: str, default_key: str = "default") -> Any:
+def _lookup(mapping: dict[str, Any], key: str, default_key: str = "default") -> Any:
     for candidate in mapping:
         if candidate != default_key and candidate in key:
             return mapping[candidate]
     return mapping.get(default_key)
 
 
-def _deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(target: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
     merged = dict(target)
     for key, value in source.items():
         if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
@@ -78,15 +77,15 @@ def _deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any
 
 @dataclass
 class AttackGraphScoring:
-    config: Optional[Dict[str, Any]] = None
-    _edge_config: Dict[str, Any] = field(init=False, repr=False, default_factory=dict)
-    _principal_config: Dict[str, Any] = field(
+    config: dict[str, Any] | None = None
+    _edge_config: dict[str, Any] = field(init=False, repr=False, default_factory=dict)
+    _principal_config: dict[str, Any] = field(
         init=False, repr=False, default_factory=dict
     )
-    _resource_config: Dict[str, Any] = field(
+    _resource_config: dict[str, Any] = field(
         init=False, repr=False, default_factory=dict
     )
-    _privilege_levels: Dict[str, Any] = field(
+    _privilege_levels: dict[str, Any] = field(
         init=False, repr=False, default_factory=dict
     )
 
@@ -119,7 +118,7 @@ class AttackGraphScoring:
 
     def resource_risk(self, resource: Resource) -> float:
         base = self._resource_config.get("base", 0.3)
-        risk_types: Dict[str, float] = self._resource_config.get("high_risk_types", {})
+        risk_types: dict[str, float] = self._resource_config.get("high_risk_types", {})
         for pattern, bonus in risk_types.items():
             if pattern in resource.resource_type.lower():
                 base += bonus
@@ -199,7 +198,7 @@ class AttackGraphScoring:
             edge.exploitability.lower(), self._privilege_levels.get("default", 1)
         )
 
-    def service_edge_metadata(self, edge: ServiceIdentityEdge) -> Dict[str, Any]:
+    def service_edge_metadata(self, edge: ServiceIdentityEdge) -> dict[str, Any]:
         return {
             "trust_mechanism": edge.trust_mechanism.value,
             "provider_source": edge.provider_source,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -14,7 +14,7 @@ from cerebro.core.models import FrontendObservationEvent
 
 @pytest.mark.asyncio
 async def test_fetch_telemetry_health_counts(test_db, test_org, test_user):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     event = FrontendObservationEvent(
         event_id=uuid4(),
@@ -40,7 +40,7 @@ async def test_fetch_telemetry_health_counts(test_db, test_org, test_user):
 
 @pytest.mark.asyncio
 async def test_evaluate_health_thresholds_flags_issue(test_db, test_org, test_user):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for _ in range(10):
         event = FrontendObservationEvent(

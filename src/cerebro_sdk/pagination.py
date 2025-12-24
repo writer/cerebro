@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, Optional, Sequence, TypeVar
-
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -16,7 +16,7 @@ class PageRequest:
     """Pagination request parameters passed to list operations."""
 
     limit: int = 100
-    cursor: Optional[str] = None
+    cursor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -35,8 +35,8 @@ class CursorPage(Generic[T]):
     """Generic cursor page representation returned by SDK helpers."""
 
     items: Sequence[T]
-    next_cursor: Optional[str]
-    total: Optional[int] = None
+    next_cursor: str | None
+    total: int | None = None
 
 
 def encode_cursor(payload: dict[str, object]) -> str:
@@ -60,9 +60,9 @@ def decode_cursor(token: str) -> Cursor:
 
 
 __all__ = [
-    "PageRequest",
     "Cursor",
     "CursorPage",
-    "encode_cursor",
+    "PageRequest",
     "decode_cursor",
+    "encode_cursor",
 ]

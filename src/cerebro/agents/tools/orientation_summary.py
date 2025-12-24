@@ -4,13 +4,13 @@ from __future__ import annotations
 
 """Agent tool exposing orientation analytics."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from cerebro.analytics.orientation import generate_orientation_summary
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 
 class OrientationSummaryInput(BaseModel):
@@ -41,12 +41,12 @@ class OrientationSummaryOutput(BaseModel):
     """Structured orientation summary payload."""
 
     generated_at: str
-    window: Dict[str, Any]
-    baseline: Dict[str, Any]
+    window: dict[str, Any]
+    baseline: dict[str, Any]
     total_events_current: int
     total_events_baseline: int
-    top_event_types: List[OrientationEventRow]
-    top_components: List[OrientationEventRow]
+    top_event_types: list[OrientationEventRow]
+    top_components: list[OrientationEventRow]
 
 
 class OrientationSummaryTool(StructuredTool):

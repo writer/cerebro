@@ -5,8 +5,9 @@ These tests verify the complete authentication lifecycle.
 """
 
 import os
-import pytest
+
 import httpx
+import pytest
 
 pytestmark = pytest.mark.e2e
 

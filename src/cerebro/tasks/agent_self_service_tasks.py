@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 
 from cerebro.agents.self_service import SelfServiceAnalytics
 from cerebro.tasks.celery_app import celery_app
-
 
 logger = structlog.get_logger(__name__)
 _analytics = SelfServiceAnalytics()
@@ -19,7 +18,7 @@ _analytics = SelfServiceAnalytics()
 def generate_self_service_question_report() -> int:
     """Generate monthly "Top 10 questions" reports for each organization."""
 
-    as_of = datetime.now(timezone.utc)
+    as_of = datetime.now(UTC)
     reports = asyncio.run(_analytics.generate_monthly_reports(as_of=as_of))
 
     logger.info(

@@ -10,9 +10,11 @@ Tests cover:
 - Cache statistics
 """
 
-import pytest
 import asyncio
 from unittest.mock import patch
+
+import pytest
+
 from cerebro.core.encryption import SecretEncryptionService, get_encryption_service
 from cerebro.kms.local_kms import LocalKMS
 
@@ -271,7 +273,7 @@ class TestEncryptionService:
     async def test_invalid_dek(self, encryption_service):
         """Test that invalid DEK raises an error."""
         plaintext = "test-secret"
-        encrypted_data, encrypted_dek = await encryption_service.encrypt_secret(
+        encrypted_data, _encrypted_dek = await encryption_service.encrypt_secret(
             plaintext
         )
 

@@ -10,7 +10,8 @@ This module splits the large analytics router into focused sub-routers:
 """
 
 from fastapi import APIRouter
-from . import dashboard, risk_analytics, metrics, monitoring, compliance_analytics
+
+from . import compliance_analytics, dashboard, metrics, monitoring, risk_analytics
 
 # Create main analytics router
 router = APIRouter()

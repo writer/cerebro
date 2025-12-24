@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from cerebro.tasks import serval_tasks
 
-
-UTC = timezone.utc
+UTC = UTC
 
 
 def test_sync_serval_tickets_updates_state(monkeypatch, test_db, test_org):

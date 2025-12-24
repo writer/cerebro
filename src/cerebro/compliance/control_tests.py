@@ -9,20 +9,20 @@ import logging
 import os
 
 logger = logging.getLogger(__name__)
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 # Use TYPE_CHECKING to avoid runtime dependencies
 if TYPE_CHECKING:
-    from ..rules.engine import RuleEngine
     from ..query.engine import QueryEngine
+    from ..rules.engine import RuleEngine
 
 from .evidence_service import EvidenceService
-from .storage import FileBasedEvidenceRepository
 from .frameworks import ComplianceControl
+from .storage import FileBasedEvidenceRepository
 
 # Define EvidenceItem locally for backward compatibility
 
@@ -33,7 +33,7 @@ class EvidenceItem:
 
     control_id: str
     evidence_type: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
     collected_at: datetime
     query_used: str
 
@@ -70,18 +70,18 @@ class ControlTest:
     description: str
 
     # Test execution
-    rule_ids: List[str] = field(default_factory=list)  # CEL rules to evaluate
-    sql_queries: List[str] = field(default_factory=list)  # SQL queries for evidence
-    assertion: Optional[str] = None  # CEL expression for pass/fail logic
+    rule_ids: list[str] = field(default_factory=list)  # CEL rules to evaluate
+    sql_queries: list[str] = field(default_factory=list)  # SQL queries for evidence
+    assertion: str | None = None  # CEL expression for pass/fail logic
 
     # Configuration
     frequency: ControlFrequency = ControlFrequency.QUARTERLY
-    owner: Optional[str] = None
+    owner: str | None = None
     enabled: bool = True
 
     # Pass/fail thresholds
     pass_threshold: float = 1.0  # 1.0 = 100% pass required
-    sample_size: Optional[int] = None  # For controls requiring sampling
+    sample_size: int | None = None  # For controls requiring sampling
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
@@ -112,13 +112,13 @@ class ControlTestResult:
     pass_rate: float = 0.0
 
     # Evidence and context
-    evidence_items: List[str] = field(default_factory=list)  # Evidence item IDs
-    rule_results: Dict[str, Any] = field(default_factory=dict)
-    error_messages: List[str] = field(default_factory=list)
+    evidence_items: list[str] = field(default_factory=list)  # Evidence item IDs
+    rule_results: dict[str, Any] = field(default_factory=dict)
+    error_messages: list[str] = field(default_factory=list)
 
     # Audit trail
-    executor: Optional[str] = None  # Who/what executed the test
-    execution_context: Dict[str, Any] = field(default_factory=dict)
+    executor: str | None = None  # Who/what executed the test
+    execution_context: dict[str, Any] = field(default_factory=dict)
 
     @property
     def duration_seconds(self) -> float:
@@ -164,13 +164,13 @@ class ControlTestRunner:
 
     async def run_control_test(
         self,
-        test: Optional[ControlTest] = None,
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
+        test: ControlTest | None = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
         *,
-        org_id: Optional[Any] = None,
-        framework_id: Optional[str] = None,
-        control_id: Optional[str] = None,
+        org_id: Any | None = None,
+        framework_id: str | None = None,
+        control_id: str | None = None,
         collect_evidence: bool = True,
     ) -> ControlTestResult:
         """Execute a single control test."""
@@ -214,7 +214,7 @@ class ControlTestRunner:
         )
 
         try:
-            evidence_ids: List[str] = []
+            evidence_ids: list[str] = []
             if collect_evidence and test.sql_queries:
                 evidence_ids = await self.evidence_service.collect_compliance_evidence(
                     control_id=test.control_id,
@@ -261,7 +261,7 @@ class ControlTestRunner:
                         rule_results[rule_id] = rule_result
                     except Exception as e:
                         rule_results[rule_id] = {"error": str(e)}
-                        result.error_messages.append(f"Rule {rule_id}: {str(e)}")
+                        result.error_messages.append(f"Rule {rule_id}: {e!s}")
 
             result.rule_results = rule_results
 
@@ -294,10 +294,10 @@ class ControlTestRunner:
     async def run_framework_tests(
         self,
         framework_name: str,
-        tests: List[ControlTest],
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
-    ) -> List[ControlTestResult]:
+        tests: list[ControlTest],
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+    ) -> list[ControlTestResult]:
         """Execute all tests for a compliance framework."""
         # Run tests in parallel for efficiency
         tasks = [
@@ -309,7 +309,7 @@ class ControlTestRunner:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Handle any exceptions
-        valid_results: List[ControlTestResult] = []
+        valid_results: list[ControlTestResult] = []
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
                 # Create error result for failed test
@@ -335,8 +335,8 @@ class ControlTestRunner:
     async def calculate_coverage(
         self,
         framework_name: str,
-        all_controls: List[ComplianceControl],
-        test_results: List[ControlTestResult],
+        all_controls: list[ComplianceControl],
+        test_results: list[ControlTestResult],
     ) -> ControlCoverage:
         """Calculate compliance coverage metrics."""
         total_controls = len(all_controls)
@@ -395,10 +395,11 @@ class ControlTestRunner:
 
     async def _execute_rule(
         self, rule_id: str, period_start: datetime, period_end: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute a CEL rule and return results."""
         try:
-            from uuid import UUID, uuid5, NAMESPACE_URL
+            from uuid import NAMESPACE_URL, UUID, uuid5
+
             from ..rules.engine import EvaluationContext
 
             # Get rule from database or rule store
@@ -448,12 +449,13 @@ class ControlTestRunner:
     async def _evaluate_assertion(
         self,
         assertion: str,
-        evidence_items: List[EvidenceItem],
-        rule_results: Dict[str, Any],
+        evidence_items: list[EvidenceItem],
+        rule_results: dict[str, Any],
     ) -> bool:
         """Evaluate CEL assertion to determine pass/fail."""
         try:
-            from uuid import uuid5, NAMESPACE_URL
+            from uuid import NAMESPACE_URL, uuid5
+
             from ..rules.engine import EvaluationContext
 
             # Prepare evidence data for CEL evaluation
@@ -500,7 +502,7 @@ class ControlTestRunner:
             )
 
     def _default_pass_logic(
-        self, evidence_items: List[EvidenceItem], rule_results: Dict[str, Any]
+        self, evidence_items: list[EvidenceItem], rule_results: dict[str, Any]
     ) -> bool:
         """Default pass/fail logic when no assertion is specified."""
         # Pass if we have evidence and no query errors
@@ -518,7 +520,7 @@ class ControlTestScheduler:
 
     def __init__(self, test_runner: ControlTestRunner):
         self.test_runner = test_runner
-        self.scheduled_tests: Dict[str, ControlTest] = {}
+        self.scheduled_tests: dict[str, ControlTest] = {}
         self.running = False
 
     def schedule_test(self, test: ControlTest):

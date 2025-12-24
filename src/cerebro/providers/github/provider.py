@@ -7,22 +7,24 @@ members, teams, and associated configuration data from GitHub organisations.
 .. _PyGithub: https://pygithub.readthedocs.io/
 """
 
-from typing import Any, Dict, List, Optional, AsyncGenerator
-from datetime import datetime
 import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
+from typing import Any
 
 import requests
 from github import Github, GithubException
 from github.Organization import Organization
 
 from cerebro.core.config import settings
+
 from ..base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
     IamPermission,
+    PrincipalInfo,
     ProviderError,
+    ResourceInfo,
 )
 from ..utils.connector import call_sync_with_retries
 
@@ -36,10 +38,10 @@ class GitHubProvider(BaseProvider):
         """Instantiate a provider for a specific GitHub organisation."""
         super().__init__(account_id, **kwargs)
         self.org_name = org_name
-        self._github: Optional[Github] = None
-        self._org: Optional[Organization] = None
-        self._runner_group_cache: Dict[int, Dict[str, Any]] = {}
-        self._rest_session: Optional[requests.Session] = None
+        self._github: Github | None = None
+        self._org: Organization | None = None
+        self._runner_group_cache: dict[int, dict[str, Any]] = {}
+        self._rest_session: requests.Session | None = None
 
     @property
     def name(self) -> str:
@@ -91,7 +93,7 @@ class GitHubProvider(BaseProvider):
             return False
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover GitHub resources (repositories, teams)."""
         if not self._org:
@@ -352,7 +354,7 @@ class GitHubProvider(BaseProvider):
         )
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover GitHub permissions."""
         if not self._org:
@@ -491,13 +493,13 @@ class GitHubProvider(BaseProvider):
                 break
             page += 1
 
-    async def _list_runner_groups(self) -> Dict[int, Dict[str, Any]]:
+    async def _list_runner_groups(self) -> dict[int, dict[str, Any]]:
         if self._runner_group_cache:
             return self._runner_group_cache
 
         page = 1
         per_page = 100
-        groups: Dict[int, Dict[str, Any]] = {}
+        groups: dict[int, dict[str, Any]] = {}
 
         while True:
             try:
@@ -526,8 +528,8 @@ class GitHubProvider(BaseProvider):
         return groups
 
     async def _get_runner_group(
-        self, group_id: Optional[int]
-    ) -> Optional[Dict[str, Any]]:
+        self, group_id: int | None
+    ) -> dict[str, Any] | None:
         if not group_id:
             return None
 
@@ -551,14 +553,14 @@ class GitHubProvider(BaseProvider):
         return group_payload
 
     async def _list_runner_group_repositories(
-        self, group_id: Optional[int]
-    ) -> List[Dict[str, Any]]:
+        self, group_id: int | None
+    ) -> list[dict[str, Any]]:
         if not group_id:
             return []
 
         page = 1
         per_page = 100
-        repositories: List[Dict[str, Any]] = []
+        repositories: list[dict[str, Any]] = []
 
         while True:
             payload = await call_sync_with_retries(
@@ -596,7 +598,7 @@ class GitHubProvider(BaseProvider):
 
     async def _build_runner_configuration(
         self, resource: ResourceInfo
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         runner_id = resource.metadata.get("runner_id") if resource.metadata else None
         if not runner_id:
             runner_id = resource.external_id
@@ -656,8 +658,8 @@ class GitHubProvider(BaseProvider):
         }
 
     def _rest_request(
-        self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, method: str, endpoint: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         if not settings.github_token:
             raise ProviderError("GitHub token not configured")
 
@@ -690,7 +692,7 @@ class GitHubProvider(BaseProvider):
 
         return response.json()
 
-    async def _build_org_configuration(self, resource: ResourceInfo) -> Dict[str, Any]:
+    async def _build_org_configuration(self, resource: ResourceInfo) -> dict[str, Any]:
         org_login = resource.external_id or self.org_name
 
         try:

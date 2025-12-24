@@ -7,10 +7,11 @@ These tests verify the complete agent session lifecycle including:
 - Session memory persistence
 """
 
-import pytest
-import httpx
 import os
 from uuid import UUID
+
+import httpx
+import pytest
 
 from tests.e2e.conftest import TestDataFactory
 

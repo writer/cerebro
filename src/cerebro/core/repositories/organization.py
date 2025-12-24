@@ -1,7 +1,7 @@
 """Organization repository for DynamoDB."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -24,13 +24,13 @@ class Organization(BaseModel):
 
     org_id: UUID = Field(default_factory=uuid4)
     name: str
-    slack_config: Optional[Dict[str, Any]] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    slack_config: dict[str, Any] | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Config:
         from_attributes = True
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         org_id = str(self.org_id)
         created = self.created_at.isoformat()
@@ -47,7 +47,7 @@ class Organization(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Organization":
+    def from_item(cls, item: dict[str, Any]) -> "Organization":
         """Create from DynamoDB item."""
         return cls(
             org_id=UUID(item["org_id"]),
@@ -62,7 +62,7 @@ class OrganizationRepository:
 
     _table = TableName.CORE
 
-    async def get(self, org_id: UUID) -> Optional[Organization]:
+    async def get(self, org_id: UUID) -> Organization | None:
         """Get organization by ID."""
         item = await get_item(
             self._table,
@@ -80,7 +80,7 @@ class OrganizationRepository:
         )
         return org
 
-    async def update(self, org_id: UUID, **updates) -> Optional[Organization]:
+    async def update(self, org_id: UUID, **updates) -> Organization | None:
         """Update organization."""
         result = await update_item(
             self._table,
@@ -98,7 +98,7 @@ class OrganizationRepository:
             sk("ORG", str(org_id)),
         )
 
-    async def list_all(self, limit: int = 100) -> List[Organization]:
+    async def list_all(self, limit: int = 100) -> list[Organization]:
         """List all organizations."""
         items = await query(
             self._table,
@@ -109,7 +109,7 @@ class OrganizationRepository:
         )
         return [Organization.from_item(item) for item in items]
 
-    async def get_by_name(self, name: str) -> Optional[Organization]:
+    async def get_by_name(self, name: str) -> Organization | None:
         """Get organization by name.
 
         Note: Scans all orgs. Consider adding GSI on name for better performance.

@@ -8,16 +8,18 @@ This is the "quick win" implementation that gives agents baseline knowledge
 before full RAG/vector search system is implemented.
 """
 
-from typing import Any, Dict, List, Optional
-from uuid import UUID
-from pydantic import BaseModel, Field
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
-from cerebro.core.database import async_session_factory
-from cerebro.core.models import Organization, Account, Principal, Resource
-from sqlalchemy import select, func, distinct
 import structlog
+from pydantic import BaseModel, Field
+from sqlalchemy import distinct, func, select
+
+from cerebro.core.database import async_session_factory
+from cerebro.core.models import Account, Organization, Principal, Resource
+
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -48,7 +50,7 @@ class RepositoryInfo(BaseModel):
     primary_language: str
     framework: str
     description: str
-    key_modules: List[str]
+    key_modules: list[str]
 
 
 class ProviderInfo(BaseModel):
@@ -58,7 +60,7 @@ class ProviderInfo(BaseModel):
     account_count: int
     resource_count: int
     principal_count: int
-    last_collected: Optional[str]
+    last_collected: str | None
 
 
 class OrgContextOutput(BaseModel):
@@ -68,21 +70,21 @@ class OrgContextOutput(BaseModel):
     org_id: str
 
     # Repositories
-    repositories: Optional[List[RepositoryInfo]] = None
+    repositories: list[RepositoryInfo] | None = None
 
     # Providers & Integrations
-    providers_connected: Optional[List[ProviderInfo]] = None
-    providers_supported: Optional[List[str]] = None
+    providers_connected: list[ProviderInfo] | None = None
+    providers_supported: list[str] | None = None
 
     # Agent Tools
-    agent_tools_count: Optional[int] = None
-    agent_tools_available: Optional[List[str]] = None
+    agent_tools_count: int | None = None
+    agent_tools_available: list[str] | None = None
 
     # Statistics
-    statistics: Optional[Dict[str, int]] = None
+    statistics: dict[str, int] | None = None
 
     # System Info
-    system_info: Optional[Dict[str, Any]] = None
+    system_info: dict[str, Any] | None = None
 
 
 class GetOrgContextTool(StructuredTool):
@@ -151,7 +153,7 @@ class GetOrgContextTool(StructuredTool):
                         success=False, error=f"Organization {context.org_id} not found"
                     )
 
-                output_data: Dict[str, Any] = {
+                output_data: dict[str, Any] = {
                     "org_name": org.name,
                     "org_id": str(org.org_id),
                 }
@@ -215,10 +217,10 @@ class GetOrgContextTool(StructuredTool):
             logger.error("Failed to get org context", error=str(e), exc_info=True)
             return ToolResult(
                 success=False,
-                error=f"Failed to retrieve organization context: {str(e)}",
+                error=f"Failed to retrieve organization context: {e!s}",
             )
 
-    async def _get_repository_info(self) -> List[Dict[str, Any]]:
+    async def _get_repository_info(self) -> list[dict[str, Any]]:
         """Get repository metadata from filesystem analysis."""
 
         repos = []
@@ -282,7 +284,7 @@ class GetOrgContextTool(StructuredTool):
 
     async def _get_provider_info(
         self, db_session, org_id: UUID
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get connected provider information from database."""
 
         # Query accounts by provider
@@ -347,7 +349,7 @@ class GetOrgContextTool(StructuredTool):
 
         return sorted(providers, key=lambda x: x["resource_count"], reverse=True)
 
-    async def _get_statistics(self, db_session, org_id: UUID) -> Dict[str, int]:
+    async def _get_statistics(self, db_session, org_id: UUID) -> dict[str, int]:
         """Get resource/principal statistics."""
 
         stats = {}
@@ -392,7 +394,7 @@ class GetOrgContextTool(StructuredTool):
 
         return stats
 
-    async def _get_system_info(self) -> Dict[str, Any]:
+    async def _get_system_info(self) -> dict[str, Any]:
         """Get system/platform information."""
 
         return {

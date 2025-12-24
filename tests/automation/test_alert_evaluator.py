@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -23,7 +23,7 @@ def _make_snapshot(
     events_by_type: dict[str, int] | None = None,
     events_by_component: dict[str, int] | None = None,
 ) -> TelemetryHealthSnapshot:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TelemetryHealthSnapshot(
         generated_at=now,
         window_start=now,
@@ -104,7 +104,7 @@ class _MemoryCooldownStore(AlertCooldownStore):
 
     async def should_suppress(
         self, rule: AlertRule, *, now: datetime
-    ) -> bool:  # noqa: D401
+    ) -> bool:
         return self._suppressed
 
     async def record_fire(self, result: AlertResult) -> None:

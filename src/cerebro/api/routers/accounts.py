@@ -1,15 +1,15 @@
 """Account management endpoints."""
 
-from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cerebro.api.auth import User, get_current_user, require_scopes
+from cerebro.api.schemas import AccountCreate, AccountResponse
 from cerebro.core.database import get_db
 from cerebro.core.models import Account, Organization
-from cerebro.api.schemas import AccountCreate, AccountResponse
-from cerebro.api.auth import get_current_user, require_scopes, User
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -48,14 +48,14 @@ async def create_account(
     return db_account
 
 
-@router.get("/", response_model=List[AccountResponse])
+@router.get("/", response_model=list[AccountResponse])
 async def list_accounts(
-    org_id: Optional[UUID] = None,
-    provider: Optional[str] = None,
+    org_id: UUID | None = None,
+    provider: str | None = None,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
-) -> List[AccountResponse]:
+) -> list[AccountResponse]:
     """List accounts."""
     stmt = select(Account)
 

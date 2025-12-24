@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
 from prometheus_client import CollectorRegistry
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import AgentPolicySuggestion, AgentReviewTask
-
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.notifications import AgentNotificationManager
 from cerebro_sdk.agents.sessions import AgentManager
@@ -38,8 +37,8 @@ class AgentPlaybook(AsyncManagerBase):
         org_id: UUID,
         created_by: str,
         incident_id: UUID | str,
-        finding_ids: Optional[Iterable[UUID | str]] = None,
-        title: Optional[str] = None,
+        finding_ids: Iterable[UUID | str] | None = None,
+        title: str | None = None,
     ):
         manager = AgentManager(self._db)
         session = await manager.create_incident_session(
@@ -64,7 +63,7 @@ class AgentPlaybook(AsyncManagerBase):
         org_id: UUID,
         created_by: str,
         finding_ids: Iterable[UUID | str],
-        title: Optional[str] = None,
+        title: str | None = None,
     ):
         manager = AgentManager(self._db)
         return await manager.create_session_for_findings(
@@ -106,8 +105,8 @@ class AgentPlaybook(AsyncManagerBase):
         task_id: UUID,
         system: str,
         summary: str,
-        metadata: Optional[dict[str, object]] = None,
-    ) -> Optional[AgentTicketRecord]:
+        metadata: dict[str, object] | None = None,
+    ) -> AgentTicketRecord | None:
         task = await self._db.get(AgentReviewTask, task_id)
         if not task:
             return None
@@ -130,9 +129,9 @@ class AgentPlaybook(AsyncManagerBase):
         cel_expression: str,
         support_delta: int = 1,
         reject_delta: int = 0,
-        details: Optional[dict[str, object]] = None,
+        details: dict[str, object] | None = None,
     ) -> AgentPolicySuggestionRecord:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stmt = select(AgentPolicySuggestion).where(
             AgentPolicySuggestion.org_id == org_id,
             AgentPolicySuggestion.tool_name == tool_name,

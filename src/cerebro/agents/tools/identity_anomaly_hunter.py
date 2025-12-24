@@ -8,15 +8,17 @@ This tool leverages the IdentityAnomalyDetector to find suspicious patterns
 that may indicate compromised accounts or insider threats.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import structlog
 from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.analysis.identity_anomaly import (
     IdentityAnomalyDetector,
     RiskLevel,
 )
-import structlog
+
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -24,7 +26,7 @@ logger = structlog.get_logger(__name__)
 class IdentityAnomalyHunterInput(BaseModel):
     """Input parameters for identity anomaly hunting."""
 
-    principal_id: Optional[str] = Field(
+    principal_id: str | None = Field(
         None,
         description="Specific principal/user to analyze (leave empty to analyze all)",
     )
@@ -38,7 +40,7 @@ class IdentityAnomalyHunterInput(BaseModel):
         default="medium",
         description="Minimum risk level to report: 'low', 'medium', 'high', or 'critical'",
     )
-    anomaly_types: Optional[List[str]] = Field(
+    anomaly_types: list[str] | None = Field(
         None,
         description="Specific anomaly types to detect (empty = all). Options: login_pattern, permission_escalation, access_time, resource_access, velocity, cross_provider",
     )
@@ -53,10 +55,10 @@ class IdentityAnomalyOutput(BaseModel):
     score: float
     confidence: float
     description: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     detected_at: str
-    affected_resources: List[str]
-    recommended_actions: List[str]
+    affected_resources: list[str]
+    recommended_actions: list[str]
 
 
 class IdentityAnomalyHunterOutput(BaseModel):
@@ -68,9 +70,9 @@ class IdentityAnomalyHunterOutput(BaseModel):
     medium_count: int
     low_count: int
     principals_analyzed: int
-    anomalies: List[IdentityAnomalyOutput]
+    anomalies: list[IdentityAnomalyOutput]
     risk_summary: str
-    immediate_actions: List[str]
+    immediate_actions: list[str]
 
 
 class IdentityAnomalyHunterTool(StructuredTool):
@@ -107,10 +109,10 @@ class IdentityAnomalyHunterTool(StructuredTool):
     async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
-        principal_id: Optional[str] = None,
+        principal_id: str | None = None,
         lookback_days: int = 30,
         min_risk_level: str = "medium",
-        anomaly_types: Optional[List[str]] = None,
+        anomaly_types: list[str] | None = None,
     ) -> ToolResult:
         """
         Execute identity anomaly hunting.
@@ -163,7 +165,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
 
             # Filter by anomaly types if specified
             if anomaly_types:
-                anomaly_type_set = set(at.lower() for at in anomaly_types)
+                anomaly_type_set = {at.lower() for at in anomaly_types}
                 filtered_anomalies = [
                     a
                     for a in filtered_anomalies
@@ -185,7 +187,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
             )
 
             # Get unique principals analyzed
-            principals_analyzed = len(set(a.principal_id for a in anomalies))
+            principals_analyzed = len({a.principal_id for a in anomalies})
 
             # Convert anomalies to output format (limit to top 20 by score)
             sorted_anomalies = sorted(
@@ -258,7 +260,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
         except Exception as e:
             logger.error("Identity anomaly hunting failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False, error=f"Identity anomaly hunting failed: {str(e)}"
+                success=False, error=f"Identity anomaly hunting failed: {e!s}"
             )
 
     def _generate_risk_summary(
@@ -297,7 +299,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
 
         return "\n".join(summary_parts)
 
-    def _generate_immediate_actions(self, top_anomalies: List[Any]) -> List[str]:
+    def _generate_immediate_actions(self, top_anomalies: list[Any]) -> list[str]:
         """Generate actionable recommendations based on top anomalies."""
 
         if not top_anomalies:

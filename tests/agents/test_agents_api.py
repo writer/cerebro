@@ -8,8 +8,8 @@ This validates that the deep integration is working end-to-end.
 """
 
 import asyncio
-import httpx
 
+import httpx
 import pytest
 
 # Configuration

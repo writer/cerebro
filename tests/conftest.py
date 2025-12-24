@@ -1,30 +1,31 @@
 """Test configuration and fixtures."""
 
-import pytest
 import asyncio
 import os
-from typing import AsyncGenerator, Generator, Optional
+from collections.abc import AsyncGenerator, Generator
+
+import pytest
 
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault(
     "DATABASE_URL", "sqlite+aiosqlite:///./cerebro_test.db?cache=shared&uri=true"
 )
+import httpx
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from cerebro.core.database import Base, get_db
 from cerebro.agents.models import Base as AgentsBase
-from cerebro.core.models import Organization, Account, Principal, Resource, Rule, Policy
-from cerebro.core.user_models import User
-from cerebro.core import user_service as user_service_module
-from cerebro.core.user_service import UserService
-import httpx
 from cerebro.api.main import app
-from cerebro.core.security.key_store import JWTKeyStore
-from cerebro.core.security.jwt import JWTService
-from cerebro.metrics.jwt_metrics import jwt_metrics
+from cerebro.core import user_service as user_service_module
 from cerebro.core.config import settings
+from cerebro.core.database import Base, get_db
+from cerebro.core.models import Account, Organization, Policy, Principal, Resource, Rule
+from cerebro.core.security.jwt import JWTService
+from cerebro.core.security.key_store import JWTKeyStore
+from cerebro.core.user_models import User
+from cerebro.core.user_service import UserService
+from cerebro.metrics.jwt_metrics import jwt_metrics
 
 
 class _TestPwdContext:
@@ -101,7 +102,7 @@ def client(test_db: AsyncSession):
             self._client = httpx.AsyncClient(
                 transport=self._transport, base_url="http://testserver"
             )
-            self._csrf_token: Optional[str] = None
+            self._csrf_token: str | None = None
 
         def _prepare_request(self, method: str, kwargs):
             if method.upper() in {"GET", "HEAD", "OPTIONS"}:

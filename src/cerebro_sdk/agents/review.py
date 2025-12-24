@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select
@@ -16,7 +16,6 @@ from cerebro.agents.models import (
     ReviewTaskStatus,
 )
 from cerebro.agents.review_service import AgentReviewService
-
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.types import (
     AgentInvalidStatusError,
@@ -26,8 +25,8 @@ from cerebro_sdk.agents.types import (
     AgentReviewPendingSummary,
     AgentReviewPriorityBucket,
     AgentReviewQueueSummary,
-    AgentReviewTaskRecord,
     AgentReviewStatusAggregate,
+    AgentReviewTaskRecord,
 )
 from cerebro_sdk.pagination import CursorPage, PageRequest, decode_cursor, encode_cursor
 
@@ -65,7 +64,7 @@ class AgentReviewManager(AsyncManagerBase):
         *,
         org_id: UUID,
         status: ReviewTaskStatus | str | None = None,
-        page: Optional[PageRequest] = None,
+        page: PageRequest | None = None,
     ) -> CursorPage[AgentReviewTaskRecord]:
         request = page or PageRequest()
         limit = max(1, min(request.limit, 200))
@@ -76,7 +75,7 @@ class AgentReviewManager(AsyncManagerBase):
             .order_by(AgentReviewTask.created_at.desc(), AgentReviewTask.id.desc())
         )
 
-        status_enum: Optional[ReviewTaskStatus] = None
+        status_enum: ReviewTaskStatus | None = None
         if status:
             status_enum = self._require_enum(
                 status,
@@ -123,7 +122,7 @@ class AgentReviewManager(AsyncManagerBase):
 
         items = [self._to_record(task) for task in page_rows]
 
-        next_cursor: Optional[str] = None
+        next_cursor: str | None = None
         if has_more and page_rows:
             last = page_rows[-1]
             next_cursor = encode_cursor(
@@ -143,8 +142,8 @@ class AgentReviewManager(AsyncManagerBase):
         task_id: UUID,
         status: ReviewTaskStatus | str,
         resolved_by: str,
-        notes: Optional[str] = None,
-    ) -> Optional[AgentReviewTaskRecord]:
+        notes: str | None = None,
+    ) -> AgentReviewTaskRecord | None:
         task = await self._db.get(AgentReviewTask, task_id)
         if not task:
             return None
@@ -158,7 +157,7 @@ class AgentReviewManager(AsyncManagerBase):
             old_status = task.status
             task.status = status_enum
             task.resolved_by = resolved_by
-            task.resolved_at = datetime.now(timezone.utc)
+            task.resolved_at = datetime.now(UTC)
             task.resolution_notes = notes
             await self._db.flush()
 
@@ -181,12 +180,12 @@ class AgentReviewManager(AsyncManagerBase):
         org_id: UUID,
         task_ids: Iterable[UUID],
         status: ReviewTaskStatus | str | None = None,
-        resolved_by: Optional[str] = None,
-        notes: Optional[str] = None,
-        escalated_to: Optional[str] = None,
-        due_at: Optional[datetime] = None,
-        priority: Optional[str] = None,
-        notification_channel: Optional[str] = None,
+        resolved_by: str | None = None,
+        notes: str | None = None,
+        escalated_to: str | None = None,
+        due_at: datetime | None = None,
+        priority: str | None = None,
+        notification_channel: str | None = None,
     ) -> list[AgentReviewTaskRecord]:
         ids = list(task_ids)
         if not ids:
@@ -201,7 +200,7 @@ class AgentReviewManager(AsyncManagerBase):
         if not tasks:
             return []
 
-        status_enum: Optional[ReviewTaskStatus] = None
+        status_enum: ReviewTaskStatus | None = None
         if status:
             status_enum = self._require_enum(
                 status,
@@ -223,7 +222,7 @@ class AgentReviewManager(AsyncManagerBase):
                     old_status = task.status
                     task.status = status_enum
                     task.resolved_by = resolved_by
-                    task.resolved_at = datetime.now(timezone.utc)
+                    task.resolved_at = datetime.now(UTC)
                     task.resolution_notes = notes
                     await self._db.flush()
                     await self._record_history(
@@ -274,7 +273,7 @@ class AgentReviewManager(AsyncManagerBase):
         self,
         *,
         org_id: UUID,
-        now: Optional[datetime] = None,
+        now: datetime | None = None,
     ) -> AgentReviewQueueSummary:
         summary = await AgentReviewService.summarize_queue(
             org_id=org_id,
@@ -313,7 +312,7 @@ class AgentReviewManager(AsyncManagerBase):
             for item in summary.get("priority_breakdown", [])
         ]
 
-        generated_at = summary.get("generated_at") or datetime.now(timezone.utc)
+        generated_at = summary.get("generated_at") or datetime.now(UTC)
 
         return AgentReviewQueueSummary(
             generated_at=generated_at,
@@ -328,11 +327,11 @@ class AgentReviewManager(AsyncManagerBase):
         task_id: UUID,
         assigned_to: str,
         assigned_by: str,
-    ) -> Optional[AgentReviewTaskRecord]:
+    ) -> AgentReviewTaskRecord | None:
         task = await self._db.get(AgentReviewTask, task_id)
         if not task:
             return None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with self._transaction():
             task.assigned_to = assigned_to
             task.assigned_by = assigned_by
@@ -356,7 +355,7 @@ class AgentReviewManager(AsyncManagerBase):
         task_id: UUID,
         author: str,
         content: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: dict[str, object] | None = None,
     ) -> AgentReviewCommentRecord:
         async with self._transaction():
             comment = AgentReviewComment(
@@ -407,9 +406,9 @@ class AgentReviewManager(AsyncManagerBase):
         task_id: UUID,
         changed_by: str,
         change_type: str,
-        field_name: Optional[str],
-        old_value: Optional[dict[str, object]],
-        new_value: Optional[dict[str, object]],
+        field_name: str | None,
+        old_value: dict[str, object] | None,
+        new_value: dict[str, object] | None,
         metadata: dict[str, object],
     ) -> None:
         history = AgentReviewHistory(

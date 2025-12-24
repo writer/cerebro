@@ -2,14 +2,13 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 def parse_timestamp_safely(
-    timestamp_str: Optional[str], provider: str = "unknown"
-) -> Optional[datetime]:
+    timestamp_str: str | None, provider: str = "unknown"
+) -> datetime | None:
     """
     Parse timestamp string safely with proper error handling.
 
@@ -42,8 +41,8 @@ def parse_timestamp_safely(
 
 
 def validate_string_input(
-    input_str: Optional[str], field_name: str, max_length: int = 255
-) -> Optional[str]:
+    input_str: str | None, field_name: str, max_length: int = 255
+) -> str | None:
     """
     Validate and sanitize string input safely.
 

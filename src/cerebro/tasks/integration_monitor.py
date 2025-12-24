@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -67,7 +67,7 @@ def _maybe_queue_auto_retry(
         try:
             last_retry_at = datetime.fromisoformat(last_retry_at_str)
             if last_retry_at.tzinfo is None:
-                last_retry_at = last_retry_at.replace(tzinfo=timezone.utc)
+                last_retry_at = last_retry_at.replace(tzinfo=UTC)
         except ValueError:
             last_retry_at = None
 
@@ -103,7 +103,7 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(value)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         return parsed
     except Exception:
         return None
@@ -221,7 +221,7 @@ async def _send_coverage_alert(
 @celery_app.task(bind=True, name="cerebro.tasks.integration.monitor_sync_health")
 def monitor_sync_health(self):
     async def _run():
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         issues_handled = 0
 
         async with async_session_factory() as db:

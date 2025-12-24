@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -25,27 +25,27 @@ class ServalConfigRequest(BaseModel):
     default_created_by_user_id: str = Field(
         ..., description="Default Serval user recorded as creator"
     )
-    api_base_url: Optional[str] = Field(
+    api_base_url: str | None = Field(
         default="https://public.api.serval.com",
         description="Serval API base URL",
     )
-    default_status_id: Optional[str] = Field(
+    default_status_id: str | None = Field(
         None, description="Default Serval status id for new tickets"
     )
-    default_priority_id: Optional[str] = Field(
+    default_priority_id: str | None = Field(
         None, description="Default Serval priority id"
     )
-    default_requester_user_id: Optional[str] = Field(
+    default_requester_user_id: str | None = Field(
         None, description="Default Serval requester user id"
     )
-    default_assigned_user_id: Optional[str] = Field(
+    default_assigned_user_id: str | None = Field(
         None, description="Default Serval assignee user id"
     )
-    status_map: Dict[str, str] = Field(
+    status_map: dict[str, str] = Field(
         default_factory=dict,
         description="Mapping of Cerebro statuses to Serval status ids",
     )
-    priority_map: Dict[str, str] = Field(
+    priority_map: dict[str, str] = Field(
         default_factory=dict,
         description="Mapping of Cerebro priorities to Serval priority ids",
     )
@@ -56,17 +56,17 @@ class ServalConfigResponse(BaseModel):
     team_id: str
     api_base_url: str
     default_created_by_user_id: str
-    default_status_id: Optional[str]
-    default_priority_id: Optional[str]
-    default_requester_user_id: Optional[str]
-    default_assigned_user_id: Optional[str]
-    status_map: Dict[str, str]
-    priority_map: Dict[str, str]
+    default_status_id: str | None
+    default_priority_id: str | None
+    default_requester_user_id: str | None
+    default_assigned_user_id: str | None
+    status_map: dict[str, str]
+    priority_map: dict[str, str]
 
     @classmethod
     def from_settings(
         cls, settings: ServalIntegrationSettings
-    ) -> "ServalConfigResponse":
+    ) -> ServalConfigResponse:
         return cls(
             org_id=settings.org_id,
             team_id=settings.team_id,

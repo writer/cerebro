@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -21,14 +21,14 @@ class DatasetRecord:
     """Normalized observation used for supervised fine-tuning."""
 
     org_id: UUID
-    session_id: Optional[UUID]
+    session_id: UUID | None
     timestamp: datetime
     source: str
     event_type: str
-    payload: Dict[str, object]
-    labels: Dict[str, object]
+    payload: dict[str, object]
+    labels: dict[str, object]
 
-    def as_dict(self) -> Dict[str, object]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "org_id": str(self.org_id),
             "session_id": str(self.session_id) if self.session_id else None,
@@ -46,15 +46,15 @@ class DatasetBuilder:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def build(self, org_id: Optional[UUID] = None) -> List[DatasetRecord]:
-        records: List[DatasetRecord] = []
+    async def build(self, org_id: UUID | None = None) -> list[DatasetRecord]:
+        records: list[DatasetRecord] = []
         records.extend(await self._collect_runtime_events(org_id))
         records.extend(await self._collect_frontend_events(org_id))
         records.extend(await self._collect_review_events(org_id))
         records.sort(key=lambda record: record.timestamp)
         return records
 
-    async def export_jsonl(self, path: Path, org_id: Optional[UUID] = None) -> None:
+    async def export_jsonl(self, path: Path, org_id: UUID | None = None) -> None:
         records = await self.build(org_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
@@ -63,8 +63,8 @@ class DatasetBuilder:
                 handle.write("\n")
 
     async def _collect_runtime_events(
-        self, org_id: Optional[UUID]
-    ) -> List[DatasetRecord]:
+        self, org_id: UUID | None
+    ) -> list[DatasetRecord]:
         stmt = select(AgentRuntimeEvent)
         if org_id:
             stmt = stmt.where(AgentRuntimeEvent.org_id == org_id)
@@ -73,7 +73,7 @@ class DatasetBuilder:
         result = await self._session.execute(stmt)
         events: Iterable[AgentRuntimeEvent] = result.scalars().all()
 
-        records: List[DatasetRecord] = []
+        records: list[DatasetRecord] = []
         for event in events:
             payload = dict(event.payload or {})
             labels = {}
@@ -93,8 +93,8 @@ class DatasetBuilder:
         return records
 
     async def _collect_frontend_events(
-        self, org_id: Optional[UUID]
-    ) -> List[DatasetRecord]:
+        self, org_id: UUID | None
+    ) -> list[DatasetRecord]:
         stmt = select(FrontendObservationEvent)
         if org_id:
             stmt = stmt.where(FrontendObservationEvent.org_id == org_id)
@@ -103,7 +103,7 @@ class DatasetBuilder:
         result = await self._session.execute(stmt)
         events: Iterable[FrontendObservationEvent] = result.scalars().all()
 
-        records: List[DatasetRecord] = []
+        records: list[DatasetRecord] = []
         for event in events:
             payload = {
                 "component": event.component,
@@ -127,8 +127,8 @@ class DatasetBuilder:
         return records
 
     async def _collect_review_events(
-        self, org_id: Optional[UUID]
-    ) -> List[DatasetRecord]:
+        self, org_id: UUID | None
+    ) -> list[DatasetRecord]:
         stmt = select(AgentReviewTask)
         if org_id:
             stmt = stmt.where(AgentReviewTask.org_id == org_id)
@@ -137,7 +137,7 @@ class DatasetBuilder:
         result = await self._session.execute(stmt)
         tasks: Iterable[AgentReviewTask] = result.scalars().all()
 
-        records: List[DatasetRecord] = []
+        records: list[DatasetRecord] = []
         for task in tasks:
             payload = {
                 "title": task.title,

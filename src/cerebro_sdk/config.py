@@ -7,7 +7,7 @@ allowing internal tooling to hydrate settings with sensible caching semantics.
 from __future__ import annotations
 
 import threading
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from cerebro.core.config import Settings
 
@@ -29,7 +29,7 @@ def get_settings(loader: Callable[[], Settings] = Settings) -> Settings:
         return _ensure_settings(loader)
 
 
-def refresh_settings(factory: Optional[Callable[[], Settings]] = None) -> Settings:
+def refresh_settings(factory: Callable[[], Settings] | None = None) -> Settings:
     """Refresh and return the cached settings instance."""
 
     global _settings

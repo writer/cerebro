@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,12 +13,12 @@ from cerebro.automation.integration_sync import IntegrationIssue
 from cerebro.core.models import IntegrationSyncIssueEvent, IntegrationSyncState
 
 
-def _normalize_utc(value: Optional[datetime]) -> Optional[datetime]:
+def _normalize_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 class IntegrationStateRepository:
@@ -29,7 +29,7 @@ class IntegrationStateRepository:
 
     async def get_state(
         self, integration: str, scope: str = "default"
-    ) -> Optional[IntegrationSyncState]:
+    ) -> IntegrationSyncState | None:
         stmt = select(IntegrationSyncState).where(
             IntegrationSyncState.integration == integration,
             IntegrationSyncState.scope == scope,
@@ -39,7 +39,7 @@ class IntegrationStateRepository:
     async def list_states(
         self,
         *,
-        integration: Optional[str] = None,
+        integration: str | None = None,
     ) -> list[IntegrationSyncState]:
         stmt = select(IntegrationSyncState)
         if integration is not None:
@@ -55,9 +55,9 @@ class IntegrationStateRepository:
         *,
         integration: str,
         scope: str = "default",
-        last_cursor: Optional[str] = None,
-        last_timestamp: Optional[datetime] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        last_cursor: str | None = None,
+        last_timestamp: datetime | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> IntegrationSyncState:
         state = await self.get_state(integration, scope)
         if state is None:
@@ -97,7 +97,7 @@ class IntegrationIssueEventRepository:
             issue_type=issue.issue_type,
             severity=issue.severity,
             message=issue.message,
-            observed_at=_normalize_utc(issue.observed_at) or datetime.now(timezone.utc),
+            observed_at=_normalize_utc(issue.observed_at) or datetime.now(UTC),
             last_timestamp=_normalize_utc(issue.last_timestamp),
             age_seconds=issue.age_seconds,
             issue_metadata=dict(issue.metadata or {}),
@@ -109,10 +109,10 @@ class IntegrationIssueEventRepository:
     async def list_events(
         self,
         *,
-        integration: Optional[str] = None,
-        scope: Optional[str] = None,
-        since: Optional[datetime] = None,
-        limit: Optional[int] = None,
+        integration: str | None = None,
+        scope: str | None = None,
+        since: datetime | None = None,
+        limit: int | None = None,
     ) -> list[IntegrationSyncIssueEvent]:
         stmt = select(IntegrationSyncIssueEvent)
         if integration is not None:
@@ -130,12 +130,12 @@ class IntegrationIssueEventRepository:
     async def summarize_events(
         self,
         *,
-        integration: Optional[str] = None,
-        scope: Optional[str] = None,
+        integration: str | None = None,
+        scope: str | None = None,
         window: timedelta,
         bucket: timedelta,
     ) -> list[dict[str, Any]]:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         since = now - window
         events = await self.list_events(
             integration=integration,

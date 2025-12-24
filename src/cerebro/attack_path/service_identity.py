@@ -6,10 +6,10 @@ repository allow-lists for service identity attack path analysis.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from ..query.bootstrap import get_query_engine
 
@@ -50,10 +50,10 @@ class ServiceIdentityEdge:
     provider_target: str
 
     # Configuration
-    trust_policy: Dict[str, Any]
-    allowed_repositories: List[str]
-    allowed_branches: List[str]
-    conditions: List[str]
+    trust_policy: dict[str, Any]
+    allowed_repositories: list[str]
+    allowed_branches: list[str]
+    conditions: list[str]
 
     # Risk assessment
     risk_score: float
@@ -62,7 +62,7 @@ class ServiceIdentityEdge:
     # Metadata
     discovered_at: datetime
     last_verified: datetime
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class ServiceIdentityMapper:
@@ -75,11 +75,11 @@ class ServiceIdentityMapper:
 
     def __init__(self):
         self.query_engine = get_query_engine()
-        self.service_edges: Dict[str, ServiceIdentityEdge] = {}
+        self.service_edges: dict[str, ServiceIdentityEdge] = {}
 
     async def discover_service_identities(
         self, org_id: str
-    ) -> List[ServiceIdentityEdge]:
+    ) -> list[ServiceIdentityEdge]:
         """
         Discover service identity relationships across providers.
 
@@ -111,13 +111,13 @@ class ServiceIdentityMapper:
 
         return service_edges
 
-    async def _discover_github_aws_federation(self) -> List[ServiceIdentityEdge]:
+    async def _discover_github_aws_federation(self) -> list[ServiceIdentityEdge]:
         """Discover GitHub OIDC → AWS STS role relationships."""
         edges = []
 
         try:
             # Query GitHub repositories with Actions workflows
-            repos_by_name: Dict[str, Dict[str, Any]] = {}
+            repos_by_name: dict[str, dict[str, Any]] = {}
             for query in [
                 "SELECT repository, topics, default_branch FROM github_repository WHERE topics LIKE '%ci%'",
                 "SELECT repository, topics, default_branch FROM github_repository WHERE topics LIKE '%deployment%'",
@@ -193,7 +193,7 @@ class ServiceIdentityMapper:
 
         return edges
 
-    async def _discover_gcp_workload_identity(self) -> List[ServiceIdentityEdge]:
+    async def _discover_gcp_workload_identity(self) -> list[ServiceIdentityEdge]:
         """Discover GCP Workload Identity Federation relationships."""
         edges = []
 
@@ -246,7 +246,7 @@ class ServiceIdentityMapper:
 
         return edges
 
-    async def _discover_azure_managed_identity(self) -> List[ServiceIdentityEdge]:
+    async def _discover_azure_managed_identity(self) -> list[ServiceIdentityEdge]:
         """Discover Azure Managed Identity relationships using real Azure APIs."""
         edges: list[ServiceIdentityEdge] = []
 
@@ -372,7 +372,7 @@ class ServiceIdentityMapper:
             logger.error(f"Failed to initialize Azure client: {e}")
             return None
 
-    async def _query_azure_managed_identities(self, azure_client) -> List[Dict]:
+    async def _query_azure_managed_identities(self, azure_client) -> list[dict]:
         """Query Azure managed identities from Resource Manager API."""
         identities = []
 
@@ -428,7 +428,7 @@ class ServiceIdentityMapper:
 
     async def _get_identity_role_assignments(
         self, azure_client, principal_id: str
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get role assignments for an Azure managed identity."""
         try:
             auth_client = azure_client["auth_client"]
@@ -468,7 +468,7 @@ class ServiceIdentityMapper:
             )
             return []
 
-    def _get_azure_subscription_id(self) -> Optional[str]:
+    def _get_azure_subscription_id(self) -> str | None:
         """Get Azure subscription ID from environment."""
         import os
 
@@ -483,7 +483,7 @@ class ServiceIdentityMapper:
             return parts[-1]
         return scope
 
-    def _calculate_azure_identity_risk(self, identity: Dict, assignment: Dict) -> float:
+    def _calculate_azure_identity_risk(self, identity: dict, assignment: dict) -> float:
         """Calculate risk score for Azure managed identity."""
         risk_score = 0.3  # Base risk
 
@@ -509,7 +509,7 @@ class ServiceIdentityMapper:
 
         return min(risk_score, 1.0)
 
-    def _assess_azure_exploitability(self, assignment: Dict) -> str:
+    def _assess_azure_exploitability(self, assignment: dict) -> str:
         """Assess exploitability level for Azure managed identity."""
         role_name = assignment.get("role_name", "").lower()
 
@@ -520,7 +520,7 @@ class ServiceIdentityMapper:
         else:
             return "low"
 
-    async def _discover_k8s_service_accounts(self) -> List[ServiceIdentityEdge]:
+    async def _discover_k8s_service_accounts(self) -> list[ServiceIdentityEdge]:
         """Discover Kubernetes service account mappings using real Kubernetes API."""
         edges: list[ServiceIdentityEdge] = []
 
@@ -664,7 +664,7 @@ class ServiceIdentityMapper:
             logger.error(f"Failed to initialize Kubernetes client: {e}")
             return None
 
-    async def _query_k8s_service_accounts(self, k8s_client) -> List[Dict]:
+    async def _query_k8s_service_accounts(self, k8s_client) -> list[dict]:
         """Query Kubernetes service accounts from all namespaces."""
         service_accounts = []
 
@@ -697,7 +697,7 @@ class ServiceIdentityMapper:
             return []
 
     def _calculate_k8s_workload_identity_risk(
-        self, sa: Dict, annotations: Dict
+        self, sa: dict, annotations: dict
     ) -> float:
         """Calculate risk score for Kubernetes workload identity."""
         risk_score = 0.3  # Base risk
@@ -716,7 +716,7 @@ class ServiceIdentityMapper:
 
         return min(risk_score, 1.0)
 
-    def _calculate_k8s_irsa_risk(self, sa: Dict, annotations: Dict) -> float:
+    def _calculate_k8s_irsa_risk(self, sa: dict, annotations: dict) -> float:
         """Calculate risk score for Kubernetes IRSA."""
         risk_score = 0.4  # Slightly higher base risk for AWS cross-cloud
 
@@ -734,7 +734,7 @@ class ServiceIdentityMapper:
 
         return min(risk_score, 1.0)
 
-    def _assess_k8s_exploitability(self, sa: Dict, annotations: Dict) -> str:
+    def _assess_k8s_exploitability(self, sa: dict, annotations: dict) -> str:
         """Assess exploitability level for Kubernetes service accounts."""
         namespace = sa.get("namespace", "")
 
@@ -755,7 +755,7 @@ class ServiceIdentityMapper:
         return "medium"
 
     def _calculate_service_edge_risk(
-        self, source_provider: str, target_provider: str, trust_mechanisms: List[str]
+        self, source_provider: str, target_provider: str, trust_mechanisms: list[str]
     ) -> float:
         """Calculate risk score for service identity edge."""
         base_risk = 0.5
@@ -774,7 +774,7 @@ class ServiceIdentityMapper:
 
         return min(base_risk, 1.0)
 
-    async def analyze_service_identity_risks(self, org_id: str) -> Dict[str, Any]:
+    async def analyze_service_identity_risks(self, org_id: str) -> dict[str, Any]:
         """
         Analyze risks in service identity configurations.
 
@@ -817,7 +817,7 @@ class ServiceIdentityMapper:
                 "medium_risk_edges": len(risk_distribution["medium"]),
                 "low_risk_edges": len(risk_distribution["low"]),
                 "trust_mechanisms": list(
-                    set(edge.trust_mechanism.value for edge in service_edges)
+                    {edge.trust_mechanism.value for edge in service_edges}
                 ),
             },
             "risk_distribution": risk_distribution,
@@ -828,8 +828,8 @@ class ServiceIdentityMapper:
         }
 
     def _identify_service_risk_patterns(
-        self, edges: List[ServiceIdentityEdge]
-    ) -> List[Dict[str, Any]]:
+        self, edges: list[ServiceIdentityEdge]
+    ) -> list[dict[str, Any]]:
         """Identify common risk patterns in service identity configurations."""
         patterns = []
 
@@ -892,8 +892,8 @@ class ServiceIdentityMapper:
         return patterns
 
     def _generate_service_identity_recommendations(
-        self, edges: List[ServiceIdentityEdge]
-    ) -> List[str]:
+        self, edges: list[ServiceIdentityEdge]
+    ) -> list[str]:
         """Generate recommendations for service identity security."""
         recommendations = []
 

@@ -8,14 +8,16 @@ This tool wraps Cerebro's ForensicReplayEngine to provide temporal
 investigation capabilities directly to Claude agents.
 """
 
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any
+
+import structlog
 from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.analysis.forensic_replay import ForensicReplayEngine
 from cerebro.core.database import async_session_factory
-import structlog
+
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -27,7 +29,7 @@ class ForensicReplayInput(BaseModel):
         ...,
         description="ISO 8601 timestamp to replay state (e.g., '2024-12-01T15:30:00Z')",
     )
-    scope: Optional[Dict[str, Any]] = Field(
+    scope: dict[str, Any] | None = Field(
         default_factory=dict,
         description="Scope filters: providers (list), resource_types (list), principal_ids (list)",
     )
@@ -44,11 +46,11 @@ class ForensicReplayOutput(BaseModel):
     principals_count: int
     resources_count: int
     active_findings_count: int
-    security_summary: Dict[str, Any]
-    principals_sample: List[Dict[str, Any]]
-    resources_sample: List[Dict[str, Any]]
-    active_findings: List[Dict[str, Any]]
-    changes_since: Optional[Dict[str, Any]] = None
+    security_summary: dict[str, Any]
+    principals_sample: list[dict[str, Any]]
+    resources_sample: list[dict[str, Any]]
+    active_findings: list[dict[str, Any]]
+    changes_since: dict[str, Any] | None = None
 
 
 class ForensicReplayTool(StructuredTool):
@@ -77,7 +79,7 @@ class ForensicReplayTool(StructuredTool):
         self,
         context: AgentContext,
         timestamp: str,
-        scope: Optional[Dict[str, Any]] = None,
+        scope: dict[str, Any] | None = None,
         include_changes: bool = False,
     ) -> ToolResult:
         """
@@ -188,12 +190,12 @@ class ForensicReplayTool(StructuredTool):
             logger.error("Invalid timestamp format", error=str(e))
             return ToolResult(
                 success=False,
-                error=f"Invalid timestamp format: {str(e)}. Use ISO 8601 format.",
+                error=f"Invalid timestamp format: {e!s}. Use ISO 8601 format.",
             )
 
         except Exception as e:
             logger.error("Forensic replay failed", error=str(e), exc_info=True)
-            return ToolResult(success=False, error=f"Forensic replay failed: {str(e)}")
+            return ToolResult(success=False, error=f"Forensic replay failed: {e!s}")
 
 
 class ChangeReplayTool(StructuredTool):
@@ -215,7 +217,7 @@ class ChangeReplayTool(StructuredTool):
     class Input(BaseModel):
         start_time: str = Field(..., description="Start timestamp (ISO 8601)")
         end_time: str = Field(..., description="End timestamp (ISO 8601)")
-        scope: Optional[Dict[str, Any]] = Field(
+        scope: dict[str, Any] | None = Field(
             default_factory=dict, description="Scope filters"
         )
 
@@ -228,8 +230,8 @@ class ChangeReplayTool(StructuredTool):
         resources_changed: int
         findings_created: int
         findings_resolved: int
-        change_summary: Dict[str, Any]
-        timeline: List[Dict[str, Any]]
+        change_summary: dict[str, Any]
+        timeline: list[dict[str, Any]]
 
     input_model = Input
     output_model = Output
@@ -239,7 +241,7 @@ class ChangeReplayTool(StructuredTool):
         context: AgentContext,
         start_time: str,
         end_time: str,
-        scope: Optional[Dict[str, Any]] = None,
+        scope: dict[str, Any] | None = None,
     ) -> ToolResult:
         """
         Execute change replay over time range.
@@ -327,4 +329,4 @@ class ChangeReplayTool(StructuredTool):
 
         except Exception as e:
             logger.error("Change replay failed", error=str(e), exc_info=True)
-            return ToolResult(success=False, error=f"Change replay failed: {str(e)}")
+            return ToolResult(success=False, error=f"Change replay failed: {e!s}")

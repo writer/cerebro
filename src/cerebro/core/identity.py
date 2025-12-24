@@ -3,8 +3,7 @@
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -21,9 +20,9 @@ class IdentityCluster:
     """A cluster of related identities across providers."""
 
     cluster_id: str
-    principals: List[Principal]
+    principals: list[Principal]
     confidence_score: float
-    stitching_evidence: Dict[str, str]
+    stitching_evidence: dict[str, str]
 
 
 class IdentityStitcher:
@@ -41,7 +40,7 @@ class IdentityStitcher:
 
     async def find_identity_clusters(
         self, org_id: UUID, *, persist: bool = True
-    ) -> List[IdentityCluster]:
+    ) -> list[IdentityCluster]:
         """Find identity clusters for an organization."""
         # Get all principals for the organization
         stmt = (
@@ -109,8 +108,8 @@ class IdentityStitcher:
         return clusters
 
     def _group_by_email(
-        self, principals: List[Principal]
-    ) -> Dict[str, List[Principal]]:
+        self, principals: list[Principal]
+    ) -> dict[str, list[Principal]]:
         """Group principals by email address."""
         groups: dict[str, list[Principal]] = {}
         for principal in principals:
@@ -121,7 +120,7 @@ class IdentityStitcher:
                 groups[email].append(principal)
         return groups
 
-    def _group_by_name(self, principals: List[Principal]) -> Dict[str, List[Principal]]:
+    def _group_by_name(self, principals: list[Principal]) -> dict[str, list[Principal]]:
         """Group principals by display name."""
         groups: dict[str, list[Principal]] = {}
         for principal in principals:
@@ -145,7 +144,7 @@ class IdentityStitcher:
 
         return name
 
-    async def get_unified_identity(self, principal_id: UUID) -> Optional[Dict]:
+    async def get_unified_identity(self, principal_id: UUID) -> dict | None:
         """Get unified identity information for a principal."""
         principal = await self.db.get(Principal, principal_id)
         if not principal:
@@ -211,7 +210,7 @@ class IdentityStitcher:
         }
 
     async def _save_identity_clusters(
-        self, org_id: UUID, clusters: List[IdentityCluster]
+        self, org_id: UUID, clusters: list[IdentityCluster]
     ) -> None:
         """Save identity clusters to database."""
         from .identity_models import IdentityCluster as DBIdentityCluster
@@ -234,7 +233,7 @@ class IdentityStitcher:
                     # Update existing cluster
                     existing_cluster.confidence_score = cluster.confidence_score
                     existing_cluster.stitching_evidence = cluster.stitching_evidence
-                    existing_cluster.updated_at = datetime.now(timezone.utc)
+                    existing_cluster.updated_at = datetime.now(UTC)
                     db_cluster = existing_cluster
                 else:
                     # Create new cluster

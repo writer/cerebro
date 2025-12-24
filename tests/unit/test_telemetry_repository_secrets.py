@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -15,7 +15,7 @@ async def test_compliance_evidence_secret_detection(test_db):
     payload = ComplianceEvidence(
         repository="acme/secrets-repo",
         framework="soc2",
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         evidence={
             "sc-12": {
                 "secret_scan": [
@@ -48,7 +48,7 @@ async def test_dependency_graph_secret_detection(test_db):
 
     payload = DependencyGraph(
         repository="acme/dependency-repo",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         dependency_graph={
             "pip": {
                 "leaked": {

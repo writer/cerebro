@@ -5,12 +5,14 @@ Converts Cerebro Tool objects into SDK-compatible MCP tool functions.
 """
 
 import json
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import structlog
-from claude_agent_sdk import tool as sdk_tool, create_sdk_mcp_server
 
-from cerebro.agents.tools.base import Tool, AgentContext, ToolExecutor
+from cerebro.agents.tools.base import AgentContext, Tool, ToolExecutor
+from claude_agent_sdk import create_sdk_mcp_server
+from claude_agent_sdk import tool as sdk_tool
 
 logger = structlog.get_logger(__name__)
 
@@ -36,7 +38,7 @@ def cerebro_tool_to_mcp(
     input_schema = cerebro_tool.input_schema.model_json_schema()
 
     # Create the tool function
-    async def tool_func(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def tool_func(args: dict[str, Any]) -> dict[str, Any]:
         """
         SDK MCP tool function that wraps Cerebro tool execution.
 
@@ -104,7 +106,7 @@ def cerebro_tool_to_mcp(
             )
             return {
                 "content": [
-                    {"type": "text", "text": f"Tool execution error: {str(e)}"}
+                    {"type": "text", "text": f"Tool execution error: {e!s}"}
                 ],
                 "isError": True,
             }
@@ -120,7 +122,7 @@ def cerebro_tool_to_mcp(
 
 
 def create_cerebro_mcp_server(
-    tools: List[Tool],
+    tools: list[Tool],
     context: AgentContext,
     executor: ToolExecutor,
     server_name: str = "cerebro",

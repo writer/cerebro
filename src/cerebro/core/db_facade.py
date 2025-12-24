@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import Any, AsyncGenerator, List, Optional, Tuple, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -57,8 +58,8 @@ class OrganizationFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._pg_repo: Optional[Any] = None
-        self._dynamo_repo: Optional[Any] = None
+        self._pg_repo: Any | None = None
+        self._dynamo_repo: Any | None = None
 
     def _get_pg_session(self) -> Any:
         """Get PostgreSQL session."""
@@ -74,7 +75,7 @@ class OrganizationFacade:
             self._dynamo_repo = OrganizationRepository()
         return self._dynamo_repo
 
-    async def get(self, org_id: UUID) -> Optional[Any]:
+    async def get(self, org_id: UUID) -> Any | None:
         """Get organization by ID."""
         if self._backend == DBBackend.DYNAMODB:
             return await self._get_dynamo_repo().get(org_id)
@@ -128,8 +129,8 @@ class OrganizationFacade:
     async def list_all(
         self,
         limit: int = 100,
-        last_key: Optional[str] = None,
-    ) -> Tuple[List[Any], Optional[str]]:
+        last_key: str | None = None,
+    ) -> tuple[list[Any], str | None]:
         """List all organizations."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             return await self._get_dynamo_repo().list_all(limit, last_key)
@@ -148,7 +149,7 @@ class AccountFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo: Optional[Any] = None
+        self._dynamo_repo: Any | None = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
@@ -162,7 +163,7 @@ class AccountFacade:
             self._dynamo_repo = AccountRepository()
         return self._dynamo_repo
 
-    async def get(self, account_id: UUID, org_id: UUID) -> Optional[Any]:
+    async def get(self, account_id: UUID, org_id: UUID) -> Any | None:
         """Get account by ID."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             return await self._get_dynamo_repo().get(account_id, org_id)
@@ -183,9 +184,9 @@ class AccountFacade:
     async def list_by_org(
         self,
         org_id: UUID,
-        provider: Optional[str] = None,
+        provider: str | None = None,
         limit: int = 100,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """List accounts for an organization."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.core.dynamodb_models import Provider
@@ -213,7 +214,7 @@ class FindingFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo: Optional[Any] = None
+        self._dynamo_repo: Any | None = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
@@ -227,7 +228,7 @@ class FindingFacade:
             self._dynamo_repo = FindingRepository()
         return self._dynamo_repo
 
-    async def get(self, finding_id: UUID, org_id: UUID) -> Optional[Any]:
+    async def get(self, finding_id: UUID, org_id: UUID) -> Any | None:
         """Get finding by ID."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             return await self._get_dynamo_repo().get(finding_id, org_id)
@@ -248,10 +249,10 @@ class FindingFacade:
     async def list_by_org(
         self,
         org_id: UUID,
-        status: Optional[str] = None,
-        severity: Optional[str] = None,
+        status: str | None = None,
+        severity: str | None = None,
         limit: int = 100,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """List findings for an organization."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.core.dynamodb_models import FindingStatus, Severity
@@ -309,7 +310,7 @@ class FindingFacade:
         finding_id: UUID,
         org_id: UUID,
         **updates,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """Update a finding."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             result = await self._get_dynamo_repo().update(finding_id, org_id, **updates)
@@ -349,7 +350,7 @@ class RuleFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo: Optional[Any] = None
+        self._dynamo_repo: Any | None = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
@@ -363,7 +364,7 @@ class RuleFacade:
             self._dynamo_repo = RuleRepository()
         return self._dynamo_repo
 
-    async def get(self, rule_id: UUID) -> Optional[Any]:
+    async def get(self, rule_id: UUID) -> Any | None:
         """Get rule by ID."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             return await self._get_dynamo_repo().get(rule_id)
@@ -380,9 +381,9 @@ class RuleFacade:
 
     async def list_active(
         self,
-        severity: Optional[str] = None,
+        severity: str | None = None,
         limit: int = 100,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """List active rules."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.core.dynamodb_models import Severity
@@ -395,7 +396,7 @@ class RuleFacade:
             from cerebro.core.models import Rule
 
             async with self._get_pg_session() as session:
-                query = select(Rule).where(Rule.is_active == True)
+                query = select(Rule).where(Rule.is_active)
                 if severity:
                     query = query.where(Rule.severity == severity)
                 query = query.limit(limit)
@@ -408,7 +409,7 @@ class AgentSessionFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo: Optional[Any] = None
+        self._dynamo_repo: Any | None = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
@@ -425,8 +426,8 @@ class AgentSessionFacade:
         return self._dynamo_repo
 
     async def get(
-        self, session_id: UUID, org_id: Optional[UUID] = None
-    ) -> Optional[Any]:
+        self, session_id: UUID, org_id: UUID | None = None
+    ) -> Any | None:
         """Get session by ID."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             return await self._get_dynamo_repo().get_session(session_id, org_id)
@@ -445,11 +446,11 @@ class AgentSessionFacade:
     async def list_sessions(
         self,
         org_id: UUID,
-        agent_type: Optional[str] = None,
-        created_by: Optional[str] = None,
+        agent_type: str | None = None,
+        created_by: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[List[Any], int]:
+    ) -> tuple[list[Any], int]:
         """List sessions for an organization."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
             from cerebro.agents.dynamodb_models import AgentType
@@ -494,13 +495,13 @@ class AgentSessionFacade:
 class DBFacade:
     """Unified database facade providing access to all entity facades."""
 
-    def __init__(self, backend: Optional[DBBackend] = None) -> None:
+    def __init__(self, backend: DBBackend | None = None) -> None:
         self._backend = backend or get_db_backend()
-        self._organizations: Optional[OrganizationFacade] = None
-        self._accounts: Optional[AccountFacade] = None
-        self._findings: Optional[FindingFacade] = None
-        self._rules: Optional[RuleFacade] = None
-        self._agent_sessions: Optional[AgentSessionFacade] = None
+        self._organizations: OrganizationFacade | None = None
+        self._accounts: AccountFacade | None = None
+        self._findings: FindingFacade | None = None
+        self._rules: RuleFacade | None = None
+        self._agent_sessions: AgentSessionFacade | None = None
 
     @property
     def backend(self) -> DBBackend:
@@ -544,7 +545,7 @@ class DBFacade:
 
 
 # Global facade instance
-_db_facade: Optional[DBFacade] = None
+_db_facade: DBFacade | None = None
 
 
 def get_db_facade() -> DBFacade:
@@ -563,7 +564,7 @@ def reset_db_facade() -> None:
 
 @asynccontextmanager
 async def db_facade_context(
-    backend: Optional[DBBackend] = None,
+    backend: DBBackend | None = None,
 ) -> AsyncGenerator[DBFacade, None]:
     """Context manager for database operations with specific backend."""
     facade = DBFacade(backend)

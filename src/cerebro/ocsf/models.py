@@ -7,9 +7,9 @@ Pydantic models representing OCSF v1.4.0 schema for security events.
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from typing import Any
 
+from pydantic import BaseModel
 
 # ==================== OCSF Enums ====================
 
@@ -61,13 +61,13 @@ class OCSFMetadata(BaseModel):
 
     version: str = "1.4.0"
     product: OCSFProduct
-    profiles: List[str] = []
-    event_code: Optional[str] = None
-    correlation_uid: Optional[str] = None
-    log_name: Optional[str] = None
-    log_provider: Optional[str] = None
-    logged_time: Optional[int] = None  # Unix epoch ms
-    original_time: Optional[str] = None
+    profiles: list[str] = []
+    event_code: str | None = None
+    correlation_uid: str | None = None
+    log_name: str | None = None
+    log_provider: str | None = None
+    logged_time: int | None = None  # Unix epoch ms
+    original_time: str | None = None
 
 
 class OCSFProduct(BaseModel):
@@ -76,69 +76,69 @@ class OCSFProduct(BaseModel):
     name: str = "Cerebro"
     version: str = "1.0.0"
     vendor_name: str = "Cerebro Security"
-    feature: Optional[Dict[str, Any]] = None
+    feature: dict[str, Any] | None = None
 
 
 class OCSFActor(BaseModel):
     """OCSF Actor Object (User/Process/Device)."""
 
-    user: Optional[OCSFUser] = None
-    process: Optional[OCSFProcess] = None
-    session: Optional[Dict[str, Any]] = None
-    idp: Optional[Dict[str, Any]] = None
+    user: OCSFUser | None = None
+    process: OCSFProcess | None = None
+    session: dict[str, Any] | None = None
+    idp: dict[str, Any] | None = None
 
 
 class OCSFUser(BaseModel):
     """OCSF User Object."""
 
-    name: Optional[str] = None
-    uid: Optional[str] = None
-    email_addr: Optional[str] = None
-    full_name: Optional[str] = None
-    domain: Optional[str] = None
-    type: Optional[str] = None
-    type_id: Optional[int] = None
-    groups: Optional[List[Dict[str, Any]]] = None
+    name: str | None = None
+    uid: str | None = None
+    email_addr: str | None = None
+    full_name: str | None = None
+    domain: str | None = None
+    type: str | None = None
+    type_id: int | None = None
+    groups: list[dict[str, Any]] | None = None
 
 
 class OCSFProcess(BaseModel):
     """OCSF Process Object."""
 
-    name: Optional[str] = None
-    pid: Optional[int] = None
-    file: Optional[Dict[str, Any]] = None
-    cmd_line: Optional[str] = None
-    user: Optional[OCSFUser] = None
+    name: str | None = None
+    pid: int | None = None
+    file: dict[str, Any] | None = None
+    cmd_line: str | None = None
+    user: OCSFUser | None = None
 
 
 class OCSFResource(BaseModel):
     """OCSF Resource Object."""
 
-    name: Optional[str] = None
-    uid: Optional[str] = None
-    type: Optional[str] = None
-    owner: Optional[OCSFUser] = None
-    labels: Optional[List[str]] = None
-    data: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    uid: str | None = None
+    type: str | None = None
+    owner: OCSFUser | None = None
+    labels: list[str] | None = None
+    data: dict[str, Any] | None = None
 
 
 class OCSFCloud(BaseModel):
     """OCSF Cloud Object."""
 
     provider: str  # AWS, Azure, GCP, etc.
-    region: Optional[str] = None
-    account: Optional[OCSFAccount] = None
-    org: Optional[Dict[str, Any]] = None
-    project_uid: Optional[str] = None
+    region: str | None = None
+    account: OCSFAccount | None = None
+    org: dict[str, Any] | None = None
+    project_uid: str | None = None
 
 
 class OCSFAccount(BaseModel):
     """OCSF Account Object."""
 
-    name: Optional[str] = None
-    type: Optional[str] = None
-    type_id: Optional[int] = None
-    uid: Optional[str] = None
+    name: str | None = None
+    type: str | None = None
+    type_id: int | None = None
+    uid: str | None = None
 
 
 class OCSFObservables(BaseModel):
@@ -148,7 +148,7 @@ class OCSFObservables(BaseModel):
     type: str
     type_id: int
     value: Any
-    reputation: Optional[Dict[str, Any]] = None
+    reputation: dict[str, Any] | None = None
 
 
 # ==================== OCSF Event Classes ====================
@@ -170,12 +170,12 @@ class OCSFEvent(BaseModel):
     message: str
     severity_id: int
     severity: str
-    status_id: Optional[int] = None
-    status: Optional[str] = None
+    status_id: int | None = None
+    status: str | None = None
 
     metadata: OCSFMetadata
-    observables: Optional[List[OCSFObservables]] = []
-    unmapped: Optional[Dict[str, Any]] = None  # Original data not mapped to OCSF
+    observables: list[OCSFObservables] | None = []
+    unmapped: dict[str, Any] | None = None  # Original data not mapped to OCSF
 
 
 class OCSFFinding(OCSFEvent):
@@ -194,65 +194,65 @@ class OCSFFinding(OCSFEvent):
 
     # Finding-specific fields
     finding_info: OCSFFindingInfo
-    resources: Optional[List[OCSFResource]] = []
-    remediation: Optional[OCSFRemediation] = None
-    compliance: Optional[OCSFCompliance] = None
-    vulnerabilities: Optional[List[OCSFVulnerability]] = []
+    resources: list[OCSFResource] | None = []
+    remediation: OCSFRemediation | None = None
+    compliance: OCSFCompliance | None = None
+    vulnerabilities: list[OCSFVulnerability] | None = []
 
     # Risk and impact
-    risk_level: Optional[str] = None
-    risk_level_id: Optional[int] = None
-    risk_score: Optional[int] = None  # 0-100
-    impact: Optional[str] = None
-    impact_id: Optional[int] = None
+    risk_level: str | None = None
+    risk_level_id: int | None = None
+    risk_score: int | None = None  # 0-100
+    impact: str | None = None
+    impact_id: int | None = None
 
     # Context
-    actor: Optional[OCSFActor] = None
-    cloud: Optional[OCSFCloud] = None
-    confidence: Optional[int] = None  # 0-100
-    confidence_id: Optional[int] = None
+    actor: OCSFActor | None = None
+    cloud: OCSFCloud | None = None
+    confidence: int | None = None  # 0-100
+    confidence_id: int | None = None
 
 
 class OCSFFindingInfo(BaseModel):
     """OCSF Finding Info Object."""
 
     title: str
-    desc: Optional[str] = None
+    desc: str | None = None
     uid: str
-    types: List[str] = []  # e.g., ["Misconfiguration", "Compliance Violation"]
-    first_seen_time: Optional[int] = None  # Unix epoch ms
-    last_seen_time: Optional[int] = None
-    modified_time: Optional[int] = None
-    created_time: Optional[int] = None
-    analytic: Optional[Dict[str, Any]] = None
-    src_url: Optional[str] = None  # Link to finding in Cerebro
+    types: list[str] = []  # e.g., ["Misconfiguration", "Compliance Violation"]
+    first_seen_time: int | None = None  # Unix epoch ms
+    last_seen_time: int | None = None
+    modified_time: int | None = None
+    created_time: int | None = None
+    analytic: dict[str, Any] | None = None
+    src_url: str | None = None  # Link to finding in Cerebro
 
 
 class OCSFRemediation(BaseModel):
     """OCSF Remediation Object."""
 
     desc: str
-    kb_articles: Optional[List[str]] = []
-    references: Optional[List[str]] = []
+    kb_articles: list[str] | None = []
+    references: list[str] | None = []
 
 
 class OCSFCompliance(BaseModel):
     """OCSF Compliance Object."""
 
-    requirements: List[str] = []  # e.g., ["CIS AWS 1.1", "NIST CSF PR.AC-4"]
+    requirements: list[str] = []  # e.g., ["CIS AWS 1.1", "NIST CSF PR.AC-4"]
     status: str  # Pass, Fail, Not Applicable
-    status_detail: Optional[str] = None
+    status_detail: str | None = None
 
 
 class OCSFVulnerability(BaseModel):
     """OCSF Vulnerability Object."""
 
-    cve_uid: Optional[str] = None  # CVE-2024-1234
-    cwe_uid: Optional[str] = None  # CWE-79
-    title: Optional[str] = None
-    desc: Optional[str] = None
-    severity: Optional[str] = None
-    cvss: Optional[Dict[str, Any]] = None  # CVSS scores
+    cve_uid: str | None = None  # CVE-2024-1234
+    cwe_uid: str | None = None  # CWE-79
+    title: str | None = None
+    desc: str | None = None
+    severity: str | None = None
+    cvss: dict[str, Any] | None = None  # CVSS scores
 
 
 class OCSFComplianceFinding(OCSFFinding):
@@ -280,15 +280,15 @@ class OCSFIdentityActivity(OCSFEvent):
     category_uid: int = 3
     category_name: str = "Identity & Access Management"
 
-    actor: Optional[OCSFActor] = None
-    user: Optional[OCSFUser] = None
-    group: Optional[Dict[str, Any]] = None
-    policy: Optional[Dict[str, Any]] = None
-    privileges: Optional[List[str]] = []
-    cloud: Optional[OCSFCloud] = None
-    is_mfa: Optional[bool] = None
-    auth_protocol: Optional[str] = None
-    auth_protocol_id: Optional[int] = None
+    actor: OCSFActor | None = None
+    user: OCSFUser | None = None
+    group: dict[str, Any] | None = None
+    policy: dict[str, Any] | None = None
+    privileges: list[str] | None = []
+    cloud: OCSFCloud | None = None
+    is_mfa: bool | None = None
+    auth_protocol: str | None = None
+    auth_protocol_id: int | None = None
 
 
 # ==================== Helper Classes ====================

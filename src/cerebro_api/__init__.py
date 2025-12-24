@@ -1,6 +1,6 @@
 """Compatibility shims for legacy cerebro_api import paths."""
 
-from cerebro.api.schemas.main import (  # noqa: F401
+from cerebro.api.schemas.main import (
     FindingPageResponse,
     FindingResponse,
     FindingStats,
@@ -8,8 +8,8 @@ from cerebro.api.schemas.main import (  # noqa: F401
 )
 
 __all__ = [
-    "FindingResponse",
-    "FindingUpdate",
-    "FindingStats",
     "FindingPageResponse",
+    "FindingResponse",
+    "FindingStats",
+    "FindingUpdate",
 ]

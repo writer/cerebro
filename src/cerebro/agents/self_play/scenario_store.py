@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -45,7 +45,7 @@ def _parse_agent_type(value: Any, fallback: AgentType) -> AgentType:
 
 
 def _build_configured_scenario(
-    data: Dict[str, Any],
+    data: dict[str, Any],
     org_id: UUID,
 ) -> SelfPlayScenario:
     try:
@@ -113,7 +113,7 @@ def _default_scenario(org_id: UUID) -> SelfPlayScenario:
     )
 
 
-async def load_scenarios(batch_size: int) -> List[SelfPlayScenario]:
+async def load_scenarios(batch_size: int) -> list[SelfPlayScenario]:
     """Return a batch of scenarios ready for self-play execution."""
 
     org_id = await _resolve_default_org_id()
@@ -124,7 +124,7 @@ async def load_scenarios(batch_size: int) -> List[SelfPlayScenario]:
         )
         return []
 
-    configured: List[SelfPlayScenario] = []
+    configured: list[SelfPlayScenario] = []
     for entry in getattr(settings, "self_play_static_scenarios", []) or []:
         try:
             configured.append(_build_configured_scenario(entry, org_id))

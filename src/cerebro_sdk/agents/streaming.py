@@ -4,17 +4,10 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import (
     Any,
-    AsyncIterable,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    List,
-    Mapping,
-    Optional,
-    Union,
 )
 
 from cerebro_sdk.streaming import ServerSentEvent, parse_server_sent_events
@@ -26,7 +19,7 @@ ToolCallDelta = Mapping[str, Any]
 @dataclass
 class CompletionUpdate:
     status: str
-    detail: Optional[str]
+    detail: str | None
     done: bool
     raw: Mapping[str, Any]
 
@@ -34,29 +27,29 @@ class CompletionUpdate:
 @dataclass
 class AgentStreamEvent:
     type: str
-    payload: Optional[Mapping[str, Any]]
+    payload: Mapping[str, Any] | None
     raw: ServerSentEvent
     data: Any = None
 
 
 MessageConsumer = Callable[
-    [AgentMessage, AgentStreamEvent], Union[Awaitable[None], None]
+    [AgentMessage, AgentStreamEvent], Awaitable[None] | None
 ]
-ToolConsumer = Callable[[ToolCallDelta, AgentStreamEvent], Union[Awaitable[None], None]]
+ToolConsumer = Callable[[ToolCallDelta, AgentStreamEvent], Awaitable[None] | None]
 StatusConsumer = Callable[
-    [CompletionUpdate, AgentStreamEvent], Union[Awaitable[None], None]
+    [CompletionUpdate, AgentStreamEvent], Awaitable[None] | None
 ]
-HeartbeatConsumer = Callable[[AgentStreamEvent], Union[Awaitable[None], None]]
-UnknownConsumer = Callable[[AgentStreamEvent], Union[Awaitable[None], None]]
+HeartbeatConsumer = Callable[[AgentStreamEvent], Awaitable[None] | None]
+UnknownConsumer = Callable[[AgentStreamEvent], Awaitable[None] | None]
 
 
 @dataclass
 class AgentStreamConsumers:
-    on_message: Optional[MessageConsumer] = None
-    on_tool: Optional[ToolConsumer] = None
-    on_status: Optional[StatusConsumer] = None
-    on_heartbeat: Optional[HeartbeatConsumer] = None
-    on_unknown: Optional[UnknownConsumer] = None
+    on_message: MessageConsumer | None = None
+    on_tool: ToolConsumer | None = None
+    on_status: StatusConsumer | None = None
+    on_heartbeat: HeartbeatConsumer | None = None
+    on_unknown: UnknownConsumer | None = None
 
 
 TERMINAL_STATUSES = {
@@ -134,10 +127,10 @@ async def consume_agent_stream(
 
 @dataclass
 class AgentStreamConsumption:
-    messages: List[AgentMessage]
-    tool_calls: List[ToolCallDelta]
-    completions: List[CompletionUpdate]
-    unknown: List[AgentStreamEvent]
+    messages: list[AgentMessage]
+    tool_calls: list[ToolCallDelta]
+    completions: list[CompletionUpdate]
+    unknown: list[AgentStreamEvent]
 
 
 async def collect_agent_stream(stream: AsyncIterable[Any]) -> AgentStreamConsumption:
@@ -172,7 +165,7 @@ async def collect_agent_stream(stream: AsyncIterable[Any]) -> AgentStreamConsump
     return result
 
 
-def to_completion_update(payload: Optional[Mapping[str, Any]]) -> CompletionUpdate:
+def to_completion_update(payload: Mapping[str, Any] | None) -> CompletionUpdate:
     data: Mapping[str, Any] = dict(payload or {})
     status = str(data.get("status", ""))
     detail = data.get("detail")
@@ -195,7 +188,7 @@ def is_status_event(event: AgentStreamEvent) -> bool:
 
 
 async def _maybe_call(
-    fn: Callable[..., Union[Awaitable[None], None]], *args: Any
+    fn: Callable[..., Awaitable[None] | None], *args: Any
 ) -> None:
     result = fn(*args)
     if inspect.isawaitable(result):
@@ -213,17 +206,17 @@ def _parse_json(value: str) -> Any:
 
 
 __all__ = [
-    "AgentStreamEvent",
+    "AgentMessage",
     "AgentStreamConsumers",
     "AgentStreamConsumption",
-    "AgentMessage",
-    "ToolCallDelta",
+    "AgentStreamEvent",
     "CompletionUpdate",
-    "parse_agent_event_stream",
-    "consume_agent_stream",
+    "ToolCallDelta",
     "collect_agent_stream",
+    "consume_agent_stream",
     "is_message_event",
-    "is_tool_event",
     "is_status_event",
+    "is_tool_event",
+    "parse_agent_event_stream",
     "to_completion_update",
 ]

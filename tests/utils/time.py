@@ -1,9 +1,8 @@
 """Timezone-aware datetime helpers for tests."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-
-UTC = timezone.utc
+UTC = UTC
 
 
 def utc_now() -> datetime:

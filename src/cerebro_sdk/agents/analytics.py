@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import AgentMessage, AgentRuntimeEvent, AgentSession
-
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.types import (
     AgentAnalyticsSummary,
@@ -30,7 +28,7 @@ class AgentAnalyticsClient(AsyncManagerBase):
         *,
         session_id: UUID,
         limit: int = 100,
-        event_type: Optional[str] = None,
+        event_type: str | None = None,
     ) -> list[AgentEventRecord]:
         stmt = (
             select(AgentRuntimeEvent)
@@ -56,7 +54,7 @@ class AgentAnalyticsClient(AsyncManagerBase):
         self,
         *,
         session_id: UUID,
-        event_type: Optional[str] = None,
+        event_type: str | None = None,
     ) -> list[AgentEventSummary]:
         stmt = (
             select(
@@ -89,7 +87,7 @@ class AgentAnalyticsClient(AsyncManagerBase):
         org_id: UUID,
         window_hours: int = 24,
     ) -> AgentAnalyticsSummary:
-        window_start = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+        window_start = datetime.now(UTC) - timedelta(hours=window_hours)
         sessions = list(
             await self._db.scalars(
                 select(AgentSession)

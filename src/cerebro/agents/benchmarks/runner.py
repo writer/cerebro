@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from statistics import mean
-from typing import Dict, Iterable, List
 
 import structlog
 
@@ -25,7 +25,7 @@ class BenchmarkRunner:
         self._cases = list(cases)
 
     def run(self) -> BenchmarkSuiteResult:
-        results: List[BenchmarkCaseResult] = []
+        results: list[BenchmarkCaseResult] = []
         for case in self._cases:
             result = self._run_case(case)
             results.append(result)
@@ -83,9 +83,9 @@ class BenchmarkRunner:
     def _evaluate_assertions(
         case: BenchmarkCase,
         metrics: BenchmarkMetrics,
-    ) -> tuple[Dict[str, bool], List[str]]:
-        results: Dict[str, bool] = {}
-        failures: List[str] = []
+    ) -> tuple[dict[str, bool], list[str]]:
+        results: dict[str, bool] = {}
+        failures: list[str] = []
 
         for assertion in case.assertions:
             passed = BenchmarkRunner._evaluate_single_assertion(

@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import logging
 import asyncio
+import logging
 import random
-from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Tuple
+from collections.abc import AsyncIterator, Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid5
 
 import httpx
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.metrics.integration_metrics import record_integration_sync
 from cerebro.telemetry.schemas import (
     AgentHealth,
     HostEvent,
@@ -21,8 +24,6 @@ from cerebro.telemetry.schemas import (
     SoftwarePackage,
 )
 from cerebro.telemetry.services import TelemetryIngestionService
-from cerebro.integrations.state import IntegrationStateRepository
-from cerebro.metrics.integration_metrics import record_integration_sync
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class KandjiClient:
             verify=verify,
         )
 
-    async def __aenter__(self) -> "KandjiClient":
+    async def __aenter__(self) -> KandjiClient:
         await self._client.__aenter__()
         return self
 
@@ -72,11 +73,11 @@ class KandjiClient:
 
     async def iter_devices(
         self, *, page_size: int = 300
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         """Stream device inventory using Kandji's cursor-based pagination."""
 
         url = "/api/v1/devices"
-        params: Optional[Dict[str, Any]] = {"limit": page_size}
+        params: dict[str, Any] | None = {"limit": page_size}
 
         while url:
             payload = await self._request_json(url, params=params)
@@ -93,11 +94,11 @@ class KandjiClient:
         self,
         *,
         page_size: int = 300,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         """Yield vulnerability detections with pagination awareness."""
 
         url = "/api/v1/vulnerability-management/detections"
-        params: Optional[Dict[str, Any]] = {"size": page_size}
+        params: dict[str, Any] | None = {"size": page_size}
 
         while url:
             payload = await self._request_json(url, params=params)
@@ -110,7 +111,7 @@ class KandjiClient:
             url = str(next_url) if next_url else None  # type: ignore[assignment]
             params = None
 
-    async def get_device_details(self, device_id: str) -> Optional[Dict[str, Any]]:
+    async def get_device_details(self, device_id: str) -> dict[str, Any] | None:
         try:
             return await self._request_json(f"/api/v1/devices/{device_id}")
         except httpx.HTTPStatusError as exc:
@@ -118,7 +119,7 @@ class KandjiClient:
                 return None
             raise
 
-    async def get_device_compliance(self, device_id: str) -> Optional[Dict[str, Any]]:
+    async def get_device_compliance(self, device_id: str) -> dict[str, Any] | None:
         try:
             return await self._request_json(f"/api/v1/devices/{device_id}/compliance")
         except httpx.HTTPStatusError as exc:
@@ -128,7 +129,7 @@ class KandjiClient:
 
     async def get_device_smart_groups(
         self, device_id: str
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         try:
             payload = await self._request_json(
                 f"/api/v1/devices/{device_id}/smart-groups"
@@ -143,7 +144,7 @@ class KandjiClient:
                 return [g for g in groups if isinstance(g, dict)]
         return None
 
-    async def get_blueprint(self, blueprint_id: str) -> Optional[Dict[str, Any]]:
+    async def get_blueprint(self, blueprint_id: str) -> dict[str, Any] | None:
         if not blueprint_id:
             return None
         try:
@@ -156,11 +157,11 @@ class KandjiClient:
     async def iter_audit_events(
         self,
         *,
-        since: Optional[datetime] = None,
+        since: datetime | None = None,
         page_size: int = 300,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         url = "/api/v1/audit/events"
-        params: Dict[str, Any] = {"page_size": page_size}
+        params: dict[str, Any] = {"page_size": page_size}
         if since:
             params["occurred_after"] = self._isoformat(since)
 
@@ -179,9 +180,9 @@ class KandjiClient:
         self,
         *,
         page_size: int = 300,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         url = "/api/v1/patch-management/available-updates"
-        params: Optional[Dict[str, Any]] = {"size": page_size}
+        params: dict[str, Any] | None = {"size": page_size}
 
         while url:
             payload = await self._request_json(url, params=params)
@@ -195,8 +196,8 @@ class KandjiClient:
             params = None
 
     async def _request_json(
-        self, url: str, *, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Execute Kandji API calls with retry/backoff handling."""
 
         attempt = 0
@@ -227,8 +228,8 @@ class KandjiClient:
     @staticmethod
     def _isoformat(dt: datetime) -> str:
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 class KandjiIngestion:
@@ -239,16 +240,16 @@ class KandjiIngestion:
         client: KandjiClient,
         *,
         organization: str,
-        site: Optional[str] = None,
+        site: str | None = None,
         agent_version: str = "kandji-sync/1.0",
     ) -> None:
         self._client = client
         self._organization = organization
         self._site = site
         self._agent_version = agent_version
-        self._blueprint_cache: Dict[str, Dict[str, Any]] = {}
+        self._blueprint_cache: dict[str, dict[str, Any]] = {}
 
-    async def ingest(self, db: AsyncSession) -> Dict[str, Any]:
+    async def ingest(self, db: AsyncSession) -> dict[str, Any]:
         """Ingest devices and vulnerability detections.
 
         Device snapshots are processed first to guarantee that we have an
@@ -261,11 +262,11 @@ class KandjiIngestion:
         service = TelemetryIngestionService(db)
         state_repo = IntegrationStateRepository(db)
         state = await state_repo.get_state(_DETECTIONS_SCOPE, self._organization)
-        detection_cutoff: Optional[datetime] = None
+        detection_cutoff: datetime | None = None
         if state and state.last_timestamp:
             detection_cutoff = state.last_timestamp - _DETECTIONS_DRIFT
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         device_count = 0
         async for device in self._client.iter_devices():
@@ -285,8 +286,8 @@ class KandjiIngestion:
             await service.process_host(telemetry)
             device_count += 1
 
-        grouped_events: Dict[str, List[HostEvent]] = {}
-        latest_detection: Optional[datetime] = None
+        grouped_events: dict[str, list[HostEvent]] = {}
+        latest_detection: datetime | None = None
         async for detection in self._client.iter_vulnerability_detections():
             event = self._normalize_detection(detection)
             if event is None:
@@ -320,7 +321,7 @@ class KandjiIngestion:
             ts = (
                 latest_detection
                 if latest_detection.tzinfo
-                else latest_detection.replace(tzinfo=timezone.utc)
+                else latest_detection.replace(tzinfo=UTC)
             )
             await state_repo.upsert_state(
                 integration=_DETECTIONS_SCOPE,
@@ -348,15 +349,15 @@ class KandjiIngestion:
         self,
         service: TelemetryIngestionService,
         state_repo: IntegrationStateRepository,
-    ) -> Tuple[Dict[str, List[HostEvent]], int]:
+    ) -> tuple[dict[str, list[HostEvent]], int]:
         state = await state_repo.get_state(_AUDIT_SCOPE, self._organization)
         cutoff = (
             state.last_timestamp - _AUDIT_DRIFT
             if state and state.last_timestamp
             else None
         )
-        grouped: Dict[str, List[HostEvent]] = {}
-        latest: Optional[datetime] = None
+        grouped: dict[str, list[HostEvent]] = {}
+        latest: datetime | None = None
         async for record in self._client.iter_audit_events(since=cutoff):
             event = self._normalize_audit_event(record)
             if event is None:
@@ -368,7 +369,7 @@ class KandjiIngestion:
                 latest = event.timestamp
 
         count = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for host_id, events in grouped.items():
             hostname = next((e.hostname for e in events if e.hostname), None)
             for chunk in self._chunk_events(events, _EVENT_BATCH_SIZE):
@@ -385,7 +386,7 @@ class KandjiIngestion:
                 count += len(chunk)
 
         if latest:
-            ts = latest if latest.tzinfo else latest.replace(tzinfo=timezone.utc)
+            ts = latest if latest.tzinfo else latest.replace(tzinfo=UTC)
             await state_repo.upsert_state(
                 integration=_AUDIT_SCOPE,
                 scope=self._organization,
@@ -405,15 +406,15 @@ class KandjiIngestion:
         self,
         service: TelemetryIngestionService,
         state_repo: IntegrationStateRepository,
-    ) -> Tuple[Dict[str, List[HostEvent]], int]:
+    ) -> tuple[dict[str, list[HostEvent]], int]:
         state = await state_repo.get_state(_PATCH_SCOPE, self._organization)
         cutoff = (
             state.last_timestamp - _DETECTIONS_DRIFT
             if state and state.last_timestamp
             else None
         )
-        grouped: Dict[str, List[HostEvent]] = {}
-        latest: Optional[datetime] = None
+        grouped: dict[str, list[HostEvent]] = {}
+        latest: datetime | None = None
         async for detection in self._client.iter_patch_updates():
             event = self._normalize_patch_detection(detection)
             if event is None:
@@ -425,7 +426,7 @@ class KandjiIngestion:
                 latest = event.timestamp
 
         count = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for host_id, events in grouped.items():
             hostname = next((e.hostname for e in events if e.hostname), None)
             for chunk in self._chunk_events(events, _EVENT_BATCH_SIZE):
@@ -442,7 +443,7 @@ class KandjiIngestion:
                 count += len(chunk)
 
         if latest:
-            ts = latest if latest.tzinfo else latest.replace(tzinfo=timezone.utc)
+            ts = latest if latest.tzinfo else latest.replace(tzinfo=UTC)
             await state_repo.upsert_state(
                 integration=_PATCH_SCOPE,
                 scope=self._organization,
@@ -460,18 +461,18 @@ class KandjiIngestion:
 
     async def _collect_device_enrichment(
         self,
-        device: Dict[str, Any],
-    ) -> Tuple[
-        Optional[Dict[str, Any]],
-        Optional[Dict[str, Any]],
-        Optional[List[Dict[str, Any]]],
-        Dict[str, Any],
+        device: dict[str, Any],
+    ) -> tuple[
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        list[dict[str, Any]] | None,
+        dict[str, Any],
     ]:
         device_id = str(device.get("id") or "")
-        compliance: Optional[Dict[str, Any]] = None
-        smart_groups: Optional[List[Dict[str, Any]]] = None
-        blueprint_info: Optional[Dict[str, Any]] = None
-        lifecycle: Dict[str, Any] = {}
+        compliance: dict[str, Any] | None = None
+        smart_groups: list[dict[str, Any]] | None = None
+        blueprint_info: dict[str, Any] | None = None
+        lifecycle: dict[str, Any] = {}
 
         if device_id:
             compliance = await self._client.get_device_compliance(device_id)
@@ -503,14 +504,14 @@ class KandjiIngestion:
 
     def _build_host_telemetry(
         self,
-        device: Dict[str, Any],
+        device: dict[str, Any],
         *,
         collected_at: datetime,
-        compliance: Optional[Dict[str, Any]] = None,
-        blueprint: Optional[Dict[str, Any]] = None,
-        smart_groups: Optional[List[Dict[str, Any]]] = None,
-        lifecycle: Optional[Dict[str, Any]] = None,
-    ) -> Optional[HostTelemetry]:
+        compliance: dict[str, Any] | None = None,
+        blueprint: dict[str, Any] | None = None,
+        smart_groups: list[dict[str, Any]] | None = None,
+        lifecycle: dict[str, Any] | None = None,
+    ) -> HostTelemetry | None:
         """Construct ``HostTelemetry`` snapshots from Kandji device payloads."""
 
         if not isinstance(device, dict):
@@ -533,7 +534,7 @@ class KandjiIngestion:
             device.get("os") or device.get("device_family") or "unknown"
         ).lower()
         blueprint_id = str(device.get("blueprint_id") or device.get("blueprint") or "")
-        tags: Dict[str, str] = {}
+        tags: dict[str, str] = {}
         if blueprint_id:
             tags["blueprint_id"] = blueprint_id
         if mdm_device.get("enrollment_status") is not None:
@@ -596,7 +597,7 @@ class KandjiIngestion:
             health=health,
         )
 
-    def _normalize_detection(self, detection: Dict[str, Any]) -> Optional[HostEvent]:
+    def _normalize_detection(self, detection: dict[str, Any]) -> HostEvent | None:
         """Represent Kandji vulnerability detections as host events."""
 
         if not isinstance(detection, dict):
@@ -618,7 +619,7 @@ class KandjiIngestion:
         if isinstance(timestamp_raw, str):
             timestamp = date_parser.isoparse(timestamp_raw)
         else:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
 
         event_uuid = uuid5(_KANDJI_EVENT_NAMESPACE, f"vuln:{serial}:{cve}")
         severity = (
@@ -630,7 +631,7 @@ class KandjiIngestion:
 
         # Preserve Kandji's raw detection data so analysts can cross-reference
         # affected software, remediation state, and ticket links.
-        payload = {k: v for k, v in detection.items()}
+        payload = dict(detection.items())
 
         return HostEvent(
             event_id=event_uuid,
@@ -644,7 +645,7 @@ class KandjiIngestion:
             payload=payload,
         )
 
-    def _derive_site(self, device: Dict[str, Any]) -> Optional[str]:
+    def _derive_site(self, device: dict[str, Any]) -> str | None:
         """Fallback to Kandji DEP server name when no site override is provided."""
 
         dep = device.get("dep_account")
@@ -655,24 +656,24 @@ class KandjiIngestion:
         return self._site
 
     @staticmethod
-    def _chunk_events(events: List[HostEvent], size: int) -> Iterable[List[HostEvent]]:
+    def _chunk_events(events: list[HostEvent], size: int) -> Iterable[list[HostEvent]]:
         for idx in range(0, len(events), size):
             yield events[idx : idx + size]
 
     @staticmethod
-    def _parse_datetime(value: Any) -> Optional[datetime]:
+    def _parse_datetime(value: Any) -> datetime | None:
         if isinstance(value, str):
             try:
                 parsed = date_parser.isoparse(value)
             except (ValueError, TypeError):
                 return None
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
+                parsed = parsed.replace(tzinfo=UTC)
             return parsed
         return None
 
-    def _extract_compliance_tags(self, device: Dict[str, Any]) -> Dict[str, str]:
-        tags: Dict[str, str] = {}
+    def _extract_compliance_tags(self, device: dict[str, Any]) -> dict[str, str]:
+        tags: dict[str, str] = {}
         compliance_status = device.get("compliance_status") or device.get(
             "device_status"
         )
@@ -692,8 +693,8 @@ class KandjiIngestion:
         return tags
 
     def _build_health(
-        self, compliance: Optional[Dict[str, Any]], collected_at: datetime
-    ) -> Optional[AgentHealth]:
+        self, compliance: dict[str, Any] | None, collected_at: datetime
+    ) -> AgentHealth | None:
         if not compliance:
             return None
 
@@ -726,14 +727,14 @@ class KandjiIngestion:
         )
 
     def _extract_installed_packages(
-        self, device: Dict[str, Any]
-    ) -> Optional[List[SoftwarePackage]]:
+        self, device: dict[str, Any]
+    ) -> list[SoftwarePackage] | None:
         candidates = [
             device.get("applications"),
             device.get("installed_applications"),
             device.get("apps"),
         ]
-        packages: List[SoftwarePackage] = []
+        packages: list[SoftwarePackage] = []
         for apps in candidates:
             if not isinstance(apps, list):
                 continue
@@ -765,7 +766,7 @@ class KandjiIngestion:
                 packages.append(package)
         return packages or None
 
-    def _normalize_audit_event(self, record: Dict[str, Any]) -> Optional[HostEvent]:
+    def _normalize_audit_event(self, record: dict[str, Any]) -> HostEvent | None:
         if not isinstance(record, dict):
             return None
 
@@ -783,9 +784,9 @@ class KandjiIngestion:
             record.get("created_at") or record.get("timestamp")
         )
         if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
 
-        payload = {k: v for k, v in record.items()}
+        payload = dict(record.items())
 
         event_uuid = uuid5(
             _KANDJI_EVENT_NAMESPACE,
@@ -805,8 +806,8 @@ class KandjiIngestion:
         )
 
     def _normalize_patch_detection(
-        self, detection: Dict[str, Any]
-    ) -> Optional[HostEvent]:
+        self, detection: dict[str, Any]
+    ) -> HostEvent | None:
         if not isinstance(detection, dict):
             return None
 
@@ -831,9 +832,9 @@ class KandjiIngestion:
             detection.get("detected_at") or detection.get("updated_at")
         )
         if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
 
-        payload = {k: v for k, v in detection.items()}
+        payload = dict(detection.items())
 
         event_uuid = uuid5(
             _KANDJI_EVENT_NAMESPACE,

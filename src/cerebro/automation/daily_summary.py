@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import case, select
@@ -12,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import AgentSession, AgentType
 from cerebro.core.models import Account, Finding, Organization
-
 
 SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
 
@@ -26,11 +26,11 @@ class FindingDigest:
     severity: str
     status: str
     last_seen: datetime
-    account: Optional[str]
-    provider: Optional[str]
-    summary: Optional[str]
+    account: str | None
+    provider: str | None
+    summary: str | None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["finding_id"] = str(self.finding_id)
         payload["last_seen"] = self.last_seen.isoformat()
@@ -45,14 +45,14 @@ class DailySummaryResult:
     org_name: str
     session_id: UUID
     generated_at: datetime
-    findings: List[FindingDigest]
+    findings: list[FindingDigest]
     window_hours: int
 
     def total_findings(self) -> int:
         return len(self.findings)
 
-    def severity_totals(self) -> Dict[str, int]:
-        counts: Dict[str, int] = {level: 0 for level in SEVERITY_ORDER}
+    def severity_totals(self) -> dict[str, int]:
+        counts: dict[str, int] = dict.fromkeys(SEVERITY_ORDER, 0)
         for finding in self.findings:
             key = finding.severity.lower()
             if key not in counts:
@@ -60,7 +60,7 @@ class DailySummaryResult:
             counts[key] += 1
         return counts
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "org_id": str(self.org_id),
             "org_name": self.org_name,
@@ -85,7 +85,7 @@ async def _load_hot_findings(
     org_id: UUID,
     limit: int,
     cutoff: datetime,
-) -> List[FindingDigest]:
+) -> list[FindingDigest]:
     severity_mapping = {level: index for index, level in enumerate(SEVERITY_ORDER)}
     severity_case = case(
         severity_mapping,
@@ -135,9 +135,9 @@ def _build_session_context(
     findings: Iterable[FindingDigest],
     generated_at: datetime,
     window_hours: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     finding_ids = [str(finding.finding_id) for finding in findings]
-    severity_totals: Dict[str, int] = {}
+    severity_totals: dict[str, int] = {}
     for finding in findings:
         key = finding.severity.lower()
         severity_totals[key] = severity_totals.get(key, 0) + 1
@@ -158,7 +158,7 @@ async def generate_daily_summary(
     created_by: str,
     limit: int = 5,
     window_hours: int = 24,
-    title: Optional[str] = None,
+    title: str | None = None,
 ) -> DailySummaryResult:
     """Create an agent session seeded with hot findings and return the summary."""
 
@@ -168,7 +168,7 @@ async def generate_daily_summary(
         raise ValueError("window_hours must be > 0")
 
     org = await _fetch_org(db, org_id)
-    generated_at = datetime.now(timezone.utc)
+    generated_at = datetime.now(UTC)
     cutoff = generated_at - timedelta(hours=window_hours)
 
     findings = await _load_hot_findings(db, org_id, limit, cutoff)
@@ -198,8 +198,8 @@ async def generate_daily_summary(
 def build_slack_payload(
     summary: DailySummaryResult,
     *,
-    session_url: Optional[str] = None,
-) -> Dict[str, Any]:
+    session_url: str | None = None,
+) -> dict[str, Any]:
     """Render a Slack message payload summarizing the findings."""
 
     severity_totals = summary.severity_totals()
@@ -217,13 +217,13 @@ def build_slack_payload(
         f"findings in last {summary.window_hours}h. Session {summary.session_id}"
     )
 
-    findings_lines: List[str] = []
+    findings_lines: list[str] = []
     for finding in summary.findings[:5]:
         account_ref = finding.account or finding.provider or "Unknown account"
         last_seen = finding.last_seen
         if last_seen.tzinfo is None:
-            last_seen = last_seen.replace(tzinfo=timezone.utc)
-        last_seen_text = last_seen.astimezone(timezone.utc).strftime(
+            last_seen = last_seen.replace(tzinfo=UTC)
+        last_seen_text = last_seen.astimezone(UTC).strftime(
             "%Y-%m-%d %H:%M UTC"
         )
         findings_lines.append(
@@ -234,7 +234,7 @@ def build_slack_payload(
     if not findings_lines:
         findings_lines.append("No open findings detected in the selected window.")
 
-    blocks: List[Dict[str, Any]] = [
+    blocks: list[dict[str, Any]] = [
         {
             "type": "header",
             "text": {

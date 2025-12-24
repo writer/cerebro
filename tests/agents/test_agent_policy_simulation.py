@@ -1,5 +1,6 @@
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from cerebro.agents.models import (
     AgentSession,
@@ -17,7 +18,7 @@ async def test_simulate_policy_expression_matches_invocation():
     async with async_session_factory() as db_session:
         org = Organization(
             name="PolicySim Org",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(org)
         await db_session.commit()
@@ -45,8 +46,8 @@ async def test_simulate_policy_expression_matches_invocation():
                 "inputs": {"action": "delete"},
                 "user_id": "policy@example.com",
             },
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
         db_session.add(invocation)
         await db_session.commit()

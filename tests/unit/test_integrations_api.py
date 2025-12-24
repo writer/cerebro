@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
 import pytest
@@ -15,7 +15,7 @@ from cerebro.integrations.state import (
     IntegrationStateRepository,
 )
 
-UTC = timezone.utc
+UTC = UTC
 
 
 def _run_async(coro):

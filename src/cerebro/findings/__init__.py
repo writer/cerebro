@@ -1,8 +1,8 @@
 """Findings management for Cerebro."""
 
-from .manager import FindingManager, FindingResult
 from .evaluator import RuleEvaluator
-from .producers import producer_registry, register_producer, auto_discover_producers
+from .manager import FindingManager, FindingResult
+from .producers import auto_discover_producers, producer_registry, register_producer
 
 # Auto-discover producers on import
 auto_discover_producers()

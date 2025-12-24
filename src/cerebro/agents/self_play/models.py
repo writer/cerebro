@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
@@ -35,11 +35,11 @@ class TranscriptEntry:
     message: str
     tool_calls: int
     created_at: datetime
-    token_usage: Dict[str, Any] = field(default_factory=dict)
-    raw_response: Dict[str, Any] = field(default_factory=dict)
-    duration_ms: Optional[float] = None
+    token_usage: dict[str, Any] = field(default_factory=dict)
+    raw_response: dict[str, Any] = field(default_factory=dict)
+    duration_ms: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["speaker"] = self.speaker.value
         payload["created_at"] = self.created_at.isoformat()
@@ -56,11 +56,11 @@ class SelfPlayScenario:
     responder_prompt: str
     max_turns: int
     max_tool_calls: int
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
     challenger_agent_type: AgentType = AgentType.SECURITY_ANALYST
-    responder_agent_type: Optional[AgentType] = None
-    created_by: Optional[str] = None
-    title: Optional[str] = None
+    responder_agent_type: AgentType | None = None
+    created_by: str | None = None
+    title: str | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.challenger_agent_type, str):
@@ -77,13 +77,13 @@ class TurnOutcome:
     """Normalized data produced from a single turn."""
 
     message: str
-    tool_events: List[Dict[str, Any]]
-    token_usage: Dict[str, Any]
+    tool_events: list[dict[str, Any]]
+    token_usage: dict[str, Any]
     tool_call_count: int
-    raw_message: Optional[Dict[str, Any]] = None
-    stop_signal: Optional[str] = None
-    success_hint: Optional[bool] = None
-    duration_ms: Optional[float] = None
+    raw_message: dict[str, Any] | None = None
+    stop_signal: str | None = None
+    success_hint: bool | None = None
+    duration_ms: float | None = None
 
 
 @dataclass
@@ -95,13 +95,13 @@ class SelfPlayResult:
     turns: int
     tool_calls: int
     success: bool
-    fail_reason: Optional[str]
-    transcript: List[TranscriptEntry]
+    fail_reason: str | None
+    transcript: list[TranscriptEntry]
     started_at: datetime
     ended_at: datetime
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "match_id": str(self.match_id),
             "scenario_id": self.scenario_id,
@@ -149,16 +149,16 @@ class SelfPlayMatch(AgentsBase):
     turns: Mapped[int] = mapped_column(Integer, nullable=False)
     tool_calls: Mapped[int] = mapped_column(Integer, nullable=False)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    fail_reason: Mapped[Optional[str]] = mapped_column(
+    fail_reason: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
     )
-    transcript: Mapped[List[Dict[str, Any]]] = mapped_column(
+    transcript: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONType,
         nullable=False,
         default=list,
     )
-    match_metadata: Mapped[Dict[str, Any]] = mapped_column(
+    match_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONType,
         nullable=False,

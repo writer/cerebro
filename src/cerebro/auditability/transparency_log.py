@@ -7,13 +7,13 @@ Provides an immutable, verifiable log of all security events with cryptographic 
 import hashlib
 import json
 import logging
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any, Optional
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from sqlalchemy import select
 
 from ..core.database import async_session_factory
@@ -46,10 +46,10 @@ class LogEntry:
     actor: str  # User/system that performed the action
     resource_id: str
     action: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     previous_hash: str
     entry_hash: str
-    signature: Optional[str] = None
+    signature: str | None = None
 
 
 @dataclass
@@ -60,7 +60,7 @@ class MerkleNode:
     left_child: Optional["MerkleNode"] = None
     right_child: Optional["MerkleNode"] = None
     is_leaf: bool = False
-    data: Optional[str] = None
+    data: str | None = None
 
 
 class MerkleTree:
@@ -70,7 +70,7 @@ class MerkleTree:
     Provides efficient proof generation and verification for log entries.
     """
 
-    def __init__(self, entries: List[str]):
+    def __init__(self, entries: list[str]):
         """Initialize Merkle tree from list of entry hashes."""
         if not entries:
             raise ValueError("Cannot create empty Merkle tree")
@@ -80,7 +80,7 @@ class MerkleTree:
         ]
         self.root = self._build_tree(self.leaves)
 
-    def _build_tree(self, nodes: List[MerkleNode]) -> MerkleNode:
+    def _build_tree(self, nodes: list[MerkleNode]) -> MerkleNode:
         """Build Merkle tree from leaf nodes."""
         if len(nodes) == 1:
             return nodes[0]
@@ -114,7 +114,7 @@ class MerkleTree:
         """Get the root hash of the tree."""
         return self.root.hash
 
-    def generate_proof(self, entry_hash: str) -> List[Dict[str, Any]]:
+    def generate_proof(self, entry_hash: str) -> list[dict[str, Any]]:
         """
         Generate inclusion proof for an entry.
 
@@ -164,7 +164,7 @@ class MerkleTree:
         return proof
 
     def verify_proof(
-        self, entry_hash: str, proof: List[Dict[str, Any]], root_hash: str
+        self, entry_hash: str, proof: list[dict[str, Any]], root_hash: str
     ) -> bool:
         """
         Verify inclusion proof for an entry.
@@ -209,7 +209,7 @@ class TransparencyLog:
         actor: str,
         resource_id: str,
         action: str,
-        details: Dict[str, Any],
+        details: dict[str, Any],
     ) -> LogEntry:
         """
         Append a new entry to the transparency log.
@@ -333,10 +333,10 @@ class TransparencyLog:
 
     async def get_entries(
         self,
-        start_sequence: Optional[int] = None,
-        end_sequence: Optional[int] = None,
-        entry_type: Optional[LogEntryType] = None,
-    ) -> List[LogEntry]:
+        start_sequence: int | None = None,
+        end_sequence: int | None = None,
+        entry_type: LogEntryType | None = None,
+    ) -> list[LogEntry]:
         """Retrieve log entries with optional filtering."""
         async with async_session_factory() as db:
             stmt = select(AuditEvent).where(
@@ -364,7 +364,7 @@ class TransparencyLog:
             events = await db.scalars(stmt)
 
             # Convert to LogEntry objects
-            entries: List[LogEntry] = []
+            entries: list[LogEntry] = []
             for event in events:
                 raw = event.raw
                 entry = LogEntry(
@@ -384,8 +384,8 @@ class TransparencyLog:
             return entries
 
     async def verify_log_integrity(
-        self, start_sequence: int = 1, end_sequence: Optional[int] = None
-    ) -> Dict[str, Any]:
+        self, start_sequence: int = 1, end_sequence: int | None = None
+    ) -> dict[str, Any]:
         """
         Verify the integrity of the transparency log.
 
@@ -396,8 +396,8 @@ class TransparencyLog:
         if not entries:
             return {"valid": True, "message": "No entries to verify"}
 
-        failed_entries: List[Dict[str, Any]] = []
-        verification_results: Dict[str, Any] = {
+        failed_entries: list[dict[str, Any]] = []
+        verification_results: dict[str, Any] = {
             "valid": True,
             "total_entries": len(entries),
             "verified_entries": 0,
@@ -469,7 +469,7 @@ class TransparencyLog:
 
         return verification_results
 
-    async def get_merkle_proof(self, sequence_number: int) -> Dict[str, Any]:
+    async def get_merkle_proof(self, sequence_number: int) -> dict[str, Any]:
         """
         Generate Merkle proof for a specific log entry.
 
@@ -511,7 +511,7 @@ class TransparencyLog:
             "generated_at": datetime.now().isoformat(),
         }
 
-    async def verify_merkle_proof(self, proof_data: Dict[str, Any]) -> bool:
+    async def verify_merkle_proof(self, proof_data: dict[str, Any]) -> bool:
         """Verify a Merkle inclusion proof."""
         try:
             # Extract proof components
@@ -550,7 +550,7 @@ class TransparencyLog:
         )
         return pem.decode()
 
-    async def get_log_summary(self) -> Dict[str, Any]:
+    async def get_log_summary(self) -> dict[str, Any]:
         """Get summary statistics of the transparency log."""
         async with async_session_factory() as db:
             # Count entries by type
@@ -570,10 +570,10 @@ class TransparencyLog:
                 }
 
             # Group by entry type
-            entry_types: Dict[str, int] = {}
+            entry_types: dict[str, int] = {}
             latest_sequence = 0
-            earliest_time: Optional[datetime] = None
-            latest_time: Optional[datetime] = None
+            earliest_time: datetime | None = None
+            latest_time: datetime | None = None
 
             for event in entries_list:
                 raw = event.raw
@@ -617,7 +617,7 @@ async def log_security_event(
     actor: str,
     resource_id: str,
     action: str,
-    details: Dict[str, Any],
+    details: dict[str, Any],
 ) -> LogEntry:
     """Convenience function to log security events."""
     return await _transparency_log.append_entry(

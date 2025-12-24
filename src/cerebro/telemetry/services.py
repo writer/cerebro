@@ -5,11 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Iterable, Optional, List
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,8 +25,8 @@ from cerebro.core.models import (
 )
 from cerebro.telemetry.models import (
     ArtifactPack,
-    ArtifactPackTrigger,
     ArtifactPackTarget,
+    ArtifactPackTrigger,
     HostContext,
     HostTelemetryEvent,
     RepositoryContext,
@@ -33,21 +34,23 @@ from cerebro.telemetry.models import (
 )
 from cerebro.telemetry.schemas import (
     ArtifactPackDefinition,
-    ArtifactPackTrigger as ArtifactPackTriggerSchema,
     ArtifactTaskDefinition,
     ComplianceEvidence,
+    ConfigurationDrift,
     DependencyGraph,
     DependencyScan,
     DependencyVulnerability,
     FrontendObservationTelemetry,
     HostEvent,
     HostEventBatch,
+    HostTelemetry,
     RepositoryTelemetry,
     RuntimeTelemetry,
     SecretsScanResult,
     SecurityEvent,
-    ConfigurationDrift,
-    HostTelemetry,
+)
+from cerebro.telemetry.schemas import (
+    ArtifactPackTrigger as ArtifactPackTriggerSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,7 +70,7 @@ class TelemetryIngestionService:
     # Public API
     # ------------------------------------------------------------------
 
-    async def process_repository(self, payload: RepositoryTelemetry) -> Dict[str, Any]:
+    async def process_repository(self, payload: RepositoryTelemetry) -> dict[str, Any]:
         """Ingest repository telemetry and create findings."""
 
         logger.info(
@@ -144,7 +147,7 @@ class TelemetryIngestionService:
             logger.exception("Repository telemetry processing failed", exc_info=exc)
             raise TelemetryProcessingError(str(exc)) from exc
 
-    async def process_runtime(self, payload: RuntimeTelemetry) -> Dict[str, Any]:
+    async def process_runtime(self, payload: RuntimeTelemetry) -> dict[str, Any]:
         """Ingest runtime telemetry and create findings."""
 
         logger.info(
@@ -199,9 +202,9 @@ class TelemetryIngestionService:
     async def process_frontend_observation(
         self,
         org_id: UUID,
-        user_id: Optional[UUID],
+        user_id: UUID | None,
         payload: FrontendObservationTelemetry,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Persist a frontend observation emitted by an analyst workflow."""
 
         if org_id is None:
@@ -211,9 +214,9 @@ class TelemetryIngestionService:
 
         occurred_at = payload.occurred_at
         if occurred_at is None:
-            occurred_at = datetime.now(timezone.utc)
+            occurred_at = datetime.now(UTC)
         elif occurred_at.tzinfo is None:
-            occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+            occurred_at = occurred_at.replace(tzinfo=UTC)
 
         event = FrontendObservationEvent(
             org_id=org_id,
@@ -240,7 +243,7 @@ class TelemetryIngestionService:
             "event_id": str(event.event_id),
         }
 
-    async def process_host(self, payload: HostTelemetry) -> Dict[str, Any]:
+    async def process_host(self, payload: HostTelemetry) -> dict[str, Any]:
         """Ingest endpoint telemetry emitted by the desktop agent."""
 
         logger.info(
@@ -254,7 +257,7 @@ class TelemetryIngestionService:
 
         collected_at = payload.collected_at
         if collected_at.tzinfo is None:
-            collected_at = collected_at.replace(tzinfo=timezone.utc)
+            collected_at = collected_at.replace(tzinfo=UTC)
 
         try:
             context = await self._ensure_host_context(payload)
@@ -299,7 +302,7 @@ class TelemetryIngestionService:
             logger.exception("Host telemetry processing failed", exc_info=exc)
             raise TelemetryProcessingError(str(exc)) from exc
 
-    async def process_host_events(self, payload: HostEventBatch) -> Dict[str, Any]:
+    async def process_host_events(self, payload: HostEventBatch) -> dict[str, Any]:
         """Ingest incremental host events emitted by the desktop agent."""
 
         logger.info(
@@ -332,7 +335,7 @@ class TelemetryIngestionService:
             for event in payload.events:
                 observed_at = event.timestamp
                 if observed_at.tzinfo is None:
-                    observed_at = observed_at.replace(tzinfo=timezone.utc)
+                    observed_at = observed_at.replace(tzinfo=UTC)
 
                 record = HostTelemetryEvent(
                     org_id=context.org_id,
@@ -378,11 +381,11 @@ class TelemetryIngestionService:
         self,
         *,
         host_id: str,
-        hostname: Optional[str],
-        organization: Optional[str],
-        site: Optional[str],
-        tags: Dict[str, str],
-    ) -> List[ArtifactPackDefinition]:
+        hostname: str | None,
+        organization: str | None,
+        site: str | None,
+        tags: dict[str, str],
+    ) -> list[ArtifactPackDefinition]:
         """Return artifact packs applicable to the specified host.
 
         This endpoint acts as the agent's control-plane feed.  We merge three
@@ -426,8 +429,8 @@ class TelemetryIngestionService:
         result = await self.db.execute(stmt)
         packs = result.scalars().unique().all()
 
-        now = datetime.now(timezone.utc)
-        eligible: List[ArtifactPackDefinition] = []
+        now = datetime.now(UTC)
+        eligible: list[ArtifactPackDefinition] = []
         delivered_ids: set[UUID] = set()
 
         # Statically approved packs that match selectors are delivered first.
@@ -481,7 +484,7 @@ class TelemetryIngestionService:
 
     async def process_compliance_evidence(
         self, payload: ComplianceEvidence
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Persist compliance evidence metadata."""
 
         logger.info(
@@ -535,7 +538,7 @@ class TelemetryIngestionService:
 
     async def process_dependency_graph(
         self, payload: DependencyGraph
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Ingest dependency graph telemetry."""
 
         logger.info(
@@ -663,9 +666,9 @@ class TelemetryIngestionService:
         self,
         *,
         host_id: str,
-        hostname: Optional[str],
-        organization: Optional[str],
-        site: Optional[str],
+        hostname: str | None,
+        organization: str | None,
+        site: str | None,
     ) -> HostContext:
         org_name = organization or "endpoint-devices"
         org = await self._get_or_create_org(org_name)
@@ -677,7 +680,7 @@ class TelemetryIngestionService:
             hostname or host_id,
         )
 
-        metadata: Dict[str, Any] = {}
+        metadata: dict[str, Any] = {}
         if site:
             metadata["site"] = site
 
@@ -695,7 +698,7 @@ class TelemetryIngestionService:
         self,
         pack: ArtifactPack,
         context: HostContext,
-        tags: Dict[str, str],
+        tags: dict[str, str],
     ) -> bool:
         """Check whether the host satisfies the pack's selector filters."""
         if not pack.enabled:
@@ -725,7 +728,7 @@ class TelemetryIngestionService:
         return True
 
     async def _apply_pack_triggers(
-        self, context: HostContext, events: List[HostEvent]
+        self, context: HostContext, events: list[HostEvent]
     ) -> None:
         """Evaluate automation triggers against a batch of events.
 
@@ -735,8 +738,8 @@ class TelemetryIngestionService:
         if not events:
             return
 
-        event_types: Dict[str, List[HostEvent]] = {}
-        event_categories: Dict[str, List[HostEvent]] = {}
+        event_types: dict[str, list[HostEvent]] = {}
+        event_categories: dict[str, list[HostEvent]] = {}
         for event in events:
             event_types.setdefault(event.event_type, []).append(event)
             event_categories.setdefault(event.category, []).append(event)
@@ -801,14 +804,14 @@ class TelemetryIngestionService:
         if existing:
             if trigger.expires_after_seconds and existing.expires_at is None:
                 # Backfill an expiry when we promote a previously open-ended target.
-                existing.expires_at = datetime.now(timezone.utc) + timedelta(
+                existing.expires_at = datetime.now(UTC) + timedelta(
                     seconds=trigger.expires_after_seconds
                 )
             return
 
         expires_at = None
         if trigger.expires_after_seconds:
-            expires_at = datetime.now(timezone.utc) + timedelta(
+            expires_at = datetime.now(UTC) + timedelta(
                 seconds=trigger.expires_after_seconds
             )
 
@@ -821,7 +824,7 @@ class TelemetryIngestionService:
         self.db.add(target)
 
     @staticmethod
-    def _severity_rank(value: Optional[str]) -> int:
+    def _severity_rank(value: str | None) -> int:
         """Map textual severities to a comparable numeric scale."""
         if not value:
             return 0
@@ -957,7 +960,7 @@ class TelemetryIngestionService:
         context: HostContext,
         payload: HostTelemetry,
         collected_at: datetime,
-    ) -> Optional[UUID]:
+    ) -> UUID | None:
         normalized_config = self._build_host_snapshot(payload, collected_at)
 
         config_json = json.dumps(
@@ -994,7 +997,7 @@ class TelemetryIngestionService:
         self,
         payload: HostTelemetry,
         collected_at: datetime,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         host_info = {
             "host_id": payload.host_id,
             "hostname": payload.hostname,
@@ -1010,7 +1013,7 @@ class TelemetryIngestionService:
             "agent_version": payload.agent_version,
         }
 
-        snapshot: Dict[str, Any] = {
+        snapshot: dict[str, Any] = {
             "host": {k: v for k, v in host_info.items() if v is not None},
             "health": (
                 payload.health.model_dump(exclude_none=True) if payload.health else None
@@ -1065,9 +1068,9 @@ class TelemetryIngestionService:
     async def _create_secret_finding(
         self,
         secret: SecretsScanResult,
-        telemetry: RepositoryTelemetry | Dict[str, Any],
+        telemetry: RepositoryTelemetry | dict[str, Any],
         context: RepositoryContext,
-    ) -> Optional[UUID]:
+    ) -> UUID | None:
         rule = await self._get_or_create_rule(
             name="Secret Detected in Code",
             description="Sensitive secret or credential detected in repository code",
@@ -1075,10 +1078,10 @@ class TelemetryIngestionService:
             provider="telemetry",
         )
 
+        from cerebro.domain.entities import ResourceEntity
         from cerebro.findings.producers.telemetry.repo_secret_key import (
             RepoSecretKeyProducer,
         )
-        from cerebro.domain.entities import ResourceEntity
 
         resource_entity = ResourceEntity(
             external_id=context.resource_external_id,
@@ -1133,9 +1136,9 @@ class TelemetryIngestionService:
     async def _create_dependency_finding(
         self,
         vuln: DependencyVulnerability,
-        telemetry: RepositoryTelemetry | Dict[str, Any],
+        telemetry: RepositoryTelemetry | dict[str, Any],
         context: RepositoryContext,
-    ) -> Optional[UUID]:
+    ) -> UUID | None:
         severity_map = {
             "CRITICAL": "critical",
             "HIGH": "high",
@@ -1216,7 +1219,7 @@ class TelemetryIngestionService:
     def _iter_secret_evidence(
         self,
         payload: Any,
-        detector_hint: Optional[str] = None,
+        detector_hint: str | None = None,
     ) -> Iterable[SecretsScanResult]:
         """Yield secret scan results from arbitrary telemetry payloads."""
 
@@ -1260,7 +1263,7 @@ class TelemetryIngestionService:
         event: SecurityEvent,
         telemetry: RuntimeTelemetry,
         context: RuntimeContext,
-    ) -> Optional[UUID]:
+    ) -> UUID | None:
         severity = {
             "critical": "critical",
             "high": "high",
@@ -1320,7 +1323,7 @@ class TelemetryIngestionService:
         drift: ConfigurationDrift,
         telemetry: RuntimeTelemetry,
         context: RuntimeContext,
-    ) -> Optional[UUID]:
+    ) -> UUID | None:
         rule = await self._get_or_create_rule(
             name="Configuration Drift Detected",
             description="Application configuration has drifted from expected baseline",
@@ -1379,7 +1382,7 @@ class TelemetryIngestionService:
         event: SecurityEvent,
         telemetry: HostTelemetry,
         context: HostContext,
-    ) -> Optional[UUID]:
+    ) -> UUID | None:
         severity = {
             "critical": "critical",
             "high": "high",
@@ -1396,7 +1399,7 @@ class TelemetryIngestionService:
 
         event_ts = event.timestamp
         if event_ts.tzinfo is None:
-            event_ts = event_ts.replace(tzinfo=timezone.utc)
+            event_ts = event_ts.replace(tzinfo=UTC)
 
         fingerprint = self._fingerprint(
             "telemetry-host-event",
@@ -1442,7 +1445,7 @@ class TelemetryIngestionService:
         drift: ConfigurationDrift,
         telemetry: HostTelemetry,
         context: HostContext,
-    ) -> Optional[UUID]:
+    ) -> UUID | None:
         rule = await self._get_or_create_rule(
             name="Endpoint Configuration Drift Detected",
             description="Endpoint configuration has drifted from expected baseline",
@@ -1459,7 +1462,7 @@ class TelemetryIngestionService:
         existing = await self._get_existing_finding(context.org_id, fingerprint)
         collected_at = telemetry.collected_at
         if collected_at.tzinfo is None:
-            collected_at = collected_at.replace(tzinfo=timezone.utc)
+            collected_at = collected_at.replace(tzinfo=UTC)
 
         if existing:
             existing.last_seen = collected_at
@@ -1533,14 +1536,14 @@ class TelemetryIngestionService:
 
     async def _get_existing_finding(
         self, org_id: UUID, fingerprint: str
-    ) -> Optional[Finding]:
+    ) -> Finding | None:
         stmt = select(Finding).where(
             Finding.org_id == org_id,
             Finding.fingerprint == fingerprint,
         )
         return await self.db.scalar(stmt)
 
-    async def _store_sbom(self, resource_id: UUID, sbom: Dict[str, Any]) -> None:
+    async def _store_sbom(self, resource_id: UUID, sbom: dict[str, Any]) -> None:
         # TODO: implement persistence once schema is available
         logger.info("SBOM stored", extra={"resource_id": str(resource_id)})
 
@@ -1566,14 +1569,14 @@ class TelemetryIngestionService:
     def _snapshot_default(value: Any) -> Any:
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                value = value.replace(tzinfo=timezone.utc)
+                value = value.replace(tzinfo=UTC)
             return value.isoformat()
         return value
 
     def _normalize_datetimes(self, value: Any) -> Any:
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                value = value.replace(tzinfo=timezone.utc)
+                value = value.replace(tzinfo=UTC)
             return value.isoformat()
         if isinstance(value, list):
             return [self._normalize_datetimes(item) for item in value]

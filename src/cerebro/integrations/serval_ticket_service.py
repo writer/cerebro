@@ -3,25 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.agents.models import AgentReviewTicket, TicketStatus
 from cerebro.integrations.serval import ServalClient, ServalConfig
 from cerebro.integrations.serval_service import (
     ServalIntegrationRepository,
     ServalIntegrationSettings,
 )
-from cerebro.agents.models import AgentReviewTicket, TicketStatus
 
 
 @dataclass
 class ServalTicketResult:
     ticket_id: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
 
 
 class ServalTicketService:
@@ -46,7 +46,7 @@ class ServalTicketService:
         org_id: UUID,
         name: str,
         description: str,
-        overrides: Optional[Dict[str, Any]] = None,
+        overrides: dict[str, Any] | None = None,
     ) -> ServalTicketResult:
         """Create a Serval ticket using saved defaults plus optional overrides."""
         settings = await self.ensure_settings(org_id)
@@ -84,7 +84,7 @@ class ServalTicketService:
                 raise ValueError("Serval ticket response missing identifier")
 
             # Optionally apply configured status/priority immediately
-            update_payload: Dict[str, Any] = {}
+            update_payload: dict[str, Any] = {}
             if settings.status_map.get("open"):
                 update_payload["statusId"] = settings.status_map["open"]
             if settings.priority_map.get("default"):
@@ -102,13 +102,13 @@ class ServalTicketService:
         *,
         org_id: UUID,
         ticket_id: str,
-        status_key: Optional[str] = None,
-        priority_key: Optional[str] = None,
-        assigned_to_user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        status_key: str | None = None,
+        priority_key: str | None = None,
+        assigned_to_user_id: str | None = None,
+    ) -> dict[str, Any]:
         """Translate local status/priority keys to Serval IDs and send the update."""
         settings = await self.ensure_settings(org_id)
-        body: Dict[str, Any] = {}
+        body: dict[str, Any] = {}
 
         if status_key:
             status_id = settings.status_map.get(status_key)
@@ -128,7 +128,7 @@ class ServalTicketService:
             return await client.update_ticket(ticket_id, **body)
 
     async def list_recent_tickets(
-        self, org_id: UUID, since: Optional[datetime]
+        self, org_id: UUID, since: datetime | None
     ) -> list[dict[str, Any]]:
         """Return tickets updated since the provided timestamp for polling syncs."""
         settings = await self.ensure_settings(org_id)
@@ -140,7 +140,7 @@ class ServalTicketService:
         *,
         org_id: UUID,
         ticket_payload: dict[str, Any],
-    ) -> Optional[TicketStatus]:
+    ) -> TicketStatus | None:
         """Update the local ticket matching the Serval payload and return new status."""
         settings = await self.ensure_settings(org_id)
         external_id = ticket_payload.get("id")
@@ -162,14 +162,14 @@ class ServalTicketService:
             settings.status_reverse_map.get(str(status_id)) if status_id else None
         )
 
-        new_status: Optional[TicketStatus] = None
+        new_status: TicketStatus | None = None
         if status_key == "closed" and ticket.status != TicketStatus.CLOSED:
             ticket.status = TicketStatus.CLOSED
-            ticket.updated_at = datetime.now(timezone.utc)
+            ticket.updated_at = datetime.now(UTC)
             new_status = TicketStatus.CLOSED
         elif status_key == "open" and ticket.status != TicketStatus.OPEN:
             ticket.status = TicketStatus.OPEN
-            ticket.updated_at = datetime.now(timezone.utc)
+            ticket.updated_at = datetime.now(UTC)
             new_status = TicketStatus.OPEN
 
         details = dict(ticket.details or {})

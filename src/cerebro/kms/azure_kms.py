@@ -1,7 +1,6 @@
 """Azure Key Vault implementation for envelope encryption."""
 
 import logging
-from typing import Optional
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.keys import KeyClient
@@ -19,7 +18,7 @@ class AzureKeyVaultKMS(BaseKMS):
         self,
         vault_url: str,
         key_name: str,
-        credential: Optional[DefaultAzureCredential] = None,
+        credential: DefaultAzureCredential | None = None,
     ):
         """Initialize Azure Key Vault client.
 

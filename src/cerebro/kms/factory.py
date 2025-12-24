@@ -3,6 +3,7 @@
 import logging
 
 from cerebro.core.config import settings
+
 from .base import BaseKMS
 
 logger = logging.getLogger(__name__)

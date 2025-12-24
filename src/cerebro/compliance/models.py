@@ -5,14 +5,14 @@ Consolidates the 3 different EvidenceMetadata definitions and provides
 a single, extensible model architecture for all compliance use cases.
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
-from enum import Enum
-from uuid import uuid4
 import hashlib
 import json
+from abc import ABC, abstractmethod
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any
+from uuid import uuid4
 
 
 class EvidenceStatus(Enum):
@@ -75,9 +75,9 @@ class ChainOfCustodyEntry:
     actor_id: str
     actor_type: str  # "user", "system", "integration"
     timestamp: datetime
-    details: Dict[str, Any] = field(default_factory=dict)
-    ip_address: Optional[str] = None
-    location: Optional[str] = None
+    details: dict[str, Any] = field(default_factory=dict)
+    ip_address: str | None = None
+    location: str | None = None
 
 
 @dataclass
@@ -85,11 +85,11 @@ class CryptographicProof:
     """Cryptographic integrity proof for evidence."""
 
     content_hash: str  # SHA-256 of content
-    signature: Optional[str] = None
-    signature_algorithm: Optional[str] = None
-    timestamp_token: Optional[str] = None  # RFC 3161 timestamp
-    merkle_root: Optional[str] = None  # For transparency log inclusion
-    chain_hash: Optional[str] = None  # Links to previous evidence
+    signature: str | None = None
+    signature_algorithm: str | None = None
+    timestamp_token: str | None = None  # RFC 3161 timestamp
+    merkle_root: str | None = None  # For transparency log inclusion
+    chain_hash: str | None = None  # Links to previous evidence
 
 
 @dataclass
@@ -105,26 +105,26 @@ class BaseEvidenceMetadata:
     collector_id: str = "system"
     collector_type: str = "automated"
     collection_method: EvidenceCollectionMethod = EvidenceCollectionMethod.API_QUERY
-    source_system: Optional[str] = None  # "okta", "aws", "github", etc.
+    source_system: str | None = None  # "okta", "aws", "github", etc.
 
     # Content properties
     content_size: int = 0
-    content_hash: Optional[str] = None
+    content_hash: str | None = None
 
     # Lifecycle timestamps
     created_at: datetime = field(default_factory=datetime.utcnow)
-    collected_at: Optional[datetime] = None
-    verified_at: Optional[datetime] = None
-    sealed_at: Optional[datetime] = None
+    collected_at: datetime | None = None
+    verified_at: datetime | None = None
+    sealed_at: datetime | None = None
 
     # Status and classification
     status: EvidenceStatus = EvidenceStatus.PENDING
     retention_class: RetentionClass = RetentionClass.STANDARD
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
     # Security and integrity
-    crypto_proof: Optional[CryptographicProof] = None
-    chain_of_custody: List[ChainOfCustodyEntry] = field(default_factory=list)
+    crypto_proof: CryptographicProof | None = None
+    chain_of_custody: list[ChainOfCustodyEntry] = field(default_factory=list)
 
     # Data classification
     pii_detected: bool = False
@@ -134,9 +134,9 @@ class BaseEvidenceMetadata:
     encryption_required: bool = False
 
     # Relationships and context
-    tags: Dict[str, str] = field(default_factory=dict)
-    related_evidence_ids: List[str] = field(default_factory=list)
-    parent_bundle_id: Optional[str] = None
+    tags: dict[str, str] = field(default_factory=dict)
+    related_evidence_ids: list[str] = field(default_factory=list)
+    parent_bundle_id: str | None = None
 
     def add_custody_entry(
         self, action: str, actor_id: str, actor_type: str = "user", **details
@@ -151,7 +151,7 @@ class BaseEvidenceMetadata:
         )
         self.chain_of_custody.append(entry)
 
-    def calculate_content_hash(self, content: Union[str, bytes, dict]) -> str:
+    def calculate_content_hash(self, content: str | bytes | dict) -> str:
         """Calculate and set content hash."""
         if isinstance(content, dict):
             content_str = json.dumps(content, sort_keys=True)
@@ -165,7 +165,7 @@ class BaseEvidenceMetadata:
         self.content_size = len(content_bytes)
         return self.content_hash
 
-    def set_retention_period(self, years: Optional[int] = None) -> None:
+    def set_retention_period(self, years: int | None = None) -> None:
         """Set retention period based on classification."""
         if years:
             self.expires_at = self.created_at + timedelta(days=years * 365)
@@ -187,20 +187,20 @@ class ComplianceEvidenceMetadata(BaseEvidenceMetadata):
     """Evidence metadata for compliance controls."""
 
     # Compliance context
-    control_id: Optional[str] = None
-    framework_name: Optional[str] = None
-    control_family: Optional[str] = None
-    test_run_id: Optional[str] = None
+    control_id: str | None = None
+    framework_name: str | None = None
+    control_family: str | None = None
+    test_run_id: str | None = None
 
     # Assessment context
-    audit_period_start: Optional[datetime] = None
-    audit_period_end: Optional[datetime] = None
+    audit_period_start: datetime | None = None
+    audit_period_end: datetime | None = None
     assessment_type: str = "continuous"  # "continuous", "point_in_time", "historical"
 
     # Collection query context
-    query_used: Optional[str] = None
-    query_execution_time_ms: Optional[int] = None
-    data_source_tables: List[str] = field(default_factory=list)
+    query_used: str | None = None
+    query_execution_time_ms: int | None = None
+    data_source_tables: list[str] = field(default_factory=list)
 
     # Compliance status
     control_status: str = (
@@ -212,7 +212,7 @@ class ComplianceEvidenceMetadata(BaseEvidenceMetadata):
     # Remediation
     remediation_required: bool = False
     remediation_priority: str = "medium"  # "low", "medium", "high", "critical"
-    remediation_due_date: Optional[datetime] = None
+    remediation_due_date: datetime | None = None
 
 
 @dataclass
@@ -220,9 +220,9 @@ class ForensicEvidenceMetadata(BaseEvidenceMetadata):
     """Evidence metadata for forensic investigations."""
 
     # Investigation context
-    incident_id: Optional[str] = None
-    investigation_id: Optional[str] = None
-    case_number: Optional[str] = None
+    incident_id: str | None = None
+    investigation_id: str | None = None
+    case_number: str | None = None
 
     # Legal context
     legal_hold: bool = False
@@ -237,8 +237,8 @@ class ForensicEvidenceMetadata(BaseEvidenceMetadata):
     hash_verification_passed: bool = False
 
     # Timeline context
-    event_start_time: Optional[datetime] = None
-    event_end_time: Optional[datetime] = None
+    event_start_time: datetime | None = None
+    event_end_time: datetime | None = None
     investigation_priority: str = "medium"
 
 
@@ -247,29 +247,29 @@ class AuditEvidenceMetadata(BaseEvidenceMetadata):
     """Evidence metadata for external audits."""
 
     # Audit context
-    audit_firm: Optional[str] = None
-    audit_engagement_id: Optional[str] = None
-    auditor_request_id: Optional[str] = None
+    audit_firm: str | None = None
+    audit_engagement_id: str | None = None
+    auditor_request_id: str | None = None
 
     # Audit period and scope
-    audit_year: Optional[int] = None
-    audit_quarter: Optional[str] = None
-    audit_scope: List[str] = field(
+    audit_year: int | None = None
+    audit_quarter: str | None = None
+    audit_scope: list[str] = field(
         default_factory=list
     )  # Business units, systems, processes
 
     # Delivery and access
     provided_to_auditor: bool = False
     auditor_access_granted: bool = False
-    access_granted_to: List[str] = field(default_factory=list)
+    access_granted_to: list[str] = field(default_factory=list)
     delivery_method: str = (
         "secure_portal"  # "secure_portal", "encrypted_email", "physical_media"
     )
 
     # Review status
     auditor_reviewed: bool = False
-    audit_findings: List[str] = field(default_factory=list)
-    management_responses: List[str] = field(default_factory=list)
+    audit_findings: list[str] = field(default_factory=list)
+    management_responses: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -282,17 +282,17 @@ class VendorEvidenceMetadata(BaseEvidenceMetadata):
     inherent_risk_score: float = 0.0
     residual_risk_score: float = 0.0
     business_criticality: str = "medium"
-    vendor_category: Optional[str] = None
-    data_types_processed: List[str] = field(default_factory=list)
-    certifications: List[str] = field(default_factory=list)
-    compliance_frameworks: List[str] = field(default_factory=list)
-    last_assessment_date: Optional[datetime] = None
-    next_review_due: Optional[datetime] = None
-    contract_end_date: Optional[datetime] = None
+    vendor_category: str | None = None
+    data_types_processed: list[str] = field(default_factory=list)
+    certifications: list[str] = field(default_factory=list)
+    compliance_frameworks: list[str] = field(default_factory=list)
+    last_assessment_date: datetime | None = None
+    next_review_due: datetime | None = None
+    contract_end_date: datetime | None = None
     lifecycle_stage: str = "active"
-    relationship_owner: Optional[str] = None
-    service_regions: List[str] = field(default_factory=list)
-    primary_contacts: List[str] = field(default_factory=list)
+    relationship_owner: str | None = None
+    service_regions: list[str] = field(default_factory=list)
+    primary_contacts: list[str] = field(default_factory=list)
     access_monitoring_enabled: bool = False
     security_alerts_configured: bool = False
     incident_count_last_year: int = 0
@@ -305,20 +305,20 @@ class CustomerEvidenceMetadata(BaseEvidenceMetadata):
     customer_id: str = ""
     customer_name: str = ""
     segment: str = "commercial"
-    industry: Optional[str] = None
-    region: Optional[str] = None
+    industry: str | None = None
+    region: str | None = None
     lifecycle_stage: str = "active"
     health_score: float = 0.0
     churn_risk_score: float = 0.0
-    account_manager: Optional[str] = None
-    annual_recurring_revenue: Optional[float] = None
-    seats_committed: Optional[int] = None
-    adoption_metrics: Dict[str, float] = field(default_factory=dict)
-    last_engagement_at: Optional[datetime] = None
-    next_qbr_at: Optional[datetime] = None
+    account_manager: str | None = None
+    annual_recurring_revenue: float | None = None
+    seats_committed: int | None = None
+    adoption_metrics: dict[str, float] = field(default_factory=dict)
+    last_engagement_at: datetime | None = None
+    next_qbr_at: datetime | None = None
     support_tickets_open: int = 0
     advocacy_level: str = "neutral"
-    success_programs: List[str] = field(default_factory=list)
+    success_programs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -331,41 +331,41 @@ class EvidenceBundle:
     bundle_type: str = "compliance"  # "compliance", "audit", "forensic", "legal"
 
     # Framework and scope
-    framework_name: Optional[str] = None
-    control_ids: List[str] = field(default_factory=list)
-    evidence_ids: List[str] = field(default_factory=list)
+    framework_name: str | None = None
+    control_ids: list[str] = field(default_factory=list)
+    evidence_ids: list[str] = field(default_factory=list)
 
     # Time period
-    period_start: Optional[datetime] = None
-    period_end: Optional[datetime] = None
+    period_start: datetime | None = None
+    period_end: datetime | None = None
 
     # Bundle metadata
     created_at: datetime = field(default_factory=datetime.utcnow)
     created_by: str = ""
-    organization_id: Optional[str] = None
+    organization_id: str | None = None
 
     # Integrity and security
-    bundle_hash: Optional[str] = None
-    manifest: Dict[str, Any] = field(default_factory=dict)
+    bundle_hash: str | None = None
+    manifest: dict[str, Any] = field(default_factory=dict)
     sealed: bool = False
 
     # Delivery and access
-    exported_at: Optional[datetime] = None
+    exported_at: datetime | None = None
     export_format: str = "zip"
-    access_granted_to: List[str] = field(default_factory=list)
-    delivery_confirmation: Optional[str] = None
+    access_granted_to: list[str] = field(default_factory=list)
+    delivery_confirmation: str | None = None
 
     # Compliance and retention
     retention_years: int = 7
     legal_hold: bool = False
-    destruction_date: Optional[datetime] = None
+    destruction_date: datetime | None = None
 
     def add_evidence(self, evidence_id: str):
         """Add evidence to bundle."""
         if evidence_id not in self.evidence_ids:
             self.evidence_ids.append(evidence_id)
 
-    def calculate_bundle_hash(self, evidence_hashes: List[str]) -> str:
+    def calculate_bundle_hash(self, evidence_hashes: list[str]) -> str:
         """Calculate hash of all evidence in bundle."""
         combined = ":".join(sorted(evidence_hashes))
         self.bundle_hash = hashlib.sha256(combined.encode()).hexdigest()
@@ -390,17 +390,17 @@ class EvidenceRepository(ABC):
     @abstractmethod
     async def get_evidence(
         self, evidence_id: str
-    ) -> Optional[tuple[bytes, BaseEvidenceMetadata]]:
+    ) -> tuple[bytes, BaseEvidenceMetadata] | None:
         """Retrieve evidence content and metadata."""
         pass
 
     @abstractmethod
-    async def get_metadata(self, evidence_id: str) -> Optional[BaseEvidenceMetadata]:
+    async def get_metadata(self, evidence_id: str) -> BaseEvidenceMetadata | None:
         """Get evidence metadata only."""
         pass
 
     @abstractmethod
-    async def search_evidence(self, **filters) -> List[BaseEvidenceMetadata]:
+    async def search_evidence(self, **filters) -> list[BaseEvidenceMetadata]:
         """Search evidence by filters."""
         pass
 
@@ -410,7 +410,7 @@ class EvidenceRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_bundle(self, bundle_id: str) -> Optional[EvidenceBundle]:
+    async def get_bundle(self, bundle_id: str) -> EvidenceBundle | None:
         """Get evidence bundle."""
         pass
 
@@ -463,25 +463,25 @@ def create_vendor_evidence(
     inherent_risk_score: float = 0.0,
     residual_risk_score: float = 0.0,
     business_criticality: str = "medium",
-    vendor_category: Optional[str] = None,
-    data_types_processed: Optional[List[str]] = None,
-    certifications: Optional[List[str]] = None,
-    compliance_frameworks: Optional[List[str]] = None,
-    last_assessment_date: Optional[datetime] = None,
-    next_review_due: Optional[datetime] = None,
-    contract_end_date: Optional[datetime] = None,
+    vendor_category: str | None = None,
+    data_types_processed: list[str] | None = None,
+    certifications: list[str] | None = None,
+    compliance_frameworks: list[str] | None = None,
+    last_assessment_date: datetime | None = None,
+    next_review_due: datetime | None = None,
+    contract_end_date: datetime | None = None,
     lifecycle_stage: str = "active",
-    relationship_owner: Optional[str] = None,
-    service_regions: Optional[List[str]] = None,
-    primary_contacts: Optional[List[str]] = None,
+    relationship_owner: str | None = None,
+    service_regions: list[str] | None = None,
+    primary_contacts: list[str] | None = None,
     access_monitoring_enabled: bool = False,
     security_alerts_configured: bool = False,
     incident_count_last_year: int = 0,
-    source_system: Optional[str] = "vendor_registry",
-    collector_id: Optional[str] = None,
-    collector_type: Optional[str] = None,
-    collection_method: Optional[EvidenceCollectionMethod] = None,
-    tags: Optional[Dict[str, str]] = None,
+    source_system: str | None = "vendor_registry",
+    collector_id: str | None = None,
+    collector_type: str | None = None,
+    collection_method: EvidenceCollectionMethod | None = None,
+    tags: dict[str, str] | None = None,
 ) -> VendorEvidenceMetadata:
     """Create vendor evidence metadata with rich risk and compliance context."""
 
@@ -531,25 +531,25 @@ def create_customer_evidence(
     *,
     created_by: str,
     segment: str = "commercial",
-    industry: Optional[str] = None,
-    region: Optional[str] = None,
+    industry: str | None = None,
+    region: str | None = None,
     lifecycle_stage: str = "active",
     health_score: float = 0.0,
     churn_risk_score: float = 0.0,
-    account_manager: Optional[str] = None,
-    annual_recurring_revenue: Optional[float] = None,
-    seats_committed: Optional[int] = None,
-    adoption_metrics: Optional[Dict[str, float]] = None,
-    last_engagement_at: Optional[datetime] = None,
-    next_qbr_at: Optional[datetime] = None,
+    account_manager: str | None = None,
+    annual_recurring_revenue: float | None = None,
+    seats_committed: int | None = None,
+    adoption_metrics: dict[str, float] | None = None,
+    last_engagement_at: datetime | None = None,
+    next_qbr_at: datetime | None = None,
     support_tickets_open: int = 0,
     advocacy_level: str = "neutral",
-    success_programs: Optional[List[str]] = None,
-    source_system: Optional[str] = "customer_registry",
-    collector_id: Optional[str] = None,
-    collector_type: Optional[str] = None,
-    collection_method: Optional[EvidenceCollectionMethod] = None,
-    tags: Optional[Dict[str, str]] = None,
+    success_programs: list[str] | None = None,
+    source_system: str | None = "customer_registry",
+    collector_id: str | None = None,
+    collector_type: str | None = None,
+    collection_method: EvidenceCollectionMethod | None = None,
+    tags: dict[str, str] | None = None,
 ) -> CustomerEvidenceMetadata:
     """Create customer evidence metadata capturing account health signals."""
 
@@ -590,7 +590,7 @@ def create_customer_evidence(
     return metadata
 
 
-def metadata_to_dict(metadata: BaseEvidenceMetadata) -> Dict[str, Any]:
+def metadata_to_dict(metadata: BaseEvidenceMetadata) -> dict[str, Any]:
     """Serialize evidence metadata into JSON-friendly dictionary."""
 
     def _convert(value: Any) -> Any:

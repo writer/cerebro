@@ -6,21 +6,22 @@ The manager coordinates high‑level collection workflows.  Whereas
 provider implementations, and aggregates the results for API consumers.
 """
 
-from typing import Any, Dict, List, Optional
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import Account, Organization
 from cerebro.providers import (
-    GitHubProvider,
     AWSProvider,
     GCPProvider,
+    GitHubProvider,
     GoogleWorkspaceProvider,
 )
-from .collector import ConfigCollector, CollectionResult
+
+from .collector import CollectionResult, ConfigCollector
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,9 @@ class CollectorManager:
     async def collect_organization(
         self,
         org_id: str,
-        providers: Optional[List[str]] = None,
-        resource_types: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        providers: list[str] | None = None,
+        resource_types: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Collect data for every account belonging to an organisation.
 
         Parameters
@@ -115,7 +116,7 @@ class CollectorManager:
         }
 
     async def collect_account(
-        self, account: Account, resource_types: Optional[List[str]] = None
+        self, account: Account, resource_types: list[str] | None = None
     ) -> CollectionResult:
         """Collect data for a single account."""
         provider = self._create_provider(account)
@@ -145,7 +146,7 @@ class CollectorManager:
     async def schedule_collection(
         self,
         org_id: str,
-        providers: Optional[List[str]] = None,
+        providers: list[str] | None = None,
         interval_hours: int = 24,
     ) -> str:
         """Register a scheduled Celery beat task for recurring collection."""

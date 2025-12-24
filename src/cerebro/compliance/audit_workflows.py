@@ -5,14 +5,14 @@ Provides request lists, task management, approvals, and auditor portals
 that compliance managers and auditors expect.
 """
 
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import uuid4
 
+from .evidence_store import EvidenceBundle, EvidenceStore
 from .frameworks import get_framework
-from .evidence_store import EvidenceStore, EvidenceBundle
 
 
 class TaskStatus(Enum):
@@ -68,37 +68,37 @@ class AuditTask:
     priority: str = "medium"  # low, medium, high, critical
 
     # Assignment and timing
-    assignee: Optional[str] = None
-    reviewer: Optional[str] = None
-    due_date: Optional[datetime] = None
-    estimated_hours: Optional[float] = None
+    assignee: str | None = None
+    reviewer: str | None = None
+    due_date: datetime | None = None
+    estimated_hours: float | None = None
 
     # Status and progress
     status: TaskStatus = TaskStatus.DRAFT
     progress_percentage: int = 0
 
     # Evidence and deliverables
-    required_evidence_types: List[str] = field(default_factory=list)
-    submitted_evidence_ids: List[str] = field(default_factory=list)
+    required_evidence_types: list[str] = field(default_factory=list)
+    submitted_evidence_ids: list[str] = field(default_factory=list)
     attestation_required: bool = False
-    attestation_text: Optional[str] = None
-    attestation_signed_by: Optional[str] = None
-    attestation_signed_at: Optional[datetime] = None
+    attestation_text: str | None = None
+    attestation_signed_by: str | None = None
+    attestation_signed_at: datetime | None = None
 
     # Communication and approval
-    comments: List[Dict[str, Any]] = field(default_factory=list)
-    reviewer_notes: Optional[str] = None
-    approval_notes: Optional[str] = None
+    comments: list[dict[str, Any]] = field(default_factory=list)
+    reviewer_notes: str | None = None
+    approval_notes: str | None = None
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     # Sampling (if applicable)
-    sample_size: Optional[int] = None
-    sample_selection_method: Optional[str] = None
-    sample_items: List[Dict[str, Any]] = field(default_factory=list)
+    sample_size: int | None = None
+    sample_selection_method: str | None = None
+    sample_items: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -108,7 +108,7 @@ class ControlException:
     id: str
     control_id: str
     framework_name: str
-    request_list_id: Optional[str] = None
+    request_list_id: str | None = None
 
     # Exception details
     exception_type: ExceptionType = ExceptionType.RISK_ACCEPTED
@@ -122,23 +122,23 @@ class ControlException:
     technical_impact: str = ""
 
     # Compensating controls (if applicable)
-    compensating_controls: List[str] = field(default_factory=list)
-    compensating_evidence_ids: List[str] = field(default_factory=list)
+    compensating_controls: list[str] = field(default_factory=list)
+    compensating_evidence_ids: list[str] = field(default_factory=list)
 
     # Remediation plan (if applicable)
     remediation_plan: str = ""
-    remediation_due_date: Optional[datetime] = None
-    remediation_owner: Optional[str] = None
+    remediation_due_date: datetime | None = None
+    remediation_owner: str | None = None
     remediation_status: str = "not_started"
 
     # Approval workflow
     requested_by: str = ""
-    approved_by: Optional[str] = None
-    approved_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    expires_at: datetime | None = None
 
     # Review cycle
-    next_review_date: Optional[datetime] = None
+    next_review_date: datetime | None = None
     review_frequency: str = "annually"  # quarterly, annually
 
     # Metadata
@@ -164,11 +164,11 @@ class AuditRequestList:
 
     # Optional fields with defaults
     scope_description: str = ""
-    opinion_date: Optional[datetime] = None  # For Type II audits
+    opinion_date: datetime | None = None  # For Type II audits
 
     # Tasks and evidence
-    task_ids: List[str] = field(default_factory=list)
-    evidence_bundle_id: Optional[str] = None
+    task_ids: list[str] = field(default_factory=list)
+    evidence_bundle_id: str | None = None
 
     # Parties and roles
     audit_firm: str = ""
@@ -180,9 +180,9 @@ class AuditRequestList:
     progress_percentage: int = 0
 
     # Deadlines and milestones
-    kickoff_date: Optional[datetime] = None
-    interim_date: Optional[datetime] = None  # For Type II
-    final_due_date: Optional[datetime] = None
+    kickoff_date: datetime | None = None
+    interim_date: datetime | None = None  # For Type II
+    final_due_date: datetime | None = None
 
     # Quality and completeness
     total_tasks: int = 0
@@ -194,7 +194,7 @@ class AuditRequestList:
     created_at: datetime = field(default_factory=datetime.now)
     created_by: str = ""
     updated_at: datetime = field(default_factory=datetime.now)
-    tags: Dict[str, str] = field(default_factory=dict)
+    tags: dict[str, str] = field(default_factory=dict)
 
 
 class AuditWorkflowManager:
@@ -202,9 +202,9 @@ class AuditWorkflowManager:
 
     def __init__(self, evidence_store: EvidenceStore):
         self.evidence_store = evidence_store
-        self._request_lists: Dict[str, AuditRequestList] = {}
-        self._tasks: Dict[str, AuditTask] = {}
-        self._exceptions: Dict[str, ControlException] = {}
+        self._request_lists: dict[str, AuditRequestList] = {}
+        self._tasks: dict[str, AuditTask] = {}
+        self._exceptions: dict[str, ControlException] = {}
 
     def create_request_list(
         self,
@@ -212,8 +212,8 @@ class AuditWorkflowManager:
         request_type: RequestListType,
         period_start: datetime,
         period_end: datetime,
-        name: Optional[str] = None,
-        scope_controls: Optional[List[str]] = None,
+        name: str | None = None,
+        scope_controls: list[str] | None = None,
     ) -> AuditRequestList:
         """Create a new audit request list."""
 
@@ -253,8 +253,8 @@ class AuditWorkflowManager:
         self,
         task_id: str,
         assignee: str,
-        due_date: Optional[datetime] = None,
-        reviewer: Optional[str] = None,
+        due_date: datetime | None = None,
+        reviewer: str | None = None,
     ) -> bool:
         """Assign a task to a team member."""
         if task_id not in self._tasks:
@@ -273,9 +273,9 @@ class AuditWorkflowManager:
     def submit_task_evidence(
         self,
         task_id: str,
-        evidence_ids: List[str],
-        comments: Optional[str] = None,
-        submitted_by: Optional[str] = None,
+        evidence_ids: list[str],
+        comments: str | None = None,
+        submitted_by: str | None = None,
     ) -> bool:
         """Submit evidence for a task."""
         if task_id not in self._tasks:
@@ -298,8 +298,8 @@ class AuditWorkflowManager:
         self,
         task_id: str,
         approved: bool,
-        reviewer_notes: Optional[str] = None,
-        reviewer: Optional[str] = None,
+        reviewer_notes: str | None = None,
+        reviewer: str | None = None,
     ) -> bool:
         """Review and approve/reject a submitted task."""
         if task_id not in self._tasks:
@@ -334,8 +334,8 @@ class AuditWorkflowManager:
         description: str,
         justification: str,
         requested_by: str,
-        expires_at: Optional[datetime] = None,
-        request_list_id: Optional[str] = None,
+        expires_at: datetime | None = None,
+        request_list_id: str | None = None,
     ) -> ControlException:
         """Create a control exception request."""
 
@@ -358,7 +358,7 @@ class AuditWorkflowManager:
         return exception
 
     def approve_exception(
-        self, exception_id: str, approved_by: str, approval_notes: Optional[str] = None
+        self, exception_id: str, approved_by: str, approval_notes: str | None = None
     ) -> bool:
         """Approve a control exception."""
         if exception_id not in self._exceptions:
@@ -378,8 +378,8 @@ class AuditWorkflowManager:
         return True
 
     async def create_evidence_bundle_for_request(
-        self, request_list_id: str, bundle_name: Optional[str] = None
-    ) -> Optional[str]:
+        self, request_list_id: str, bundle_name: str | None = None
+    ) -> str | None:
         """Create evidence bundle for a request list."""
         if request_list_id not in self._request_lists:
             return None
@@ -424,7 +424,7 @@ class AuditWorkflowManager:
 
         return bundle_id
 
-    def get_request_list_status(self, request_list_id: str) -> Optional[Dict[str, Any]]:
+    def get_request_list_status(self, request_list_id: str) -> dict[str, Any] | None:
         """Get detailed status of a request list."""
         if request_list_id not in self._request_lists:
             return None
@@ -432,8 +432,8 @@ class AuditWorkflowManager:
         request_list = self._request_lists[request_list_id]
 
         # Count tasks by status
-        task_statuses: Dict[str, int] = {}
-        overdue_tasks: List[Dict[str, Any]] = []
+        task_statuses: dict[str, int] = {}
+        overdue_tasks: list[dict[str, Any]] = []
 
         for task_id in request_list.task_ids:
             if task_id in self._tasks:
@@ -469,7 +469,7 @@ class AuditWorkflowManager:
 
     def get_auditor_portal_data(
         self, request_list_id: str, auditor_email: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get read-only data for auditor portal."""
         if request_list_id not in self._request_lists:
             return None
@@ -531,8 +531,8 @@ class AuditWorkflowManager:
         self,
         request_list: AuditRequestList,
         framework_name: str,
-        scope_controls: Optional[List[str]] = None,
-    ) -> List[AuditTask]:
+        scope_controls: list[str] | None = None,
+    ) -> list[AuditTask]:
         """Generate audit tasks for a compliance framework."""
 
         framework = get_framework(framework_name)
@@ -651,7 +651,7 @@ def create_soc2_type2_request_list(
 
 async def generate_audit_readiness_report(
     workflow_manager: AuditWorkflowManager, framework_name: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate a report on audit readiness for a framework."""
 
     # This would integrate with the control test results

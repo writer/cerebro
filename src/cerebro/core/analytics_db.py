@@ -7,8 +7,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +18,6 @@ from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.core.warehouse import resolve_snowflake_database_url
 from cerebro.core.warehouse_async import warehouse_async_session
-
 
 _DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}
 

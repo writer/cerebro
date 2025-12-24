@@ -5,47 +5,48 @@ Provides reusable Pydantic schema generators for common patterns
 in compliance operations, following Vanta MCP patterns.
 """
 
-from typing import Dict, List, Any, Optional, Type
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
 
 from .descriptions import (
-    PAGE_SIZE_DESCRIPTION,
-    PAGE_CURSOR_DESCRIPTION,
-    OFFSET_DESCRIPTION,
-    LIMIT_DESCRIPTION,
-    ORGANIZATION_ID_DESCRIPTION,
-    FRAMEWORK_ID_DESCRIPTION,
-    CONTROL_ID_DESCRIPTION,
-    PERIOD_START_DESCRIPTION,
-    PERIOD_END_DESCRIPTION,
-    COMPLIANCE_STATUS_DESCRIPTION,
     AUTOMATION_LEVEL_DESCRIPTION,
-    REPORT_FORMAT_DESCRIPTION,
+    COMPLIANCE_STATUS_DESCRIPTION,
+    CONTROL_ID_DESCRIPTION,
+    FRAMEWORK_ID_DESCRIPTION,
     INCLUDE_EVIDENCE_DESCRIPTION,
     INCLUDE_REMEDIATION_DESCRIPTION,
+    LIMIT_DESCRIPTION,
+    OFFSET_DESCRIPTION,
+    ORGANIZATION_ID_DESCRIPTION,
+    PAGE_CURSOR_DESCRIPTION,
+    PAGE_SIZE_DESCRIPTION,
+    PERIOD_END_DESCRIPTION,
+    PERIOD_START_DESCRIPTION,
+    REPORT_FORMAT_DESCRIPTION,
 )
 
 
-def create_pagination_schema() -> Type[BaseModel]:
+def create_pagination_schema() -> type[BaseModel]:
     """Creates a schema with only pagination parameters."""
 
     class PaginationSchema(BaseModel):
-        page_size: Optional[int] = Field(
+        page_size: int | None = Field(
             default=25, description=PAGE_SIZE_DESCRIPTION, ge=1, le=100
         )
-        page_cursor: Optional[str] = Field(
+        page_cursor: str | None = Field(
             default=None, description=PAGE_CURSOR_DESCRIPTION
         )
-        offset: Optional[int] = Field(default=0, description=OFFSET_DESCRIPTION, ge=0)
-        limit: Optional[int] = Field(
+        offset: int | None = Field(default=0, description=OFFSET_DESCRIPTION, ge=0)
+        limit: int | None = Field(
             default=25, description=LIMIT_DESCRIPTION, ge=1, le=100
         )
 
     return PaginationSchema
 
 
-def create_id_schema(param_name: str, description: str) -> Type[BaseModel]:
+def create_id_schema(param_name: str, description: str) -> type[BaseModel]:
     """Creates a schema with a single ID parameter."""
 
     class IdSchema(BaseModel):
@@ -61,18 +62,18 @@ def create_id_schema(param_name: str, description: str) -> Type[BaseModel]:
 
 def create_id_with_pagination_schema(
     param_name: str, description: str
-) -> Type[BaseModel]:
+) -> type[BaseModel]:
     """Creates a schema with an ID parameter plus pagination."""
 
     class IdWithPaginationSchema(BaseModel):
-        page_size: Optional[int] = Field(
+        page_size: int | None = Field(
             default=25, description=PAGE_SIZE_DESCRIPTION, ge=1, le=100
         )
-        page_cursor: Optional[str] = Field(
+        page_cursor: str | None = Field(
             default=None, description=PAGE_CURSOR_DESCRIPTION
         )
-        offset: Optional[int] = Field(default=0, description=OFFSET_DESCRIPTION, ge=0)
-        limit: Optional[int] = Field(
+        offset: int | None = Field(default=0, description=OFFSET_DESCRIPTION, ge=0)
+        limit: int | None = Field(
             default=25, description=LIMIT_DESCRIPTION, ge=1, le=100
         )
 
@@ -83,18 +84,18 @@ def create_id_with_pagination_schema(
     return IdWithPaginationSchema
 
 
-def create_filter_schema(custom_fields: Optional[Dict[str, Any]] = None) -> Type[BaseModel]:
+def create_filter_schema(custom_fields: dict[str, Any] | None = None) -> type[BaseModel]:
     """Creates a base schema that can be extended with custom fields."""
 
     class FilterSchema(BaseModel):
-        page_size: Optional[int] = Field(
+        page_size: int | None = Field(
             default=25, description=PAGE_SIZE_DESCRIPTION, ge=1, le=100
         )
-        page_cursor: Optional[str] = Field(
+        page_cursor: str | None = Field(
             default=None, description=PAGE_CURSOR_DESCRIPTION
         )
-        offset: Optional[int] = Field(default=0, description=OFFSET_DESCRIPTION, ge=0)
-        limit: Optional[int] = Field(
+        offset: int | None = Field(default=0, description=OFFSET_DESCRIPTION, ge=0)
+        limit: int | None = Field(
             default=25, description=LIMIT_DESCRIPTION, ge=1, le=100
         )
 
@@ -116,17 +117,17 @@ def create_filter_schema(custom_fields: Optional[Dict[str, Any]] = None) -> Type
     return FilterSchema
 
 
-def create_compliance_request_schema() -> Type[BaseModel]:
+def create_compliance_request_schema() -> type[BaseModel]:
     """Creates a schema for compliance evidence generation requests."""
 
     class ComplianceRequestSchema(BaseModel):
         organization_id: str = Field(..., description=ORGANIZATION_ID_DESCRIPTION)
         framework_id: str = Field(..., description=FRAMEWORK_ID_DESCRIPTION)
-        period_start: Optional[datetime] = Field(
+        period_start: datetime | None = Field(
             None, description=PERIOD_START_DESCRIPTION
         )
-        period_end: Optional[datetime] = Field(None, description=PERIOD_END_DESCRIPTION)
-        control_ids: Optional[List[str]] = Field(
+        period_end: datetime | None = Field(None, description=PERIOD_END_DESCRIPTION)
+        control_ids: list[str] | None = Field(
             None, description="Specific controls to assess"
         )
         include_evidence: bool = Field(False, description=INCLUDE_EVIDENCE_DESCRIPTION)
@@ -138,7 +139,7 @@ def create_compliance_request_schema() -> Type[BaseModel]:
     return ComplianceRequestSchema
 
 
-def create_framework_filter_schema() -> Type[BaseModel]:
+def create_framework_filter_schema() -> type[BaseModel]:
     """Creates a schema for filtering compliance frameworks."""
 
     custom_fields = {
@@ -148,7 +149,7 @@ def create_framework_filter_schema() -> Type[BaseModel]:
             "description": AUTOMATION_LEVEL_DESCRIPTION,
         },
         "framework_matches_any": {
-            "type": Optional[List[str]],
+            "type": Optional[list[str]],
             "default": None,
             "description": "List of framework names to match against",
         },
@@ -157,7 +158,7 @@ def create_framework_filter_schema() -> Type[BaseModel]:
     return create_filter_schema(custom_fields)
 
 
-def create_control_filter_schema() -> Type[BaseModel]:
+def create_control_filter_schema() -> type[BaseModel]:
     """Creates a schema for filtering compliance controls."""
 
     custom_fields = {
@@ -186,7 +187,7 @@ def create_control_filter_schema() -> Type[BaseModel]:
     return create_filter_schema(custom_fields)
 
 
-def create_evidence_filter_schema() -> Type[BaseModel]:
+def create_evidence_filter_schema() -> type[BaseModel]:
     """Creates a schema for filtering compliance evidence."""
 
     custom_fields = {

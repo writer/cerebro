@@ -15,7 +15,7 @@ __all__ = [
     "BenchmarkCase",
     "BenchmarkCaseResult",
     "BenchmarkMetrics",
-    "BenchmarkSuiteResult",
     "BenchmarkRunner",
+    "BenchmarkSuiteResult",
     "load_benchmark_cases",
 ]

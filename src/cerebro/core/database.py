@@ -1,6 +1,7 @@
 """Database configuration and session management."""
 
-from typing import Any, AsyncGenerator, Dict, Tuple
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from sqlalchemy import event
 from sqlalchemy.engine.url import URL, make_url
@@ -19,7 +20,7 @@ class Base(DeclarativeBase):
     """Base class for all database models."""
 
 
-def _build_engine() -> Tuple["AsyncEngine", URL]:
+def _build_engine() -> tuple["AsyncEngine", URL]:
     database_url = settings.database_url
     environment = settings.environment.lower()
 
@@ -34,7 +35,7 @@ def _build_engine() -> Tuple["AsyncEngine", URL]:
         else database_url
     )
 
-    engine_options: Dict[str, Any] = {
+    engine_options: dict[str, Any] = {
         "echo": False,
         "pool_pre_ping": True,
     }

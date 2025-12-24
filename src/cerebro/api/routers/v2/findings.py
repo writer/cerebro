@@ -3,7 +3,7 @@
 This is the DynamoDB version of the findings API.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,7 +17,6 @@ from cerebro.core.repositories.finding import (
     Severity,
 )
 
-
 # Request/Response schemas
 
 
@@ -29,24 +28,24 @@ class FindingCreate(BaseModel):
     provider: str
     rule_id: UUID
     rule_version: int = 1
-    resource_id: Optional[UUID] = None
-    principal_id: Optional[UUID] = None
+    resource_id: UUID | None = None
+    principal_id: UUID | None = None
     severity: str = Field(..., pattern="^(critical|high|medium|low|info)$")
     fingerprint: str
     title: str
-    summary: Optional[str] = None
-    evidence: Optional[Dict[str, Any]] = None
+    summary: str | None = None
+    evidence: dict[str, Any] | None = None
 
 
 class FindingUpdate(BaseModel):
     """Request schema for updating a finding."""
 
-    status: Optional[str] = Field(
+    status: str | None = Field(
         None, pattern="^(open|suppressed|accepted_risk|fixed)$"
     )
-    severity: Optional[str] = Field(None, pattern="^(critical|high|medium|low|info)$")
-    summary: Optional[str] = None
-    evidence: Optional[Dict[str, Any]] = None
+    severity: str | None = Field(None, pattern="^(critical|high|medium|low|info)$")
+    summary: str | None = None
+    evidence: dict[str, Any] | None = None
 
 
 class FindingResponse(BaseModel):
@@ -58,16 +57,16 @@ class FindingResponse(BaseModel):
     provider: str
     rule_id: UUID
     rule_version: int
-    resource_id: Optional[UUID] = None
-    principal_id: Optional[UUID] = None
+    resource_id: UUID | None = None
+    principal_id: UUID | None = None
     first_seen: str
     last_seen: str
     status: str
     severity: str
     fingerprint: str
     title: str
-    summary: Optional[str] = None
-    evidence: Optional[Dict[str, Any]] = None
+    summary: str | None = None
+    evidence: dict[str, Any] | None = None
 
     class Config:
         from_attributes = True
@@ -106,8 +105,8 @@ class FindingStats(BaseModel):
     """Statistics about findings."""
 
     total: int
-    by_status: Dict[str, int]
-    by_severity: Dict[str, int]
+    by_status: dict[str, int]
+    by_severity: dict[str, int]
 
 
 # Router
@@ -139,16 +138,16 @@ async def create_finding(
     return FindingResponse.from_entity(created)
 
 
-@router.get("/org/{org_id}", response_model=List[FindingResponse])
+@router.get("/org/{org_id}", response_model=list[FindingResponse])
 async def list_findings_by_org(
     org_id: UUID,
-    status: Optional[str] = Query(
+    status: str | None = Query(
         None, pattern="^(open|suppressed|accepted_risk|fixed)$"
     ),
-    severity: Optional[str] = Query(None, pattern="^(critical|high|medium|low|info)$"),
+    severity: str | None = Query(None, pattern="^(critical|high|medium|low|info)$"),
     limit: int = Query(100, ge=1, le=1000),
     repo: FindingRepository = Depends(finding_repository),
-) -> List[FindingResponse]:
+) -> list[FindingResponse]:
     """List findings for an organization."""
     status_enum = FindingStatus(status) if status else None
     severity_enum = Severity(severity) if severity else None
@@ -195,7 +194,7 @@ async def update_finding(
     repo: FindingRepository = Depends(finding_repository),
 ) -> FindingResponse:
     """Update a finding."""
-    updates: Dict[str, Any] = {}
+    updates: dict[str, Any] = {}
 
     if data.status is not None:
         updates["status"] = FindingStatus(data.status)
@@ -269,12 +268,12 @@ async def delete_finding(
     await repo.delete(finding_id, org_id)
 
 
-@router.get("/rule/{rule_id}", response_model=List[FindingResponse])
+@router.get("/rule/{rule_id}", response_model=list[FindingResponse])
 async def list_findings_by_rule(
     rule_id: UUID,
     limit: int = Query(100, ge=1, le=1000),
     repo: FindingRepository = Depends(finding_repository),
-) -> List[FindingResponse]:
+) -> list[FindingResponse]:
     """List findings for a specific rule."""
     findings = await repo.list_by_rule(rule_id, limit)
     return [FindingResponse.from_entity(f) for f in findings]

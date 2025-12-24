@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -25,15 +26,15 @@ from agents.stream_events import (
     RunItemStreamEvent,
 )
 
+from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.memory_session import OpenAIAgentConversationSession
+from cerebro.agents.metrics import record_runtime_metadata_event
 from cerebro.agents.models import AgentMessage, AgentSession, AgentType, MessageRole
 from cerebro.agents.prompts import build_security_agent_prompt
 from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
-from cerebro.agents.tools import AgentContext, ToolExecutor, tool_registry, Tool
 from cerebro.agents.tool_stats import performance_tracker
-from cerebro.agents.metrics import record_runtime_metadata_event
+from cerebro.agents.tools import AgentContext, Tool, ToolExecutor, tool_registry
 from cerebro.core.config import settings
-from cerebro.agents.analytics_service import AgentAnalyticsService
 
 logger = structlog.get_logger(__name__)
 
@@ -50,13 +51,13 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
 
     def __init__(
         self,
-        model: Optional[str] = None,
+        model: str | None = None,
         max_turns: int = 10,
     ) -> None:
         self.model = model or settings.openai_model
         self.max_turns = max_turns
         self.tool_executor = ToolExecutor()
-        self._function_tool_cache: Dict[str, FunctionTool] = {}
+        self._function_tool_cache: dict[str, FunctionTool] = {}
         self.backend_name = "openai"
 
         if settings.openai_api_key:
@@ -67,8 +68,8 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         org_id: UUID,
         agent_type: AgentType,
         created_by: str,
-        context: Dict[str, Any],
-        title: Optional[str] = None,
+        context: dict[str, Any],
+        title: str | None = None,
     ) -> AgentSession:
         prepared_context = await self._prepare_session_context(
             org_id=org_id,
@@ -94,7 +95,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
 
         return session
 
-    async def get_session(self, session_id: UUID) -> Optional[AgentSession]:
+    async def get_session(self, session_id: UUID) -> AgentSession | None:
         from cerebro.core.database import async_session_factory
 
         async with async_session_factory() as db_session:
@@ -106,7 +107,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         message: str,
         user_id: str,
         stream: bool = False,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         start_time, telemetry_span = self._begin_runtime_operation(
             session=session,
             operation="send_message",
@@ -131,7 +132,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         await self._update_session_context(session, {"_recent_memory_ids": memory_ids})
         memory_brief = self._compose_memory_brief(memory_context)
 
-        assistant_blocks: List[Dict[str, Any]] = []
+        assistant_blocks: list[dict[str, Any]] = []
         tool_calls_count = 0
         total_input_tokens = 0
         total_output_tokens = 0
@@ -319,7 +320,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 "model": self.model,
                 "conversation_session_id": conversation_session.session_id,
                 "last_response_id": getattr(run_result, "last_response_id", None),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "usage": usage_payload,
             }
 
@@ -456,8 +457,8 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
 
     async def _build_function_tools(
         self,
-        prioritized: Optional[List[Tool]] = None,
-    ) -> List[FunctionTool]:
+        prioritized: list[Tool] | None = None,
+    ) -> list[FunctionTool]:
         if prioritized is None:
             prioritized = tool_registry.list_tools()
 
@@ -501,7 +502,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         ]
 
     @staticmethod
-    def _summarize_usage(raw_responses: List[Any]) -> tuple[int, int]:
+    def _summarize_usage(raw_responses: list[Any]) -> tuple[int, int]:
         input_tokens = 0
         output_tokens = 0
         for response in raw_responses:
@@ -517,9 +518,10 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
         session_id: UUID,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
-        from cerebro.core.database import async_session_factory
+    ) -> list[dict[str, Any]]:
         from sqlalchemy import select
+
+        from cerebro.core.database import async_session_factory
 
         async with async_session_factory() as db_session:
             stmt = (
@@ -551,7 +553,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                 for row in rows
             ]
 
-    async def get_session_metrics(self, session_id: UUID) -> Dict[str, Any]:
+    async def get_session_metrics(self, session_id: UUID) -> dict[str, Any]:
         metrics = await self._get_session_metrics(session_id)
-        metrics["generated_at"] = datetime.now(timezone.utc).isoformat()
+        metrics["generated_at"] = datetime.now(UTC).isoformat()
         return metrics

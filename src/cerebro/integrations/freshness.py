@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, Iterable, List, Optional, Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.integrations.state import IntegrationStateRepository
 from cerebro.core.config import settings
+from cerebro.integrations.state import IntegrationStateRepository
 
 
-def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+def _parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
@@ -20,26 +20,26 @@ def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
-def _humanize_age(seconds: Optional[float]) -> Optional[str]:
+def _humanize_age(seconds: float | None) -> str | None:
     if seconds is None or seconds < 0:
         return None
     if seconds < 60:
         return f"{int(seconds)}s ago"
     minutes = seconds / 60
     if minutes < 60:
-        return f"{int(round(minutes))}m ago"
+        return f"{round(minutes)}m ago"
     hours = minutes / 60
     if hours < 24:
-        return f"{int(round(hours))}h ago"
+        return f"{round(hours)}h ago"
     days = hours / 24
-    return f"{int(round(days))}d ago"
+    return f"{round(days)}d ago"
 
 
-PROVIDER_HINTS: Dict[str, Sequence[str]] = {
+PROVIDER_HINTS: dict[str, Sequence[str]] = {
     "aws": ("aws", "guardduty", "securityhub"),
     "okta": ("okta",),
     "github": ("github",),
@@ -54,30 +54,30 @@ PROVIDER_HINTS: Dict[str, Sequence[str]] = {
 class IntegrationFreshness:
     integration: str
     scope: str
-    last_synced_at: Optional[datetime]
-    age_seconds: Optional[float]
+    last_synced_at: datetime | None
+    age_seconds: float | None
     status: str
-    warning: Optional[str]
-    metadata: Dict[str, object]
+    warning: str | None
+    metadata: dict[str, object]
     confidence: str
 
     @property
-    def age_human(self) -> Optional[str]:
+    def age_human(self) -> str | None:
         return _humanize_age(self.age_seconds)
 
 
 @dataclass
 class ProviderFreshness:
     provider: str
-    last_synced_at: Optional[datetime]
-    age_seconds: Optional[float]
+    last_synced_at: datetime | None
+    age_seconds: float | None
     status: str
-    warning: Optional[str]
-    sources: List[str]
+    warning: str | None
+    sources: list[str]
     confidence: str
 
     @property
-    def age_human(self) -> Optional[str]:
+    def age_human(self) -> str | None:
         return _humanize_age(self.age_seconds)
 
 
@@ -85,17 +85,17 @@ class IntegrationFreshnessService:
     """Derive integration freshness summaries from sync state records."""
 
     def __init__(
-        self, session: AsyncSession, *, stale_seconds: Optional[int] = None
+        self, session: AsyncSession, *, stale_seconds: int | None = None
     ) -> None:
         self._session = session
         self._repo = IntegrationStateRepository(session)
         self._stale_seconds = stale_seconds or settings.integration_sync_stale_seconds
 
-    async def list_freshness(self) -> List[IntegrationFreshness]:
+    async def list_freshness(self) -> list[IntegrationFreshness]:
         states = await self._repo.list_states()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
-        summaries: List[IntegrationFreshness] = []
+        summaries: list[IntegrationFreshness] = []
         for state in states:
             metadata = dict(state.state_metadata or {})
             last_synced = self._derive_last_synced(state.last_timestamp, metadata)
@@ -119,9 +119,9 @@ class IntegrationFreshnessService:
 
     async def provider_freshness(
         self, providers: Iterable[str]
-    ) -> Dict[str, ProviderFreshness]:
+    ) -> dict[str, ProviderFreshness]:
         integration_freshness = await self.list_freshness()
-        provider_map: Dict[str, ProviderFreshness] = {}
+        provider_map: dict[str, ProviderFreshness] = {}
 
         for provider in providers:
             hints = PROVIDER_HINTS.get(provider.lower(), (provider.lower(),))
@@ -145,7 +145,7 @@ class IntegrationFreshnessService:
             latest = max(
                 matches,
                 key=lambda item: item.last_synced_at
-                or datetime.fromtimestamp(0, tz=timezone.utc),
+                or datetime.fromtimestamp(0, tz=UTC),
             )
             age_seconds = latest.age_seconds
             status = latest.status
@@ -177,9 +177,9 @@ class IntegrationFreshnessService:
         return provider_map
 
     def _derive_last_synced(
-        self, last_timestamp: Optional[datetime], metadata: Dict[str, object]
-    ) -> Optional[datetime]:
-        candidates: List[datetime] = []
+        self, last_timestamp: datetime | None, metadata: dict[str, object]
+    ) -> datetime | None:
+        candidates: list[datetime] = []
         if last_timestamp is not None:
             candidates.append(self._ensure_utc(last_timestamp))
 
@@ -192,7 +192,7 @@ class IntegrationFreshnessService:
         if "last_sync_unix" in metadata:
             try:
                 unix_value = float(metadata["last_sync_unix"])  # type: ignore[arg-type]
-                candidates.append(datetime.fromtimestamp(unix_value, tz=timezone.utc))
+                candidates.append(datetime.fromtimestamp(unix_value, tz=UTC))
             except (TypeError, ValueError):
                 pass
 
@@ -201,7 +201,7 @@ class IntegrationFreshnessService:
         return max(candidates)
 
     def _classify_status(
-        self, age_seconds: Optional[float], metadata: Dict[str, object]
+        self, age_seconds: float | None, metadata: dict[str, object]
     ) -> str:
         status_hint = metadata.get("last_status")
         if isinstance(status_hint, str) and status_hint.lower() in {
@@ -218,8 +218,8 @@ class IntegrationFreshnessService:
         return "stale"
 
     def _build_warning(
-        self, status: str, integration: str, age_seconds: Optional[float]
-    ) -> Optional[str]:
+        self, status: str, integration: str, age_seconds: float | None
+    ) -> str | None:
         if status not in {"stale", "error"}:
             return None
         age_text = _humanize_age(age_seconds) if age_seconds is not None else "unknown"
@@ -230,11 +230,11 @@ class IntegrationFreshnessService:
     @staticmethod
     def _ensure_utc(value: datetime) -> datetime:
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     @staticmethod
-    def _infer_confidence(integration: str, metadata: Dict[str, object]) -> str:
+    def _infer_confidence(integration: str, metadata: dict[str, object]) -> str:
         explicit = metadata.get("data_confidence")
         if isinstance(explicit, str):
             normalized = explicit.lower()
@@ -264,7 +264,7 @@ class IntegrationFreshnessService:
         return "high"
 
     @staticmethod
-    def _aggregate_confidence(matches: List[IntegrationFreshness]) -> str:
+    def _aggregate_confidence(matches: list[IntegrationFreshness]) -> str:
         order = {"low": 0, "medium": 1, "high": 2}
         best = "high"
         for item in matches:

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterable, Mapping, Sequence, Tuple
+from typing import Any
 
 
 class RuleSeverity(str, Enum):
@@ -24,7 +25,7 @@ class RuleComparison(str, Enum):
     LESS_THAN_OR_EQUAL = "lte"
 
 
-DEFAULT_CHANNELS: Tuple[str, ...] = ("slack",)
+DEFAULT_CHANNELS: tuple[str, ...] = ("slack",)
 
 
 @dataclass
@@ -37,7 +38,7 @@ class AlertRule:
     threshold: float
     severity: RuleSeverity
     description: str
-    channels: Tuple[str, ...] = DEFAULT_CHANNELS
+    channels: tuple[str, ...] = DEFAULT_CHANNELS
     cooldown_minutes: int = 60
     message_template: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -58,7 +59,7 @@ class AlertRule:
         )
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AlertRule":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AlertRule:
         """Construct a rule from a dictionary definition."""
 
         try:
@@ -90,7 +91,7 @@ class AlertRule:
         )
 
 
-def load_rules(definitions: Iterable[Mapping[str, Any]]) -> Tuple[AlertRule, ...]:
+def load_rules(definitions: Iterable[Mapping[str, Any]]) -> tuple[AlertRule, ...]:
     """Parse a collection of dictionary definitions into alert rules."""
 
     rules = [AlertRule.from_dict(item) for item in definitions]

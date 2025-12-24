@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional
 
 import structlog
 
@@ -27,15 +27,15 @@ class TournamentScenarioConfig:
     scenario_id: str
     repetitions: int = 1
     min_success_rate: float = 1.0
-    max_allowed_turns: Optional[int] = None
+    max_allowed_turns: int | None = None
 
 
 @dataclass
 class ScenarioRunResult:
     scenario_id: str
-    matches: List[SelfPlayResult]
+    matches: list[SelfPlayResult]
     success_rate: float
-    drift_alert: Optional[str]
+    drift_alert: str | None
 
     @property
     def passed(self) -> bool:
@@ -45,21 +45,21 @@ class ScenarioRunResult:
 @dataclass
 class TournamentConfig:
     name: str
-    scenarios: List[TournamentScenarioConfig]
-    metadata: Dict[str, object]
+    scenarios: list[TournamentScenarioConfig]
+    metadata: dict[str, object]
 
 
 @dataclass
 class TournamentResult:
     name: str
-    scenarios: List[ScenarioRunResult]
+    scenarios: list[ScenarioRunResult]
 
     @property
     def passed(self) -> bool:
         return all(result.passed for result in self.scenarios)
 
-    def drift_alerts(self) -> List[str]:
-        alerts: List[str] = []
+    def drift_alerts(self) -> list[str]:
+        alerts: list[str] = []
         for result in self.scenarios:
             if result.drift_alert:
                 alerts.append(result.drift_alert)
@@ -78,7 +78,7 @@ class TournamentRunner:
         self._scenario_provider = scenario_provider
 
     async def run(self, config: TournamentConfig) -> TournamentResult:
-        scenario_results: List[ScenarioRunResult] = []
+        scenario_results: list[ScenarioRunResult] = []
 
         for scenario_cfg in config.scenarios:
             scenario_results.append(await self._run_scenario(scenario_cfg))
@@ -89,7 +89,7 @@ class TournamentRunner:
         self, config: TournamentScenarioConfig
     ) -> ScenarioRunResult:
         scenario = await self._scenario_provider.load(config.scenario_id)
-        matches: List[SelfPlayResult] = []
+        matches: list[SelfPlayResult] = []
 
         for idx in range(max(1, config.repetitions)):
             logger.info(

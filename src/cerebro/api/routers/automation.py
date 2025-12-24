@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import User, get_current_user
-from cerebro.core.database import get_db
-from cerebro.automation.telemetry_health import (
-    TelemetryHealthSnapshot,
-    evaluate_health_thresholds,
-    fetch_telemetry_health,
-)
 from cerebro.automation.alerting import (
     AlertResult,
     AlertRule,
     collect_telemetry_alerts,
     default_rules,
 )
-
+from cerebro.automation.telemetry_health import (
+    TelemetryHealthSnapshot,
+    evaluate_health_thresholds,
+    fetch_telemetry_health,
+)
+from cerebro.core.database import get_db
 
 router = APIRouter(prefix="/automation", tags=["automation", "telemetry"])
 
@@ -30,8 +30,8 @@ router = APIRouter(prefix="/automation", tags=["automation", "telemetry"])
 class TelemetryHealthResponse(BaseModel):
     """Response payload for telemetry health endpoint."""
 
-    snapshot: Dict[str, Any]
-    issues: List[str]
+    snapshot: dict[str, Any]
+    issues: list[str]
 
 
 class TelemetryAlertItem(BaseModel):
@@ -43,18 +43,18 @@ class TelemetryAlertItem(BaseModel):
     metric_value: float
     message: str
     triggered_at: datetime
-    channels: List[str] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    channels: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TelemetryAlertsResponse(BaseModel):
     """Response payload for alerts preview endpoint."""
 
-    alerts: List[TelemetryAlertItem]
-    snapshot: Dict[str, Any]
+    alerts: list[TelemetryAlertItem]
+    snapshot: dict[str, Any]
 
 
-def _snapshot_to_dict(snapshot: TelemetryHealthSnapshot) -> Dict[str, Any]:
+def _snapshot_to_dict(snapshot: TelemetryHealthSnapshot) -> dict[str, Any]:
     return snapshot.to_dict()
 
 
@@ -97,17 +97,17 @@ async def get_telemetry_health(
 async def preview_telemetry_alerts(
     *,
     window_days: int = Query(7, ge=1, le=30),
-    rule_ids: Optional[List[str]] = Query(None, alias="rule_id"),
+    rule_ids: list[str] | None = Query(None, alias="rule_id"),
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TelemetryAlertsResponse:
     """Preview telemetry alerts for the provided rule selection."""
 
     available_rules = list(default_rules())
-    rules_selection: Optional[Sequence[AlertRule]]
+    rules_selection: Sequence[AlertRule] | None
 
     if rule_ids:
-        rule_set = {rule_id for rule_id in rule_ids}
+        rule_set = set(rule_ids)
         filtered = [rule for rule in available_rules if rule.rule_id in rule_set]
         rules_selection = tuple(filtered)
     else:

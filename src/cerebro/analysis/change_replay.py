@@ -1,17 +1,17 @@
 """Change replay engine for retroactive rule analysis."""
 
-from typing import Dict, List, Any, Optional
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
-import logging
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
-from cerebro.core.models import Rule, Resource, ConfigSnapshot, Finding, Organization
-from cerebro.rules.engine import RuleEngine, EvaluationContext
+from cerebro.core.models import ConfigSnapshot, Finding, Organization, Resource, Rule
 from cerebro.findings.evaluator import RuleEvaluator
+from cerebro.rules.engine import EvaluationContext, RuleEngine
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,9 @@ class RuleReplayResult:
     total_evaluations: int
     matches_found: int
     new_findings_count: int
-    findings_that_would_exist: List[Dict[str, Any]]
-    coverage_analysis: Dict[str, Any]
-    performance_metrics: Dict[str, Any]
+    findings_that_would_exist: list[dict[str, Any]]
+    coverage_analysis: dict[str, Any]
+    performance_metrics: dict[str, Any]
 
 
 class ChangeReplayEngine:
@@ -46,7 +46,7 @@ class ChangeReplayEngine:
         org_id: UUID,
         start_time: datetime,
         end_time: datetime,
-        providers: Optional[List[str]] = None,
+        providers: list[str] | None = None,
     ) -> RuleReplayResult:
         """Replay a rule against historical configurations."""
         rule = await self.db.get(Rule, rule_id)
@@ -162,8 +162,8 @@ class ChangeReplayEngine:
         self,
         org_id: UUID,
         quarter_start: datetime,
-        providers: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        providers: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Replay all active rules for a full quarter."""
         quarter_end = quarter_start + timedelta(days=90)
 
@@ -171,7 +171,7 @@ class ChangeReplayEngine:
         stmt = (
             select(Rule)
             .join(Rule.policy)
-            .where(and_(Rule.policy.has(org_id=org_id), Rule.is_active == True))
+            .where(and_(Rule.policy.has(org_id=org_id), Rule.is_active))
         )
 
         if providers:
@@ -229,9 +229,9 @@ class ChangeReplayEngine:
         org_id: UUID,
         start_time: datetime,
         end_time: datetime,
-        providers: Optional[List[str]],
-        resource_types: Optional[List[str]],
-    ) -> List[tuple]:
+        providers: list[str] | None,
+        resource_types: list[str] | None,
+    ) -> list[tuple]:
         """Get historical config snapshots for the time period."""
         stmt = (
             select(ConfigSnapshot, Resource)
@@ -277,26 +277,26 @@ class ChangeReplayEngine:
         return existing is not None
 
     def _analyze_rule_coverage(
-        self, snapshots: List[tuple], matches: int, rule: Rule
-    ) -> Dict[str, Any]:
+        self, snapshots: list[tuple], matches: int, rule: Rule
+    ) -> dict[str, Any]:
         """Analyze how well the rule covers historical data."""
         if not snapshots:
             return {}
 
         # Group by resource type
-        resource_type_counts: Dict[str, int] = {}
+        resource_type_counts: dict[str, int] = {}
         for snapshot, resource in snapshots:
             rt = resource.resource_type
             resource_type_counts[rt] = resource_type_counts.get(rt, 0) + 1
 
         # Provider distribution
-        provider_counts: Dict[str, int] = {}
+        provider_counts: dict[str, int] = {}
         for snapshot, resource in snapshots:
             prov = resource.provider
             provider_counts[prov] = provider_counts.get(prov, 0) + 1
 
         # Time distribution
-        time_buckets: Dict[str, int] = {}
+        time_buckets: dict[str, int] = {}
         for snapshot, resource in snapshots:
             day = snapshot.captured_at.date()
             time_buckets[str(day)] = time_buckets.get(str(day), 0) + 1
@@ -314,9 +314,9 @@ class ChangeReplayEngine:
         self,
         rule_expression: str,
         org_id: UUID,
-        providers: List[str],
+        providers: list[str],
         time_period_days: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Analyze what would happen if a custom rule had been active."""
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(days=time_period_days)
@@ -387,8 +387,8 @@ class ChangeReplayEngine:
         }
 
     def _extract_relevant_config(
-        self, config: Dict[str, Any], rule_expression: str
-    ) -> Dict[str, Any]:
+        self, config: dict[str, Any], rule_expression: str
+    ) -> dict[str, Any]:
         """Extract configuration fields relevant to the rule."""
         # Simple heuristic - look for field names mentioned in the rule
         relevant_fields = {}
@@ -406,34 +406,34 @@ class ChangeReplayEngine:
         return relevant_fields
 
     def _group_findings_by_provider(
-        self, findings: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, findings: list[dict[str, Any]]
+    ) -> dict[str, int]:
         """Group findings by provider."""
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for finding in findings:
             provider = finding["provider"]
             counts[provider] = counts.get(provider, 0) + 1
         return counts
 
     def _group_findings_by_resource_type(
-        self, findings: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, findings: list[dict[str, Any]]
+    ) -> dict[str, int]:
         """Group findings by resource type."""
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for finding in findings:
             resource_type = finding["resource_type"]
             counts[resource_type] = counts.get(resource_type, 0) + 1
         return counts
 
     def _analyze_temporal_pattern(
-        self, findings: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, findings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Analyze temporal patterns in findings."""
         if not findings:
             return {}
 
         # Group by day
-        daily_counts: Dict[str, int] = {}
+        daily_counts: dict[str, int] = {}
         for finding in findings:
             day = finding["timestamp"][:10]  # YYYY-MM-DD
             daily_counts[day] = daily_counts.get(day, 0) + 1
@@ -470,7 +470,7 @@ class ChangeReplayEngine:
         org_id: UUID,
         deployment_date: datetime,
         simulation_days: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Simulate what would happen if a rule was deployed on a specific date."""
         end_date = deployment_date + timedelta(days=simulation_days)
 
@@ -506,7 +506,7 @@ class ChangeReplayEngine:
 
     async def _get_actual_findings_in_period(
         self, org_id: UUID, start_time: datetime, end_time: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get actual findings that occurred in a time period."""
         stmt = select(Finding).where(
             and_(
@@ -528,16 +528,16 @@ class ChangeReplayEngine:
             for f in findings
         ]
 
-    def _group_by_severity(self, findings: List[Dict[str, Any]]) -> Dict[str, int]:
+    def _group_by_severity(self, findings: list[dict[str, Any]]) -> dict[str, int]:
         """Group findings by severity."""
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for finding in findings:
             severity = finding["severity"]
             counts[severity] = counts.get(severity, 0) + 1
         return counts
 
     def _calculate_coverage_gap(
-        self, what_if_result: Dict[str, Any], actual_findings: List[Dict[str, Any]]
+        self, what_if_result: dict[str, Any], actual_findings: list[dict[str, Any]]
     ) -> float:
         """Calculate what percentage of issues the new rule would have caught."""
         if not actual_findings:
@@ -551,7 +551,7 @@ class ChangeReplayEngine:
 
     async def generate_rule_effectiveness_report(
         self, org_id: UUID, lookback_days: int = 90
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate report on rule effectiveness over time."""
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(days=lookback_days)

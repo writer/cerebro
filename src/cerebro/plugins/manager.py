@@ -2,12 +2,12 @@
 
 import importlib
 import importlib.util
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Type, Union
 import logging
+from pathlib import Path
+from typing import Any
 
-from cerebro.providers.base import BaseProvider
 from cerebro.findings.producers.base import BaseFindingProducer
+from cerebro.providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class PluginMetadata:
         plugin_type: str,  # provider, producer, rule, integration
         module_path: str,
         class_name: str,
-        config_schema: Optional[Dict] = None,
+        config_schema: dict | None = None,
     ):
         self.name = name
         self.version = version
@@ -41,11 +41,11 @@ class PluginManager:
 
     def __init__(self):
         """Initialize plugin manager."""
-        self._loaded_plugins: Dict[str, PluginMetadata] = {}
-        self._plugin_instances: Dict[str, Any] = {}
-        self._plugin_paths: List[Path] = []
+        self._loaded_plugins: dict[str, PluginMetadata] = {}
+        self._plugin_instances: dict[str, Any] = {}
+        self._plugin_paths: list[Path] = []
 
-    def add_plugin_path(self, path: Union[str, Path]) -> None:
+    def add_plugin_path(self, path: str | Path) -> None:
         """Add a directory to search for plugins."""
         plugin_path = Path(path)
         if plugin_path.exists() and plugin_path.is_dir():
@@ -54,7 +54,7 @@ class PluginManager:
         else:
             logger.warning(f"Plugin path does not exist: {plugin_path}")
 
-    def discover_plugins(self) -> List[PluginMetadata]:
+    def discover_plugins(self) -> list[PluginMetadata]:
         """Discover all available plugins in plugin paths."""
         discovered = []
 
@@ -73,7 +73,7 @@ class PluginManager:
         logger.info(f"Discovered {len(discovered)} plugins")
         return discovered
 
-    def _load_plugin_metadata(self, plugin_dir: Path) -> Optional[PluginMetadata]:
+    def _load_plugin_metadata(self, plugin_dir: Path) -> PluginMetadata | None:
         """Load plugin metadata from plugin.yaml or __init__.py."""
         plugin_yaml = plugin_dir / "plugin.yaml"
 
@@ -170,7 +170,7 @@ class PluginManager:
             logger.error(f"Failed to load plugin {plugin_name}: {e}")
             return False
 
-    def _validate_plugin_interface(self, plugin_class: Type, plugin_type: str) -> bool:
+    def _validate_plugin_interface(self, plugin_class: type, plugin_type: str) -> bool:
         """Validate that plugin implements required interface."""
         if plugin_type == "provider":
             return issubclass(plugin_class, BaseProvider)
@@ -185,8 +185,8 @@ class PluginManager:
             return False
 
     def get_loaded_plugins(
-        self, plugin_type: Optional[str] = None
-    ) -> List[PluginMetadata]:
+        self, plugin_type: str | None = None
+    ) -> list[PluginMetadata]:
         """Get list of loaded plugins, optionally filtered by type."""
         plugins = list(self._loaded_plugins.values())
 
@@ -195,7 +195,7 @@ class PluginManager:
 
         return plugins
 
-    def get_plugin_instance(self, plugin_name: str) -> Optional[Any]:
+    def get_plugin_instance(self, plugin_name: str) -> Any | None:
         """Get instance of a loaded plugin."""
         return self._plugin_instances.get(plugin_name)
 

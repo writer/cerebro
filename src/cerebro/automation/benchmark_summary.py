@@ -6,24 +6,24 @@ import dataclasses
 import json
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclasses.dataclass
 class BenchmarkCaseSummary:
     case_id: str
     passed: bool
-    turn_count: Optional[int]
-    tool_calls: Optional[int]
-    total_duration_ms: Optional[float]
-    failed_assertions: List[str]
-    outcome: Optional[str]
-    average_score: Optional[float]
+    turn_count: int | None
+    tool_calls: int | None
+    total_duration_ms: float | None
+    failed_assertions: list[str]
+    outcome: str | None
+    average_score: float | None
 
     @classmethod
     def from_mapping(
-        cls, case_id: str, payload: Dict[str, Any]
-    ) -> "BenchmarkCaseSummary":
+        cls, case_id: str, payload: dict[str, Any]
+    ) -> BenchmarkCaseSummary:
         return cls(
             case_id=case_id,
             passed=bool(payload.get("passed", False)),
@@ -38,25 +38,25 @@ class BenchmarkCaseSummary:
 
 @dataclasses.dataclass
 class BenchmarkSummary:
-    cases: List[BenchmarkCaseSummary]
+    cases: list[BenchmarkCaseSummary]
 
     @property
     def total_cases(self) -> int:
         return len(self.cases)
 
     @property
-    def passed_cases(self) -> List[BenchmarkCaseSummary]:
+    def passed_cases(self) -> list[BenchmarkCaseSummary]:
         return [case for case in self.cases if case.passed]
 
     @property
-    def failed_cases(self) -> List[BenchmarkCaseSummary]:
+    def failed_cases(self) -> list[BenchmarkCaseSummary]:
         return [case for case in self.cases if not case.passed]
 
     @property
     def has_failures(self) -> bool:
         return any(not case.passed for case in self.cases)
 
-    def average_duration_ms(self) -> Optional[float]:
+    def average_duration_ms(self) -> float | None:
         durations = [
             case.total_duration_ms for case in self.cases if case.total_duration_ms
         ]
@@ -64,7 +64,7 @@ class BenchmarkSummary:
             return None
         return mean(durations)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_cases": self.total_cases,
             "failed_cases": [dataclasses.asdict(case) for case in self.failed_cases],
@@ -76,7 +76,7 @@ def load_benchmark_summary(scorecard_path: Path) -> BenchmarkSummary:
     with scorecard_path.open("r", encoding="utf-8") as handle:
         raw = json.load(handle)
 
-    cases: List[BenchmarkCaseSummary] = [
+    cases: list[BenchmarkCaseSummary] = [
         BenchmarkCaseSummary.from_mapping(case_id, payload)
         for case_id, payload in raw.items()
     ]
@@ -99,8 +99,8 @@ def _format_failed_case(case: BenchmarkCaseSummary) -> str:
 def build_slack_payload(
     summary: BenchmarkSummary,
     *,
-    run_url: Optional[str] = None,
-) -> Dict[str, Any]:
+    run_url: str | None = None,
+) -> dict[str, Any]:
     status_line = (
         "All benchmark cases passed"
         if not summary.has_failures
@@ -109,7 +109,7 @@ def build_slack_payload(
 
     fallback = f"Benchmark results: {status_line}; total cases {summary.total_cases}"
 
-    blocks: List[Dict[str, Any]] = [
+    blocks: list[dict[str, Any]] = [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": "Benchmark Regression Summary"},

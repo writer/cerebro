@@ -7,14 +7,15 @@ entities we persist, while helpers such as :func:`authenticated_method` and
 ``AuthenticationMixin`` ensure consistent authentication flow.
 """
 
+import asyncio
+import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, AsyncGenerator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
-import logging
-import asyncio
 from functools import wraps
+from typing import Any
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -109,15 +110,15 @@ class ResourceInfo:
     """Information about a discovered resource."""
 
     external_id: str
-    name: Optional[str]
+    name: str | None
     resource_type: str
-    parent_external_id: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    region: Optional[str] = None
-    tags: Optional[Dict[str, str]] = None
-    created_at: Optional[datetime] = None
-    account_id: Optional[UUID] = None
-    resource_id: Optional[str] = None
+    parent_external_id: str | None = None
+    metadata: dict[str, Any] | None = None
+    region: str | None = None
+    tags: dict[str, str] | None = None
+    created_at: datetime | None = None
+    account_id: UUID | None = None
+    resource_id: str | None = None
 
 
 @dataclass
@@ -126,11 +127,11 @@ class PrincipalInfo:
 
     external_id: str
     principal_type: str  # user, group, service_account, app, role
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    is_human: Optional[bool] = None
-    metadata: Optional[Dict[str, Any]] = None
-    account_id: Optional[UUID] = None
+    email: str | None = None
+    display_name: str | None = None
+    is_human: bool | None = None
+    metadata: dict[str, Any] | None = None
+    account_id: UUID | None = None
 
 
 @dataclass
@@ -139,8 +140,8 @@ class ConfigurationSnapshot:
 
     resource_external_id: str
     captured_at: datetime
-    normalized_config: Dict[str, Any]
-    raw_config: Optional[Dict[str, Any]] = None
+    normalized_config: dict[str, Any]
+    raw_config: dict[str, Any] | None = None
 
 
 @dataclass
@@ -148,13 +149,13 @@ class IamPermission:
     """IAM permission edge."""
 
     principal_external_id: str
-    resource_external_id: Optional[str]
+    resource_external_id: str | None
     permission: str
-    via: Optional[str] = None
-    effective_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    via: str | None = None
+    effective_at: datetime | None = None
+    expires_at: datetime | None = None
     is_admin: bool = False
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class BaseProvider(AuthenticationMixin, ABC):
@@ -181,7 +182,7 @@ class BaseProvider(AuthenticationMixin, ABC):
     @abstractmethod
     @authenticated_method
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover resources from the provider."""
         pass
@@ -203,7 +204,7 @@ class BaseProvider(AuthenticationMixin, ABC):
     @abstractmethod
     @authenticated_method
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover IAM permissions/edges."""
         pass
@@ -216,7 +217,7 @@ class BaseProvider(AuthenticationMixin, ABC):
             logger.error(f"Connection test failed for {self.provider_name}: {e}")
             return False
 
-    async def get_account_info(self) -> Dict[str, Any]:
+    async def get_account_info(self) -> dict[str, Any]:
         """Get account information."""
         return {
             "provider": self.name,

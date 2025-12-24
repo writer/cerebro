@@ -4,24 +4,24 @@ Integration tests for Cerebro agent system.
 Tests the complete flow from runtime through tools with real database interactions.
 """
 
-from typing import Any, List
-
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
-from cerebro.agents.runtime import CerebroClaudeRuntime
-from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
+import pytest
+
 from cerebro.agents.models import (
+    AgentRuntimeEvent,
     AgentSession,
     AgentType,
     MessageRole,
-    AgentRuntimeEvent,
 )
+from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
+from cerebro.agents.runtime import CerebroClaudeRuntime
 from cerebro.agents.tools import AgentContext, ToolPermissionLevel
 from cerebro.agents.tools.findings_list import FindingsListTool
 from cerebro.agents.tools.query import QueryTool
-from cerebro.core.models import Finding, Organization, Account, Rule
+from cerebro.core.models import Account, Finding, Organization, Rule
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ async def test_org():
         org = Organization(
             org_id=uuid4(),
             name="Test Org for Agents",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         session.add(org)
         await session.commit()
@@ -103,8 +103,8 @@ async def test_finding(test_org, test_account, test_rule):
             provider="aws",
             rule_id=test_rule.rule_id,
             rule_version=1,
-            first_seen=datetime.now(timezone.utc),
-            last_seen=datetime.now(timezone.utc),
+            first_seen=datetime.now(UTC),
+            last_seen=datetime.now(UTC),
             status="open",
             severity="high",
             fingerprint=f"test-finding-{uuid4()}",
@@ -247,8 +247,9 @@ class TestAgentTools:
         assert "would_change_status" in result.preview
 
         # Verify finding status was NOT changed
-        from cerebro.core.database import async_session_factory
         from sqlalchemy import select
+
+        from cerebro.core.database import async_session_factory
 
         async with async_session_factory() as session:
             check_query = select(Finding).where(
@@ -304,7 +305,7 @@ class TestAgentRuntime:
 
         import cerebro.agents.runtime as claude_runtime_module
 
-        calls: List[tuple[str, str]] = []
+        calls: list[tuple[str, str]] = []
 
         def fake_record_runtime_metadata_event(*, backend: str, status: str) -> None:
             calls.append((backend, status))
@@ -332,8 +333,9 @@ class TestAgentRuntime:
             "_claude_cli_unavailable"
         )
 
-        from cerebro.core.database import async_session_factory
         from sqlalchemy import select
+
+        from cerebro.core.database import async_session_factory
 
         async with async_session_factory() as db_session:
             result = await db_session.execute(
@@ -355,13 +357,14 @@ class TestAgentRuntime:
     async def test_openai_runtime_records_metadata(self, monkeypatch, test_session):
         """OpenAI runtime should persist usage metadata and emit analytics events."""
 
-        import cerebro.agents.openai_runtime as openai_runtime_module
         from agents.run_context import RunContextWrapper
         from agents.usage import Usage
 
+        import cerebro.agents.openai_runtime as openai_runtime_module
+
         runtime = CerebroOpenAIRuntime(model="gpt-4o-mini")
 
-        metadata_statuses: List[str] = []
+        metadata_statuses: list[str] = []
 
         def fake_record_runtime_metadata_event(*, backend: str, status: str) -> None:
             metadata_statuses.append(status)
@@ -380,7 +383,7 @@ class TestAgentRuntime:
         def fake_run_streamed(agent, message, context, max_turns, run_config, session):
             class StubRunResult:
                 def __init__(self):
-                    self.raw_responses: List[Any] = []
+                    self.raw_responses: list[Any] = []
                     self.final_output = "Stub OpenAI output"
                     self.context_wrapper = RunContextWrapper(context=context)
                     usage = Usage(
@@ -421,8 +424,9 @@ class TestAgentRuntime:
         assert metadata.get("usage", {}).get("input_tokens") == 12
         assert metadata.get("usage", {}).get("output_tokens") == 18
 
-        from cerebro.core.database import async_session_factory
         from sqlalchemy import select
+
+        from cerebro.core.database import async_session_factory
 
         async with async_session_factory() as db_session:
             result = await db_session.execute(

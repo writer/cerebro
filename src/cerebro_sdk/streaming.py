@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
-from typing import AsyncIterable, AsyncIterator, Optional, Union
+from typing import Union
 
 SSEChunk = Union[str, bytes, bytearray]
 
@@ -12,10 +13,10 @@ SSEChunk = Union[str, bytes, bytearray]
 class ServerSentEvent:
     """Represents a parsed server-sent event."""
 
-    event: Optional[str]
+    event: str | None
     data: str
-    id: Optional[str] = None
-    retry: Optional[int] = None
+    id: str | None = None
+    retry: int | None = None
     raw: str = ""
 
 
@@ -54,7 +55,7 @@ def to_server_sent_event_iterator(
     return parse_server_sent_events(source)
 
 
-def _find_separator(buffer: str) -> Optional[int]:
+def _find_separator(buffer: str) -> int | None:
     idx = buffer.find("\n\n")
     if idx == -1:
         idx = buffer.find("\r\n\r\n")
@@ -69,15 +70,15 @@ def _coerce_to_text(chunk: SSEChunk) -> str:
     return str(chunk)
 
 
-def _parse_event_block(block: str) -> Optional[ServerSentEvent]:
+def _parse_event_block(block: str) -> ServerSentEvent | None:
     if not block:
         return None
 
     lines = _normalize_newlines(block).split("\n")
     data_lines: list[str] = []
-    event: Optional[str] = None
-    event_id: Optional[str] = None
-    retry: Optional[int] = None
+    event: str | None = None
+    event_id: str | None = None
+    retry: int | None = None
 
     for line in lines:
         if not line or line.startswith(":"):

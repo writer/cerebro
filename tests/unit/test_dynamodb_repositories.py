@@ -4,13 +4,13 @@ These tests verify that the DynamoDB repositories work correctly
 with a mocked DynamoDB backend.
 """
 
-import pytest
 from uuid import uuid4
 
 import boto3
+import pytest
 from moto import mock_aws
 
-from cerebro.core.dynamodb_client import reset_client, TableName, get_table_name
+from cerebro.core.dynamodb_client import TableName, get_table_name, reset_client
 
 
 def create_tables(client):
@@ -215,8 +215,8 @@ class TestFindingRepository:
         from cerebro.core.repositories.finding import (
             Finding,
             FindingRepository,
-            Severity,
             FindingStatus,
+            Severity,
         )
 
         repo = FindingRepository()
@@ -250,8 +250,8 @@ class TestFindingRepository:
         from cerebro.core.repositories.finding import (
             Finding,
             FindingRepository,
-            Severity,
             FindingStatus,
+            Severity,
         )
 
         repo = FindingRepository()
@@ -289,8 +289,8 @@ class TestFindingRepository:
         from cerebro.core.repositories.finding import (
             Finding,
             FindingRepository,
-            Severity,
             FindingStatus,
+            Severity,
         )
 
         repo = FindingRepository()
@@ -377,7 +377,7 @@ class TestAgentSessionRepository:
             await repo.create(session)
 
         # List by type
-        analyst_sessions, total = await repo.list_by_org(
+        analyst_sessions, _total = await repo.list_by_org(
             org_id,
             agent_type=AgentType.SECURITY_ANALYST,
         )

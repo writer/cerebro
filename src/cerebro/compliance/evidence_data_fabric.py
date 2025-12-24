@@ -15,28 +15,29 @@ Key principles:
 - Temporal queries for point-in-time compliance state
 """
 
-import json
 import hashlib
-from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
+import json
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 from uuid import uuid4
+
 from sqlalchemy import (
     Column,
-    String,
     DateTime,
-    Text,
-    Integer,
     Float,
     ForeignKey,
-    Table,
     Index,
+    Integer,
+    String,
+    Table,
+    Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+
 from cerebro.core.database_types import JSONType
 
 # Import unified enums from the consolidated models
@@ -259,16 +260,16 @@ class RequirementMapping(Base):
 class EvidenceQuery:
     """Structured query for evidence data."""
 
-    entity_types: List[EvidenceEntityType] = field(default_factory=list)
-    entity_ids: List[str] = field(default_factory=list)
-    source_systems: List[str] = field(default_factory=list)
-    requirements: List[str] = field(default_factory=list)
-    frameworks: List[str] = field(default_factory=list)
-    time_range: Optional[tuple[datetime, datetime]] = None
-    tags: Dict[str, Any] = field(default_factory=dict)
+    entity_types: list[EvidenceEntityType] = field(default_factory=list)
+    entity_ids: list[str] = field(default_factory=list)
+    source_systems: list[str] = field(default_factory=list)
+    requirements: list[str] = field(default_factory=list)
+    frameworks: list[str] = field(default_factory=list)
+    time_range: tuple[datetime, datetime] | None = None
+    tags: dict[str, Any] = field(default_factory=dict)
     include_derived: bool = True
     min_quality_score: float = 0.0
-    limit: Optional[int] = None
+    limit: int | None = None
 
 
 class EvidenceDataFabric:
@@ -276,7 +277,7 @@ class EvidenceDataFabric:
 
     def __init__(self, session_factory: sessionmaker):
         self.session_factory = session_factory
-        self._schemas: Dict[str, Dict] = {}
+        self._schemas: dict[str, dict] = {}
 
     def ingest_evidence(
         self,
@@ -284,10 +285,10 @@ class EvidenceDataFabric:
         source_type: EvidenceSourceType,
         entity_type: EvidenceEntityType,
         entity_id: str,
-        raw_data: Dict[str, Any],
-        observed_at: Optional[datetime] = None,
+        raw_data: dict[str, Any],
+        observed_at: datetime | None = None,
         collector_id: str = "unknown",
-        tags: Optional[Dict[str, Any]] = None,
+        tags: dict[str, Any] | None = None,
     ) -> str:
         """Ingest new evidence into the data fabric."""
 
@@ -324,7 +325,7 @@ class EvidenceDataFabric:
                 entity_type=entity_type.value,
                 entity_id=entity_id,
                 entity_name=entity_name,
-                observed_at=observed_at or datetime.now(timezone.utc),
+                observed_at=observed_at or datetime.now(UTC),
                 raw_data=raw_data,
                 normalized_data=normalized_data,
                 tags=tags or {},
@@ -335,7 +336,7 @@ class EvidenceDataFabric:
 
             return str(record.id)
 
-    def query_evidence(self, query: EvidenceQuery) -> List[EvidenceRecord]:
+    def query_evidence(self, query: EvidenceQuery) -> list[EvidenceRecord]:
         """Query evidence using structured criteria."""
 
         with self.session_factory() as session:
@@ -383,9 +384,9 @@ class EvidenceDataFabric:
         self,
         derivation_type: str,
         derivation_logic: str,
-        source_evidence_ids: List[str],
+        source_evidence_ids: list[str],
         processor_id: str,
-        result_data: Dict[str, Any],
+        result_data: dict[str, Any],
         entity_type: EvidenceEntityType,
         entity_id: str,
     ) -> str:
@@ -417,7 +418,7 @@ class EvidenceDataFabric:
 
             return evidence_id
 
-    def get_evidence_lineage(self, evidence_id: str) -> Dict[str, Any]:
+    def get_evidence_lineage(self, evidence_id: str) -> dict[str, Any]:
         """Get complete lineage tree for an evidence record."""
 
         with self.session_factory() as session:
@@ -461,9 +462,9 @@ class EvidenceDataFabric:
         self,
         entity_type: EvidenceEntityType,
         source_system: str,
-        fields: Dict[str, str],
-        required_fields: List[str],
-        normalization_rules: Dict[str, Any],
+        fields: dict[str, str],
+        required_fields: list[str],
+        normalization_rules: dict[str, Any],
     ):
         """Register a schema for evidence normalization."""
 
@@ -488,8 +489,8 @@ class EvidenceDataFabric:
         }
 
     def cross_evidence_analysis(
-        self, analysis_type: str, entity_id: str, requirements: List[str]
-    ) -> Dict[str, Any]:
+        self, analysis_type: str, entity_id: str, requirements: list[str]
+    ) -> dict[str, Any]:
         """Perform cross-evidence analysis for compliance requirements."""
 
         # Query all evidence for the entity and requirements
@@ -509,8 +510,8 @@ class EvidenceDataFabric:
             return {"error": f"Unknown analysis type: {analysis_type}"}
 
     def _normalize_data(
-        self, raw_data: Dict[str, Any], schema_key: str
-    ) -> Dict[str, Any]:
+        self, raw_data: dict[str, Any], schema_key: str
+    ) -> dict[str, Any]:
         """Normalize raw data using registered schema."""
 
         if schema_key not in self._schemas:
@@ -538,8 +539,8 @@ class EvidenceDataFabric:
         return normalized
 
     def _extract_entity_name(
-        self, raw_data: Dict[str, Any], entity_type: EvidenceEntityType
-    ) -> Optional[str]:
+        self, raw_data: dict[str, Any], entity_type: EvidenceEntityType
+    ) -> str | None:
         """Extract human-readable name from raw data."""
 
         # Common name fields by entity type
@@ -569,20 +570,20 @@ class EvidenceDataFabric:
         fields = name_fields.get(entity_type, ["name", "title", "id"])
 
         for field_name in fields:
-            if field_name in raw_data and raw_data[field_name]:
+            if raw_data.get(field_name):
                 return str(raw_data[field_name])
 
         return None
 
     def _analyze_mfa_compliance(
-        self, evidence_records: List[EvidenceRecord]
-    ) -> Dict[str, Any]:
+        self, evidence_records: list[EvidenceRecord]
+    ) -> dict[str, Any]:
         """Analyze MFA compliance across identity systems."""
 
-        mfa_data: List[Dict[str, Any]] = []
+        mfa_data: list[dict[str, Any]] = []
         for record in evidence_records:
             if record.entity_type == EvidenceEntityType.IDENTITY.value:
-                normalized: Dict[str, Any] = dict(record.normalized_data or {})
+                normalized: dict[str, Any] = dict(record.normalized_data or {})
                 mfa_enabled = normalized.get("mfa_enabled", False)
                 mfa_data.append(
                     {
@@ -595,15 +596,15 @@ class EvidenceDataFabric:
                 )
 
         # Cross-system analysis
-        entities_by_id: Dict[str, List[Dict[str, Any]]] = {}
+        entities_by_id: dict[str, list[dict[str, Any]]] = {}
         for item in mfa_data:
             entity_id = item["entity_id"]
             if entity_id not in entities_by_id:
                 entities_by_id[entity_id] = []
             entities_by_id[entity_id].append(item)
 
-        details: List[Dict[str, Any]] = []
-        compliance_summary: Dict[str, Any] = {
+        details: list[dict[str, Any]] = []
+        compliance_summary: dict[str, Any] = {
             "total_identities": len(entities_by_id),
             "mfa_compliant": 0,
             "mfa_non_compliant": 0,
@@ -636,8 +637,8 @@ class EvidenceDataFabric:
         return compliance_summary
 
     def _analyze_access_patterns(
-        self, evidence_records: List[EvidenceRecord]
-    ) -> Dict[str, Any]:
+        self, evidence_records: list[EvidenceRecord]
+    ) -> dict[str, Any]:
         """Analyze access patterns for access review requirements."""
         # Placeholder implementation
         return {
@@ -646,8 +647,8 @@ class EvidenceDataFabric:
         }
 
     def _analyze_config_drift(
-        self, evidence_records: List[EvidenceRecord]
-    ) -> Dict[str, Any]:
+        self, evidence_records: list[EvidenceRecord]
+    ) -> dict[str, Any]:
         """Analyze configuration drift over time."""
         # Placeholder implementation
         return {"analysis": "config_drift", "records_analyzed": len(evidence_records)}

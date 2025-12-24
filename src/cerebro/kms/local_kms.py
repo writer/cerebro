@@ -4,7 +4,6 @@ import base64
 import hashlib
 import logging
 import os
-from typing import Optional
 
 from cryptography.fernet import Fernet
 
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 class LocalPlaintextKMS(BaseKMS):
     """Local KMS implementation using Fernet for development."""
 
-    def __init__(self, secret_key: Optional[str] = None):
+    def __init__(self, secret_key: str | None = None):
         """Initialize local KMS with Fernet encryption."""
         self.secret_key: str = secret_key or os.getenv("SECRET_KEY") or "default-dev-key"
 

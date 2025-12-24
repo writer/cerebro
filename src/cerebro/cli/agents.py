@@ -7,29 +7,28 @@ monitoring, and approval workflows.
 
 import asyncio
 import json
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import UUID
 
 import typer
+from rich import print as rprint
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
-from rich import print as rprint
+from sqlalchemy import select
 
-from cerebro.core.database import async_session_factory
-from cerebro.core.models import Organization
+from cerebro.agents.models import AgentType, ApprovalStatus
 from cerebro.agents.service import (
+    AgentAnalyticsService,
     AgentSessionService,
     ToolApprovalService,
-    AgentAnalyticsService,
 )
-from cerebro.agents.models import AgentType, ApprovalStatus
-from sqlalchemy import select
+from cerebro.core.database import async_session_factory
+from cerebro.core.models import Organization
 
 app = typer.Typer(name="agents", help="Manage Cerebro security agents")
 console = Console()
@@ -44,11 +43,11 @@ def create(
         "-t",
         help="Agent type: security_analyst, compliance_auditor, incident_responder",
     ),
-    title: Optional[str] = typer.Option(None, "--title", help="Session title"),
+    title: str | None = typer.Option(None, "--title", help="Session title"),
     created_by: str = typer.Option(
         "cli_user", "--user", help="User creating the session"
     ),
-    context_file: Optional[str] = typer.Option(
+    context_file: str | None = typer.Option(
         None, "--context", help="JSON file with agent context"
     ),
 ):
@@ -68,7 +67,7 @@ def create(
             context = {}
             if context_file:
                 try:
-                    with open(context_file, "r") as f:
+                    with open(context_file) as f:
                         context = json.load(f)
                 except FileNotFoundError:
                     rprint(f"[red]Context file '{context_file}' not found[/red]")
@@ -138,10 +137,10 @@ def create(
 @app.command()
 def list(
     org_name: str = typer.Argument(..., help="Organization name"),
-    agent_type: Optional[str] = typer.Option(
+    agent_type: str | None = typer.Option(
         None, "--type", "-t", help="Filter by agent type"
     ),
-    created_by: Optional[str] = typer.Option(None, "--user", help="Filter by creator"),
+    created_by: str | None = typer.Option(None, "--user", help="Filter by creator"),
     limit: int = typer.Option(
         20, "--limit", "-l", help="Maximum number of sessions to show"
     ),
@@ -254,7 +253,7 @@ def list(
 @app.command()
 def chat(
     session_id: str = typer.Argument(..., help="Agent session ID"),
-    org_name: Optional[str] = typer.Option(
+    org_name: str | None = typer.Option(
         None, "--org", help="Organization name for access control"
     ),
     user_id: str = typer.Option("cli_user", "--user", help="User identifier"),
@@ -444,7 +443,7 @@ async def _show_session_status(service: AgentSessionService, session_id: UUID):
 @app.command()
 def status(
     session_id: str = typer.Argument(..., help="Agent session ID"),
-    org_name: Optional[str] = typer.Option(None, "--org", help="Organization name"),
+    org_name: str | None = typer.Option(None, "--org", help="Organization name"),
     detailed: bool = typer.Option(
         False, "--detailed", "-d", help="Show detailed metrics"
     ),
@@ -516,7 +515,7 @@ def approve(
     approved_by: str = typer.Option(
         "cli_user", "--user", help="User approving the tool"
     ),
-    reason: Optional[str] = typer.Option(None, "--reason", help="Approval reason"),
+    reason: str | None = typer.Option(None, "--reason", help="Approval reason"),
     auto_confirm: bool = typer.Option(
         False, "--yes", "-y", help="Skip confirmation prompt"
     ),
@@ -789,7 +788,7 @@ def pending(
 
                 # Check if expired
                 if approval.expires_at and approval.expires_at < datetime.now(
-                    timezone.utc
+                    UTC
                 ):
                     expires_str = "[red]EXPIRED[/red]"
 

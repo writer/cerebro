@@ -1,13 +1,13 @@
 """Maintenance background tasks."""
 
-from typing import Any, List, Optional
-import logging
 import asyncio
+import logging
 from datetime import datetime, timedelta
+from typing import Any
 
-from cerebro.tasks.celery_app import celery_app
-from cerebro.core.database import async_session_factory
 from cerebro.core.bulk_operations import BulkOperations
+from cerebro.core.database import async_session_factory
+from cerebro.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,8 @@ def cleanup_old_snapshots_task(self, days_old: int = 90):
             )
 
             async with async_session_factory() as db:
-                from sqlalchemy import select, delete, text
+                from sqlalchemy import delete, select, text
+
                 from cerebro.core.models import ConfigSnapshot
 
                 # Calculate cutoff date
@@ -119,7 +120,7 @@ def cleanup_old_snapshots_task(self, days_old: int = 90):
 
 
 @celery_app.task(bind=True, name="cerebro.tasks.maintenance_tasks.vacuum_analyze_task")
-def vacuum_analyze_task(self, tables: Optional[List[str]] = None):
+def vacuum_analyze_task(self, tables: list[str] | None = None):
     """Run VACUUM ANALYZE on specified tables or all main tables."""
 
     async def _vacuum():
@@ -188,6 +189,7 @@ def update_identity_clusters_task(self, org_id: str):
 
         try:
             from uuid import UUID
+
             from cerebro.core.models import Organization
 
             self.update_state(
@@ -295,6 +297,7 @@ def health_check_task(self):
 
             try:
                 import redis
+
                 from cerebro.core.config import settings
 
                 redis_url = getattr(settings, "redis_url", "redis://localhost:6379/0")

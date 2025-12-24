@@ -1,6 +1,5 @@
 """Prebuilt security rules library."""
 
-from typing import Dict, List
 from dataclasses import dataclass
 
 
@@ -10,11 +9,11 @@ class RuleTemplate:
 
     name: str
     description: str
-    provider: List[str]
-    resource_types: List[str]
+    provider: list[str]
+    resource_types: list[str]
     expression: str
     severity: str
-    framework_mappings: Dict[str, List[str]]
+    framework_mappings: dict[str, list[str]]
     rationale: str
     remediation: str
 
@@ -23,7 +22,7 @@ class RuleLibrary:
     """Library of prebuilt security rules."""
 
     @staticmethod
-    def get_all_rules() -> List[RuleTemplate]:
+    def get_all_rules() -> list[RuleTemplate]:
         """Get all prebuilt rules."""
         return [
             # GitHub Rules
@@ -190,7 +189,7 @@ class RuleLibrary:
         ]
 
     @staticmethod
-    def get_rules_by_framework(framework: str) -> List[RuleTemplate]:
+    def get_rules_by_framework(framework: str) -> list[RuleTemplate]:
         """Get rules that map to a specific compliance framework."""
         all_rules = RuleLibrary.get_all_rules()
         return [
@@ -198,19 +197,19 @@ class RuleLibrary:
         ]
 
     @staticmethod
-    def get_rules_by_provider(provider: str) -> List[RuleTemplate]:
+    def get_rules_by_provider(provider: str) -> list[RuleTemplate]:
         """Get rules for a specific provider."""
         all_rules = RuleLibrary.get_all_rules()
         return [rule for rule in all_rules if provider in rule.provider]
 
     @staticmethod
-    def get_rules_by_severity(severity: str) -> List[RuleTemplate]:
+    def get_rules_by_severity(severity: str) -> list[RuleTemplate]:
         """Get rules by severity level."""
         all_rules = RuleLibrary.get_all_rules()
         return [rule for rule in all_rules if rule.severity == severity]
 
     @staticmethod
-    def create_control_pack(name: str, framework: str) -> Dict:
+    def create_control_pack(name: str, framework: str) -> dict:
         """Create a control pack for a specific framework."""
         rules = RuleLibrary.get_rules_by_framework(framework)
 
@@ -222,8 +221,8 @@ class RuleLibrary:
             "rule_count": len(rules),
             "coverage": {
                 "providers": list(
-                    set(provider for rule in rules for provider in rule.provider)
+                    {provider for rule in rules for provider in rule.provider}
                 ),
-                "severities": list(set(rule.severity for rule in rules)),
+                "severities": list({rule.severity for rule in rules}),
             },
         }

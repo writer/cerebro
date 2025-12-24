@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class AttestationType(Enum):
@@ -19,7 +19,7 @@ class SignedAttestation:
     change_id: str
     signed_at: datetime
     signer: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class ChangeAttestationService:
@@ -36,7 +36,7 @@ class ChangeAttestationService:
         )
 
 
-_DEFAULT_ATTESTATION_SERVICE: Optional[ChangeAttestationService] = None
+_DEFAULT_ATTESTATION_SERVICE: ChangeAttestationService | None = None
 
 
 def get_attestation_service() -> ChangeAttestationService:

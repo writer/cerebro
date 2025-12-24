@@ -120,6 +120,7 @@ class TestErrorHandling:
         """Test handling of expired JWT tokens."""
         # Create expired token
         from datetime import datetime, timedelta
+
         from jose import jwt
 
         expired_payload = {

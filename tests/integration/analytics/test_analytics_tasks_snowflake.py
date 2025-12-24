@@ -5,7 +5,6 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
-
 SNOWFLAKE_DATABASE_URL_ENV = "SNOWFLAKE_DATABASE_URL"
 
 

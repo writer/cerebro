@@ -1,22 +1,23 @@
 """Risk analytics API endpoints."""
 
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 
-from cerebro.core.analytics_db import get_analytics_db
-from cerebro.core.database import get_db
-from cerebro.core.models import Organization
-from cerebro.api.auth import get_current_user, require_scopes, User
-from cerebro.api.org_access import require_org_access
-from cerebro.analytics.risk_scoring import RiskScoringEngine
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from cerebro.analytics.identity_analytics import (
     IdentityAnalyzer,
     PrivilegeSprawlDetector,
 )
+from cerebro.analytics.risk_scoring import RiskScoringEngine
+from cerebro.api.auth import User, get_current_user, require_scopes
+from cerebro.api.org_access import require_org_access
+from cerebro.core.analytics_db import get_analytics_db
+from cerebro.core.database import get_db
+from cerebro.core.models import Organization
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -27,7 +28,7 @@ async def get_organization_risk_score(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get detailed organizational risk score analysis."""
 
     org = await db.get(Organization, org_id)
@@ -78,7 +79,7 @@ async def get_risk_heatmap(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get risk heatmap data for visualization."""
 
     org = await db.get(Organization, org_id)
@@ -102,7 +103,7 @@ async def get_identity_analytics(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get identity-centric analytics and privilege sprawl data."""
 
     org = await db.get(Organization, org_id)
@@ -110,7 +111,7 @@ async def get_identity_analytics(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     identity_analyzer = IdentityAnalyzer(analytics_db, core_db_session=db)
-    identity_method = getattr(identity_analyzer, "generate_identity_dashboard_data")
+    identity_method = identity_analyzer.generate_identity_dashboard_data
     identity_data = await identity_method(org_id)
 
     return identity_data
@@ -125,7 +126,7 @@ async def get_risky_identities(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Get identities with highest risk profiles."""
 
     org = await db.get(Organization, org_id)
@@ -163,7 +164,7 @@ async def get_privilege_sprawl_analysis(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:principals"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get privilege sprawl analysis for the organization."""
 
     org = await db.get(Organization, org_id)
@@ -207,7 +208,7 @@ async def get_top_organizational_risks(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Get top organizational risks with context and remediation guidance."""
 
     org = await db.get(Organization, org_id)
@@ -263,11 +264,11 @@ async def get_top_organizational_risks(
         # Generate remediation urgency
         first_occurrence = row.first_occurrence
         if first_occurrence is not None and first_occurrence.tzinfo is None:
-            first_occurrence = first_occurrence.replace(tzinfo=timezone.utc)
+            first_occurrence = first_occurrence.replace(tzinfo=UTC)
 
         days_since_first = 0
         if first_occurrence is not None:
-            days_since_first = (datetime.now(timezone.utc) - first_occurrence).days
+            days_since_first = (datetime.now(UTC) - first_occurrence).days
         if row.severity == "critical" and days_since_first > 7:
             urgency = "immediate"
         elif row.severity == "high" and days_since_first > 14:

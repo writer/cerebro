@@ -7,9 +7,9 @@ engine + session factory that can be wrapped for async endpoints.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
-from typing import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, make_url
@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool, QueuePool
 
 from cerebro.core.config import settings
-
 
 SNOWFLAKE_DATABASE_URL_ENV = "SNOWFLAKE_DATABASE_URL"
 SNOWFLAKE_ROLE_ENV = "SNOWFLAKE_ROLE"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -28,7 +28,7 @@ def _rule(cooldown_minutes: int = 60) -> AlertRule:
 
 
 def _result(rule: AlertRule) -> AlertResult:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return AlertResult(
         rule=rule,
         metric_value=42.0,

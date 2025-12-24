@@ -2,19 +2,20 @@
 Tests for compliance evidence generation.
 """
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from cerebro.compliance.evidence import EvidenceCollector, EvidenceItem
 from cerebro.compliance.frameworks import (
-    SOC2Framework,
+    ControlType,
     ISO27001Framework,
     PCIDSSFramework,
+    SOC2Framework,
     get_framework,
     list_frameworks,
-    ControlType,
 )
-from cerebro.compliance.evidence import EvidenceCollector, EvidenceItem
 from cerebro.compliance.generator import ComplianceEvidenceGenerator
 
 
@@ -256,7 +257,7 @@ class TestComplianceIntegration:
         evidence_summary = report["evidence_summary"]
         assert len(evidence_summary) > 0
 
-        for control_id, summary in evidence_summary.items():
+        for _control_id, summary in evidence_summary.items():
             assert "evidence_items" in summary
             assert "successful_queries" in summary
             assert summary["evidence_items"] >= 0

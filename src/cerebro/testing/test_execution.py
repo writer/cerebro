@@ -7,21 +7,21 @@ for automated security testing.
 
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func
+from sqlalchemy import DateTime, Float, String, Text, and_, desc, func, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from cerebro.core.database_types import JSONType
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Text, Float
 
-from cerebro.core.database import Base
 from cerebro.compliance.control_tests import TestStatus
+from cerebro.core.database import Base
+from cerebro.core.database_types import JSONType
 
 logger = logging.getLogger(__name__)
 
@@ -57,19 +57,19 @@ class TestResult:
 
     # Results
     passed: bool
-    score: Optional[float] = None
-    evidence: Optional[Dict[str, Any]] = None
-    metrics: Optional[Dict[str, float]] = None
+    score: float | None = None
+    evidence: dict[str, Any] | None = None
+    metrics: dict[str, float] | None = None
 
     # Details
-    output: Optional[str] = None
-    error_message: Optional[str] = None
-    warnings: Optional[List[str]] = None
+    output: str | None = None
+    error_message: str | None = None
+    warnings: list[str] | None = None
 
     # Context
-    environment: Optional[str] = None
-    executed_by: Optional[str] = None
-    execution_context: Optional[Dict[str, Any]] = None
+    environment: str | None = None
+    executed_by: str | None = None
+    execution_context: dict[str, Any] | None = None
 
 
 class TestExecution(Base):
@@ -96,25 +96,25 @@ class TestExecution(Base):
     scheduled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    timeout_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    timeout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Results
-    test_status: Mapped[Optional[str]] = mapped_column(String(50))  # PASS, FAIL, ERROR
-    execution_time_ms: Mapped[Optional[float]] = mapped_column(Float)
-    test_score: Mapped[Optional[float]] = mapped_column(Float)
+    test_status: Mapped[str | None] = mapped_column(String(50))  # PASS, FAIL, ERROR
+    execution_time_ms: Mapped[float | None] = mapped_column(Float)
+    test_score: Mapped[float | None] = mapped_column(Float)
 
     # Output and evidence
-    test_output: Mapped[Optional[str]] = mapped_column(Text)
-    error_message: Mapped[Optional[str]] = mapped_column(Text)
-    warnings: Mapped[Optional[List[str]]] = mapped_column(JSONType)
-    evidence_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
-    metrics: Mapped[Optional[Dict[str, float]]] = mapped_column(JSONType)
+    test_output: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    warnings: Mapped[list[str] | None] = mapped_column(JSONType)
+    evidence_data: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
+    metrics: Mapped[dict[str, float] | None] = mapped_column(JSONType)
 
     # Context
     executed_by: Mapped[str] = mapped_column(String(100), nullable=False)
-    execution_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    execution_context: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
 
     # Tracking
     created_at: Mapped[datetime] = mapped_column(
@@ -131,7 +131,7 @@ class TestExecutor:
     def __init__(self, db_session: AsyncSession):
         """Initialize test executor."""
         self.db = db_session
-        self._execution_context: Dict[str, Any] = {}
+        self._execution_context: dict[str, Any] = {}
 
     async def execute_test(
         self,
@@ -142,7 +142,7 @@ class TestExecutor:
         test_function: Callable[..., Any],
         timeout_seconds: int = 300,
         priority: TestPriority = TestPriority.MEDIUM,
-        execution_context: Optional[Dict[str, Any]] = None,
+        execution_context: dict[str, Any] | None = None,
     ) -> TestResult:
         """Execute a single security test."""
 
@@ -216,7 +216,7 @@ class TestExecutor:
             )
             return test_result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Handle timeout
             execution.completed_at = datetime.utcnow()
             execution.execution_status = ExecutionStatus.TIMEOUT.value
@@ -270,14 +270,14 @@ class TestExecutor:
 
     async def execute_test_suite(
         self,
-        test_ids: List[str],
+        test_ids: list[str],
         org_id: UUID,
         environment: str,
         executed_by: str,
-        test_functions: Dict[str, Callable],
+        test_functions: dict[str, Callable],
         parallel: bool = True,
         max_concurrent: int = 5,
-    ) -> List[TestResult]:
+    ) -> list[TestResult]:
         """Execute a suite of tests."""
 
         if parallel:
@@ -296,13 +296,13 @@ class TestExecutor:
 
     async def _execute_tests_parallel(
         self,
-        test_ids: List[str],
+        test_ids: list[str],
         org_id: UUID,
         environment: str,
         executed_by: str,
-        test_functions: Dict[str, Callable],
+        test_functions: dict[str, Callable],
         max_concurrent: int,
-    ) -> List[TestResult]:
+    ) -> list[TestResult]:
         """Execute tests in parallel with concurrency control."""
         semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -353,12 +353,12 @@ class TestExecutor:
 
     async def _execute_tests_sequential(
         self,
-        test_ids: List[str],
+        test_ids: list[str],
         org_id: UUID,
         environment: str,
         executed_by: str,
-        test_functions: Dict[str, Callable],
-    ) -> List[TestResult]:
+        test_functions: dict[str, Callable],
+    ) -> list[TestResult]:
         """Execute tests sequentially."""
         results = []
 
@@ -389,10 +389,10 @@ class TestExecutor:
     async def get_execution_history(
         self,
         org_id: UUID,
-        test_id: Optional[str] = None,
+        test_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[TestExecution]:
+    ) -> list[TestExecution]:
         """Get test execution history."""
         stmt = select(TestExecution).where(TestExecution.org_id == org_id)
 
@@ -405,7 +405,7 @@ class TestExecutor:
 
         return list(await self.db.scalars(stmt))
 
-    async def get_execution_metrics(self, org_id: UUID) -> Dict[str, Any]:
+    async def get_execution_metrics(self, org_id: UUID) -> dict[str, Any]:
         """Get execution metrics for an organization."""
         # Get recent executions (last 30 days)
         since_date = datetime.utcnow() - timedelta(days=30)
@@ -446,13 +446,13 @@ class TestExecutor:
             avg_execution_time = 0.0
 
         # Group by status
-        status_counts: Dict[str, int] = {}
+        status_counts: dict[str, int] = {}
         for execution in executions:
             status = execution.test_status or "unknown"
             status_counts[status] = status_counts.get(status, 0) + 1
 
         # Group by environment
-        env_counts: Dict[str, int] = {}
+        env_counts: dict[str, int] = {}
         for execution in executions:
             env = execution.environment
             env_counts[env] = env_counts.get(env, 0) + 1
@@ -511,7 +511,7 @@ class TestScheduler:
         environment: str,
         executed_by: str,
         test_function: Callable,
-        scheduled_time: Optional[datetime] = None,
+        scheduled_time: datetime | None = None,
         priority: TestPriority = TestPriority.MEDIUM,
     ) -> TestExecution:
         """Schedule a test for execution."""
@@ -535,7 +535,7 @@ class TestScheduler:
         logger.info(f"Scheduled test {test_id} for execution at {scheduled_time}")
         return execution
 
-    async def execute_scheduled_tests(self, environment: str) -> List[TestResult]:
+    async def execute_scheduled_tests(self, environment: str) -> list[TestResult]:
         """Execute all tests scheduled for the current time."""
         now = datetime.utcnow()
 

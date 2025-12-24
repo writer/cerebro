@@ -1,12 +1,9 @@
 from copy import deepcopy
-from typing import Dict
 
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
-
 from tests.api.dashboard_samples import build_sample_dashboard_response
 
-
-EXPECTED_FIELDS: Dict[str, set[str]] = {
+EXPECTED_FIELDS: dict[str, set[str]] = {
     "ExecutiveDashboardResponse": {
         "executive_summary",
         "security_metrics",
@@ -227,7 +224,7 @@ EXPECTED_FIELDS: Dict[str, set[str]] = {
 }
 
 
-def _validate_api_response(payload: Dict[str, object]) -> None:
+def _validate_api_response(payload: dict[str, object]) -> None:
     assert set(payload.keys()) == EXPECTED_FIELDS["ExecutiveDashboardResponse"]
 
     executive = payload["executive_summary"]
@@ -399,7 +396,7 @@ def test_dashboard_contract_captures_generation_timings(
     client, test_db, test_org, test_token, monkeypatch
 ):
     sample = build_sample_dashboard_response()
-    captured: Dict[str, DashboardAnalytics] = {}
+    captured: dict[str, DashboardAnalytics] = {}
 
     async def _fake_dashboard(self, org_id):
         payload = deepcopy(sample)

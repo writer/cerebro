@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
-
-
-_NORMALIZATION_CONFIG: Dict[str, Dict[str, Dict[str, str]]] = {
+_NORMALIZATION_CONFIG: dict[str, dict[str, dict[str, str]]] = {
     "severity": {
         "default": {
             "critical": "critical",
@@ -48,7 +45,7 @@ _NORMALIZATION_CONFIG: Dict[str, Dict[str, Dict[str, str]]] = {
 }
 
 
-def _normalize(category: str, value: Optional[str], provider: str) -> str:
+def _normalize(category: str, value: str | None, provider: str) -> str:
     if not value:
         return "unknown"
 
@@ -60,16 +57,16 @@ def _normalize(category: str, value: Optional[str], provider: str) -> str:
     return provider_rules.get(lowered) or default_rules.get(lowered, "unknown")
 
 
-def normalize_severity(value: Optional[str], *, provider: str) -> str:
+def normalize_severity(value: str | None, *, provider: str) -> str:
     """Normalize a provider-provided severity label into Cerebro's taxonomy."""
 
     return _normalize("severity", value, provider)
 
 
-def normalize_exposure(value: Optional[str], *, provider: str) -> str:
+def normalize_exposure(value: str | None, *, provider: str) -> str:
     """Normalize a provider-provided exposure label."""
 
     return _normalize("exposure", value, provider)
 
 
-__all__ = ["normalize_severity", "normalize_exposure"]
+__all__ = ["normalize_exposure", "normalize_severity"]

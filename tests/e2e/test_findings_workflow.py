@@ -7,9 +7,10 @@ These tests verify the complete findings lifecycle including:
 - Finding status updates
 """
 
-import pytest
-import httpx
 from uuid import UUID
+
+import httpx
+import pytest
 
 pytestmark = pytest.mark.e2e
 

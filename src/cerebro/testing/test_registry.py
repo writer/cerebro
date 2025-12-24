@@ -6,10 +6,10 @@ following Vanta's test management patterns.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -54,19 +54,19 @@ class SecurityTest:
     status: TestStatus
 
     # Test configuration
-    sql_query: Optional[str]  # SQL query for automated tests
-    manual_steps: List[str]  # Steps for manual tests
+    sql_query: str | None  # SQL query for automated tests
+    manual_steps: list[str]  # Steps for manual tests
     expected_result: str
     pass_criteria: str
 
     # Scheduling
     frequency: TestFrequency
     next_execution: datetime
-    last_execution: Optional[datetime]
+    last_execution: datetime | None
 
     # Compliance mapping
-    control_ids: List[str]
-    framework_mappings: Dict[str, str]  # framework -> control_id
+    control_ids: list[str]
+    framework_mappings: dict[str, str]  # framework -> control_id
 
     # Risk assessment
     risk_level: str  # "low", "medium", "high", "critical"
@@ -75,10 +75,10 @@ class SecurityTest:
     # Execution
     timeout_minutes: int
     retry_count: int
-    notification_channels: List[str]
+    notification_channels: list[str]
 
     # Results tracking
-    last_result: Optional[str]  # "pass", "fail", "error"
+    last_result: str | None  # "pass", "fail", "error"
     failure_count: int
     consecutive_failures: int
 
@@ -86,8 +86,8 @@ class SecurityTest:
     created_by: str
     created_at: datetime
     updated_at: datetime
-    tags: List[str]
-    metadata: Dict[str, Any]
+    tags: list[str]
+    metadata: dict[str, Any]
 
 
 class TestRegistry:
@@ -99,7 +99,7 @@ class TestRegistry:
     """
 
     def __init__(self):
-        self.tests: Dict[str, SecurityTest] = {}
+        self.tests: dict[str, SecurityTest] = {}
         self._initialize_default_tests()
 
     def _initialize_default_tests(self):
@@ -241,17 +241,17 @@ class TestRegistry:
         logger.info(f"Registered security test: {test.name}")
         return test.test_id
 
-    async def get_tests_by_control(self, control_id: str) -> List[SecurityTest]:
+    async def get_tests_by_control(self, control_id: str) -> list[SecurityTest]:
         """Get all tests for a specific control."""
         return [test for test in self.tests.values() if control_id in test.control_ids]
 
-    async def get_tests_by_framework(self, framework: str) -> List[SecurityTest]:
+    async def get_tests_by_framework(self, framework: str) -> list[SecurityTest]:
         """Get all tests for a compliance framework."""
         return [
             test for test in self.tests.values() if framework in test.framework_mappings
         ]
 
-    async def get_overdue_tests(self) -> List[SecurityTest]:
+    async def get_overdue_tests(self) -> list[SecurityTest]:
         """Get tests that are overdue for execution."""
         current_time = datetime.now()
         return [
@@ -260,7 +260,7 @@ class TestRegistry:
             if test.next_execution < current_time and test.status == TestStatus.ACTIVE
         ]
 
-    async def get_failing_tests(self) -> List[SecurityTest]:
+    async def get_failing_tests(self) -> list[SecurityTest]:
         """Get tests with recent failures."""
         return [
             test
@@ -268,28 +268,28 @@ class TestRegistry:
             if test.last_result == "fail" or test.consecutive_failures > 0
         ]
 
-    async def generate_test_summary(self, org_id: str) -> Dict[str, Any]:
+    async def generate_test_summary(self, org_id: str) -> dict[str, Any]:
         """Generate test execution summary."""
         tests = list(self.tests.values())
         overdue = await self.get_overdue_tests()
         failing = await self.get_failing_tests()
 
         # Status distribution
-        status_counts: Dict[str, int] = {}
+        status_counts: dict[str, int] = {}
         for test in tests:
             status_counts[test.status.value] = (
                 status_counts.get(test.status.value, 0) + 1
             )
 
         # Type distribution
-        type_counts: Dict[str, int] = {}
+        type_counts: dict[str, int] = {}
         for test in tests:
             type_counts[test.test_type.value] = (
                 type_counts.get(test.test_type.value, 0) + 1
             )
 
         # Framework coverage
-        framework_coverage: Dict[str, int] = {}
+        framework_coverage: dict[str, int] = {}
         for test in tests:
             for framework in test.framework_mappings.keys():
                 framework_coverage[framework] = framework_coverage.get(framework, 0) + 1

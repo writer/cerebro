@@ -2,16 +2,17 @@
 Tests for identity anomaly detection.
 """
 
-import pytest
-import pandas as pd
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import pandas as pd
+import pytest
+
 from cerebro.analysis.identity_anomaly import (
-    IdentityAnomalyDetector,
     AnomalyType,
-    RiskLevel,
     BehavioralBaseline,
+    IdentityAnomalyDetector,
+    RiskLevel,
 )
 from cerebro.query.table import QueryFilter
 

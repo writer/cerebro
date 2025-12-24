@@ -6,7 +6,7 @@ import logging
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 from cryptography.fernet import Fernet
@@ -28,9 +28,9 @@ class ProviderCredentials:
 
     provider: str
     account_external_id: str
-    credentials: Dict[str, Any]
-    expires_at: Optional[datetime] = None
-    metadata: Optional[Dict[str, Any]] = None
+    credentials: dict[str, Any]
+    expires_at: datetime | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class ProviderCredentialStore(Base):
@@ -45,7 +45,7 @@ class ProviderCredentialStore(Base):
     encrypted_dek: Mapped[bytes] = mapped_column(
         LargeBinary, nullable=False
     )  # Data Encryption Key
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
@@ -106,8 +106,8 @@ class CredentialService:
         self,
         account_id: UUID,
         provider: str,
-        credentials: Dict[str, Any],
-        expires_at: Optional[datetime] = None,
+        credentials: dict[str, Any],
+        expires_at: datetime | None = None,
     ) -> bool:
         """Store encrypted provider credentials using envelope encryption."""
         try:
@@ -121,7 +121,7 @@ class CredentialService:
                 and_(
                     ProviderCredentialStore.account_id == account_id,
                     ProviderCredentialStore.provider == provider,
-                    ProviderCredentialStore.is_active == True,
+                    ProviderCredentialStore.is_active,
                 )
             )
             existing = await self.db.scalar(stmt)
@@ -154,14 +154,14 @@ class CredentialService:
 
     async def get_credentials(
         self, account_id: UUID, provider: str
-    ) -> Optional[ProviderCredentials]:
+    ) -> ProviderCredentials | None:
         """Retrieve and decrypt provider credentials."""
         try:
             stmt = select(ProviderCredentialStore).where(
                 and_(
                     ProviderCredentialStore.account_id == account_id,
                     ProviderCredentialStore.provider == provider,
-                    ProviderCredentialStore.is_active == True,
+                    ProviderCredentialStore.is_active,
                 )
             )
             cred_store = await self.db.scalar(stmt)
@@ -214,7 +214,7 @@ class CredentialService:
             return False
 
     async def rotate_credentials(
-        self, account_id: UUID, provider: str, new_credentials: Dict[str, Any]
+        self, account_id: UUID, provider: str, new_credentials: dict[str, Any]
     ) -> bool:
         """Rotate provider credentials."""
         # Store new credentials
@@ -232,7 +232,7 @@ class CredentialService:
 
     async def get_provider_credentials_for_collection(
         self, account_id: UUID, provider: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get provider credentials formatted for collection use."""
         creds = await self.get_credentials(account_id, provider)
 
@@ -245,7 +245,7 @@ class CredentialService:
 
         return creds.credentials
 
-    def _get_credentials_from_environment(self, provider: str) -> Dict[str, Any]:
+    def _get_credentials_from_environment(self, provider: str) -> dict[str, Any]:
         """Get credentials from environment variables as fallback."""
         if provider == "github":
             return {"token": settings.github_token}

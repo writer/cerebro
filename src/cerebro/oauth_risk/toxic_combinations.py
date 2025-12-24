@@ -6,12 +6,11 @@ create security risks (e.g., Slack app with files:read + public links).
 """
 
 import logging
-from typing import Dict, List
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
-from .registry import OAuthApp, AppRiskLevel
+from .registry import AppRiskLevel, OAuthApp
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +32,10 @@ class ToxicPattern:
     name: str
     description: str
     toxicity_level: ToxicityLevel
-    conditions: List[str]  # Human-readable conditions
+    conditions: list[str]  # Human-readable conditions
     detection_function: str  # Name of detection function
-    remediation_steps: List[str]
-    examples: List[str]
+    remediation_steps: list[str]
+    examples: list[str]
 
 
 @dataclass
@@ -46,10 +45,10 @@ class ToxicCombinationResult:
     app_id: str
     app_name: str
     provider: str
-    toxic_patterns: List[ToxicPattern]
+    toxic_patterns: list[ToxicPattern]
     toxicity_score: float
     detected_at: datetime
-    recommended_actions: List[str]
+    recommended_actions: list[str]
     auto_quarantine_eligible: bool
 
 
@@ -64,7 +63,7 @@ class ToxicCombinationDetector:
     def __init__(self):
         self.toxic_patterns = self._define_toxic_patterns()
 
-    def _define_toxic_patterns(self) -> Dict[str, ToxicPattern]:
+    def _define_toxic_patterns(self) -> dict[str, ToxicPattern]:
         """Define known toxic OAuth patterns."""
         patterns = {}
 
@@ -191,8 +190,8 @@ class ToxicCombinationDetector:
         return patterns
 
     async def detect_toxic_combinations(
-        self, apps: List[OAuthApp]
-    ) -> List[ToxicCombinationResult]:
+        self, apps: list[OAuthApp]
+    ) -> list[ToxicCombinationResult]:
         """
         Detect toxic combinations across all OAuth apps.
 
@@ -208,7 +207,7 @@ class ToxicCombinationDetector:
             detected_patterns = []
 
             # Run each detection pattern
-            for pattern_id, pattern in self.toxic_patterns.items():
+            for _pattern_id, pattern in self.toxic_patterns.items():
                 detection_method = getattr(self, pattern.detection_function, None)
                 if detection_method and await detection_method(app):
                     detected_patterns.append(pattern)
@@ -314,7 +313,7 @@ class ToxicCombinationDetector:
 
         return has_high_scopes and recently_unused and no_owner
 
-    def _calculate_toxicity_score(self, patterns: List[ToxicPattern]) -> float:
+    def _calculate_toxicity_score(self, patterns: list[ToxicPattern]) -> float:
         """Calculate overall toxicity score from detected patterns."""
         if not patterns:
             return 0.0
@@ -334,7 +333,7 @@ class ToxicCombinationDetector:
         # Normalize to 0-1 range (max score of 3 patterns = 1.0)
         return min(total_score / 3.0, 1.0)
 
-    def _aggregate_remediation_steps(self, patterns: List[ToxicPattern]) -> List[str]:
+    def _aggregate_remediation_steps(self, patterns: list[ToxicPattern]) -> list[str]:
         """Aggregate remediation steps from all detected patterns."""
         all_steps = []
         for pattern in patterns:

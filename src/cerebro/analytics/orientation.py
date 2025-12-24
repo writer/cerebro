@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -25,7 +25,7 @@ class TrendingRow:
     baseline_count: int
     percent_change: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "key": self.key,
             "current_count": self.current_count,
@@ -34,7 +34,7 @@ class TrendingRow:
         }
 
 
-async def _count_by_field(field, start: datetime, end: datetime) -> Dict[str, int]:
+async def _count_by_field(field, start: datetime, end: datetime) -> dict[str, int]:
     """Return counts grouped by ``field`` between ``start`` and ``end``."""
     stmt = (
         select(field, func.count())
@@ -47,9 +47,9 @@ async def _count_by_field(field, start: datetime, end: datetime) -> Dict[str, in
         return {value or "(unknown)": count for value, count in rows}
 
 
-def _diff(current: Dict[str, int], baseline: Dict[str, int]) -> List[TrendingRow]:
+def _diff(current: dict[str, int], baseline: dict[str, int]) -> list[TrendingRow]:
     """Compute delta values between current and baseline counts."""
-    rows: List[TrendingRow] = []
+    rows: list[TrendingRow] = []
     for key, count in current.items():
         baseline_count = baseline.get(key, 0)
         if baseline_count:
@@ -65,14 +65,14 @@ async def generate_orientation_summary(
     window_hours: int,
     baseline_hours: int,
     top_n: int = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Compute orientation analytics for the given window and baseline."""
     if window_hours <= 0:
         raise ValueError("window_hours must be positive")
     if baseline_hours <= 0:
         raise ValueError("baseline_hours must be positive")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_start = now - timedelta(hours=window_hours)
     baseline_start = window_start - timedelta(hours=baseline_hours)
 

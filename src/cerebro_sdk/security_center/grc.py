@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Sequence
+from typing import Any
 
 from .models import SecurityCenterCustomerInsight, SecurityCenterVendorInsight
 from .primitives import (
@@ -36,7 +37,7 @@ class ControlDefinition:
     owner: str
     vendor_tags: Sequence[str] | None = None
     customer_tags: Sequence[str] | None = None
-    tolerance: "ControlTolerance" | None = None
+    tolerance: ControlTolerance | None = None
 
 
 @dataclass
@@ -78,11 +79,11 @@ def map_to_control_framework(
     vendors: Iterable[SecurityCenterVendorInsight],
     customers: Iterable[SecurityCenterCustomerInsight],
     options: ControlMappingOptions,
-) -> List[ControlMapping]:
+) -> list[ControlMapping]:
     """Project vendors/customers into control mappings based on the provided catalog."""
 
-    vendor_index: Dict[str, List[SecurityCenterVendorInsight]] = {}
-    customer_index: Dict[str, List[SecurityCenterCustomerInsight]] = {}
+    vendor_index: dict[str, list[SecurityCenterVendorInsight]] = {}
+    customer_index: dict[str, list[SecurityCenterCustomerInsight]] = {}
 
     for vendor in vendors:
         tags = {
@@ -103,7 +104,7 @@ def map_to_control_framework(
             customer_index.setdefault(tag.lower(), []).append(customer)
 
     exported_at = datetime.utcnow()
-    mappings: List[ControlMapping] = []
+    mappings: list[ControlMapping] = []
 
     for framework, controls in options.catalog.frameworks.items():
         for control_id, control in controls.items():
@@ -143,11 +144,11 @@ def map_to_control_framework(
 
 def _collect_entities(
     tags: Sequence[str] | None,
-    index: Mapping[str, List[Any]],
-) -> List[Any]:
+    index: Mapping[str, list[Any]],
+) -> list[Any]:
     if not tags:
         return []
-    results: List[Any] = []
+    results: list[Any] = []
     seen_ids: set[int] = set()
     for tag in tags:
         matches = index.get(tag.lower())
@@ -188,7 +189,7 @@ def _evaluate_control(
             return "pass", "Control not applicable: no related vendors or customers"
         return "pass", "All related vendors/customers within tolerance"
 
-    parts: List[str] = []
+    parts: list[str] = []
     if vendor_breaches:
         names = ", ".join(vendor.name for vendor in vendor_breaches)
         parts.append(f"{len(vendor_breaches)} vendor(s) exceeding tolerance: {names}")
@@ -214,7 +215,7 @@ def _build_evidence_bundle(
         max_age_days=90, refresh_window_days=14, hard_expiry_days=365
     )
 
-    vendor_evidence: List[EvidenceArtifact] = []
+    vendor_evidence: list[EvidenceArtifact] = []
     for vendor in vendors:
         vendor_evidence.extend(
             extract_evidence_artifacts(
@@ -233,7 +234,7 @@ def _build_evidence_bundle(
             )
         )
 
-    customer_evidence: List[EvidenceArtifact] = []
+    customer_evidence: list[EvidenceArtifact] = []
     for customer in customers:
         customer_evidence.extend(
             extract_evidence_artifacts(
@@ -271,7 +272,7 @@ def _build_evidence_bundle(
 def extract_vendor_tags(metadata: Mapping[str, Any] | None) -> Sequence[str]:
     if not metadata:
         return []
-    tags: List[str] = []
+    tags: list[str] = []
     integration = metadata.get("integration")
     if isinstance(integration, Mapping):
         integration_type = integration.get("integrationType") or integration.get(
@@ -301,7 +302,7 @@ def extract_vendor_tags(metadata: Mapping[str, Any] | None) -> Sequence[str]:
 def extract_customer_tags(metadata: Mapping[str, Any] | None) -> Sequence[str]:
     if not metadata:
         return []
-    tags: List[str] = []
+    tags: list[str] = []
     programs = metadata.get("successPrograms") or metadata.get("success_programs")
     if isinstance(programs, Sequence):
         tags.extend(str(program) for program in programs)

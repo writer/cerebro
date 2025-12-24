@@ -1,8 +1,8 @@
 """Agent session repository for DynamoDB."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -36,10 +36,10 @@ class AgentSession(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     org_id: UUID
     agent_type: AgentType
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_by: str
-    title: Optional[str] = None
-    context: Dict[str, Any] = Field(default_factory=dict)
+    title: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
 
     class Config:
@@ -50,7 +50,7 @@ class AgentSession(BaseModel):
     def session_id(self) -> UUID:
         return self.id
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         session_id = str(self.id)
         org_id = str(self.org_id)
@@ -82,7 +82,7 @@ class AgentSession(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "AgentSession":
+    def from_item(cls, item: dict[str, Any]) -> "AgentSession":
         """Create from DynamoDB item."""
         return cls(
             id=UUID(item["id"]),
@@ -101,7 +101,7 @@ class AgentSessionRepository:
 
     _table = TableName.AGENTS
 
-    async def get(self, session_id: UUID, org_id: UUID) -> Optional[AgentSession]:
+    async def get(self, session_id: UUID, org_id: UUID) -> AgentSession | None:
         """Get session by ID."""
         item = await get_item(
             self._table,
@@ -117,7 +117,7 @@ class AgentSessionRepository:
 
     async def update(
         self, session_id: UUID, org_id: UUID, **updates
-    ) -> Optional[AgentSession]:
+    ) -> AgentSession | None:
         """Update session."""
         # Update GSI2 if is_active changed
         current = await self.get(session_id, org_id)
@@ -164,12 +164,12 @@ class AgentSessionRepository:
     async def list_by_org(
         self,
         org_id: UUID,
-        agent_type: Optional[AgentType] = None,
-        created_by: Optional[str] = None,
+        agent_type: AgentType | None = None,
+        created_by: str | None = None,
         active_only: bool = False,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[List[AgentSession], int]:
+    ) -> tuple[list[AgentSession], int]:
         """List sessions for an organization."""
         if agent_type:
             # Use GSI1 for agent type filtering
@@ -216,13 +216,13 @@ class AgentSessionRepository:
 
     async def deactivate(
         self, session_id: UUID, org_id: UUID
-    ) -> Optional[AgentSession]:
+    ) -> AgentSession | None:
         """Deactivate a session."""
         return await self.update(session_id, org_id, is_active=False)
 
     async def update_title(
         self, session_id: UUID, org_id: UUID, title: str
-    ) -> Optional[AgentSession]:
+    ) -> AgentSession | None:
         """Update session title."""
         return await self.update(session_id, org_id, title=title)
 
@@ -230,7 +230,7 @@ class AgentSessionRepository:
         self,
         session_id: UUID,
         org_id: UUID,
-        context: Dict[str, Any],
-    ) -> Optional[AgentSession]:
+        context: dict[str, Any],
+    ) -> AgentSession | None:
         """Update session context."""
         return await self.update(session_id, org_id, context=context)

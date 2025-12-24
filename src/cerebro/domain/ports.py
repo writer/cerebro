@@ -1,17 +1,18 @@
 """Domain ports - interfaces for external dependencies."""
 
-from typing import List, Dict, Any, Optional, AsyncGenerator, Protocol
+from collections.abc import AsyncGenerator
+from typing import Any, Protocol
 from uuid import UUID
 
 from .entities import (
-    ResourceEntity,
-    PrincipalEntity,
-    ConfigEntity,
-    IamPermissionEntity,
-    FindingEntity,
-    RuleEntity,
-    IdentityClusterEntity,
     CollectionJobEntity,
+    ConfigEntity,
+    FindingEntity,
+    IamPermissionEntity,
+    IdentityClusterEntity,
+    PrincipalEntity,
+    ResourceEntity,
+    RuleEntity,
 )
 
 
@@ -28,7 +29,7 @@ class ProviderPort(Protocol):
         ...
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceEntity, None]:
         """Discover resources from the provider."""
         ...
@@ -44,7 +45,7 @@ class ProviderPort(Protocol):
         ...
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceEntity] = None
+        self, resource: ResourceEntity | None = None
     ) -> AsyncGenerator[IamPermissionEntity, None]:
         """Discover IAM permissions."""
         ...
@@ -54,19 +55,19 @@ class RepositoryPort(Protocol):
     """Port for data persistence."""
 
     async def save_resources(
-        self, account_id: UUID, resources: List[ResourceEntity]
-    ) -> Dict[str, UUID]:
+        self, account_id: UUID, resources: list[ResourceEntity]
+    ) -> dict[str, UUID]:
         """Save resources and return mapping of external_id -> resource_id."""
         ...
 
     async def save_principals(
-        self, account_id: UUID, principals: List[PrincipalEntity]
-    ) -> Dict[str, UUID]:
+        self, account_id: UUID, principals: list[PrincipalEntity]
+    ) -> dict[str, UUID]:
         """Save principals and return mapping of external_id -> principal_id."""
         ...
 
     async def save_configurations(
-        self, resource_id_map: Dict[str, UUID], configs: List[ConfigEntity]
+        self, resource_id_map: dict[str, UUID], configs: list[ConfigEntity]
     ) -> int:
         """Save configuration snapshots."""
         ...
@@ -74,16 +75,16 @@ class RepositoryPort(Protocol):
     async def save_iam_permissions(
         self,
         account_id: UUID,
-        resource_id_map: Dict[str, UUID],
-        principal_id_map: Dict[str, UUID],
-        permissions: List[IamPermissionEntity],
+        resource_id_map: dict[str, UUID],
+        principal_id_map: dict[str, UUID],
+        permissions: list[IamPermissionEntity],
     ) -> int:
         """Save IAM permission edges."""
         ...
 
     async def get_findings_by_status(
         self, org_id: UUID, status: str, limit: int = 100, offset: int = 0
-    ) -> List[FindingEntity]:
+    ) -> list[FindingEntity]:
         """Get findings by status."""
         ...
 
@@ -96,7 +97,7 @@ class RepositoryPort(Protocol):
         ...
 
     async def save_identity_clusters(
-        self, org_id: UUID, clusters: List[IdentityClusterEntity]
+        self, org_id: UUID, clusters: list[IdentityClusterEntity]
     ) -> int:
         """Save identity clusters."""
         ...
@@ -112,22 +113,22 @@ class RuleEnginePort(Protocol):
     async def evaluate_rule(
         self,
         rule: RuleEntity,
-        resource: Optional[ResourceEntity] = None,
-        config: Optional[ConfigEntity] = None,
-        principal: Optional[PrincipalEntity] = None,
-        iam_permission: Optional[IamPermissionEntity] = None,
-        context: Optional[Dict[str, Any]] = None,
+        resource: ResourceEntity | None = None,
+        config: ConfigEntity | None = None,
+        principal: PrincipalEntity | None = None,
+        iam_permission: IamPermissionEntity | None = None,
+        context: dict[str, Any] | None = None,
     ) -> bool:
         """Evaluate a rule against given entities."""
         ...
 
     async def evaluate_rules_batch(
         self,
-        rules: List[RuleEntity],
-        resources: List[ResourceEntity],
-        configs: Dict[str, ConfigEntity],
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[UUID, List[bool]]:
+        rules: list[RuleEntity],
+        resources: list[ResourceEntity],
+        configs: dict[str, ConfigEntity],
+        context: dict[str, Any] | None = None,
+    ) -> dict[UUID, list[bool]]:
         """Batch evaluate multiple rules against multiple resources."""
         ...
 
@@ -136,14 +137,14 @@ class IdentityStitcherPort(Protocol):
     """Port for identity stitching across providers."""
 
     async def find_identity_clusters(
-        self, org_id: UUID, principals: List[PrincipalEntity]
-    ) -> List[IdentityClusterEntity]:
+        self, org_id: UUID, principals: list[PrincipalEntity]
+    ) -> list[IdentityClusterEntity]:
         """Find identity clusters for given principals."""
         ...
 
     async def get_unified_identity(
         self, principal: PrincipalEntity
-    ) -> Optional[IdentityClusterEntity]:
+    ) -> IdentityClusterEntity | None:
         """Get unified identity for a principal."""
         ...
 
@@ -152,13 +153,13 @@ class NotificationPort(Protocol):
     """Port for notifications and alerts."""
 
     async def send_finding_alert(
-        self, finding: FindingEntity, recipients: List[str]
+        self, finding: FindingEntity, recipients: list[str]
     ) -> bool:
         """Send alert for a new finding."""
         ...
 
     async def send_collection_summary(
-        self, job: CollectionJobEntity, recipients: List[str]
+        self, job: CollectionJobEntity, recipients: list[str]
     ) -> bool:
         """Send collection job summary."""
         ...
@@ -178,7 +179,7 @@ class EventPublisherPort(Protocol):
     async def publish_configuration_changed(
         self,
         resource: ResourceEntity,
-        old_config: Optional[ConfigEntity],
+        old_config: ConfigEntity | None,
         new_config: ConfigEntity,
     ) -> None:
         """Publish configuration changed event."""
@@ -193,12 +194,12 @@ class AuditLogPort(Protocol):
         user_id: str,
         action: str,
         resource_type: str,
-        resource_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        resource_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Log user action for audit trail."""
         ...
 
-    async def log_system_event(self, event_type: str, details: Dict[str, Any]) -> None:
+    async def log_system_event(self, event_type: str, details: dict[str, Any]) -> None:
         """Log system event."""
         ...

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Optional
+from typing import Any
 
 from prometheus_client import CollectorRegistry
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -113,7 +113,7 @@ class UnifiedCerebroSDK:
         *,
         registry: CollectorRegistry | None = None,
         celery_app=None,
-    ) -> "UnifiedCerebroSDKContext":
+    ) -> UnifiedCerebroSDKContext:
         return UnifiedCerebroSDKContext(
             session_factory,
             registry=registry,
@@ -135,7 +135,7 @@ class UnifiedCerebroSDKContext:
         self._registry = registry
         self._celery_app = celery_app
         self._session_manager: Any = None
-        self._active_session: Optional[AsyncSession] = None
+        self._active_session: AsyncSession | None = None
 
     async def __aenter__(self) -> UnifiedCerebroSDK:
         manager = self._session_factory()
@@ -158,8 +158,8 @@ class UnifiedCerebroSDKContext:
 
 
 __all__ = [
-    "UnifiedCerebroSDK",
-    "UnifiedCerebroSDKContext",
     "AgentFacades",
     "AnalyticsFacades",
+    "UnifiedCerebroSDK",
+    "UnifiedCerebroSDKContext",
 ]

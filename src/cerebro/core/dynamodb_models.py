@@ -28,9 +28,9 @@ Entity Types and Key Patterns:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -114,12 +114,12 @@ class DynamoDBModel(BaseModel):
         populate_by_name = True
         use_enum_values = True
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         """Convert model to DynamoDB item format with keys."""
         raise NotImplementedError("Subclasses must implement to_dynamodb_item")
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "DynamoDBModel":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> DynamoDBModel:
         """Create model instance from DynamoDB item."""
         raise NotImplementedError("Subclasses must implement from_dynamodb_item")
 
@@ -137,8 +137,8 @@ class Organization(DynamoDBModel):
 
     org_id: UUID = Field(default_factory=uuid4)
     name: str
-    slack_config: Optional[Dict[str, Any]] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    slack_config: dict[str, Any] | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ORG.value, self.org_id)
@@ -146,7 +146,7 @@ class Organization(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.ORG.value, self.org_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -161,7 +161,7 @@ class Organization(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Organization":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Organization:
         return cls(
             org_id=UUID(item["org_id"]),
             name=item["name"],
@@ -177,7 +177,7 @@ class Account(DynamoDBModel):
     org_id: UUID
     provider: Provider
     external_id: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ORG.value, self.org_id)
@@ -185,7 +185,7 @@ class Account(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.ACCOUNT.value, self.account_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -212,7 +212,7 @@ class Account(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Account":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Account:
         return cls(
             account_id=UUID(item["account_id"]),
             org_id=UUID(item["org_id"]),
@@ -231,9 +231,9 @@ class Principal(DynamoDBModel):
     provider: Provider
     principal_type: PrincipalType
     external_id: str
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    is_human: Optional[bool] = None
+    email: str | None = None
+    display_name: str | None = None
+    is_human: bool | None = None
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ORG.value, self.org_id)
@@ -241,7 +241,7 @@ class Principal(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.PRINCIPAL.value, self.principal_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -269,7 +269,7 @@ class Principal(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Principal":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Principal:
         return cls(
             principal_id=UUID(item["principal_id"]),
             account_id=UUID(item["account_id"]),
@@ -292,9 +292,9 @@ class Resource(DynamoDBModel):
     provider: Provider
     resource_type: str
     external_id: str
-    name: Optional[str] = None
-    parent_external_id: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    name: str | None = None
+    parent_external_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ORG.value, self.org_id)
@@ -302,7 +302,7 @@ class Resource(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.RESOURCE.value, self.resource_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -326,7 +326,7 @@ class Resource(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Resource":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Resource:
         return cls(
             resource_id=UUID(item["resource_id"]),
             account_id=UUID(item["account_id"]),
@@ -344,21 +344,21 @@ class Rule(DynamoDBModel):
     """Rule entity - CEL/SQL/Rego rule expressions (global, not org-scoped)."""
 
     rule_id: UUID = Field(default_factory=uuid4)
-    policy_id: Optional[UUID] = None
+    policy_id: UUID | None = None
     name: str
-    description: Optional[str] = None
-    provider: List[str]
-    resource_types: Optional[List[str]] = None
+    description: str | None = None
+    provider: list[str]
+    resource_types: list[str] | None = None
     expression_lang: ExpressionLang
     expression: str
     severity: Severity
-    cwe: Optional[List[str]] = None
-    cis: Optional[List[str]] = None
-    nist_800_53: Optional[List[str]] = None
-    mitre_attack: Optional[List[str]] = None
+    cwe: list[str] | None = None
+    cis: list[str] | None = None
+    nist_800_53: list[str] | None = None
+    mitre_attack: list[str] | None = None
     version: int = 1
     is_active: bool = True
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def get_pk(self) -> str:
         return build_pk(EntityType.RULE.value, self.rule_id)
@@ -366,7 +366,7 @@ class Rule(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.RULE.value, self.rule_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -401,7 +401,7 @@ class Rule(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Rule":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Rule:
         return cls(
             rule_id=UUID(item["rule_id"]),
             policy_id=UUID(item["policy_id"]) if item.get("policy_id") else None,
@@ -431,16 +431,16 @@ class Finding(DynamoDBModel):
     provider: Provider
     rule_id: UUID
     rule_version: int
-    resource_id: Optional[UUID] = None
-    principal_id: Optional[UUID] = None
+    resource_id: UUID | None = None
+    principal_id: UUID | None = None
     first_seen: datetime
     last_seen: datetime
     status: FindingStatus = FindingStatus.OPEN
     severity: Severity
     fingerprint: str
     title: str
-    summary: Optional[str] = None
-    evidence: Optional[Dict[str, Any]] = None
+    summary: str | None = None
+    evidence: dict[str, Any] | None = None
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ORG.value, self.org_id)
@@ -448,7 +448,7 @@ class Finding(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.FINDING.value, self.finding_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         status_val = self.status.value if isinstance(self.status, Enum) else self.status
         severity_val = (
             self.severity.value if isinstance(self.severity, Enum) else self.severity
@@ -489,7 +489,7 @@ class Finding(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Finding":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Finding:
         return cls(
             finding_id=UUID(item["finding_id"]),
             org_id=UUID(item["org_id"]),
@@ -518,9 +518,9 @@ class Policy(DynamoDBModel):
     policy_id: UUID = Field(default_factory=uuid4)
     org_id: UUID
     name: str
-    description: Optional[str] = None
-    framework: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    description: str | None = None
+    framework: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ORG.value, self.org_id)
@@ -528,7 +528,7 @@ class Policy(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.POLICY.value, self.policy_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -542,7 +542,7 @@ class Policy(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Policy":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Policy:
         return cls(
             policy_id=UUID(item["policy_id"]),
             org_id=UUID(item["org_id"]),
@@ -558,12 +558,12 @@ class Suppression(DynamoDBModel):
 
     suppression_id: UUID = Field(default_factory=uuid4)
     org_id: UUID
-    rule_id: Optional[UUID] = None
-    resource_pattern: Optional[str] = None
-    principal_pattern: Optional[str] = None
+    rule_id: UUID | None = None
+    resource_pattern: str | None = None
+    principal_pattern: str | None = None
     reason: str
-    expires_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ORG.value, self.org_id)
@@ -571,7 +571,7 @@ class Suppression(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.SUPPRESSION.value, self.suppression_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -587,7 +587,7 @@ class Suppression(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "Suppression":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> Suppression:
         return cls(
             suppression_id=UUID(item["suppression_id"]),
             org_id=UUID(item["org_id"]),
@@ -612,7 +612,7 @@ class ConfigSnapshot(DynamoDBModel):
     org_id: UUID
     captured_at: datetime
     config_sha: str  # Hex string instead of bytes for DynamoDB
-    normalized_config: Dict[str, Any]
+    normalized_config: dict[str, Any]
     collector_version: str
 
     def get_pk(self) -> str:
@@ -621,7 +621,7 @@ class ConfigSnapshot(DynamoDBModel):
     def get_sk(self) -> str:
         return f"CONFIG_SNAPSHOT#{self.captured_at.isoformat()}#{self.snapshot_id}"
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -639,7 +639,7 @@ class ConfigSnapshot(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "ConfigSnapshot":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> ConfigSnapshot:
         return cls(
             snapshot_id=UUID(item["snapshot_id"]),
             resource_id=UUID(item["resource_id"]),
@@ -659,11 +659,11 @@ class IamEdge(DynamoDBModel):
     org_id: UUID
     provider: Provider
     principal_id: UUID
-    resource_id: Optional[UUID] = None
+    resource_id: UUID | None = None
     permission: str
-    via: Optional[str] = None
+    via: str | None = None
     effective_at: datetime
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     is_admin: bool = False
 
     def get_pk(self) -> str:
@@ -672,7 +672,7 @@ class IamEdge(DynamoDBModel):
     def get_sk(self) -> str:
         return build_sk(EntityType.IAM_EDGE.value, self.edge_id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         provider_val = (
             self.provider.value if isinstance(self.provider, Enum) else self.provider
         )
@@ -698,7 +698,7 @@ class IamEdge(DynamoDBModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "IamEdge":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> IamEdge:
         return cls(
             edge_id=UUID(item["edge_id"]),
             account_id=UUID(item["account_id"]),
@@ -726,11 +726,11 @@ class AuditEvent(DynamoDBModel):
     org_id: UUID
     provider: Provider
     occurred_at: datetime
-    actor_external_id: Optional[str] = None
+    actor_external_id: str | None = None
     action: str
-    resource_external_id: Optional[str] = None
-    raw: Dict[str, Any]
-    ttl: Optional[int] = None  # Unix timestamp for automatic expiration
+    resource_external_id: str | None = None
+    raw: dict[str, Any]
+    ttl: int | None = None  # Unix timestamp for automatic expiration
 
     def get_pk(self) -> str:
         return build_pk(EntityType.ACCOUNT.value, self.account_id)
@@ -738,12 +738,12 @@ class AuditEvent(DynamoDBModel):
     def get_sk(self) -> str:
         return f"AUDIT#{self.occurred_at.isoformat()}#{self.event_id}"
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         provider_val = (
             self.provider.value if isinstance(self.provider, Enum) else self.provider
         )
 
-        item: Dict[str, Any] = {
+        item: dict[str, Any] = {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
             "entity_type": EntityType.AUDIT_EVENT.value,
@@ -767,7 +767,7 @@ class AuditEvent(DynamoDBModel):
         return item
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "AuditEvent":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> AuditEvent:
         return cls(
             event_id=UUID(item["event_id"]),
             account_id=UUID(item["account_id"]),

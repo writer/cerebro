@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
-
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 DEFAULT_SCORECARD_PATH = Path("benchmarks/results/scorecard.json")
 
@@ -21,7 +20,7 @@ class BenchmarksStatusInput(BaseModel):
         default=False,
         description="Include failing scenario details with turn counts and rewards",
     )
-    scorecard_path: Optional[str] = Field(
+    scorecard_path: str | None = Field(
         default=None,
         description="Override path to benchmark scorecard JSON",
     )
@@ -32,8 +31,8 @@ class BenchmarkScenario(BaseModel):
 
     scenario_id: str
     passed: bool
-    turn_count: Optional[int] = None
-    reward: Optional[float] = None
+    turn_count: int | None = None
+    reward: float | None = None
 
 
 class BenchmarksStatusOutput(BaseModel):
@@ -43,7 +42,7 @@ class BenchmarksStatusOutput(BaseModel):
     total_scenarios: int
     passed: int
     failed: int
-    failing_scenarios: List[BenchmarkScenario]
+    failing_scenarios: list[BenchmarkScenario]
     summary: str
 
 
@@ -60,7 +59,7 @@ class BenchmarksStatusTool(StructuredTool):
         self,
         context: AgentContext,
         include_details: bool,
-        scorecard_path: Optional[str] = None,
+        scorecard_path: str | None = None,
     ) -> ToolResult:
         path = Path(scorecard_path) if scorecard_path else DEFAULT_SCORECARD_PATH
         if not path.exists():
@@ -77,10 +76,10 @@ class BenchmarksStatusTool(StructuredTool):
         passing = [sid for sid, metrics in payload.items() if metrics.get("passed")]
         failing = [sid for sid in payload.keys() if sid not in passing]
 
-        failing_details: List[BenchmarkScenario] = []
+        failing_details: list[BenchmarkScenario] = []
         if include_details:
             for sid in failing:
-                metrics: Dict[str, Any] = payload.get(sid, {})
+                metrics: dict[str, Any] = payload.get(sid, {})
                 failing_details.append(
                     BenchmarkScenario(
                         scenario_id=sid,

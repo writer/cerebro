@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -29,8 +29,8 @@ class SecurityQuestionOutput(BaseModel):
     question_type: str
     confidence: float
     summary: str
-    evidence: list[Dict[str, Any]]
-    details: Dict[str, Any]
+    evidence: list[dict[str, Any]]
+    details: dict[str, Any]
     follow_up: str
 
 
@@ -45,7 +45,7 @@ class SecuritySelfServiceTool(StructuredTool):
     output_model = SecurityQuestionOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    def __init__(self, service: Optional[SelfServiceKnowledgeService] = None) -> None:
+    def __init__(self, service: SelfServiceKnowledgeService | None = None) -> None:
         super().__init__()
         self.service = service or SelfServiceKnowledgeService()
 

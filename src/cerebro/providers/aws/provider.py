@@ -5,21 +5,24 @@ state in the collector contract.  It currently focuses on S3, EC2, and IAM data
 required for risk analyses.
 """
 
-from typing import Any, Dict, List, Optional, AsyncGenerator, Set
-from datetime import datetime
 import json
 import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
+from typing import Any
+
 import boto3
-from botocore.exceptions import ClientError, BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from cerebro.core.config import settings
+
 from ..base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
     IamPermission,
+    PrincipalInfo,
     ProviderError,
+    ResourceInfo,
 )
 from ..utils.connector import call_sync_with_retries, iterate_sync_iterator
 
@@ -30,13 +33,13 @@ class AWSProvider(BaseProvider):
     """Collect AWS resources, principals, and IAM edges via ``boto3``."""
 
     def __init__(
-        self, account_id, aws_account_id: str, region: Optional[str] = None, **kwargs
+        self, account_id, aws_account_id: str, region: str | None = None, **kwargs
     ):
         """Create an AWS provider bound to a specific account and region."""
         super().__init__(account_id, **kwargs)
         self.aws_account_id = aws_account_id
         self.region = region or settings.aws_default_region
-        self._session: Optional[boto3.Session] = None
+        self._session: boto3.Session | None = None
 
     @property
     def name(self) -> str:
@@ -86,7 +89,7 @@ class AWSProvider(BaseProvider):
             return False
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover AWS resources."""
         if not self._session:
@@ -221,7 +224,7 @@ class AWSProvider(BaseProvider):
             codebuild_client = self.session.client("codebuild")
             paginator = codebuild_client.get_paginator("list_projects")
 
-            project_names: List[str] = []
+            project_names: list[str] = []
             async for page in iterate_sync_iterator(
                 lambda: paginator.paginate(),
                 exceptions=(ClientError, BotoCoreError),
@@ -235,7 +238,7 @@ class AWSProvider(BaseProvider):
                 if not batch:
                     continue
 
-                def _batch_get(names: List[str] = batch) -> Dict[str, Any]:
+                def _batch_get(names: list[str] = batch) -> dict[str, Any]:
                     return codebuild_client.batch_get_projects(names=names)
 
                 response = await call_sync_with_retries(
@@ -293,7 +296,7 @@ class AWSProvider(BaseProvider):
             iam_client = self.session.client("iam")
             role_paginator = iam_client.get_paginator("list_roles")
 
-            roles: List[Dict[str, Any]] = []
+            roles: list[dict[str, Any]] = []
             async for page in iterate_sync_iterator(
                 lambda: role_paginator.paginate(),
                 exceptions=(ClientError, BotoCoreError),
@@ -420,7 +423,7 @@ class AWSProvider(BaseProvider):
             normalized_config=config,
         )
 
-    async def _get_security_group_config(self, group_id: str) -> Dict[str, Any]:
+    async def _get_security_group_config(self, group_id: str) -> dict[str, Any]:
         """Get Security Group configuration."""
 
         def _describe_security_group():
@@ -453,7 +456,7 @@ class AWSProvider(BaseProvider):
             logger=logger,
         )
 
-    async def _get_load_balancer_config(self, lb_arn: str) -> Dict[str, Any]:
+    async def _get_load_balancer_config(self, lb_arn: str) -> dict[str, Any]:
         """Get load balancer configuration."""
 
         def _describe_load_balancer():
@@ -473,8 +476,8 @@ class AWSProvider(BaseProvider):
 
             lb = load_balancers[0]
 
-            listeners: List[Dict[str, Any]] = []
-            target_groups: List[Dict[str, Any]] = []
+            listeners: list[dict[str, Any]] = []
+            target_groups: list[dict[str, Any]] = []
             marker = None
             while True:
                 params = {"LoadBalancerArn": lb_arn}
@@ -484,7 +487,7 @@ class AWSProvider(BaseProvider):
                 for listener in listener_response.get("Listeners", []):
                     certificates = []
                     for certificate in listener.get("Certificates", []) or []:
-                        cert_info: Dict[str, Any] = {
+                        cert_info: dict[str, Any] = {
                             "certificateArn": certificate.get("CertificateArn"),
                             "isDefault": certificate.get("IsDefault"),
                         }
@@ -555,7 +558,7 @@ class AWSProvider(BaseProvider):
             tg_response = elb.describe_target_groups(LoadBalancerArn=lb_arn)
             for target_group in tg_response.get("TargetGroups", []):
                 target_group_arn = target_group.get("TargetGroupArn")
-                tg_targets: List[Dict[str, Any]] = []
+                tg_targets: list[dict[str, Any]] = []
                 try:
                     health_response = elb.describe_target_health(
                         TargetGroupArn=target_group_arn
@@ -598,8 +601,8 @@ class AWSProvider(BaseProvider):
                     }
                 )
 
-            instance_target_ids: Set[str] = set()
-            security_group_ids: Set[str] = set()
+            instance_target_ids: set[str] = set()
+            security_group_ids: set[str] = set()
             for target_group in target_groups:
                 if target_group.get("targetType") != "instance":
                     continue
@@ -608,7 +611,7 @@ class AWSProvider(BaseProvider):
                     if target_id:
                         instance_target_ids.add(target_id)
 
-            instance_details: Dict[str, Dict[str, Any]] = {}
+            instance_details: dict[str, dict[str, Any]] = {}
             if instance_target_ids and ec2_client:
                 instance_id_list = list(instance_target_ids)
                 for index in range(0, len(instance_id_list), 100):
@@ -634,7 +637,7 @@ class AWSProvider(BaseProvider):
                             public_ip = instance.get("PublicIpAddress")
                             public_dns = instance.get("PublicDnsName")
                             network_interfaces = instance.get("NetworkInterfaces") or []
-                            interface_public_ips: List[str] = []
+                            interface_public_ips: list[str] = []
                             for interface in network_interfaces:
                                 association = interface.get("Association") or {}
                                 interface_ip = association.get("PublicIp")
@@ -663,7 +666,7 @@ class AWSProvider(BaseProvider):
                                 "securityGroupIds": group_ids,
                             }
 
-            security_group_details: Dict[str, Dict[str, Any]] = {}
+            security_group_details: dict[str, dict[str, Any]] = {}
             if security_group_ids and ec2_client:
                 sg_id_list = list(security_group_ids)
                 for index in range(0, len(sg_id_list), 100):
@@ -750,13 +753,13 @@ class AWSProvider(BaseProvider):
             logger=logger,
         )
 
-    async def _get_s3_bucket_config(self, bucket_name: str) -> Dict[str, Any]:
+    async def _get_s3_bucket_config(self, bucket_name: str) -> dict[str, Any]:
         """Get S3 bucket configuration."""
 
-        def _get_config() -> Dict[str, Any]:
+        def _get_config() -> dict[str, Any]:
             s3 = self.session.client("s3")
 
-            config: Dict[str, Any] = {"name": bucket_name}
+            config: dict[str, Any] = {"name": bucket_name}
 
             try:
                 policy = s3.get_bucket_policy(Bucket=bucket_name)
@@ -903,7 +906,7 @@ class AWSProvider(BaseProvider):
             logger=logger,
         )
 
-    async def _get_codebuild_project_config(self, project_name: str) -> Dict[str, Any]:
+    async def _get_codebuild_project_config(self, project_name: str) -> dict[str, Any]:
         """Fetch CodeBuild project configuration."""
 
         def _get_project():
@@ -915,7 +918,7 @@ class AWSProvider(BaseProvider):
 
             project = projects[0]
 
-            def _serialize_source(src: Dict[str, Any]) -> Dict[str, Any]:
+            def _serialize_source(src: dict[str, Any]) -> dict[str, Any]:
                 if not src:
                     return {}
                 auth = src.get("auth") or {}
@@ -932,7 +935,7 @@ class AWSProvider(BaseProvider):
                     },
                 }
 
-            def _serialize_artifacts(artifacts: Dict[str, Any]) -> Dict[str, Any]:
+            def _serialize_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
                 if not artifacts:
                     return {}
                 return {
@@ -944,7 +947,7 @@ class AWSProvider(BaseProvider):
                     "encryptionDisabled": artifacts.get("encryptionDisabled"),
                 }
 
-            def _serialize_environment(env: Dict[str, Any]) -> Dict[str, Any]:
+            def _serialize_environment(env: dict[str, Any]) -> dict[str, Any]:
                 if not env:
                     return {}
                 return {
@@ -955,7 +958,7 @@ class AWSProvider(BaseProvider):
                     "environmentVariables": env.get("environmentVariables"),
                 }
 
-            def _serialize_webhook(wh: Dict[str, Any]) -> Dict[str, Any]:
+            def _serialize_webhook(wh: dict[str, Any]) -> dict[str, Any]:
                 if not wh:
                     return {}
                 return {
@@ -997,7 +1000,7 @@ class AWSProvider(BaseProvider):
             logger=logger,
         )
 
-    async def _get_iam_role_config(self, role_arn: str) -> Dict[str, Any]:
+    async def _get_iam_role_config(self, role_arn: str) -> dict[str, Any]:
         """Fetch IAM role configuration, including trust and permission policies."""
 
         def _get_role():
@@ -1007,7 +1010,7 @@ class AWSProvider(BaseProvider):
             role_response = iam.get_role(RoleName=role_name)
             role = role_response.get("Role", {})
 
-            attached_policies: List[Dict[str, Any]] = []
+            attached_policies: list[dict[str, Any]] = []
             attached_resp = iam.list_attached_role_policies(RoleName=role_name)
             for policy in attached_resp.get("AttachedPolicies", []):
                 attached_policies.append(
@@ -1017,7 +1020,7 @@ class AWSProvider(BaseProvider):
                     }
                 )
 
-            inline_policies: Dict[str, Any] = {}
+            inline_policies: dict[str, Any] = {}
             inline_names = iam.list_role_policies(RoleName=role_name).get(
                 "PolicyNames", []
             )
@@ -1062,7 +1065,7 @@ class AWSProvider(BaseProvider):
             logger=logger,
         )
 
-    def _check_s3_policy_public(self, policy: Dict[str, Any]) -> bool:
+    def _check_s3_policy_public(self, policy: dict[str, Any]) -> bool:
         """Check if S3 bucket policy allows public access."""
         if not policy or "Statement" not in policy:
             return False
@@ -1077,7 +1080,7 @@ class AWSProvider(BaseProvider):
 
         return False
 
-    def _check_s3_acl_public(self, acl: Dict[str, Any]) -> bool:
+    def _check_s3_acl_public(self, acl: dict[str, Any]) -> bool:
         """Check if S3 bucket ACL allows public access."""
         if not acl or "Grants" not in acl:
             return False
@@ -1094,7 +1097,7 @@ class AWSProvider(BaseProvider):
 
         return False
 
-    def _check_s3_acl_public_write(self, acl: Dict[str, Any]) -> bool:
+    def _check_s3_acl_public_write(self, acl: dict[str, Any]) -> bool:
         """Check if S3 bucket ACL grants public write access."""
         if not acl or "Grants" not in acl:
             return False
@@ -1132,7 +1135,7 @@ class AWSProvider(BaseProvider):
             return any(self._principal_allows_public(p) for p in principals)
         return False
 
-    def _check_s3_policy_public_write(self, policy: Dict[str, Any]) -> bool:
+    def _check_s3_policy_public_write(self, policy: dict[str, Any]) -> bool:
         """Check if S3 bucket policy allows public write access."""
         if not policy or "Statement" not in policy:
             return False
@@ -1157,8 +1160,8 @@ class AWSProvider(BaseProvider):
         return False
 
     def _normalize_security_group_permission(
-        self, permission: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, permission: dict[str, Any]
+    ) -> dict[str, Any]:
         ipv4_ranges = [
             rng.get("CidrIp")
             for rng in permission.get("IpRanges", []) or []
@@ -1196,7 +1199,7 @@ class AWSProvider(BaseProvider):
             "userIdGroupPairs": user_group_pairs,
         }
 
-    async def _get_ec2_instance_config(self, instance_id: str) -> Dict[str, Any]:
+    async def _get_ec2_instance_config(self, instance_id: str) -> dict[str, Any]:
         """Get EC2 instance configuration."""
 
         def _get_config():
@@ -1226,7 +1229,7 @@ class AWSProvider(BaseProvider):
             logger=logger,
         )
 
-    async def _get_vpc_config(self, vpc_id: str) -> Dict[str, Any]:
+    async def _get_vpc_config(self, vpc_id: str) -> dict[str, Any]:
         """Get VPC configuration."""
 
         def _get_config():
@@ -1250,7 +1253,7 @@ class AWSProvider(BaseProvider):
         )
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover AWS IAM permissions with comprehensive policy evaluation."""
         if not self._session:
@@ -1301,8 +1304,8 @@ class AWSProvider(BaseProvider):
             )
 
     def _analyze_user_permissions(
-        self, iam, user: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, iam, user: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Analyze all permissions for an IAM user."""
         permissions = []
         user_arn = user["Arn"]
@@ -1357,8 +1360,8 @@ class AWSProvider(BaseProvider):
         return permissions
 
     def _analyze_role_permissions(
-        self, iam, role: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, iam, role: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Analyze permissions for an IAM role."""
         permissions = []
         role_arn = role["Arn"]
@@ -1405,8 +1408,8 @@ class AWSProvider(BaseProvider):
         return permissions
 
     def _analyze_group_permissions(
-        self, iam, group: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, iam, group: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Analyze permissions for an IAM group."""
         permissions = []
         group_name = group["GroupName"]
@@ -1435,8 +1438,8 @@ class AWSProvider(BaseProvider):
         return permissions
 
     def _analyze_group_permissions_for_user(
-        self, iam, group: Dict[str, Any], user_arn: str
-    ) -> List[Dict[str, Any]]:
+        self, iam, group: dict[str, Any], user_arn: str
+    ) -> list[dict[str, Any]]:
         """Analyze group permissions for a specific user."""
         permissions = []
         group_name = group["GroupName"]

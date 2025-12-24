@@ -11,10 +11,9 @@ Handles sending email notifications via SMTP with:
 
 import asyncio
 import smtplib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
 from uuid import UUID, uuid4
 
 import structlog
@@ -248,7 +247,7 @@ class EmailNotificationService:
             configs_result = await db.execute(
                 select(EmailConfig).where(
                     EmailConfig.org_id == org_id,
-                    EmailConfig.enabled == True,
+                    EmailConfig.enabled,
                 )
             )
             configs = configs_result.scalars().all()
@@ -287,7 +286,7 @@ class EmailNotificationService:
             configs_result = await db.execute(
                 select(EmailConfig).where(
                     EmailConfig.org_id == org_id,
-                    EmailConfig.enabled == True,
+                    EmailConfig.enabled,
                 )
             )
             configs = configs_result.scalars().all()
@@ -329,7 +328,7 @@ class EmailNotificationService:
             configs_result = await db.execute(
                 select(EmailConfig).where(
                     EmailConfig.org_id == org_id,
-                    EmailConfig.enabled == True,
+                    EmailConfig.enabled,
                 )
             )
             configs = configs_result.scalars().all()
@@ -410,7 +409,7 @@ class EmailNotificationService:
             control_id=control_id,
             control_title=control_title,
             failure_count=failure_count,
-            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
             cerebro_url=self.cerebro_url,
         )
 
@@ -448,7 +447,7 @@ class EmailNotificationService:
             description=alert_description,
             severity=severity,
             emoji=emoji,
-            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
             cerebro_url=self.cerebro_url,
         )
 
@@ -470,8 +469,8 @@ class EmailNotificationService:
         subject: str,
         html_body: str,
         event_type: str,
-        finding_id: Optional[UUID],
-        severity: Optional[str],
+        finding_id: UUID | None,
+        severity: str | None,
         db: AsyncSession,
     ) -> None:
         """Send email with exponential backoff retry."""
@@ -501,7 +500,7 @@ class EmailNotificationService:
                     body_html=html_body,
                     to_emails=config.to_emails,
                     status="failed",
-                    error_message=f"Decryption error: {str(e)}",
+                    error_message=f"Decryption error: {e!s}",
                     retry_count=0,
                 )
                 db.add(notification)
@@ -533,7 +532,7 @@ class EmailNotificationService:
                     status="sent",
                     status_code=250,  # SMTP success code
                     retry_count=retry_count,
-                    sent_at=datetime.now(timezone.utc),
+                    sent_at=datetime.now(UTC),
                 )
                 db.add(notification)
                 await db.commit()
@@ -591,7 +590,7 @@ class EmailNotificationService:
         config: EmailConfig,
         subject: str,
         html_body: str,
-        smtp_password: Optional[str] = None,
+        smtp_password: str | None = None,
     ) -> None:
         """Send email via SMTP (synchronous)."""
         msg = MIMEMultipart("alternative")
@@ -624,7 +623,7 @@ class EmailNotificationService:
 
 
 # Global service instance
-_email_service: Optional[EmailNotificationService] = None
+_email_service: EmailNotificationService | None = None
 
 
 def get_email_service() -> EmailNotificationService:

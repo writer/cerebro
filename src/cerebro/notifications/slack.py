@@ -9,8 +9,8 @@ Handles sending notifications to Slack via webhooks with:
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.config import settings
-from cerebro.core.models import SlackWebhook, SlackNotification, Finding, Organization
+from cerebro.core.models import Finding, Organization, SlackNotification, SlackWebhook
 from cerebro.integrations.slack.block_kit import findings_summary_blocks
 
 logger = structlog.get_logger(__name__)
@@ -34,7 +34,7 @@ class SlackMessageFormatter:
     """Format security events into Slack Block Kit messages."""
 
     @staticmethod
-    def format_finding_created(finding: Finding, org_name: str) -> Dict[str, Any]:
+    def format_finding_created(finding: Finding, org_name: str) -> dict[str, Any]:
         """Format a new finding notification."""
         severity = finding.severity or "unknown"
         severity_emoji = {
@@ -145,7 +145,7 @@ class SlackMessageFormatter:
     @staticmethod
     def format_compliance_failed(
         control_id: str, control_title: str, failure_count: int, org_name: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Format a compliance failure notification."""
         return {
             "attachments": [
@@ -185,7 +185,7 @@ class SlackMessageFormatter:
                             "elements": [
                                 {
                                     "type": "mrkdwn",
-                                    "text": f"<!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short_pretty}} at {{time}}|Now>",
+                                    "text": f"<!date^{int(datetime.now(UTC).timestamp())}^{{date_short_pretty}} at {{time}}|Now>",
                                 }
                             ],
                         },
@@ -197,7 +197,7 @@ class SlackMessageFormatter:
     @staticmethod
     def format_monitoring_alert(
         alert_title: str, alert_description: str, severity: str, org_name: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Format a monitoring alert notification."""
         severity_emoji = {
             "critical": ":rotating_light:",
@@ -250,7 +250,7 @@ class SlackMessageFormatter:
                             "elements": [
                                 {
                                     "type": "mrkdwn",
-                                    "text": f"<!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short_pretty}} at {{time}}|Now>",
+                                    "text": f"<!date^{int(datetime.now(UTC).timestamp())}^{{date_short_pretty}} at {{time}}|Now>",
                                 }
                             ],
                         },
@@ -276,7 +276,7 @@ class SlackNotificationService:
         self.retry_delay_seconds = retry_delay_seconds
         self.timeout_seconds = timeout_seconds
         self.client = httpx.AsyncClient(timeout=timeout_seconds)
-        self._bot_client: Optional[AsyncWebClient] = None
+        self._bot_client: AsyncWebClient | None = None
         if settings.slack_bot_token:
             self._bot_client = AsyncWebClient(token=settings.slack_bot_token)
 
@@ -298,7 +298,7 @@ class SlackNotificationService:
             webhooks_result = await db.execute(
                 select(SlackWebhook).where(
                     SlackWebhook.org_id == org_id,
-                    SlackWebhook.enabled == True,
+                    SlackWebhook.enabled,
                 )
             )
             webhooks = webhooks_result.scalars().all()
@@ -376,7 +376,7 @@ class SlackNotificationService:
             webhooks_result = await db.execute(
                 select(SlackWebhook).where(
                     SlackWebhook.org_id == org_id,
-                    SlackWebhook.enabled == True,
+                    SlackWebhook.enabled,
                 )
             )
             webhooks = webhooks_result.scalars().all()
@@ -433,7 +433,7 @@ class SlackNotificationService:
             webhooks_result = await db.execute(
                 select(SlackWebhook).where(
                     SlackWebhook.org_id == org_id,
-                    SlackWebhook.enabled == True,
+                    SlackWebhook.enabled,
                 )
             )
             webhooks = webhooks_result.scalars().all()
@@ -491,10 +491,10 @@ class SlackNotificationService:
     async def _send_with_retry(
         self,
         webhook: SlackWebhook,
-        message: Dict[str, Any],
+        message: dict[str, Any],
         event_type: str,
-        finding_id: Optional[UUID],
-        severity: Optional[str],
+        finding_id: UUID | None,
+        severity: str | None,
         db: AsyncSession,
     ) -> None:
         """Send message to Slack with exponential backoff retry."""
@@ -525,7 +525,7 @@ class SlackNotificationService:
                 severity=severity,
                 payload=message,
                 status="failed",
-                error_message=f"Decryption error: {str(e)}",
+                error_message=f"Decryption error: {e!s}",
                 retry_count=0,
             )
             db.add(notification)
@@ -553,7 +553,7 @@ class SlackNotificationService:
                         status="sent",
                         status_code=response.status_code,
                         retry_count=retry_count,
-                        sent_at=datetime.now(timezone.utc),
+                        sent_at=datetime.now(UTC),
                     )
                     db.add(notification)
                     await db.commit()
@@ -619,10 +619,10 @@ class SlackNotificationService:
     async def _post_bot_message(
         self,
         *,
-        channel: Optional[str],
+        channel: str | None,
         text: str,
-        blocks: List[Dict[str, Any]],
-        metadata: Optional[Dict[str, Any]] = None,
+        blocks: list[dict[str, Any]],
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         if not self._bot_client or not channel:
             return
@@ -652,7 +652,7 @@ class SlackNotificationService:
 
 
 # Global service instance
-_slack_service: Optional[SlackNotificationService] = None
+_slack_service: SlackNotificationService | None = None
 
 
 def get_slack_service() -> SlackNotificationService:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from cerebro.analytics.sql_dialect import array_has_elements_expr, array_length_expr
 
 

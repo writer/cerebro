@@ -5,29 +5,30 @@ High-level service layer for managing agent sessions, orchestrating conversation
 and providing clean interfaces for API endpoints and CLI commands.
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Any, AsyncIterator, Dict, List, Optional
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
 from sqlalchemy import text
 
-from cerebro.agents.repositories import AgentSessionRepository, ToolApprovalRepository
-from cerebro.agents.models import (
-    AgentSession,
-    AgentType,
-    ReviewTaskStatus,
-    ToolApproval,
-    ToolInvocationStatus,
-    ApprovalStatus,
-)
-from cerebro.agents.runtime_facade import AgentRuntimeFacade
-from cerebro.agents.review_service import AgentReviewService
 from cerebro.agents.analytics_service import (
     AgentAnalyticsService as RuntimeAnalyticsService,
 )
+from cerebro.agents.models import (
+    AgentSession,
+    AgentType,
+    ApprovalStatus,
+    ReviewTaskStatus,
+    ToolApproval,
+    ToolInvocationStatus,
+)
 from cerebro.agents.notification_service import NotificationService
-from cerebro.rules.engine import RuleEngine, EvaluationContext, CompilationError
+from cerebro.agents.repositories import AgentSessionRepository, ToolApprovalRepository
+from cerebro.agents.review_service import AgentReviewService
+from cerebro.agents.runtime_facade import AgentRuntimeFacade
+from cerebro.rules.engine import CompilationError, EvaluationContext, RuleEngine
 
 logger = structlog.get_logger(__name__)
 
@@ -37,8 +38,8 @@ class AgentSessionService:
 
     def __init__(
         self,
-        runtime: Optional[AgentRuntimeFacade] = None,
-        repository: Optional[AgentSessionRepository] = None,
+        runtime: AgentRuntimeFacade | None = None,
+        repository: AgentSessionRepository | None = None,
     ):
         self.runtime = runtime or AgentRuntimeFacade()
         self._rule_engine = RuleEngine()
@@ -49,8 +50,8 @@ class AgentSessionService:
         org_id: UUID,
         agent_type: str,
         created_by: str,
-        context: Dict[str, Any],
-        title: Optional[str] = None,
+        context: dict[str, Any],
+        title: str | None = None,
     ) -> AgentSession:
         """Create a new agent session."""
 
@@ -81,26 +82,26 @@ class AgentSessionService:
     async def get_session(
         self,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
-    ) -> Optional[AgentSession]:
+        org_id: UUID | None = None,
+    ) -> AgentSession | None:
         """Get an agent session by ID, optionally filtered by org."""
 
         return await self._repository.get_session(session_id=session_id, org_id=org_id)
 
     async def list_sessions(
         self,
-        org_id: Optional[UUID],
-        agent_type: Optional[str] = None,
-        created_by: Optional[str] = None,
+        org_id: UUID | None,
+        agent_type: str | None = None,
+        created_by: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[List[AgentSession], int]:
+    ) -> tuple[list[AgentSession], int]:
         """List agent sessions for an organization."""
 
         if org_id is None:
             return [], 0
 
-        agent_type_enum: Optional[AgentType] = None
+        agent_type_enum: AgentType | None = None
         if agent_type:
             try:
                 agent_type_enum = AgentType(agent_type)
@@ -122,9 +123,9 @@ class AgentSessionService:
         session_id: UUID,
         message: str,
         user_id: str,
-        org_id: Optional[UUID] = None,
+        org_id: UUID | None = None,
         stream: bool = False,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         """Send a message to an agent session."""
 
         # Get session
@@ -149,10 +150,10 @@ class AgentSessionService:
     async def get_session_messages(
         self,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
+        org_id: UUID | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get messages from an agent session."""
 
         # Verify session access
@@ -165,10 +166,10 @@ class AgentSessionService:
     async def get_session_memory(
         self,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
+        org_id: UUID | None = None,
         limit: int = 50,
         include_content: bool = False,
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """Retrieve recent memory entries associated with a session."""
 
         session = await self.get_session(session_id, org_id)
@@ -177,9 +178,9 @@ class AgentSessionService:
 
         entries = await self._repository.list_memory_entries(session_id, limit=limit)
 
-        serialized: List[Dict[str, Any]] = []
+        serialized: list[dict[str, Any]] = []
         for entry in entries:
-            scope_labels: List[str] = []
+            scope_labels: list[str] = []
             for scope in entry.scopes or []:
                 scope_type = scope.get("type")
                 value = scope.get("value")
@@ -189,7 +190,7 @@ class AgentSessionService:
                     else:
                         scope_labels.append(scope_type)
 
-            payload: Dict[str, Any] = {
+            payload: dict[str, Any] = {
                 "id": str(entry.id),
                 "role": entry.role.value if entry.role else None,
                 "summary": entry.summary,
@@ -216,8 +217,8 @@ class AgentSessionService:
     async def get_session_memory_stats(
         self,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
-    ) -> Optional[Dict[str, Any]]:
+        org_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
         session = await self.get_session(session_id, org_id)
         if not session:
             return None
@@ -237,24 +238,24 @@ class AgentSessionService:
                 "top_memories": [],
             }
 
-        role_distribution: Dict[str, int] = {}
-        scope_distribution: Dict[str, int] = {}
+        role_distribution: dict[str, int] = {}
+        scope_distribution: dict[str, int] = {}
         token_total = 0
         decay_sum = 0.0
         recent_entries = 0
         presented_entries = 0
-        recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        recent_cutoff = datetime.now(UTC) - timedelta(hours=24)
 
-        highlights: List[Dict[str, Any]] = []
+        highlights: list[dict[str, Any]] = []
 
         for entry in entries:
             created_at = entry.created_at
             if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
+                created_at = created_at.replace(tzinfo=UTC)
 
             last_accessed = entry.last_accessed_at
             if last_accessed.tzinfo is None:
-                last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+                last_accessed = last_accessed.replace(tzinfo=UTC)
 
             role_key = (entry.role.value if entry.role else "unknown").lower()
             role_distribution[role_key] = role_distribution.get(role_key, 0) + 1
@@ -275,7 +276,7 @@ class AgentSessionService:
             token_total += entry.token_count or 0
             decay_sum += entry.decay_score
 
-            scope_labels: List[str] = []
+            scope_labels: list[str] = []
             for scope in entry.scopes or []:
                 scope_type = scope.get("type")
                 value = scope.get("value")
@@ -312,14 +313,14 @@ class AgentSessionService:
 
     async def list_review_tasks(
         self,
-        org_id: Optional[UUID],
-        status: Optional[str] = None,
+        org_id: UUID | None,
+        status: str | None = None,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if org_id is None:
             return []
 
-        status_enum: Optional[ReviewTaskStatus] = None
+        status_enum: ReviewTaskStatus | None = None
         if status:
             try:
                 status_enum = ReviewTaskStatus(status)
@@ -335,16 +336,16 @@ class AgentSessionService:
 
     async def list_review_tasks_page(
         self,
-        org_id: Optional[UUID],
+        org_id: UUID | None,
         *,
-        status: Optional[str] = None,
+        status: str | None = None,
         limit: int = 50,
-        cursor: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
         if org_id is None:
             return {"items": [], "next_cursor": None}
 
-        status_enum: Optional[ReviewTaskStatus] = None
+        status_enum: ReviewTaskStatus | None = None
         if status:
             try:
                 status_enum = ReviewTaskStatus(status)
@@ -368,8 +369,8 @@ class AgentSessionService:
         task_id: UUID,
         resolved_by: str,
         status: str,
-        notes: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        notes: str | None = None,
+    ) -> dict[str, Any] | None:
         try:
             status_enum = ReviewTaskStatus(status)
         except ValueError as exc:
@@ -389,19 +390,19 @@ class AgentSessionService:
         self,
         *,
         org_id: UUID,
-        task_ids: List[UUID],
-        status: Optional[str] = None,
-        resolved_by: Optional[str] = None,
-        notes: Optional[str] = None,
-        escalated_to: Optional[str] = None,
-        due_at: Optional[datetime] = None,
-        priority: Optional[str] = None,
-        notification_channel: Optional[str] = None,
-        ticket_system: Optional[str] = None,
-        ticket_summary: Optional[str] = None,
-        ticket_metadata: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
-        status_enum: Optional[ReviewTaskStatus] = None
+        task_ids: list[UUID],
+        status: str | None = None,
+        resolved_by: str | None = None,
+        notes: str | None = None,
+        escalated_to: str | None = None,
+        due_at: datetime | None = None,
+        priority: str | None = None,
+        notification_channel: str | None = None,
+        ticket_system: str | None = None,
+        ticket_summary: str | None = None,
+        ticket_metadata: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        status_enum: ReviewTaskStatus | None = None
         if status:
             try:
                 status_enum = ReviewTaskStatus(status)
@@ -427,10 +428,10 @@ class AgentSessionService:
     async def list_review_notifications(
         self,
         *,
-        org_id: Optional[UUID],
-        status: Optional[str] = None,
+        org_id: UUID | None,
+        status: str | None = None,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if org_id is None:
             return []
 
@@ -461,12 +462,12 @@ class AgentSessionService:
         self,
         *,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
+        org_id: UUID | None = None,
         limit: int = 100,
-        event_type: Optional[str] = None,
-        before: Optional[datetime] = None,
-        before_id: Optional[UUID] = None,
-    ) -> List[Dict[str, Any]]:
+        event_type: str | None = None,
+        before: datetime | None = None,
+        before_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
         session = await self.get_session(session_id, org_id)
         if not session:
             return []
@@ -482,9 +483,9 @@ class AgentSessionService:
         self,
         *,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
-        event_type: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        org_id: UUID | None = None,
+        event_type: str | None = None,
+    ) -> list[dict[str, Any]]:
         session = await self.get_session(session_id, org_id)
         if not session:
             return []
@@ -496,9 +497,9 @@ class AgentSessionService:
     async def list_policy_suggestions(
         self,
         *,
-        org_id: Optional[UUID],
+        org_id: UUID | None,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if org_id is None:
             return []
 
@@ -506,7 +507,7 @@ class AgentSessionService:
             org_id, limit=limit
         )
 
-        ranked: List[Dict[str, Any]] = []
+        ranked: list[dict[str, Any]] = []
         for suggestion in suggestions:
             support = suggestion.support_count or 0
             reject = suggestion.reject_count or 0
@@ -528,11 +529,11 @@ class AgentSessionService:
     async def simulate_policy_expression(
         self,
         *,
-        org_id: Optional[UUID],
+        org_id: UUID | None,
         expression: str,
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
         limit: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if org_id is None:
             return {"allowed": 0, "denied": 0, "error": 0, "examples": []}
 
@@ -557,7 +558,7 @@ class AgentSessionService:
         matched = 0
         mismatched = 0
         errors = 0
-        examples: List[Dict[str, Any]] = []
+        examples: list[dict[str, Any]] = []
 
         for invocation, session in rows:
             evaluated += 1
@@ -623,9 +624,9 @@ class AgentSessionService:
     async def get_session_with_messages(
         self,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
+        org_id: UUID | None = None,
         message_limit: int = 50,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get session with its recent messages."""
 
         session = await self._repository.get_session_with_relations(
@@ -682,7 +683,7 @@ class AgentSessionService:
         }
 
     @staticmethod
-    def _serialize_review_task(task) -> Dict[str, Any]:
+    def _serialize_review_task(task) -> dict[str, Any]:
         return {
             "id": str(task.id),
             "session_id": str(task.session_id),
@@ -727,7 +728,7 @@ class AgentSessionService:
 class ToolApprovalService:
     """Service for managing tool approval workflows."""
 
-    def __init__(self, repository: Optional[ToolApprovalRepository] = None) -> None:
+    def __init__(self, repository: ToolApprovalRepository | None = None) -> None:
         self._repository = repository or ToolApprovalRepository()
 
     async def list_pending_approvals(
@@ -735,7 +736,7 @@ class ToolApprovalService:
         org_id: UUID,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[List[ToolApproval], int]:
+    ) -> tuple[list[ToolApproval], int]:
         """List pending tool approvals for an organization."""
 
         approvals, total_count = await self._repository.list_pending(
@@ -749,7 +750,7 @@ class ToolApprovalService:
         self,
         approval_id: UUID,
         org_id: UUID,
-    ) -> Optional[ToolApproval]:
+    ) -> ToolApproval | None:
         """Get a specific tool approval."""
 
         return await self._repository.get(approval_id, org_id)
@@ -759,32 +760,32 @@ class ToolApprovalService:
         approval_id: UUID,
         org_id: UUID,
         approved_by: str,
-        decision_reason: Optional[str] = None,
-    ) -> Optional[ToolApproval]:
+        decision_reason: str | None = None,
+    ) -> ToolApproval | None:
         """Approve a tool invocation."""
 
         async with self._repository.approval_scope(approval_id, org_id) as (
             approval,
-            db_session,
+            _db_session,
         ):
             if not approval or approval.status != ApprovalStatus.PENDING:
                 return None
 
-            if approval.expires_at and approval.expires_at < datetime.now(timezone.utc):
+            if approval.expires_at and approval.expires_at < datetime.now(UTC):
                 approval.status = ApprovalStatus.EXPIRED
                 return approval
 
             approval.status = ApprovalStatus.APPROVED
             approval.decided_by = approved_by
-            approval.decided_at = datetime.now(timezone.utc)
+            approval.decided_at = datetime.now(UTC)
             approval.decision_reason = decision_reason or "Approved by authorized user"
 
             # Update tool invocation status and re-execute if needed
             if approval.tool_invocation:
                 from cerebro.agents.tools import tool_registry
                 from cerebro.agents.tools.base import (
-                    ToolExecutor,
                     AgentContext,
+                    ToolExecutor,
                     ToolPermissionLevel,
                 )
 
@@ -820,7 +821,7 @@ class ToolApprovalService:
                             if re_execution_result.success
                             else ToolInvocationStatus.ERROR
                         )
-                        tool_invocation.completed_at = datetime.now(timezone.utc)
+                        tool_invocation.completed_at = datetime.now(UTC)
 
                     except Exception as e:
                         logger.exception(
@@ -829,8 +830,8 @@ class ToolApprovalService:
                             error=str(e),
                         )
                         tool_invocation.status = ToolInvocationStatus.ERROR
-                        tool_invocation.error_message = f"Re-execution failed: {str(e)}"
-                        tool_invocation.completed_at = datetime.now(timezone.utc)
+                        tool_invocation.error_message = f"Re-execution failed: {e!s}"
+                        tool_invocation.completed_at = datetime.now(UTC)
 
             logger.info(
                 "Tool invocation approved",
@@ -847,7 +848,7 @@ class ToolApprovalService:
         org_id: UUID,
         rejected_by: str,
         decision_reason: str,
-    ) -> Optional[ToolApproval]:
+    ) -> ToolApproval | None:
         """Reject a tool invocation."""
 
         async with self._repository.approval_scope(approval_id, org_id) as (
@@ -859,7 +860,7 @@ class ToolApprovalService:
 
             approval.status = ApprovalStatus.REJECTED
             approval.decided_by = rejected_by
-            approval.decided_at = datetime.now(timezone.utc)
+            approval.decided_at = datetime.now(UTC)
             approval.decision_reason = decision_reason
 
             logger.info(
@@ -880,7 +881,7 @@ class AgentAnalyticsService:
         self,
         org_id: UUID,
         days: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get agent usage analytics for an organization."""
 
         from cerebro.core.database import async_session_factory
@@ -891,7 +892,7 @@ class AgentAnalyticsService:
                 minutes_between_expr,
             )
 
-            cutoff = datetime.now(timezone.utc) - timedelta(days=max(days, 0))
+            cutoff = datetime.now(UTC) - timedelta(days=max(days, 0))
             dialect = get_dialect_name(db_session)
             decision_minutes_expr = minutes_between_expr(
                 start_expr="requested_at",
@@ -976,7 +977,7 @@ class AgentAnalyticsService:
             return {
                 "org_id": str(org_id),
                 "analysis_period_days": days,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
                 "agent_type_usage": [dict(row) for row in agent_type_stats.mappings()],
                 "tool_usage": [dict(row) for row in tool_stats.mappings()],
                 "token_usage": [dict(row) for row in token_stats.mappings()],

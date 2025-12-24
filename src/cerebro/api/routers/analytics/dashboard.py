@@ -1,25 +1,27 @@
 """Dashboard analytics API endpoints."""
 
-from typing import Dict, Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
 
-from cerebro.core.database import get_db
-from cerebro.core.analytics_db import get_analytics_db
-from cerebro.core.models import Organization
-from cerebro.api.auth import get_current_user, require_scopes, User
-from cerebro.api.org_access import require_org_access
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 from cerebro.analytics.dashboard_repository import DashboardRepository
+from cerebro.api.auth import User, get_current_user, require_scopes
+from cerebro.api.org_access import require_org_access
+from cerebro.core.analytics_db import get_analytics_db
+from cerebro.core.database import get_db
+from cerebro.core.models import Organization
 from cerebro.integrations.freshness import IntegrationFreshnessService
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 class RemediationActionUpdateRequest(BaseModel):
-    note: Optional[str] = Field(None, max_length=2000)
+    note: str | None = Field(None, max_length=2000)
 
 
 class RemediationNoteRequest(BaseModel):
@@ -28,7 +30,7 @@ class RemediationNoteRequest(BaseModel):
 
 class RemediationBulkUpdateRequest(BaseModel):
     action_ids: Sequence[UUID] = Field(..., min_length=1, max_length=500)
-    note: Optional[str] = Field(None, max_length=2000)
+    note: str | None = Field(None, max_length=2000)
 
 
 def _map_bulk_error(exc: ValueError) -> HTTPException:
@@ -51,7 +53,7 @@ async def _bulk_update_remediation_actions(
     payload: RemediationBulkUpdateRequest,
     db: AsyncSession,
     current_user: User,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     await _ensure_org(db, org_id)
 
     repository = DashboardRepository(db)
@@ -113,7 +115,7 @@ async def get_organization_dashboard(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get comprehensive dashboard data for an organization."""
 
     # Verify organization exists
@@ -195,7 +197,7 @@ async def get_executive_summary(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get executive-level security summary."""
 
     org = await db.get(Organization, org_id)

@@ -1,16 +1,16 @@
 """Rule management endpoints."""
 
-from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from cerebro.core.database import get_db
-from cerebro.core.models import Rule, Policy
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cerebro.api.auth import User, get_current_user, require_write_rules
 from cerebro.api.schemas import RuleCreate, RuleResponse
+from cerebro.core.database import get_db
+from cerebro.core.models import Policy, Rule
 from cerebro.rules.engine import rule_engine
-from cerebro.api.auth import get_current_user, require_write_rules, User
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -56,11 +56,11 @@ async def create_rule(
     return db_rule
 
 
-@router.get("/", response_model=List[RuleResponse])
+@router.get("/", response_model=list[RuleResponse])
 async def list_rules(
-    provider: Optional[str] = None,
-    severity: Optional[str] = None,
-    is_active: Optional[bool] = True,
+    provider: str | None = None,
+    severity: str | None = None,
+    is_active: bool | None = True,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),

@@ -8,17 +8,19 @@ This tool automates manual compliance testing, reducing audit prep time
 from weeks to hours while ensuring continuous compliance monitoring.
 """
 
-from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
+from typing import Any
+
+import structlog
 from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.compliance.control_tests import ControlTestRunner, TestStatus
 from cerebro.compliance.framework_registry import get_framework_registry
-from cerebro.rules.engine import RuleEngine
-from cerebro.query.bootstrap import get_query_engine
 from cerebro.core.database import async_session_factory
-import structlog
+from cerebro.query.bootstrap import get_query_engine
+from cerebro.rules.engine import RuleEngine
+
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +31,7 @@ class ComplianceTesterInput(BaseModel):
     framework_id: str = Field(
         ..., description="Compliance framework: 'soc2', 'iso27001'"
     )
-    control_id: Optional[str] = Field(
+    control_id: str | None = Field(
         None,
         description="Specific control to test (e.g., 'CC6.1', 'A.9.2.1'). Leave empty to test all controls.",
     )
@@ -53,10 +55,10 @@ class ComplianceTesterOutput(BaseModel):
     controls_failed: int
     controls_with_errors: int
     overall_compliance_score: float
-    test_results: List[Dict[str, Any]]
+    test_results: list[dict[str, Any]]
     evidence_collected: int
-    gaps_identified: List[str]
-    recommendations: List[str]
+    gaps_identified: list[str]
+    recommendations: list[str]
 
 
 class ComplianceControlTesterTool(StructuredTool):
@@ -87,7 +89,7 @@ class ComplianceControlTesterTool(StructuredTool):
         self,
         context: AgentContext,
         framework_id: str,
-        control_id: Optional[str] = None,
+        control_id: str | None = None,
         collect_evidence: bool = True,
         audit_period_days: int = 90,
     ) -> ToolResult:
@@ -276,16 +278,16 @@ class ComplianceControlTesterTool(StructuredTool):
         except Exception as e:
             logger.error("Compliance testing failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False, error=f"Compliance testing failed: {str(e)}"
+                success=False, error=f"Compliance testing failed: {e!s}"
             )
 
     def _generate_recommendations(
         self,
         framework_id: str,
-        test_results: List[Dict],
+        test_results: list[dict],
         overall_score: float,
-        gaps: List[str],
-    ) -> List[str]:
+        gaps: list[str],
+    ) -> list[str]:
         """Generate actionable recommendations based on test results."""
 
         recommendations = []
@@ -373,7 +375,7 @@ class EvidenceBundleBuilderTool(StructuredTool):
 
     class Input(BaseModel):
         framework_id: str = Field(..., description="Framework to collect evidence for")
-        control_ids: Optional[List[str]] = Field(
+        control_ids: list[str] | None = Field(
             None, description="Specific controls (all if not provided)"
         )
         include_raw_data: bool = Field(
@@ -397,7 +399,7 @@ class EvidenceBundleBuilderTool(StructuredTool):
         self,
         context: AgentContext,
         framework_id: str,
-        control_ids: Optional[List[str]] = None,
+        control_ids: list[str] | None = None,
         include_raw_data: bool = False,
     ) -> ToolResult:
         """Build evidence bundle for audit."""
@@ -409,7 +411,9 @@ class EvidenceBundleBuilderTool(StructuredTool):
             )
 
             async with async_session_factory() as db_session:
-                from cerebro.auditability.evidence_bundles import EvidenceBundleManager as EvidenceBundleBuilder  # type: ignore[attr-defined]
+                from cerebro.auditability.evidence_bundles import (
+                    EvidenceBundleManager as EvidenceBundleBuilder,  # type: ignore[attr-defined]
+                )
 
                 # Create bundle
                 builder = EvidenceBundleBuilder(db_session)  # type: ignore[call-arg]
@@ -446,5 +450,5 @@ class EvidenceBundleBuilderTool(StructuredTool):
         except Exception as e:
             logger.error("Evidence bundle creation failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False, error=f"Evidence bundle creation failed: {str(e)}"
+                success=False, error=f"Evidence bundle creation failed: {e!s}"
             )

@@ -4,20 +4,20 @@ Receives events from Forklift (drift detection, plan creation, PR status)
 and creates/updates findings in Cerebro.
 """
 
-import logging
-import hmac
 import hashlib
+import hmac
+import logging
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.core.database import get_db
-from cerebro.core.models import Finding, Organization, Account, Resource, Rule
 from cerebro.core.config import settings
-from sqlalchemy import select
+from cerebro.core.database import get_db
+from cerebro.core.models import Account, Finding, Organization, Resource, Rule
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,9 @@ class DriftDetectedEvent(BaseModel):
     organizationId: int
     bundleId: int
     bundleName: str
-    drift: Dict[str, Any] = Field(..., description="Drift details")
+    drift: dict[str, Any] = Field(..., description="Drift details")
     severity: Literal["critical", "high", "medium", "low"]
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PlanCreatedEvent(BaseModel):
@@ -79,8 +79,8 @@ class PlanCreatedEvent(BaseModel):
     organizationId: int
     bundleId: int
     bundleName: str
-    changes: Dict[str, Any]
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    changes: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PlanAppliedEvent(BaseModel):
@@ -92,7 +92,7 @@ class PlanAppliedEvent(BaseModel):
     planId: int
     repository: str
     organizationId: int
-    pullRequest: Dict[str, Any]
+    pullRequest: dict[str, Any]
     appliedChanges: int
     status: str
 
@@ -106,7 +106,7 @@ class PRMergedEvent(BaseModel):
     planId: int
     repository: str
     organizationId: int
-    pullRequest: Dict[str, Any]
+    pullRequest: dict[str, Any]
     bundleName: str
 
 
@@ -114,9 +114,9 @@ class PRMergedEvent(BaseModel):
 async def receive_forklift_event(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    authorization: Optional[str] = Header(None),
-    x_forklift_event: Optional[str] = Header(None),
-    x_forklift_signature: Optional[str] = Header(None, alias="X-Forklift-Signature"),
+    authorization: str | None = Header(None),
+    x_forklift_event: str | None = Header(None),
+    x_forklift_signature: str | None = Header(None, alias="X-Forklift-Signature"),
 ):
     """
     Receive events from Forklift.
@@ -189,8 +189,8 @@ async def receive_forklift_event(
 
 
 async def handle_drift_detected(
-    event_data: Dict[str, Any], db: AsyncSession
-) -> Dict[str, Any]:
+    event_data: dict[str, Any], db: AsyncSession
+) -> dict[str, Any]:
     """
     Handle drift_detected event by creating a finding.
     """
@@ -321,8 +321,8 @@ async def handle_drift_detected(
 
 
 async def handle_plan_created(
-    event_data: Dict[str, Any], db: AsyncSession
-) -> Dict[str, Any]:
+    event_data: dict[str, Any], db: AsyncSession
+) -> dict[str, Any]:
     """Handle plan_created event by updating finding status."""
     event = PlanCreatedEvent(**event_data)
 
@@ -351,8 +351,8 @@ async def handle_plan_created(
 
 
 async def handle_plan_applied(
-    event_data: Dict[str, Any], db: AsyncSession
-) -> Dict[str, Any]:
+    event_data: dict[str, Any], db: AsyncSession
+) -> dict[str, Any]:
     """Handle plan_applied event by updating finding status."""
     event = PlanAppliedEvent(**event_data)
 
@@ -383,8 +383,8 @@ async def handle_plan_applied(
 
 
 async def handle_pr_merged(
-    event_data: Dict[str, Any], db: AsyncSession
-) -> Dict[str, Any]:
+    event_data: dict[str, Any], db: AsyncSession
+) -> dict[str, Any]:
     """Handle pr_merged event by marking finding as fixed."""
     event = PRMergedEvent(**event_data)
 

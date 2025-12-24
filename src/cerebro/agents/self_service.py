@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any
 from uuid import UUID
 
 import structlog
 from sqlalchemy import cast, func, select
-from sqlalchemy.types import String
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.types import String
 
 from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.models import AgentSelfServiceQuestion, AgentSelfServiceReport
@@ -26,7 +27,6 @@ from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding
 from cerebro.query.bootstrap import get_query_engine
 from cerebro.query.engine import QueryEngine, QueryResult
-
 
 logger = structlog.get_logger(__name__)
 
@@ -42,7 +42,7 @@ class QuestionType(str, Enum):
 FOLLOW_UP_NOTE = "Ask security if anything looks off or you need a second opinion."
 
 
-DEFAULT_POLICY_GUIDANCE: Sequence[Dict[str, Any]] = (
+DEFAULT_POLICY_GUIDANCE: Sequence[dict[str, Any]] = (
     {
         "slug": "redis-production",
         "keywords": {"redis", "production"},
@@ -95,12 +95,12 @@ DEFAULT_POLICY_GUIDANCE: Sequence[Dict[str, Any]] = (
 class SelfServiceClassification:
     question_type: QuestionType
     confidence: float
-    intent: Optional[str] = None
-    subject_user: Optional[str] = None
-    subject_resource: Optional[str] = None
-    additional_context: Optional[Dict[str, Any]] = None
+    intent: str | None = None
+    subject_user: str | None = None
+    subject_resource: str | None = None
+    additional_context: dict[str, Any] | None = None
 
-    def to_log_payload(self) -> Dict[str, Any]:
+    def to_log_payload(self) -> dict[str, Any]:
         return {
             "question_type": self.question_type.value,
             "confidence": self.confidence,
@@ -116,11 +116,11 @@ class SelfServiceAnswer:
     question_type: QuestionType
     confidence: float
     summary: str
-    evidence: List[Dict[str, Any]]
-    details: Dict[str, Any]
+    evidence: list[dict[str, Any]]
+    details: dict[str, Any]
     follow_up: str = FOLLOW_UP_NOTE
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "question_type": self.question_type.value,
             "confidence": self.confidence,
@@ -189,7 +189,7 @@ class SelfServiceQuestionClassifier:
             )
 
         intent, subject_user, subject_resource = None, None, None
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
 
         if question_type is QuestionType.ACCESS:
             intent, subject_user, subject_resource, context = self._classify_access(
@@ -220,7 +220,7 @@ class SelfServiceQuestionClassifier:
 
     def _classify_access(
         self, question: str
-    ) -> Tuple[str, Optional[str], Optional[str], Dict[str, Any]]:
+    ) -> tuple[str, str | None, str | None, dict[str, Any]]:
         user_match = re.search(r"does\s+([\w@\.\-]+)\s+have", question)
         resource_match = re.search(r"access\s+to\s+([^\?]+)", question)
         if question.startswith("who has access") and resource_match:
@@ -239,7 +239,7 @@ class SelfServiceQuestionClassifier:
             return "user_access_overview", user_match.group(1).strip(), None, {}
         return "access_overview", None, None, {}
 
-    def _classify_policy(self, question: str) -> Tuple[str, Dict[str, Any]]:
+    def _classify_policy(self, question: str) -> tuple[str, dict[str, Any]]:
         if question.startswith("can i") or question.startswith("is "):
             return "policy_allowance", {}
         if "allowed" in question:
@@ -248,7 +248,7 @@ class SelfServiceQuestionClassifier:
             return "policy_lookup", {}
         return "policy_lookup", {}
 
-    def _classify_finding(self, question: str) -> Tuple[str, Dict[str, Any]]:
+    def _classify_finding(self, question: str) -> tuple[str, dict[str, Any]]:
         if "critical" in question:
             return "critical_findings_summary", {"severity": "critical"}
         if "false positive" in question:
@@ -257,7 +257,7 @@ class SelfServiceQuestionClassifier:
             return "finding_history", {}
         return "finding_overview", {}
 
-    def _classify_compliance(self, question: str) -> Tuple[str, Dict[str, Any]]:
+    def _classify_compliance(self, question: str) -> tuple[str, dict[str, Any]]:
         if "next audit" in question:
             return "audit_schedule", {}
         if "control" in question and ("failing" in question or "at risk" in question):
@@ -279,9 +279,9 @@ class SelfServiceKnowledgeService:
     def __init__(
         self,
         *,
-        query_engine: Optional[QueryEngine] = None,
+        query_engine: QueryEngine | None = None,
         session_factory: Any = None,
-        classifier: Optional[SelfServiceQuestionClassifier] = None,
+        classifier: SelfServiceQuestionClassifier | None = None,
     ) -> None:
         self.query_engine = query_engine or get_query_engine()
         self.session_factory = session_factory or async_session_factory
@@ -291,8 +291,8 @@ class SelfServiceKnowledgeService:
         self,
         *,
         org_id: UUID,
-        session_id: Optional[UUID],
-        user_id: Optional[str],
+        session_id: UUID | None,
+        user_id: str | None,
         question: str,
     ) -> SelfServiceAnswer:
         classification = self.classifier.classify(question)
@@ -335,8 +335,8 @@ class SelfServiceKnowledgeService:
         question: str,
     ) -> SelfServiceAnswer:
         intent = classification.intent or "access_overview"
-        evidence: List[Dict[str, Any]] = []
-        details: Dict[str, Any] = {"intent": intent}
+        evidence: list[dict[str, Any]] = []
+        details: dict[str, Any] = {"intent": intent}
 
         if intent == "cross_account_permissions":
             sql = (
@@ -361,8 +361,8 @@ class SelfServiceKnowledgeService:
                 details=details,
             )
 
-        params: List[Any] = []
-        clauses: List[str] = []
+        params: list[Any] = []
+        clauses: list[str] = []
 
         if classification.subject_user:
             clauses.append("LOWER(principal_id) LIKE LOWER($1)")
@@ -518,8 +518,8 @@ class SelfServiceKnowledgeService:
         question: str,
     ) -> SelfServiceAnswer:
         intent = classification.intent or "compliance_overview"
-        evidence: List[Dict[str, Any]] = []
-        details: Dict[str, Any] = {"intent": intent}
+        evidence: list[dict[str, Any]] = []
+        details: dict[str, Any] = {"intent": intent}
 
         async with self.session_factory() as session:  # type: ignore[func-returns-value]
             if intent == "audit_schedule":
@@ -645,7 +645,7 @@ class SelfServiceKnowledgeService:
         )
 
     async def _safe_query(
-        self, sql: str, params: Optional[List[Any]] = None
+        self, sql: str, params: list[Any] | None = None
     ) -> QueryResult:
         try:
             return await self.query_engine.execute_query(sql, params=params)
@@ -664,8 +664,8 @@ class SelfServiceKnowledgeService:
         self,
         *,
         org_id: UUID,
-        session_id: Optional[UUID],
-        user_id: Optional[str],
+        session_id: UUID | None,
+        user_id: str | None,
         question: str,
         classification: SelfServiceClassification,
         answer: SelfServiceAnswer,
@@ -711,15 +711,15 @@ class SelfServiceAnalytics:
     async def generate_monthly_reports(
         self,
         *,
-        as_of: Optional[datetime] = None,
-    ) -> List[AgentSelfServiceReport]:
+        as_of: datetime | None = None,
+    ) -> list[AgentSelfServiceReport]:
         if as_of is None:
-            as_of = datetime.now(timezone.utc)
+            as_of = datetime.now(UTC)
 
-        period_end = datetime(as_of.year, as_of.month, 1, tzinfo=timezone.utc)
+        period_end = datetime(as_of.year, as_of.month, 1, tzinfo=UTC)
         period_start = (period_end - timedelta(days=1)).replace(day=1)
 
-        reports: List[AgentSelfServiceReport] = []
+        reports: list[AgentSelfServiceReport] = []
         async with self.session_factory() as session:  # type: ignore[func-returns-value]
             org_ids = await self._list_org_ids(session, period_start, period_end)
             for org_id in org_ids:
@@ -739,7 +739,7 @@ class SelfServiceAnalytics:
         session: AsyncSession,
         period_start: datetime,
         period_end: datetime,
-    ) -> List[UUID]:
+    ) -> list[UUID]:
         stmt = (
             select(AgentSelfServiceQuestion.org_id)
             .where(AgentSelfServiceQuestion.created_at >= period_start)
@@ -755,7 +755,7 @@ class SelfServiceAnalytics:
         org_id: UUID,
         period_start: datetime,
         period_end: datetime,
-    ) -> Optional[AgentSelfServiceReport]:
+    ) -> AgentSelfServiceReport | None:
         stmt = (
             select(
                 AgentSelfServiceQuestion.question,

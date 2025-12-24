@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Type, TypeVar
+from typing import TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro_sdk.agents.types import AgentInvalidStatusError, AgentValidationError
-
 
 EnumT = TypeVar("EnumT", bound=Enum)
 
@@ -25,7 +24,7 @@ class AsyncManagerBase:
         )
 
     @staticmethod
-    def _coerce_enum(value: object, enum_cls: Type[EnumT], *, message: str) -> EnumT:
+    def _coerce_enum(value: object, enum_cls: type[EnumT], *, message: str) -> EnumT:
         if isinstance(value, enum_cls):
             return value
         try:
@@ -34,7 +33,7 @@ class AsyncManagerBase:
             raise AgentValidationError(message) from exc
 
     @staticmethod
-    def _require_enum(value: object, enum_cls: Type[EnumT], *, message: str) -> EnumT:
+    def _require_enum(value: object, enum_cls: type[EnumT], *, message: str) -> EnumT:
         if isinstance(value, enum_cls):
             return value
         try:

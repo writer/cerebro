@@ -1,8 +1,8 @@
 """JWT key store for managing signing keys and rotation."""
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from cryptography.hazmat.primitives import serialization
@@ -54,9 +54,9 @@ class JWTSigningKey(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    def to_jwks_entry(self) -> Dict[str, Any]:
+    def to_jwks_entry(self) -> dict[str, Any]:
         """Convert to JWKS (JSON Web Key Set) entry format."""
         # Parse public key to extract components for JWKS
         from cryptography.hazmat.primitives import serialization
@@ -92,15 +92,15 @@ def get_kms() -> _BaseKMS:
 
 def _ensure_aware(dt: datetime) -> datetime:
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 class JWTKeyStore:
     """Manages JWT signing keys with rotation and KMS integration."""
 
     def __init__(
-        self, db_session: AsyncSession, kms: Optional[_BaseKMS] = None, metrics=None
+        self, db_session: AsyncSession, kms: _BaseKMS | None = None, metrics=None
     ):
         """Initialize key store.
 
@@ -113,7 +113,7 @@ class JWTKeyStore:
         self.kms = kms or get_kms()
         self.metrics = metrics
 
-    async def _encrypt_with_kms(self, plaintext: bytes) -> Tuple[bytes, bytes]:
+    async def _encrypt_with_kms(self, plaintext: bytes) -> tuple[bytes, bytes]:
         """Encrypt data using the configured KMS, supporting multiple interfaces."""
 
         encryptor = getattr(self.kms, "encrypt_data", None)
@@ -127,7 +127,7 @@ class JWTKeyStore:
         return ciphertext, b""
 
     async def _decrypt_with_kms(
-        self, ciphertext: bytes, dek: Optional[bytes] = None
+        self, ciphertext: bytes, dek: bytes | None = None
     ) -> bytes:
         """Decrypt data using the configured KMS, accepting optional DEK."""
 
@@ -137,15 +137,15 @@ class JWTKeyStore:
 
         return await self.kms.decrypt(ciphertext)
 
-    async def get_current_signing_key(self) -> Optional[JWTSigningKey]:
+    async def get_current_signing_key(self) -> JWTSigningKey | None:
         """Get the current active signing key."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         stmt = (
             select(JWTSigningKey)
             .where(
                 and_(
-                    JWTSigningKey.is_active == True,
+                    JWTSigningKey.is_active,
                     or_(
                         JWTSigningKey.expires_at.is_(None),
                         JWTSigningKey.expires_at > now,
@@ -158,16 +158,16 @@ class JWTKeyStore:
 
         return await self.db.scalar(stmt)
 
-    async def get_verification_keys(self) -> List[JWTSigningKey]:
+    async def get_verification_keys(self) -> list[JWTSigningKey]:
         """Get all keys that can be used for token verification (current + overlap period)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         overlap_cutoff = now - timedelta(hours=settings.jwt_key_overlap_hours)
 
         stmt = (
             select(JWTSigningKey)
             .where(
                 and_(
-                    JWTSigningKey.is_active == True,
+                    JWTSigningKey.is_active,
                     JWTSigningKey.created_at > overlap_cutoff,
                     or_(
                         JWTSigningKey.expires_at.is_(None),
@@ -180,10 +180,10 @@ class JWTKeyStore:
 
         return list(await self.db.scalars(stmt))
 
-    async def get_key_by_kid(self, kid: str) -> Optional[JWTSigningKey]:
+    async def get_key_by_kid(self, kid: str) -> JWTSigningKey | None:
         """Get signing key by key ID."""
         stmt = select(JWTSigningKey).where(
-            and_(JWTSigningKey.kid == kid, JWTSigningKey.is_active == True)
+            and_(JWTSigningKey.kid == kid, JWTSigningKey.is_active)
         )
         return await self.db.scalar(stmt)
 
@@ -224,7 +224,7 @@ class JWTKeyStore:
                 encrypted_dek=encrypted_dek,
                 public_key_pem=public_pem.decode("utf-8"),
                 algorithm=settings.jwt_algorithm,
-                expires_at=datetime.now(timezone.utc)
+                expires_at=datetime.now(UTC)
                 + timedelta(hours=settings.jwt_rotation_period_hours),
             )
 
@@ -277,7 +277,7 @@ class JWTKeyStore:
             return True
 
         # Check if rotation is needed
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = _ensure_aware(current_key.created_at)
         rotation_threshold = created_at + timedelta(
             hours=settings.jwt_rotation_period_hours
@@ -292,7 +292,7 @@ class JWTKeyStore:
 
     async def cleanup_expired_keys(self) -> int:
         """Remove expired keys that are beyond the overlap period."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cleanup_cutoff = now - timedelta(hours=settings.jwt_key_overlap_hours * 2)
 
         # Find expired keys
@@ -300,7 +300,7 @@ class JWTKeyStore:
             stmt = select(JWTSigningKey).where(
                 and_(
                     JWTSigningKey.expires_at < cleanup_cutoff,
-                    JWTSigningKey.is_active == True,
+                    JWTSigningKey.is_active,
                 )
             )
             expired_keys = list(await self.db.scalars(stmt))
@@ -324,7 +324,7 @@ class JWTKeyStore:
 
         return len(expired_keys)
 
-    async def get_jwks_response(self) -> Dict[str, Any]:
+    async def get_jwks_response(self) -> dict[str, Any]:
         """Get JSON Web Key Set (JWKS) response for public key distribution."""
         verification_keys = await self.get_verification_keys()
 
@@ -340,10 +340,10 @@ class JWTKeyStore:
 
     async def _count_active_keys(self) -> int:
         """Count currently active keys."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stmt = select(func.count(JWTSigningKey.key_id)).where(
             and_(
-                JWTSigningKey.is_active == True,
+                JWTSigningKey.is_active,
                 or_(JWTSigningKey.expires_at.is_(None), JWTSigningKey.expires_at > now),
             )
         )

@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import parse_qs
 from uuid import UUID
 
@@ -31,13 +31,13 @@ class SlackSlashCommand:
     text: str
     user_id: str
     team_id: str
-    response_url: Optional[str] = None
-    channel_id: Optional[str] = None
-    channel_name: Optional[str] = None
-    user_name: Optional[str] = None
+    response_url: str | None = None
+    channel_id: str | None = None
+    channel_name: str | None = None
+    user_name: str | None = None
 
     @property
-    def arguments(self) -> List[str]:
+    def arguments(self) -> list[str]:
         return [token for token in self.text.strip().split() if token]
 
 
@@ -45,13 +45,13 @@ class SlackSlashCommand:
 class SlackCommandResponse:
     """Normalized Slack command response."""
 
-    text: Optional[str] = None
+    text: str | None = None
     response_type: str = "ephemeral"
-    blocks: Optional[List[Dict[str, Any]]] = None
-    attachments: Optional[List[Dict[str, Any]]] = None
+    blocks: list[dict[str, Any]] | None = None
+    attachments: list[dict[str, Any]] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {"response_type": self.response_type}
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"response_type": self.response_type}
         if self.text is not None:
             payload["text"] = self.text
         if self.blocks is not None:
@@ -65,7 +65,7 @@ class SlackRequestParser:
     """Parse and validate Slack slash command requests."""
 
     def __init__(
-        self, signing_secret: Optional[str], tolerance_seconds: int = 300
+        self, signing_secret: str | None, tolerance_seconds: int = 300
     ) -> None:
         self.signing_secret = signing_secret
         self.tolerance_seconds = tolerance_seconds
@@ -113,7 +113,7 @@ class SlackRequestParser:
         )
 
     def _verify_signature(
-        self, timestamp: Optional[str], signature: Optional[str], body: str
+        self, timestamp: str | None, signature: str | None, body: str
     ) -> None:
         if not timestamp or not signature:
             raise SlackCommandError("Missing Slack signature headers.")
@@ -145,7 +145,7 @@ class SlackCommandService:
     """Handle Slack slash command actions."""
 
     def __init__(
-        self, *, default_org_id: Optional[UUID] = None, max_findings: int = 5
+        self, *, default_org_id: UUID | None = None, max_findings: int = 5
     ) -> None:
         self.default_org_id = UUID(str(default_org_id)) if default_org_id else None
         self.max_findings = max_findings
@@ -231,7 +231,7 @@ class SlackCommandService:
 
     async def _resolve_org(
         self, team_id: str, db: AsyncSession
-    ) -> Optional[Organization]:
+    ) -> Organization | None:
         if self.default_org_id:
             org = await db.get(Organization, self.default_org_id)
             if org:

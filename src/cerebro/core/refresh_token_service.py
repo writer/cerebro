@@ -4,7 +4,6 @@ import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, String, and_, select
@@ -35,7 +34,7 @@ class RefreshToken(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    last_used: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_used: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RefreshTokenService:
@@ -76,7 +75,7 @@ class RefreshTokenService:
         logger.info(f"Stored refresh token for user {user_id}")
         return refresh_token
 
-    async def verify_refresh_token(self, token: str) -> Optional[UUID]:
+    async def verify_refresh_token(self, token: str) -> UUID | None:
         """Verify a refresh token and return the user ID."""
 
         token_hash = self.hash_token(token)
@@ -86,7 +85,7 @@ class RefreshTokenService:
             and_(
                 RefreshToken.token_hash == token_hash,
                 RefreshToken.expires_at > now,
-                RefreshToken.is_revoked == False,
+                not RefreshToken.is_revoked,
             )
         )
 
@@ -122,7 +121,7 @@ class RefreshTokenService:
         """Revoke all refresh tokens for a user."""
 
         stmt = select(RefreshToken).where(
-            and_(RefreshToken.user_id == user_id, RefreshToken.is_revoked == False)
+            and_(RefreshToken.user_id == user_id, not RefreshToken.is_revoked)
         )
 
         tokens = list(await self.db.scalars(stmt))

@@ -1,8 +1,8 @@
 """Finding repository for DynamoDB."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -50,22 +50,22 @@ class Finding(BaseModel):
     provider: str
     rule_id: UUID
     rule_version: int = 1
-    resource_id: Optional[UUID] = None
-    principal_id: Optional[UUID] = None
-    first_seen: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_seen: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    resource_id: UUID | None = None
+    principal_id: UUID | None = None
+    first_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
     status: FindingStatus = FindingStatus.OPEN
     severity: Severity
     fingerprint: str
     title: str
-    summary: Optional[str] = None
-    evidence: Optional[Dict[str, Any]] = None
+    summary: str | None = None
+    evidence: dict[str, Any] | None = None
 
     class Config:
         from_attributes = True
         use_enum_values = True
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         finding_id = str(self.finding_id)
         org_id = str(self.org_id)
@@ -105,7 +105,7 @@ class Finding(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Finding":
+    def from_item(cls, item: dict[str, Any]) -> "Finding":
         """Create from DynamoDB item."""
         return cls(
             finding_id=UUID(item["finding_id"]),
@@ -134,7 +134,7 @@ class FindingRepository:
 
     _table = TableName.CORE
 
-    async def get(self, finding_id: UUID, org_id: UUID) -> Optional[Finding]:
+    async def get(self, finding_id: UUID, org_id: UUID) -> Finding | None:
         """Get finding by ID."""
         item = await get_item(
             self._table,
@@ -153,7 +153,7 @@ class FindingRepository:
         finding_id: UUID,
         org_id: UUID,
         **updates,
-    ) -> Optional[Finding]:
+    ) -> Finding | None:
         """Update finding."""
         # Always update last_seen
         updates["last_seen"] = now_iso()
@@ -188,10 +188,10 @@ class FindingRepository:
     async def list_by_org(
         self,
         org_id: UUID,
-        status: Optional[FindingStatus] = None,
-        severity: Optional[Severity] = None,
+        status: FindingStatus | None = None,
+        severity: Severity | None = None,
         limit: int = 100,
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         """List findings for an organization."""
         if status:
             # Use GSI2 for status filtering
@@ -234,7 +234,7 @@ class FindingRepository:
 
         return [Finding.from_item(item) for item in items]
 
-    async def list_by_rule(self, rule_id: UUID, limit: int = 100) -> List[Finding]:
+    async def list_by_rule(self, rule_id: UUID, limit: int = 100) -> list[Finding]:
         """List findings for a specific rule."""
         items = await query(
             self._table,
@@ -249,7 +249,7 @@ class FindingRepository:
         org_id: UUID,
         account_id: UUID,
         limit: int = 100,
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         """List findings for an account."""
         findings = await self.list_by_org(org_id, limit=limit * 2)
         return [f for f in findings if f.account_id == account_id][:limit]
@@ -258,7 +258,7 @@ class FindingRepository:
         self,
         org_id: UUID,
         fingerprint: str,
-    ) -> Optional[Finding]:
+    ) -> Finding | None:
         """Get finding by fingerprint.
 
         Note: This performs a scan within the org's findings. For better
@@ -304,13 +304,13 @@ class FindingRepository:
             # Create new
             return await self.create(finding)
 
-    async def bulk_upsert(self, findings: List[Finding]) -> int:
+    async def bulk_upsert(self, findings: list[Finding]) -> int:
         """Bulk upsert findings."""
         items = [f.to_item() for f in findings]
         await batch_write(self._table, put_items=items)
         return len(findings)
 
-    async def count_by_status(self, org_id: UUID) -> Dict[str, int]:
+    async def count_by_status(self, org_id: UUID) -> dict[str, int]:
         """Count findings by status for an organization.
 
         Uses paginated queries to handle large datasets efficiently.
@@ -334,7 +334,7 @@ class FindingRepository:
             counts[status_val] = count
         return counts
 
-    async def count_by_severity(self, org_id: UUID) -> Dict[str, int]:
+    async def count_by_severity(self, org_id: UUID) -> dict[str, int]:
         """Count findings by severity for an organization.
 
         Uses paginated queries to handle large datasets efficiently.

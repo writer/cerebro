@@ -5,15 +5,14 @@ Provides secure access to Cerebro's temporal query capabilities for investigatin
 configuration changes and audit trails over time.
 """
 
-from typing import Any, Dict, List
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
 
-
-from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
+from .base import AgentContext, Tool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -25,7 +24,7 @@ class RunQueryInput(BaseModel):
     """Input for running a query."""
 
     query_name: str = Field(description="Name of predefined query to run")
-    parameters: Dict[str, Any] = Field(
+    parameters: dict[str, Any] = Field(
         default_factory=dict, description="Query parameters"
     )
     limit: int = Field(
@@ -37,10 +36,10 @@ class RunQueryOutput(BaseModel):
     """Output from query execution."""
 
     query_name: str
-    results: List[Dict[str, Any]]
+    results: list[dict[str, Any]]
     result_count: int
     execution_time_ms: float
-    parameters_used: Dict[str, Any]
+    parameters_used: dict[str, Any]
 
 
 class QueryTool(Tool):
@@ -74,8 +73,10 @@ class QueryTool(Tool):
 
         try:
             import time
+
             from sqlalchemy import select
-            from cerebro.core.models import Finding, ConfigSnapshot, AuditEvent
+
+            from cerebro.core.models import AuditEvent, ConfigSnapshot, Finding
 
             start_time = time.time()
 
@@ -87,7 +88,7 @@ class QueryTool(Tool):
                 # Execute predefined queries based on query name
                 if query_inputs.query_name == "recent_config_changes":
                     # Query recent configuration changes - must join through resource to get org
-                    from cerebro.core.models import Resource, Account
+                    from cerebro.core.models import Account, Resource
 
                     config_query = (
                         select(ConfigSnapshot, Resource)
@@ -130,7 +131,7 @@ class QueryTool(Tool):
 
                     from datetime import timedelta
 
-                    time_threshold = datetime.now(timezone.utc) - timedelta(
+                    time_threshold = datetime.now(UTC) - timedelta(
                         hours=hours_back
                     )
 
@@ -220,9 +221,10 @@ class QueryTool(Tool):
                     days_back = query_inputs.parameters.get("days_back", 30)
 
                     from datetime import timedelta
+
                     from sqlalchemy import func
 
-                    time_threshold = datetime.now(timezone.utc) - timedelta(
+                    time_threshold = datetime.now(UTC) - timedelta(
                         days=days_back
                     )
 
@@ -302,5 +304,5 @@ class QueryTool(Tool):
             )
             return ToolResult(
                 success=False,
-                error=f"Query execution error: {str(e)}",
+                error=f"Query execution error: {e!s}",
             )

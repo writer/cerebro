@@ -6,20 +6,20 @@ for attack path analysis and blast radius calculations.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-import networkx as nx
+from typing import Any
 
+import networkx as nx
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
 from ..core.config import settings
 from ..core.database import async_session_factory
-from ..core.models import Principal, Resource, IamEdge
+from ..core.models import IamEdge, Principal, Resource
 from .scoring import AttackGraphScoring
-from .service_identity import ServiceIdentityMapper, ServiceIdentityEdge, TrustMechanism
+from .service_identity import ServiceIdentityEdge, ServiceIdentityMapper, TrustMechanism
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,10 @@ class AttackNode:
     node_type: NodeType
     provider: str
     display_name: str
-    properties: Dict[str, Any]
+    properties: dict[str, Any]
     risk_score: float
     criticality: str  # "low", "medium", "high", "critical"
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @dataclass
@@ -71,8 +71,8 @@ class AttackEdge:
     permission: str
     weight: float  # Cost/difficulty of traversing this edge
     privilege_level: int  # 0=read, 1=write, 2=admin, 3=owner
-    conditions: List[str]  # Conditions required to traverse edge
-    metadata: Dict[str, Any]
+    conditions: list[str]  # Conditions required to traverse edge
+    metadata: dict[str, Any]
 
 
 class AttackGraph:
@@ -87,14 +87,14 @@ class AttackGraph:
         self,
         org_id: str,
         *,
-        scoring: Optional[AttackGraphScoring] = None,
-        service_identity_mapper: Optional[ServiceIdentityMapper] = None,
+        scoring: AttackGraphScoring | None = None,
+        service_identity_mapper: ServiceIdentityMapper | None = None,
     ):
         self.org_id = org_id
         self.graph = nx.DiGraph()
-        self.nodes: Dict[str, AttackNode] = {}
-        self.edges: Dict[str, AttackEdge] = {}
-        self.last_built: Optional[datetime] = None
+        self.nodes: dict[str, AttackNode] = {}
+        self.edges: dict[str, AttackEdge] = {}
+        self.last_built: datetime | None = None
         self.scoring = scoring or AttackGraphScoring(settings.attack_graph_scoring)
         self.service_identity_mapper = (
             service_identity_mapper or ServiceIdentityMapper()
@@ -191,7 +191,7 @@ class AttackGraph:
     async def _add_iam_edges(self, db: AsyncSession):
         """Add IAM permission edges to the graph."""
         stmt = select(IamEdge).where(
-            and_(IamEdge.org_id == self.org_id, IamEdge.effective == True)  # type: ignore[attr-defined]
+            and_(IamEdge.org_id == self.org_id, IamEdge.effective)  # type: ignore[attr-defined]
         )
         edges = await db.scalars(stmt)
 
@@ -294,7 +294,7 @@ class AttackGraph:
         )
 
     def _ensure_service_node(
-        self, *, node_id: str, provider: str, metadata: Dict[str, Any]
+        self, *, node_id: str, provider: str, metadata: dict[str, Any]
     ) -> None:
         if node_id in self.nodes:
             return
@@ -341,7 +341,7 @@ class AttackGraph:
     def _get_privilege_level(self, permission: str) -> int:
         return self.scoring.privilege_level(permission)
 
-    def _extract_edge_conditions(self, iam_edge: IamEdge) -> List[str]:
+    def _extract_edge_conditions(self, iam_edge: IamEdge) -> list[str]:
         """Extract conditions required to traverse an edge."""
         conditions = []
 
@@ -363,7 +363,7 @@ class AttackGraph:
 
     def get_neighbors(
         self, node_id: str, direction: str = "outbound"
-    ) -> List[AttackNode]:
+    ) -> list[AttackNode]:
         """Get neighboring nodes (reachable resources or accessing principals)."""
         neighbors = []
 
@@ -379,7 +379,7 @@ class AttackGraph:
 
         return neighbors
 
-    def get_node_degree(self, node_id: str) -> Dict[str, int]:
+    def get_node_degree(self, node_id: str) -> dict[str, int]:
         """Get degree centrality metrics for a node."""
         if node_id not in self.graph:
             return {"in_degree": 0, "out_degree": 0, "total_degree": 0}
@@ -393,7 +393,7 @@ class AttackGraph:
             "total_degree": in_degree + out_degree,
         }
 
-    def get_high_value_targets(self, limit: int = 20) -> List[AttackNode]:
+    def get_high_value_targets(self, limit: int = 20) -> list[AttackNode]:
         """
         Get high-value target resources for attack path analysis.
 
@@ -426,7 +426,7 @@ class AttackGraph:
 
         return resource_nodes[:limit]
 
-    def get_high_privilege_principals(self, limit: int = 20) -> List[AttackNode]:
+    def get_high_privilege_principals(self, limit: int = 20) -> list[AttackNode]:
         """
         Get principals with highest privilege levels.
 
@@ -465,15 +465,15 @@ class AttackGraph:
 
         return principal_nodes[:limit]
 
-    def export_graph_summary(self) -> Dict[str, Any]:
+    def export_graph_summary(self) -> dict[str, Any]:
         """Export summary statistics of the attack graph."""
-        node_type_counts: Dict[str, int] = {}
+        node_type_counts: dict[str, int] = {}
         for node in self.nodes.values():
             node_type_counts[node.node_type.value] = (
                 node_type_counts.get(node.node_type.value, 0) + 1
             )
 
-        edge_type_counts: Dict[str, int] = {}
+        edge_type_counts: dict[str, int] = {}
         for edge in self.edges.values():
             edge_type_counts[edge.edge_type.value] = (
                 edge_type_counts.get(edge.edge_type.value, 0) + 1
@@ -508,7 +508,7 @@ class AttackGraph:
 
 
 # Global attack graph cache
-_attack_graphs: Dict[str, AttackGraph] = {}
+_attack_graphs: dict[str, AttackGraph] = {}
 
 
 async def get_attack_graph(org_id: str, rebuild: bool = False) -> AttackGraph:

@@ -1,7 +1,6 @@
 """User management models for authentication and authorization."""
 
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
@@ -28,15 +27,15 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Relationships
-    user_scopes: Mapped[List["UserScope"]] = relationship(
+    user_scopes: Mapped[list["UserScope"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         foreign_keys="UserScope.user_id",
     )
-    audit_logs: Mapped[List["UserAuditLog"]] = relationship(
+    audit_logs: Mapped[list["UserAuditLog"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -56,7 +55,7 @@ class Scope(Base):
     )
 
     # Relationships
-    user_scopes: Mapped[List["UserScope"]] = relationship(
+    user_scopes: Mapped[list["UserScope"]] = relationship(
         back_populates="scope", cascade="all, delete-orphan"
     )
 
@@ -78,7 +77,7 @@ class UserScope(Base):
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    granted_by: Mapped[Optional[UUID]] = mapped_column(
+    granted_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.user_id")
     )
 
@@ -101,15 +100,15 @@ class UserAuditLog(Base):
         PGUUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE")
     )
     action: Mapped[str] = mapped_column(String(100), nullable=False)
-    resource_type: Mapped[Optional[str]] = mapped_column(String(50))
-    resource_id: Mapped[Optional[str]] = mapped_column(String(255))
-    ip_address: Mapped[Optional[str]] = mapped_column(String(45))  # IPv6 compatible
-    user_agent: Mapped[Optional[str]] = mapped_column(String(500))
+    resource_type: Mapped[str | None] = mapped_column(String(50))
+    resource_id: Mapped[str | None] = mapped_column(String(255))
+    ip_address: Mapped[str | None] = mapped_column(String(45))  # IPv6 compatible
+    user_agent: Mapped[str | None] = mapped_column(String(500))
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
     success: Mapped[bool] = mapped_column(Boolean, default=True)
-    error_message: Mapped[Optional[str]] = mapped_column(String(1000))
+    error_message: Mapped[str | None] = mapped_column(String(1000))
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="audit_logs")

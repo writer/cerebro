@@ -2,20 +2,20 @@
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, text
+from sqlalchemy import DateTime, Float, String, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from cerebro.core.database_types import JSONType
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Float
 
 from cerebro.core.database import Base
+from cerebro.core.database_types import JSONType
+
 from .sql_dialect import get_dialect_name, hours_between_expr
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ class TrendData:
     change_percentage: float
     trend_direction: str  # "up", "down", "stable"
     confidence: float
-    data_points: List[Dict[str, Any]]
+    data_points: list[dict[str, Any]]
 
 
 @dataclass
@@ -67,7 +67,7 @@ class MetricSnapshot:
     timestamp: datetime
     metric_type: str
     value: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class SecurityMetricSnapshot(Base):
@@ -94,11 +94,11 @@ class SecurityMetricSnapshot(Base):
 
     # Metric values
     value: Mapped[float] = mapped_column(Float, nullable=False)
-    previous_value: Mapped[Optional[float]] = mapped_column(Float)
+    previous_value: Mapped[float | None] = mapped_column(Float)
 
     # Breakdown data
-    breakdown_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
-    metric_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    breakdown_data: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
+    metric_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
 
     # Tracking
     created_at: Mapped[datetime] = mapped_column(
@@ -113,7 +113,7 @@ class TimeSeriesCollector:
         """Initialize time series collector."""
         self.db = db_session
 
-    async def collect_finding_metrics(self, org_id: UUID) -> List[MetricSnapshot]:
+    async def collect_finding_metrics(self, org_id: UUID) -> list[MetricSnapshot]:
         """Collect comprehensive finding metrics."""
         snapshots = []
         now = datetime.utcnow()
@@ -234,7 +234,7 @@ class TimeSeriesCollector:
         )
         return int(result.scalar() or 0)
 
-    async def _get_severity_distribution(self, org_id: UUID) -> Dict[str, int]:
+    async def _get_severity_distribution(self, org_id: UUID) -> dict[str, int]:
         """Get finding severity distribution."""
         result = await self.db.execute(
             text(
@@ -249,7 +249,7 @@ class TimeSeriesCollector:
         )
         return {str(severity): int(count) for severity, count in result.fetchall()}
 
-    async def _get_status_distribution(self, org_id: UUID) -> Dict[str, int]:
+    async def _get_status_distribution(self, org_id: UUID) -> dict[str, int]:
         """Get finding status distribution."""
         result = await self.db.execute(
             text(
@@ -525,7 +525,7 @@ class TrendAnalyzer:
 
     async def generate_sparkline_data(
         self, org_id: UUID, metric_type: MetricType, days_back: int = 7
-    ) -> List[float]:
+    ) -> list[float]:
         """Generate sparkline data for the last N days."""
 
         since_date = datetime.utcnow() - timedelta(days=days_back)
@@ -551,7 +551,7 @@ class TrendAnalyzer:
 
     async def detect_anomalies(
         self, org_id: UUID, metric_type: MetricType, sensitivity: float = 2.0
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Detect anomalies in metric trends using statistical analysis."""
 
         # Get last 30 days of data
@@ -612,7 +612,7 @@ class TrendAnalyzer:
 
         return anomalies
 
-    async def generate_metric_summary(self, org_id: UUID) -> Dict[str, Any]:
+    async def generate_metric_summary(self, org_id: UUID) -> dict[str, Any]:
         """Generate comprehensive metric summary with trends."""
 
         summary = {}

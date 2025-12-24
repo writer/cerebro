@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,9 +19,9 @@ class BenchmarkStep(BaseModel):
 
     speaker: str
     message: str
-    tool_calls: List[str] = Field(default_factory=list)
-    duration_ms: Optional[float] = None
-    score: Optional[float] = None
+    tool_calls: list[str] = Field(default_factory=list)
+    duration_ms: float | None = None
+    score: float | None = None
 
 
 class BenchmarkCase(BaseModel):
@@ -34,11 +33,11 @@ class BenchmarkCase(BaseModel):
     disposable_org: str = Field(
         ..., description="Name of the sandbox tenant to provision"
     )
-    incident: Optional[str] = Field(
+    incident: str | None = Field(
         default=None, description="Historical incident reference"
     )
-    steps: List[BenchmarkStep] = Field(default_factory=list)
-    assertions: List[BenchmarkAssertion] = Field(default_factory=list)
+    steps: list[BenchmarkStep] = Field(default_factory=list)
+    assertions: list[BenchmarkAssertion] = Field(default_factory=list)
 
 
 @dataclass
@@ -48,8 +47,8 @@ class BenchmarkMetrics:
     turn_count: int
     tool_call_count: int
     total_duration_ms: float
-    outcome: Optional[str]
-    average_score: Optional[float]
+    outcome: str | None
+    average_score: float | None
 
 
 @dataclass
@@ -58,8 +57,8 @@ class BenchmarkCaseResult:
 
     case: BenchmarkCase
     metrics: BenchmarkMetrics
-    assertions: Dict[str, bool]
-    failures: List[str]
+    assertions: dict[str, bool]
+    failures: list[str]
 
     @property
     def passed(self) -> bool:
@@ -70,13 +69,13 @@ class BenchmarkCaseResult:
 class BenchmarkSuiteResult:
     """Aggregate outcome of running a benchmark suite."""
 
-    cases: List[BenchmarkCaseResult]
+    cases: list[BenchmarkCaseResult]
 
     @property
     def passed(self) -> bool:
         return all(case_result.passed for case_result in self.cases)
 
-    def scorecard(self) -> Dict[str, Dict[str, object]]:
+    def scorecard(self) -> dict[str, dict[str, object]]:
         """Return a serialisable summary for CI scorecards."""
 
         return {

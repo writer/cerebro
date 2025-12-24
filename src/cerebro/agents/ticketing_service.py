@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -29,7 +29,7 @@ class TicketingService:
         task_id: UUID,
         system: str,
         summary: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentReviewTicket:
         # Copy metadata to avoid mutating caller-owned dictionaries.
         payload = dict(metadata or {})
@@ -91,8 +91,8 @@ class TicketingService:
 
     @staticmethod
     async def close_ticket(
-        *, ticket_id: UUID, external_id: Optional[str] = None
-    ) -> Optional[AgentReviewTicket]:
+        *, ticket_id: UUID, external_id: str | None = None
+    ) -> AgentReviewTicket | None:
         async with async_session_factory() as db_session:
             ticket = await db_session.get(AgentReviewTicket, ticket_id)
             if not ticket:
@@ -102,7 +102,7 @@ class TicketingService:
             ticket.status = TicketStatus.CLOSED
             if external_id:
                 ticket.external_id = external_id
-            ticket.updated_at = datetime.now(timezone.utc)
+            ticket.updated_at = datetime.now(UTC)
 
             if ticket.system == _SERVAL_SYSTEM and ticket.external_id:
                 # Propagate local closure to Serval so analysts see consistent state.

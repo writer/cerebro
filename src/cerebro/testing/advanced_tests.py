@@ -10,13 +10,13 @@ Provides sophisticated security testing capabilities including:
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
-from ..query.engine import QueryEngine
 from ..compliance.evidence_data_fabric import EvidenceDataFabric
+from ..query.engine import QueryEngine
 from .test_registry import TestFrequency
 
 logger = logging.getLogger(__name__)
@@ -52,12 +52,12 @@ class TestResult:
     execution_id: str
     executed_at: datetime
     status: str  # "pass", "fail", "error", "skipped"
-    score: Optional[float]  # 0.0 to 1.0
-    findings: List[str]  # Finding IDs generated
-    evidence: Dict[str, Any]
+    score: float | None  # 0.0 to 1.0
+    findings: list[str]  # Finding IDs generated
+    evidence: dict[str, Any]
     execution_time_ms: int
-    error_message: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    error_message: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -68,11 +68,11 @@ class AttackSimulation:
     name: str
     description: str
     threat_scenario: ThreatScenario
-    attack_chain: List[str]  # Ordered list of attack steps
-    required_resources: List[str]  # Resource types needed
-    success_criteria: List[str]
-    detection_indicators: List[str]
-    mitigation_controls: List[str]
+    attack_chain: list[str]  # Ordered list of attack steps
+    required_resources: list[str]  # Resource types needed
+    success_criteria: list[str]
+    detection_indicators: list[str]
+    mitigation_controls: list[str]
 
 
 class AdvancedSecurityTester:
@@ -89,7 +89,7 @@ class AdvancedSecurityTester:
         self.evidence_fabric = evidence_fabric
         self.attack_simulations = self._load_attack_simulations()
 
-    def _load_attack_simulations(self) -> Dict[str, AttackSimulation]:
+    def _load_attack_simulations(self) -> dict[str, AttackSimulation]:
         """Load predefined attack simulation scenarios."""
         simulations = {}
 
@@ -192,7 +192,7 @@ class AdvancedSecurityTester:
         self,
         org_id: str,
         simulation_id: str,
-        parameters: Optional[Dict[str, Any]] = None,
+        parameters: dict[str, Any] | None = None,
     ) -> TestResult:
         """Execute a threat simulation scenario."""
         simulation = self.attack_simulations.get(simulation_id)
@@ -264,8 +264,8 @@ class AdvancedSecurityTester:
             )
 
     async def _execute_attack_step(
-        self, org_id: str, step: str, parameters: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, org_id: str, step: str, parameters: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute individual attack step."""
 
         if step == "enumerate_user_permissions":
@@ -286,7 +286,7 @@ class AdvancedSecurityTester:
             logger.warning(f"Unknown attack step: {step}")
             return {"status": "skipped", "reason": f"Unknown step: {step}"}
 
-    async def _enumerate_user_permissions(self, org_id: str) -> Dict[str, Any]:
+    async def _enumerate_user_permissions(self, org_id: str) -> dict[str, Any]:
         """Enumerate user permissions across all providers."""
         try:
             # Query for users with high-privilege roles
@@ -344,7 +344,7 @@ class AdvancedSecurityTester:
             logger.error(f"Failed to enumerate user permissions: {e}")
             return {"status": "error", "error": str(e)}
 
-    async def _discover_group_memberships(self, org_id: str) -> Dict[str, Any]:
+    async def _discover_group_memberships(self, org_id: str) -> dict[str, Any]:
         """Discover potentially dangerous group memberships."""
         try:
             # Query for users with multiple admin group memberships
@@ -390,10 +390,10 @@ class AdvancedSecurityTester:
             logger.error(f"Failed to discover group memberships: {e}")
             return {"status": "error", "error": str(e)}
 
-    async def _identify_admin_groups(self, org_id: str) -> Dict[str, Any]:
+    async def _identify_admin_groups(self, org_id: str) -> dict[str, Any]:
         """Identify admin groups and analyze membership patterns."""
         try:
-            admin_rows_by_key: Dict[tuple, Dict[str, Any]] = {}
+            admin_rows_by_key: dict[tuple, dict[str, Any]] = {}
 
             for keyword in ["admin", "super", "root", "owner"]:
                 result = await self.query_engine.execute_query(
@@ -450,7 +450,7 @@ class AdvancedSecurityTester:
             logger.error(f"Failed to identify admin groups: {e}")
             return {"status": "error", "error": str(e)}
 
-    async def _enumerate_third_party_access(self, org_id: str) -> Dict[str, Any]:
+    async def _enumerate_third_party_access(self, org_id: str) -> dict[str, Any]:
         """Enumerate third-party application access and OAuth tokens."""
         try:
             # Query for applications and OAuth tokens
@@ -504,10 +504,10 @@ class AdvancedSecurityTester:
             logger.error(f"Failed to enumerate third-party access: {e}")
             return {"status": "error", "error": str(e)}
 
-    async def _identify_oauth_tokens(self, org_id: str) -> Dict[str, Any]:
+    async def _identify_oauth_tokens(self, org_id: str) -> dict[str, Any]:
         """Identify potentially dangerous OAuth tokens and applications."""
         try:
-            rows_by_app_id: Dict[str, Dict[str, Any]] = {}
+            rows_by_app_id: dict[str, dict[str, Any]] = {}
 
             for query in [
                 "SELECT app_id, display_name, sign_in_audience, permission_count FROM *_application WHERE permission_count > 10",
@@ -572,8 +572,8 @@ class AdvancedSecurityTester:
             return {"status": "error", "error": str(e)}
 
     async def _enumerate_compromised_instance(
-        self, org_id: str, parameters: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, org_id: str, parameters: dict[str, Any]
+    ) -> dict[str, Any]:
         """Simulate enumeration from a compromised instance."""
         try:
             # Query for compute instances with concerning configurations
@@ -626,11 +626,11 @@ class AdvancedSecurityTester:
             return {"status": "error", "error": str(e)}
 
     async def _discover_accessible_resources(
-        self, org_id: str, parameters: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, org_id: str, parameters: dict[str, Any]
+    ) -> dict[str, Any]:
         """Discover resources accessible from compromised position."""
         try:
-            rows_by_bucket: Dict[str, Dict[str, Any]] = {}
+            rows_by_bucket: dict[str, dict[str, Any]] = {}
 
             for query in [
                 "SELECT bucket_name, is_public, iam_bindings FROM *_storage_bucket WHERE is_public = true",
@@ -693,7 +693,7 @@ class AdvancedSecurityTester:
             return {"status": "error", "error": str(e)}
 
     async def _check_success_criteria(
-        self, org_id: str, criteria: str, evidence: Dict[str, Any]
+        self, org_id: str, criteria: str, evidence: dict[str, Any]
     ) -> bool:
         """Check if attack success criteria was met."""
 
@@ -725,7 +725,7 @@ class AdvancedSecurityTester:
             logger.warning(f"Unknown success criteria: {criteria}")
             return False
 
-    async def run_security_benchmark(self, org_id: str) -> Dict[str, Any]:
+    async def run_security_benchmark(self, org_id: str) -> dict[str, Any]:
         """Run comprehensive security benchmark across all providers."""
         start_time = datetime.now()
 
@@ -775,7 +775,7 @@ class AdvancedSecurityTester:
             "next_benchmark_due": (start_time + timedelta(days=30)).isoformat(),
         }
 
-    async def _run_benchmark_test(self, org_id: str, test_name: str) -> Dict[str, Any]:
+    async def _run_benchmark_test(self, org_id: str, test_name: str) -> dict[str, Any]:
         """Run individual benchmark test."""
 
         if test_name == "excessive_permissions_test":
@@ -793,7 +793,7 @@ class AdvancedSecurityTester:
         else:
             return {"status": "skipped", "reason": f"Unknown test: {test_name}"}
 
-    async def _test_excessive_permissions(self, org_id: str) -> Dict[str, Any]:
+    async def _test_excessive_permissions(self, org_id: str) -> dict[str, Any]:
         """Test for users with excessive permissions."""
         try:
             query = """
@@ -829,7 +829,7 @@ class AdvancedSecurityTester:
         except Exception as e:
             return {"status": "error", "error": str(e), "score": 0.0}
 
-    async def _test_unencrypted_storage(self, org_id: str) -> Dict[str, Any]:
+    async def _test_unencrypted_storage(self, org_id: str) -> dict[str, Any]:
         """Test for unencrypted storage resources."""
         try:
             # Query for storage buckets without encryption
@@ -868,7 +868,7 @@ class AdvancedSecurityTester:
         except Exception as e:
             return {"status": "error", "error": str(e), "score": 0.0}
 
-    def _generate_recommendations(self, test_results: Dict[str, Any]) -> List[str]:
+    def _generate_recommendations(self, test_results: dict[str, Any]) -> list[str]:
         """Generate security recommendations based on test results."""
         recommendations = []
 

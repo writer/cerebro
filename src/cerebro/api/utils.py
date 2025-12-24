@@ -1,12 +1,13 @@
 """Common utilities for API routers to reduce code duplication."""
 
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
+
 from fastapi import HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import DeclarativeBase
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import DeclarativeBase
 
 T = TypeVar("T", bound=DeclarativeBase)
 ResponseT = TypeVar("ResponseT", bound=BaseModel)
@@ -21,8 +22,8 @@ class StandardFilters:
         limit: int = Query(
             100, ge=1, le=1000, description="Maximum number of items to return"
         ),
-        account_id: Optional[UUID] = Query(None, description="Filter by account ID"),
-        provider: Optional[str] = Query(None, description="Filter by provider"),
+        account_id: UUID | None = Query(None, description="Filter by account ID"),
+        provider: str | None = Query(None, description="Filter by provider"),
     ):
         self.skip = skip
         self.limit = limit
@@ -32,9 +33,9 @@ class StandardFilters:
 
 async def get_entity_by_id_or_404(
     db: AsyncSession,
-    model: Type[T],
+    model: type[T],
     entity_id: UUID,
-    error_message: Optional[str] = None,
+    error_message: str | None = None,
 ) -> T:
     """Get an entity by ID or raise 404 if not found."""
     entity = await db.get(model, entity_id)
@@ -45,19 +46,19 @@ async def get_entity_by_id_or_404(
 
 
 def build_filtered_query(
-    model: Type[T],
+    model: type[T],
     filters: StandardFilters,
-    additional_filters: Optional[Dict[str, Any]] = None,
+    additional_filters: dict[str, Any] | None = None,
 ):
     """Build a filtered SQLAlchemy query with standard filters."""
     stmt = select(model)
 
     # Apply standard filters
     if filters.account_id and hasattr(model, "account_id"):
-        account_id_col = getattr(model, "account_id")
+        account_id_col = model.account_id
         stmt = stmt.where(account_id_col == filters.account_id)
     if filters.provider and hasattr(model, "provider"):
-        provider_col = getattr(model, "provider")
+        provider_col = model.provider
         stmt = stmt.where(provider_col == filters.provider)
 
     # Apply additional filters
@@ -71,12 +72,12 @@ def build_filtered_query(
 
 async def paginated_list(
     db: AsyncSession,
-    model: Type[T],
+    model: type[T],
     filters: StandardFilters,
-    additional_filters: Optional[Dict[str, Any]] = None,
+    additional_filters: dict[str, Any] | None = None,
     order_by_field: str = "created_at",
     order_desc: bool = True,
-) -> List[T]:
+) -> list[T]:
     """Execute a paginated list query with standard filters."""
     stmt = build_filtered_query(model, filters, additional_filters)
 

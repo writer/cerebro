@@ -9,10 +9,10 @@ from uuid import uuid4
 # Test 1: Verify imports work
 print("Test 1: Verifying imports...")
 try:
-    from cerebro.agents.runtime import CerebroClaudeRuntime
-    from cerebro.agents.models import AgentType
-    from cerebro.agents.tools import tool_registry, AgentContext, ToolPermissionLevel
     from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
+    from cerebro.agents.models import AgentType
+    from cerebro.agents.runtime import CerebroClaudeRuntime
+    from cerebro.agents.tools import AgentContext, ToolPermissionLevel, tool_registry
 
     print("✅ All imports successful")
 except ImportError as e:
@@ -38,7 +38,7 @@ try:
     # Create MCP server - need to pass tools, context, and executor
     from cerebro.agents.tools import ToolExecutor
 
-    tools = [tool for tool in tool_registry._tools.values()]
+    tools = list(tool_registry._tools.values())
     executor = ToolExecutor()
 
     mcp_server = create_cerebro_mcp_server(

@@ -5,25 +5,26 @@ Provides REST API for JML campaigns, access reviews, peer group analysis,
 and exception management.
 """
 
-from typing import Optional, Dict, Any
-from uuid import UUID
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
 import logging
+from datetime import datetime
+from typing import Any
+from uuid import UUID
 
-from ...core.database import get_db
-from ...core.models import Organization
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...identity_governance.jml_campaigns import get_jml_manager
+from ...core.database import get_db
+from ...core.models import Organization
 from ...identity_governance.access_reviews import (
-    get_access_review_manager,
     ReviewDecision,
+    get_access_review_manager,
 )
+from ...identity_governance.exceptions import ExceptionType, get_exception_manager
+from ...identity_governance.jml_campaigns import get_jml_manager
 from ...identity_governance.peer_groups import get_peer_group_analyzer
-from ...identity_governance.exceptions import get_exception_manager, ExceptionType
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class AccessReviewRequest(BaseModel):
     """Request to create access review."""
 
     quarter: str = Field(..., description="Quarter identifier (e.g., 'Q1 2024')")
-    scope: Optional[Dict[str, Any]] = Field(None, description="Review scope filters")
+    scope: dict[str, Any] | None = Field(None, description="Review scope filters")
 
 
 class ReviewDecisionRequest(BaseModel):
@@ -51,7 +52,7 @@ class ReviewDecisionRequest(BaseModel):
     item_id: str = Field(..., description="Review item ID")
     decision: str = Field(..., description="Review decision")
     justification: str = Field(..., description="Decision justification")
-    exception_days: Optional[int] = Field(
+    exception_days: int | None = Field(
         None, description="Exception duration in days"
     )
 
@@ -67,7 +68,7 @@ class ExceptionRequest(BaseModel):
     business_need: str
     exception_type: str
     duration_days: int = Field(..., ge=1, le=365)
-    project_reference: Optional[str] = None
+    project_reference: str | None = None
 
 
 # JML Campaign Endpoints
@@ -107,7 +108,7 @@ async def create_jml_campaign(
 async def get_jml_events(
     org_id: UUID,
     lookback_days: int = Query(7, description="Days to look back", ge=1, le=90),
-    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    event_type: str | None = Query(None, description="Filter by event type"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
@@ -187,7 +188,7 @@ async def create_access_review(
 @router.get("/organizations/{org_id}/access-reviews")
 async def list_access_reviews(
     org_id: UUID,
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: str | None = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):
@@ -299,7 +300,7 @@ async def get_access_outliers(
     min_risk_score: float = Query(
         0.6, description="Minimum risk score for outliers", ge=0.0, le=1.0
     ),
-    department: Optional[str] = Query(None, description="Filter by department"),
+    department: str | None = Query(None, description="Filter by department"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
 ):

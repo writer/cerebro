@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -30,7 +30,7 @@ from cerebro_sdk.agents import (
     AgentToolingManager,
 )
 
-UTC = timezone.utc
+UTC = UTC
 
 
 @pytest.mark.asyncio

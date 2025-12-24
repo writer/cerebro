@@ -4,13 +4,13 @@ Integration layer between compliance frameworks, control tests, and rule engine.
 Maps existing CEL rules to compliance controls and creates executable control tests.
 """
 
-from typing import Dict, List, Optional, Any
-from .framework_registry import AutomationLevel
 from datetime import datetime, timedelta
+from typing import Any
 
-from .frameworks import ComplianceControl, get_framework
-from .control_tests import ControlTest, ControlTestRunner, ControlFrequency, TestStatus
 from ..rules.library import RuleLibrary, RuleTemplate
+from .control_tests import ControlFrequency, ControlTest, ControlTestRunner, TestStatus
+from .framework_registry import AutomationLevel
+from .frameworks import ComplianceControl, get_framework
 
 
 class FrameworkIntegration:
@@ -19,11 +19,11 @@ class FrameworkIntegration:
     def __init__(self, test_runner: ControlTestRunner):
         self.test_runner = test_runner
         self.rule_library = RuleLibrary()
-        self._control_test_cache: Dict[str, List[ControlTest]] = {}
+        self._control_test_cache: dict[str, list[ControlTest]] = {}
 
     def create_control_tests_for_framework(
         self, framework_name: str
-    ) -> List[ControlTest]:
+    ) -> list[ControlTest]:
         """Create control tests for all controls in a compliance framework."""
         if framework_name in self._control_test_cache:
             return self._control_test_cache[framework_name]
@@ -48,7 +48,7 @@ class FrameworkIntegration:
 
     def create_control_test(
         self, framework_name: str, control_id: str
-    ) -> Optional[ControlTest]:
+    ) -> ControlTest | None:
         """Create a control test for a specific control."""
         framework = get_framework(framework_name)
         if not framework:
@@ -63,7 +63,7 @@ class FrameworkIntegration:
 
         return self._create_control_test(control, framework_name, mapped_rules)
 
-    def get_framework_coverage(self, framework_name: str) -> Dict[str, Any]:
+    def get_framework_coverage(self, framework_name: str) -> dict[str, Any]:
         """Get coverage statistics for a compliance framework."""
         framework = get_framework(framework_name)
         if not framework:
@@ -126,7 +126,7 @@ class FrameworkIntegration:
             ),
         }
 
-    def get_control_gaps(self, framework_name: str) -> List[Dict[str, Any]]:
+    def get_control_gaps(self, framework_name: str) -> list[dict[str, Any]]:
         """Identify controls that lack automated testing."""
         framework = get_framework(framework_name)
         if not framework:
@@ -170,7 +170,7 @@ class FrameworkIntegration:
 
         return gaps
 
-    def create_rule_to_control_mapping(self) -> Dict[str, Dict[str, List[str]]]:
+    def create_rule_to_control_mapping(self) -> dict[str, dict[str, list[str]]]:
         """Create a mapping of rules to compliance controls across all frameworks."""
         rules = self.rule_library.get_all_rules()
         mapping = {}
@@ -182,7 +182,7 @@ class FrameworkIntegration:
 
     def suggest_new_rules_for_framework(
         self, framework_name: str
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Suggest new rules that could be created to improve framework coverage."""
         framework = get_framework(framework_name)
         if not framework:
@@ -204,7 +204,7 @@ class FrameworkIntegration:
 
     async def validate_control_test_effectiveness(
         self, framework_name: str, period_days: int = 30
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Analyze how effective control tests are at detecting issues."""
         control_tests = self.create_control_tests_for_framework(framework_name)
 
@@ -278,8 +278,8 @@ class FrameworkIntegration:
         }
 
     def _find_rules_for_control(
-        self, control: ComplianceControl, rules: List[RuleTemplate], framework_name: str
-    ) -> List[str]:
+        self, control: ComplianceControl, rules: list[RuleTemplate], framework_name: str
+    ) -> list[str]:
         """Find rules that map to a specific control."""
         mapped_rules = []
 
@@ -291,7 +291,7 @@ class FrameworkIntegration:
         return mapped_rules
 
     def _create_control_test(
-        self, control: ComplianceControl, framework_name: str, rule_ids: List[str]
+        self, control: ComplianceControl, framework_name: str, rule_ids: list[str]
     ) -> ControlTest:
         """Create a control test from a compliance control."""
         # Map frequency string to enum
@@ -323,7 +323,7 @@ class FrameworkIntegration:
             pass_threshold=1.0 if control.automation_level == "automated" else 0.8,
         )
 
-    def _suggest_gap_remediation(self, control: ComplianceControl) -> List[str]:
+    def _suggest_gap_remediation(self, control: ComplianceControl) -> list[str]:
         """Suggest ways to fill control testing gaps."""
         suggestions = []
 
@@ -359,7 +359,7 @@ class FrameworkIntegration:
 
     def _analyze_control_for_rule_creation(
         self, control: ComplianceControl, framework_name: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Analyze a control to suggest new rule creation."""
         if control.control_type.value != "technical":
             return None  # Focus on technical controls for rule automation
@@ -384,7 +384,7 @@ class FrameworkIntegration:
 
         return suggestion
 
-    def _suggest_providers_for_control(self, control: ComplianceControl) -> List[str]:
+    def _suggest_providers_for_control(self, control: ComplianceControl) -> list[str]:
         """Suggest which providers might be relevant for a control."""
         providers = []
 
@@ -408,8 +408,8 @@ class FrameworkIntegration:
         self,
         pass_rate: float,
         error_rate: float,
-        category_analysis: Dict[str, Dict[str, int]],
-    ) -> List[str]:
+        category_analysis: dict[str, dict[str, int]],
+    ) -> list[str]:
         """Generate recommendations based on test effectiveness analysis."""
         recommendations = []
 

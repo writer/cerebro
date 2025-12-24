@@ -4,18 +4,18 @@ Query API endpoints for SQL-based security data queries.
 Provides REST endpoints for executing SQL queries against security tables.
 """
 
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, Depends
-from pydantic import BaseModel, Field
+from typing import Any
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...query.engine import QueryResult
-from ...query.bootstrap import get_query_engine
-from ..schemas.base import BaseResponse
-from ..auth import get_current_user, require_scopes, require_read_findings, User
 from ...core.database import get_db
 from ...integrations.freshness import IntegrationFreshnessService
+from ...query.bootstrap import get_query_engine
+from ...query.engine import QueryResult
+from ..auth import User, get_current_user, require_read_findings, require_scopes
+from ..schemas.base import BaseResponse
 
 router = APIRouter(
     prefix="/query", tags=["Query"], dependencies=[Depends(get_current_user)]
@@ -33,7 +33,7 @@ class QueryRequest(BaseModel):
         description="SQL query to execute",
         json_schema_extra={"example": "SELECT * FROM aws_ec2_instance LIMIT 10"},
     )
-    timeout: Optional[int] = Field(
+    timeout: int | None = Field(
         30, description="Query timeout in seconds", ge=1, le=300
     )
 
@@ -41,7 +41,7 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseResponse):
     """SQL query response."""
 
-    data: Dict[str, Any] = Field(..., description="Query result data")
+    data: dict[str, Any] = Field(..., description="Query result data")
 
 
 class TableInfo(BaseModel):
@@ -60,14 +60,14 @@ class TableDetailInfo(BaseModel):
     name: str
     provider: str
     description: str
-    columns: List[Dict[str, Any]]
-    indexes: List[Dict[str, Any]]
+    columns: list[dict[str, Any]]
+    indexes: list[dict[str, Any]]
 
 
 class TablesResponse(BaseResponse):
     """List of available tables response."""
 
-    data: List[TableInfo] = Field(..., description="Available security tables")
+    data: list[TableInfo] = Field(..., description="Available security tables")
 
 
 class TableDetailResponse(BaseResponse):
@@ -144,7 +144,7 @@ async def execute_sql_query(
 
 @router.get("/tables", response_model=TablesResponse, summary="List Security Tables")
 async def list_security_tables(
-    provider: Optional[str] = Query(
+    provider: str | None = Query(
         None, description="Filter by provider (aws, okta, github, etc.)"
     ),
     current_user: User = Depends(get_current_user),
@@ -291,11 +291,11 @@ async def get_query_examples(current_user: User = Depends(get_current_user)):
 
 @router.get("/alerts", summary="Query Security Alerts")
 async def query_security_alerts(
-    provider: Optional[str] = Query(None, description="Filter by provider"),
-    severity: Optional[str] = Query(
+    provider: str | None = Query(None, description="Filter by provider"),
+    severity: str | None = Query(
         None, description="Filter by severity (critical, high, medium, low)"
     ),
-    since: Optional[str] = Query(
+    since: str | None = Query(
         None, description="Filter by creation date (ISO format)"
     ),
     limit: int = Query(100, description="Maximum results to return", ge=1, le=1000),
@@ -312,8 +312,8 @@ async def query_security_alerts(
 
     # Build parameterized query safely
     base_sql = "SELECT alert_id, repository_name, severity, created_at, title, description FROM github_vulnerability_alert"
-    conditions: List[str] = []
-    params: List[Any] = []
+    conditions: list[str] = []
+    params: list[Any] = []
     param_count = 0
 
     if provider:
@@ -380,9 +380,9 @@ async def query_security_alerts(
 
 @router.get("/users", summary="Query User Identities")
 async def query_users(
-    provider: Optional[str] = Query(None, description="Filter by provider"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    mfa_enabled: Optional[bool] = Query(None, description="Filter by MFA status"),
+    provider: str | None = Query(None, description="Filter by provider"),
+    status: str | None = Query(None, description="Filter by status"),
+    mfa_enabled: bool | None = Query(None, description="Filter by MFA status"),
     limit: int = Query(100, description="Maximum results to return", ge=1, le=1000),
     current_user: User = Depends(require_read_findings),
     db: AsyncSession = Depends(get_db),
@@ -397,8 +397,8 @@ async def query_users(
 
     # Build parameterized query safely
     base_sql = "SELECT username, email, status, last_login, mfa_enabled FROM okta_user"
-    conditions: List[str] = []
-    params: List[Any] = []
+    conditions: list[str] = []
+    params: list[Any] = []
     param_count = 0
 
     if provider:
@@ -463,8 +463,8 @@ async def query_users(
         )
 
 
-def _derive_providers(result: QueryResult) -> List[str]:
-    providers: List[str] = []
+def _derive_providers(result: QueryResult) -> list[str]:
+    providers: list[str] = []
     if not result.tables_queried:
         return providers
     seen = set()

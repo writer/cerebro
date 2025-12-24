@@ -6,6 +6,7 @@ from cerebro.integrations.serval import ServalClient, ServalConfig, ServalError
 from cerebro.integrations.state import IntegrationStateRepository
 
 __all__ = [
+    "IntegrationStateRepository",
     "KandjiClient",
     "KandjiIngestion",
     "SentinelOneClient",
@@ -13,5 +14,4 @@ __all__ = [
     "ServalClient",
     "ServalConfig",
     "ServalError",
-    "IntegrationStateRepository",
 ]

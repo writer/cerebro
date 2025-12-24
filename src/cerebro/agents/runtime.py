@@ -6,36 +6,36 @@ streaming agent capabilities with tool calling, audit logging, and safety guardr
 """
 
 import inspect
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, List, Optional
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, CLINotFoundError
-from claude_agent_sdk.types import (
-    AssistantMessage,
-    TextBlock,
-    ToolUseBlock,
-    ResultMessage,
-    SystemMessage,
-)
-
 from sqlalchemy import select
 
-from cerebro.agents.models import (
-    AgentSession,
-    AgentMessage,
-    MessageRole,
-    AgentType,
-)
 from cerebro.agents.analytics_service import AgentAnalyticsService
-from cerebro.agents.prompts import build_security_agent_prompt
-from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
-from cerebro.agents.tools import tool_registry, ToolExecutor
-from cerebro.agents.tools.base import AgentContext
-from cerebro.agents.tool_stats import performance_tracker
 from cerebro.agents.mcp_bridge import create_cerebro_mcp_server
 from cerebro.agents.metrics import record_runtime_metadata_event
+from cerebro.agents.models import (
+    AgentMessage,
+    AgentSession,
+    AgentType,
+    MessageRole,
+)
+from cerebro.agents.prompts import build_security_agent_prompt
+from cerebro.agents.runtime_common import AgentRuntimePersistenceMixin
+from cerebro.agents.tool_stats import performance_tracker
+from cerebro.agents.tools import ToolExecutor, tool_registry
+from cerebro.agents.tools.base import AgentContext
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, CLINotFoundError
+from claude_agent_sdk.types import (
+    AssistantMessage,
+    ResultMessage,
+    SystemMessage,
+    TextBlock,
+    ToolUseBlock,
+)
 
 try:
     CLAUDE_OPTIONS_METADATA_SUPPORTED = (
@@ -73,8 +73,8 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         org_id: UUID,
         agent_type: AgentType,
         created_by: str,
-        context: Dict[str, Any],
-        title: Optional[str] = None,
+        context: dict[str, Any],
+        title: str | None = None,
     ) -> AgentSession:
         """Create a new agent session with automatic context injection."""
 
@@ -104,7 +104,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
 
         return session
 
-    async def get_session(self, session_id: UUID) -> Optional[AgentSession]:
+    async def get_session(self, session_id: UUID) -> AgentSession | None:
         """Get an existing agent session."""
         from cerebro.core.database import async_session_factory
 
@@ -117,7 +117,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         message: str,
         user_id: str,
         stream: bool = False,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         """
         Send a message to the agent and stream the response.
 
@@ -231,7 +231,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         # Build allowed tools list (mcp__servername__toolname format)
         allowed_tools = [f"mcp__cerebro__{tool.name}" for tool in available_tools]
 
-        claude_session_id: Optional[str] = session.context.get("_claude_session_id")
+        claude_session_id: str | None = session.context.get("_claude_session_id")
 
         options_metadata = {
             "cerebro_session_id": str(session.id),
@@ -593,7 +593,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         session_id: UUID,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get messages from a session."""
         from cerebro.core.database import async_session_factory
 
@@ -628,10 +628,10 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                 for row in rows
             ]
 
-    async def get_session_metrics(self, session_id: UUID) -> Dict[str, Any]:
+    async def get_session_metrics(self, session_id: UUID) -> dict[str, Any]:
         """Get metrics for a session."""
         metrics = await self._get_session_metrics(session_id)
-        metrics["generated_at"] = datetime.now(timezone.utc).isoformat()
+        metrics["generated_at"] = datetime.now(UTC).isoformat()
         return metrics
 
     async def _generate_cli_fallback_response(
@@ -639,7 +639,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         *,
         session: AgentSession,
         agent_context: "AgentContext",
-        available_tools: List[Any],
+        available_tools: list[Any],
         user_message: str,
     ) -> str:
         """Generate a deterministic assistant response when Claude CLI is unavailable."""

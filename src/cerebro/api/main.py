@@ -2,65 +2,70 @@
 
 import asyncio
 from contextlib import asynccontextmanager, suppress
+from datetime import UTC
 from time import perf_counter
-from typing import Dict
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.openapi.utils import get_openapi
-from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 import structlog
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
+from cerebro.agents.metrics import get_registry
 from cerebro.core.config import settings
+from cerebro.core.database import async_session_factory
 from cerebro.core.logging import configure_structlog
 from cerebro.core.observability import configure_service_observability
-from cerebro.core.database import async_session_factory
 from cerebro.core.security.key_store import JWTKeyStore
-from cerebro.metrics.jwt_metrics import jwt_metrics
 from cerebro.metrics import api_metrics
-from cerebro.agents.metrics import get_registry
+from cerebro.metrics.jwt_metrics import jwt_metrics
+
 from .routers import (
-    auth,
-    organizations,
     accounts,
-    resources,
-    principals,
-    rules,
-    findings,
-    collectors,
+    agents,
     analysis,
-    query,
-    identity_governance,
-    oauth_risk,
-    attack_path,
-    vendors,
-    customers,
-    security_center,
-    tests,
-    websockets,
     analytics,
+    attack_path,
+    auth,
+    automation,
+    collectors,
     compliance,
     compliance_unified,
-    agents,
-    slack,
+    customers,
     email,
-    webhooks,
+    findings,
     forklift_webhooks,
-    telemetry,
-    automation,
-    packs,
+    identity_governance,
     integrations,
+    jwks,
+    oauth_risk,
+    organizations,
+    packs,
+    principals,
+    query,
+    resources,
+    rules,
+    security_center,
     serval,
+    slack,
+    telemetry,
+    tests,
+    vendors,
+    webhooks,
+    websockets,
+)
+from .routers.v2 import (
+    agents as agents_v2,
+)
+from .routers.v2 import (
+    findings as findings_v2,
 )
 from .routers.v2 import (
     organizations as organizations_v2,
-    findings as findings_v2,
-    agents as agents_v2,
 )
-from .routers import jwks
 
 # Configure logging
 configure_structlog()
@@ -94,7 +99,7 @@ app = FastAPI(
 )
 
 
-def custom_openapi() -> Dict:
+def custom_openapi() -> dict:
     if app.openapi_schema:
         return app.openapi_schema
 
@@ -174,7 +179,7 @@ def custom_openapi() -> Dict:
         ],
     )
 
-    def _inject_example(path: str, method: str, example: Dict) -> None:
+    def _inject_example(path: str, method: str, example: dict) -> None:
         paths = schema.get("paths", {})
         entry = paths.get(path, {})
         op = entry.get(method)
@@ -295,7 +300,7 @@ app.add_middleware(
 
 
 @app.get(f"{settings.api_v1_prefix}/openapi.json", include_in_schema=False)
-async def get_versioned_openapi() -> Dict:
+async def get_versioned_openapi() -> dict:
     return app.openapi()
 
 
@@ -552,7 +557,7 @@ async def readiness():
     """Readiness probe aggregating core dependencies."""
     from cerebro.core import probes
 
-    checks: Dict[str, Dict[str, object]] = {}
+    checks: dict[str, dict[str, object]] = {}
     ready = True
 
     db_ok, db_error = await probes.check_database()
@@ -580,8 +585,9 @@ async def health():
 @app.get("/health/db")
 async def health_db():
     """Database health check endpoint."""
-    from cerebro.core.database import async_session_factory
     from sqlalchemy import text
+
+    from cerebro.core.database import async_session_factory
 
     try:
         async with async_session_factory() as db:
@@ -590,14 +596,15 @@ async def health_db():
     except Exception as e:
         from fastapi import HTTPException
 
-        raise HTTPException(status_code=503, detail=f"Database unhealthy: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Database unhealthy: {e!s}")
 
 
 @app.get("/health/celery")
 async def health_celery():
     """Celery health check endpoint with worker status and queue depths."""
-    from datetime import datetime, timezone
     import asyncio
+    from datetime import datetime
+
     from cerebro.tasks.celery_app import celery_app
 
     try:
@@ -630,7 +637,7 @@ async def health_celery():
                 heartbeats = {
                     "worker": worker,
                     "status": "alive",
-                    "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+                    "last_heartbeat": datetime.now(UTC).isoformat(),
                     "active_tasks": len(active_tasks.get(worker, [])),
                     "reserved_tasks": len(reserved_tasks.get(worker, [])),
                     "total_tasks": stats.get("total", 0),
@@ -650,7 +657,7 @@ async def health_celery():
                     "total_reserved_tasks": total_reserved,
                     "total_pending": total_active + total_reserved,
                 },
-                "last_check": datetime.now(timezone.utc).isoformat(),
+                "last_check": datetime.now(UTC).isoformat(),
             }
 
         loop = asyncio.get_event_loop()
@@ -663,11 +670,11 @@ async def health_celery():
 
     except HTTPException:
         raise
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise HTTPException(status_code=503, detail="Celery inspect timed out") from exc
     except Exception as e:
         raise HTTPException(
-            status_code=503, detail=f"Celery health check failed: {str(e)}"
+            status_code=503, detail=f"Celery health check failed: {e!s}"
         )
 
 
@@ -699,7 +706,7 @@ async def health_encryption():
         from fastapi import HTTPException
 
         raise HTTPException(
-            status_code=503, detail=f"Encryption health check failed: {str(e)}"
+            status_code=503, detail=f"Encryption health check failed: {e!s}"
         )
 
 
@@ -729,7 +736,7 @@ async def health_dynamodb():
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=503, detail=f"DynamoDB health check failed: {str(e)}"
+            status_code=503, detail=f"DynamoDB health check failed: {e!s}"
         )
 
 

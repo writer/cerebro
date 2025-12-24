@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}
 
 
-_API_SETTING_FIELDS: Set[str] = {
+_API_SETTING_FIELDS: set[str] = {
     "api_base_url",
     "api_title",
     "api_description",
@@ -26,7 +26,7 @@ _API_SETTING_FIELDS: Set[str] = {
     "api_default_rate_limits_overrides",
 }
 
-_AGENT_SETTING_FIELDS: Set[str] = {
+_AGENT_SETTING_FIELDS: set[str] = {
     "enable_nl_query_translation",
     "claude_model",
     "claude_max_tokens",
@@ -68,7 +68,7 @@ _AGENT_SETTING_FIELDS: Set[str] = {
     "agent_default_dry_run",
 }
 
-_OPERATIONAL_ALERT_FIELDS: Set[str] = {
+_OPERATIONAL_ALERT_FIELDS: set[str] = {
     "runtime_health_alert_webhook",
     "runtime_health_alert_window_hours",
     "runtime_health_warning_threshold",
@@ -91,7 +91,7 @@ _OPERATIONAL_ALERT_FIELDS: Set[str] = {
     "attack_graph_scoring",
 }
 
-_SELF_PLAY_FIELDS: Set[str] = {
+_SELF_PLAY_FIELDS: set[str] = {
     "self_play_enabled",
     "self_play_max_turns",
     "self_play_max_tool_calls",
@@ -106,7 +106,7 @@ _SELF_PLAY_FIELDS: Set[str] = {
 
 
 class AuthSettings(BaseModel):
-    secret_key: Optional[SecretStr] = Field(default=None, alias="secret_key")
+    secret_key: SecretStr | None = Field(default=None, alias="secret_key")
     algorithm: str = Field(default="HS256")
     access_token_expire_minutes: int = Field(default=30)
     refresh_token_expire_days: int = Field(default=7)
@@ -119,7 +119,7 @@ class IntegrationRetrySettings(BaseModel):
     cooldown_seconds: int = Field(
         default=3600, alias="integration_sync_retry_cooldown_seconds"
     )
-    lookback_minutes: Optional[int] = Field(
+    lookback_minutes: int | None = Field(
         default=60, alias="integration_sync_retry_lookback_minutes"
     )
 
@@ -143,7 +143,7 @@ class APISettings(BaseModel):
         default="/api/v1",
         description="API version prefix for all v1 endpoints",
     )
-    api_allowed_origins: List[str] = Field(
+    api_allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
             "http://localhost:8080",
@@ -151,7 +151,7 @@ class APISettings(BaseModel):
         ],
         description="Allowed CORS origins for the public API",
     )
-    api_allowed_origins_overrides: Dict[str, List[str]] = Field(
+    api_allowed_origins_overrides: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Environment-specific overrides for allowed CORS origins",
     )
@@ -159,30 +159,30 @@ class APISettings(BaseModel):
         default=True,
         description="Allow credentials (cookies, auth headers) in CORS responses",
     )
-    api_cors_allow_methods: List[str] = Field(
+    api_cors_allow_methods: list[str] = Field(
         default_factory=lambda: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         description="HTTP methods permitted by CORS",
     )
-    api_cors_allow_headers: List[str] = Field(
+    api_cors_allow_headers: list[str] = Field(
         default_factory=lambda: ["Authorization", "Content-Type", "X-Requested-With"],
         description="HTTP headers permitted by CORS",
     )
-    api_default_rate_limits: List[str] = Field(
+    api_default_rate_limits: list[str] = Field(
         default_factory=lambda: ["100/minute"],
         description="Default rate limit configuration passed to SlowAPI",
     )
-    api_default_rate_limits_overrides: Dict[str, List[str]] = Field(
+    api_default_rate_limits_overrides: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Environment-specific overrides for rate limits",
     )
 
     model_config = SettingsConfigDict(populate_by_name=True)
 
-    def get_allowed_origins(self, environment: str) -> List[str]:
+    def get_allowed_origins(self, environment: str) -> list[str]:
         env = environment.lower()
         return self.api_allowed_origins_overrides.get(env, self.api_allowed_origins)
 
-    def get_default_rate_limits(self, environment: str) -> List[str]:
+    def get_default_rate_limits(self, environment: str) -> list[str]:
         env = environment.lower()
         return self.api_default_rate_limits_overrides.get(
             env, self.api_default_rate_limits
@@ -204,7 +204,7 @@ class AgentRuntimeSettings(BaseModel):
     claude_temperature: float = Field(
         default=0.1, description="Claude temperature (0.0-1.0)"
     )
-    openai_api_key: Optional[str] = Field(
+    openai_api_key: str | None = Field(
         default=None, description="OpenAI API key for Agents runtime"
     )
     openai_model: str = Field(
@@ -302,7 +302,7 @@ class AgentRuntimeSettings(BaseModel):
         default=1.1,
         description="Multiplier applied when a memory entry matches any active finding scope",
     )
-    agent_memory_role_weights: Dict[str, float] = Field(
+    agent_memory_role_weights: dict[str, float] = Field(
         default_factory=lambda: {
             "assistant": 1.1,
             "user": 1.0,
@@ -311,7 +311,7 @@ class AgentRuntimeSettings(BaseModel):
         },
         description="Relative weighting applied by role when ranking memory snippets",
     )
-    agent_memory_decay_profiles: Dict[str, int] = Field(
+    agent_memory_decay_profiles: dict[str, int] = Field(
         default_factory=lambda: {
             "session": 48,
             "incident": 96,
@@ -319,11 +319,11 @@ class AgentRuntimeSettings(BaseModel):
         },
         description="Fallback half-life overrides per scope type (hours)",
     )
-    agent_otel_endpoint: Optional[str] = Field(
+    agent_otel_endpoint: str | None = Field(
         default=None,
         description="OTLP HTTP endpoint for exporting agent telemetry spans (e.g., http://collector:4318/v1/traces)",
     )
-    agent_otel_headers: Optional[str] = Field(
+    agent_otel_headers: str | None = Field(
         default=None,
         description="Comma-separated key=value pairs forwarded as OTLP exporter headers",
     )
@@ -335,7 +335,7 @@ class AgentRuntimeSettings(BaseModel):
         default="claude",
         description="Default agent runtime backend (claude or openai)",
     )
-    agent_runtime_preferences: Dict[str, str] = Field(
+    agent_runtime_preferences: dict[str, str] = Field(
         default_factory=lambda: {
             "security_analyst": "claude",
             "incident_responder": "claude",
@@ -372,7 +372,7 @@ class AgentRuntimeSettings(BaseModel):
 
 
 class OperationalAlertSettings(BaseModel):
-    runtime_health_alert_webhook: Optional[str] = Field(
+    runtime_health_alert_webhook: str | None = Field(
         default=None,
         description="Slack webhook URL for runtime health alerts",
     )
@@ -388,23 +388,23 @@ class OperationalAlertSettings(BaseModel):
         default=1,
         description="Runtime error count threshold that triggers a critical alert",
     )
-    operational_alert_slack_webhook: Optional[str] = Field(
+    operational_alert_slack_webhook: str | None = Field(
         default=None,
         description="Slack webhook URL for operational health alerts",
     )
-    operational_alert_pagerduty_routing_key: Optional[str] = Field(
+    operational_alert_pagerduty_routing_key: str | None = Field(
         default=None,
         description="PagerDuty Events API v2 routing key for operational alerts",
     )
-    operational_alert_email_sender: Optional[str] = Field(
+    operational_alert_email_sender: str | None = Field(
         default=None,
         description="Sender email address used when dispatching operational alert emails",
     )
-    operational_alert_email_recipients: List[str] = Field(
+    operational_alert_email_recipients: list[str] = Field(
         default_factory=list,
         description="Email recipients for operational alert notifications",
     )
-    operational_alert_smtp_host: Optional[str] = Field(
+    operational_alert_smtp_host: str | None = Field(
         default=None,
         description="SMTP host used for operational alert emails",
     )
@@ -412,11 +412,11 @@ class OperationalAlertSettings(BaseModel):
         default=587,
         description="SMTP port used for operational alert emails",
     )
-    operational_alert_smtp_username: Optional[str] = Field(
+    operational_alert_smtp_username: str | None = Field(
         default=None,
         description="SMTP username used for operational alert emails",
     )
-    operational_alert_smtp_password: Optional[str] = Field(
+    operational_alert_smtp_password: str | None = Field(
         default=None,
         description="SMTP password used for operational alert emails",
     )
@@ -432,7 +432,7 @@ class OperationalAlertSettings(BaseModel):
         default=2,
         description="Hours without successful integration sync before raising an operational alert",
     )
-    operational_integration_stale_overrides: Dict[str, int] = Field(
+    operational_integration_stale_overrides: dict[str, int] = Field(
         default_factory=dict,
         description="Override integration stale thresholds in hours using partial integration name matches",
     )
@@ -448,7 +448,7 @@ class OperationalAlertSettings(BaseModel):
         default=0.9,
         description="Database connection pool utilization threshold that triggers an operational alert",
     )
-    attack_graph_scoring: Dict[str, Any] = Field(
+    attack_graph_scoring: dict[str, Any] = Field(
         default_factory=dict,
         description="Configuration overrides for attack graph scoring weights",
     )
@@ -480,7 +480,7 @@ class SelfPlaySettings(BaseModel):
         default="self_play_orchestrator",
         description="Synthetic user identifier recorded on self-play sessions",
     )
-    self_play_default_org_id: Optional[str] = Field(
+    self_play_default_org_id: str | None = Field(
         default=None,
         description="Override organization identifier used for self-play sessions",
     )
@@ -497,7 +497,7 @@ class SelfPlaySettings(BaseModel):
         default=True,
         description="Stream agent responses during self-play to capture transcript data",
     )
-    self_play_static_scenarios: List[Dict[str, Any]] = Field(
+    self_play_static_scenarios: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Optional static scenario definitions for self-play runs",
     )
@@ -541,7 +541,7 @@ class Settings(BaseSettings):
         ):
             legacy_section = {key: data.pop(key) for key in field_names if key in data}
             if legacy_section:
-                section_data: Dict[str, Any] = data.setdefault(section_name, {})
+                section_data: dict[str, Any] = data.setdefault(section_name, {})
                 section_data.update(legacy_section)
 
         return data
@@ -555,7 +555,7 @@ class Settings(BaseSettings):
     )
 
     # Analytics warehouse
-    snowflake_database_url: Optional[str] = Field(
+    snowflake_database_url: str | None = Field(
         default=None,
         description="Snowflake SQLAlchemy database URL for analytics workloads",
     )
@@ -580,7 +580,7 @@ class Settings(BaseSettings):
     dynamodb_users_table: str = Field(
         default="cerebro-users", description="DynamoDB table for user auth and API keys"
     )
-    dynamodb_endpoint_url: Optional[str] = Field(
+    dynamodb_endpoint_url: str | None = Field(
         default=None, description="DynamoDB endpoint URL (for local development)"
     )
 
@@ -589,17 +589,17 @@ class Settings(BaseSettings):
     api: APISettings = Field(default_factory=APISettings)
 
     # GitHub Integration
-    github_token: Optional[str] = Field(
+    github_token: str | None = Field(
         default=None,
         description="GitHub personal access token used by the GitHub provider",
     )
 
     # AWS Integration
-    aws_access_key_id: Optional[str] = Field(
+    aws_access_key_id: str | None = Field(
         default=None,
         description="AWS access key ID used for collection workloads",
     )
-    aws_secret_access_key: Optional[str] = Field(
+    aws_secret_access_key: str | None = Field(
         default=None,
         description="AWS secret access key paired with ``aws_access_key_id``",
     )
@@ -609,29 +609,29 @@ class Settings(BaseSettings):
     )
 
     # Google Cloud Integration
-    google_application_credentials: Optional[str] = Field(
+    google_application_credentials: str | None = Field(
         default=None, description="Path to GCP service account credentials"
     )
-    gcp_project_id: Optional[str] = Field(default=None, description="GCP project ID")
+    gcp_project_id: str | None = Field(default=None, description="GCP project ID")
 
     # Google Workspace Integration
-    google_workspace_admin_email: Optional[str] = Field(
+    google_workspace_admin_email: str | None = Field(
         default=None, description="Google Workspace admin email"
     )
-    google_workspace_customer_id: Optional[str] = Field(
+    google_workspace_customer_id: str | None = Field(
         default=None, description="Google Workspace customer ID"
     )
 
     # Slack Integration
-    slack_signing_secret: Optional[str] = Field(
+    slack_signing_secret: str | None = Field(
         default=None,
         description="Slack signing secret for verifying slash command signatures",
     )
-    slack_bot_token: Optional[str] = Field(
+    slack_bot_token: str | None = Field(
         default=None,
         description="Slack bot token used for posting messages and notifications",
     )
-    slack_default_org_id: Optional[UUID] = Field(
+    slack_default_org_id: UUID | None = Field(
         default=None,
         description="Fallback organization ID for Slack commands when workspace mapping is unavailable",
     )
@@ -645,19 +645,19 @@ class Settings(BaseSettings):
     )
 
     # Okta Integration
-    okta_api_token: Optional[str] = Field(default=None, description="Okta API token")
-    okta_domain: Optional[str] = Field(
+    okta_api_token: str | None = Field(default=None, description="Okta API token")
+    okta_domain: str | None = Field(
         default=None, description="Okta domain (e.g., company.okta.com)"
     )
 
     # Microsoft 365 Integration
-    m365_tenant_id: Optional[str] = Field(
+    m365_tenant_id: str | None = Field(
         default=None, description="Microsoft 365 tenant ID"
     )
-    m365_client_id: Optional[str] = Field(
+    m365_client_id: str | None = Field(
         default=None, description="Microsoft 365 application client ID"
     )
-    m365_client_secret: Optional[str] = Field(
+    m365_client_secret: str | None = Field(
         default=None, description="Microsoft 365 application client secret"
     )
 
@@ -665,16 +665,16 @@ class Settings(BaseSettings):
     sentinelone_enabled: bool = Field(
         default=False, description="Enable SentinelOne activity ingestion"
     )
-    sentinelone_api_base_url: Optional[str] = Field(
+    sentinelone_api_base_url: str | None = Field(
         default=None, description="Base URL for the SentinelOne management API"
     )
-    sentinelone_api_token: Optional[str] = Field(
+    sentinelone_api_token: str | None = Field(
         default=None, description="SentinelOne API token"
     )
-    sentinelone_org_name: Optional[str] = Field(
+    sentinelone_org_name: str | None = Field(
         default=None, description="Organization label applied to SentinelOne events"
     )
-    sentinelone_site: Optional[str] = Field(
+    sentinelone_site: str | None = Field(
         default=None, description="Optional site tag applied to SentinelOne events"
     )
     sentinelone_verify_tls: bool = Field(
@@ -685,17 +685,17 @@ class Settings(BaseSettings):
     kandji_enabled: bool = Field(
         default=False, description="Enable Kandji device ingestion"
     )
-    kandji_api_base_url: Optional[str] = Field(
+    kandji_api_base_url: str | None = Field(
         default=None,
         description="Base URL for the Kandji tenant (https://subdomain.api.kandji.io)",
     )
-    kandji_api_token: Optional[str] = Field(
+    kandji_api_token: str | None = Field(
         default=None, description="Kandji API token"
     )
-    kandji_org_name: Optional[str] = Field(
+    kandji_org_name: str | None = Field(
         default=None, description="Organization label applied to Kandji devices"
     )
-    kandji_site: Optional[str] = Field(
+    kandji_site: str | None = Field(
         default=None, description="Optional site tag applied to Kandji telemetry"
     )
     kandji_verify_tls: bool = Field(
@@ -710,11 +710,11 @@ class Settings(BaseSettings):
         default=1800,
         description="Cooldown period in seconds before repeating integration sync alerts",
     )
-    integration_sync_alert_webhook: Optional[str] = Field(
+    integration_sync_alert_webhook: str | None = Field(
         default=None,
         description="Slack webhook URL used for integration sync health alerts",
     )
-    integration_coverage_alert_webhook: Optional[str] = Field(
+    integration_coverage_alert_webhook: str | None = Field(
         default=None,
         description="Slack webhook URL used for integration coverage alerts",
     )
@@ -741,7 +741,7 @@ class Settings(BaseSettings):
     )
 
     # Claude Code SDK / AI Agents
-    anthropic_api_key: Optional[str] = Field(
+    anthropic_api_key: str | None = Field(
         default=None, description="Anthropic API key for Claude integration"
     )
     agent: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
@@ -792,7 +792,7 @@ class Settings(BaseSettings):
         default="cerebro_refresh_token",
         description="HTTP cookie name storing the refresh token",
     )
-    auth_cookie_domain: Optional[str] = Field(
+    auth_cookie_domain: str | None = Field(
         default=None,
         description="Optional cookie domain override for authentication cookies",
     )
@@ -868,7 +868,7 @@ class Settings(BaseSettings):
     collector_batch_size: int = Field(default=100, description="Collector batch size")
 
     # Notifications
-    notification_recipients: List[str] = Field(
+    notification_recipients: list[str] = Field(
         default=["admin@localhost"],
         description="Email addresses for collection completion and error notifications",
     )
@@ -887,10 +887,10 @@ class Settings(BaseSettings):
     redis_url: str = Field(
         default="redis://localhost:6379/0", description="Redis URL for Celery"
     )
-    celery_broker_url: Optional[str] = Field(
+    celery_broker_url: str | None = Field(
         default=None, description="Celery broker URL (defaults to redis_url)"
     )
-    celery_result_backend: Optional[str] = Field(
+    celery_result_backend: str | None = Field(
         default=None, description="Celery result backend (defaults to redis_url)"
     )
 
@@ -906,10 +906,10 @@ class Settings(BaseSettings):
 
         return self.celery_result_backend or self.redis_url
 
-    def get_allowed_origins(self) -> List[str]:
+    def get_allowed_origins(self) -> list[str]:
         return self.api.get_allowed_origins(self.environment)
 
-    def get_default_rate_limits(self) -> List[str]:
+    def get_default_rate_limits(self) -> list[str]:
         return self.api.get_default_rate_limits(self.environment)
 
     # Key Management Service Configuration
@@ -919,32 +919,32 @@ class Settings(BaseSettings):
     )
 
     # AWS KMS
-    aws_kms_key_id: Optional[str] = Field(
+    aws_kms_key_id: str | None = Field(
         default=None, description="AWS KMS key ID for envelope encryption"
     )
-    aws_kms_region: Optional[str] = Field(
+    aws_kms_region: str | None = Field(
         default=None, description="AWS KMS region (defaults to aws_default_region)"
     )
 
     # GCP KMS
-    gcp_kms_key_name: Optional[str] = Field(
+    gcp_kms_key_name: str | None = Field(
         default=None, description="GCP KMS key resource name"
     )
 
     # Azure Key Vault
-    azure_vault_url: Optional[str] = Field(
+    azure_vault_url: str | None = Field(
         default=None, description="Azure Key Vault URL"
     )
-    azure_key_name: Optional[str] = Field(
+    azure_key_name: str | None = Field(
         default=None, description="Azure Key Vault key name"
     )
 
     # HashiCorp Vault
-    vault_url: Optional[str] = Field(default=None, description="Vault server URL")
+    vault_url: str | None = Field(default=None, description="Vault server URL")
     vault_mount_path: str = Field(
         default="transit", description="Vault transit mount path"
     )
-    vault_key_name: Optional[str] = Field(
+    vault_key_name: str | None = Field(
         default=None, description="Vault transit key name"
     )
 
@@ -1082,7 +1082,7 @@ class Settings(BaseSettings):
         return self.integration_retry.cooldown_seconds
 
     @property
-    def integration_sync_retry_lookback_minutes(self) -> Optional[int]:
+    def integration_sync_retry_lookback_minutes(self) -> int | None:
         return self.integration_retry.lookback_minutes
 
     def __getattr__(self, item: str):

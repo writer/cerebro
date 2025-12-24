@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterable, Optional
-import re
 
 
 class SecretFamily(str, Enum):
@@ -34,7 +34,7 @@ def _compile(pattern: str) -> re.Pattern:
     return re.compile(pattern, re.IGNORECASE)
 
 
-SECRET_CATALOG: Dict[SecretFamily, SecretDescriptor] = {
+SECRET_CATALOG: dict[SecretFamily, SecretDescriptor] = {
     SecretFamily.OPENAI: SecretDescriptor(
         family=SecretFamily.OPENAI,
         display_name="OpenAI API key",
@@ -81,7 +81,7 @@ SECRET_CATALOG: Dict[SecretFamily, SecretDescriptor] = {
 
 
 def identify_secret_family(
-    secret_type: Optional[str], raw_result: Optional[Dict[str, object]]
+    secret_type: str | None, raw_result: dict[str, object] | None
 ) -> SecretDescriptor:
     """Return descriptor for the best matching secret family."""
 

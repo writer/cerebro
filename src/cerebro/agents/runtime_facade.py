@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, List, Optional
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -28,19 +29,19 @@ RuntimeKey = str
 class AgentRuntimeFacade:
     """Route agent operations to the appropriate runtime implementation."""
 
-    def __init__(self, default_runtime: Optional[str] = None) -> None:
+    def __init__(self, default_runtime: str | None = None) -> None:
         self.default_runtime: RuntimeKey = (
             default_runtime or settings.agent_default_runtime
         ).lower()
-        self._runtimes: Dict[RuntimeKey, Any] = {}
+        self._runtimes: dict[RuntimeKey, Any] = {}
 
     async def create_session(
         self,
         org_id: UUID,
         agent_type: AgentType,
         created_by: str,
-        context: Dict[str, Any],
-        title: Optional[str] = None,
+        context: dict[str, Any],
+        title: str | None = None,
     ) -> AgentSession:
         skill_tags = self._extract_skill_tags(agent_type, context=context)
         runtime_key = self._select_runtime(agent_type, context, skill_tags)
@@ -64,12 +65,12 @@ class AgentRuntimeFacade:
             payload={
                 "runtime": runtime_key,
                 "skill_tags": skill_tags,
-                "requested_context_keys": sorted(list(context.keys())),
+                "requested_context_keys": sorted(context.keys()),
             },
         )
         return session
 
-    async def get_session(self, session_id: UUID) -> Optional[AgentSession]:
+    async def get_session(self, session_id: UUID) -> AgentSession | None:
         runtime = self._get_runtime(self.default_runtime)
         return await runtime.get_session(session_id)
 
@@ -79,7 +80,7 @@ class AgentRuntimeFacade:
         message: str,
         user_id: str,
         stream: bool = False,
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         runtime = await self._maybe_switch_runtime(session, message)
         async for chunk in runtime.send_message(
             session=session,
@@ -94,11 +95,11 @@ class AgentRuntimeFacade:
         session: AgentSession,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         runtime = await self._runtime_for_session(session)
         return await runtime.get_session_messages(session.id, limit, offset)
 
-    async def get_session_metrics(self, session: AgentSession) -> Dict[str, Any]:
+    async def get_session_metrics(self, session: AgentSession) -> dict[str, Any]:
         runtime = await self._runtime_for_session(session)
         return await runtime.get_session_metrics(session.id)
 
@@ -173,7 +174,7 @@ class AgentRuntimeFacade:
                     "_last_routing_reason": {
                         "excerpt": message[-200:],
                         "skill_tags": skill_tags,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                     },
                 },
             )
@@ -206,8 +207,8 @@ class AgentRuntimeFacade:
     def _select_runtime(
         self,
         agent_type: AgentType,
-        context: Dict[str, Any],
-        skill_tags: List[str],
+        context: dict[str, Any],
+        skill_tags: list[str],
     ) -> RuntimeKey:
         preference_map = settings.agent_runtime_preferences or {}
 
@@ -229,10 +230,10 @@ class AgentRuntimeFacade:
     def _extract_skill_tags(
         self,
         agent_type: AgentType,
-        context: Dict[str, Any],
-        message: Optional[str] = None,
-    ) -> List[str]:
-        tags: List[str] = []
+        context: dict[str, Any],
+        message: str | None = None,
+    ) -> list[str]:
+        tags: list[str] = []
 
         finding_ids = context.get("finding_ids") or []
         incident_id = context.get("incident_id")
@@ -263,7 +264,7 @@ class AgentRuntimeFacade:
 
         # ensure uniqueness while preserving order
         seen = set()
-        unique_tags: List[str] = []
+        unique_tags: list[str] = []
         for tag in tags:
             if tag and tag not in seen:
                 seen.add(tag)
@@ -273,7 +274,7 @@ class AgentRuntimeFacade:
     async def _update_session_context(
         self,
         session_id: UUID,
-        updates: Dict[str, Any],
+        updates: dict[str, Any],
     ) -> None:
         async with async_session_factory() as db_session:
             db_session_obj = await db_session.get(AgentSession, session_id)

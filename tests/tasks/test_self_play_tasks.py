@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import List
 from uuid import uuid4
 
 import pytest
@@ -12,7 +11,7 @@ from cerebro.tasks.self_play_tasks import run_self_play_batch_async
 
 @pytest.mark.asyncio
 async def test_run_self_play_batch_async_executes_scenarios(monkeypatch):
-    executed: List[str] = []
+    executed: list[str] = []
 
     async def _load_scenarios(batch_size: int):
         return [

@@ -1,7 +1,7 @@
 """Resource repository for DynamoDB."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -29,16 +29,16 @@ class Resource(BaseModel):
     provider: str
     resource_type: str
     external_id: str
-    name: Optional[str] = None
-    parent_external_id: Optional[str] = None
-    region: Optional[str] = None
-    tags: Optional[Dict[str, str]] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    name: str | None = None
+    parent_external_id: str | None = None
+    region: str | None = None
+    tags: dict[str, str] | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Config:
         from_attributes = True
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         resource_id = str(self.resource_id)
         account_id = str(self.account_id)
@@ -68,7 +68,7 @@ class Resource(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Resource":
+    def from_item(cls, item: dict[str, Any]) -> "Resource":
         """Create from DynamoDB item."""
         return cls(
             resource_id=UUID(item["resource_id"]),
@@ -84,7 +84,7 @@ class Resource(BaseModel):
             created_at=(
                 datetime.fromisoformat(item["created_at"])
                 if item.get("created_at")
-                else datetime.now(timezone.utc)
+                else datetime.now(UTC)
             ),
         )
 
@@ -94,7 +94,7 @@ class ResourceRepository:
 
     _table = TableName.CORE
 
-    async def get(self, resource_id: UUID, org_id: UUID) -> Optional[Resource]:
+    async def get(self, resource_id: UUID, org_id: UUID) -> Resource | None:
         """Get resource by ID."""
         item = await get_item(
             self._table,
@@ -110,7 +110,7 @@ class ResourceRepository:
 
     async def update(
         self, resource_id: UUID, org_id: UUID, **updates
-    ) -> Optional[Resource]:
+    ) -> Resource | None:
         """Update resource."""
         result = await update_item(
             self._table,
@@ -128,7 +128,7 @@ class ResourceRepository:
             sk("RESOURCE", str(resource_id)),
         )
 
-    async def list_by_org(self, org_id: UUID, limit: int = 100) -> List[Resource]:
+    async def list_by_org(self, org_id: UUID, limit: int = 100) -> list[Resource]:
         """List resources for an organization."""
         items = await query(
             self._table,
@@ -141,9 +141,9 @@ class ResourceRepository:
     async def list_by_account(
         self,
         account_id: UUID,
-        resource_type: Optional[str] = None,
+        resource_type: str | None = None,
         limit: int = 100,
-    ) -> List[Resource]:
+    ) -> list[Resource]:
         """List resources for an account."""
         items = await query(
             self._table,
@@ -165,7 +165,7 @@ class ResourceRepository:
         org_id: UUID,
         resource_type: str,
         limit: int = 100,
-    ) -> List[Resource]:
+    ) -> list[Resource]:
         """List resources by type."""
         items = await query(
             self._table,
@@ -181,7 +181,7 @@ class ResourceRepository:
         provider: str,
         resource_type: str,
         external_id: str,
-    ) -> Optional[Resource]:
+    ) -> Resource | None:
         """Get resource by external ID.
 
         Note: Scans resources of given type. Consider adding GSI on external_id.
@@ -205,18 +205,18 @@ class ResourceRepository:
                 break
         return None
 
-    async def bulk_upsert(self, resources: List[Resource]) -> int:
+    async def bulk_upsert(self, resources: list[Resource]) -> int:
         """Bulk upsert resources."""
         items = [r.to_item() for r in resources]
         await batch_write(self._table, put_items=items)
         return len(resources)
 
-    async def count_by_type(self, org_id: UUID) -> Dict[str, int]:
+    async def count_by_type(self, org_id: UUID) -> dict[str, int]:
         """Count resources by type.
 
         Uses paginated queries to handle large datasets efficiently.
         """
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         cursor = None
         while True:
             items, cursor = await query_paginated(

@@ -6,7 +6,7 @@ import asyncio
 import logging
 import smtplib
 from email.mime.text import MIMEText
-from typing import Any, Dict, List
+from typing import Any
 
 import httpx
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _send_slack_alert(
-    title: str, message: str, severity: str, fields: Dict[str, Any]
+    title: str, message: str, severity: str, fields: dict[str, Any]
 ) -> None:
     webhook = settings.operational_alert_slack_webhook
     if not webhook:
@@ -162,11 +162,11 @@ async def _send_email_alert(subject: str, body: str) -> None:
         logger.warning("operational_email_alert_failed: %s", str(exc))
 
 
-async def _evaluate_alerts() -> Dict[str, Any]:
+async def _evaluate_alerts() -> dict[str, Any]:
     async with async_session_factory() as db:
         metrics = await collect_operational_alert_inputs(db)
 
-    alerts_sent: List[Dict[str, Any]] = []
+    alerts_sent: list[dict[str, Any]] = []
 
     evidence_threshold = max(1, settings.operational_evidence_stale_hours) * 3600
     queue_threshold = max(1, settings.operational_celery_queue_threshold)
@@ -288,7 +288,7 @@ async def _evaluate_alerts() -> Dict[str, Any]:
 
 
 @celery_app.task(name="cerebro.tasks.operational.evaluate_health")
-def evaluate_operational_health() -> Dict[str, Any]:
+def evaluate_operational_health() -> dict[str, Any]:
     """Celery task entrypoint for operational health alert evaluation."""
 
     return asyncio.run(_evaluate_alerts())

@@ -6,12 +6,12 @@ and network traffic analysis.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
-from ..oauth_risk.registry import get_oauth_registry, OAuthApp
+from ..oauth_risk.registry import OAuthApp, get_oauth_registry
 from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
@@ -50,21 +50,21 @@ class DiscoveredVendor:
 
     # Vendor classification
     estimated_category: str
-    risk_indicators: List[str]
+    risk_indicators: list[str]
 
     # Associated resources
-    oauth_apps: List[str]
-    integrations: List[str]
-    network_connections: List[str]
+    oauth_apps: list[str]
+    integrations: list[str]
+    network_connections: list[str]
 
     # Status
     reviewed: bool
     promoted_to_vendor: bool
     suppressed: bool
-    suppression_reason: Optional[str]
+    suppression_reason: str | None
 
     # Metadata
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class DiscoveredVendorTracker:
@@ -78,9 +78,9 @@ class DiscoveredVendorTracker:
     def __init__(self):
         self.oauth_registry = get_oauth_registry()
         self.query_engine = get_query_engine()
-        self.discovered_vendors: Dict[str, DiscoveredVendor] = {}
+        self.discovered_vendors: dict[str, DiscoveredVendor] = {}
 
-    async def discover_vendors_from_oauth(self, org_id: str) -> List[DiscoveredVendor]:
+    async def discover_vendors_from_oauth(self, org_id: str) -> list[DiscoveredVendor]:
         """Discover vendors through OAuth application analysis."""
         discovered = []
 
@@ -156,13 +156,13 @@ class DiscoveredVendorTracker:
 
     async def discover_vendors_from_integrations(
         self, org_id: str
-    ) -> List[DiscoveredVendor]:
+    ) -> list[DiscoveredVendor]:
         """Discover vendors through API integrations and connections."""
         discovered = []
 
         try:
             # Query GitHub repositories for external integrations
-            github_repos_by_name: Dict[str, Dict[str, Any]] = {}
+            github_repos_by_name: dict[str, dict[str, Any]] = {}
             for query in [
                 "SELECT repository, topics, language, created_at FROM github_repository WHERE topics LIKE '%integration%'",
                 "SELECT repository, topics, language, created_at FROM github_repository WHERE topics LIKE '%api%'",
@@ -269,7 +269,7 @@ class DiscoveredVendorTracker:
         else:
             return "saas_application"
 
-    def _identify_vendor_risk_indicators(self, app: OAuthApp) -> List[str]:
+    def _identify_vendor_risk_indicators(self, app: OAuthApp) -> list[str]:
         """Identify risk indicators for discovered vendor."""
         indicators = []
 
@@ -291,7 +291,7 @@ class DiscoveredVendorTracker:
 
         return indicators
 
-    def _analyze_repo_for_vendors(self, repo: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _analyze_repo_for_vendors(self, repo: dict[str, Any]) -> list[dict[str, Any]]:
         """Analyze repository for vendor integration indicators."""
         indicators = []
 
@@ -337,8 +337,8 @@ class DiscoveredVendorTracker:
         discovered_vendor_id: str,
         reviewer: str,
         promote_to_vendor: bool,
-        suppression_reason: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        suppression_reason: str | None = None,
+    ) -> dict[str, Any]:
         """Review a discovered vendor and decide on action."""
         discovered = self.discovered_vendors.get(discovered_vendor_id)
         if not discovered:

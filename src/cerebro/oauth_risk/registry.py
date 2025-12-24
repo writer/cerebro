@@ -6,10 +6,10 @@ scopes, usage, ownership, and provenance tracking.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
 from ..query.bootstrap import get_query_engine
 
@@ -60,43 +60,43 @@ class OAuthApp:
     client_id: str
 
     # Ownership and provenance
-    owner: Optional[str]
-    created_by: Optional[str]
+    owner: str | None
+    created_by: str | None
     installed_by: str
     installed_at: datetime
 
     # Permissions and scopes
-    scopes: List[OAuthScope]
-    requested_permissions: List[str]
-    granted_permissions: List[str]
+    scopes: list[OAuthScope]
+    requested_permissions: list[str]
+    granted_permissions: list[str]
 
     # Usage tracking
-    last_used: Optional[datetime]
+    last_used: datetime | None
     usage_frequency: str  # "daily", "weekly", "monthly", "rarely", "never"
     active_users: int
     total_authentications: int
 
     # Risk assessment
     risk_level: AppRiskLevel
-    risk_factors: List[str]
-    toxic_combinations: List[str]
+    risk_factors: list[str]
+    toxic_combinations: list[str]
 
     # Configuration
-    redirect_uris: List[str]
+    redirect_uris: list[str]
     publisher_domain: str
     is_verified: bool
     is_internal: bool
 
     # Compliance
-    data_access_locations: List[str]
-    data_retention_policy: Optional[str]
-    privacy_policy_url: Optional[str]
-    terms_of_service_url: Optional[str]
+    data_access_locations: list[str]
+    data_retention_policy: str | None
+    privacy_policy_url: str | None
+    terms_of_service_url: str | None
 
     # Metadata
     category: AppCategory
-    tags: List[str]
-    metadata: Dict[str, Any]
+    tags: list[str]
+    metadata: dict[str, Any]
 
 
 class OAuthAppRegistry:
@@ -109,10 +109,10 @@ class OAuthAppRegistry:
 
     def __init__(self):
         self.query_engine = get_query_engine()
-        self.apps_cache: Dict[str, OAuthApp] = {}
-        self.last_refresh: Optional[datetime] = None
+        self.apps_cache: dict[str, OAuthApp] = {}
+        self.last_refresh: datetime | None = None
 
-    async def discover_oauth_apps(self, org_id: str) -> List[OAuthApp]:
+    async def discover_oauth_apps(self, org_id: str) -> list[OAuthApp]:
         """
         Discover OAuth applications across all providers.
 
@@ -146,7 +146,7 @@ class OAuthAppRegistry:
 
         return discovered_apps
 
-    async def _discover_google_workspace_apps(self) -> List[OAuthApp]:
+    async def _discover_google_workspace_apps(self) -> list[OAuthApp]:
         """Discover Google Workspace OAuth applications."""
         apps = []
 
@@ -182,7 +182,7 @@ class OAuthAppRegistry:
 
         return apps
 
-    async def _discover_m365_apps(self) -> List[OAuthApp]:
+    async def _discover_m365_apps(self) -> list[OAuthApp]:
         """Discover Microsoft 365 OAuth applications."""
         apps = []
 
@@ -206,7 +206,7 @@ class OAuthAppRegistry:
 
         return apps
 
-    async def _discover_github_apps(self) -> List[OAuthApp]:
+    async def _discover_github_apps(self) -> list[OAuthApp]:
         """Discover GitHub OAuth applications."""
         apps = []
 
@@ -214,7 +214,7 @@ class OAuthAppRegistry:
             # Query GitHub apps (would need GitHub Apps API integration)
             # For now, simulate based on repository integrations
 
-            repos_by_name: Dict[str, Dict[str, Any]] = {}
+            repos_by_name: dict[str, dict[str, Any]] = {}
             for query in [
                 "SELECT repository, topics, created_at FROM github_repository WHERE topics LIKE '%ci%'",
                 "SELECT repository, topics, created_at FROM github_repository WHERE topics LIKE '%deployment%'",
@@ -300,7 +300,7 @@ class OAuthAppRegistry:
         return apps
 
     async def _create_oauth_app_from_google_data(
-        self, app_data: Dict[str, Any]
+        self, app_data: dict[str, Any]
     ) -> OAuthApp:
         """Create OAuthApp from Google Workspace data."""
         # Parse scopes
@@ -349,7 +349,7 @@ class OAuthAppRegistry:
         )
 
     async def _create_oauth_app_from_m365_data(
-        self, app_data: Dict[str, Any]
+        self, app_data: dict[str, Any]
     ) -> OAuthApp:
         """Create OAuthApp from M365 data."""
         # Parse Microsoft Graph permissions
@@ -470,7 +470,7 @@ class OAuthAppRegistry:
             return AppRiskLevel.LOW
 
     def _assess_app_risk_level(
-        self, scopes: List[OAuthScope], app_data: Dict[str, Any]
+        self, scopes: list[OAuthScope], app_data: dict[str, Any]
     ) -> AppRiskLevel:
         """Assess overall risk level for OAuth app."""
         # Count scope risk levels
@@ -509,8 +509,8 @@ class OAuthAppRegistry:
             return AppRiskLevel.LOW
 
     def _identify_risk_factors(
-        self, scopes: List[OAuthScope], app_data: Dict[str, Any]
-    ) -> List[str]:
+        self, scopes: list[OAuthScope], app_data: dict[str, Any]
+    ) -> list[str]:
         """Identify specific risk factors for the app."""
         risk_factors = []
 
@@ -585,7 +585,7 @@ class OAuthAppRegistry:
         else:
             return AppCategory.UNKNOWN
 
-    async def get_high_risk_apps(self, org_id: str) -> List[OAuthApp]:
+    async def get_high_risk_apps(self, org_id: str) -> list[OAuthApp]:
         """Get high-risk OAuth applications requiring attention."""
         if not self.apps_cache or not self.last_refresh:
             await self.discover_oauth_apps(org_id)
@@ -607,7 +607,7 @@ class OAuthAppRegistry:
 
         return high_risk_apps
 
-    async def get_apps_without_owners(self, org_id: str) -> List[OAuthApp]:
+    async def get_apps_without_owners(self, org_id: str) -> list[OAuthApp]:
         """Get OAuth apps without designated owners."""
         if not self.apps_cache:
             await self.discover_oauth_apps(org_id)
@@ -620,7 +620,7 @@ class OAuthAppRegistry:
 
     async def get_unused_apps(
         self, org_id: str, unused_days: int = 90
-    ) -> List[OAuthApp]:
+    ) -> list[OAuthApp]:
         """Get OAuth apps that haven't been used recently."""
         if not self.apps_cache:
             await self.discover_oauth_apps(org_id)
@@ -635,7 +635,7 @@ class OAuthAppRegistry:
 
     async def get_apps_by_scope(
         self, org_id: str, scope_pattern: str
-    ) -> List[OAuthApp]:
+    ) -> list[OAuthApp]:
         """Get OAuth apps with specific scope patterns."""
         if not self.apps_cache:
             await self.discover_oauth_apps(org_id)
@@ -649,7 +649,7 @@ class OAuthAppRegistry:
 
         return matching_apps
 
-    async def generate_oauth_risk_report(self, org_id: str) -> Dict[str, Any]:
+    async def generate_oauth_risk_report(self, org_id: str) -> dict[str, Any]:
         """Generate comprehensive OAuth risk assessment report."""
         apps = await self.discover_oauth_apps(org_id)
 
@@ -662,23 +662,23 @@ class OAuthAppRegistry:
         }
 
         # Provider breakdown
-        provider_stats: Dict[str, int] = {}
+        provider_stats: dict[str, int] = {}
         for app in apps:
             provider_stats[app.provider] = provider_stats.get(app.provider, 0) + 1
 
         # Category breakdown
-        category_stats: Dict[str, int] = {}
+        category_stats: dict[str, int] = {}
         for app in apps:
             category_stats[app.category.value] = (
                 category_stats.get(app.category.value, 0) + 1
             )
 
         # Risk factor analysis
-        all_risk_factors: List[str] = []
+        all_risk_factors: list[str] = []
         for app in apps:
             all_risk_factors.extend(app.risk_factors)
 
-        risk_factor_counts: Dict[str, int] = {}
+        risk_factor_counts: dict[str, int] = {}
         for factor in all_risk_factors:
             risk_factor_counts[factor] = risk_factor_counts.get(factor, 0) + 1
 

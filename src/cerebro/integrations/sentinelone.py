@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-import logging
-from collections import defaultdict
-from dataclasses import dataclass
 import asyncio
+import logging
 import random
-from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator, Dict, Iterable, List, Optional
+from collections import defaultdict
+from collections.abc import AsyncIterator, Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid5
 
 import httpx
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.metrics.integration_metrics import record_integration_sync
 from cerebro.telemetry.schemas import (
     AgentHealth,
     EndpointThreat,
@@ -24,8 +27,6 @@ from cerebro.telemetry.schemas import (
     SoftwarePackage,
 )
 from cerebro.telemetry.services import TelemetryIngestionService
-from cerebro.integrations.state import IntegrationStateRepository
-from cerebro.metrics.integration_metrics import record_integration_sync
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,8 @@ def _isoformat(dt: datetime) -> str:
     """Render datetimes in the canonical format expected by SentinelOne filters."""
 
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 class SentinelOneError(RuntimeError):
@@ -53,7 +54,7 @@ class SentinelOneConfig:
     base_url: str
     api_token: str
     organization: str
-    site: Optional[str] = None
+    site: str | None = None
     agent_version: str = "sentinelone-sync/1.0"
     verify: bool = True
     page_size: int = 200
@@ -62,11 +63,11 @@ class SentinelOneConfig:
 @dataclass
 class _NormalizedThreat:
     host_id: str
-    hostname: Optional[str]
-    os_family: Optional[str]
-    os_version: Optional[str]
-    agent_version: Optional[str]
-    ip_addresses: List[str]
+    hostname: str | None
+    os_family: str | None
+    os_version: str | None
+    agent_version: str | None
+    ip_addresses: list[str]
     threat: EndpointThreat
 
 
@@ -87,7 +88,7 @@ class SentinelOneClient:
         )
         self._config = config
 
-    async def __aenter__(self) -> "SentinelOneClient":
+    async def __aenter__(self) -> SentinelOneClient:
         await self._client.__aenter__()
         return self
 
@@ -97,9 +98,9 @@ class SentinelOneClient:
     async def iter_activities(
         self,
         *,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Yield activity records using cursor pagination.
 
         SentinelOne exposes its timeline via a cursor-based API where every response
@@ -109,14 +110,14 @@ class SentinelOneClient:
         keeps memory usage low even when large backfills are requested.
         """
 
-        base_params: Dict[str, Any] = {"limit": self._config.page_size}
+        base_params: dict[str, Any] = {"limit": self._config.page_size}
         if since:
             base_params["createdAt__gte"] = _isoformat(since)
         if until:
             base_params["createdAt__lte"] = _isoformat(until)
 
         params = dict(base_params)
-        cursor: Optional[str] = None
+        cursor: str | None = None
 
         while True:
             if cursor:
@@ -141,10 +142,10 @@ class SentinelOneClient:
     async def iter_threats(
         self,
         *,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
-        limit: Optional[int] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Yield threat records using cursor pagination.
 
         Mirrors :meth:`iter_activities` but targets the ``/threats`` endpoint
@@ -152,14 +153,14 @@ class SentinelOneClient:
         """
 
         page_size = limit or self._config.page_size
-        base_params: Dict[str, Any] = {"limit": page_size}
+        base_params: dict[str, Any] = {"limit": page_size}
         if since:
             base_params["createdAt__gte"] = _isoformat(since)
         if until:
             base_params["createdAt__lte"] = _isoformat(until)
 
         params = dict(base_params)
-        cursor: Optional[str] = None
+        cursor: str | None = None
 
         while True:
             if cursor:
@@ -177,7 +178,7 @@ class SentinelOneClient:
                 break
 
     @staticmethod
-    def _extract_records(payload: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+    def _extract_records(payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
         """Return the list of activity records irrespective of platform version."""
 
         if not isinstance(payload, dict):
@@ -191,7 +192,7 @@ class SentinelOneClient:
         return []
 
     @staticmethod
-    def _extract_cursor(payload: Dict[str, Any]) -> Optional[str]:
+    def _extract_cursor(payload: dict[str, Any]) -> str | None:
         """Read the continuation cursor from different response layouts."""
 
         pagination = payload.get("pagination")
@@ -205,9 +206,9 @@ class SentinelOneClient:
             return next_cursor
         return None
 
-    async def iter_agents(self, *, limit: int = 200) -> AsyncIterator[Dict[str, Any]]:
-        params: Dict[str, Any] = {"limit": limit}
-        cursor: Optional[str] = None
+    async def iter_agents(self, *, limit: int = 200) -> AsyncIterator[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit}
+        cursor: str | None = None
 
         while True:
             if cursor:
@@ -227,7 +228,7 @@ class SentinelOneClient:
             if not cursor:
                 break
 
-    async def get_policy(self, policy_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    async def get_policy(self, policy_id: str | None) -> dict[str, Any] | None:
         if not policy_id:
             return None
         try:
@@ -238,8 +239,8 @@ class SentinelOneClient:
             raise
 
     async def get_agent_applications(
-        self, agent_id: Optional[str]
-    ) -> Optional[List[Dict[str, Any]]]:
+        self, agent_id: str | None
+    ) -> list[dict[str, Any]] | None:
         if not agent_id:
             return None
         try:
@@ -256,8 +257,8 @@ class SentinelOneClient:
         return None
 
     async def _request_json(
-        self, url: str, *, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Execute a GET request with retry/backoff semantics."""
 
         attempt = 0
@@ -291,15 +292,15 @@ class SentinelOneIngestion:
     def __init__(self, client: SentinelOneClient) -> None:
         self._client = client
         self._config = client._config
-        self._policy_cache: Dict[str, Dict[str, Any]] = {}
+        self._policy_cache: dict[str, dict[str, Any]] = {}
 
     async def ingest(
         self,
         db: AsyncSession,
         *,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> dict[str, Any]:
         """Load activities, normalize them, and persist via the telemetry service."""
 
         service = TelemetryIngestionService(db)
@@ -314,9 +315,9 @@ class SentinelOneIngestion:
             if effective_since is None or candidate > effective_since:
                 effective_since = candidate
 
-        grouped: Dict[str, List[HostEvent]] = defaultdict(list)
-        now = datetime.now(timezone.utc)
-        latest_timestamp: Optional[datetime] = None
+        grouped: dict[str, list[HostEvent]] = defaultdict(list)
+        now = datetime.now(UTC)
+        latest_timestamp: datetime | None = None
 
         async for activity in self._client.iter_activities(
             since=effective_since, until=until
@@ -347,7 +348,7 @@ class SentinelOneIngestion:
             ts = (
                 latest_timestamp
                 if latest_timestamp.tzinfo
-                else latest_timestamp.replace(tzinfo=timezone.utc)
+                else latest_timestamp.replace(tzinfo=UTC)
             )
             await state_repo.upsert_state(
                 integration="sentinelone.activities",
@@ -379,7 +380,7 @@ class SentinelOneIngestion:
         }
 
     async def _ingest_agents(self, service: TelemetryIngestionService) -> int:
-        collected_at = datetime.now(timezone.utc)
+        collected_at = datetime.now(UTC)
         count = 0
         async for agent in self._client.iter_agents():
             policy = await self._get_policy(agent.get("policyId"))
@@ -398,9 +399,9 @@ class SentinelOneIngestion:
         *,
         service: TelemetryIngestionService,
         state_repo: IntegrationStateRepository,
-        since: Optional[datetime],
-        until: Optional[datetime],
-    ) -> Dict[str, Any]:
+        since: datetime | None,
+        until: datetime | None,
+    ) -> dict[str, Any]:
         state = await state_repo.get_state(
             "sentinelone.threats", self._config.organization
         )
@@ -410,8 +411,8 @@ class SentinelOneIngestion:
             if effective_since is None or candidate > effective_since:
                 effective_since = candidate
 
-        grouped: Dict[str, Dict[str, Any]] = {}
-        latest_timestamp: Optional[datetime] = None
+        grouped: dict[str, dict[str, Any]] = {}
+        latest_timestamp: datetime | None = None
         processed_records = 0
         active_records = 0
 
@@ -455,16 +456,16 @@ class SentinelOneIngestion:
 
         hosts_processed = 0
         for host_id, entry in grouped.items():
-            threats: List[EndpointThreat] = entry.get("threats", [])
+            threats: list[EndpointThreat] = entry.get("threats", [])
             if not threats:
                 continue
 
             collected_at = max(
                 (threat.detected_at for threat in threats),
-                default=datetime.now(timezone.utc),
+                default=datetime.now(UTC),
             )
             if collected_at.tzinfo is None:
-                collected_at = collected_at.replace(tzinfo=timezone.utc)
+                collected_at = collected_at.replace(tzinfo=UTC)
 
             ip_addresses = sorted(entry.get("ip_addresses", set()))
 
@@ -500,7 +501,7 @@ class SentinelOneIngestion:
             ts = (
                 latest_timestamp
                 if latest_timestamp.tzinfo
-                else latest_timestamp.replace(tzinfo=timezone.utc)
+                else latest_timestamp.replace(tzinfo=UTC)
             )
             await state_repo.upsert_state(
                 integration="sentinelone.threats",
@@ -523,21 +524,21 @@ class SentinelOneIngestion:
             "threat_hosts": hosts_processed,
         }
 
-    def _normalize_threat(self, threat: Dict[str, Any]) -> Optional[_NormalizedThreat]:
+    def _normalize_threat(self, threat: dict[str, Any]) -> _NormalizedThreat | None:
         if not isinstance(threat, dict):
             return None
 
         threat_info = threat.get("threatInfo")
-        info: Dict[str, Any] = threat_info if isinstance(threat_info, dict) else {}
+        info: dict[str, Any] = threat_info if isinstance(threat_info, dict) else {}
 
         agent_detection = threat.get("agentDetectionInfo")
-        detection: Dict[str, Any] = agent_detection if isinstance(agent_detection, dict) else {}
+        detection: dict[str, Any] = agent_detection if isinstance(agent_detection, dict) else {}
 
         agent_realtime = threat.get("agentRealtimeInfo")
-        realtime: Dict[str, Any] = agent_realtime if isinstance(agent_realtime, dict) else {}
+        realtime: dict[str, Any] = agent_realtime if isinstance(agent_realtime, dict) else {}
 
         mitigation_status = threat.get("mitigationStatus")
-        mitigation: Dict[str, Any] = mitigation_status if isinstance(mitigation_status, dict) else {}
+        mitigation: dict[str, Any] = mitigation_status if isinstance(mitigation_status, dict) else {}
 
         threat_id = info.get("threatId") or threat.get("id") or threat.get("threatId")
         if not threat_id:
@@ -615,7 +616,7 @@ class SentinelOneIngestion:
             self._parse_datetime(info.get("identifiedAt"))
             or self._parse_datetime(info.get("createdAt"))
             or self._parse_datetime(threat.get("createdAt"))
-            or datetime.now(timezone.utc)
+            or datetime.now(UTC)
         )
         updated_at = self._parse_datetime(
             info.get("updatedAt") or threat.get("updatedAt")
@@ -698,28 +699,28 @@ class SentinelOneIngestion:
         )
 
     @staticmethod
-    def _parse_datetime(value: Any) -> Optional[datetime]:
+    def _parse_datetime(value: Any) -> datetime | None:
         if isinstance(value, datetime):
-            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            return value if value.tzinfo else value.replace(tzinfo=UTC)
         if isinstance(value, str):
             try:
                 parsed = date_parser.isoparse(value)
             except (ValueError, TypeError):
                 return None
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
         return None
 
     @staticmethod
-    def _ensure_list(value: Any) -> List[str]:
+    def _ensure_list(value: Any) -> list[str]:
         if value is None:
             return []
         if isinstance(value, (list, tuple, set)):
-            list_result: List[str] = []
+            list_result: list[str] = []
             for item in value:
                 list_result.extend(SentinelOneIngestion._ensure_list(item))
             return list_result
         if isinstance(value, dict):
-            dict_result: List[str] = []
+            dict_result: list[str] = []
             for item in value.values():
                 dict_result.extend(SentinelOneIngestion._ensure_list(item))
             return dict_result
@@ -727,7 +728,7 @@ class SentinelOneIngestion:
 
     def _extract_indicator_details(
         self,
-        threat: Dict[str, Any],
+        threat: dict[str, Any],
     ) -> tuple[set[str], set[str], set[str], set[str], set[str], set[str]]:
         categories: set[str] = set()
         tactics: set[str] = set()
@@ -737,7 +738,7 @@ class SentinelOneIngestion:
         source_ips: set[str] = set()
 
         _threat_info = threat.get("threatInfo")
-        threat_info: Dict[str, Any] = _threat_info if isinstance(_threat_info, dict) else {}
+        threat_info: dict[str, Any] = _threat_info if isinstance(_threat_info, dict) else {}
         indicators = threat.get("indicators")
         if isinstance(indicators, dict):
             categories.update(
@@ -840,8 +841,8 @@ class SentinelOneIngestion:
 
     def _map_threat_severity(
         self,
-        classification: Optional[str],
-        confidence: Optional[str],
+        classification: str | None,
+        confidence: str | None,
         categories: Iterable[str],
     ) -> str:
         severity = "medium"
@@ -908,7 +909,7 @@ class SentinelOneIngestion:
             return False
         return True
 
-    async def _get_policy(self, policy_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    async def _get_policy(self, policy_id: str | None) -> dict[str, Any] | None:
         if not policy_id:
             return None
         cached = self._policy_cache.get(policy_id)
@@ -921,11 +922,11 @@ class SentinelOneIngestion:
 
     def _build_host_telemetry(
         self,
-        agent: Dict[str, Any],
-        policy: Optional[Dict[str, Any]],
-        applications: Optional[List[Dict[str, Any]]],
+        agent: dict[str, Any],
+        policy: dict[str, Any] | None,
+        applications: list[dict[str, Any]] | None,
         collected_at: datetime,
-    ) -> Optional[HostTelemetry]:
+    ) -> HostTelemetry | None:
         agent_id = str(agent.get("id") or agent.get("agentId") or "").strip()
         if not agent_id:
             return None
@@ -941,7 +942,7 @@ class SentinelOneIngestion:
             agent.get("osType") or agent.get("operatingSystem") or "unknown"
         ).lower()
 
-        tags: Dict[str, str] = {}
+        tags: dict[str, str] = {}
         if agent.get("siteName"):
             tags["site"] = str(agent["siteName"])
         if agent.get("groupName"):
@@ -982,8 +983,8 @@ class SentinelOneIngestion:
         )
 
     @staticmethod
-    def _collect_ips(agent: Dict[str, Any]) -> List[str]:
-        ips: List[str] = []
+    def _collect_ips(agent: dict[str, Any]) -> list[str]:
+        ips: list[str] = []
         interfaces = agent.get("networkInterfaces")
         if isinstance(interfaces, list):
             for iface in interfaces:
@@ -1000,11 +1001,11 @@ class SentinelOneIngestion:
 
     @staticmethod
     def _build_packages(
-        applications: Optional[List[Dict[str, Any]]],
-    ) -> Optional[List[SoftwarePackage]]:
+        applications: list[dict[str, Any]] | None,
+    ) -> list[SoftwarePackage] | None:
         if not applications:
             return None
-        packages: List[SoftwarePackage] = []
+        packages: list[SoftwarePackage] = []
         for app in applications:
             name = app.get("name") or app.get("productName")
             if not name:
@@ -1024,11 +1025,11 @@ class SentinelOneIngestion:
         return packages or None
 
     @staticmethod
-    def _build_health(agent: Dict[str, Any], collected_at: datetime) -> AgentHealth:
+    def _build_health(agent: dict[str, Any], collected_at: datetime) -> AgentHealth:
         threat_count = int(agent.get("threatCount") or agent.get("activeThreats") or 0)
         mitigation_mode = str(agent.get("mitigationMode", "")).lower()
         status = "healthy"
-        issues: List[str] = []
+        issues: list[str] = []
         if threat_count > 0:
             status = "degraded"
             issues.append(f"active_threats:{threat_count}")
@@ -1045,10 +1046,10 @@ class SentinelOneIngestion:
         if parsed is None:
             parsed = collected_at
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         return AgentHealth(status=status, last_heartbeat=parsed, issues=issues or None)
 
-    def _normalize_activity(self, activity: Dict[str, Any]) -> Optional[HostEvent]:
+    def _normalize_activity(self, activity: dict[str, Any]) -> HostEvent | None:
         """Translate raw SentinelOne activity JSON into a ``HostEvent`` model.
 
         The activity schema differs across environments and product tiers.  We
@@ -1067,7 +1068,7 @@ class SentinelOneIngestion:
             return None
 
         _data = activity.get("data")
-        data: Dict[str, Any] = _data if isinstance(_data, dict) else {}
+        data: dict[str, Any] = _data if isinstance(_data, dict) else {}
         agent_id = (
             activity.get("agentId")
             or data.get("agentId")
@@ -1090,7 +1091,7 @@ class SentinelOneIngestion:
         if isinstance(created_at, str):
             timestamp = date_parser.isoparse(created_at)
         else:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
 
         severity = self._map_severity(
             activity.get("severity")
@@ -1122,7 +1123,7 @@ class SentinelOneIngestion:
         )
 
     @staticmethod
-    def _map_severity(severity: Any) -> Optional[str]:
+    def _map_severity(severity: Any) -> str | None:
         """Normalize SentinelOne severity levels into Cerebro's label set."""
 
         if severity is None:
@@ -1147,6 +1148,6 @@ class SentinelOneIngestion:
         return mapping.get(level, "info")
 
     @staticmethod
-    def _chunk_events(events: List[HostEvent], size: int) -> Iterable[List[HostEvent]]:
+    def _chunk_events(events: list[HostEvent], size: int) -> Iterable[list[HostEvent]]:
         for idx in range(0, len(events), size):
             yield events[idx : idx + size]

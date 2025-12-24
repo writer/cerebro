@@ -1,24 +1,25 @@
 """Dashboard analytics for executive and operational security insights."""
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from uuid import UUID
 from time import perf_counter
+from typing import Any
+from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
-
-from .time_series import TimeSeriesCollector, TrendAnalyzer, MetricType
-from .risk_scoring import RiskScoringEngine
-from .sql_dialect import case_insensitive_like_expr, get_dialect_name
-from .identity_analytics import IdentityAnalyzer
-from .dashboard_repository import DashboardRepository
-from .runtime_health import summarize_runtime_health
-from cerebro.integrations.coverage import summarize_integration_coverage
-from cerebro.core.config import settings
 from prometheus_client import Histogram
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cerebro.core.config import settings
+from cerebro.integrations.coverage import summarize_integration_coverage
+
+from .dashboard_repository import DashboardRepository
+from .identity_analytics import IdentityAnalyzer
+from .risk_scoring import RiskScoringEngine
+from .runtime_health import summarize_runtime_health
+from .sql_dialect import case_insensitive_like_expr, get_dialect_name
+from .time_series import MetricType, TimeSeriesCollector, TrendAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,8 @@ class SecurityMetrics:
     open_findings: int
 
     # Trends (sparkline data)
-    findings_trend: List[float]
-    critical_trend: List[float]
+    findings_trend: list[float]
+    critical_trend: list[float]
 
     # SLA and MTTR
     sla_breaches: int
@@ -51,7 +52,7 @@ class SecurityMetrics:
     # Recent activity
     new_findings_24h: int
     resolved_findings_24h: int
-    provider_breakdown: Optional[List[Dict[str, Any]]] = None
+    provider_breakdown: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -65,7 +66,7 @@ class ExecutiveSummary:
     overall_risk_score: float
     risk_level: str
     risk_trend: str  # "improving", "declining", "stable"
-    dimension_scores: Dict[str, float]
+    dimension_scores: dict[str, float]
 
     # Key metrics
     total_assets: int
@@ -74,7 +75,7 @@ class ExecutiveSummary:
     compliance_score: float
 
     # Top risks (board-friendly)
-    top_5_risks: List[str]
+    top_5_risks: list[str]
 
     # Progress indicators
     findings_burned_down_30d: int
@@ -83,14 +84,14 @@ class ExecutiveSummary:
     risk_score_change_7d: float
 
     # Investment priorities
-    recommended_investments: List[Dict[str, Any]]
+    recommended_investments: list[dict[str, Any]]
 
 
 class DashboardAnalytics:
     """Comprehensive analytics for security dashboard."""
 
     def __init__(
-        self, db_session: Any, *, core_db_session: Optional[AsyncSession] = None
+        self, db_session: Any, *, core_db_session: AsyncSession | None = None
     ):
         """Initialize dashboard analytics."""
         self.db = db_session
@@ -101,10 +102,10 @@ class DashboardAnalytics:
             db_session, core_db_session=core_db_session
         )
         self.repository = DashboardRepository(db_session)
-        self._last_generation_timings: Dict[str, float] = {}
+        self._last_generation_timings: dict[str, float] = {}
 
     @property
-    def last_generation_timings(self) -> Dict[str, float]:
+    def last_generation_timings(self) -> dict[str, float]:
         """Expose timings from the last dashboard generation cycle."""
 
         return dict(self._last_generation_timings)
@@ -255,7 +256,7 @@ class DashboardAnalytics:
             recommended_investments=investment_recommendations,
         )
 
-    async def _generate_top_5_risks(self, org_id: UUID) -> List[str]:
+    async def _generate_top_5_risks(self, org_id: UUID) -> list[str]:
         """Generate top 5 risks in board-friendly language."""
 
         dialect = get_dialect_name(self.db)
@@ -349,7 +350,7 @@ class DashboardAnalytics:
 
         result = await self.db.execute(risks_query, {"org_id": org_id})
 
-        top_risks: List[str] = []
+        top_risks: list[str] = []
         for row in result.fetchall():
             severity_text = (
                 "critical"
@@ -434,7 +435,7 @@ class DashboardAnalytics:
 
     async def _generate_investment_recommendations(
         self, org_id: UUID
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Generate investment recommendations based on risk analysis."""
 
         recommendations = []
@@ -496,7 +497,7 @@ class DashboardAnalytics:
 
         return recommendations
 
-    async def generate_comprehensive_dashboard(self, org_id: UUID) -> Dict[str, Any]:
+    async def generate_comprehensive_dashboard(self, org_id: UUID) -> dict[str, Any]:
         """Generate comprehensive dashboard data combining all analytics."""
 
         logger.info(f"Generating comprehensive dashboard for org {org_id}")
@@ -516,7 +517,7 @@ class DashboardAnalytics:
         )
 
         # Identity analytics
-        identity_method = getattr(self.identity_analyzer, "generate_identity_dashboard_data")
+        identity_method = self.identity_analyzer.generate_identity_dashboard_data
         identity_data = await self._track_component(
             "identity_analytics",
             identity_method(org_id),
@@ -555,7 +556,7 @@ class DashboardAnalytics:
             summarize_runtime_health(self.db, hours=runtime_window),
         )
 
-        runtime_health: List[Dict[str, Any]] = []
+        runtime_health: list[dict[str, Any]] = []
         for entry in runtime_health_raw:
             events = entry.get("events", {})
             warning_count = events.get("runtime_warning", {}).get("count", 0)
@@ -584,7 +585,7 @@ class DashboardAnalytics:
             summarize_integration_coverage(self.db),
         )
 
-        integration_coverage: List[Dict[str, Any]] = []
+        integration_coverage: list[dict[str, Any]] = []
         for entry in integration_coverage_raw:
             ratio = entry.get("coverage_ratio")
             status = entry.get("status")
@@ -695,14 +696,14 @@ class DashboardAnalytics:
             "metadata": metadata,
         }
 
-    async def _get_compliance_status_by_framework(self, org_id: UUID) -> Dict[str, Any]:
+    async def _get_compliance_status_by_framework(self, org_id: UUID) -> dict[str, Any]:
         """Get compliance status breakdown by framework."""
 
         return await self.repository.get_compliance_by_framework(org_id)
 
     async def _get_compliance_trends(
-        self, org_id: UUID, framework_status: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, org_id: UUID, framework_status: dict[str, Any]
+    ) -> dict[str, Any]:
         """Hydrate compliance trend data from stored snapshots."""
 
         trend_query = text(
@@ -719,8 +720,8 @@ class DashboardAnalytics:
         result = await self.db.execute(trend_query, {"org_id": org_id})
         rows = list(result.fetchall())
 
-        overall: List[Dict[str, Any]] = []
-        frameworks: Dict[str, List[Dict[str, Any]]] = {
+        overall: list[dict[str, Any]] = []
+        frameworks: dict[str, list[dict[str, Any]]] = {
             framework: [] for framework in framework_status.keys()
         }
 
@@ -750,7 +751,7 @@ class DashboardAnalytics:
         if len(overall) >= 2:
             overall_delta = overall[-1]["score"] - overall[-2]["score"]
 
-        framework_deltas: Dict[str, float] = {}
+        framework_deltas: dict[str, float] = {}
         for framework_name, points in frameworks.items():
             if len(points) >= 2:
                 framework_deltas[framework_name] = (

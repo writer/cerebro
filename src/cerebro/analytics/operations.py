@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.agents.models import (
+    AgentMessage,
+    AgentSession,
+    ToolInvocation,
+    ToolInvocationStatus,
+)
 from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.automation.telemetry_health import fetch_telemetry_health
 from cerebro.core.config import settings
@@ -17,16 +24,10 @@ from cerebro.core.database import engine as core_engine
 from cerebro.integrations.freshness import IntegrationFreshnessService
 from cerebro.integrations.state import IntegrationIssueEventRepository
 from cerebro.metrics import api_metrics
-from cerebro.agents.models import (
-    AgentMessage,
-    AgentSession,
-    ToolInvocation,
-    ToolInvocationStatus,
-)
 
 
-def _coerce_float_list(value: Any) -> List[float]:
-    samples: List[float] = []
+def _coerce_float_list(value: Any) -> list[float]:
+    samples: list[float] = []
     if isinstance(value, list):
         for item in value:
             try:
@@ -47,7 +48,7 @@ def _derive_confidence(status: str) -> str:
     return "unknown"
 
 
-def _build_schedule_index(schedule_conf: Dict[str, Any]) -> Dict[str, Any]:
+def _build_schedule_index(schedule_conf: dict[str, Any]) -> dict[str, Any]:
     return {
         str(details.get("task")): details.get("schedule")
         for details in schedule_conf.values()
@@ -57,7 +58,7 @@ def _build_schedule_index(schedule_conf: Dict[str, Any]) -> Dict[str, Any]:
 
 def _resolve_task_for_integration(
     integration: str, tasks: Iterable[str]
-) -> Optional[str]:
+) -> str | None:
     integration_key = integration.split(".")[0].lower()
     for task in tasks:
         if not isinstance(task, str):
@@ -73,8 +74,8 @@ def _resolve_task_for_integration(
 
 def _compute_next_scheduled(
     integration: str,
-    schedule_index: Dict[str, Any],
-) -> Optional[datetime]:
+    schedule_index: dict[str, Any],
+) -> datetime | None:
     task_name = _resolve_task_for_integration(integration, schedule_index.keys())
     if not task_name:
         return None
@@ -82,8 +83,8 @@ def _compute_next_scheduled(
     if schedule_obj is None:
         return None
 
-    now = datetime.now(timezone.utc)
-    delta: Optional[timedelta] = None
+    now = datetime.now(UTC)
+    delta: timedelta | None = None
     if isinstance(schedule_obj, (int, float)):
         delta = timedelta(seconds=float(schedule_obj))
     elif isinstance(schedule_obj, timedelta):
@@ -98,7 +99,7 @@ def _compute_next_scheduled(
         ):  # pragma: no cover - Celery schedule introspection best effort
             delta = None
     elif hasattr(schedule_obj, "run_every") and isinstance(
-        getattr(schedule_obj, "run_every"), timedelta
+        schedule_obj.run_every, timedelta
     ):
         delta = schedule_obj.run_every
 
@@ -122,12 +123,12 @@ def _get_integration_stale_threshold(integration: str) -> int:
     return max(1, settings.operational_integration_stale_hours)
 
 
-async def gather_celery_status() -> Dict[str, Any]:
+async def gather_celery_status() -> dict[str, Any]:
     """Return Celery worker and queue status summary."""
 
     from cerebro.tasks.celery_app import celery_app  # Imported lazily to avoid cycles
 
-    def _inspect() -> Dict[str, Any]:
+    def _inspect() -> dict[str, Any]:
         try:
             inspect = celery_app.control.inspect()
             active = inspect.active() or {}
@@ -135,7 +136,7 @@ async def gather_celery_status() -> Dict[str, Any]:
             stats = inspect.stats() or {}
             registered = inspect.registered() or {}
 
-            workers: List[Dict[str, Any]] = []
+            workers: list[dict[str, Any]] = []
             total_active = 0
             total_reserved = 0
 
@@ -209,15 +210,15 @@ async def gather_celery_status() -> Dict[str, Any]:
     return await loop.run_in_executor(None, _inspect)
 
 
-async def _collect_integration_health(db: AsyncSession) -> Dict[str, Any]:
+async def _collect_integration_health(db: AsyncSession) -> dict[str, Any]:
     freshness_service = IntegrationFreshnessService(db)
     freshness_items = await freshness_service.list_freshness()
 
     repo = IntegrationIssueEventRepository(db)
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    since = datetime.now(UTC) - timedelta(hours=24)
     recent_events = await repo.list_events(since=since)
 
-    event_counts: Dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    event_counts: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     for event in recent_events:
         key = (event.integration, event.scope)
         event_counts[key][event.severity] += 1
@@ -227,7 +228,7 @@ async def _collect_integration_health(db: AsyncSession) -> Dict[str, Any]:
     schedule_conf = getattr(celery_app.conf, "beat_schedule", {}) or {}
     schedule_index = _build_schedule_index(schedule_conf)
 
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     stale_count = 0
     error_count = 0
 
@@ -293,8 +294,8 @@ async def _collect_integration_health(db: AsyncSession) -> Dict[str, Any]:
     }
 
 
-async def _collect_database_health(db: AsyncSession) -> Dict[str, Any]:
-    pool_stats: Dict[str, Any] = {}
+async def _collect_database_health(db: AsyncSession) -> dict[str, Any]:
+    pool_stats: dict[str, Any] = {}
     try:
         pool = core_engine.sync_engine.pool
         pool_stats = {
@@ -310,8 +311,8 @@ async def _collect_database_health(db: AsyncSession) -> Dict[str, Any]:
     except Exception:  # pragma: no cover - pool attributes vary by backend
         pool_stats = {}
 
-    slow_queries: List[Dict[str, Any]] = []
-    table_sizes: List[Dict[str, Any]] = []
+    slow_queries: list[dict[str, Any]] = []
+    table_sizes: list[dict[str, Any]] = []
 
     try:
         result = await db.execute(
@@ -367,8 +368,8 @@ async def _collect_database_health(db: AsyncSession) -> Dict[str, Any]:
     }
 
 
-async def _collect_agent_health(db: AsyncSession) -> Dict[str, Any]:
-    now = datetime.now(timezone.utc)
+async def _collect_agent_health(db: AsyncSession) -> dict[str, Any]:
+    now = datetime.now(UTC)
     hour_ago = now - timedelta(hours=1)
     day_ago = now - timedelta(hours=24)
 
@@ -416,7 +417,7 @@ async def _collect_agent_health(db: AsyncSession) -> Dict[str, Any]:
     }
 
 
-async def _collect_usage_metrics(db: AsyncSession) -> Dict[str, Any]:
+async def _collect_usage_metrics(db: AsyncSession) -> dict[str, Any]:
     snapshot = await fetch_telemetry_health(window_days=7, db_session=db)
     usage = snapshot.to_dict()
 
@@ -441,7 +442,7 @@ async def _collect_usage_metrics(db: AsyncSession) -> Dict[str, Any]:
         if (component and component != "(none)" and count <= 3)
     ]
 
-    def _sum_matching(source: Dict[str, int], keywords: Iterable[str]) -> int:
+    def _sum_matching(source: dict[str, int], keywords: Iterable[str]) -> int:
         total = 0
         for key, value in source.items():
             try:
@@ -477,7 +478,7 @@ async def _collect_usage_metrics(db: AsyncSession) -> Dict[str, Any]:
     return usage_summary
 
 
-async def collect_operational_health(db: AsyncSession) -> Dict[str, Any]:
+async def collect_operational_health(db: AsyncSession) -> dict[str, Any]:
     """Assemble a comprehensive operational health snapshot."""
 
     integrations = await _collect_integration_health(db)
@@ -489,7 +490,7 @@ async def collect_operational_health(db: AsyncSession) -> Dict[str, Any]:
     api_snapshot = api_metrics.snapshot()
 
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "integrations": integrations,
         "jobs": celery_status,
         "database": database,
@@ -499,7 +500,7 @@ async def collect_operational_health(db: AsyncSession) -> Dict[str, Any]:
     }
 
 
-async def collect_operational_alert_inputs(db: AsyncSession) -> Dict[str, Any]:
+async def collect_operational_alert_inputs(db: AsyncSession) -> dict[str, Any]:
     """Return the subset of health metrics required for alert evaluation."""
 
     integrations = await _collect_integration_health(db)

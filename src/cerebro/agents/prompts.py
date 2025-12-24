@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from cerebro.agents.models import AgentSession, AgentType
 from cerebro.core.config import settings
 
@@ -11,8 +9,8 @@ from cerebro.core.config import settings
 def build_security_agent_prompt(
     agent_type: AgentType,
     *,
-    session: Optional[AgentSession] = None,
-    memory_snippets: Optional[List[str]] = None,
+    session: AgentSession | None = None,
+    memory_snippets: list[str] | None = None,
 ) -> str:
     """Build the shared system prompt for agent runtimes."""
 

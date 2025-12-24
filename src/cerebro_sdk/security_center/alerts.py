@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable, Iterable, List, Optional
 
 from .models import SecurityCenterCustomerInsight, SecurityCenterVendorInsight
 
@@ -35,11 +35,11 @@ class GovernanceAlert:
 
 @dataclass
 class MonitoringContext:
-    vendor_resolver: Callable[[str], Optional[SecurityCenterVendorInsight]] | None = (
+    vendor_resolver: Callable[[str], SecurityCenterVendorInsight | None] | None = (
         None
     )
     customer_resolver: (
-        Callable[[str], Optional[SecurityCenterCustomerInsight]] | None
+        Callable[[str], SecurityCenterCustomerInsight | None] | None
     ) = None
     escalation_resolver: (
         Callable[
@@ -47,7 +47,7 @@ class MonitoringContext:
                 SecurityCenterVendorInsight | SecurityCenterCustomerInsight,
                 MonitoringEvent,
             ],
-            Optional[str],
+            str | None,
         ]
         | None
     ) = None
@@ -56,8 +56,8 @@ class MonitoringContext:
 def evaluate_monitoring_events(
     events: Iterable[MonitoringEvent],
     context: MonitoringContext,
-) -> List[GovernanceAlert]:
-    alerts: List[GovernanceAlert] = []
+) -> list[GovernanceAlert]:
+    alerts: list[GovernanceAlert] = []
     for event in events:
         entity = _resolve_entity(event, context)
         if entity is None:

@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -19,8 +18,8 @@ class AWSKMS(BaseKMS):
         self,
         key_id: str,
         region: str,
-        access_key_id: Optional[str] = None,
-        secret_access_key: Optional[str] = None,
+        access_key_id: str | None = None,
+        secret_access_key: str | None = None,
     ):
         """Initialize AWS KMS client."""
         self.key_id = key_id

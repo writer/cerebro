@@ -6,20 +6,20 @@ Enables users to create agent sessions, send messages, and receive real-time
 responses with tool execution capabilities.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+import json
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, ConfigDict
-from sse_starlette.sse import EventSourceResponse
 import structlog
-import json
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
+from cerebro.agents.service import AgentSessionService
 from cerebro.api.auth import User, get_current_user
 from cerebro.core.database import get_db
-from cerebro.agents.service import AgentSessionService
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -35,10 +35,10 @@ class CreateSessionRequest(BaseModel):
         description="Type of agent to create",
         examples=["security_analyst", "incident_responder"],
     )
-    title: Optional[str] = Field(
+    title: str | None = Field(
         None, description="Optional title for the session", max_length=255
     )
-    context: Dict[str, Any] = Field(
+    context: dict[str, Any] = Field(
         default_factory=dict,
         description="Context for the session (finding IDs, provider scope, etc.)",
     )
@@ -50,11 +50,11 @@ class SessionResponse(BaseModel):
     session_id: UUID
     org_id: UUID
     agent_type: str
-    title: Optional[str]
+    title: str | None
     created_at: datetime
     created_by: str
     status: str
-    context: Dict[str, Any]
+    context: dict[str, Any]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,13 +77,13 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     timestamp: datetime
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class SessionListResponse(BaseModel):
     """Response containing list of sessions."""
 
-    sessions: List[SessionResponse]
+    sessions: list[SessionResponse]
     total: int
     limit: int
     offset: int
@@ -93,10 +93,10 @@ class SessionWithMessagesResponse(BaseModel):
     """Response containing session with message history."""
 
     session: SessionResponse
-    messages: List[MessageResponse]
+    messages: list[MessageResponse]
     message_count: int
-    tool_invocations: List["ToolInvocationResponse"] = Field(default_factory=list)
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    tool_invocations: list["ToolInvocationResponse"] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolInvocationResponse(BaseModel):
@@ -104,8 +104,8 @@ class ToolInvocationResponse(BaseModel):
     tool_name: str
     status: str
     started_at: datetime
-    completed_at: Optional[datetime]
-    error_message: Optional[str]
+    completed_at: datetime | None
+    error_message: str | None
 
 
 SessionWithMessagesResponse.model_rebuild()
@@ -115,29 +115,29 @@ class MemoryEntryResponse(BaseModel):
     """Response containing a single memory entry."""
 
     id: UUID
-    role: Optional[str]
-    summary: Optional[str]
+    role: str | None
+    summary: str | None
     decay_score: float
     last_accessed_at: datetime
     created_at: datetime
-    scopes: List[Dict[str, Any]]
-    scope_labels: List[str]
-    metadata: Dict[str, Any]
+    scopes: list[dict[str, Any]]
+    scope_labels: list[str]
+    metadata: dict[str, Any]
     token_count: int
-    content: Optional[str] = None
-    embedding_similarity: Optional[float] = None
-    lexical_similarity: Optional[float] = None
-    combined_similarity: Optional[float] = None
-    ann_selected: Optional[bool] = None
+    content: str | None = None
+    embedding_similarity: float | None = None
+    lexical_similarity: float | None = None
+    combined_similarity: float | None = None
+    ann_selected: bool | None = None
 
 
 class MemoryHighlightResponse(BaseModel):
     id: UUID
-    summary: Optional[str]
-    role: Optional[str]
+    summary: str | None
+    role: str | None
     decay_score: float
     last_accessed_at: datetime
-    scope_labels: List[str]
+    scope_labels: list[str]
 
 
 class MemoryStatsResponse(BaseModel):
@@ -146,9 +146,9 @@ class MemoryStatsResponse(BaseModel):
     presented_entries: int
     average_decay: float
     token_total: int
-    role_distribution: Dict[str, int]
-    scope_distribution: Dict[str, int]
-    top_memories: List[MemoryHighlightResponse]
+    role_distribution: dict[str, int]
+    scope_distribution: dict[str, int]
+    top_memories: list[MemoryHighlightResponse]
 
 
 class ReviewTaskResponse(BaseModel):
@@ -159,24 +159,24 @@ class ReviewTaskResponse(BaseModel):
     org_id: UUID
     status: str
     title: str
-    summary: Optional[str]
-    payload: Dict[str, Any]
-    promotion_target: Optional[str]
-    priority: Optional[str]
-    due_at: Optional[datetime]
-    escalated_to: Optional[str]
-    notification_channel: Optional[str]
-    ticket_reference: Optional[str]
+    summary: str | None
+    payload: dict[str, Any]
+    promotion_target: str | None
+    priority: str | None
+    due_at: datetime | None
+    escalated_to: str | None
+    notification_channel: str | None
+    ticket_reference: str | None
     created_by: str
     created_at: datetime
-    resolved_by: Optional[str]
-    resolved_at: Optional[datetime]
-    resolution_notes: Optional[str]
+    resolved_by: str | None
+    resolved_at: datetime | None
+    resolution_notes: str | None
 
 
 class ResolveReviewTaskRequest(BaseModel):
     status: str = Field(..., description="New status for the review task")
-    notes: Optional[str] = Field(None, description="Optional resolution notes")
+    notes: str | None = Field(None, description="Optional resolution notes")
 
 
 class AssignReviewTaskRequest(BaseModel):
@@ -187,37 +187,37 @@ class AddReviewCommentRequest(BaseModel):
     content: str = Field(
         ..., min_length=1, max_length=5000, description="Comment content"
     )
-    metadata: Optional[Dict[str, Any]] = Field(
+    metadata: dict[str, Any] | None = Field(
         None, description="Optional metadata payload"
     )
 
 
 class WorkflowEvaluationRequest(BaseModel):
     trigger: str = Field(..., description="Trigger type to evaluate")
-    context: Dict[str, Any] = Field(..., description="Context data for evaluation")
+    context: dict[str, Any] = Field(..., description="Context data for evaluation")
 
 
 class BulkReviewUpdateRequest(BaseModel):
-    task_ids: List[UUID]
-    status: Optional[str] = Field(None, description="Status to apply to selected tasks")
-    notes: Optional[str] = None
-    escalated_to: Optional[str] = Field(
+    task_ids: list[UUID]
+    status: str | None = Field(None, description="Status to apply to selected tasks")
+    notes: str | None = None
+    escalated_to: str | None = Field(
         None, description="Escalation target identifier"
     )
-    due_at: Optional[datetime] = Field(
+    due_at: datetime | None = Field(
         None, description="Optional due date for review completion"
     )
-    priority: Optional[str] = Field(None, description="Priority label")
-    notification_channel: Optional[str] = Field(
+    priority: str | None = Field(None, description="Priority label")
+    notification_channel: str | None = Field(
         None, description="Channel for notifications (e.g. slack:#alerts)"
     )
-    ticket_system: Optional[str] = Field(
+    ticket_system: str | None = Field(
         None, description="External ticket system identifier"
     )
-    ticket_summary: Optional[str] = Field(
+    ticket_summary: str | None = Field(
         None, description="Summary used when creating an external ticket"
     )
-    ticket_metadata: Optional[Dict[str, Any]] = Field(
+    ticket_metadata: dict[str, Any] | None = Field(
         None, description="Additional ticket metadata"
     )
 
@@ -228,9 +228,9 @@ class ReviewNotificationResponse(BaseModel):
     org_id: UUID
     channel: str
     status: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     created_at: datetime
-    delivered_at: Optional[datetime]
+    delivered_at: datetime | None
 
 
 class ReviewQueueStatusSummary(BaseModel):
@@ -238,47 +238,47 @@ class ReviewQueueStatusSummary(BaseModel):
     count: int
     unassigned: int
     overdue: int
-    oldest_created: Optional[datetime]
-    newest_created: Optional[datetime]
+    oldest_created: datetime | None
+    newest_created: datetime | None
 
 
 class ReviewQueuePendingSummary(BaseModel):
     total: int
     unassigned: int
     overdue: int
-    next_due: Optional[datetime]
-    oldest_created: Optional[datetime]
+    next_due: datetime | None
+    oldest_created: datetime | None
 
 
 class ReviewQueuePrioritySummary(BaseModel):
-    priority: Optional[str]
+    priority: str | None
     count: int
 
 
 class ReviewQueueSummary(BaseModel):
     generated_at: datetime
-    status_counts: List[ReviewQueueStatusSummary]
+    status_counts: list[ReviewQueueStatusSummary]
     pending: ReviewQueuePendingSummary
-    priority_breakdown: List[ReviewQueuePrioritySummary]
+    priority_breakdown: list[ReviewQueuePrioritySummary]
 
 
 class ReviewTaskPageResponse(BaseModel):
-    items: List[ReviewTaskResponse]
-    next_cursor: Optional[str] = None
+    items: list[ReviewTaskResponse]
+    next_cursor: str | None = None
 
 
 class RuntimeEventResponse(BaseModel):
     id: UUID
     event_type: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     created_at: datetime
 
 
 class RuntimeEventSummaryResponse(BaseModel):
     event_type: str
     event_count: int
-    first_seen: Optional[datetime]
-    last_seen: Optional[datetime]
+    first_seen: datetime | None
+    last_seen: datetime | None
 
 
 class PolicySuggestionResponse(BaseModel):
@@ -288,7 +288,7 @@ class PolicySuggestionResponse(BaseModel):
     support_count: int
     reject_count: int
     confidence: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     last_seen: datetime
 
 
@@ -298,13 +298,13 @@ class PolicySimulationExample(BaseModel):
     tool_name: str
     matched: bool
     status: str
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    input_data: Dict[str, Any]
-    output_data: Optional[Dict[str, Any]]
-    cel_context: Dict[str, Any]
-    error: Optional[str]
-    latency_ms: Optional[float]
+    started_at: datetime | None
+    completed_at: datetime | None
+    input_data: dict[str, Any]
+    output_data: dict[str, Any] | None
+    cel_context: dict[str, Any]
+    error: str | None
+    latency_ms: float | None
 
 
 class PolicySimulationResponse(BaseModel):
@@ -312,18 +312,18 @@ class PolicySimulationResponse(BaseModel):
     matched_count: int
     mismatched_count: int
     error_count: int
-    examples: List[PolicySimulationExample]
+    examples: list[PolicySimulationExample]
 
 
 class PolicySimulationRequest(BaseModel):
     expression: str = Field(..., min_length=3, description="CEL expression to evaluate")
-    tool_name: Optional[str] = Field(None, description="Filter to a specific tool name")
+    tool_name: str | None = Field(None, description="Filter to a specific tool name")
     limit: int = Field(
         50, ge=1, le=200, description="Number of recent invocations to evaluate"
     )
 
 
-def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+def _parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
@@ -332,7 +332,7 @@ def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def _review_task_to_response(data: Dict[str, Any]) -> ReviewTaskResponse:
+def _review_task_to_response(data: dict[str, Any]) -> ReviewTaskResponse:
     return ReviewTaskResponse(
         id=UUID(data["id"]),
         session_id=UUID(data["session_id"]),
@@ -355,7 +355,7 @@ def _review_task_to_response(data: Dict[str, Any]) -> ReviewTaskResponse:
     )
 
 
-def _notification_to_response(data: Dict[str, Any]) -> ReviewNotificationResponse:
+def _notification_to_response(data: dict[str, Any]) -> ReviewNotificationResponse:
     return ReviewNotificationResponse(
         id=UUID(data["id"]),
         task_id=UUID(data["task_id"]),
@@ -368,7 +368,7 @@ def _notification_to_response(data: Dict[str, Any]) -> ReviewNotificationRespons
     )
 
 
-def _runtime_event_to_response(data: Dict[str, Any]) -> RuntimeEventResponse:
+def _runtime_event_to_response(data: dict[str, Any]) -> RuntimeEventResponse:
     return RuntimeEventResponse(
         id=UUID(data["id"]),
         event_type=data["event_type"],
@@ -377,7 +377,7 @@ def _runtime_event_to_response(data: Dict[str, Any]) -> RuntimeEventResponse:
     )
 
 
-def _policy_suggestion_to_response(data: Dict[str, Any]) -> PolicySuggestionResponse:
+def _policy_suggestion_to_response(data: dict[str, Any]) -> PolicySuggestionResponse:
     return PolicySuggestionResponse(
         id=UUID(data["id"]),
         tool_name=data["tool_name"],
@@ -444,7 +444,7 @@ async def create_agent_session(
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def list_agent_sessions(
-    agent_type: Optional[str] = Query(None, description="Filter by agent type"),
+    agent_type: str | None = Query(None, description="Filter by agent type"),
     limit: int = Query(
         50, ge=1, le=100, description="Maximum number of sessions to return"
     ),
@@ -689,7 +689,7 @@ async def send_message_to_agent(
         return EventSourceResponse(event_generator())
 
 
-@router.get("/sessions/{session_id}/messages", response_model=List[MessageResponse])
+@router.get("/sessions/{session_id}/messages", response_model=list[MessageResponse])
 async def get_session_messages(
     session_id: UUID,
     limit: int = Query(
@@ -731,7 +731,7 @@ async def get_session_messages(
         raise HTTPException(status_code=500, detail="Failed to get session messages")
 
 
-@router.get("/sessions/{session_id}/memory", response_model=List[MemoryEntryResponse])
+@router.get("/sessions/{session_id}/memory", response_model=list[MemoryEntryResponse])
 async def get_session_memory_entries(
     session_id: UUID,
     limit: int = Query(
@@ -808,9 +808,9 @@ async def get_session_memory_stats(
     return MemoryStatsResponse(**stats)
 
 
-@router.get("/review-tasks", response_model=List[ReviewTaskResponse])
+@router.get("/review-tasks", response_model=list[ReviewTaskResponse])
 async def list_review_tasks(
-    status: Optional[str] = Query(None, description="Filter by review status"),
+    status: str | None = Query(None, description="Filter by review status"),
     limit: int = Query(
         50, ge=1, le=200, description="Maximum number of tasks to return"
     ),
@@ -829,11 +829,11 @@ async def list_review_tasks(
 
 @router.get("/review-tasks/page", response_model=ReviewTaskPageResponse)
 async def list_review_tasks_page(
-    status: Optional[str] = Query(None, description="Filter by review status"),
+    status: str | None = Query(None, description="Filter by review status"),
     limit: int = Query(
         50, ge=1, le=200, description="Number of tasks to fetch per page"
     ),
-    cursor: Optional[str] = Query(None, description="Opaque cursor for pagination"),
+    cursor: str | None = Query(None, description="Opaque cursor for pagination"),
     current_user: User = Depends(get_current_user),
 ):
     """Return review tasks using cursor-based pagination."""
@@ -902,7 +902,7 @@ async def resolve_review_task(
     return _review_task_to_response(task)
 
 
-@router.post("/review-tasks/bulk-update", response_model=List[ReviewTaskResponse])
+@router.post("/review-tasks/bulk-update", response_model=list[ReviewTaskResponse])
 async def bulk_update_review_tasks(
     request: BulkReviewUpdateRequest,
     current_user: User = Depends(get_current_user),
@@ -949,7 +949,7 @@ async def assign_review_task(
     return _review_task_to_response(task)  # type: ignore[arg-type]
 
 
-@router.post("/review-tasks/{task_id}/comments", response_model=Dict[str, Any])
+@router.post("/review-tasks/{task_id}/comments", response_model=dict[str, Any])
 async def add_task_comment(
     task_id: UUID,
     request: AddReviewCommentRequest,
@@ -978,7 +978,7 @@ async def add_task_comment(
     }
 
 
-@router.get("/review-tasks/{task_id}/comments", response_model=List[Dict[str, Any]])
+@router.get("/review-tasks/{task_id}/comments", response_model=list[dict[str, Any]])
 async def get_task_comments(
     task_id: UUID,
     limit: int = Query(100, ge=1, le=500, description="Maximum comments to return"),
@@ -1008,7 +1008,7 @@ async def get_task_comments(
     ]
 
 
-@router.get("/review-tasks/{task_id}/history", response_model=List[Dict[str, Any]])
+@router.get("/review-tasks/{task_id}/history", response_model=list[dict[str, Any]])
 async def get_task_history(
     task_id: UUID,
     limit: int = Query(
@@ -1040,7 +1040,7 @@ async def get_task_history(
     ]
 
 
-@router.get("/review-tasks/sla/summary", response_model=Dict[str, Any])
+@router.get("/review-tasks/sla/summary", response_model=dict[str, Any])
 async def get_sla_summary(
     current_user: User = Depends(get_current_user),
 ):
@@ -1053,7 +1053,7 @@ async def get_sla_summary(
     return summary
 
 
-@router.get("/review-tasks/sla/breached", response_model=List[Dict[str, Any]])
+@router.get("/review-tasks/sla/breached", response_model=list[dict[str, Any]])
 async def get_breached_tasks(
     current_user: User = Depends(get_current_user),
 ):
@@ -1066,7 +1066,7 @@ async def get_breached_tasks(
     return [status.to_dict() for status in breached]
 
 
-@router.get("/review-tasks/sla/at-risk", response_model=List[Dict[str, Any]])
+@router.get("/review-tasks/sla/at-risk", response_model=list[dict[str, Any]])
 async def get_at_risk_tasks(
     current_user: User = Depends(get_current_user),
 ):
@@ -1080,10 +1080,10 @@ async def get_at_risk_tasks(
 
 
 @router.get(
-    "/review-tasks/notifications", response_model=List[ReviewNotificationResponse]
+    "/review-tasks/notifications", response_model=list[ReviewNotificationResponse]
 )
 async def list_review_notifications(
-    status: Optional[str] = Query(None, description="Filter notifications by status"),
+    status: str | None = Query(None, description="Filter notifications by status"),
     limit: int = Query(
         100, ge=1, le=500, description="Maximum notification records to return"
     ),
@@ -1099,25 +1099,25 @@ async def list_review_notifications(
 
 
 @router.get(
-    "/sessions/{session_id}/analytics", response_model=List[RuntimeEventResponse]
+    "/sessions/{session_id}/analytics", response_model=list[RuntimeEventResponse]
 )
 async def get_session_analytics(
     session_id: UUID,
     limit: int = Query(
         100, ge=1, le=500, description="Maximum analytics events to return"
     ),
-    event_type: Optional[str] = Query(None, description="Filter events by type"),
-    cursor: Optional[str] = Query(
+    event_type: str | None = Query(None, description="Filter events by type"),
+    cursor: str | None = Query(
         None, description="Fetch events created before this ISO-8601 timestamp"
     ),
-    cursor_id: Optional[str] = Query(
+    cursor_id: str | None = Query(
         None,
         description="Unique identifier of the last event seen (paired with cursor)",
     ),
     current_user: User = Depends(get_current_user),
 ):
     service = AgentSessionService()
-    before_dt: Optional[datetime] = None
+    before_dt: datetime | None = None
     if cursor:
         try:
             parsed = datetime.fromisoformat(cursor)
@@ -1125,9 +1125,9 @@ async def get_session_analytics(
             raise HTTPException(
                 status_code=400, detail="Invalid cursor timestamp"
             ) from exc
-        before_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        before_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
-    before_id: Optional[UUID] = None
+    before_id: UUID | None = None
     if cursor_id:
         try:
             before_id = UUID(cursor_id)
@@ -1149,11 +1149,11 @@ async def get_session_analytics(
 
 @router.get(
     "/sessions/{session_id}/analytics/summary",
-    response_model=List[RuntimeEventSummaryResponse],
+    response_model=list[RuntimeEventSummaryResponse],
 )
 async def get_session_analytics_summary(
     session_id: UUID,
-    event_type: Optional[str] = Query(
+    event_type: str | None = Query(
         None, description="Filter summaries to a specific event type"
     ),
     current_user: User = Depends(get_current_user),
@@ -1175,15 +1175,15 @@ async def get_session_analytics_summary(
     ]
 
 
-@router.get("/workflows/templates", response_model=List[Dict[str, Any]])
+@router.get("/workflows/templates", response_model=list[dict[str, Any]])
 async def list_workflow_templates(
-    trigger: Optional[str] = Query(None, description="Filter by trigger type"),
+    trigger: str | None = Query(None, description="Filter by trigger type"),
     current_user: User = Depends(get_current_user),
 ):
     """List all available workflow templates."""
     from cerebro.agents.workflow_templates import (
-        WorkflowTemplateLibrary,
         WorkflowEngine,
+        WorkflowTemplateLibrary,
     )
 
     if trigger:
@@ -1194,15 +1194,15 @@ async def list_workflow_templates(
     return [WorkflowEngine.to_dict(template) for template in templates]
 
 
-@router.get("/workflows/templates/{template_id}", response_model=Dict[str, Any])
+@router.get("/workflows/templates/{template_id}", response_model=dict[str, Any])
 async def get_workflow_template(
     template_id: str,
     current_user: User = Depends(get_current_user),
 ):
     """Get a specific workflow template by ID."""
     from cerebro.agents.workflow_templates import (
-        WorkflowTemplateLibrary,
         WorkflowEngine,
+        WorkflowTemplateLibrary,
     )
 
     template = WorkflowTemplateLibrary.get_template(template_id)
@@ -1212,7 +1212,7 @@ async def get_workflow_template(
     return WorkflowEngine.to_dict(template)
 
 
-@router.post("/workflows/evaluate", response_model=List[Dict[str, Any]])
+@router.post("/workflows/evaluate", response_model=list[dict[str, Any]])
 async def evaluate_workflows(
     request: WorkflowEvaluationRequest,
     current_user: User = Depends(get_current_user),
@@ -1226,7 +1226,7 @@ async def evaluate_workflows(
     return [WorkflowEngine.to_dict(template) for template in matching]
 
 
-@router.get("/policy-suggestions", response_model=List[PolicySuggestionResponse])
+@router.get("/policy-suggestions", response_model=list[PolicySuggestionResponse])
 async def list_policy_suggestions(
     limit: int = Query(
         50, ge=1, le=200, description="Maximum policy suggestions to return"

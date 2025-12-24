@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from cerebro.agents.models import (
     AgentReviewTask,
@@ -26,7 +26,7 @@ def test_review_queue_summary_endpoint(client, test_db, test_org, test_token):
         test_db.add(session)
         await test_db.flush()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         tasks = [
             AgentReviewTask(

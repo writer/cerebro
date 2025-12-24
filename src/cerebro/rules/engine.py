@@ -1,17 +1,18 @@
 """CEL rule engine implementation."""
 
 import hashlib
-from typing import Any, Dict, Optional, List
+import logging
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from uuid import UUID
-import logging
 
 import celpy
-from celpy import Environment, CELEvalError
 from cachetools import TTLCache
+from celpy import CELEvalError, Environment
 
 from cerebro.core.config import settings
+
 from .exceptions import CompilationError
 
 logger = logging.getLogger(__name__)
@@ -21,14 +22,14 @@ logger = logging.getLogger(__name__)
 class EvaluationContext:
     """Context for rule evaluation."""
 
-    resource: Optional[Dict[str, Any]] = None
-    config: Optional[Dict[str, Any]] = None
-    principal: Optional[Dict[str, Any]] = None
-    iam_edge: Optional[Dict[str, Any]] = None
-    org_config: Optional[Dict[str, Any]] = None
-    user_config: Optional[Dict[str, Any]] = None
+    resource: dict[str, Any] | None = None
+    config: dict[str, Any] | None = None
+    principal: dict[str, Any] | None = None
+    iam_edge: dict[str, Any] | None = None
+    org_config: dict[str, Any] | None = None
+    user_config: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for CEL evaluation."""
         return {k: v for k, v in self.__dict__.items() if v is not None}
 
@@ -39,8 +40,8 @@ class RuleResult:
 
     rule_id: UUID
     matched: bool
-    error: Optional[str] = None
-    execution_time_ms: Optional[float] = None
+    error: str | None = None
+    execution_time_ms: float | None = None
 
 
 class RuleEngine:
@@ -153,8 +154,8 @@ class RuleEngine:
             )
 
     def evaluate_rules(
-        self, rules: List[Dict[str, Any]], context: EvaluationContext
-    ) -> List[RuleResult]:
+        self, rules: list[dict[str, Any]], context: EvaluationContext
+    ) -> list[RuleResult]:
         """Evaluate multiple rules against the given context."""
         results = []
 
@@ -179,7 +180,7 @@ class RuleEngine:
         self._cache.clear()
         logger.info("Rule compilation cache cleared")
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         return {
             "size": len(self._cache),

@@ -5,7 +5,7 @@ Provides secure, read-only access to listing security findings with filtering,
 pagination, and provider scope enforcement.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding, Resource
 
-from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
+from .base import AgentContext, Tool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -22,24 +22,24 @@ logger = structlog.get_logger(__name__)
 class ListFindingsInput(BaseModel):
     """Input for listing findings."""
 
-    org_id: Optional[UUID] = Field(
+    org_id: UUID | None = Field(
         None, description="Organization ID (defaults to context org)"
     )
     limit: int = Field(
         50, description="Maximum number of findings to return", ge=1, le=500
     )
     offset: int = Field(0, description="Number of findings to skip", ge=0)
-    severity: Optional[List[str]] = Field(None, description="Filter by severity levels")
-    status: Optional[List[str]] = Field(None, description="Filter by finding status")
-    provider: Optional[List[str]] = Field(None, description="Filter by provider")
-    created_after: Optional[str] = Field(
+    severity: list[str] | None = Field(None, description="Filter by severity levels")
+    status: list[str] | None = Field(None, description="Filter by finding status")
+    provider: list[str] | None = Field(None, description="Filter by provider")
+    created_after: str | None = Field(
         None, description="Filter findings created after this ISO timestamp"
     )
-    created_before: Optional[str] = Field(
+    created_before: str | None = Field(
         None, description="Filter findings created before this ISO timestamp"
     )
-    rule_id: Optional[str] = Field(None, description="Filter by specific rule ID")
-    resource_type: Optional[str] = Field(None, description="Filter by resource type")
+    rule_id: str | None = Field(None, description="Filter by specific rule ID")
+    resource_type: str | None = Field(None, description="Filter by resource type")
 
 
 class FindingSummary(BaseModel):
@@ -56,17 +56,17 @@ class FindingSummary(BaseModel):
     rule_id: str
     created_at: str  # ISO format
     updated_at: str  # ISO format
-    evidence: Dict[str, Any]
-    compliance_mappings: Dict[str, Any]
+    evidence: dict[str, Any]
+    compliance_mappings: dict[str, Any]
 
 
 class ListFindingsOutput(BaseModel):
     """Output for listing findings."""
 
-    findings: List[FindingSummary]
+    findings: list[FindingSummary]
     total_count: int
     has_more: bool
-    filters_applied: Dict[str, Any]
+    filters_applied: dict[str, Any]
 
 
 class FindingsListTool(Tool):
@@ -93,11 +93,11 @@ class FindingsListTool(Tool):
         return ToolPermissionLevel.READ_ONLY
 
     @property
-    def cel_policy_key(self) -> Optional[str]:
+    def cel_policy_key(self) -> str | None:
         return "tools.findings.list"
 
     @property
-    def cel_expression(self) -> Optional[str]:
+    def cel_expression(self) -> str | None:
         return "org_id == context.org_id && (size(provider_scope) == 0 || provider in provider_scope)"
 
     async def execute(self, inputs: BaseModel, context: AgentContext) -> ToolResult:
@@ -121,9 +121,10 @@ class FindingsListTool(Tool):
 
             async with async_session_factory() as session:
                 # Build comprehensive query using SQLAlchemy
-                from sqlalchemy import select, and_, func
-                from sqlalchemy.orm import selectinload
                 from datetime import datetime
+
+                from sqlalchemy import and_, func, select
+                from sqlalchemy.orm import selectinload
 
                 # Base query with joins for related data
                 query = (
@@ -307,5 +308,5 @@ class FindingsListTool(Tool):
             logger.exception("List findings failed", org_id=org_id, error=str(e))
             return ToolResult(
                 success=False,
-                error=f"Failed to list findings: {str(e)}",
+                error=f"Failed to list findings: {e!s}",
             )

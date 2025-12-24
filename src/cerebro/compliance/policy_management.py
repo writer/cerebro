@@ -4,13 +4,13 @@ Policy document management and employee attestation system.
 Handles policy templates, versioning, approvals, publication, and employee acknowledgments.
 """
 
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import uuid4
 
-from .evidence_store import EvidenceStore, EvidenceMetadata, EvidenceCategory
+from .evidence_store import EvidenceCategory, EvidenceMetadata, EvidenceStore
 
 
 class PolicyStatus(Enum):
@@ -44,10 +44,10 @@ class PolicyTemplate:
 
     # Template content
     template_content: str
-    variables: Dict[str, Any] = field(default_factory=dict)  # Replaceable variables
+    variables: dict[str, Any] = field(default_factory=dict)  # Replaceable variables
 
     # Framework mappings
-    framework_control_mappings: Dict[str, List[str]] = field(default_factory=dict)
+    framework_control_mappings: dict[str, list[str]] = field(default_factory=dict)
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
@@ -67,46 +67,46 @@ class PolicyDocument:
     """Individual policy document with versioning."""
 
     id: str
-    template_id: Optional[str]
+    template_id: str | None
     title: str
     content: str
     category: str
 
     # Versioning
     version: str
-    supersedes: Optional[str] = None  # Previous version ID
+    supersedes: str | None = None  # Previous version ID
 
     # Status and lifecycle
     status: PolicyStatus = PolicyStatus.DRAFT
-    effective_date: Optional[datetime] = None
-    expiry_date: Optional[datetime] = None
-    next_review_date: Optional[datetime] = None
+    effective_date: datetime | None = None
+    expiry_date: datetime | None = None
+    next_review_date: datetime | None = None
 
     # Approval workflow
-    approvals: List[Dict[str, Any]] = field(default_factory=list)
-    approval_required_roles: List[str] = field(default_factory=list)
+    approvals: list[dict[str, Any]] = field(default_factory=list)
+    approval_required_roles: list[str] = field(default_factory=list)
 
     # Framework compliance
-    control_mappings: Dict[str, List[str]] = field(default_factory=dict)
+    control_mappings: dict[str, list[str]] = field(default_factory=dict)
     compliance_notes: str = ""
 
     # Distribution and access
-    target_audiences: List[str] = field(
+    target_audiences: list[str] = field(
         default_factory=list
     )  # all_employees, contractors, admins
     requires_attestation: bool = True
     attestation_frequency: str = "annually"  # annually, onboarding, policy_change
 
     # Content metadata
-    content_hash: Optional[str] = None
-    evidence_item_id: Optional[str] = None  # Reference to stored policy
+    content_hash: str | None = None
+    evidence_item_id: str | None = None  # Reference to stored policy
 
     # Audit trail
     created_at: datetime = field(default_factory=datetime.now)
     created_by: str = ""
     updated_at: datetime = field(default_factory=datetime.now)
-    published_at: Optional[datetime] = None
-    published_by: Optional[str] = None
+    published_at: datetime | None = None
+    published_by: str | None = None
 
     # Change tracking
     change_summary: str = ""
@@ -125,36 +125,36 @@ class PolicyAttestation:
     employee_id: str
     employee_name: str
     employee_email: str
-    employee_department: Optional[str] = None
+    employee_department: str | None = None
 
     # Attestation details
     status: AttestationStatus = AttestationStatus.PENDING
-    acknowledged_at: Optional[datetime] = None
-    ip_address: Optional[str] = None
-    user_agent: Optional[str] = None
+    acknowledged_at: datetime | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
 
     # Attestation content
     attestation_text: str = ""
-    employee_signature: Optional[str] = None  # Electronic signature
+    employee_signature: str | None = None  # Electronic signature
     attestation_method: str = "web_form"  # web_form, email, docusign
 
     # Deadlines and reminders
-    due_date: Optional[datetime] = None
-    reminder_sent_at: Optional[datetime] = None
-    escalation_sent_at: Optional[datetime] = None
+    due_date: datetime | None = None
+    reminder_sent_at: datetime | None = None
+    escalation_sent_at: datetime | None = None
 
     # Evidence and audit
-    evidence_item_id: Optional[str] = None
+    evidence_item_id: str | None = None
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
     # Manager and exemptions
-    manager_id: Optional[str] = None
-    exemption_reason: Optional[str] = None
-    exempted_by: Optional[str] = None
-    exempted_at: Optional[datetime] = None
+    manager_id: str | None = None
+    exemption_reason: str | None = None
+    exempted_by: str | None = None
+    exempted_at: datetime | None = None
 
 
 @dataclass
@@ -166,15 +166,15 @@ class Employee:
     email: str
     department: str
     job_title: str
-    manager_id: Optional[str] = None
+    manager_id: str | None = None
     employment_status: str = "active"  # active, inactive, terminated
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
 
     # Policy-related metadata
     requires_background_check: bool = True
-    security_clearance_level: Optional[str] = None
-    training_requirements: List[str] = field(default_factory=list)
+    security_clearance_level: str | None = None
+    training_requirements: list[str] = field(default_factory=list)
 
 
 class PolicyManagementSystem:
@@ -182,17 +182,17 @@ class PolicyManagementSystem:
 
     def __init__(self, evidence_store: EvidenceStore):
         self.evidence_store = evidence_store
-        self._templates: Dict[str, PolicyTemplate] = {}
-        self._policies: Dict[str, PolicyDocument] = {}
-        self._attestations: Dict[str, PolicyAttestation] = {}
-        self._employees: Dict[str, Employee] = {}
+        self._templates: dict[str, PolicyTemplate] = {}
+        self._policies: dict[str, PolicyDocument] = {}
+        self._attestations: dict[str, PolicyAttestation] = {}
+        self._employees: dict[str, Employee] = {}
 
         # Load default templates
         self._load_default_templates()
 
     def create_policy_from_template(
-        self, template_id: str, title: str, variables: Dict[str, Any], created_by: str
-    ) -> Optional[PolicyDocument]:
+        self, template_id: str, title: str, variables: dict[str, Any], created_by: str
+    ) -> PolicyDocument | None:
         """Create a new policy from a template."""
 
         if template_id not in self._templates:
@@ -296,7 +296,7 @@ class PolicyManagementSystem:
         self,
         policy_id: str,
         published_by: str,
-        effective_date: Optional[datetime] = None,
+        effective_date: datetime | None = None,
     ) -> bool:
         """Publish an approved policy."""
 
@@ -351,13 +351,13 @@ class PolicyManagementSystem:
 
         return True
 
-    def get_policy_by_id(self, policy_id: str) -> Optional[PolicyDocument]:
+    def get_policy_by_id(self, policy_id: str) -> PolicyDocument | None:
         """Get a policy by ID."""
         return self._policies.get(policy_id)
 
     def get_published_policies(
-        self, category: Optional[str] = None, audience: Optional[str] = None
-    ) -> List[PolicyDocument]:
+        self, category: str | None = None, audience: str | None = None
+    ) -> list[PolicyDocument]:
         """Get all published policies, optionally filtered."""
 
         policies = [
@@ -382,8 +382,8 @@ class PolicyManagementSystem:
         )
 
     async def create_employee_attestation(
-        self, policy_id: str, employee_id: str, due_date: Optional[datetime] = None
-    ) -> Optional[PolicyAttestation]:
+        self, policy_id: str, employee_id: str, due_date: datetime | None = None
+    ) -> PolicyAttestation | None:
         """Create an attestation requirement for an employee."""
 
         if policy_id not in self._policies or employee_id not in self._employees:
@@ -413,8 +413,8 @@ class PolicyManagementSystem:
         self,
         attestation_id: str,
         employee_signature: str,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> bool:
         """Submit an employee attestation."""
 
@@ -473,8 +473,8 @@ class PolicyManagementSystem:
         return True
 
     def get_employee_attestation_status(
-        self, employee_id: str, policy_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, employee_id: str, policy_id: str | None = None
+    ) -> list[dict[str, Any]]:
         """Get attestation status for an employee."""
 
         attestations = []
@@ -503,7 +503,7 @@ class PolicyManagementSystem:
 
         return sorted(attestations, key=lambda x: x["due_date"] or datetime.min)
 
-    def get_attestation_compliance_report(self) -> Dict[str, Any]:
+    def get_attestation_compliance_report(self) -> dict[str, Any]:
         """Generate compliance report for policy attestations."""
 
         total_attestations = len(self._attestations)
@@ -532,7 +532,7 @@ class PolicyManagementSystem:
         )
 
         # Group by policy
-        policy_stats: Dict[str, Dict[str, Any]] = {}
+        policy_stats: dict[str, dict[str, Any]] = {}
         for attestation in self._attestations.values():
             policy_id = attestation.policy_id
             if policy_id not in policy_stats:
@@ -600,7 +600,7 @@ class PolicyManagementSystem:
                 due_date=datetime.now() + timedelta(days=30),
             )
 
-    def _get_required_approvers(self, template: PolicyTemplate) -> List[str]:
+    def _get_required_approvers(self, template: PolicyTemplate) -> list[str]:
         """Get list of required approver roles for a template."""
         approvers = []
 
@@ -685,11 +685,11 @@ Usage may be monitored and logged for security purposes.
         """Add an employee to the system."""
         self._employees[employee.id] = employee
 
-    def get_employee(self, employee_id: str) -> Optional[Employee]:
+    def get_employee(self, employee_id: str) -> Employee | None:
         """Get an employee by ID."""
         return self._employees.get(employee_id)
 
-    def get_active_employees(self) -> List[Employee]:
+    def get_active_employees(self) -> list[Employee]:
         """Get all active employees."""
         return [
             emp for emp in self._employees.values() if emp.employment_status == "active"

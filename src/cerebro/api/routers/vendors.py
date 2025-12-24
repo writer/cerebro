@@ -5,28 +5,29 @@ Provides REST API for vendor registry, security reviews, discovered vendors,
 and risk assessments using the evidence data fabric.
 """
 
-from typing import Any, Dict, List, Optional
-from uuid import UUID
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
 import logging
+from datetime import datetime, timedelta
+from typing import Any
+from uuid import UUID
 
-from ...core.database import get_db
-from ...core.models import Organization
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...vendor_management.vendor_registry import (
-    get_vendor_registry,
-    VendorCategory,
-    VendorRiskLevel,
-)
-from ...vendor_management.discovered_vendors import get_discovered_vendor_tracker
 from ...compliance.evidence_data_fabric import (
     EvidenceDataFabric,
-    EvidenceQuery,
     EvidenceEntityType,
+    EvidenceQuery,
+)
+from ...core.database import get_db
+from ...core.models import Organization
+from ...vendor_management.discovered_vendors import get_discovered_vendor_tracker
+from ...vendor_management.vendor_registry import (
+    VendorCategory,
+    VendorRiskLevel,
+    get_vendor_registry,
 )
 
 router = APIRouter()
@@ -42,29 +43,29 @@ class VendorCreateRequest(BaseModel):
     primary_contact: str = Field("", description="Primary contact email")
     industry: str = Field("", description="Industry sector")
     country: str = Field("", description="Country of operation")
-    data_processing_locations: List[str] = Field(
+    data_processing_locations: list[str] = Field(
         default_factory=list, description="Data processing locations"
     )
-    certifications: List[str] = Field(
+    certifications: list[str] = Field(
         default_factory=list, description="Security certifications"
     )
-    data_types_processed: List[str] = Field(
+    data_types_processed: list[str] = Field(
         default_factory=list, description="Types of data processed"
     )
     business_criticality: str = Field(
         "medium", description="Business criticality level"
     )
-    annual_spend: Optional[float] = Field(None, description="Annual spend with vendor")
+    annual_spend: float | None = Field(None, description="Annual spend with vendor")
 
 
 class VendorUpdateRequest(BaseModel):
     """Request to update vendor information."""
 
-    primary_contact: Optional[str] = None
-    certifications: Optional[List[str]] = None
-    risk_level: Optional[str] = None
-    business_criticality: Optional[str] = None
-    tags: Optional[List[str]] = None
+    primary_contact: str | None = None
+    certifications: list[str] | None = None
+    risk_level: str | None = None
+    business_criticality: str | None = None
+    tags: list[str] | None = None
 
 
 @router.post("/organizations/{org_id}/vendors")
@@ -122,8 +123,8 @@ async def create_vendor(
 @router.get("/organizations/{org_id}/vendors")
 async def list_vendors(
     org_id: UUID,
-    risk_level: Optional[str] = Query(None, description="Filter by risk level"),
-    category: Optional[str] = Query(None, description="Filter by category"),
+    risk_level: str | None = Query(None, description="Filter by risk level"),
+    category: str | None = Query(None, description="Filter by category"),
     overdue_reviews: bool = Query(
         False, description="Show only vendors with overdue reviews"
     ),
@@ -221,7 +222,7 @@ async def get_vendor_details(
 
         metadata_envelope = vendor.metadata or {}
 
-        vendor_details: Dict[str, Any] = {
+        vendor_details: dict[str, Any] = {
             "vendor_id": vendor.vendor_id,
             "name": vendor.name,
             "website_url": vendor.website_url,
@@ -307,11 +308,11 @@ async def get_vendor_details(
 @router.get("/organizations/{org_id}/vendors/discovered")
 async def list_discovered_vendors(
     org_id: UUID,
-    reviewed: Optional[bool] = Query(None, description="Filter by review status"),
+    reviewed: bool | None = Query(None, description="Filter by review status"),
     confidence_threshold: float = Query(
         0.7, description="Minimum confidence score", ge=0.0, le=1.0
     ),
-    discovery_method: Optional[str] = Query(
+    discovery_method: str | None = Query(
         None, description="Filter by discovery method"
     ),
     db: AsyncSession = Depends(get_db),
@@ -424,7 +425,7 @@ async def review_discovered_vendor(
     promote_to_vendor: bool = Query(
         ..., description="Whether to promote to full vendor"
     ),
-    suppression_reason: Optional[str] = Query(
+    suppression_reason: str | None = Query(
         None, description="Reason for suppression if not promoting"
     ),
     db: AsyncSession = Depends(get_db),
@@ -466,7 +467,7 @@ async def review_discovered_vendor(
 async def get_vendor_evidence(
     org_id: UUID,
     vendor_id: str,
-    evidence_type: Optional[str] = Query(None, description="Filter by evidence type"),
+    evidence_type: str | None = Query(None, description="Filter by evidence type"),
     since_days: int = Query(90, description="Evidence age limit in days", ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
@@ -550,7 +551,7 @@ async def get_vendor_evidence(
                 "evidence_period_days": since_days,
                 "total_evidence_records": 0,
                 "evidence": [],
-                "error": f"Evidence query failed: {str(e)}",
+                "error": f"Evidence query failed: {e!s}",
             }
 
     except Exception:

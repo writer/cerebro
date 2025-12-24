@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,7 @@ class TelemetryAutomationInput(BaseModel):
     """Inputs for telemetry automation summary tool."""
 
     window_days: int = Field(1, ge=1, le=30, description="Number of days to evaluate")
-    severity: Optional[RuleSeverity] = Field(
+    severity: RuleSeverity | None = Field(
         default=None,
         description="Filter alerts by minimum severity (inclusive)",
     )
@@ -61,16 +61,16 @@ class TelemetryAutomationAlert(BaseModel):
     metric: str
     metric_value: float
     triggered_at: datetime
-    channels: List[str] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    channels: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TelemetryAutomationOutput(BaseModel):
     """Structured output with health issues and alert previews."""
 
-    snapshot: Dict[str, Any]
-    issues: List[str]
-    alerts: List[TelemetryAutomationAlert]
+    snapshot: dict[str, Any]
+    issues: list[str]
+    alerts: list[TelemetryAutomationAlert]
 
 
 class TelemetryAutomationSummaryTool(StructuredTool):
@@ -89,7 +89,7 @@ class TelemetryAutomationSummaryTool(StructuredTool):
         self,
         context: AgentContext,
         window_days: int,
-        severity: Optional[RuleSeverity],
+        severity: RuleSeverity | None,
         max_missing_metadata_ratio: float,
         max_missing_component_ratio: float,
         min_total_events: int,

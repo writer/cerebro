@@ -1,20 +1,22 @@
 """Microsoft 365 provider implementation."""
 
-from typing import Any, Dict, List, Optional, AsyncGenerator
-from datetime import datetime
-from uuid import UUID
 import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
+from typing import Any
+from uuid import UUID
 
 import httpx
 
 from cerebro.core.config import settings
+
 from ..base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
     IamPermission,
+    PrincipalInfo,
     ProviderError,
+    ResourceInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,8 +29,8 @@ class M365Provider(BaseProvider):
         self,
         account_id: UUID,
         tenant_id: str,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize M365 provider."""
@@ -38,8 +40,8 @@ class M365Provider(BaseProvider):
         self.client_secret = client_secret or getattr(
             settings, "m365_client_secret", None
         )
-        self._access_token: Optional[str] = None
-        self._client: Optional[httpx.AsyncClient] = None  # type: ignore[assignment]
+        self._access_token: str | None = None
+        self._client: httpx.AsyncClient | None = None  # type: ignore[assignment]
 
     @property
     def name(self) -> str:
@@ -102,7 +104,7 @@ class M365Provider(BaseProvider):
             return False
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover M365 resources."""
         if not self._client:
@@ -281,7 +283,7 @@ class M365Provider(BaseProvider):
             normalized_config=config,
         )
 
-    async def _get_sharepoint_config(self, site_id: str) -> Dict[str, Any]:
+    async def _get_sharepoint_config(self, site_id: str) -> dict[str, Any]:
         """Get SharePoint site configuration."""
         try:
             # Get site details
@@ -313,7 +315,7 @@ class M365Provider(BaseProvider):
         """Discover Microsoft 365 users as resources."""
         try:
             url = "/users"
-            params: Optional[Dict[str, Any]] = {
+            params: dict[str, Any] | None = {
                 "$top": 100,
                 "$select": "id,displayName,userPrincipalName,mail,userType,accountEnabled,signInActivity",
             }
@@ -349,7 +351,7 @@ class M365Provider(BaseProvider):
         except Exception as e:
             logger.error(f"Failed to discover M365 users: {e}")
 
-    async def _get_user_config(self, user_id: str) -> Dict[str, Any]:
+    async def _get_user_config(self, user_id: str) -> dict[str, Any]:
         """Get Microsoft 365 user configuration."""
         try:
             select_fields = (
@@ -445,8 +447,8 @@ class M365Provider(BaseProvider):
             return {}
 
     async def _safe_graph_get(
-        self, path: str, params: Optional[Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
         """Perform Graph API GET with graceful handling."""
         try:
             response = await self.client.get(path, params=params)
@@ -462,7 +464,7 @@ class M365Provider(BaseProvider):
             logger.warning(f"Graph API request failed for {path}: {exc}")
             return None
 
-    async def _get_teams_config(self, team_id: str) -> Dict[str, Any]:
+    async def _get_teams_config(self, team_id: str) -> dict[str, Any]:
         """Get Teams configuration."""
         try:
             response = await self.client.get(f"/teams/{team_id}")
@@ -492,7 +494,7 @@ class M365Provider(BaseProvider):
             logger.error(f"Failed to get Teams config for {team_id}: {e}")
             return {}
 
-    async def _get_mailbox_config(self, user_id: str) -> Dict[str, Any]:
+    async def _get_mailbox_config(self, user_id: str) -> dict[str, Any]:
         """Get Exchange mailbox configuration."""
         try:
             # Get user details
@@ -519,7 +521,7 @@ class M365Provider(BaseProvider):
             return {}
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover M365 permissions and role assignments."""
         if not self._client:

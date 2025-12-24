@@ -14,11 +14,11 @@ import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 from uuid import UUID
 
 import boto3
@@ -112,7 +112,7 @@ def get_table_name(table: TableName) -> str:
     return default_map[table]
 
 
-def get_endpoint_url() -> Optional[str]:
+def get_endpoint_url() -> str | None:
     """Get DynamoDB endpoint URL for local development."""
     url = os.environ.get("DYNAMODB_ENDPOINT_URL")
     if url:
@@ -131,7 +131,7 @@ def get_region() -> str:
 
 
 # Client singleton
-_client: Optional[boto3.client] = None
+_client: boto3.client | None = None
 
 
 def get_client() -> boto3.client:
@@ -143,7 +143,7 @@ def get_client() -> boto3.client:
             connect_timeout=5,
             read_timeout=30,
         )
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "region_name": get_region(),
             "config": config,
         }
@@ -163,7 +163,7 @@ def reset_client() -> None:
 # Serialization utilities
 
 
-def to_dynamodb(value: Any) -> Dict[str, Any]:
+def to_dynamodb(value: Any) -> dict[str, Any]:
     """Convert Python value to DynamoDB AttributeValue."""
     if value is None:
         return {"NULL": True}
@@ -198,7 +198,7 @@ def to_dynamodb(value: Any) -> Dict[str, Any]:
     return {"S": str(value)}
 
 
-def from_dynamodb(attr: Dict[str, Any]) -> Any:
+def from_dynamodb(attr: dict[str, Any]) -> Any:
     """Convert DynamoDB AttributeValue to Python value."""
     if "NULL" in attr:
         return None
@@ -224,12 +224,12 @@ def from_dynamodb(attr: Dict[str, Any]) -> Any:
     return None
 
 
-def serialize_item(item: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def serialize_item(item: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Serialize dict to DynamoDB item."""
     return {k: to_dynamodb(v) for k, v in item.items() if v is not None}
 
 
-def deserialize_item(item: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def deserialize_item(item: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Deserialize DynamoDB item to dict."""
     return {k: from_dynamodb(v) for k, v in item.items()}
 
@@ -237,12 +237,12 @@ def deserialize_item(item: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
 # Key builders for single-table design
 
 
-def pk(entity_type: str, id_value: Union[str, UUID]) -> str:
+def pk(entity_type: str, id_value: str | UUID) -> str:
     """Build partition key."""
     return f"{entity_type}#{id_value}"
 
 
-def sk(entity_type: str, id_value: Union[str, UUID], *parts: str) -> str:
+def sk(entity_type: str, id_value: str | UUID, *parts: str) -> str:
     """Build sort key."""
     key = f"{entity_type}#{id_value}"
     for part in parts:
@@ -255,8 +255,8 @@ def sk(entity_type: str, id_value: Union[str, UUID], *parts: str) -> str:
 
 async def put_item(
     table: TableName,
-    item: Dict[str, Any],
-    condition: Optional[str] = None,
+    item: dict[str, Any],
+    condition: str | None = None,
 ) -> None:
     """Put item into table.
 
@@ -266,7 +266,7 @@ async def put_item(
     """
     client = get_client()
     table_name = get_table_name(table)
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "Item": serialize_item(item),
     }
@@ -291,7 +291,7 @@ async def get_item(
     pk_val: str,
     sk_val: str,
     consistent: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Get single item by key.
 
     Raises:
@@ -323,11 +323,11 @@ async def delete_item(
     table: TableName,
     pk_val: str,
     sk_val: str,
-    condition: Optional[str] = None,
+    condition: str | None = None,
 ) -> bool:
     """Delete item by key."""
     client = get_client()
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": get_table_name(table),
         "Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}},
     }
@@ -346,9 +346,9 @@ async def update_item(
     table: TableName,
     pk_val: str,
     sk_val: str,
-    updates: Dict[str, Any],
-    condition: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    updates: dict[str, Any],
+    condition: str | None = None,
+) -> dict[str, Any] | None:
     """Update item attributes. Returns None if updates dict is empty.
 
     Raises:
@@ -373,7 +373,7 @@ async def update_item(
         names[name_key] = key
         values[val_key] = to_dynamodb(val)
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "Key": {"PK": {"S": pk_val}, "SK": {"S": sk_val}},
         "UpdateExpression": "SET " + ", ".join(set_parts),
@@ -406,15 +406,15 @@ async def update_item(
 async def query(
     table: TableName,
     pk_val: str,
-    sk_prefix: Optional[str] = None,
-    sk_between: Optional[Tuple[str, str]] = None,
-    index: Optional[str] = None,
-    limit: Optional[int] = None,
+    sk_prefix: str | None = None,
+    sk_between: tuple[str, str] | None = None,
+    index: str | None = None,
+    limit: int | None = None,
     forward: bool = True,
-    filter_expr: Optional[str] = None,
-    filter_values: Optional[Dict[str, Any]] = None,
-    cursor: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    filter_expr: str | None = None,
+    filter_values: dict[str, Any] | None = None,
+    cursor: str | None = None,
+) -> list[dict[str, Any]]:
     """Query items by partition key.
 
     Args:
@@ -450,7 +450,7 @@ async def query(
     )
 
     key_expr = f"{pk_attr} = :pk"
-    expr_values: Dict[str, Any] = {":pk": {"S": pk_val}}
+    expr_values: dict[str, Any] = {":pk": {"S": pk_val}}
 
     if sk_prefix:
         key_expr += f" AND begins_with({sk_attr}, :sk)"
@@ -460,7 +460,7 @@ async def query(
         expr_values[":sk_start"] = {"S": sk_between[0]}
         expr_values[":sk_end"] = {"S": sk_between[1]}
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "KeyConditionExpression": key_expr,
         "ExpressionAttributeValues": expr_values,
@@ -482,7 +482,7 @@ async def query(
     loop = asyncio.get_event_loop()
 
     try:
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         while True:
             response = await loop.run_in_executor(
                 _executor, partial(client.query, **params)
@@ -506,12 +506,12 @@ async def query(
 async def query_paginated(
     table: TableName,
     pk_val: str,
-    sk_prefix: Optional[str] = None,
-    index: Optional[str] = None,
+    sk_prefix: str | None = None,
+    index: str | None = None,
     limit: int = 50,
     forward: bool = True,
-    cursor: Optional[str] = None,
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    cursor: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
     """Query with pagination support.
 
     Returns:
@@ -532,13 +532,13 @@ async def query_paginated(
     )
 
     key_expr = f"{pk_attr} = :pk"
-    expr_values: Dict[str, Any] = {":pk": {"S": pk_val}}
+    expr_values: dict[str, Any] = {":pk": {"S": pk_val}}
 
     if sk_prefix:
         key_expr += f" AND begins_with({sk_attr}, :sk)"
         expr_values[":sk"] = {"S": sk_prefix}
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "KeyConditionExpression": key_expr,
         "ExpressionAttributeValues": expr_values,
@@ -573,8 +573,8 @@ async def query_paginated(
 
 async def batch_get(
     table: TableName,
-    keys: List[Tuple[str, str]],
-) -> List[Dict[str, Any]]:
+    keys: list[tuple[str, str]],
+) -> list[dict[str, Any]]:
     """Batch get items by keys."""
     if not keys:
         return []
@@ -583,7 +583,7 @@ async def batch_get(
     table_name = get_table_name(table)
     loop = asyncio.get_event_loop()
 
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
 
     # Process in batches of 100
     for i in range(0, len(keys), 100):
@@ -606,15 +606,15 @@ async def batch_get(
 
 async def batch_write(
     table: TableName,
-    put_items: Optional[List[Dict[str, Any]]] = None,
-    delete_keys: Optional[List[Tuple[str, str]]] = None,
+    put_items: list[dict[str, Any]] | None = None,
+    delete_keys: list[tuple[str, str]] | None = None,
 ) -> None:
     """Batch write items."""
     client = get_client()
     table_name = get_table_name(table)
     loop = asyncio.get_event_loop()
 
-    requests: List[Dict[str, Any]] = []
+    requests: list[dict[str, Any]] = []
 
     if put_items:
         for item in put_items:
@@ -635,7 +635,7 @@ async def batch_write(
         )
 
 
-async def transact_write(items: List[Dict[str, Any]]) -> None:
+async def transact_write(items: list[dict[str, Any]]) -> None:
     """Transactional write."""
     if not items:
         return
@@ -653,14 +653,14 @@ async def transact_write(items: List[Dict[str, Any]]) -> None:
 
 def now_iso() -> str:
     """Get current UTC timestamp in ISO format."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def ttl_timestamp(days: int) -> int:
     """Calculate TTL timestamp (seconds since epoch)."""
     from datetime import timedelta
 
-    expiry = datetime.now(timezone.utc) + timedelta(days=days)
+    expiry = datetime.now(UTC) + timedelta(days=days)
     return int(expiry.timestamp())
 
 
@@ -669,21 +669,21 @@ def parse_uuid(value: str) -> UUID:
     return UUID(value)
 
 
-def encode_cursor(key: Dict[str, Any]) -> str:
+def encode_cursor(key: dict[str, Any]) -> str:
     """Encode LastEvaluatedKey to cursor string."""
     import base64
 
     return base64.urlsafe_b64encode(json.dumps(key).encode()).decode()
 
 
-def decode_cursor(cursor: str) -> Dict[str, Any]:
+def decode_cursor(cursor: str) -> dict[str, Any]:
     """Decode cursor string to ExclusiveStartKey."""
     import base64
 
     return json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
 
 
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """Check DynamoDB connectivity and table status.
 
     Returns:

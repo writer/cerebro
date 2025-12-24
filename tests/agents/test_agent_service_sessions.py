@@ -1,5 +1,6 @@
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from cerebro.agents.models import AgentMessage, AgentSession, AgentType, MessageRole
 from cerebro.agents.service import AgentSessionService
@@ -12,7 +13,7 @@ async def test_get_session_with_messages_returns_tool_invocations_and_metrics():
     async with async_session_factory() as db_session:
         org = Organization(
             name="Session API Org",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(org)
         await db_session.commit()
@@ -33,7 +34,7 @@ async def test_get_session_with_messages_returns_tool_invocations_and_metrics():
             session_id=session.id,
             role=MessageRole.USER,
             content="Show me the latest findings",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(message)
         await db_session.commit()

@@ -1,22 +1,22 @@
 """Blast radius analysis for compromise scenarios."""
 
-from typing import List, Dict, Any, Optional
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 from uuid import UUID
-import logging
 
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, text
 
+from cerebro.core.identity_models import IdentityCluster, IdentityClusterMember
 from cerebro.core.models import (
+    ConfigSnapshot,
+    IamEdge,
+    Organization,
     Principal,
     Resource,
-    IamEdge,
-    ConfigSnapshot,
-    Organization,
 )
-from cerebro.core.identity_models import IdentityCluster, IdentityClusterMember
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,9 @@ class ImpactedResource:
     resource_type: str
     provider: str
     access_level: str  # read, write, admin
-    access_path: List[str]  # How the access is granted
+    access_path: list[str]  # How the access is granted
     sensitivity_score: float  # 0-1 based on resource type and config
-    potential_actions: List[str]  # What the attacker could do
+    potential_actions: list[str]  # What the attacker could do
 
 
 @dataclass
@@ -54,13 +54,13 @@ class ImpactAssessment:
     """Complete impact assessment for a compromise scenario."""
 
     scenario: CompromiseScenario
-    directly_accessible: List[ImpactedResource]
-    escalation_paths: List[Dict[str, Any]]
-    cross_provider_impact: List[ImpactedResource]
+    directly_accessible: list[ImpactedResource]
+    escalation_paths: list[dict[str, Any]]
+    cross_provider_impact: list[ImpactedResource]
     total_resources_at_risk: int
     max_sensitivity_score: float
     business_impact_score: float
-    mitigation_recommendations: List[str]
+    mitigation_recommendations: list[str]
 
 
 class BlastRadiusAnalyzer:
@@ -84,7 +84,7 @@ class BlastRadiusAnalyzer:
         self,
         principal_id: UUID,
         scenario_type: str = "credential_theft",
-        at_time: Optional[datetime] = None,
+        at_time: datetime | None = None,
     ) -> ImpactAssessment:
         """Analyze blast radius if a principal is compromised."""
         # Get principal information
@@ -155,7 +155,7 @@ class BlastRadiusAnalyzer:
 
     async def _find_directly_accessible_resources(
         self, principal_id: UUID, at_time: datetime
-    ) -> List[ImpactedResource]:
+    ) -> list[ImpactedResource]:
         """Find resources directly accessible to the principal."""
         # Query IAM edges that were effective at the compromise time
         stmt = (
@@ -203,7 +203,7 @@ class BlastRadiusAnalyzer:
 
     async def _find_escalation_paths(
         self, principal_id: UUID, at_time: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Find privilege escalation paths from the principal."""
         escalation_paths = []
 
@@ -220,7 +220,7 @@ class BlastRadiusAnalyzer:
                         IamEdge.permission.contains("iam:PassRole"),
                         IamEdge.permission.contains("iam:CreateRole"),
                         IamEdge.permission.contains("admin"),
-                        IamEdge.is_admin == True,
+                        IamEdge.is_admin,
                     ),
                 )
             )
@@ -254,9 +254,9 @@ class BlastRadiusAnalyzer:
 
     async def _find_cross_provider_impact(
         self, principal_id: UUID, at_time: datetime
-    ) -> List[ImpactedResource]:
+    ) -> list[ImpactedResource]:
         """Find cross-provider impact via identity stitching."""
-        impacted: List[ImpactedResource] = []
+        impacted: list[ImpactedResource] = []
 
         # Find identity cluster for this principal
         stmt = (
@@ -287,22 +287,20 @@ class BlastRadiusAnalyzer:
         related_principals = await self.db.execute(related_stmt)
 
         # For each related principal, find their accessible resources
-        for cluster_member, related_principal in related_principals:
+        for _cluster_member, related_principal in related_principals:
             related_resources = await self._find_directly_accessible_resources(
                 related_principal.principal_id, at_time
             )
 
             # Tag these as cross-provider impact
             for resource in related_resources:
-                resource.access_path = [
-                    f"identity_cluster:{cluster.cluster_name}"
-                ] + resource.access_path
+                resource.access_path = [f"identity_cluster:{cluster.cluster_name}", *resource.access_path]
                 impacted.append(resource)
 
         return impacted
 
     def _calculate_sensitivity_score(
-        self, resource: Resource, config: Optional[Dict]
+        self, resource: Resource, config: dict | None
     ) -> float:
         """Calculate sensitivity score for a resource."""
         base_score = self.sensitivity_weights.get(resource.resource_type, 0.3)
@@ -337,8 +335,8 @@ class BlastRadiusAnalyzer:
             return "read"
 
     def _determine_potential_actions(
-        self, resource: Resource, iam_edge: IamEdge, config: Optional[Dict]
-    ) -> List[str]:
+        self, resource: Resource, iam_edge: IamEdge, config: dict | None
+    ) -> list[str]:
         """Determine what actions an attacker could take."""
         actions = []
 
@@ -368,7 +366,7 @@ class BlastRadiusAnalyzer:
 
     async def _get_latest_config_at_time(
         self, resource_id: UUID, at_time: datetime
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Get the latest configuration at a specific time."""
         stmt = (
             select(ConfigSnapshot)
@@ -387,10 +385,11 @@ class BlastRadiusAnalyzer:
 
     async def _analyze_role_permissions(
         self, role_resource: Resource, at_time: datetime
-    ) -> List[Resource]:
+    ) -> list[Resource]:
         """Analyze what resources a role can access."""
         try:
-            from sqlalchemy import select, and_
+            from sqlalchemy import and_, select
+
             from ..core.models import IamEdge, Principal
 
             # Get resources this role can access through IAM edges
@@ -434,7 +433,7 @@ class BlastRadiusAnalyzer:
             # Return empty list if analysis fails, but log the issue
             return []
 
-    async def _analyze_role_policies(self, role_resource: Resource) -> List[Resource]:
+    async def _analyze_role_policies(self, role_resource: Resource) -> list[Resource]:
         """Analyze role policies to determine accessible resources."""
         try:
             # Get role configuration from latest snapshot
@@ -475,10 +474,10 @@ class BlastRadiusAnalyzer:
             logger.error(f"Failed to analyze role policies: {e}")
             return []
 
-    async def _find_resources_by_arn_pattern(self, arn_pattern: str) -> List[Resource]:
+    async def _find_resources_by_arn_pattern(self, arn_pattern: str) -> list[Resource]:
         """Find resources matching an ARN pattern."""
         try:
-            from sqlalchemy import select, or_
+            from sqlalchemy import or_, select
 
             # Handle wildcard patterns in ARNs
             if "*" in arn_pattern:
@@ -508,8 +507,8 @@ class BlastRadiusAnalyzer:
 
     def _calculate_business_impact(
         self,
-        impacted_resources: List[ImpactedResource],
-        escalation_paths: List[Dict[str, Any]],
+        impacted_resources: list[ImpactedResource],
+        escalation_paths: list[dict[str, Any]],
     ) -> float:
         """Calculate overall business impact score (0-1)."""
         if not impacted_resources:
@@ -535,9 +534,9 @@ class BlastRadiusAnalyzer:
     def _generate_mitigations(
         self,
         scenario: CompromiseScenario,
-        impacted_resources: List[ImpactedResource],
-        escalation_paths: List[Dict[str, Any]],
-    ) -> List[str]:
+        impacted_resources: list[ImpactedResource],
+        escalation_paths: list[dict[str, Any]],
+    ) -> list[str]:
         """Generate specific mitigation recommendations."""
         mitigations = []
 
@@ -585,7 +584,7 @@ class BlastRadiusAnalyzer:
 
     async def batch_analyze_high_risk_principals(
         self, org_id: UUID, limit: int = 50
-    ) -> List[ImpactAssessment]:
+    ) -> list[ImpactAssessment]:
         """Analyze blast radius for high-risk principals in an organization."""
         # Find high-risk principals (admins, service accounts with broad access)
         stmt = text(
@@ -623,7 +622,7 @@ class BlastRadiusAnalyzer:
 
     async def generate_blast_radius_report(
         self, org_id: UUID, output_format: str = "json"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate comprehensive blast radius report for organization."""
         org = await self.db.get(Organization, org_id)
         if not org:
@@ -680,9 +679,9 @@ class BlastRadiusAnalyzer:
 
         return report
 
-    def _prioritize_mitigations(self, assessments: List[ImpactAssessment]) -> List[str]:
+    def _prioritize_mitigations(self, assessments: list[ImpactAssessment]) -> list[str]:
         """Prioritize mitigation actions across all assessments."""
-        mitigation_counts: Dict[str, int] = {}
+        mitigation_counts: dict[str, int] = {}
 
         for assessment in assessments:
             for mitigation in assessment.mitigation_recommendations:
@@ -695,8 +694,8 @@ class BlastRadiusAnalyzer:
         return [mitigation for mitigation, count in sorted_mitigations[:10]]
 
     def _analyze_cross_provider_risks(
-        self, assessments: List[ImpactAssessment]
-    ) -> Dict[str, Any]:
+        self, assessments: list[ImpactAssessment]
+    ) -> dict[str, Any]:
         """Analyze cross-provider risk patterns."""
         cross_provider_count = 0
         provider_pairs = set()

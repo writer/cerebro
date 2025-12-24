@@ -1,7 +1,7 @@
 """Authentication endpoints."""
 
 from datetime import timedelta
-from typing import Dict, Literal, Optional
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
@@ -39,7 +39,7 @@ class LoginRequest(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Refresh token request payload."""
 
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -53,7 +53,7 @@ class TokenResponse(BaseModel):
     csrf_token: str
 
 
-async def _resolve_org_id(db: AsyncSession) -> Optional[UUID]:
+async def _resolve_org_id(db: AsyncSession) -> UUID | None:
     stmt = select(Organization.org_id).order_by(Organization.created_at.asc()).limit(1)
     return await db.scalar(stmt)
 
@@ -87,8 +87,8 @@ def _set_auth_cookies(
     *,
     access_token: str,
     access_ttl_seconds: int,
-    refresh_token: Optional[str] = None,
-    refresh_ttl_seconds: Optional[int] = None,
+    refresh_token: str | None = None,
+    refresh_ttl_seconds: int | None = None,
 ) -> None:
     cookie_kwargs = _cookie_kwargs()
     response.set_cookie(
@@ -136,7 +136,7 @@ async def _issue_tokens(
     refresh_mode: RefreshMode,
     include_refresh_token_in_body: bool,
     include_refresh_metadata: bool,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = await jwt_service.create_token(
         username=user["username"],
@@ -145,8 +145,8 @@ async def _issue_tokens(
         org_id=user["org_id"],
     )
 
-    refresh_token: Optional[str] = None
-    refresh_ttl_seconds: Optional[int] = None
+    refresh_token: str | None = None
+    refresh_ttl_seconds: int | None = None
 
     if refresh_mode == "opaque":
         refresh_service = RefreshTokenService(db)
@@ -179,7 +179,7 @@ async def _issue_tokens(
     csrf_token = generate_csrf_token()
     _set_csrf_cookie(response, csrf_token)
 
-    payload: Dict[str, object] = {
+    payload: dict[str, object] = {
         "access_token": access_token,
         "token_type": "bearer",
         "access_token_expires_in": settings.access_token_expire_minutes * 60,
@@ -199,7 +199,7 @@ async def _issue_tokens(
 
 async def authenticate_user(
     username: str, password: str, db: AsyncSession
-) -> Optional[dict]:
+) -> dict | None:
     """Authenticate credentials and return user context."""
 
     user_service = UserService(db)

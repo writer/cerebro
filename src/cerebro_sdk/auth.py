@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.config import settings
-from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.core.security.jwt import JWTService
+from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.core.user_service import UserService
 from cerebro.metrics.jwt_metrics import jwt_metrics
 
@@ -18,7 +17,7 @@ from cerebro.metrics.jwt_metrics import jwt_metrics
 @dataclass
 class TokenPair:
     access_token: str
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
 
 
 class AuthSession:
@@ -31,7 +30,7 @@ class AuthSession:
             JWTKeyStore(db, metrics=jwt_metrics), metrics=jwt_metrics
         )
 
-    async def login(self, username: str, password: str) -> Optional[TokenPair]:
+    async def login(self, username: str, password: str) -> TokenPair | None:
         """Authenticate a user and return access/refresh tokens."""
 
         user = await self._user_service.authenticate_user(username, password)
@@ -66,7 +65,7 @@ class AuthSession:
             token_type=token_type,
         )
 
-    async def verify(self, token: str, expected_type: Optional[str] = None) -> dict:
+    async def verify(self, token: str, expected_type: str | None = None) -> dict:
         """Verify a token and return its payload."""
 
         return await self._jwt_service.verify_token(token, expected_type=expected_type)

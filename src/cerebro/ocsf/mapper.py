@@ -4,28 +4,28 @@ OCSF Mapper
 Transforms Cerebro security data into OCSF v1.4.0 compliant events.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
-from cerebro.core.models import Finding, Principal, Resource, Account
+from cerebro.core.models import Account, Finding, Principal, Resource
 from cerebro.ocsf.models import (
-    OCSFFinding,
-    OCSFComplianceFinding,
-    OCSFFindingInfo,
-    OCSFMetadata,
-    OCSFProduct,
-    OCSFResource,
-    OCSFCloud,
     OCSFAccount,
-    OCSFCompliance,
-    OCSFRemediation,
-    OCSFObservables,
-    OCSFMappings,
-    OCSFTypeUID,
-    OCSFSeverity,
     OCSFActivityID,
+    OCSFCloud,
+    OCSFCompliance,
+    OCSFComplianceFinding,
+    OCSFFinding,
+    OCSFFindingInfo,
+    OCSFMappings,
+    OCSFMetadata,
+    OCSFObservables,
+    OCSFProduct,
+    OCSFRemediation,
+    OCSFResource,
+    OCSFSeverity,
+    OCSFTypeUID,
 )
 
 logger = structlog.get_logger(__name__)
@@ -51,9 +51,9 @@ class OCSFMapper:
     async def finding_to_ocsf(
         self,
         finding: Finding,
-        resources: Optional[List[Resource]] = None,
-        account: Optional[Account] = None,
-        principals: Optional[List[Principal]] = None,
+        resources: list[Resource] | None = None,
+        account: Account | None = None,
+        principals: list[Principal] | None = None,
     ) -> OCSFFinding:
         """
         Convert Cerebro Finding to OCSF Security Finding.
@@ -199,8 +199,8 @@ class OCSFMapper:
         control_title: str,
         status: str,  # pass, fail
         framework: str,  # SOC2, ISO27001, etc.
-        evidence: Optional[Dict[str, Any]] = None,
-        account: Optional[Account] = None,
+        evidence: dict[str, Any] | None = None,
+        account: Account | None = None,
     ) -> OCSFComplianceFinding:
         """
         Convert compliance control test result to OCSF Compliance Finding.
@@ -241,9 +241,9 @@ class OCSFMapper:
         finding_info = OCSFFindingInfo(
             title=f"{framework} {control_id}: {control_title}",
             desc=f"Compliance control test result for {control_id}",
-            uid=f"{framework}-{control_id}-{datetime.now(timezone.utc).isoformat()}",
+            uid=f"{framework}-{control_id}-{datetime.now(UTC).isoformat()}",
             types=["Compliance", "Control Test"],
-            created_time=self._to_epoch_ms(datetime.now(timezone.utc)),
+            created_time=self._to_epoch_ms(datetime.now(UTC)),
         )
 
         # Build metadata
@@ -275,7 +275,7 @@ class OCSFMapper:
         return OCSFComplianceFinding(
             type_uid=type_uid,
             type_name=f"Compliance Finding: {activity_name}",
-            time=self._to_epoch_ms(datetime.now(timezone.utc)),
+            time=self._to_epoch_ms(datetime.now(UTC)),
             message=f"{framework} {control_id} test result: {compliance_status}",
             severity_id=severity_id,
             severity=severity,
@@ -290,13 +290,13 @@ class OCSFMapper:
 
     # ==================== Helper Methods ====================
 
-    def _to_epoch_ms(self, dt: Optional[datetime]) -> Optional[int]:
+    def _to_epoch_ms(self, dt: datetime | None) -> int | None:
         """Convert datetime to Unix epoch milliseconds."""
         if not dt:
             return None
         return int(dt.timestamp() * 1000)
 
-    def _extract_finding_types(self, finding: Finding) -> List[str]:
+    def _extract_finding_types(self, finding: Finding) -> list[str]:
         """Extract finding types from Cerebro finding."""
         types = []
 
@@ -318,8 +318,8 @@ class OCSFMapper:
         return types if types else ["Security Issue"]
 
     def _determine_profiles(
-        self, finding: Finding, account: Optional[Account]
-    ) -> List[str]:
+        self, finding: Finding, account: Account | None
+    ) -> list[str]:
         """Determine applicable OCSF profiles."""
         profiles = []
 
@@ -339,9 +339,9 @@ class OCSFMapper:
     def _extract_observables(
         self,
         finding: Finding,
-        resources: Optional[List[Resource]],
-        principals: Optional[List[Principal]],
-    ) -> List[OCSFObservables]:
+        resources: list[Resource] | None,
+        principals: list[Principal] | None,
+    ) -> list[OCSFObservables]:
         """Extract observables (IoCs) from finding."""
         observables = []
 
@@ -385,7 +385,7 @@ class OCSFMapper:
 
         # Adjust based on age (older findings = higher risk)
         if finding.first_seen:
-            age_days = (datetime.now(timezone.utc) - finding.first_seen).days
+            age_days = (datetime.now(UTC) - finding.first_seen).days
             if age_days > 90:
                 score = min(100, score + 10)
             elif age_days > 30:

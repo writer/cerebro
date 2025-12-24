@@ -5,24 +5,26 @@ These models support the append-only, auditable architecture of Cerebro by track
 all agent sessions, messages, tool invocations, and approval workflows.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
-    Float,
     String,
     Text,
+)
+from sqlalchemy import (
     Enum as SqlEnum,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.sql import func, expression
+from sqlalchemy.sql import expression, func
 
 from cerebro.core.database_types import JSONType
 from cerebro.core.models import Organization
@@ -137,8 +139,8 @@ class AgentSession(Base):
         index=True,
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
-    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    context: Mapped[Dict[str, Any]] = mapped_column(
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    context: Mapped[dict[str, Any]] = mapped_column(
         JSONType, nullable=False, default=dict
     )
     is_active: Mapped[bool] = mapped_column(
@@ -192,7 +194,7 @@ class AgentSession(Base):
         return len(self.messages) if self.messages else 0
 
     @property
-    def last_activity_at(self) -> Optional[datetime]:
+    def last_activity_at(self) -> datetime | None:
         """Return the timestamp of the last activity in this session."""
         if self.messages:
             return max(m.created_at for m in self.messages)
@@ -234,7 +236,7 @@ class AgentMessage(Base):
         index=True,
     )
     role: Mapped[MessageRole] = mapped_column(SqlEnum(MessageRole), nullable=False)
-    content: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -248,8 +250,8 @@ class AgentMessage(Base):
     # - system: {"instruction": str, "metadata": {...}}
 
     # Token usage tracking
-    input_tokens: Mapped[Optional[int]] = mapped_column(nullable=True)
-    output_tokens: Mapped[Optional[int]] = mapped_column(nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(nullable=True)
 
     # Relationships
     session: Mapped["AgentSession"] = relationship(
@@ -282,7 +284,7 @@ class AgentConversationItem(Base):
         nullable=False,
         index=True,
     )
-    item: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    item: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -313,17 +315,17 @@ class AgentMemoryEntry(Base):
         nullable=False,
         index=True,
     )
-    session_id: Mapped[Optional[UUID]] = mapped_column(
+    session_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("agent_sessions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    agent_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    role: Mapped[Optional[MessageRole]] = mapped_column(
+    agent_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    role: Mapped[MessageRole | None] = mapped_column(
         SqlEnum(MessageRole), nullable=True
     )
-    scopes: Mapped[List[Dict[str, Any]]] = mapped_column(
+    scopes: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONType, nullable=False, default=list
     )
     scope_priority: Mapped[int] = mapped_column(
@@ -332,21 +334,21 @@ class AgentMemoryEntry(Base):
         comment="Lower values indicate broader relevance (organization=0, session=2, etc.)",
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    content_hash: Mapped[Optional[str]] = mapped_column(
+    summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
     )
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    embedding: Mapped[Optional[List[float]]] = mapped_column(JSONType, nullable=True)
-    embedding_norm: Mapped[Optional[float]] = mapped_column(nullable=True)
-    extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    embedding: Mapped[list[float] | None] = mapped_column(JSONType, nullable=True)
+    embedding_norm: Mapped[float | None] = mapped_column(nullable=True)
+    extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True, default=dict
     )
     decay_score: Mapped[float] = mapped_column(nullable=False, default=1.0)
     last_accessed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -393,8 +395,8 @@ class ToolInvocation(Base):
     tool_version: Mapped[str] = mapped_column(String(20), nullable=False, default="1.0")
 
     # Tool execution details
-    input_data: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
-    output_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    input_data: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    output_data: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True
     )
     status: Mapped[ToolInvocationStatus] = mapped_column(
@@ -410,25 +412,25 @@ class ToolInvocation(Base):
         nullable=False,
         server_default=func.now(),
     )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
+    completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
 
     # CEL policy enforcement
-    cel_policy_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    cel_expression: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    cel_result: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    cel_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    cel_policy_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    cel_expression: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cel_result: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    cel_context: Mapped[dict[str, Any] | None] = mapped_column(
         JSONType, nullable=True
     )
 
     # Error handling
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    error_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Celery task tracking (for async operations)
-    celery_task_id: Mapped[Optional[str]] = mapped_column(
+    celery_task_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True, index=True
     )
 
@@ -451,7 +453,7 @@ class ToolInvocation(Base):
         self.id = value
 
     @property
-    def input(self) -> Dict[str, Any]:
+    def input(self) -> dict[str, Any]:
         """Alias for input_data for compatibility."""
         return self.input_data
 
@@ -494,7 +496,7 @@ class ToolApproval(Base):
         server_default=func.now(),
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    risk_assessment: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    risk_assessment: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
 
     # Approval decision
     status: Mapped[ApprovalStatus] = mapped_column(
@@ -503,15 +505,15 @@ class ToolApproval(Base):
         default=ApprovalStatus.PENDING,
         index=True,
     )
-    decided_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    decided_at: Mapped[Optional[datetime]] = mapped_column(
+    decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
-    decision_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Expiry
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
+    expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         index=True,
@@ -524,14 +526,14 @@ class ToolApproval(Base):
     )
 
     @property
-    def risk_level(self) -> Optional[str]:
+    def risk_level(self) -> str | None:
         """Extract risk level from risk_assessment."""
         if self.risk_assessment:
             return self.risk_assessment.get("level")
         return None
 
     @property
-    def justification(self) -> Optional[str]:
+    def justification(self) -> str | None:
         """Alias for decision_reason for compatibility."""
         return self.decision_reason
 
@@ -559,13 +561,13 @@ class AgentReviewTask(Base):
         nullable=False,
         index=True,
     )
-    message_id: Mapped[Optional[UUID]] = mapped_column(
+    message_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("agent_messages.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    tool_invocation_id: Mapped[Optional[UUID]] = mapped_column(
+    tool_invocation_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("tool_invocations.id", ondelete="SET NULL"),
         nullable=True,
@@ -573,19 +575,19 @@ class AgentReviewTask(Base):
     )
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    summary: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    payload: Mapped[Dict[str, Any]] = mapped_column(
+    summary: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(
         JSONType, nullable=False, default=dict
     )
-    priority: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    due_at: Mapped[Optional[datetime]] = mapped_column(
+    priority: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    escalated_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    notification_channel: Mapped[Optional[str]] = mapped_column(
+    escalated_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notification_channel: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )
-    ticket_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    ticket_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     status: Mapped[ReviewTaskStatus] = mapped_column(
         SqlEnum(ReviewTaskStatus),
@@ -600,22 +602,22 @@ class AgentReviewTask(Base):
         server_default=func.now(),
         index=True,
     )
-    promotion_target: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    resolved_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+    promotion_target: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
 
     # Assignment fields
-    assigned_to: Mapped[Optional[str]] = mapped_column(
+    assigned_to: Mapped[str | None] = mapped_column(
         String(255), nullable=True, index=True
     )
-    assigned_at: Mapped[Optional[datetime]] = mapped_column(
+    assigned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    assigned_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    assigned_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     session: Mapped["AgentSession"] = relationship("AgentSession")
     message: Mapped[Optional["AgentMessage"]] = relationship("AgentMessage")
@@ -644,12 +646,12 @@ class AgentReviewTask(Base):
     )
 
     @property
-    def updated_at(self) -> Optional[datetime]:  # pragma: no cover - compatibility shim
+    def updated_at(self) -> datetime | None:  # pragma: no cover - compatibility shim
         return self.resolved_at
 
     @updated_at.setter
     def updated_at(
-        self, value: Optional[datetime]
+        self, value: datetime | None
     ) -> None:  # pragma: no cover - compatibility shim
         self.resolved_at = value
 
@@ -683,7 +685,7 @@ class AgentReviewNotification(Base):
         nullable=False,
         default=NotificationStatus.PENDING,
     )
-    payload: Mapped[Dict[str, Any]] = mapped_column(
+    payload: Mapped[dict[str, Any]] = mapped_column(
         JSONType, nullable=False, default=dict
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -691,7 +693,7 @@ class AgentReviewNotification(Base):
         nullable=False,
         server_default=func.now(),
     )
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(
+    delivered_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -724,13 +726,13 @@ class AgentReviewTicket(Base):
         index=True,
     )
     system: Mapped[str] = mapped_column(String(100), nullable=False)
-    external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[TicketStatus] = mapped_column(
         SqlEnum(TicketStatus, name="agent_ticket_status"),
         nullable=False,
         default=TicketStatus.OPEN,
     )
-    details: Mapped[Dict[str, Any]] = mapped_column(
+    details: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONType,
         nullable=False,
@@ -741,7 +743,7 @@ class AgentReviewTicket(Base):
         nullable=False,
         server_default=func.now(),
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -786,7 +788,7 @@ class AgentSessionContext(Base):
         index=True,
         comment="Key identifying the context (e.g. prod_account_id, ceo_name)",
     )
-    context_value: Mapped[Dict[str, Any]] = mapped_column(
+    context_value: Mapped[dict[str, Any]] = mapped_column(
         JSONType,
         nullable=False,
         comment="Value stored as JSON for flexibility",
@@ -803,11 +805,11 @@ class AgentSessionContext(Base):
     )
 
     # Confidence and expiry
-    confidence: Mapped[Optional[float]] = mapped_column(
+    confidence: Mapped[float | None] = mapped_column(
         nullable=True,
         comment="Confidence score 0-1 for learned facts",
     )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
+    expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         comment="Optional expiration for temporary context",
@@ -821,7 +823,7 @@ class AgentSessionContext(Base):
         index=True,
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
-    context_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    context_metadata: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",
         JSONType,
         nullable=True,
@@ -853,7 +855,7 @@ class AgentRuntimeEvent(Base):
         index=True,
     )
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    payload: Mapped[Dict[str, Any]] = mapped_column(
+    payload: Mapped[dict[str, Any]] = mapped_column(
         JSONType, nullable=False, default=dict
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -887,19 +889,19 @@ class AgentSelfServiceQuestion(Base):
         nullable=True,
         index=True,
     )
-    user_id: Mapped[Optional[str]] = mapped_column(
+    user_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, index=True
     )
     question: Mapped[str] = mapped_column(Text, nullable=False)
     question_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    question_intent: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    handler_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    question_intent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    handler_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    answer_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    evidence: Mapped[List[Dict[str, Any]]] = mapped_column(
+    answer_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONType, nullable=False, default=list
     )
-    details: Mapped[Dict[str, Any]] = mapped_column(
+    details: Mapped[dict[str, Any]] = mapped_column(
         JSONType, nullable=False, default=dict
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -934,10 +936,10 @@ class AgentSelfServiceReport(Base):
         DateTime(timezone=True), nullable=False
     )
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    question_breakdown: Mapped[List[Dict[str, Any]]] = mapped_column(
+    question_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONType, nullable=False, default=list
     )
-    recommendations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    recommendations: Mapped[str | None] = mapped_column(Text, nullable=True)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -963,14 +965,14 @@ class AgentMemoryDecayOverride(Base):
         index=True,
     )
     scope_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    scope_value: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    scope_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
     half_life_hours: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -1000,11 +1002,11 @@ class AgentReviewComment(Base):
         server_default=func.now(),
         index=True,
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
-    extra_metadata: Mapped[Dict[str, Any]] = mapped_column(
+    extra_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONType,
         nullable=False,
@@ -1036,16 +1038,16 @@ class AgentReviewHistory(Base):
     )
     changed_by: Mapped[str] = mapped_column(String(255), nullable=False)
     change_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    field_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    old_value: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
-    new_value: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
+    field_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    old_value: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+    new_value: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
         index=True,
     )
-    extra_metadata: Mapped[Dict[str, Any]] = mapped_column(
+    extra_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONType,
         nullable=False,
@@ -1079,7 +1081,7 @@ class AgentPolicySuggestion(Base):
     cel_expression: Mapped[str] = mapped_column(Text, nullable=False)
     support_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     reject_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    details: Mapped[Dict[str, Any]] = mapped_column(
+    details: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONType,
         nullable=False,
@@ -1137,11 +1139,11 @@ class AgentRecommendation(Base):
     )  # critical, high, medium, low
 
     # Implementation guidance
-    action_items: Mapped[list[Dict[str, Any]]] = mapped_column(
+    action_items: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONType, nullable=False, default=list
     )
-    estimated_effort: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    implementation_timeline: Mapped[Optional[str]] = mapped_column(
+    estimated_effort: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    implementation_timeline: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )
 

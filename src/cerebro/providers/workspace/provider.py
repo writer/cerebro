@@ -6,11 +6,12 @@ the same patterns as GAM (Google Apps Manager).
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, AsyncGenerator
+import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
-import logging
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -18,11 +19,11 @@ from googleapiclient.errors import HttpError
 
 from ..base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
     IamPermission,
+    PrincipalInfo,
     ProviderError,
+    ResourceInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             return False
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Google Workspace resources."""
         if not self._admin_service:
@@ -796,7 +797,7 @@ class GoogleWorkspaceProvider(BaseProvider):
                         )
 
                     # Get group settings if possible
-                    group_settings: Dict[str, Any] = {}
+                    group_settings: dict[str, Any] = {}
                     try:
                         if self._groups_settings_service:
                             settings_result = await loop.run_in_executor(
@@ -865,7 +866,7 @@ class GoogleWorkspaceProvider(BaseProvider):
         except HttpError as e:
             logger.error(f"Failed to discover groups: {e}")
 
-    def _parse_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse Google API timestamp to datetime."""
         if not timestamp_str:
             return None
@@ -898,23 +899,23 @@ class GoogleWorkspaceProvider(BaseProvider):
             normalized_config=config,
         )
 
-    async def _get_orgunit_config(self, orgunit_id: str) -> Dict[str, Any]:
+    async def _get_orgunit_config(self, orgunit_id: str) -> dict[str, Any]:
         """Get organizational unit configuration and policies."""
         # TODO: Implement orgunit configuration collection
         return {}
 
-    async def _get_chromeos_config(self, device_id: str) -> Dict[str, Any]:
+    async def _get_chromeos_config(self, device_id: str) -> dict[str, Any]:
         """Get Chrome OS device configuration and policies."""
         # TODO: Implement Chrome OS device configuration collection
         return {}
 
-    async def _get_admin_role_config(self, role_id: str) -> Dict[str, Any]:
+    async def _get_admin_role_config(self, role_id: str) -> dict[str, Any]:
         """Get admin role configuration and privileges."""
         # TODO: Implement admin role configuration collection
         return {}
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover Google Workspace IAM permissions and role assignments."""
         if not self._admin_service:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 
@@ -17,7 +17,7 @@ from .celery_app import celery_app
 logger = structlog.get_logger(__name__)
 
 
-async def run_self_play_batch_async() -> Dict[str, Any]:
+async def run_self_play_batch_async() -> dict[str, Any]:
     """Execute a batch of self-play matches using configured scenarios."""
 
     if not settings.self_play_enabled:
@@ -62,7 +62,7 @@ async def run_self_play_batch_async() -> Dict[str, Any]:
 
 
 @celery_app.task(name="cerebro.tasks.self_play_tasks.run_self_play_batch")
-def run_self_play_batch() -> Dict[str, Any]:
+def run_self_play_batch() -> dict[str, Any]:
     """Celery task wrapper for the asynchronous batch runner."""
 
     return asyncio.run(run_self_play_batch_async())

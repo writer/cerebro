@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from celery import Celery
 
@@ -28,25 +28,25 @@ class TaskStatus:
     successful: bool
     failed: bool
     result: Any
-    traceback: Optional[str]
-    date_done: Optional[datetime]
+    traceback: str | None
+    date_done: datetime | None
 
 
 class TaskManager:
     """Facade for interacting with Celery tasks."""
 
-    def __init__(self, app: Optional[Celery] = None) -> None:
+    def __init__(self, app: Celery | None = None) -> None:
         self._app = app or celery_app
 
     def enqueue(
         self,
         task_name: str,
         *args: Any,
-        queue: Optional[str] = None,
-        kwargs: Optional[dict[str, Any]] = None,
-        countdown: Optional[int] = None,
-        eta: Optional[datetime] = None,
-        priority: Optional[int] = None,
+        queue: str | None = None,
+        kwargs: dict[str, Any] | None = None,
+        countdown: int | None = None,
+        eta: datetime | None = None,
+        priority: int | None = None,
     ) -> TaskSubmission:
         task = self._app.tasks.get(task_name)
         if task is None:
@@ -68,7 +68,7 @@ class TaskManager:
         self,
         task_name: str,
         *args: Any,
-        kwargs: Optional[dict[str, Any]] = None,
+        kwargs: dict[str, Any] | None = None,
         **options: Any,
     ) -> TaskSubmission:
         async_result = self._app.send_task(
@@ -82,7 +82,7 @@ class TaskManager:
         result = self._app.AsyncResult(task_id)
         date_done = getattr(result, "date_done", None)
         if isinstance(date_done, datetime) and date_done.tzinfo is None:
-            date_done = date_done.replace(tzinfo=timezone.utc)
+            date_done = date_done.replace(tzinfo=UTC)
 
         return TaskStatus(
             task_id=task_id,
@@ -95,6 +95,6 @@ class TaskManager:
         )
 
     def revoke(
-        self, task_id: str, *, terminate: bool = False, signal: Optional[str] = None
+        self, task_id: str, *, terminate: bool = False, signal: str | None = None
     ) -> None:
         self._app.control.revoke(task_id, terminate=terminate, signal=signal)

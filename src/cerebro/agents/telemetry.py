@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import Dict, Optional
 
 import structlog
 
@@ -27,7 +26,7 @@ class RuntimeSpan:
         backend: str,
         agent_type: str,
         operation: str,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> None:
         self.backend = backend
         self.agent_type = agent_type
@@ -55,14 +54,14 @@ class RuntimeSpan:
         input_tokens: int,
         output_tokens: int,
         tool_calls: int,
-        error: Optional[BaseException] = None,
-        extra: Optional[Dict[str, object]] = None,
+        error: BaseException | None = None,
+        extra: dict[str, object] | None = None,
     ) -> None:
         if self._closed:
             return
 
         duration = time.perf_counter() - self.start_time
-        payload: Dict[str, object] = {
+        payload: dict[str, object] = {
             "backend": self.backend,
             "agent_type": self.agent_type,
             "duration": duration,
@@ -105,7 +104,7 @@ def start_runtime_span(
     backend: str,
     agent_type: str,
     operation: str,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
 ) -> RuntimeSpan:
     """Create a runtime telemetry span."""
 

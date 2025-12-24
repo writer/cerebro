@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 
 def _edge_strategy():

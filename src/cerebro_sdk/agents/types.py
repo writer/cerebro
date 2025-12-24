@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 
@@ -31,7 +31,7 @@ class AgentSessionRecord:
     agent_type: str
     created_at: datetime
     created_by: str
-    title: Optional[str]
+    title: str | None
     is_active: bool
     context: dict[str, Any]
 
@@ -48,9 +48,9 @@ class AgentMessageRecord:
 @dataclass
 class AgentMemoryRecord:
     entry_id: UUID
-    session_id: Optional[UUID]
-    role: Optional[str]
-    summary: Optional[str]
+    session_id: UUID | None
+    role: str | None
+    summary: str | None
     decay_score: float
     last_accessed_at: datetime
     created_at: datetime
@@ -58,7 +58,7 @@ class AgentMemoryRecord:
     scope_labels: list[str]
     metadata: dict[str, Any]
     token_count: int
-    content: Optional[str]
+    content: str | None
 
 
 @dataclass
@@ -80,20 +80,20 @@ class AgentReviewTaskRecord:
     org_id: UUID
     status: str
     title: str
-    summary: Optional[str]
+    summary: str | None
     payload: dict[str, Any]
-    promotion_target: Optional[str]
-    priority: Optional[str]
-    due_at: Optional[datetime]
-    escalated_to: Optional[str]
-    notification_channel: Optional[str]
-    ticket_reference: Optional[str]
+    promotion_target: str | None
+    priority: str | None
+    due_at: datetime | None
+    escalated_to: str | None
+    notification_channel: str | None
+    ticket_reference: str | None
     created_by: str
     created_at: datetime
-    resolved_by: Optional[str]
-    resolved_at: Optional[datetime]
-    resolution_notes: Optional[str]
-    assigned_to: Optional[str]
+    resolved_by: str | None
+    resolved_at: datetime | None
+    resolution_notes: str | None
+    assigned_to: str | None
 
 
 @dataclass
@@ -112,9 +112,9 @@ class AgentReviewHistoryRecord:
     task_id: UUID
     changed_by: str
     change_type: str
-    field_name: Optional[str]
-    old_value: Optional[dict[str, Any]]
-    new_value: Optional[dict[str, Any]]
+    field_name: str | None
+    old_value: dict[str, Any] | None
+    new_value: dict[str, Any] | None
     created_at: datetime
     metadata: dict[str, Any]
 
@@ -132,8 +132,8 @@ class AgentEventRecord:
 class AgentEventSummary:
     event_type: str
     event_count: int
-    first_seen: Optional[datetime]
-    last_seen: Optional[datetime]
+    first_seen: datetime | None
+    last_seen: datetime | None
 
 
 @dataclass
@@ -154,15 +154,15 @@ class ToolInvocationRecord:
     tool_version: str
     status: str
     started_at: datetime
-    completed_at: Optional[datetime]
+    completed_at: datetime | None
     input_data: dict[str, Any]
-    output_data: Optional[dict[str, Any]]
-    error_message: Optional[str]
-    error_code: Optional[str]
-    cel_policy_key: Optional[str]
-    cel_expression: Optional[str]
-    cel_result: Optional[bool]
-    cel_context: Optional[dict[str, Any]]
+    output_data: dict[str, Any] | None
+    error_message: str | None
+    error_code: str | None
+    cel_policy_key: str | None
+    cel_expression: str | None
+    cel_result: bool | None
+    cel_context: dict[str, Any] | None
 
 
 @dataclass
@@ -174,10 +174,10 @@ class ToolApprovalRecord:
     requested_at: datetime
     reason: str
     status: str
-    decided_by: Optional[str]
-    decided_at: Optional[datetime]
-    decision_reason: Optional[str]
-    expires_at: Optional[datetime]
+    decided_by: str | None
+    decided_at: datetime | None
+    decision_reason: str | None
+    expires_at: datetime | None
     risk_assessment: dict[str, Any]
 
 
@@ -214,8 +214,8 @@ class AgentReviewStatusAggregate:
     count: int
     unassigned: int
     overdue: int
-    oldest_created: Optional[datetime]
-    newest_created: Optional[datetime]
+    oldest_created: datetime | None
+    newest_created: datetime | None
 
 
 @dataclass
@@ -223,13 +223,13 @@ class AgentReviewPendingSummary:
     total: int
     unassigned: int
     overdue: int
-    next_due: Optional[datetime]
-    oldest_created: Optional[datetime]
+    next_due: datetime | None
+    oldest_created: datetime | None
 
 
 @dataclass
 class AgentReviewPriorityBucket:
-    priority: Optional[str]
+    priority: str | None
     count: int
 
 
@@ -250,7 +250,7 @@ class AgentNotificationRecord:
     status: str
     payload: dict[str, Any]
     created_at: datetime
-    delivered_at: Optional[datetime]
+    delivered_at: datetime | None
 
 
 @dataclass
@@ -261,6 +261,6 @@ class AgentTicketRecord:
     system: str
     status: str
     details: dict[str, Any]
-    external_id: Optional[str]
+    external_id: str | None
     created_at: datetime
-    updated_at: Optional[datetime]
+    updated_at: datetime | None

@@ -4,25 +4,30 @@ Enhanced GCP provider implementation with comprehensive Google Cloud and Google 
 Based on GAM patterns and Google Cloud best practices.
 """
 
-import json
 import asyncio
-from typing import List, Optional, AsyncGenerator
+import json
+import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
-import logging
 
+from google.cloud import (  # type: ignore[attr-defined]
+    compute_v1,
+    iam_v1,
+    resourcemanager_v3,
+)
 from google.oauth2 import service_account
-from google.cloud import compute_v1, resourcemanager_v3, iam_v1  # type: ignore[attr-defined]
 from googleapiclient.discovery import build
 
 from cerebro.core.config import settings
+
 from ..base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
     IamPermission,
+    PrincipalInfo,
     ProviderError,
+    ResourceInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,9 +51,9 @@ class EnhancedGCPProvider(BaseProvider):
         self,
         account_id: str,
         project_id: str,
-        service_account_file: Optional[str] = None,
-        workspace_domain: Optional[str] = None,
-        delegate_user: Optional[str] = None,
+        service_account_file: str | None = None,
+        workspace_domain: str | None = None,
+        delegate_user: str | None = None,
         **kwargs,
     ):
         """
@@ -215,7 +220,7 @@ class EnhancedGCPProvider(BaseProvider):
             raise ProviderError(f"Google Workspace authentication setup failed: {e}")
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Google Cloud and Google Workspace resources."""
         if not self._credentials:
@@ -235,7 +240,7 @@ class EnhancedGCPProvider(BaseProvider):
                 yield resource
 
     async def _discover_cloud_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Google Cloud resources."""
 
@@ -467,7 +472,7 @@ class EnhancedGCPProvider(BaseProvider):
             logger.error(f"Failed to discover service accounts: {e}")
 
     async def _discover_workspace_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Google Workspace resources using Admin SDK APIs."""
 
@@ -637,7 +642,7 @@ class EnhancedGCPProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Failed to discover domains: {e}")
 
-    def _parse_gcp_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_gcp_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse GCP timestamp string to datetime."""
         if not timestamp_str:
             return None
@@ -668,7 +673,7 @@ class EnhancedGCPProvider(BaseProvider):
         raise NotImplementedError("get_resource_configuration not yet implemented")
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover comprehensive IAM permissions."""
         # Implementation for discovering IAM permissions across GCP and Workspace

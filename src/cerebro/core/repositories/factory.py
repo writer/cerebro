@@ -28,15 +28,15 @@ class RepositoryFactory:
     _instance: Optional["RepositoryFactory"] = None
 
     def __init__(self):
-        self._org_repo: Optional[OrganizationRepository] = None
-        self._account_repo: Optional[AccountRepository] = None
-        self._finding_repo: Optional[FindingRepository] = None
-        self._rule_repo: Optional[RuleRepository] = None
-        self._principal_repo: Optional[PrincipalRepository] = None
-        self._resource_repo: Optional[ResourceRepository] = None
-        self._session_repo: Optional[AgentSessionRepository] = None
-        self._message_repo: Optional[AgentMessageRepository] = None
-        self._tool_repo: Optional[ToolInvocationRepository] = None
+        self._org_repo: OrganizationRepository | None = None
+        self._account_repo: AccountRepository | None = None
+        self._finding_repo: FindingRepository | None = None
+        self._rule_repo: RuleRepository | None = None
+        self._principal_repo: PrincipalRepository | None = None
+        self._resource_repo: ResourceRepository | None = None
+        self._session_repo: AgentSessionRepository | None = None
+        self._message_repo: AgentMessageRepository | None = None
+        self._tool_repo: ToolInvocationRepository | None = None
 
     @classmethod
     def get_instance(cls) -> "RepositoryFactory":

@@ -2,26 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Any, Iterable, Optional
+from typing import Any
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
 from sqlalchemy import Select, and_, cast, func, literal, select, true
-from sqlalchemy.sql.sqltypes import String
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.sqltypes import String
 
 from cerebro.agents.models import (
     AgentMemoryEntry,
     AgentReviewNotification,
     AgentReviewTicket,
     AgentSession,
-    ToolApproval,
-    ToolInvocation,
     ApprovalStatus,
     NotificationStatus,
-    ToolInvocationStatus,
     TicketStatus,
+    ToolApproval,
+    ToolInvocation,
+    ToolInvocationStatus,
 )
 
 
@@ -30,7 +31,7 @@ class ToolingRepository:
         self, db: AsyncSession, *, registry: CollectorRegistry | None = None
     ) -> None:
         self._db = db
-        from cerebro_sdk.telemetry import get_logger, create_counter
+        from cerebro_sdk.telemetry import create_counter, get_logger
 
         self._logger = get_logger(__name__ + ".tooling")
         self._invocation_counter = create_counter(
@@ -49,17 +50,17 @@ class ToolingRepository:
     async def list_invocations(
         self,
         *,
-        session_id: Optional[UUID],
-        org_id: Optional[UUID],
-        status: Optional[ToolInvocationStatus],
-        tool_name: Optional[str],
-        cel_policy_key: Optional[str],
-        cel_result: Optional[bool],
-        text_query: Optional[str],
-        error_code: Optional[str],
-        since: Optional[datetime],
-        until: Optional[datetime],
-        cursor: Optional[datetime],
+        session_id: UUID | None,
+        org_id: UUID | None,
+        status: ToolInvocationStatus | None,
+        tool_name: str | None,
+        cel_policy_key: str | None,
+        cel_result: bool | None,
+        text_query: str | None,
+        error_code: str | None,
+        since: datetime | None,
+        until: datetime | None,
+        cursor: datetime | None,
         effective_limit: int,
         offset: int,
     ) -> list[ToolInvocation]:
@@ -122,10 +123,10 @@ class ToolingRepository:
         self,
         *,
         org_id: UUID,
-        status: Optional[ApprovalStatus],
-        since: Optional[datetime],
-        until: Optional[datetime],
-        cursor: Optional[datetime],
+        status: ApprovalStatus | None,
+        since: datetime | None,
+        until: datetime | None,
+        cursor: datetime | None,
         effective_limit: int,
         offset: int,
     ) -> list[ToolApproval]:
@@ -153,10 +154,10 @@ class ToolingRepository:
         )
         return results
 
-    async def get_invocation(self, invocation_id: UUID) -> Optional[ToolInvocation]:
+    async def get_invocation(self, invocation_id: UUID) -> ToolInvocation | None:
         return await self._db.get(ToolInvocation, invocation_id)
 
-    async def get_approval(self, approval_id: UUID) -> Optional[ToolApproval]:
+    async def get_approval(self, approval_id: UUID) -> ToolApproval | None:
         self._approval_counter.labels("get").inc()
         return await self._db.get(ToolApproval, approval_id)
 
@@ -169,9 +170,9 @@ class ToolingRepository:
         input_data: dict[str, Any],
         status: ToolInvocationStatus,
         started_at: datetime,
-        cel_policy_key: Optional[str],
-        cel_expression: Optional[str],
-        cel_context: Optional[dict[str, Any]],
+        cel_policy_key: str | None,
+        cel_expression: str | None,
+        cel_context: dict[str, Any] | None,
     ) -> ToolInvocation:
         self._invocation_counter.labels("create").inc()
         invocation = ToolInvocation(
@@ -199,13 +200,13 @@ class ToolingRepository:
         self,
         invocation: ToolInvocation,
         *,
-        status: Optional[ToolInvocationStatus] = None,
-        output_data: Optional[dict[str, Any]] = None,
-        error_message: Optional[str] = None,
-        error_code: Optional[str] = None,
-        completed_at: Optional[datetime] = None,
-        cel_result: Optional[bool] = None,
-        cel_context: Optional[dict[str, Any]] = None,
+        status: ToolInvocationStatus | None = None,
+        output_data: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        error_code: str | None = None,
+        completed_at: datetime | None = None,
+        cel_result: bool | None = None,
+        cel_context: dict[str, Any] | None = None,
     ) -> ToolInvocation:
         self._invocation_counter.labels("update").inc()
         if status is not None:
@@ -234,10 +235,10 @@ class ToolingRepository:
         self,
         *,
         org_id: UUID,
-        since: Optional[datetime],
-        until: Optional[datetime],
-        tool_name: Optional[str],
-        status: Optional[ToolInvocationStatus],
+        since: datetime | None,
+        until: datetime | None,
+        tool_name: str | None,
+        status: ToolInvocationStatus | None,
     ) -> list[tuple[str, ToolInvocationStatus, int]]:
         stmt = (
             select(
@@ -266,7 +267,7 @@ class NotificationRepository:
         self, db: AsyncSession, *, registry: CollectorRegistry | None = None
     ) -> None:
         self._db = db
-        from cerebro_sdk.telemetry import get_logger, create_counter
+        from cerebro_sdk.telemetry import create_counter, get_logger
 
         self._logger = get_logger(__name__ + ".notifications")
         self._counter = create_counter(
@@ -300,7 +301,7 @@ class NotificationRepository:
         self,
         *,
         org_id: UUID,
-        status: Optional[NotificationStatus],
+        status: NotificationStatus | None,
         limit: int,
     ) -> list[AgentReviewNotification]:
         self._counter.labels("list").inc()
@@ -319,7 +320,7 @@ class NotificationRepository:
         )
         return results
 
-    async def get(self, notification_id: UUID) -> Optional[AgentReviewNotification]:
+    async def get(self, notification_id: UUID) -> AgentReviewNotification | None:
         self._counter.labels("get").inc()
         return await self._db.get(AgentReviewNotification, notification_id)
 
@@ -329,7 +330,7 @@ class TicketRepository:
         self, db: AsyncSession, *, registry: CollectorRegistry | None = None
     ) -> None:
         self._db = db
-        from cerebro_sdk.telemetry import get_logger, create_counter
+        from cerebro_sdk.telemetry import create_counter, get_logger
 
         self._logger = get_logger(__name__ + ".tickets")
         self._counter = create_counter(
@@ -359,7 +360,7 @@ class TicketRepository:
         await self._db.flush()
         return ticket
 
-    async def get(self, ticket_id: UUID) -> Optional[AgentReviewTicket]:
+    async def get(self, ticket_id: UUID) -> AgentReviewTicket | None:
         self._counter.labels("get").inc()
         return await self._db.get(AgentReviewTicket, ticket_id)
 

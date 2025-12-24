@@ -2,8 +2,8 @@
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import redis.asyncio as redis
@@ -28,9 +28,9 @@ class JWTService:
             metrics: Optional metrics instance (injected by caller)
         """
         self.key_store = key_store
-        self._redis_client: Optional[redis.Redis] = None
+        self._redis_client: redis.Redis | None = None
         self.metrics = metrics
-        self._public_key_cache: Dict[str, Tuple[str, float]] = {}
+        self._public_key_cache: dict[str, tuple[str, float]] = {}
 
     async def _get_redis(self) -> redis.Redis:
         """Get Redis client for token revocation."""
@@ -43,12 +43,12 @@ class JWTService:
     async def create_token(
         self,
         username: str,
-        scopes: List[str],
-        expires_delta: Optional[timedelta] = None,
+        scopes: list[str],
+        expires_delta: timedelta | None = None,
         *,
         token_type: str = "access",
-        org_id: Optional[UUID] = None,
-        extra_claims: Optional[Dict[str, Any]] = None,
+        org_id: UUID | None = None,
+        extra_claims: dict[str, Any] | None = None,
     ) -> str:
         """Create a JWT token with full security claims."""
         try:
@@ -63,14 +63,14 @@ class JWTService:
 
             # Calculate expiration
             if expires_delta:
-                expire = datetime.now(timezone.utc) + expires_delta
+                expire = datetime.now(UTC) + expires_delta
             else:
-                expire = datetime.now(timezone.utc) + timedelta(
+                expire = datetime.now(UTC) + timedelta(
                     minutes=settings.access_token_expire_minutes
                 )
 
             # Build JWT claims with security best practices
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             skew = max(settings.jwt_clock_skew_seconds, 5)
             exp_claim = int(
                 (
@@ -78,7 +78,7 @@ class JWTService:
                 ).timestamp()
             )
 
-            claims: Dict[str, Any] = {
+            claims: dict[str, Any] = {
                 # Standard claims
                 "sub": username,  # Subject (user identifier)
                 "iss": "cerebro.sor",  # Issuer
@@ -128,8 +128,8 @@ class JWTService:
             raise
 
     async def verify_token(
-        self, token: str, expected_type: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, token: str, expected_type: str | None = None
+    ) -> dict[str, Any]:
         """Verify JWT token with comprehensive security checks."""
         # Optional metrics timing
         if self.metrics:
@@ -139,8 +139,8 @@ class JWTService:
             return await self._verify_token_impl(token, expected_type)
 
     async def _verify_token_impl(
-        self, token: str, expected_type: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, token: str, expected_type: str | None = None
+    ) -> dict[str, Any]:
         """Internal token verification implementation."""
         try:
             # Decode header to get key ID without verification
@@ -158,7 +158,7 @@ class JWTService:
 
             cache_entry = self._public_key_cache.get(signing_key.kid)
             now_ts = time.time()
-            public_key_pem: Optional[str] = None
+            public_key_pem: str | None = None
 
             if cache_entry:
                 cached_key, expires_at = cache_entry
@@ -213,7 +213,7 @@ class JWTService:
 
             exp_claim = payload.get("exp")
             if exp_claim is not None:
-                current_ts = datetime.now(timezone.utc).timestamp()
+                current_ts = datetime.now(UTC).timestamp()
                 if current_ts > exp_claim + settings.jwt_clock_skew_seconds:
                     raise JWTError("Token expired")
 
@@ -372,7 +372,7 @@ class JWTService:
             logger.error(f"Failed to cleanup expired revocations: {e}")
             return 0
 
-    async def get_token_info(self, token: str) -> Optional[Dict[str, Any]]:
+    async def get_token_info(self, token: str) -> dict[str, Any] | None:
         """Get token information without full verification (for debugging/admin)."""
         try:
             unverified_payload = jwt.get_unverified_claims(token)

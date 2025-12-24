@@ -6,8 +6,8 @@ using DynamoDB instead of SQLAlchemy.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from cerebro.core.dynamodb import (
@@ -45,7 +45,7 @@ class OrganizationRepository:
     def __init__(self) -> None:
         self._table = TableName.CORE
 
-    async def get(self, org_id: UUID) -> Optional[Organization]:
+    async def get(self, org_id: UUID) -> Organization | None:
         """Get organization by ID."""
         pk = f"ORG#{org_id}"
         sk = f"ORG#{org_id}"
@@ -67,7 +67,7 @@ class OrganizationRepository:
         self,
         org_id: UUID,
         **updates: Any,
-    ) -> Optional[Organization]:
+    ) -> Organization | None:
         """Update organization fields."""
         pk = f"ORG#{org_id}"
         sk = f"ORG#{org_id}"
@@ -89,13 +89,13 @@ class OrganizationRepository:
     async def list_all(
         self,
         limit: int = 100,
-        last_key: Optional[str] = None,
-    ) -> Tuple[List[Organization], Optional[str]]:
+        last_key: str | None = None,
+    ) -> tuple[list[Organization], str | None]:
         """List all organizations."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "TableName": table_name,
             "IndexName": "GSI3",
             "KeyConditionExpression": "GSI3PK = :pk",
@@ -128,7 +128,7 @@ class AccountRepository:
     def __init__(self) -> None:
         self._table = TableName.CORE
 
-    async def get(self, account_id: UUID, org_id: UUID) -> Optional[Account]:
+    async def get(self, account_id: UUID, org_id: UUID) -> Account | None:
         """Get account by ID."""
         pk = f"ORG#{org_id}"
         sk = f"ACCOUNT#{account_id}"
@@ -145,9 +145,9 @@ class AccountRepository:
     async def list_by_org(
         self,
         org_id: UUID,
-        provider: Optional[Provider] = None,
+        provider: Provider | None = None,
         limit: int = 100,
-    ) -> List[Account]:
+    ) -> list[Account]:
         """List accounts for an organization."""
         pk = f"ORG#{org_id}"
         items = await query_by_pk(
@@ -171,7 +171,7 @@ class AccountRepository:
         self,
         provider: Provider,
         limit: int = 100,
-    ) -> List[Account]:
+    ) -> list[Account]:
         """List accounts by provider (across all orgs)."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
@@ -194,7 +194,7 @@ class AccountRepository:
         org_id: UUID,
         provider: Provider,
         external_id: str,
-    ) -> Optional[Account]:
+    ) -> Account | None:
         """Get account by external ID."""
         accounts = await self.list_by_org(org_id, provider)
         for account in accounts:
@@ -219,7 +219,7 @@ class FindingRepository:
     def __init__(self) -> None:
         self._table = TableName.CORE
 
-    async def get(self, finding_id: UUID, org_id: UUID) -> Optional[Finding]:
+    async def get(self, finding_id: UUID, org_id: UUID) -> Finding | None:
         """Get finding by ID."""
         pk = f"ORG#{org_id}"
         sk = f"FINDING#{finding_id}"
@@ -238,14 +238,14 @@ class FindingRepository:
         finding_id: UUID,
         org_id: UUID,
         **updates: Any,
-    ) -> Optional[Finding]:
+    ) -> Finding | None:
         """Update finding fields."""
         pk = f"ORG#{org_id}"
         sk = f"FINDING#{finding_id}"
 
         # Update last_seen timestamp
         if "last_seen" not in updates:
-            updates["last_seen"] = datetime.now(timezone.utc).isoformat()
+            updates["last_seen"] = datetime.now(UTC).isoformat()
 
         # Need to update GSI keys if status/severity changes
         if "status" in updates or "severity" in updates:
@@ -271,10 +271,10 @@ class FindingRepository:
     async def list_by_org(
         self,
         org_id: UUID,
-        status: Optional[FindingStatus] = None,
-        severity: Optional[Severity] = None,
+        status: FindingStatus | None = None,
+        severity: Severity | None = None,
         limit: int = 100,
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         """List findings for an organization."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
@@ -284,7 +284,7 @@ class FindingRepository:
             status_val = status.value if isinstance(status, FindingStatus) else status
             pk = f"ORG#{org_id}#STATUS#{status_val}"
 
-            params: Dict[str, Any] = {
+            params: dict[str, Any] = {
                 "TableName": table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
@@ -330,7 +330,7 @@ class FindingRepository:
         self,
         rule_id: UUID,
         limit: int = 100,
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         """List findings for a specific rule."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
@@ -350,7 +350,7 @@ class FindingRepository:
         self,
         org_id: UUID,
         fingerprint: str,
-    ) -> Optional[Finding]:
+    ) -> Finding | None:
         """Get finding by fingerprint.
 
         Note: Scans findings. Consider adding GSI on fingerprint for better performance.
@@ -374,7 +374,7 @@ class FindingRepository:
                 break
         return None
 
-    async def bulk_upsert(self, findings: List[Finding]) -> int:
+    async def bulk_upsert(self, findings: list[Finding]) -> int:
         """Bulk upsert findings."""
         items = [f.to_dynamodb_item() for f in findings]
         await batch_write_items(self._table, put_items=items)
@@ -387,7 +387,7 @@ class RuleRepository:
     def __init__(self) -> None:
         self._table = TableName.CORE
 
-    async def get(self, rule_id: UUID) -> Optional[Rule]:
+    async def get(self, rule_id: UUID) -> Rule | None:
         """Get rule by ID."""
         pk = f"RULE#{rule_id}"
         sk = f"RULE#{rule_id}"
@@ -405,7 +405,7 @@ class RuleRepository:
         self,
         rule_id: UUID,
         **updates: Any,
-    ) -> Optional[Rule]:
+    ) -> Rule | None:
         """Update rule fields."""
         pk = f"RULE#{rule_id}"
         sk = f"RULE#{rule_id}"
@@ -422,16 +422,16 @@ class RuleRepository:
 
     async def list_active(
         self,
-        severity: Optional[Severity] = None,
+        severity: Severity | None = None,
         limit: int = 100,
-    ) -> List[Rule]:
+    ) -> list[Rule]:
         """List active rules."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
 
         pk = "RULE#ACTIVE#True"
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "TableName": table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :pk",
@@ -456,7 +456,7 @@ class RuleRepository:
         self,
         provider: str,
         limit: int = 100,
-    ) -> List[Rule]:
+    ) -> list[Rule]:
         """List rules for a provider."""
         # Provider is stored as a list, so we need to filter
         rules = await self.list_active(limit=limit * 2)
@@ -469,7 +469,7 @@ class PrincipalRepository:
     def __init__(self) -> None:
         self._table = TableName.CORE
 
-    async def get(self, principal_id: UUID, org_id: UUID) -> Optional[Principal]:
+    async def get(self, principal_id: UUID, org_id: UUID) -> Principal | None:
         """Get principal by ID."""
         pk = f"ORG#{org_id}"
         sk = f"PRINCIPAL#{principal_id}"
@@ -487,7 +487,7 @@ class PrincipalRepository:
         self,
         account_id: UUID,
         limit: int = 100,
-    ) -> List[Principal]:
+    ) -> list[Principal]:
         """List principals for an account."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
@@ -511,7 +511,7 @@ class PrincipalRepository:
         self,
         org_id: UUID,
         limit: int = 100,
-    ) -> List[Principal]:
+    ) -> list[Principal]:
         """List principals for an organization."""
         pk = f"ORG#{org_id}"
         items = await query_by_pk(
@@ -522,7 +522,7 @@ class PrincipalRepository:
         )
         return [Principal.from_dynamodb_item(item) for item in items]
 
-    async def bulk_upsert(self, principals: List[Principal]) -> int:
+    async def bulk_upsert(self, principals: list[Principal]) -> int:
         """Bulk upsert principals."""
         items = [p.to_dynamodb_item() for p in principals]
         await batch_write_items(self._table, put_items=items)
@@ -535,7 +535,7 @@ class ResourceRepository:
     def __init__(self) -> None:
         self._table = TableName.CORE
 
-    async def get(self, resource_id: UUID, org_id: UUID) -> Optional[Resource]:
+    async def get(self, resource_id: UUID, org_id: UUID) -> Resource | None:
         """Get resource by ID."""
         pk = f"ORG#{org_id}"
         sk = f"RESOURCE#{resource_id}"
@@ -552,9 +552,9 @@ class ResourceRepository:
     async def list_by_account(
         self,
         account_id: UUID,
-        resource_type: Optional[str] = None,
+        resource_type: str | None = None,
         limit: int = 100,
-    ) -> List[Resource]:
+    ) -> list[Resource]:
         """List resources for an account."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
@@ -583,7 +583,7 @@ class ResourceRepository:
         self,
         org_id: UUID,
         limit: int = 100,
-    ) -> List[Resource]:
+    ) -> list[Resource]:
         """List resources for an organization."""
         pk = f"ORG#{org_id}"
         items = await query_by_pk(
@@ -594,7 +594,7 @@ class ResourceRepository:
         )
         return [Resource.from_dynamodb_item(item) for item in items]
 
-    async def bulk_upsert(self, resources: List[Resource]) -> int:
+    async def bulk_upsert(self, resources: list[Resource]) -> int:
         """Bulk upsert resources."""
         items = [r.to_dynamodb_item() for r in resources]
         await batch_write_items(self._table, put_items=items)
@@ -615,17 +615,17 @@ class AuditEventRepository:
     async def list_by_account(
         self,
         account_id: UUID,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """List audit events for an account."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
 
         pk = f"ACCOUNT#{account_id}"
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "TableName": table_name,
             "KeyConditionExpression": "PK = :pk",
             "ExpressionAttributeValues": {":pk": {"S": pk}},
@@ -654,17 +654,17 @@ class AuditEventRepository:
     async def list_by_org(
         self,
         org_id: UUID,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """List audit events for an organization using GSI1."""
         client = get_dynamodb_client()
         table_name = get_table_name(self._table)
 
         pk = f"ORG#{org_id}#AUDIT"
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "TableName": table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :pk",
@@ -683,7 +683,7 @@ class AuditEventRepository:
         items = [deserialize_item(item) for item in response.get("Items", [])]
         return [AuditEvent.from_dynamodb_item(item) for item in items]
 
-    async def bulk_create(self, events: List[AuditEvent]) -> int:
+    async def bulk_create(self, events: list[AuditEvent]) -> int:
         """Bulk create audit events."""
         items = [e.to_dynamodb_item() for e in events]
         await batch_write_items(self._table, put_items=items)
@@ -705,7 +705,7 @@ class ConfigSnapshotRepository:
         self,
         resource_id: UUID,
         limit: int = 100,
-    ) -> List[ConfigSnapshot]:
+    ) -> list[ConfigSnapshot]:
         """List config snapshots for a resource."""
         pk = f"RESOURCE#{resource_id}"
         items = await query_by_pk(
@@ -717,12 +717,12 @@ class ConfigSnapshotRepository:
         )
         return [ConfigSnapshot.from_dynamodb_item(item) for item in items]
 
-    async def get_latest(self, resource_id: UUID) -> Optional[ConfigSnapshot]:
+    async def get_latest(self, resource_id: UUID) -> ConfigSnapshot | None:
         """Get the latest config snapshot for a resource."""
         snapshots = await self.list_by_resource(resource_id, limit=1)
         return snapshots[0] if snapshots else None
 
-    async def bulk_create(self, snapshots: List[ConfigSnapshot]) -> int:
+    async def bulk_create(self, snapshots: list[ConfigSnapshot]) -> int:
         """Bulk create config snapshots."""
         items = [s.to_dynamodb_item() for s in snapshots]
         await batch_write_items(self._table, put_items=items)
@@ -735,7 +735,7 @@ class SuppressionRepository:
     def __init__(self) -> None:
         self._table = TableName.CORE
 
-    async def get(self, suppression_id: UUID, org_id: UUID) -> Optional[Suppression]:
+    async def get(self, suppression_id: UUID, org_id: UUID) -> Suppression | None:
         """Get suppression by ID."""
         pk = f"ORG#{org_id}"
         sk = f"SUPPRESSION#{suppression_id}"
@@ -754,7 +754,7 @@ class SuppressionRepository:
         org_id: UUID,
         include_expired: bool = False,
         limit: int = 100,
-    ) -> List[Suppression]:
+    ) -> list[Suppression]:
         """List suppressions for an organization."""
         pk = f"ORG#{org_id}"
         items = await query_by_pk(
@@ -767,7 +767,7 @@ class SuppressionRepository:
         suppressions = [Suppression.from_dynamodb_item(item) for item in items]
 
         if not include_expired:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             suppressions = [
                 s for s in suppressions if s.expires_at is None or s.expires_at > now
             ]

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 from cerebro.telemetry.schemas import SecretsScanResult
 
@@ -18,10 +18,10 @@ class ValidationResult:
     status: str
     confidence: float
     reason: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
-def _extract_candidate_value(raw_result: Optional[Dict[str, Any]]) -> str:
+def _extract_candidate_value(raw_result: dict[str, Any] | None) -> str:
     if not raw_result:
         return ""
 

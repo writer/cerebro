@@ -5,20 +5,20 @@ Implements graph model of principals → roles → resources across providers
 with path queries, severity scoring, and service-to-service identity edges.
 """
 
-from .graph_model import AttackGraph, AttackNode, AttackEdge
-from .path_analysis import PathAnalyzer, AttackPath, PathQuery
-from .service_identity import ServiceIdentityMapper, ServiceIdentityEdge
+from .graph_model import AttackEdge, AttackGraph, AttackNode
+from .path_analysis import AttackPath, PathAnalyzer, PathQuery
 from .reachability import ReachabilityAnalyzer, ReachabilityResult
+from .service_identity import ServiceIdentityEdge, ServiceIdentityMapper
 
 __all__ = [
+    "AttackEdge",
     "AttackGraph",
     "AttackNode",
-    "AttackEdge",
-    "PathAnalyzer",
     "AttackPath",
+    "PathAnalyzer",
     "PathQuery",
-    "ServiceIdentityMapper",
-    "ServiceIdentityEdge",
     "ReachabilityAnalyzer",
     "ReachabilityResult",
+    "ServiceIdentityEdge",
+    "ServiceIdentityMapper",
 ]

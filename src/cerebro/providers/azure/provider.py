@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator, Dict, List, Optional
 from uuid import UUID
 
 from azure.core.exceptions import AzureError, HttpResponseError
@@ -19,7 +19,7 @@ from ..utils.connector import call_sync_with_retries
 logger = logging.getLogger(__name__)
 
 
-def _extract_resource_group(resource_id: Optional[str]) -> Optional[str]:
+def _extract_resource_group(resource_id: str | None) -> str | None:
     if not resource_id:
         return None
     parts = resource_id.split("/")
@@ -45,7 +45,7 @@ class AzureProvider(BaseProvider):
 
         self.subscription_id = subscription_id
         self._credential = kwargs.get("credential") or DefaultAzureCredential()
-        self._storage_client: Optional[StorageManagementClient] = None
+        self._storage_client: StorageManagementClient | None = None
 
     async def authenticate(self) -> bool:
         try:
@@ -68,12 +68,12 @@ class AzureProvider(BaseProvider):
 
     async def discover_resources(
         self,
-        resource_types: Optional[List[str]] = None,
+        resource_types: list[str] | None = None,
     ) -> AsyncGenerator[ResourceInfo, None]:
         await self.authenticate()
         assert self._storage_client is not None
 
-        accounts: List[StorageAccount] = await call_sync_with_retries(
+        accounts: list[StorageAccount] = await call_sync_with_retries(
             lambda: list(self._storage_client.storage_accounts.list()),  # type: ignore[union-attr]
             exceptions=(AzureError, HttpResponseError),
             logger=logger,
@@ -201,7 +201,7 @@ class AzureProvider(BaseProvider):
 
     async def _build_account_configuration(
         self, resource: ResourceInfo
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         resource_group = (
             resource.metadata.get("resource_group") if resource.metadata else None
         )
@@ -236,7 +236,7 @@ class AzureProvider(BaseProvider):
 
     async def _build_container_configuration(
         self, resource: ResourceInfo
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         metadata = resource.metadata or {}
         resource_group = metadata.get("resource_group")
         account_name = metadata.get("account_name")
@@ -265,7 +265,7 @@ class AzureProvider(BaseProvider):
 
         account_key = await self._get_account_key(account_name, resource_group)
         if not account_key:
-            sample_objects: List[Dict[str, object]] = []
+            sample_objects: list[dict[str, object]] = []
         else:
             blob_service_client = BlobServiceClient(
                 account_url=f"https://{account_name}.blob.core.windows.net",
@@ -305,7 +305,7 @@ class AzureProvider(BaseProvider):
         }
 
     async def _get_account_properties(
-        self, account_name: str, resource_group: Optional[str]
+        self, account_name: str, resource_group: str | None
     ):
         if not resource_group:
             logger.warning(
@@ -322,8 +322,8 @@ class AzureProvider(BaseProvider):
         )
 
     async def _get_account_key(
-        self, account_name: str, resource_group: Optional[str]
-    ) -> Optional[str]:
+        self, account_name: str, resource_group: str | None
+    ) -> str | None:
         if not resource_group:
             return None
 
@@ -344,7 +344,7 @@ class AzureProvider(BaseProvider):
         blob_service_client: BlobServiceClient,
         container_name: str,
         max_samples: int = 50,
-    ) -> List[Dict[str, object]]:
+    ) -> list[dict[str, object]]:
         try:
             container_client = blob_service_client.get_container_client(container_name)
 
@@ -366,7 +366,7 @@ class AzureProvider(BaseProvider):
                 logger=logger,
             )
 
-            samples: List[Dict[str, object]] = []
+            samples: list[dict[str, object]] = []
             for blob in blobs:
                 samples.append(
                     {
@@ -390,7 +390,7 @@ class AzureProvider(BaseProvider):
             return []
 
     @staticmethod
-    def _serialize_network_rules(rule_set) -> Dict[str, object]:
+    def _serialize_network_rules(rule_set) -> dict[str, object]:
         if not rule_set:
             return {}
         return {
@@ -407,7 +407,7 @@ class AzureProvider(BaseProvider):
         }
 
     @staticmethod
-    def _serialize_encryption(encryption) -> Dict[str, object]:
+    def _serialize_encryption(encryption) -> dict[str, object]:
         if not encryption:
             return {}
         services = getattr(encryption, "services", None)
@@ -427,7 +427,7 @@ class AzureProvider(BaseProvider):
         }
 
     @staticmethod
-    def _serialize_identity(identity) -> Dict[str, object]:
+    def _serialize_identity(identity) -> dict[str, object]:
         if not identity:
             return {}
         return {
@@ -437,10 +437,10 @@ class AzureProvider(BaseProvider):
         }
 
     @staticmethod
-    def _serialize_signed_identifiers(signed_identifiers) -> List[Dict[str, object]]:
+    def _serialize_signed_identifiers(signed_identifiers) -> list[dict[str, object]]:
         if not signed_identifiers:
             return []
-        serialized: List[Dict[str, object]] = []
+        serialized: list[dict[str, object]] = []
         for identifier in signed_identifiers:
             access_policy = getattr(identifier, "access_policy", None)
             serialized.append(

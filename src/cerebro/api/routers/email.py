@@ -2,21 +2,20 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID, uuid4
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import (
     BaseModel,
+    ConfigDict,
     EmailStr,
     Field,
     ValidationInfo,
     field_validator,
-    ConfigDict,
 )
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,24 +41,24 @@ class EmailConfigCreate(BaseModel):
         ..., min_length=1, max_length=255, description="SMTP server host"
     )
     smtp_port: int = Field(default=587, ge=1, le=65535, description="SMTP server port")
-    smtp_username: Optional[str] = Field(
+    smtp_username: str | None = Field(
         None, max_length=255, description="SMTP username"
     )
-    smtp_password: Optional[str] = Field(None, description="SMTP password (encrypted)")
+    smtp_password: str | None = Field(None, description="SMTP password (encrypted)")
     from_email: EmailStr = Field(..., description="Sender email address")
-    from_name: Optional[str] = Field(
+    from_name: str | None = Field(
         None, max_length=255, description="Sender display name"
     )
-    to_emails: List[EmailStr] = Field(
+    to_emails: list[EmailStr] = Field(
         ..., min_length=1, description="List of recipient emails"
     )
-    cc_emails: Optional[List[EmailStr]] = Field(None, description="CC recipient emails")
+    cc_emails: list[EmailStr] | None = Field(None, description="CC recipient emails")
     use_tls: bool = Field(default=True, description="Use TLS for SMTP connection")
     enabled: bool = Field(default=True, description="Enable this email config")
-    severity_filter: Optional[List[str]] = Field(
+    severity_filter: list[str] | None = Field(
         None, description="Filter by severity (critical, high, medium, low)"
     )
-    event_types: List[str] = Field(
+    event_types: list[str] = Field(
         ...,
         min_length=1,
         description="Event types to send (finding.created, compliance.check_failed, etc.)",
@@ -67,10 +66,10 @@ class EmailConfigCreate(BaseModel):
     digest_mode: bool = Field(
         default=False, description="Send digest instead of immediate"
     )
-    digest_frequency: Optional[str] = Field(
+    digest_frequency: str | None = Field(
         None, description="Digest frequency (daily, weekly) if digest_mode=true"
     )
-    email_metadata: Optional[dict] = Field(
+    email_metadata: dict | None = Field(
         None, description="Additional configuration metadata"
     )
 
@@ -89,22 +88,22 @@ class EmailConfigCreate(BaseModel):
 class EmailConfigUpdate(BaseModel):
     """Request model for updating email configuration."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    smtp_host: Optional[str] = Field(None, min_length=1, max_length=255)
-    smtp_port: Optional[int] = Field(None, ge=1, le=65535)
-    smtp_username: Optional[str] = Field(None, max_length=255)
-    smtp_password: Optional[str] = Field(None)
-    from_email: Optional[EmailStr] = None
-    from_name: Optional[str] = Field(None, max_length=255)
-    to_emails: Optional[List[EmailStr]] = Field(None, min_length=1)
-    cc_emails: Optional[List[EmailStr]] = None
-    use_tls: Optional[bool] = None
-    enabled: Optional[bool] = None
-    severity_filter: Optional[List[str]] = None
-    event_types: Optional[List[str]] = Field(None, min_length=1)
-    digest_mode: Optional[bool] = None
-    digest_frequency: Optional[str] = None
-    email_metadata: Optional[dict] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    smtp_host: str | None = Field(None, min_length=1, max_length=255)
+    smtp_port: int | None = Field(None, ge=1, le=65535)
+    smtp_username: str | None = Field(None, max_length=255)
+    smtp_password: str | None = Field(None)
+    from_email: EmailStr | None = None
+    from_name: str | None = Field(None, max_length=255)
+    to_emails: list[EmailStr] | None = Field(None, min_length=1)
+    cc_emails: list[EmailStr] | None = None
+    use_tls: bool | None = None
+    enabled: bool | None = None
+    severity_filter: list[str] | None = None
+    event_types: list[str] | None = Field(None, min_length=1)
+    digest_mode: bool | None = None
+    digest_frequency: str | None = None
+    email_metadata: dict | None = None
 
     @field_validator("digest_frequency", mode="after")
     @classmethod
@@ -126,22 +125,22 @@ class EmailConfigResponse(BaseModel):
     name: str
     smtp_host: str
     smtp_port: int
-    smtp_username: Optional[str]
-    smtp_password: Optional[str]  # Masked
+    smtp_username: str | None
+    smtp_password: str | None  # Masked
     from_email: str
-    from_name: Optional[str]
-    to_emails: List[str]
-    cc_emails: Optional[List[str]]
+    from_name: str | None
+    to_emails: list[str]
+    cc_emails: list[str] | None
     use_tls: bool
     enabled: bool
-    severity_filter: Optional[List[str]]
-    event_types: List[str]
+    severity_filter: list[str] | None
+    event_types: list[str]
     digest_mode: bool
-    digest_frequency: Optional[str]
-    email_metadata: Optional[dict]
+    digest_frequency: str | None
+    email_metadata: dict | None
     created_at: datetime
     updated_at: datetime
-    created_by: Optional[str]
+    created_by: str | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -153,15 +152,15 @@ class EmailNotificationResponse(BaseModel):
     config_id: UUID
     org_id: UUID
     event_type: str
-    finding_id: Optional[UUID]
-    severity: Optional[str]
+    finding_id: UUID | None
+    severity: str | None
     subject: str
-    to_emails: List[str]
+    to_emails: list[str]
     status: str
-    status_code: Optional[int]
-    error_message: Optional[str]
+    status_code: int | None
+    error_message: str | None
     retry_count: int
-    sent_at: Optional[datetime]
+    sent_at: datetime | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -235,9 +234,9 @@ async def create_email_config(
     return response_config
 
 
-@router.get("/configs", response_model=List[EmailConfigResponse])
+@router.get("/configs", response_model=list[EmailConfigResponse])
 async def list_email_configs(
-    enabled: Optional[bool] = Query(None, description="Filter by enabled status"),
+    enabled: bool | None = Query(None, description="Filter by enabled status"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -457,10 +456,10 @@ async def test_email_config(
         raise HTTPException(status_code=500, detail="Failed to send test email")
 
 
-@router.get("/notifications", response_model=List[EmailNotificationResponse])
+@router.get("/notifications", response_model=list[EmailNotificationResponse])
 async def list_email_notifications(
-    config_id: Optional[UUID] = Query(None, description="Filter by config ID"),
-    status: Optional[str] = Query(
+    config_id: UUID | None = Query(None, description="Filter by config ID"),
+    status: str | None = Query(
         None, description="Filter by status (sent, failed, retrying)"
     ),
     limit: int = Query(
@@ -503,7 +502,7 @@ async def list_email_notifications(
 
 @router.get("/notifications/stats", response_model=EmailNotificationStatsResponse)
 async def get_email_notification_stats(
-    config_id: Optional[UUID] = Query(None, description="Filter by config ID"),
+    config_id: UUID | None = Query(None, description="Filter by config ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
@@ -18,7 +18,7 @@ from .celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-async def _post_slack_message(webhook_url: str, payload: Dict[str, Any]) -> None:
+async def _post_slack_message(webhook_url: str, payload: dict[str, Any]) -> None:
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(webhook_url, json=payload)
         response.raise_for_status()
@@ -26,9 +26,9 @@ async def _post_slack_message(webhook_url: str, payload: Dict[str, Any]) -> None
 
 def _build_runtime_alert_payload(
     runtime: str, severity: str, warning_count: int, error_count: int, window_hours: int
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     title = f"{runtime.title()} runtime health {severity.upper()}"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     text = (
         f"Detected {warning_count} warning(s) and {error_count} error(s) "
         f"for the {runtime} runtime in the last {window_hours}h."
@@ -91,7 +91,7 @@ def _build_runtime_alert_payload(
 
 @celery_app.task(bind=True, name="cerebro.tasks.runtime.monitor_health")
 def monitor_runtime_health(self):
-    async def _run() -> Dict[str, Any]:
+    async def _run() -> dict[str, Any]:
         if not settings or not settings.runtime_health_alert_webhook:
             logger.debug("runtime_health_alerts_disabled")
             return {"alerts": 0}

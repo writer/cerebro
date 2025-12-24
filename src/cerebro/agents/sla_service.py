@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -49,7 +48,7 @@ class SLAStatus:
         self.is_breached = is_breached
         self.is_at_risk = is_at_risk
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "task_id": str(self.task.id),
             "sla_hours": self.sla_hours,
@@ -69,7 +68,7 @@ class SLAService:
     @staticmethod
     def calculate_sla_status(
         task: AgentReviewTask,
-        custom_slas: Optional[Dict[str, int]] = None,
+        custom_slas: dict[str, int] | None = None,
     ) -> SLAStatus:
         """Calculate SLA status for a task."""
         sla_config = custom_slas or SLAConfig.DEFAULT_SLAS
@@ -77,9 +76,9 @@ class SLAService:
         sla_hours = sla_config.get(priority.lower(), SLAConfig.DEFAULT_SLAS["medium"])
 
         # Calculate elapsed time
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (
-            task.created_at.replace(tzinfo=timezone.utc)
+            task.created_at.replace(tzinfo=UTC)
             if task.created_at.tzinfo is None
             else task.created_at
         )
@@ -110,8 +109,8 @@ class SLAService:
     async def get_breached_tasks(
         *,
         org_id: UUID,
-        custom_slas: Optional[Dict[str, int]] = None,
-    ) -> List[SLAStatus]:
+        custom_slas: dict[str, int] | None = None,
+    ) -> list[SLAStatus]:
         """Get all tasks that have breached their SLA."""
         async with async_session_factory() as db_session:
             stmt = (
@@ -134,8 +133,8 @@ class SLAService:
     async def get_at_risk_tasks(
         *,
         org_id: UUID,
-        custom_slas: Optional[Dict[str, int]] = None,
-    ) -> List[SLAStatus]:
+        custom_slas: dict[str, int] | None = None,
+    ) -> list[SLAStatus]:
         """Get all tasks that are at risk of breaching SLA."""
         async with async_session_factory() as db_session:
             stmt = (
@@ -158,9 +157,9 @@ class SLAService:
     async def set_due_date(
         *,
         task_id: UUID,
-        due_at: Optional[datetime] = None,
-        sla_hours: Optional[int] = None,
-    ) -> Optional[AgentReviewTask]:
+        due_at: datetime | None = None,
+        sla_hours: int | None = None,
+    ) -> AgentReviewTask | None:
         """Set or update the due date for a task."""
         async with async_session_factory() as db_session:
             task = await db_session.get(AgentReviewTask, task_id)
@@ -181,8 +180,8 @@ class SLAService:
     async def get_sla_summary(
         *,
         org_id: UUID,
-        custom_slas: Optional[Dict[str, int]] = None,
-    ) -> Dict:
+        custom_slas: dict[str, int] | None = None,
+    ) -> dict:
         """Get summary statistics for SLA compliance."""
         async with async_session_factory() as db_session:
             stmt = (

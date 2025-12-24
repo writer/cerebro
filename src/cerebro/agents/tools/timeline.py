@@ -5,15 +5,14 @@ Provides capabilities to build incident timelines from audit events,
 configuration snapshots, and other temporal data sources.
 """
 
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
 from pydantic import BaseModel, Field
 
-
-from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
+from .base import AgentContext, Tool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -24,12 +23,12 @@ logger = structlog.get_logger(__name__)
 class BuildTimelineInput(BaseModel):
     """Input for building an incident timeline."""
 
-    incident_id: Optional[UUID] = Field(
+    incident_id: UUID | None = Field(
         None, description="Incident ID to build timeline for"
     )
     start_time: datetime = Field(description="Timeline start time")
     end_time: datetime = Field(description="Timeline end time")
-    event_types: Optional[List[str]] = Field(None, description="Filter by event types")
+    event_types: list[str] | None = Field(None, description="Filter by event types")
     include_config_changes: bool = Field(
         default=True, description="Include configuration changes"
     )
@@ -42,22 +41,22 @@ class TimelineEvent(BaseModel):
     timestamp: datetime
     event_type: str
     source: str  # audit_events, config_snapshots, etc.
-    actor: Optional[str] = None
-    resource_id: Optional[str] = None
+    actor: str | None = None
+    resource_id: str | None = None
     description: str
-    details: Dict[str, Any] = Field(default_factory=dict)
-    severity: Optional[str] = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    severity: str | None = None
 
 
 class BuildTimelineOutput(BaseModel):
     """Timeline construction output."""
 
-    incident_id: Optional[UUID]
+    incident_id: UUID | None
     timeline_start: datetime
     timeline_end: datetime
-    events: List[TimelineEvent]
+    events: list[TimelineEvent]
     event_count: int
-    sources_analyzed: List[str]
+    sources_analyzed: list[str]
     construction_time_ms: float
 
 
@@ -90,7 +89,9 @@ class TimelineTool(Tool):
 
         try:
             import time
-            from sqlalchemy import select, and_
+
+            from sqlalchemy import and_, select
+
             from cerebro.core.models import AuditEvent, ConfigSnapshot, Finding
 
             start_time = time.time()
@@ -153,7 +154,7 @@ class TimelineTool(Tool):
                 if timeline_inputs.include_config_changes:
                     # Note: ConfigSnapshot uses captured_at not collected_at, and has no org_id
                     # Must join through Resource -> Account to filter by org
-                    from cerebro.core.models import Resource, Account
+                    from cerebro.core.models import Account, Resource
 
                     config_query = (
                         select(ConfigSnapshot, Resource)
@@ -305,5 +306,5 @@ class TimelineTool(Tool):
             logger.exception("Timeline construction failed", error=str(e))
             return ToolResult(
                 success=False,
-                error=f"Timeline construction error: {str(e)}",
+                error=f"Timeline construction error: {e!s}",
             )

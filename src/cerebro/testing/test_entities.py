@@ -6,20 +6,19 @@ following security testing best practices.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func
+from sqlalchemy import Boolean, DateTime, String, Text, and_, desc, func, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from cerebro.core.database_types import JSONType
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Boolean, Text
 
 from cerebro.core.database import Base
+from cerebro.core.database_types import JSONType
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +54,8 @@ class TestEntityMetadata:
     environment: str
     expiration_date: datetime
     cleanup_required: bool
-    dependencies: List[str]
-    tags: List[str]
+    dependencies: list[str]
+    tags: list[str]
 
 
 class TestEntity(Base):
@@ -75,35 +74,35 @@ class TestEntity(Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     # Entity details
-    entity_config: Mapped[Dict[str, Any]] = mapped_column(JSONType, nullable=False)
+    entity_config: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False)
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default=TestEntityStatus.ACTIVE.value
     )
 
     # Test context
-    test_suite_id: Mapped[Optional[str]] = mapped_column(String(100))
+    test_suite_id: Mapped[str | None] = mapped_column(String(100))
     test_purpose: Mapped[str] = mapped_column(Text, nullable=False)
     environment: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Lifecycle management
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cleanup_required: Mapped[bool] = mapped_column(Boolean, default=True)
-    cleanup_completed_at: Mapped[Optional[datetime]] = mapped_column(
+    cleanup_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
 
     # Dependencies and relationships
-    depends_on: Mapped[Optional[List[str]]] = mapped_column(
+    depends_on: Mapped[list[str] | None] = mapped_column(
         JSONType
     )  # List of entity IDs
-    supports: Mapped[Optional[List[str]]] = mapped_column(
+    supports: Mapped[list[str] | None] = mapped_column(
         JSONType
     )  # List of entity IDs
 
     # Tags and metadata
-    tags: Mapped[Optional[List[str]]] = mapped_column(JSONType)
-    entity_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType)
+    tags: Mapped[list[str] | None] = mapped_column(JSONType)
+    entity_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
 
     # Tracking
     created_at: Mapped[datetime] = mapped_column(
@@ -112,7 +111,7 @@ class TestEntity(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), onupdate=func.now()
     )
-    last_accessed: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_accessed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TestEntityManager:
@@ -128,13 +127,13 @@ class TestEntityManager:
         entity_type: TestEntityType,
         external_id: str,
         display_name: str,
-        entity_config: Dict[str, Any],
+        entity_config: dict[str, Any],
         test_purpose: str,
         environment: str,
         created_by: str,
-        expires_in_hours: Optional[int] = 24,
-        depends_on: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None,
+        expires_in_hours: int | None = 24,
+        depends_on: list[str] | None = None,
+        tags: list[str] | None = None,
     ) -> TestEntity:
         """Create a new test entity."""
 
@@ -167,20 +166,20 @@ class TestEntityManager:
         )
         return entity
 
-    async def get_test_entity(self, entity_id: UUID) -> Optional[TestEntity]:
+    async def get_test_entity(self, entity_id: UUID) -> TestEntity | None:
         """Get test entity by ID."""
         return await self.db.get(TestEntity, entity_id)
 
     async def list_test_entities(
         self,
         org_id: UUID,
-        entity_type: Optional[TestEntityType] = None,
-        environment: Optional[str] = None,
-        status: Optional[TestEntityStatus] = None,
-        test_suite_id: Optional[str] = None,
+        entity_type: TestEntityType | None = None,
+        environment: str | None = None,
+        status: TestEntityStatus | None = None,
+        test_suite_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[TestEntity]:
+    ) -> list[TestEntity]:
         """List test entities with filtering."""
         stmt = select(TestEntity).where(TestEntity.org_id == org_id)
 
@@ -198,7 +197,7 @@ class TestEntityManager:
         return list(await self.db.scalars(stmt))
 
     async def update_entity_status(
-        self, entity_id: UUID, status: TestEntityStatus, notes: Optional[str] = None
+        self, entity_id: UUID, status: TestEntityStatus, notes: str | None = None
     ) -> bool:
         """Update test entity status."""
         entity = await self.get_test_entity(entity_id)
@@ -225,7 +224,7 @@ class TestEntityManager:
                 TestEntity.org_id == org_id,
                 TestEntity.expires_at < now,
                 TestEntity.status == TestEntityStatus.ACTIVE.value,
-                TestEntity.cleanup_required == True,
+                TestEntity.cleanup_required,
             )
         )
 
@@ -291,7 +290,7 @@ class TestEntityManager:
         """Clean up test data."""
         logger.info(f"Cleaning up test data: {entity.external_id}")
 
-    async def get_entity_dependencies(self, entity_id: UUID) -> List[TestEntity]:
+    async def get_entity_dependencies(self, entity_id: UUID) -> list[TestEntity]:
         """Get entities that this entity depends on."""
         entity = await self.get_test_entity(entity_id)
         if not entity or not entity.depends_on:
@@ -301,7 +300,7 @@ class TestEntityManager:
 
         return list(await self.db.scalars(stmt))
 
-    async def get_entity_dependents(self, entity_id: UUID) -> List[TestEntity]:
+    async def get_entity_dependents(self, entity_id: UUID) -> list[TestEntity]:
         """Get entities that depend on this entity."""
         stmt = select(TestEntity).where(
             TestEntity.depends_on.contains([str(entity_id)])
@@ -309,7 +308,7 @@ class TestEntityManager:
 
         return list(await self.db.scalars(stmt))
 
-    async def validate_entity_dependencies(self, entity_id: UUID) -> Dict[str, Any]:
+    async def validate_entity_dependencies(self, entity_id: UUID) -> dict[str, Any]:
         """Validate that all dependencies are available and active."""
         entity = await self.get_test_entity(entity_id)
         if not entity:
@@ -349,7 +348,7 @@ class TestEntityManager:
 
         return validation_results
 
-    async def get_test_entity_summary(self, org_id: UUID) -> Dict[str, Any]:
+    async def get_test_entity_summary(self, org_id: UUID) -> dict[str, Any]:
         """Get summary of test entities for an organization.
 
         Uses SQL aggregation for efficient counting on large datasets.

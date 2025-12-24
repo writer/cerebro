@@ -1,21 +1,20 @@
 """Risk scoring engine for comprehensive organizational risk assessment."""
 
 import logging
-from typing import Dict, List, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .sql_dialect import (
     array_has_elements_expr,
     current_timestamp_expr,
     get_dialect_name,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class RiskFactor:
     weight: float
     risk_contribution: float
     description: str
-    remediation_suggestions: List[str]
+    remediation_suggestions: list[str]
 
 
 @dataclass
@@ -71,16 +70,16 @@ class OrganizationRiskScore:
     operational_score: float
 
     # Contributing factors
-    risk_factors: List[RiskFactor]
+    risk_factors: list[RiskFactor]
 
     # Trends
     score_trend: str  # "improving", "declining", "stable"
     trend_confidence: float
 
     # Actionable insights
-    top_risks: List[str]
-    quick_wins: List[str]
-    strategic_initiatives: List[str]
+    top_risks: list[str]
+    quick_wins: list[str]
+    strategic_initiatives: list[str]
 
 
 @dataclass
@@ -88,9 +87,9 @@ class RiskHeatmap:
     """Risk heatmap data for visualization."""
 
     org_id: UUID
-    heatmap_data: Dict[str, Dict[str, float]]  # provider -> resource_type -> risk_score
-    high_risk_areas: List[Dict[str, Any]]
-    improvement_opportunities: List[Dict[str, Any]]
+    heatmap_data: dict[str, dict[str, float]]  # provider -> resource_type -> risk_score
+    high_risk_areas: list[dict[str, Any]]
+    improvement_opportunities: list[dict[str, Any]]
 
 
 class RiskScoringEngine:
@@ -387,7 +386,7 @@ class RiskScoringEngine:
         else:
             return RiskSeverity.CRITICAL
 
-    async def _identify_risk_factors(self, org_id: UUID) -> List[RiskFactor]:
+    async def _identify_risk_factors(self, org_id: UUID) -> list[RiskFactor]:
         """Identify specific risk factors contributing to the score."""
 
         factors = []
@@ -511,7 +510,7 @@ class RiskScoringEngine:
 
         return trend, confidence
 
-    async def _identify_top_risks(self, org_id: UUID) -> List[str]:
+    async def _identify_top_risks(self, org_id: UUID) -> list[str]:
         """Identify top 5 risks for the organization."""
 
         top_risks = []
@@ -545,7 +544,7 @@ class RiskScoringEngine:
 
         return top_risks
 
-    async def _identify_quick_wins(self, org_id: UUID) -> List[str]:
+    async def _identify_quick_wins(self, org_id: UUID) -> list[str]:
         """Identify quick wins for risk reduction."""
 
         quick_wins = []
@@ -582,7 +581,7 @@ class RiskScoringEngine:
 
         return quick_wins[:3]  # Top 3 quick wins
 
-    async def _identify_strategic_initiatives(self, org_id: UUID) -> List[str]:
+    async def _identify_strategic_initiatives(self, org_id: UUID) -> list[str]:
         """Identify strategic security initiatives."""
 
         initiatives = []
@@ -650,8 +649,8 @@ class RiskScoringEngine:
 
         result = await self.db.execute(heatmap_query, {"org_id": org_id})
 
-        heatmap_data: Dict[str, Dict[str, float]] = {}
-        high_risk_areas: List[Dict[str, Any]] = []
+        heatmap_data: dict[str, dict[str, float]] = {}
+        high_risk_areas: list[dict[str, Any]] = []
 
         for row in result.fetchall():
             provider = row.provider

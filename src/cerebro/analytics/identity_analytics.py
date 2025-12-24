@@ -2,17 +2,18 @@
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import bindparam, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import IdentityRemediationAction
+
 from .dashboard_repository import DashboardRepository
 from .sql_dialect import (
     case_insensitive_like_expr,
@@ -48,7 +49,7 @@ class RiskyIdentity:
 
     principal_id: UUID
     display_name: str
-    email: Optional[str]
+    email: str | None
     risk_score: float
     risk_level: IdentityRiskLevel
 
@@ -60,11 +61,11 @@ class RiskyIdentity:
     mfa_status: str
 
     # Provider breakdown
-    provider_access: Dict[str, Dict[str, Any]]
+    provider_access: dict[str, dict[str, Any]]
 
     # Recommendations
-    risk_factors: List[str]
-    remediation_actions: List[str]
+    risk_factors: list[str]
+    remediation_actions: list[str]
 
 
 @dataclass
@@ -82,13 +83,13 @@ class PrivilegeSprawlAnalysis:
     # Sprawl metrics
     avg_permissions_per_identity: float
     max_permissions_per_identity: int
-    privilege_distribution: Dict[str, int]
+    privilege_distribution: dict[str, int]
 
     # Top risk identities
-    top_risky_identities: List[RiskyIdentity]
+    top_risky_identities: list[RiskyIdentity]
 
     # Provider analysis
-    provider_privilege_breakdown: Dict[str, Dict[str, Any]]
+    provider_privilege_breakdown: dict[str, dict[str, Any]]
 
 
 class IdentityAnalyzer:
@@ -101,7 +102,7 @@ class IdentityAnalyzer:
 
     async def analyze_risky_identities(
         self, org_id: UUID, limit: int = 20
-    ) -> List[RiskyIdentity]:
+    ) -> list[RiskyIdentity]:
         """Identify identities with highest risk profiles."""
 
         logger.info(f"Analyzing risky identities for org {org_id}")
@@ -249,7 +250,7 @@ class IdentityAnalyzer:
 
     async def _get_provider_access_breakdown(
         self, principal_id: UUID
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Get detailed provider access breakdown for a principal."""
 
         dialect = get_dialect_name(self.db)
@@ -440,7 +441,7 @@ class PrivilegeSprawlDetector:
         result = await self.db.execute(query, {"org_id": org_id})
         return result.scalar() or 0
 
-    async def _get_privilege_distribution(self, org_id: UUID) -> Dict[str, int]:
+    async def _get_privilege_distribution(self, org_id: UUID) -> dict[str, int]:
         """Get distribution of privilege levels."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
@@ -486,7 +487,7 @@ class PrivilegeSprawlDetector:
 
     async def _analyze_provider_privilege_breakdown(
         self, org_id: UUID
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Analyze privilege distribution by provider."""
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
@@ -532,7 +533,7 @@ class PrivilegeSprawlDetector:
 
         return breakdown
 
-    async def identify_privilege_anomalies(self, org_id: UUID) -> List[Dict[str, Any]]:
+    async def identify_privilege_anomalies(self, org_id: UUID) -> list[dict[str, Any]]:
         """Identify privilege anomalies requiring investigation."""
 
         dialect = get_dialect_name(self.db)
@@ -616,7 +617,7 @@ class PrivilegeSprawlDetector:
 
         return anomalies
 
-    async def generate_identity_dashboard_data(self, org_id: UUID) -> Dict[str, Any]:
+    async def generate_identity_dashboard_data(self, org_id: UUID) -> dict[str, Any]:
         """Generate comprehensive identity analytics for dashboard."""
 
         # Get privilege sprawl analysis
@@ -664,7 +665,7 @@ class PrivilegeSprawlDetector:
 
     async def _get_mfa_compliance_by_provider(
         self, org_id: UUID
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Get MFA compliance status by provider."""
 
         dialect = get_dialect_name(self.db)
@@ -731,13 +732,13 @@ if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
 
     async def _identify_privilege_anomalies(
         self: IdentityAnalyzer, org_id: UUID
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Identify privilege anomalies requiring investigation."""
 
         dialect = get_dialect_name(self.db)
         now_expr = current_timestamp_expr(dialect=dialect)
 
-        anomalies: List[Dict[str, Any]] = []
+        anomalies: list[dict[str, Any]] = []
 
         orphaned_query = text(
             f"""
@@ -828,7 +829,7 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
 
     async def _get_mfa_compliance_by_provider(
         self: IdentityAnalyzer, org_id: UUID
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Get MFA compliance status by provider."""
 
         dialect = get_dialect_name(self.db)
@@ -868,7 +869,7 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
 
         result = await self.db.execute(mfa_query, {"org_id": org_id})
 
-        compliance_data: Dict[str, Dict[str, Any]] = {}
+        compliance_data: dict[str, dict[str, Any]] = {}
         for row in result.fetchall():
             total = row.total_users
             enabled = row.mfa_enabled_users
@@ -894,7 +895,7 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
 
     async def _get_risk_level_breakdown(
         self: IdentityAnalyzer, org_id: UUID
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Return identity counts grouped by risk level."""
 
         dialect = get_dialect_name(self.db)
@@ -943,7 +944,7 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
         )
 
         result = await self.db.execute(risk_level_query, {"org_id": org_id})
-        breakdown = {level: 0 for level in ["critical", "high", "medium", "low"]}
+        breakdown = dict.fromkeys(["critical", "high", "medium", "low"], 0)
         for row in result.fetchall():
             breakdown[row.risk_level] = int(row.identity_count or 0)
 
@@ -953,9 +954,9 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
 
 
 async def _build_drilldown_identities(
-    analyzer: IdentityAnalyzer, risky_identities: List[RiskyIdentity]
-) -> List[Dict[str, Any]]:
-    drilldown: List[Dict[str, Any]] = []
+    analyzer: IdentityAnalyzer, risky_identities: list[RiskyIdentity]
+) -> list[dict[str, Any]]:
+    drilldown: list[dict[str, Any]] = []
 
     if not risky_identities:
         return drilldown
@@ -963,7 +964,7 @@ async def _build_drilldown_identities(
     principal_ids = [identity.principal_id for identity in risky_identities]
 
     dialect = get_dialect_name(analyzer.db)
-    principal_id_params: List[object] = (
+    principal_id_params: list[object] = (
         [str(pid) for pid in principal_ids]
         if dialect == "snowflake"
         else list(principal_ids)
@@ -995,7 +996,7 @@ async def _build_drilldown_identities(
         findings_stmt, {"principal_ids": principal_id_params}
     )
 
-    permissions_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
+    permissions_by_identity: dict[UUID, list[Any]] = defaultdict(list)
     for row in permissions_result.fetchall():
         principal_id = (
             row.principal_id
@@ -1006,7 +1007,7 @@ async def _build_drilldown_identities(
             continue
         permissions_by_identity[principal_id].append(row)
 
-    findings_by_identity: Dict[UUID, List[Any]] = defaultdict(list)
+    findings_by_identity: dict[UUID, list[Any]] = defaultdict(list)
     for row in findings_result.fetchall():
         principal_id = (
             row.principal_id
@@ -1065,7 +1066,7 @@ async def _build_drilldown_identities(
 
 async def _generate_identity_dashboard_data(
     self: IdentityAnalyzer, org_id: UUID
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate comprehensive identity analytics for dashboard consumers."""
     sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(
         org_id
@@ -1079,16 +1080,16 @@ async def _generate_identity_dashboard_data(
 
     async def _build_remediation_queue(
         remediation_db: AsyncSession,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         repository = DashboardRepository(remediation_db)
         existing_actions = await repository.get_remediation_actions(org_id)
-        action_map: Dict[tuple[str, str], IdentityRemediationAction] = {
+        action_map: dict[tuple[str, str], IdentityRemediationAction] = {
             (str(action.principal_id), action.recommended_action): action
             for action in existing_actions
         }
 
-        remediation_queue: List[Dict[str, Any]] = []
-        used_keys: Set[tuple[str, str]] = set()
+        remediation_queue: list[dict[str, Any]] = []
+        used_keys: set[tuple[str, str]] = set()
         created_actions = False
 
         for entry in drilldown_identities:
@@ -1231,9 +1232,9 @@ IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard
 
 
 def _merge_remediation_action(
-    base: Dict[str, Any],
+    base: dict[str, Any],
     action: IdentityRemediationAction,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     serialized = DashboardRepository.serialize_remediation_action(action)
     merged = dict(base)
     merged.update(

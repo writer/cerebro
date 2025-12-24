@@ -3,20 +3,20 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator, Optional
 
 from prometheus_client import CollectorRegistry, Counter, Histogram
 
+from cerebro.core.config import Settings, settings
 from cerebro.core.logging import configure_structlog
-from cerebro.core.config import settings, Settings
 
 
 def configure_logging(
-    level: Optional[str] = None,
+    level: str | None = None,
     *,
-    json_output: Optional[bool] = None,
-    settings_obj: Optional[Settings] = None,
+    json_output: bool | None = None,
+    settings_obj: Settings | None = None,
 ) -> None:
     """Configure structlog according to settings or overrides."""
 
@@ -38,8 +38,8 @@ def create_counter(
     name: str,
     documentation: str,
     *,
-    registry: Optional[CollectorRegistry] = None,
-    labelnames: Optional[tuple[str, ...]] = None,
+    registry: CollectorRegistry | None = None,
+    labelnames: tuple[str, ...] | None = None,
 ) -> Counter:
     return Counter(name, documentation, labelnames=labelnames or (), registry=registry)
 
@@ -48,9 +48,9 @@ def create_histogram(
     name: str,
     documentation: str,
     *,
-    registry: Optional[CollectorRegistry] = None,
-    buckets: Optional[tuple[float, ...]] = None,
-    labelnames: Optional[tuple[str, ...]] = None,
+    registry: CollectorRegistry | None = None,
+    buckets: tuple[float, ...] | None = None,
+    labelnames: tuple[str, ...] | None = None,
 ) -> Histogram:
     return Histogram(
         name,

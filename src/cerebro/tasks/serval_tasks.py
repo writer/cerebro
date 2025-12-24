@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from dateutil import parser as date_parser
 
@@ -19,7 +18,7 @@ from .celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-def _parse_timestamp(payload: dict[str, object]) -> Optional[datetime]:
+def _parse_timestamp(payload: dict[str, object]) -> datetime | None:
     """Extract a timezone-aware timestamp from common Serval ticket fields."""
     for key in ("updatedAt", "completedAt", "escalatedAt", "createdAt"):
         value = payload.get(key)
@@ -29,8 +28,8 @@ def _parse_timestamp(payload: dict[str, object]) -> Optional[datetime]:
             except (ValueError, TypeError):
                 continue
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.astimezone(timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
+            return dt.astimezone(UTC)
     return None
 
 
@@ -82,7 +81,7 @@ def sync_serval_tickets(self) -> dict[str, object]:
                     metadata={
                         "last_sync_count": len(tickets),
                         "updated_statuses": org_updates,
-                        "synced_at": datetime.now(timezone.utc).isoformat(),
+                        "synced_at": datetime.now(UTC).isoformat(),
                     },
                 )
 

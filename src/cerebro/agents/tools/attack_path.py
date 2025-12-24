@@ -8,14 +8,16 @@ Wraps Cerebro's PathAnalyzer to provide tactical attack path intelligence
 directly to Claude agents for threat modeling and incident response.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import structlog
 from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
 from cerebro.attack_path.graph_model import get_attack_graph
 from cerebro.attack_path.path_analysis import PathAnalyzer, PathQuery, PathType
 from cerebro.core.database import async_session_factory
-import structlog
+
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -23,11 +25,11 @@ logger = structlog.get_logger(__name__)
 class AttackPathSimulatorInput(BaseModel):
     """Input parameters for attack path simulation."""
 
-    start_principal: Optional[str] = Field(
+    start_principal: str | None = Field(
         None,
         description="Starting principal ID or email (e.g., 'user@company.com', 'arn:aws:iam::123:role/admin')",
     )
-    target_resource: Optional[str] = Field(
+    target_resource: str | None = Field(
         None,
         description="Target resource ID or ARN (e.g., 'arn:aws:s3:::prod-data', 's3://prod-data')",
     )
@@ -43,11 +45,11 @@ class AttackPathSimulatorOutput(BaseModel):
     """Output from attack path simulation."""
 
     paths_found: int
-    most_critical_path: Optional[Dict[str, Any]]
-    all_paths_summary: List[Dict[str, Any]]
-    choke_points: List[str]
-    recommended_mitigations: List[str]
-    query_info: Dict[str, Any]
+    most_critical_path: dict[str, Any] | None
+    all_paths_summary: list[dict[str, Any]]
+    choke_points: list[str]
+    recommended_mitigations: list[str]
+    query_info: dict[str, Any]
 
 
 class AttackPathSimulatorTool(StructuredTool):
@@ -74,8 +76,8 @@ class AttackPathSimulatorTool(StructuredTool):
     async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
-        start_principal: Optional[str] = None,
-        target_resource: Optional[str] = None,
+        start_principal: str | None = None,
+        target_resource: str | None = None,
         max_depth: int = 5,
         include_privilege_escalation: bool = True,
     ) -> ToolResult:
@@ -232,10 +234,10 @@ class AttackPathSimulatorTool(StructuredTool):
         except Exception as e:
             logger.error("Attack path simulation failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False, error=f"Attack path simulation failed: {str(e)}"
+                success=False, error=f"Attack path simulation failed: {e!s}"
             )
 
-    def _identify_choke_points(self, paths: List) -> List[str]:
+    def _identify_choke_points(self, paths: list) -> list[str]:
         """
         Identify nodes that appear in many attack paths.
         These are critical points to monitor/protect.
@@ -260,8 +262,8 @@ class AttackPathSimulatorTool(StructuredTool):
         return choke_points[:10]  # Limit to top 10
 
     def _generate_recommendations(
-        self, paths: List, choke_points: List[str]
-    ) -> List[str]:
+        self, paths: list, choke_points: list[str]
+    ) -> list[str]:
         """Generate security recommendations based on paths found."""
         recommendations = []
 
@@ -336,9 +338,9 @@ class BlastRadiusTool(StructuredTool):
         directly_accessible: int
         transitively_accessible: int
         total_blast_radius: int
-        critical_resources_at_risk: List[str]
-        high_value_targets: List[Dict[str, Any]]
-        recommended_containment: List[str]
+        critical_resources_at_risk: list[str]
+        high_value_targets: list[dict[str, Any]]
+        recommended_containment: list[str]
 
     input_model = Input
     output_model = Output
@@ -413,9 +415,7 @@ class BlastRadiusTool(StructuredTool):
                     directly_accessible=blast_radius.directly_accessible,
                     transitively_accessible=blast_radius.transitively_accessible,
                     total_blast_radius=blast_radius.total_reachable,
-                    critical_resources_at_risk=[
-                        r for r in blast_radius.critical_resources[:10]
-                    ],
+                    critical_resources_at_risk=list(blast_radius.critical_resources[:10]),
                     high_value_targets=high_value_targets,
                     recommended_containment=containment,
                 )
@@ -435,5 +435,5 @@ class BlastRadiusTool(StructuredTool):
         except Exception as e:
             logger.error("Blast radius calculation failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False, error=f"Blast radius calculation failed: {str(e)}"
+                success=False, error=f"Blast radius calculation failed: {e!s}"
             )

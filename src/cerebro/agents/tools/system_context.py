@@ -7,17 +7,19 @@ database status, provider connectivity, and operational health.
 This complements get_org_context by adding infrastructure/ops awareness.
 """
 
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
-from cerebro.core.database import async_session_factory, engine
-from cerebro.core.models import Organization, Account, Resource, ConfigSnapshot
-from sqlalchemy import func, select, text
 import structlog
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select, text
+
+from cerebro.core.database import async_session_factory, engine
+from cerebro.core.models import Account, ConfigSnapshot, Organization, Resource
+
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -44,9 +46,9 @@ class DatabaseInfo(BaseModel):
 
     connected: bool
     database_url_masked: str
-    pg_version: Optional[str]
-    connection_pool_size: Optional[int]
-    extensions: Optional[List[str]]
+    pg_version: str | None
+    connection_pool_size: int | None
+    extensions: list[str] | None
 
 
 class EnvironmentInfo(BaseModel):
@@ -55,7 +57,7 @@ class EnvironmentInfo(BaseModel):
     python_version: str
     deployment_type: str  # docker, k8s, bare-metal, dev
     environment: str  # production, staging, development
-    base_url: Optional[str]
+    base_url: str | None
     redis_configured: bool
     anthropic_api_configured: bool
 
@@ -65,15 +67,15 @@ class ProviderHealth(BaseModel):
 
     provider: str
     status: str  # healthy, degraded, offline
-    last_collection: Optional[str]
-    error_rate: Optional[float]
+    last_collection: str | None
+    error_rate: float | None
 
 
 class SystemHealthMetrics(BaseModel):
     """System health metrics."""
 
-    uptime_seconds: Optional[float]
-    memory_usage_mb: Optional[float]
+    uptime_seconds: float | None
+    memory_usage_mb: float | None
     active_agent_sessions: int
     total_organizations: int
     background_tasks_running: int
@@ -83,10 +85,10 @@ class SystemContextOutput(BaseModel):
     """System context output."""
 
     timestamp: str
-    database: Optional[DatabaseInfo] = None
-    environment: Optional[EnvironmentInfo] = None
-    provider_health: Optional[List[ProviderHealth]] = None
-    health_metrics: Optional[SystemHealthMetrics] = None
+    database: DatabaseInfo | None = None
+    environment: EnvironmentInfo | None = None
+    provider_health: list[ProviderHealth] | None = None
+    health_metrics: SystemHealthMetrics | None = None
 
 
 class GetSystemContextTool(StructuredTool):
@@ -192,7 +194,7 @@ class GetSystemContextTool(StructuredTool):
                 error="Failed to retrieve system context",
             )
 
-    async def _get_database_info(self) -> Dict[str, Any]:
+    async def _get_database_info(self) -> dict[str, Any]:
         """Get database connectivity and status."""
 
         try:
@@ -202,8 +204,8 @@ class GetSystemContextTool(StructuredTool):
                 # Test connection
                 await db_session.execute(text("SELECT 1"))
 
-                pg_version: Optional[str] = None
-                extensions: Optional[List[str]] = None
+                pg_version: str | None = None
+                extensions: list[str] | None = None
                 if dialect == "postgresql":
                     pg_version_result = await db_session.execute(
                         text("SELECT version()")
@@ -249,7 +251,7 @@ class GetSystemContextTool(StructuredTool):
                 "extensions": None,
             }
 
-    async def _get_environment_info(self) -> Dict[str, Any]:
+    async def _get_environment_info(self) -> dict[str, Any]:
         """Get deployment environment information."""
 
         # Detect deployment type
@@ -271,7 +273,7 @@ class GetSystemContextTool(StructuredTool):
             "anthropic_api_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
         }
 
-    async def _get_provider_health(self, org_id) -> List[Dict[str, Any]]:
+    async def _get_provider_health(self, org_id) -> list[dict[str, Any]]:
         """Get provider connectivity health."""
 
         provider_health = []
@@ -304,11 +306,11 @@ class GetSystemContextTool(StructuredTool):
                     if not row.last_collection:
                         status = "offline"
                     else:
-                        now = datetime.now(timezone.utc)
+                        now = datetime.now(UTC)
                         last_collection = row.last_collection
                         if last_collection.tzinfo is None:
                             last_collection = last_collection.replace(
-                                tzinfo=timezone.utc
+                                tzinfo=UTC
                             )
 
                         time_since_collection = now - last_collection
@@ -333,7 +335,7 @@ class GetSystemContextTool(StructuredTool):
 
         return provider_health
 
-    async def _get_health_metrics(self) -> Dict[str, Any]:
+    async def _get_health_metrics(self) -> dict[str, Any]:
         """Get system health metrics."""
 
         try:

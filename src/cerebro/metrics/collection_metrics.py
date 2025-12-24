@@ -1,9 +1,10 @@
 """Metrics for data collection operations."""
 
+import logging
 import time
 from contextlib import contextmanager
-from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry
-import logging
+
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
 

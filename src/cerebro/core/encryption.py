@@ -6,7 +6,6 @@ import hashlib
 import logging
 import os
 from collections import OrderedDict
-from typing import Optional, Tuple
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
@@ -36,7 +35,7 @@ class SecretEncryptionService:
 
     MAX_CACHE_SIZE = 1000  # Prevent memory leaks from unbounded cache growth
 
-    def __init__(self, kms: Optional[BaseKMS] = None):
+    def __init__(self, kms: BaseKMS | None = None):
         """Initialize encryption service.
 
         Args:
@@ -79,7 +78,7 @@ class SecretEncryptionService:
             # Evict oldest entry if cache is full
             if len(self._dek_cache) >= self.MAX_CACHE_SIZE:
                 # popitem(last=False) removes oldest (first) item - O(1)
-                oldest_dek, _ = self._dek_cache.popitem(last=False)
+                _oldest_dek, _ = self._dek_cache.popitem(last=False)
                 logger.debug(f"Evicted DEK from cache (size: {len(self._dek_cache)})")
 
             # Add to cache
@@ -87,7 +86,7 @@ class SecretEncryptionService:
 
             return fernet
 
-    async def encrypt_secret(self, plaintext: str) -> Tuple[bytes, bytes]:
+    async def encrypt_secret(self, plaintext: str) -> tuple[bytes, bytes]:
         """Encrypt a secret using envelope encryption.
 
         Args:
@@ -182,7 +181,7 @@ class SecretEncryptionService:
 
     async def rotate_dek(
         self, encrypted_secret: bytes, old_encrypted_dek: bytes
-    ) -> Tuple[bytes, bytes]:
+    ) -> tuple[bytes, bytes]:
         """Rotate the DEK for a secret without changing the secret itself.
 
         This is useful for key rotation compliance requirements.
@@ -268,7 +267,7 @@ class FallbackEncryptionService:
     DEPRECATED: Use SecretEncryptionService for production.
     """
 
-    def __init__(self, secret_key: Optional[str] = None):
+    def __init__(self, secret_key: str | None = None):
         """Initialize fallback encryption service.
 
         Args:
@@ -316,7 +315,7 @@ class FallbackEncryptionService:
 
 
 # Global service instance
-_encryption_service: Optional[SecretEncryptionService] = None
+_encryption_service: SecretEncryptionService | None = None
 
 
 def get_encryption_service() -> SecretEncryptionService:

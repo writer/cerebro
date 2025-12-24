@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -50,7 +50,7 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
     async def _fake_executive_summary(self, org_id):
         return ExecutiveSummary(
             org_id=org_id,
-            report_date=datetime.now(timezone.utc),
+            report_date=datetime.now(UTC),
             overall_risk_score=25.0,
             risk_level="low",
             risk_trend="stable",
@@ -98,14 +98,14 @@ async def test_dashboard_generation_captures_timings(monkeypatch, test_db, test_
                     "accepted_by": None,
                     "completed_at": None,
                     "completed_by": None,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "updated_at": datetime.now(UTC).isoformat(),
                     "source": "analytics",
                 }
             ],
             "provider_segments": [],
             "risk_level_breakdown": {"critical": 0, "high": 0, "medium": 0, "low": 5},
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
     async def _fake_heatmap(self, org_id):

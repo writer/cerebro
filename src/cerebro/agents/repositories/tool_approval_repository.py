@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -25,7 +24,7 @@ class ToolApprovalRepository:
         *,
         limit: int,
         offset: int,
-    ) -> Tuple[List[ToolApproval], int]:
+    ) -> tuple[list[ToolApproval], int]:
         async with self._session_factory() as db_session:
             stmt = (
                 select(ToolApproval)
@@ -53,7 +52,7 @@ class ToolApprovalRepository:
         self,
         approval_id: UUID,
         org_id: UUID,
-    ) -> Optional[ToolApproval]:
+    ) -> ToolApproval | None:
         async with self._session_factory() as db_session:
             stmt = (
                 select(ToolApproval)

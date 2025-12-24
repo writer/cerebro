@@ -2,23 +2,23 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     HttpUrl,
     ValidationInfo,
     field_validator,
-    ConfigDict,
 )
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-import sqlalchemy as sa
 
 from cerebro.api.auth import User, get_current_user
 from cerebro.core.database import get_db
@@ -42,22 +42,22 @@ class WebhookConfigCreate(BaseModel):
     http_method: str = Field(
         default="POST", description="HTTP method (POST, PUT, PATCH)"
     )
-    headers: Optional[Dict[str, str]] = Field(None, description="Custom HTTP headers")
-    payload_template: Dict[str, Any] = Field(
+    headers: dict[str, str] | None = Field(None, description="Custom HTTP headers")
+    payload_template: dict[str, Any] = Field(
         ..., description="Jinja2 template for webhook payload"
     )
-    authentication: Optional[Dict[str, Any]] = Field(
+    authentication: dict[str, Any] | None = Field(
         None, description="Authentication configuration (Bearer token, etc.)"
     )
     use_hmac_signature: bool = Field(
         default=False, description="Add HMAC signature header"
     )
-    hmac_secret: Optional[str] = Field(None, description="HMAC secret key")
+    hmac_secret: str | None = Field(None, description="HMAC secret key")
     enabled: bool = Field(default=True, description="Enable this webhook config")
-    severity_filter: Optional[List[str]] = Field(
+    severity_filter: list[str] | None = Field(
         None, description="Filter by severity (critical, high, medium, low)"
     )
-    event_types: List[str] = Field(
+    event_types: list[str] = Field(
         ...,
         min_length=1,
         description="Event types to send (finding.created, compliance.check_failed, etc.)",
@@ -65,7 +65,7 @@ class WebhookConfigCreate(BaseModel):
     timeout_seconds: int = Field(
         default=10, ge=1, le=60, description="Request timeout in seconds"
     )
-    webhook_metadata: Optional[Dict[str, Any]] = Field(
+    webhook_metadata: dict[str, Any] | None = Field(
         None, description="Additional metadata"
     )
 
@@ -90,19 +90,19 @@ class WebhookConfigCreate(BaseModel):
 class WebhookConfigUpdate(BaseModel):
     """Request model for updating webhook configuration."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    url: Optional[HttpUrl] = None
-    http_method: Optional[str] = None
-    headers: Optional[Dict[str, str]] = None
-    payload_template: Optional[Dict[str, Any]] = None
-    authentication: Optional[Dict[str, Any]] = None
-    use_hmac_signature: Optional[bool] = None
-    hmac_secret: Optional[str] = None
-    enabled: Optional[bool] = None
-    severity_filter: Optional[List[str]] = None
-    event_types: Optional[List[str]] = Field(None, min_length=1)
-    timeout_seconds: Optional[int] = Field(None, ge=1, le=60)
-    webhook_metadata: Optional[Dict[str, Any]] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    url: HttpUrl | None = None
+    http_method: str | None = None
+    headers: dict[str, str] | None = None
+    payload_template: dict[str, Any] | None = None
+    authentication: dict[str, Any] | None = None
+    use_hmac_signature: bool | None = None
+    hmac_secret: str | None = None
+    enabled: bool | None = None
+    severity_filter: list[str] | None = None
+    event_types: list[str] | None = Field(None, min_length=1)
+    timeout_seconds: int | None = Field(None, ge=1, le=60)
+    webhook_metadata: dict[str, Any] | None = None
 
 
 class WebhookConfigResponse(BaseModel):
@@ -113,19 +113,19 @@ class WebhookConfigResponse(BaseModel):
     name: str
     url: str  # Masked for security
     http_method: str
-    headers: Optional[Dict[str, str]]
-    payload_template: Dict[str, Any]
-    authentication: Optional[Dict[str, Any]]  # Masked for security
+    headers: dict[str, str] | None
+    payload_template: dict[str, Any]
+    authentication: dict[str, Any] | None  # Masked for security
     use_hmac_signature: bool
-    hmac_secret: Optional[str]  # Masked
+    hmac_secret: str | None  # Masked
     enabled: bool
-    severity_filter: Optional[List[str]]
-    event_types: List[str]
+    severity_filter: list[str] | None
+    event_types: list[str]
     timeout_seconds: int
-    webhook_metadata: Optional[Dict[str, Any]]
+    webhook_metadata: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
-    created_by: Optional[str]
+    created_by: str | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -137,16 +137,16 @@ class WebhookNotificationResponse(BaseModel):
     config_id: UUID
     org_id: UUID
     event_type: str
-    finding_id: Optional[UUID]
-    severity: Optional[str]
-    payload: Dict[str, Any]
-    response_status: Optional[int]
-    response_body: Optional[str]
-    response_time_ms: Optional[int]
+    finding_id: UUID | None
+    severity: str | None
+    payload: dict[str, Any]
+    response_status: int | None
+    response_body: str | None
+    response_time_ms: int | None
     status: str
-    error_message: Optional[str]
+    error_message: str | None
     retry_count: int
-    sent_at: Optional[datetime]
+    sent_at: datetime | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -159,7 +159,7 @@ class WebhookNotificationStatsResponse(BaseModel):
     total_failed: int
     total_retrying: int
     success_rate: float
-    avg_response_time_ms: Optional[float]
+    avg_response_time_ms: float | None
 
 
 def _mask_url(url: str) -> str:
@@ -175,7 +175,7 @@ def _mask_url(url: str) -> str:
         return url
 
 
-def _mask_authentication(auth: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _mask_authentication(auth: dict[str, Any] | None) -> dict[str, Any] | None:
     """Mask sensitive authentication values."""
     if not auth:
         return None
@@ -250,9 +250,9 @@ async def create_webhook_config(
     return response_config
 
 
-@router.get("/configs", response_model=List[WebhookConfigResponse])
+@router.get("/configs", response_model=list[WebhookConfigResponse])
 async def list_webhook_configs(
-    enabled: Optional[bool] = Query(None, description="Filter by enabled status"),
+    enabled: bool | None = Query(None, description="Filter by enabled status"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -421,7 +421,7 @@ async def delete_webhook_config(
     logger.info(f"Deleted webhook config {config_id}")
 
 
-@router.get("/templates", response_model=Dict[str, Dict[str, Any]])
+@router.get("/templates", response_model=dict[str, dict[str, Any]])
 async def get_default_templates():
     """Get default webhook payload templates.
 
@@ -500,10 +500,10 @@ async def test_webhook_config(
         raise HTTPException(status_code=500, detail="Failed to send test webhook")
 
 
-@router.get("/notifications", response_model=List[WebhookNotificationResponse])
+@router.get("/notifications", response_model=list[WebhookNotificationResponse])
 async def list_webhook_notifications(
-    config_id: Optional[UUID] = Query(None, description="Filter by config ID"),
-    status: Optional[str] = Query(
+    config_id: UUID | None = Query(None, description="Filter by config ID"),
+    status: str | None = Query(
         None, description="Filter by status (sent, failed, retrying)"
     ),
     limit: int = Query(
@@ -550,7 +550,7 @@ async def list_webhook_notifications(
 
 @router.get("/notifications/stats", response_model=WebhookNotificationStatsResponse)
 async def get_webhook_notification_stats(
-    config_id: Optional[UUID] = Query(None, description="Filter by config ID"),
+    config_id: UUID | None = Query(None, description="Filter by config ID"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

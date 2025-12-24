@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -25,7 +25,7 @@ class _DummyStore(AlertCooldownStore):
 
 @pytest.mark.asyncio
 async def test_collect_telemetry_alerts_uses_rules(monkeypatch) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     snapshot = TelemetryHealthSnapshot(
         generated_at=now,
         window_start=now,

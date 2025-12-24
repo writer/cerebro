@@ -4,24 +4,22 @@ Slack Integration API Router
 Endpoints for managing Slack webhooks and notification configurations.
 """
 
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, HttpUrl, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import structlog
-
+from cerebro.api.auth import User, get_current_user
 from cerebro.core.config import settings
 from cerebro.core.database import get_db
-from cerebro.api.auth import get_current_user, User
-from cerebro.core.models import SlackWebhook, SlackNotification
+from cerebro.core.models import SlackNotification, SlackWebhook
 from cerebro.integrations.slack import (
     SlackCommandError,
     SlackCommandService,
@@ -44,19 +42,19 @@ class SlackWebhookCreate(BaseModel):
         ..., min_length=1, max_length=255, description="Human-readable webhook name"
     )
     webhook_url: HttpUrl = Field(..., description="Slack incoming webhook URL")
-    channel: Optional[str] = Field(
+    channel: str | None = Field(
         None, max_length=255, description="Slack channel (e.g., #security-alerts)"
     )
     enabled: bool = Field(True, description="Whether webhook is enabled")
-    severity_filter: Optional[List[str]] = Field(
+    severity_filter: list[str] | None = Field(
         None,
         description="Filter by severity: critical, high, medium, low. If null, all severities",
     )
-    finding_type_filter: Optional[List[str]] = Field(
+    finding_type_filter: list[str] | None = Field(
         None,
         description="Filter by finding types. If null, all types",
     )
-    event_types: List[str] = Field(
+    event_types: list[str] = Field(
         ...,
         min_length=1,
         description="Event types: finding_created, finding_updated, compliance_failed, monitoring_alert",
@@ -66,13 +64,13 @@ class SlackWebhookCreate(BaseModel):
 class SlackWebhookUpdate(BaseModel):
     """Request model for updating a Slack webhook."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    webhook_url: Optional[HttpUrl] = None
-    channel: Optional[str] = Field(None, max_length=255)
-    enabled: Optional[bool] = None
-    severity_filter: Optional[List[str]] = None
-    finding_type_filter: Optional[List[str]] = None
-    event_types: Optional[List[str]] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    webhook_url: HttpUrl | None = None
+    channel: str | None = Field(None, max_length=255)
+    enabled: bool | None = None
+    severity_filter: list[str] | None = None
+    finding_type_filter: list[str] | None = None
+    event_types: list[str] | None = None
 
 
 class SlackWebhookResponse(BaseModel):
@@ -82,14 +80,14 @@ class SlackWebhookResponse(BaseModel):
     org_id: UUID
     name: str
     webhook_url: str  # Masked in response
-    channel: Optional[str]
+    channel: str | None
     enabled: bool
-    severity_filter: Optional[List[str]]
-    finding_type_filter: Optional[List[str]]
-    event_types: List[str]
+    severity_filter: list[str] | None
+    finding_type_filter: list[str] | None
+    event_types: list[str]
     created_at: datetime
     updated_at: datetime
-    created_by: Optional[str]
+    created_by: str | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -100,13 +98,13 @@ class SlackNotificationResponse(BaseModel):
     notification_id: UUID
     webhook_id: UUID
     event_type: str
-    finding_id: Optional[UUID]
-    severity: Optional[str]
+    finding_id: UUID | None
+    severity: str | None
     status: str
-    status_code: Optional[int]
-    error_message: Optional[str]
+    status_code: int | None
+    error_message: str | None
     retry_count: int
-    sent_at: Optional[datetime]
+    sent_at: datetime | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -200,7 +198,7 @@ async def create_slack_webhook(
         )
 
 
-@router.get("/webhooks", response_model=List[SlackWebhookResponse])
+@router.get("/webhooks", response_model=list[SlackWebhookResponse])
 async def list_slack_webhooks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -323,7 +321,7 @@ async def update_slack_webhook(
         if webhook_data.event_types is not None:
             webhook.event_types = webhook_data.event_types
 
-        webhook.updated_at = datetime.now(timezone.utc)
+        webhook.updated_at = datetime.now(UTC)
 
         await db.commit()
         await db.refresh(webhook)
@@ -399,9 +397,9 @@ async def delete_slack_webhook(
         )
 
 
-@router.get("/notifications", response_model=List[SlackNotificationResponse])
+@router.get("/notifications", response_model=list[SlackNotificationResponse])
 async def list_slack_notifications(
-    webhook_id: Optional[UUID] = None,
+    webhook_id: UUID | None = None,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -508,7 +506,7 @@ async def get_slack_notification_stats(
         total_failed = total_failed_result.scalar() or 0
 
         # Last 24 hours
-        last_24h = datetime.now(timezone.utc).replace(
+        last_24h = datetime.now(UTC).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
 

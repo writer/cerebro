@@ -9,17 +9,17 @@ import hashlib
 import json
 import logging
 import zipfile
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from .timestamping import get_timestamp_service
-from .transparency_log import get_transparency_log, LogEntryType
 from ..query.bootstrap import get_query_engine
+from .timestamping import get_timestamp_service
+from .transparency_log import LogEntryType, get_transparency_log
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +32,12 @@ class EvidenceMetadata:
     created_at: datetime
     created_by: str
     organization_id: str
-    finding_id: Optional[str]
-    control_id: Optional[str]
+    finding_id: str | None
+    control_id: str | None
     evidence_type: str
     retention_period_years: int
-    chain_of_custody: List[Dict[str, Any]]
-    cryptographic_proofs: Dict[str, Any]
+    chain_of_custody: list[dict[str, Any]]
+    cryptographic_proofs: dict[str, Any]
 
 
 @dataclass
@@ -51,8 +51,8 @@ class EvidenceItem:
     collected_at: datetime
     collector: str
     hash_sha256: str
-    file_path: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    file_path: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class WORMEvidenceBundle:
@@ -84,7 +84,7 @@ class WORMEvidenceBundle:
             cryptographic_proofs={},
         )
 
-        self.evidence_items: List[EvidenceItem] = []
+        self.evidence_items: list[EvidenceItem] = []
         self.is_sealed = False
 
         # Generate bundle signing key
@@ -96,7 +96,7 @@ class WORMEvidenceBundle:
     def add_sql_query_evidence(
         self,
         query: str,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         collector: str,
         description: str = "",
     ) -> str:
@@ -152,7 +152,7 @@ class WORMEvidenceBundle:
 
     def add_configuration_evidence(
         self,
-        config_data: Dict[str, Any],
+        config_data: dict[str, Any],
         resource_id: str,
         collector: str,
         description: str = "",
@@ -260,7 +260,7 @@ class WORMEvidenceBundle:
 
         return item_id
 
-    async def seal_bundle(self) -> Dict[str, Any]:
+    async def seal_bundle(self) -> dict[str, Any]:
         """
         Seal the evidence bundle with cryptographic signatures and timestamps.
 
@@ -694,7 +694,7 @@ class EvidenceBundleManager:
                             sql_query,
                             [],
                             "compliance_collector",
-                            f"Failed evidence collection for {control_id}: {str(e)}",
+                            f"Failed evidence collection for {control_id}: {e!s}",
                         )
 
         return bundle
@@ -740,7 +740,7 @@ class EvidenceBundleManager:
 
         return bundle
 
-    async def verify_bundle(self, bundle_path: str) -> Dict[str, Any]:
+    async def verify_bundle(self, bundle_path: str) -> dict[str, Any]:
         """
         Verify the cryptographic integrity of an evidence bundle.
 
@@ -787,7 +787,7 @@ class EvidenceBundleManager:
         except Exception as e:
             return {
                 "valid": False,
-                "errors": [f"Bundle verification failed: {str(e)}"],
+                "errors": [f"Bundle verification failed: {e!s}"],
                 "verified_at": datetime.now().isoformat(),
             }
 

@@ -14,34 +14,33 @@ Run with: pytest tests/integration/test_live_agents.py -v
 """
 
 import asyncio
-import pytest
 import time
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
 import structlog
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from cerebro.core import database as core_database
-from cerebro.core.models import Organization, Account, Finding, Policy
-from cerebro.core.user_models import User
 from cerebro.agents.models import (
-    AgentSession,
     AgentMessage,
+    AgentSession,
     AgentType,
+    ApprovalStatus,
     MessageRole,
+    ToolApproval,
     ToolInvocation,
     ToolInvocationStatus,
-    ToolApproval,
-    ApprovalStatus,
 )
 from cerebro.agents.service import AgentSessionService, ToolApprovalService
 from cerebro.agents.tools import get_tool_registry
+from cerebro.core import database as core_database
+from cerebro.core.models import Account, Finding, Organization, Policy
+from cerebro.core.user_models import User
 from cerebro.findings.models import FindingStatus, Severity
 from cerebro.rules.models import Rule
-
 
 logger = structlog.get_logger(__name__)
 
@@ -55,8 +54,8 @@ async def create_session_record(
     org_id,
     agent_type: AgentType,
     created_by: str,
-    context: Dict[str, Any],
-    title: Optional[str] = None,
+    context: dict[str, Any],
+    title: str | None = None,
 ) -> AgentSession:
     async with session_factory() as db:
         session = AgentSession(
@@ -86,9 +85,13 @@ async def configure_agent_service(
     analytics_module.async_session_factory = session_factory
 
     from cerebro.agents.repositories import (
-        session_repository as session_repo_module,
-        tool_approval_repository as approval_repo_module,
         analytics_repository as analytics_repo_module,
+    )
+    from cerebro.agents.repositories import (
+        session_repository as session_repo_module,
+    )
+    from cerebro.agents.repositories import (
+        tool_approval_repository as approval_repo_module,
     )
 
     session_repo_module.async_session_factory = session_factory
@@ -99,7 +102,7 @@ async def configure_agent_service(
 
     tools_base_module.async_session_factory = session_factory
 
-    def normalize_chunk(raw_chunk: Any) -> Optional[Dict[str, Any]]:
+    def normalize_chunk(raw_chunk: Any) -> dict[str, Any] | None:
         if isinstance(raw_chunk, dict):
             chunk_type = raw_chunk.get("type")
             data = raw_chunk.get("data")
@@ -170,7 +173,7 @@ async def configure_agent_service(
                     await session_ctx.commit()
                     return
 
-                assistant_segments: List[str] = []
+                assistant_segments: list[str] = []
 
                 try:
                     async for raw_chunk in response:
@@ -222,7 +225,7 @@ async def configure_agent_service(
 class MockClaudeResponse:
     """Mock Claude API response for consistent testing."""
 
-    def __init__(self, content: str, tool_calls: List[Dict] = None):
+    def __init__(self, content: str, tool_calls: list[dict] | None = None):
         self.content = content
         self.tool_calls = tool_calls or []
         self.usage = {"input_tokens": 100, "output_tokens": 50}
@@ -257,9 +260,9 @@ async def sample_findings(
     test_org: Organization,
     test_rule: Rule,
     test_aws_account: Account,
-) -> List[Finding]:
+) -> list[Finding]:
     """Create sample findings for testing."""
-    base_time = datetime.now(timezone.utc)
+    base_time = datetime.now(UTC)
 
     findings = [
         Finding(
@@ -330,7 +333,7 @@ async def sample_rules(
     test_db: AsyncSession,
     test_org: Organization,
     test_policy: Policy,
-) -> List[Rule]:
+) -> list[Rule]:
     """Create sample rules for testing."""
     rules = [
         Rule(
@@ -480,7 +483,7 @@ class TestToolUsageAndApprovals:
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        sample_findings: List[Finding],
+        sample_findings: list[Finding],
         mock_claude_runtime,
     ):
         """Test the findings query tool execution."""
@@ -544,7 +547,7 @@ class TestToolUsageAndApprovals:
         test_org: Organization,
         test_user: User,
         test_admin_user: User,
-        sample_findings: List[Finding],
+        sample_findings: list[Finding],
         mock_claude_runtime,
     ):
         """Test tool approval workflow."""
@@ -587,7 +590,7 @@ class TestToolUsageAndApprovals:
             def __init__(self, success: bool = True) -> None:
                 self.success = success
 
-            def model_dump(self) -> Dict[str, Any]:
+            def model_dump(self) -> dict[str, Any]:
                 return {"success": self.success}
 
         approval_service = ToolApprovalService()
@@ -646,7 +649,7 @@ class TestStreamingResponses:
         )
 
         message = "Analyze current security posture"
-        chunks: List[Dict[str, Any]] = []
+        chunks: list[dict[str, Any]] = []
 
         start_time = time.time()
         async for chunk in service.send_message(
@@ -700,8 +703,8 @@ class TestStreamingResponses:
             context={},
         )
 
-        chunks: List[Dict[str, Any]] = []
-        tool_calls_received: List[Dict[str, Any]] = []
+        chunks: list[dict[str, Any]] = []
+        tool_calls_received: list[dict[str, Any]] = []
 
         async for chunk in service.send_message(
             session.session_id,
@@ -743,7 +746,7 @@ class TestAuditTrails:
 
         user_message = "Perform security analysis"
 
-        chunks: List[Dict[str, Any]] = []
+        chunks: list[dict[str, Any]] = []
         async for chunk in service.send_message(
             session.session_id,
             user_message,
@@ -798,7 +801,7 @@ class TestAuditTrails:
             context={},
         )
 
-        async for chunk in service.send_message(
+        async for _chunk in service.send_message(
             session.session_id,
             "Test this rule",
             user_id=test_user.username,
@@ -846,7 +849,7 @@ class TestPerformanceMetrics:
 
         start_time = time.time()
 
-        chunks: List[Dict[str, Any]] = []
+        chunks: list[dict[str, Any]] = []
         async for chunk in service.send_message(
             session.session_id,
             "Quick test",
@@ -881,7 +884,7 @@ class TestPerformanceMetrics:
             context={},
         )
 
-        async for chunk in service.send_message(
+        async for _chunk in service.send_message(
             session.session_id,
             "Test message",
             user_id=test_user.username,
@@ -922,7 +925,7 @@ class TestErrorHandlingAndRecovery:
         )
 
         with pytest.raises(Exception, match="Claude API error"):
-            async for chunk in service.send_message(
+            async for _chunk in service.send_message(
                 session.session_id,
                 "Test message",
                 user_id=test_user.username,
@@ -959,7 +962,7 @@ class TestErrorHandlingAndRecovery:
             context={},
         )
 
-        chunks: List[Dict[str, Any]] = []
+        chunks: list[dict[str, Any]] = []
         async for chunk in service.send_message(
             session.session_id,
             "Use invalid tool",
@@ -991,8 +994,8 @@ class TestEndToEndScenarios:
         test_db: AsyncSession,
         test_org: Organization,
         test_admin_user: User,
-        sample_findings: List[Finding],
-        sample_rules: List[Rule],
+        sample_findings: list[Finding],
+        sample_rules: list[Rule],
         mock_claude_runtime,
     ):
         """Test complete security incident analysis workflow."""
@@ -1056,21 +1059,21 @@ class TestEndToEndScenarios:
             title="Privilege Escalation Investigation",
         )
 
-        async for chunk in service.send_message(
+        async for _chunk in service.send_message(
             session.session_id,
             "Analyze current open security findings and provide incident response recommendations",
             user_id=test_admin_user.username,
         ):
             pass
 
-        async for chunk in service.send_message(
+        async for _chunk in service.send_message(
             session.session_id,
             "Build a timeline for the user with excessive permissions to understand recent activity",
             user_id=test_admin_user.username,
         ):
             pass
 
-        async for chunk in service.send_message(
+        async for _chunk in service.send_message(
             session.session_id,
             "Update the high-priority IAM finding to in-progress status as we're actively investigating",
             user_id=test_admin_user.username,
@@ -1108,7 +1111,7 @@ class TestEndToEndScenarios:
         test_db: AsyncSession,
         test_org: Organization,
         test_user: User,
-        sample_findings: List[Finding],
+        sample_findings: list[Finding],
         mock_claude_runtime,
     ):
         """Test compliance audit workflow."""
@@ -1140,7 +1143,7 @@ class TestEndToEndScenarios:
             title="PCI DSS Compliance Audit",
         )
 
-        async for chunk in service.send_message(
+        async for _chunk in service.send_message(
             session.session_id,
             "Perform PCI DSS compliance audit focusing on data encryption requirements",
             user_id=test_user.username,

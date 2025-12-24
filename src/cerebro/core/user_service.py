@@ -3,7 +3,6 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
 from passlib.context import CryptContext
@@ -21,7 +20,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 @dataclass
 class AdminUserCreationResult:
     user: User
-    generated_password: Optional[str] = None
+    generated_password: str | None = None
 
 
 class UserService:
@@ -37,7 +36,7 @@ class UserService:
         email: str,
         password: str,
         is_admin: bool = False,
-        scopes: Optional[List[str]] = None,
+        scopes: list[str] | None = None,
     ) -> User:
         """Create a new user."""
         # Check if user already exists
@@ -71,11 +70,11 @@ class UserService:
         logger.info(f"Created user: {username}")
         return user
 
-    async def authenticate_user(self, username: str, password: str) -> Optional[User]:
+    async def authenticate_user(self, username: str, password: str) -> User | None:
         """Authenticate user with username/password."""
         # Get user
         stmt = select(User).where(
-            and_(User.username == username, User.is_active == True)
+            and_(User.username == username, User.is_active)
         )
         user = await self.db.scalar(stmt)
 
@@ -102,14 +101,14 @@ class UserService:
 
         return user
 
-    async def get_user_scopes(self, user_id: UUID) -> List[str]:
+    async def get_user_scopes(self, user_id: UUID) -> list[str]:
         """Get all scopes for a user."""
         stmt = select(Scope.name).join(UserScope).where(UserScope.user_id == user_id)
         scopes = await self.db.scalars(stmt)
         return list(scopes)
 
     async def add_user_scopes(
-        self, user_id: UUID, scope_names: List[str], granted_by: Optional[UUID] = None
+        self, user_id: UUID, scope_names: list[str], granted_by: UUID | None = None
     ) -> None:
         """Add scopes to a user."""
         # Get scope IDs
@@ -149,7 +148,7 @@ class UserService:
         await self.db.commit()
         logger.info(f"Added scopes {scope_names} to user {user_id}")
 
-    async def remove_user_scopes(self, user_id: UUID, scope_names: List[str]) -> None:
+    async def remove_user_scopes(self, user_id: UUID, scope_names: list[str]) -> None:
         """Remove scopes from a user."""
         # Get scope IDs
         scope_id_stmt = select(Scope.scope_id).where(Scope.name.in_(scope_names))
@@ -172,12 +171,12 @@ class UserService:
         self,
         user_id: UUID,
         action: str,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         """Log user action for audit trail."""
         audit_log = UserAuditLog(
@@ -194,11 +193,11 @@ class UserService:
         self.db.add(audit_log)
         await self.db.commit()
 
-    async def get_user_by_id(self, user_id: UUID) -> Optional[User]:
+    async def get_user_by_id(self, user_id: UUID) -> User | None:
         """Get user by ID."""
         return await self.db.get(User, user_id)
 
-    async def get_user_by_username(self, username: str) -> Optional[User]:
+    async def get_user_by_username(self, username: str) -> User | None:
         """Get user by username."""
         stmt = select(User).where(User.username == username)
         return await self.db.scalar(stmt)
@@ -231,12 +230,12 @@ class UserService:
 
     async def list_users(
         self, limit: int = 100, offset: int = 0, active_only: bool = True
-    ) -> List[User]:
+    ) -> list[User]:
         """List users."""
         stmt = select(User)
 
         if active_only:
-            stmt = stmt.where(User.is_active == True)
+            stmt = stmt.where(User.is_active)
 
         stmt = stmt.offset(offset).limit(limit)
         users = await self.db.scalars(stmt)
@@ -279,7 +278,7 @@ class UserService:
         self,
         username: str = "admin",
         email: str = "admin@cerebro.local",
-        password: Optional[str] = None,
+        password: str | None = None,
     ) -> AdminUserCreationResult:
         """Create admin user with provided or generated credentials.
 
@@ -290,7 +289,7 @@ class UserService:
         import secrets
         import string
 
-        generated_password: Optional[str] = None
+        generated_password: str | None = None
 
         if not password:
             alphabet = string.ascii_letters + string.digits + "!@#$%^&*"

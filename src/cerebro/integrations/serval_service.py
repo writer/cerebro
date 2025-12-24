@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -22,15 +22,15 @@ class ServalIntegrationSettings:
     team_id: str
     client_id: str
     client_secret: str
-    default_status_id: Optional[str]
-    default_priority_id: Optional[str]
+    default_status_id: str | None
+    default_priority_id: str | None
     default_created_by_user_id: str
-    default_requester_user_id: Optional[str]
-    default_assigned_user_id: Optional[str]
-    status_map: Dict[str, str]
-    priority_map: Dict[str, str]
-    status_reverse_map: Dict[str, str]
-    priority_reverse_map: Dict[str, str]
+    default_requester_user_id: str | None
+    default_assigned_user_id: str | None
+    status_map: dict[str, str]
+    priority_map: dict[str, str]
+    status_reverse_map: dict[str, str]
+    priority_reverse_map: dict[str, str]
 
 
 class ServalIntegrationRepository:
@@ -45,7 +45,7 @@ class ServalIntegrationRepository:
         self._db = db
         self._encryption = encryption_service or SecretEncryptionService()
 
-    async def get(self, org_id: UUID) -> Optional[ServalIntegrationSettings]:
+    async def get(self, org_id: UUID) -> ServalIntegrationSettings | None:
         """Load decrypted settings for the organization if present."""
         stmt = select(ServalIntegration).where(ServalIntegration.org_id == org_id)
         result = await self._db.execute(stmt)
@@ -73,12 +73,12 @@ class ServalIntegrationRepository:
         client_id: str,
         client_secret: str,
         default_created_by_user_id: str,
-        default_status_id: Optional[str] = None,
-        default_priority_id: Optional[str] = None,
-        default_requester_user_id: Optional[str] = None,
-        default_assigned_user_id: Optional[str] = None,
-        status_map: Optional[Dict[str, str]] = None,
-        priority_map: Optional[Dict[str, str]] = None,
+        default_status_id: str | None = None,
+        default_priority_id: str | None = None,
+        default_requester_user_id: str | None = None,
+        default_assigned_user_id: str | None = None,
+        status_map: dict[str, str] | None = None,
+        priority_map: dict[str, str] | None = None,
     ) -> ServalIntegrationSettings:
         """Create or update the configuration while rotating stored credentials."""
         encrypted_client_id, encrypted_client_id_dek = (
@@ -92,7 +92,7 @@ class ServalIntegrationRepository:
         result = await self._db.execute(stmt)
         record = result.scalar_one_or_none()
 
-        settings_payload: Dict[str, Any] = {
+        settings_payload: dict[str, Any] = {
             "status_map": status_map or {},
             "priority_map": priority_map or {},
         }

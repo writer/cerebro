@@ -1,17 +1,16 @@
 """Collection background tasks."""
 
-from typing import List, Optional, Dict, Any
-from uuid import UUID
-import logging
 import asyncio
+import logging
+from typing import Any
+from uuid import UUID
 
-
-from cerebro.tasks.celery_app import celery_app
+from cerebro.application.collection_service import CollectionService
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Account, Organization
-from cerebro.application.collection_service import CollectionService
 from cerebro.infrastructure.adapters import SQLAlchemyRepository
 from cerebro.infrastructure.provider_registry import get_provider_registry
+from cerebro.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +21,8 @@ def collect_account_task(
     account_id: str,
     org_id: str,
     provider_name: str,
-    provider_config: Dict[str, Any],
-    resource_types: Optional[List[str]] = None,
+    provider_config: dict[str, Any],
+    resource_types: list[str] | None = None,
 ):
     """Background task to collect data for a single account."""
 
@@ -122,8 +121,8 @@ def collect_account_task(
 def collect_organization_task(
     self,
     org_id: str,
-    provider_filter: Optional[List[str]] = None,
-    resource_types: Optional[List[str]] = None,
+    provider_filter: list[str] | None = None,
+    resource_types: list[str] | None = None,
 ):
     """Background task to collect data for all accounts in an organization."""
 
@@ -218,8 +217,8 @@ def collect_organization_task(
 def batch_collect_resources(
     self,
     provider_name: str,
-    provider_config: Dict[str, Any],
-    resource_external_ids: List[str],
+    provider_config: dict[str, Any],
+    resource_external_ids: list[str],
 ):
     """Batch collect configurations for specific resources."""
 
@@ -246,7 +245,7 @@ def batch_collect_resources(
                 raise Exception("Provider authentication failed")
 
             collected = 0
-            errors: List[str] = []
+            errors: list[str] = []
 
             async with async_session_factory():
                 for i, external_id in enumerate(resource_external_ids):
@@ -279,7 +278,7 @@ def batch_collect_resources(
 
                     except Exception as e:
                         logger.warning(f"Failed to collect {external_id}: {e}")
-                        errors.append(f"{external_id}: {str(e)}")
+                        errors.append(f"{external_id}: {e!s}")
 
             logger.info(
                 f"Batch collection {task_id} completed: {collected} collected, {len(errors)} errors"

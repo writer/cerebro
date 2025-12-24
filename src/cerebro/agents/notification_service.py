@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -21,7 +21,7 @@ class NotificationService:
         org_id: UUID,
         task_id: UUID,
         channel: str,
-        payload: Optional[Dict[str, Any]] = None,
+        payload: dict[str, Any] | None = None,
     ) -> AgentReviewNotification:
         async with async_session_factory() as db_session:
             notification = AgentReviewNotification(
@@ -42,7 +42,7 @@ class NotificationService:
         org_id: UUID,
         status: NotificationStatus | str | None = None,
         limit: int = 100,
-    ) -> List[AgentReviewNotification]:
+    ) -> list[AgentReviewNotification]:
         async with async_session_factory() as db_session:
             stmt = select(AgentReviewNotification).where(
                 AgentReviewNotification.org_id == org_id
@@ -61,7 +61,7 @@ class NotificationService:
     @staticmethod
     async def mark_delivered(
         *, notification_id: UUID
-    ) -> Optional[AgentReviewNotification]:
+    ) -> AgentReviewNotification | None:
         async with async_session_factory() as db_session:
             notification = await db_session.get(
                 AgentReviewNotification, notification_id
@@ -71,7 +71,7 @@ class NotificationService:
             if notification.status != NotificationStatus.PENDING:
                 raise ValueError("Notification is not pending")
             notification.status = NotificationStatus.DELIVERED
-            notification.delivered_at = datetime.now(timezone.utc)
+            notification.delivered_at = datetime.now(UTC)
             await db_session.commit()
             await db_session.refresh(notification)
             return notification

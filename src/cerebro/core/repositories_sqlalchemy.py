@@ -1,18 +1,17 @@
 """Repository facade pattern for data access abstraction."""
 
-from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .models import Finding, Resource
 from .identity_models import (
     IdentityCluster,
     IdentityClusterMember,
     IdentityStitchingLog,
 )
+from .models import Finding, Resource
 
 
 class IdentityRepository:
@@ -23,7 +22,7 @@ class IdentityRepository:
 
     async def get_cluster(
         self, org_id: UUID, cluster_name: str
-    ) -> Optional[IdentityCluster]:
+    ) -> IdentityCluster | None:
         """Get identity cluster by organization and name."""
         stmt = select(IdentityCluster).where(
             and_(
@@ -44,7 +43,7 @@ class IdentityRepository:
 
     async def get_cluster_members(
         self, cluster_id: UUID
-    ) -> List[IdentityClusterMember]:
+    ) -> list[IdentityClusterMember]:
         """Get all members of an identity cluster."""
         stmt = (
             select(IdentityClusterMember)
@@ -90,14 +89,14 @@ class ResourceRepository:
 
     async def get_by_external_id(
         self, account_id: UUID, external_id: str
-    ) -> Optional[Resource]:
+    ) -> Resource | None:
         """Get resource by external ID within an account."""
         stmt = select(Resource).where(
             and_(Resource.account_id == account_id, Resource.external_id == external_id)
         )
         return await self.db.scalar(stmt)
 
-    async def get_by_type(self, account_id: UUID, resource_type: str) -> List[Resource]:
+    async def get_by_type(self, account_id: UUID, resource_type: str) -> list[Resource]:
         """Get all resources of a specific type."""
         stmt = select(Resource).where(
             and_(
@@ -117,7 +116,7 @@ class FindingRepository:
 
     async def get_active_by_severity(
         self, org_id: UUID, severity: str
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         """Get active findings by severity level."""
         stmt = (
             select(Finding)
@@ -169,7 +168,7 @@ class FindingRepository:
             "sla_breaches": self._calculate_sla_breaches(findings_list),
         }
 
-    def _calculate_sla_breaches(self, findings: List[Finding]) -> dict:
+    def _calculate_sla_breaches(self, findings: list[Finding]) -> dict:
         """Calculate SLA breaches by severity."""
         sla_targets = {"critical": 4, "high": 24, "medium": 72, "low": 168}
         breaches = {"critical": 0, "high": 0, "medium": 0, "low": 0}

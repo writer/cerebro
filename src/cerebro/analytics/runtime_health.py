@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import text
 
@@ -15,7 +15,7 @@ async def summarize_runtime_health(
     db: Any,
     *,
     hours: int = 24,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Summarize runtime metadata, warning, and error events.
 
     Args:
@@ -26,7 +26,7 @@ async def summarize_runtime_health(
         List of summaries keyed by runtime backend.
     """
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(hours=max(hours, 1))
 
     dialect = get_dialect_name(db)
@@ -50,7 +50,7 @@ async def summarize_runtime_health(
 
     base_rows = await db.execute(base_stmt, {"cutoff": cutoff})
 
-    summary: Dict[str, Dict[str, Any]] = {}
+    summary: dict[str, dict[str, Any]] = {}
     for runtime, event_type, count, last_seen in base_rows:
         bucket = summary.setdefault(
             runtime or "unknown",

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,7 @@ from cerebro.core.user_service import UserService
 class UserRecord:
     user_id: UUID
     username: str
-    email: Optional[str]
+    email: str | None
     is_admin: bool
     scopes: list[str]
 
@@ -34,7 +34,7 @@ class UserManager:
         email: str,
         password: str,
         *,
-        scopes: Optional[Iterable[str]] = None,
+        scopes: Iterable[str] | None = None,
         is_admin: bool = False,
     ) -> UserRecord:
         user = await self._service.create_user(
@@ -46,7 +46,7 @@ class UserManager:
         )
         return await self._to_record(user)
 
-    async def get_user(self, username: str) -> Optional[UserRecord]:
+    async def get_user(self, username: str) -> UserRecord | None:
         user = await self._service.get_user_by_username(username)
         if not user:
             return None
@@ -70,7 +70,7 @@ class UserManager:
     async def remove_scopes(self, user_id: UUID, scopes: Iterable[str]) -> None:
         await self._service.remove_user_scopes(user_id, list(scopes))
 
-    async def authenticate(self, username: str, password: str) -> Optional[UserRecord]:
+    async def authenticate(self, username: str, password: str) -> UserRecord | None:
         user = await self._service.authenticate_user(username, password)
         if not user:
             return None

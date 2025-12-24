@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,7 +24,7 @@ class AccountRecord:
     org_id: UUID
     provider: str
     external_id: str
-    display_name: Optional[str]
+    display_name: str | None
 
 
 @dataclass
@@ -34,7 +34,7 @@ class ResourceRecord:
     provider: str
     resource_type: str
     external_id: str
-    name: Optional[str]
+    name: str | None
 
 
 class OrganizationManager:
@@ -53,7 +53,7 @@ class OrganizationManager:
         rows = await self._db.scalars(stmt)
         return [self._organization_to_record(org) for org in rows]
 
-    async def get_organization(self, org_id: UUID) -> Optional[OrganizationRecord]:
+    async def get_organization(self, org_id: UUID) -> OrganizationRecord | None:
         stmt = select(Organization).where(Organization.org_id == org_id)
         org = await self._db.scalar(stmt)
         if not org:
@@ -73,8 +73,8 @@ class OrganizationManager:
         self,
         account_id: UUID,
         *,
-        providers: Optional[Iterable[str]] = None,
-        resource_types: Optional[Iterable[str]] = None,
+        providers: Iterable[str] | None = None,
+        resource_types: Iterable[str] | None = None,
         limit: int = 200,
         offset: int = 0,
     ) -> list[ResourceRecord]:

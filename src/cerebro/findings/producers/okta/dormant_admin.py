@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cerebro.domain.entities import (
@@ -85,11 +85,11 @@ class OktaDormantAdminProducer(BaseOktaProducer):
 
         last_login = self._parse_timestamp(data.get("last_login"))
         if last_login:
-            if datetime.now(timezone.utc) - last_login <= self._MAX_INACTIVITY:
+            if datetime.now(UTC) - last_login <= self._MAX_INACTIVITY:
                 return findings
         else:
             created = self._parse_timestamp(data.get("created"))
-            if created and datetime.now(timezone.utc) - created <= self._MAX_INACTIVITY:
+            if created and datetime.now(UTC) - created <= self._MAX_INACTIVITY:
                 return findings
 
         rule_id = resolve_rule_id(rule_name=self.rule_name, context=context)
@@ -144,6 +144,6 @@ class OktaDormantAdminProducer(BaseOktaProducer):
         try:
             if value.endswith("Z"):
                 value = value.replace("Z", "+00:00")
-            return datetime.fromisoformat(value).astimezone(timezone.utc)
+            return datetime.fromisoformat(value).astimezone(UTC)
         except Exception:
             return None

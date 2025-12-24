@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import inspect
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, List, Optional, Union
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
@@ -40,18 +41,18 @@ class AgentToolingManager(AsyncManagerBase):
         super().__init__(db)
         self._repo = ToolingRepository(db, registry=registry)
         self._logger = get_logger(__name__ + ".manager")
-        self._listeners: List[
-            Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]
+        self._listeners: list[
+            Callable[[ToolInvocationRecord], Awaitable[None] | None]
         ] = []
 
     def register_listener(
-        self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]
+        self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]
     ) -> None:
         if listener not in self._listeners:
             self._listeners.append(listener)
 
     def unregister_listener(
-        self, listener: Callable[[ToolInvocationRecord], Union[Awaitable[None], None]]
+        self, listener: Callable[[ToolInvocationRecord], Awaitable[None] | None]
     ) -> None:
         if listener in self._listeners:
             self._listeners.remove(listener)
@@ -72,22 +73,22 @@ class AgentToolingManager(AsyncManagerBase):
     async def list_invocations(
         self,
         *,
-        session_id: Optional[UUID] = None,
-        org_id: Optional[UUID] = None,
+        session_id: UUID | None = None,
+        org_id: UUID | None = None,
         status: ToolInvocationStatus | str | None = None,
-        tool_name: Optional[str] = None,
-        cel_policy_key: Optional[str] = None,
-        cel_result: Optional[bool] = None,
-        error_code: Optional[str] = None,
-        text_query: Optional[str] = None,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
-        cursor: Optional[datetime] = None,
-        page_size: Optional[int] = None,
+        tool_name: str | None = None,
+        cel_policy_key: str | None = None,
+        cel_result: bool | None = None,
+        error_code: str | None = None,
+        text_query: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        cursor: datetime | None = None,
+        page_size: int | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[ToolInvocationRecord]:
-        status_enum: Optional[ToolInvocationStatus] = None
+        status_enum: ToolInvocationStatus | None = None
         if status:
             try:
                 status_enum = self._require_enum(
@@ -118,7 +119,7 @@ class AgentToolingManager(AsyncManagerBase):
 
     async def get_invocation(
         self, invocation_id: UUID
-    ) -> Optional[ToolInvocationRecord]:
+    ) -> ToolInvocationRecord | None:
         invocation = await self._repo.get_invocation(invocation_id)
         if not invocation:
             return None
@@ -132,17 +133,17 @@ class AgentToolingManager(AsyncManagerBase):
         tool_version: str = "1.0",
         input_data: dict[str, Any],
         status: ToolInvocationStatus | str = ToolInvocationStatus.PENDING,
-        started_at: Optional[datetime] = None,
-        cel_policy_key: Optional[str] = None,
-        cel_expression: Optional[str] = None,
-        cel_context: Optional[dict[str, Any]] = None,
+        started_at: datetime | None = None,
+        cel_policy_key: str | None = None,
+        cel_expression: str | None = None,
+        cel_context: dict[str, Any] | None = None,
     ) -> ToolInvocationRecord:
         status_enum = self._require_enum(
             status,
             ToolInvocationStatus,
             message=f"Invalid tool invocation status '{status}'",
         )
-        started_at_value = started_at or datetime.now(timezone.utc)
+        started_at_value = started_at or datetime.now(UTC)
         async with self._transaction():
             invocation = await self._repo.create_invocation(
                 session_id=session_id,
@@ -165,14 +166,14 @@ class AgentToolingManager(AsyncManagerBase):
         *,
         org_id: UUID,
         status: ApprovalStatus | str | None = None,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
-        cursor: Optional[datetime] = None,
-        page_size: Optional[int] = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        cursor: datetime | None = None,
+        page_size: int | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ToolApprovalRecord]:
-        status_enum: Optional[ApprovalStatus] = None
+        status_enum: ApprovalStatus | None = None
         if status:
             try:
                 status_enum = self._require_enum(
@@ -201,8 +202,8 @@ class AgentToolingManager(AsyncManagerBase):
         approval_id: UUID,
         status: ApprovalStatus | str,
         decided_by: str,
-        decision_reason: Optional[str] = None,
-    ) -> Optional[ToolApprovalRecord]:
+        decision_reason: str | None = None,
+    ) -> ToolApprovalRecord | None:
         approval = await self._repo.get_approval(approval_id)
         if not approval:
             return None
@@ -213,7 +214,7 @@ class AgentToolingManager(AsyncManagerBase):
         )
 
         invocation = approval.tool_invocation
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._transaction():
             approval.status = status_enum
@@ -241,18 +242,18 @@ class AgentToolingManager(AsyncManagerBase):
         *,
         invocation_id: UUID,
         status: ToolInvocationStatus | str | None = None,
-        output_data: Optional[dict[str, Any]] = None,
-        error_message: Optional[str] = None,
-        error_code: Optional[str] = None,
-        cel_result: Optional[bool] = None,
-        cel_context: Optional[dict[str, Any]] = None,
-        completed_at: Optional[datetime] = None,
+        output_data: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        error_code: str | None = None,
+        cel_result: bool | None = None,
+        cel_context: dict[str, Any] | None = None,
+        completed_at: datetime | None = None,
     ) -> ToolInvocationRecord:
         invocation = await self._repo.get_invocation(invocation_id)
         if not invocation:
             raise AgentNotFoundError(f"Tool invocation {invocation_id} not found")
 
-        status_enum: Optional[ToolInvocationStatus] = None
+        status_enum: ToolInvocationStatus | None = None
         if status is not None:
             status_enum = self._require_enum(
                 status,
@@ -260,13 +261,13 @@ class AgentToolingManager(AsyncManagerBase):
                 message=f"Invalid tool invocation status '{status}'",
             )
 
-        completed_value: Optional[datetime] = completed_at
+        completed_value: datetime | None = completed_at
         if completed_value is None and status_enum in {
             ToolInvocationStatus.SUCCESS,
             ToolInvocationStatus.ERROR,
             ToolInvocationStatus.DRY_RUN,
         }:
-            completed_value = datetime.now(timezone.utc)
+            completed_value = datetime.now(UTC)
 
         async with self._transaction():
             await self._repo.update_invocation(
@@ -290,11 +291,11 @@ class AgentToolingManager(AsyncManagerBase):
         *,
         org_id: UUID,
         status: ToolInvocationStatus | str | None = None,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
-        tool_name: Optional[str] = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        tool_name: str | None = None,
     ) -> list[ToolInvocationSummary]:
-        status_enum: Optional[ToolInvocationStatus] = None
+        status_enum: ToolInvocationStatus | None = None
         if status:
             try:
                 status_enum = self._require_enum(
@@ -321,7 +322,7 @@ class AgentToolingManager(AsyncManagerBase):
         self,
         *,
         org_id: UUID,
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
     ) -> list[AgentPolicySuggestionRecord]:
         stmt = select(AgentPolicySuggestion).where(
             AgentPolicySuggestion.org_id == org_id

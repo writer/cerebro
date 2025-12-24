@@ -1,11 +1,11 @@
 """Infrastructure layer - adapters for external systems."""
 
+from .adapters import CELRuleEngineAdapter, SQLAlchemyRepository
 from .provider_registry import ProviderRegistry, register_provider
-from .adapters import SQLAlchemyRepository, CELRuleEngineAdapter
 
 __all__ = [
-    "ProviderRegistry",
-    "register_provider",
-    "SQLAlchemyRepository",
     "CELRuleEngineAdapter",
+    "ProviderRegistry",
+    "SQLAlchemyRepository",
+    "register_provider",
 ]

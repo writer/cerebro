@@ -9,20 +9,20 @@ SDKs and the bulk database helpers.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 from uuid import UUID
-import logging
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
-from cerebro.core.models import Account, Resource
-from cerebro.providers.base import BaseProvider
-from cerebro.core.config import settings
 from cerebro.core.bulk_operations import BulkOperations, compute_config_hash
+from cerebro.core.config import settings
+from cerebro.core.models import Account, Resource
 from cerebro.metrics.collection_metrics import collection_metrics
+from cerebro.providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class CollectionResult:
     principals_discovered: int = 0
     config_snapshots: int = 0
     iam_edges: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     duration_seconds: float = 0.0
 
 
@@ -93,7 +93,7 @@ class ConfigCollector:
         self,
         provider: BaseProvider,
         account: Account,
-        resource_types: Optional[List[str]] = None,
+        resource_types: list[str] | None = None,
     ) -> CollectionResult:
         """Collect all supported artefacts for an account.
 
@@ -161,7 +161,7 @@ class ConfigCollector:
         self,
         provider: BaseProvider,
         account: Account,
-        resource_types: Optional[List[str]],
+        resource_types: list[str] | None,
         result: CollectionResult,
     ) -> None:
         """Collect and upsert resources exposed by the provider.
@@ -327,7 +327,7 @@ class ConfigCollector:
 
     async def _fetch_single_config(
         self, semaphore: asyncio.Semaphore, provider: BaseProvider, resource: Resource
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Fetch configuration for a single resource respecting the concurrency cap."""
         async with semaphore:
             try:

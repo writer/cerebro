@@ -2,28 +2,27 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ...core.database import get_db
-from ...core.models import Organization
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...vendor_management.vendor_registry import (
-    get_vendor_registry,
-    Vendor,
-    VendorRiskLevel,
-)
+from ...core.database import get_db
+from ...core.models import Organization
 from ...customer_management.customer_registry import (
-    get_customer_registry,
     Customer,
     CustomerHealthBand,
+    get_customer_registry,
 )
-
+from ...vendor_management.vendor_registry import (
+    Vendor,
+    VendorRiskLevel,
+    get_vendor_registry,
+)
 
 router = APIRouter()
 
@@ -55,12 +54,12 @@ class SubmissionSummary(BaseModel):
     submittedAt: str
     status: str
     knowledgeBaseType: str
-    infoSecApprover: Optional[str] = None
-    dueDate: Optional[str] = None
+    infoSecApprover: str | None = None
+    dueDate: str | None = None
     requiresApproval: bool = True
     autoReleaseEligible: bool = False
-    kbSummary: Optional[str] = None
-    requesterEmail: Optional[str] = None
+    kbSummary: str | None = None
+    requesterEmail: str | None = None
 
 
 class VendorInsight(BaseModel):
@@ -71,9 +70,9 @@ class VendorInsight(BaseModel):
     inherentRiskScore: float
     residualRiskScore: float
     lifecycleStage: str
-    nextReviewDue: Optional[str]
+    nextReviewDue: str | None
     businessCriticality: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class CustomerInsight(BaseModel):
@@ -85,47 +84,47 @@ class CustomerInsight(BaseModel):
     churnRiskScore: float
     lifecycleStage: str
     accountManager: str
-    nextQbrAt: Optional[str]
-    lastEngagementAt: Optional[str]
-    metadata: Dict[str, Any]
+    nextQbrAt: str | None
+    lastEngagementAt: str | None
+    metadata: dict[str, Any]
 
 
 class SecurityCenterOverview(BaseModel):
-    metrics: List[DashboardMetric]
-    recentActivity: List[RecentActivityEntry]
-    upcomingExpirations: List[UpcomingExpirationEntry]
-    submissions: List[SubmissionSummary]
-    vendorInsights: List[VendorInsight]
-    customerInsights: List[CustomerInsight]
+    metrics: list[DashboardMetric]
+    recentActivity: list[RecentActivityEntry]
+    upcomingExpirations: list[UpcomingExpirationEntry]
+    submissions: list[SubmissionSummary]
+    vendorInsights: list[VendorInsight]
+    customerInsights: list[CustomerInsight]
 
 
 def _filter_vendors_by_org(
-    vendors: List[Vendor], org_id: Optional[str]
-) -> List[Vendor]:
+    vendors: list[Vendor], org_id: str | None
+) -> list[Vendor]:
     if org_id is None:
         return vendors
     return [vendor for vendor in vendors if vendor.org_id in {None, org_id}]
 
 
 def _filter_customers_by_org(
-    customers: List[Customer], org_id: Optional[str]
-) -> List[Customer]:
+    customers: list[Customer], org_id: str | None
+) -> list[Customer]:
     if org_id is None:
         return customers
     return [customer for customer in customers if customer.org_id in {None, org_id}]
 
 
-def _format_timestamp(dt: Optional[datetime]) -> Optional[str]:
+def _format_timestamp(dt: datetime | None) -> str | None:
     if not dt:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()
 
 
 def _build_metrics(
-    vendors: List[Vendor], customers: List[Customer]
-) -> List[DashboardMetric]:
+    vendors: list[Vendor], customers: list[Customer]
+) -> list[DashboardMetric]:
     critically_scored = sum(
         1
         for vendor in vendors
@@ -173,9 +172,9 @@ def _build_metrics(
 
 
 def _build_recent_activity(
-    vendors: List[Vendor], customers: List[Customer]
-) -> List[RecentActivityEntry]:
-    events: List[RecentActivityEntry] = []
+    vendors: list[Vendor], customers: list[Customer]
+) -> list[RecentActivityEntry]:
+    events: list[RecentActivityEntry] = []
     for vendor in sorted(vendors, key=lambda v: v.updated_at, reverse=True)[:3]:
         events.append(
             RecentActivityEntry(
@@ -198,9 +197,9 @@ def _build_recent_activity(
 
 
 def _build_upcoming_expirations(
-    vendors: List[Vendor], customers: List[Customer]
-) -> List[UpcomingExpirationEntry]:
-    upcoming: List[UpcomingExpirationEntry] = []
+    vendors: list[Vendor], customers: list[Customer]
+) -> list[UpcomingExpirationEntry]:
+    upcoming: list[UpcomingExpirationEntry] = []
     now = datetime.now()
     for vendor in vendors:
         if vendor.next_review_due >= now:
@@ -227,10 +226,10 @@ def _build_upcoming_expirations(
 
 
 def _build_submissions(
-    vendors: List[Vendor], customers: List[Customer]
-) -> List[SubmissionSummary]:
-    submissions: List[SubmissionSummary] = []
-    now = datetime.now(timezone.utc)
+    vendors: list[Vendor], customers: list[Customer]
+) -> list[SubmissionSummary]:
+    submissions: list[SubmissionSummary] = []
+    now = datetime.now(UTC)
     for vendor in vendors[:3]:
         submissions.append(
             SubmissionSummary(

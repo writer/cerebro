@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 from collections import Counter, deque
+from collections.abc import Iterable
 from dataclasses import dataclass
 from statistics import quantiles
 from threading import Lock
 from time import monotonic
-from typing import Deque, Dict, Iterable
 
 from prometheus_client import Counter as PromCounter
 from prometheus_client import Gauge as PromGauge
 from prometheus_client import Histogram as PromHistogram
 
 from cerebro.metrics.collection_metrics import cerebro_registry
-
 
 _API_REQUEST_LATENCY_SECONDS = PromHistogram(
     "cerebro_api_request_latency_seconds",
@@ -69,7 +68,7 @@ class APIMetricsRecorder:
 
     def __init__(self, window_seconds: int = 300) -> None:
         self._window_seconds = max(1, window_seconds)
-        self._samples: Deque[_RequestSample] = deque()
+        self._samples: deque[_RequestSample] = deque()
         self._lock = Lock()
 
     def _observe_prometheus(self, sample: _RequestSample) -> None:
@@ -101,7 +100,7 @@ class APIMetricsRecorder:
 
         self._observe_prometheus(sample)
 
-    def snapshot(self) -> Dict[str, object]:
+    def snapshot(self) -> dict[str, object]:
         """Return a summary of recent API request metrics."""
 
         with self._lock:
@@ -177,7 +176,7 @@ class APIMetricsRecorder:
             return float(q[index])
         except (ValueError, IndexError):
             # Fallback to simple selection when statistics.quantiles cannot be used.
-            position = int(round(percentile * (len(data) - 1)))
+            position = round(percentile * (len(data) - 1))
             position = max(0, min(len(data) - 1, position))
             return float(data[position])
 

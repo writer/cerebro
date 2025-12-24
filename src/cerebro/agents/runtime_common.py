@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from datetime import UTC
+from typing import Any
 from uuid import UUID
 
 import structlog
 from sqlalchemy import func, select
 
+from cerebro.agents.analytics_service import AgentAnalyticsService
+from cerebro.agents.memory_store import AgentMemoryStore
+from cerebro.agents.metrics import record_runtime_metrics
 from cerebro.agents.models import (
     AgentMessage,
     AgentSession,
@@ -17,21 +21,18 @@ from cerebro.agents.models import (
     MessageRole,
     ToolInvocation,
 )
-from cerebro.agents.analytics_service import AgentAnalyticsService
-from cerebro.agents.memory_store import AgentMemoryStore
-from cerebro.agents.metrics import record_runtime_metrics
 from cerebro.agents.telemetry import RuntimeSpan, start_runtime_span
 from cerebro.agents.tools import AgentContext
-from cerebro.core.database import async_session_factory
 from cerebro.core.config import settings
+from cerebro.core.database import async_session_factory
 
 logger = structlog.get_logger(__name__)
 
 
 @dataclass
 class RetrievedMemory:
-    prompt_snippets: List[str]
-    entries: List[Dict[str, Any]]
+    prompt_snippets: list[str]
+    entries: list[dict[str, Any]]
 
 
 class AgentRuntimePersistenceMixin:
@@ -45,8 +46,8 @@ class AgentRuntimePersistenceMixin:
         org_id: UUID,
         agent_type: AgentType,
         created_by: str,
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
         """Load organizational, system, and historical session context for a new session."""
 
         prepared_context = dict(context)
@@ -141,15 +142,17 @@ class AgentRuntimePersistenceMixin:
         org_id: UUID,
         user_id: str,
         limit: int = 20,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Load persisted session context from previous sessions."""
-        from datetime import datetime, timezone
-        from sqlalchemy import select, and_, or_
+        from datetime import datetime
+
+        from sqlalchemy import and_, or_, select
+
         from cerebro.agents.models import AgentSessionContext
 
         async with async_session_factory() as db_session:
             # Load non-expired context entries for this org
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             stmt = (
                 select(AgentSessionContext)
                 .where(
@@ -187,8 +190,8 @@ class AgentRuntimePersistenceMixin:
         org_id: UUID,
         agent_type: AgentType,
         created_by: str,
-        context: Dict[str, Any],
-        title: Optional[str],
+        context: dict[str, Any],
+        title: str | None,
     ) -> AgentSession:
         async with async_session_factory() as db_session:
             session = AgentSession(
@@ -216,7 +219,7 @@ class AgentRuntimePersistenceMixin:
         session: AgentSession,
         user_id: str,
         *,
-        memory_entries: Optional[List[Dict[str, Any]]] = None,
+        memory_entries: list[dict[str, Any]] | None = None,
     ) -> AgentContext:
         finding_ids = [UUID(fid) for fid in session.context.get("finding_ids", [])]
         incident_id = None
@@ -246,10 +249,10 @@ class AgentRuntimePersistenceMixin:
         self,
         session: AgentSession,
         role: MessageRole,
-        content: Dict[str, Any],
+        content: dict[str, Any],
         *,
-        input_tokens: Optional[int] = None,
-        output_tokens: Optional[int] = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> None:
         async with async_session_factory() as db_session:
             message = AgentMessage(
@@ -275,7 +278,7 @@ class AgentRuntimePersistenceMixin:
                 ),
             )
 
-    async def _get_session_metrics(self, session_id: UUID) -> Dict[str, Any]:
+    async def _get_session_metrics(self, session_id: UUID) -> dict[str, Any]:
         async with async_session_factory() as db_session:
             message_stats_stmt = (
                 select(
@@ -318,7 +321,7 @@ class AgentRuntimePersistenceMixin:
         session: AgentSession,
         role: MessageRole,
         content: str,
-        metadata: Optional[Dict[str, object]] = None,
+        metadata: dict[str, object] | None = None,
     ) -> None:
         try:
             store = await AgentMemoryStore.shared()
@@ -375,7 +378,7 @@ class AgentRuntimePersistenceMixin:
     async def _update_session_context(
         self,
         session: AgentSession,
-        updates: Dict[str, Any],
+        updates: dict[str, Any],
     ) -> None:
         async with async_session_factory() as db_session:
             db_session_session = await db_session.get(AgentSession, session.id)
@@ -392,7 +395,7 @@ class AgentRuntimePersistenceMixin:
         memory: RetrievedMemory,
         *,
         max_entries: int = 3,
-    ) -> Optional[str]:
+    ) -> str | None:
         if not memory.entries:
             return None
         summaries = []
@@ -407,7 +410,7 @@ class AgentRuntimePersistenceMixin:
     def _log_memory_activity(
         self,
         session: AgentSession,
-        new_entries: List[Dict[str, Any]],
+        new_entries: list[dict[str, Any]],
     ) -> None:
         if not new_entries:
             return
@@ -444,7 +447,7 @@ class AgentRuntimePersistenceMixin:
         input_tokens: int,
         output_tokens: int,
         tool_calls: int,
-        error: Optional[BaseException] = None,
+        error: BaseException | None = None,
     ) -> None:
         duration = time.perf_counter() - start_time
         record_runtime_metrics(

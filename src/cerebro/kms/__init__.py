@@ -25,15 +25,15 @@ try:  # pragma: no cover - optional providers
 except Exception:  # pragma: no cover
     VaultTransitKMS = None  # type: ignore[assignment,misc]
 
-from .local_kms import LocalPlaintextKMS, LocalKMS
+from .local_kms import LocalKMS, LocalPlaintextKMS
 
 __all__ = [
-    "BaseKMS",
-    "get_kms",
     "AWSKMS",
     "GCPKMS",
     "AzureKeyVaultKMS",
-    "VaultTransitKMS",
-    "LocalPlaintextKMS",
+    "BaseKMS",
     "LocalKMS",
+    "LocalPlaintextKMS",
+    "VaultTransitKMS",
+    "get_kms",
 ]

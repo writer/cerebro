@@ -6,7 +6,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 from uuid import UUID
 
 from cerebro_sdk.agents.streaming import (
@@ -107,7 +107,7 @@ def compute_coverage_health(
     )
 
 
-ConsumerFn = Callable[..., Union[Awaitable[None], None]]
+ConsumerFn = Callable[..., Awaitable[None] | None]
 
 
 @dataclass
@@ -225,7 +225,7 @@ async def build_relations_index(
     ]
 
     provider_aliases = {
-        _normalize(key): [normalized for normalized in map(_normalize, values)]
+        _normalize(key): list(map(_normalize, values))
         for key, values in (context.provider_aliases or {}).items()
     }
 
@@ -517,7 +517,7 @@ def annotate_agent_events(
     return [annotate_agent_event(event, vendors, customers) for event in events]
 
 
-async def _maybe_call(fn: Optional[ConsumerFn], *args: Any, **kwargs: Any) -> None:
+async def _maybe_call(fn: ConsumerFn | None, *args: Any, **kwargs: Any) -> None:
     if fn is None:
         return
     result = fn(*args, **kwargs)
@@ -529,7 +529,7 @@ def create_entity_aware_consumers(
     vendors: Sequence[SecurityCenterVendorInsight],
     customers: Sequence[SecurityCenterCustomerInsight],
     consumers: AgentStreamConsumers | None = None,
-    on_entity: Optional[Callable[[EntityAnnotation], Awaitable[None] | None]] = None,
+    on_entity: Callable[[EntityAnnotation], Awaitable[None] | None] | None = None,
 ) -> AgentStreamConsumers:
     base = consumers or AgentStreamConsumers()
 
@@ -710,23 +710,23 @@ def _has_provider_match(
 
 
 __all__ = [
+    "CustomerEngagement",
+    "EntityAnnotation",
+    "EntityAnnotationSummary",
+    "ExposureCollections",
+    "FindingsSummary",
+    "IntegrationCoverageHealth",
+    "IntegrationSummary",
+    "OrgExposureDashboard",
     "RelationsContext",
     "RelationsIndex",
-    "IntegrationCoverageHealth",
     "VendorExposure",
-    "CustomerEngagement",
-    "IntegrationSummary",
-    "FindingsSummary",
-    "ExposureCollections",
-    "OrgExposureDashboard",
-    "build_relations_index",
-    "compute_coverage_health",
-    "get_vendor_exposure",
-    "get_customer_engagement",
-    "build_org_exposure_dashboard",
-    "EntityAnnotationSummary",
-    "EntityAnnotation",
     "annotate_agent_event",
     "annotate_agent_events",
+    "build_org_exposure_dashboard",
+    "build_relations_index",
+    "compute_coverage_health",
     "create_entity_aware_consumers",
+    "get_customer_engagement",
+    "get_vendor_exposure",
 ]

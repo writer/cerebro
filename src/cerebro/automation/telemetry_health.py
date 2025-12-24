@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,21 +16,21 @@ from cerebro.core.models import FrontendObservationEvent
 @dataclasses.dataclass
 class TelemetryHealthSnapshot:
     generated_at: datetime
-    window_start: Optional[datetime]
+    window_start: datetime | None
     window_end: datetime
     total_events: int
     unique_orgs: int
     unique_users: int
     unique_sessions: int
-    events_by_type: Dict[str, int]
-    events_by_component: Dict[str, int]
+    events_by_type: dict[str, int]
+    events_by_component: dict[str, int]
     missing_component: int
     missing_metadata: int
     empty_context: int
     average_events_per_session: float
-    recent_events: List[Dict[str, Any]]
+    recent_events: list[dict[str, Any]]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         payload = dataclasses.asdict(self)
         payload["generated_at"] = self.generated_at.isoformat()
         if self.window_start:
@@ -50,11 +50,11 @@ class TelemetryHealthSnapshot:
 async def fetch_telemetry_health(
     window_days: int = 7,
     *,
-    db_session: Optional[AsyncSession] = None,
+    db_session: AsyncSession | None = None,
 ) -> TelemetryHealthSnapshot:
-    now = datetime.now(timezone.utc)
-    window_start: Optional[datetime] = None
-    filters: List[Any] = []
+    now = datetime.now(UTC)
+    window_start: datetime | None = None
+    filters: list[Any] = []
 
     if window_days > 0:
         window_start = now - timedelta(days=window_days)
@@ -155,7 +155,7 @@ async def fetch_telemetry_health(
             .limit(20)
         )
         recent_rows = (await session.execute(recent_stmt)).scalars().all()
-        recent_events: List[Dict[str, Any]] = [
+        recent_events: list[dict[str, Any]] = [
             {
                 "event_id": str(row.event_id),
                 "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
@@ -201,8 +201,8 @@ def evaluate_health_thresholds(
     max_missing_metadata_ratio: float,
     max_missing_component_ratio: float,
     min_total_events: int = 1,
-) -> List[str]:
-    issues: List[str] = []
+) -> list[str]:
+    issues: list[str] = []
 
     if snapshot.total_events < min_total_events:
         issues.append(

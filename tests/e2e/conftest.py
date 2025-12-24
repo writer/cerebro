@@ -6,8 +6,8 @@ SQLite database, so it can run in CI without a separately-running server.
 
 import asyncio
 import os
-from datetime import datetime, timezone
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import httpx
@@ -17,13 +17,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from cerebro.agents.models import AgentSession, Base as AgentsBase
+from cerebro.agents.models import AgentSession
+from cerebro.agents.models import Base as AgentsBase
 from cerebro.api.main import app
+from cerebro.core import user_service as user_service_module
 from cerebro.core.database import Base, get_db
 from cerebro.core.models import Account, Finding, Organization, Rule
 from cerebro.core.user_service import UserService
-from cerebro.core import user_service as user_service_module
-
 
 os.environ.setdefault("ENVIRONMENT", "test")
 
@@ -126,7 +126,7 @@ async def seed_database(session_factory: async_sessionmaker[AsyncSession]):
             session.add(rule)
             await session.flush()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         existing = await session.scalar(
             select(Finding).where(Finding.title == "E2E Finding")
         )
@@ -267,7 +267,7 @@ class TestDataFactory:
                 session.add(rule)
                 await session.flush()
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             finding = Finding(
                 org_id=self.org_id,
                 account_id=account.account_id,

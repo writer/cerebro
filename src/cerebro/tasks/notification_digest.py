@@ -6,11 +6,10 @@ as batched digests instead of individual messages.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List
+from datetime import UTC, datetime, timedelta
 
 from celery import shared_task
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.database import async_session_factory
@@ -45,8 +44,8 @@ async def _process_email_digests_async():
             configs_result = await db.execute(
                 select(EmailConfig)
                 .where(
-                    EmailConfig.enabled == True,
-                    EmailConfig.digest_mode == True,
+                    EmailConfig.enabled,
+                    EmailConfig.digest_mode,
                 )
                 .order_by(EmailConfig.created_at.asc())
                 .limit(500)
@@ -82,7 +81,7 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
         db: Database session
     """
     # Determine time window based on digest frequency
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if config.digest_frequency == "daily":
         window_start = now - timedelta(days=1)
     elif config.digest_frequency == "weekly":
@@ -191,7 +190,7 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
         await db.commit()
 
 
-def _group_findings_by_severity(findings: List[Finding]) -> Dict[str, List[Finding]]:
+def _group_findings_by_severity(findings: list[Finding]) -> dict[str, list[Finding]]:
     """Group findings by severity level.
 
     Args:
@@ -211,7 +210,7 @@ def _group_findings_by_severity(findings: List[Finding]) -> Dict[str, List[Findi
 
 def _generate_digest_subject(
     config: EmailConfig,
-    findings: List[Finding],
+    findings: list[Finding],
     window_start: datetime,
     window_end: datetime,
 ) -> str:
@@ -237,7 +236,7 @@ def _generate_digest_subject(
 
 def _generate_digest_html(
     config: EmailConfig,
-    findings_by_severity: Dict[str, List[Finding]],
+    findings_by_severity: dict[str, list[Finding]],
     window_start: datetime,
     window_end: datetime,
 ) -> str:

@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import json
 import logging
-from typing import Dict, Optional, Tuple
 
 from sqlalchemy import text
 
@@ -15,7 +14,7 @@ from cerebro.core.database import async_session_factory
 logger = logging.getLogger(__name__)
 
 
-async def check_database(timeout: float = 2.0) -> Tuple[bool, Optional[str]]:
+async def check_database(timeout: float = 2.0) -> tuple[bool, str | None]:
     """Verify database connectivity."""
 
     try:
@@ -26,7 +25,7 @@ async def check_database(timeout: float = 2.0) -> Tuple[bool, Optional[str]]:
         return False, str(exc)
 
 
-async def check_celery_workers(timeout: float = 2.0) -> Tuple[bool, Optional[str]]:
+async def check_celery_workers(timeout: float = 2.0) -> tuple[bool, str | None]:
     """Ensure at least one Celery worker responds to control ping."""
 
     try:
@@ -57,7 +56,7 @@ async def check_celery_workers(timeout: float = 2.0) -> Tuple[bool, Optional[str
     return True, None
 
 
-async def check_broker_connection(timeout: float = 2.0) -> Tuple[bool, Optional[str]]:
+async def check_broker_connection(timeout: float = 2.0) -> tuple[bool, str | None]:
     """Verify connectivity to the Celery broker."""
 
     try:
@@ -87,7 +86,7 @@ async def check_broker_connection(timeout: float = 2.0) -> Tuple[bool, Optional[
 
 async def _run_target(
     target: str, timeout: float
-) -> Tuple[bool, Dict[str, Dict[str, bool | Optional[str]]]]:
+) -> tuple[bool, dict[str, dict[str, bool | str | None]]]:
     if target == "api-ready":
         db_ok, db_error = await check_database(timeout)
         celery_ok, celery_error = await check_celery_workers(timeout)

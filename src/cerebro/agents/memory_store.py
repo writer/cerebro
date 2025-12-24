@@ -6,12 +6,19 @@ import asyncio
 import logging
 import math
 import random
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, func, or_, select, update
 
+from cerebro.agents.memory_utils import (
+    cosine_similarity,
+    estimate_token_count,
+    hash_text,
+    summarize_text,
+)
 from cerebro.agents.metrics import record_memory_event
 from cerebro.agents.models import (
     AgentMemoryDecayOverride,
@@ -19,12 +26,6 @@ from cerebro.agents.models import (
     AgentSession,
     MemoryScope,
     MessageRole,
-)
-from cerebro.agents.memory_utils import (
-    cosine_similarity,
-    estimate_token_count,
-    hash_text,
-    summarize_text,
 )
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
@@ -50,7 +51,7 @@ except ImportError:  # pragma: no cover
 class AgentMemoryStore:
     """Provides storage and retrieval of long-term agent memory snippets."""
 
-    _instance: "AgentMemoryStore" | None = None
+    _instance: AgentMemoryStore | None = None
     _instance_lock = asyncio.Lock()
 
     def __init__(self) -> None:
@@ -112,8 +113,8 @@ class AgentMemoryStore:
             key: max(1, int(value))
             for key, value in (settings.agent_memory_decay_profiles or {}).items()
         }
-        self._decay_override_cache: Dict[
-            UUID, Tuple[datetime, Dict[Tuple[str, Optional[str]], int]]
+        self._decay_override_cache: dict[
+            UUID, tuple[datetime, dict[tuple[str, str | None], int]]
         ] = {}
         self._override_cache_ttl = timedelta(minutes=15)
         self._annoy_enabled = bool(
@@ -121,7 +122,7 @@ class AgentMemoryStore:
         )
 
     @classmethod
-    async def shared(cls) -> "AgentMemoryStore":
+    async def shared(cls) -> AgentMemoryStore:
         if cls._instance is None:
             async with cls._instance_lock:
                 if cls._instance is None:
@@ -134,7 +135,7 @@ class AgentMemoryStore:
         session: AgentSession,
         role: MessageRole,
         content: str,
-        metadata: Optional[Dict[str, object]] = None,
+        metadata: dict[str, object] | None = None,
     ) -> None:
         if not content or not content.strip():
             return
@@ -153,10 +154,10 @@ class AgentMemoryStore:
         scopes = self._build_scopes(session)
         scope_priority = min(int(scope["priority"]) for scope in scopes) if scopes else 0  # type: ignore[call-overload]
         summary = summarize_text(message_text, self._summary_max_chars)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         content_hash = hash_text(message_text)
         token_count = estimate_token_count(message_text)
-        metadata_payload: Dict[str, object] = dict(metadata or {})
+        metadata_payload: dict[str, object] = dict(metadata or {})
 
         async with async_session_factory() as db_session:
             async with db_session.begin():
@@ -184,7 +185,7 @@ class AgentMemoryStore:
                     if metadata_payload:
                         metadata_update.setdefault("latest_metadata", metadata_payload)
 
-                    update_values: Dict[str, object] = {
+                    update_values: dict[str, object] = {
                         "updated_at": now,
                         "last_accessed_at": now,
                         "decay_score": min(
@@ -257,19 +258,19 @@ class AgentMemoryStore:
         session: AgentSession,
         query: str,
         limit: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if not query or not query.strip():
             return []
 
         query_embedding = await self._generate_embedding(query)
-        query_norm: Optional[float] = None
+        query_norm: float | None = None
         if query_embedding:
             query_norm = (
                 math.sqrt(sum(value * value for value in query_embedding)) or 1.0
             )
 
-        lexical_query_vector: Optional[List[float]] = None
-        lexical_query_norm: Optional[float] = None
+        lexical_query_vector: list[float] | None = None
+        lexical_query_norm: float | None = None
         vectorizer = self._hashing_vectorizer
         if vectorizer is not None:
             lexical_array = vectorizer.transform([query]).toarray()[0]
@@ -298,8 +299,8 @@ class AgentMemoryStore:
         if not candidates:
             return []
 
-        now = datetime.now(timezone.utc)
-        embedding_candidates: List[Tuple[int, AgentMemoryEntry, List[float], float]] = (
+        now = datetime.now(UTC)
+        embedding_candidates: list[tuple[int, AgentMemoryEntry, list[float], float]] = (
             []
         )
         for idx, entry in enumerate(candidates):
@@ -308,12 +309,12 @@ class AgentMemoryStore:
                     (idx, entry, entry.embedding, entry.embedding_norm or 1.0)
                 )
 
-        preferred_indices: Optional[set[int]] = None
+        preferred_indices: set[int] | None = None
         if self._annoy_enabled and query_embedding and embedding_candidates:
             dimension = len(query_embedding)
             try:
                 annoy_index = AnnoyIndex(dimension, "angular")  # type: ignore[arg-type]
-                index_map: Dict[int, int] = {}
+                index_map: dict[int, int] = {}
                 for ann_idx, (candidate_idx, _, embedding, _) in enumerate(
                     embedding_candidates
                 ):
@@ -329,11 +330,11 @@ class AgentMemoryStore:
             except Exception:
                 preferred_indices = None
 
-        scored: List[
-            Tuple[
+        scored: list[
+            tuple[
                 float,
                 AgentMemoryEntry,
-                Optional[List[float]],
+                list[float] | None,
                 float,
                 float,
                 float,
@@ -421,7 +422,7 @@ class AgentMemoryStore:
         await self._update_access_metadata([entry for _, entry, *_ in top])
         record_memory_event("recall", len(top))
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for (
             score,
             entry,
@@ -468,7 +469,7 @@ class AgentMemoryStore:
 
         return results
 
-    async def _generate_embedding(self, text: str) -> Optional[List[float]]:
+    async def _generate_embedding(self, text: str) -> list[float] | None:
         if not settings.enable_agent_memory_embeddings:
             return None
 
@@ -495,8 +496,8 @@ class AgentMemoryStore:
         vector = self._hashing_vectorizer.transform([text]).toarray()[0]
         return vector.astype(float).tolist()
 
-    def _session_scope_map(self, session: AgentSession) -> Dict[str, set[str]]:
-        scope_map: Dict[str, set[str]] = {}
+    def _session_scope_map(self, session: AgentSession) -> dict[str, set[str]]:
+        scope_map: dict[str, set[str]] = {}
         for scope in self._build_scopes(session):
             data = scope.get("data") if isinstance(scope, dict) else None
             if not data or not isinstance(data, dict):
@@ -512,8 +513,8 @@ class AgentMemoryStore:
 
     def _scope_multiplier(
         self,
-        session_scope_map: Dict[str, set[str]],
-        entry_scopes: Iterable[Dict[str, object]] | None,
+        session_scope_map: dict[str, set[str]],
+        entry_scopes: Iterable[dict[str, object]] | None,
     ) -> float:
         if not entry_scopes:
             return self._scope_miss_penalty
@@ -550,18 +551,18 @@ class AgentMemoryStore:
 
         return multiplier
 
-    def _role_weight(self, role: Optional[MessageRole]) -> float:
+    def _role_weight(self, role: MessageRole | None) -> float:
         if role is None:
             return 1.0
         return self._role_weights.get(role.value.lower(), 1.0)
 
     def _select_diverse_candidates(
         self,
-        candidates: List[
-            Tuple[
+        candidates: list[
+            tuple[
                 float,
                 AgentMemoryEntry,
-                Optional[List[float]],
+                list[float] | None,
                 float,
                 float,
                 float,
@@ -570,11 +571,11 @@ class AgentMemoryStore:
             ]
         ],
         limit: int,
-    ) -> List[
-        Tuple[
+    ) -> list[
+        tuple[
             float,
             AgentMemoryEntry,
-            Optional[List[float]],
+            list[float] | None,
             float,
             float,
             float,
@@ -586,11 +587,11 @@ class AgentMemoryStore:
             return []
 
         ordered = sorted(candidates, key=lambda item: item[0], reverse=True)
-        selected: List[
-            Tuple[
+        selected: list[
+            tuple[
                 float,
                 AgentMemoryEntry,
-                Optional[List[float]],
+                list[float] | None,
                 float,
                 float,
                 float,
@@ -635,13 +636,13 @@ class AgentMemoryStore:
     async def _load_decay_overrides(
         self,
         org_id: UUID,
-    ) -> Dict[Tuple[str, Optional[str]], int]:
+    ) -> dict[tuple[str, str | None], int]:
         cached = self._decay_override_cache.get(org_id)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if cached and (now - cached[0]) < self._override_cache_ttl:
             return cached[1]
 
-        overrides: Dict[Tuple[str, Optional[str]], int] = {}
+        overrides: dict[tuple[str, str | None], int] = {}
         async with async_session_factory() as db_session:
             stmt = select(AgentMemoryDecayOverride).where(
                 AgentMemoryDecayOverride.org_id == org_id
@@ -658,7 +659,7 @@ class AgentMemoryStore:
 
     def _determine_half_life(
         self,
-        overrides: Dict[Tuple[str, Optional[str]], int],
+        overrides: dict[tuple[str, str | None], int],
         entry: AgentMemoryEntry,
     ) -> float:
         half_life = self._half_life_hours
@@ -701,7 +702,7 @@ class AgentMemoryStore:
         if not entries:
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with async_session_factory() as db_session:
             async with db_session.begin():
                 for entry in entries:
@@ -731,13 +732,13 @@ class AgentMemoryStore:
 
     async def _refresh_embedding(
         self, entry: AgentMemoryEntry
-    ) -> Optional[Tuple[List[float], float]]:
+    ) -> tuple[list[float], float] | None:
         refreshed = await self._generate_embedding(entry.content)
         if not refreshed:
             return None
 
         norm = math.sqrt(sum(value * value for value in refreshed)) or 1.0
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
         async with async_session_factory() as db_session:
             async with db_session.begin():
@@ -843,7 +844,7 @@ class AgentMemoryStore:
 
     async def _collect_prunable_ids(
         self, db_session, filters, limit: int
-    ) -> List[UUID]:
+    ) -> list[UUID]:
         limit = min(self._prune_batch_size, max(0, limit))
         if limit <= 0:
             return []
@@ -877,17 +878,17 @@ class AgentMemoryStore:
         return random.random() <= self._prune_probability
 
     @staticmethod
-    def _normalize_timestamp(value: Optional[datetime], fallback: datetime) -> datetime:
+    def _normalize_timestamp(value: datetime | None, fallback: datetime) -> datetime:
         if value is None:
             return fallback
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def _format_snippet(
         self, score: float, entry: AgentMemoryEntry
-    ) -> tuple[str, str, List[str]]:
-        scope_labels: List[str] = []
+    ) -> tuple[str, str, list[str]]:
+        scope_labels: list[str] = []
         for scope in entry.scopes or []:
             scope_type = str(scope.get("type", ""))
             value = scope.get("value")
@@ -906,7 +907,7 @@ class AgentMemoryStore:
         metadata = f"score={score:.2f}"
         if entry.last_accessed_at:
             last_seen = self._normalize_timestamp(
-                entry.last_accessed_at, datetime.now(timezone.utc)
+                entry.last_accessed_at, datetime.now(UTC)
             )
             metadata += f", last={last_seen.strftime('%Y-%m-%d')}"
 
@@ -915,8 +916,8 @@ class AgentMemoryStore:
         return snippet, summary, scope_labels
 
     @staticmethod
-    def _build_scopes(session: AgentSession) -> List[Dict[str, object]]:
-        scopes: List[Dict[str, object]] = []
+    def _build_scopes(session: AgentSession) -> list[dict[str, object]]:
+        scopes: list[dict[str, object]] = []
         scopes.append(
             {
                 "priority": 0,

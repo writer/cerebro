@@ -1,25 +1,25 @@
 """Monitoring and operational health API endpoints."""
 
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.api.auth import get_current_user, require_scopes, User
-from cerebro.api.org_access import require_org_access
+from cerebro.analytics.operations import (
+    collect_operational_health,
+    gather_celery_status,
+)
+from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.analytics.sql_dialect import (
     days_since_expr,
     get_dialect_name,
     timestamp_minus_days_expr,
 )
-from cerebro.analytics.operations import (
-    gather_celery_status,
-    collect_operational_health,
-)
-from cerebro.analytics.runtime_health import summarize_runtime_health
+from cerebro.api.auth import User, get_current_user, require_scopes
+from cerebro.api.org_access import require_org_access
 from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.config import settings
 from cerebro.core.database import get_db
@@ -36,7 +36,7 @@ async def get_sla_breach_analysis(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get detailed SLA breach analysis with ownership."""
 
     org = await db.get(Organization, org_id)
@@ -152,13 +152,13 @@ async def get_sla_breach_analysis(
 @router.get("/heartbeat")
 async def get_heartbeat_chips(
     current_user: User = Depends(require_scopes("read:findings")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get Celery heartbeat status chips for dashboard monitoring."""
 
     celery_status = await gather_celery_status()
 
     # Generate heartbeat chips
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     summary = celery_status["summary"]
 
     # Overall system status
@@ -239,7 +239,7 @@ async def get_heartbeat_chips(
 @router.get("/warehouse/health")
 async def get_warehouse_health(
     current_user: User = Depends(require_scopes("read:findings")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get Snowflake warehouse operational health (jobs + derived table freshness)."""
 
     if not resolve_snowflake_database_url():
@@ -282,7 +282,7 @@ async def get_warehouse_health(
             )
 
             job_names = ["refresh_rule_controls", "warehouse_data_quality_checks"]
-            jobs: Dict[str, Any] = {}
+            jobs: dict[str, Any] = {}
             for job_name in job_names:
                 row = (
                     (await warehouse.execute(job_status_query, {"job_name": job_name}))
@@ -356,7 +356,7 @@ async def get_warehouse_health(
                 .all()
             )
 
-            table_stats: Dict[str, Any] = {
+            table_stats: dict[str, Any] = {
                 row["table_name"].lower(): {
                     "row_count": int(row.get("row_count") or 0),
                     "bytes": int(row.get("bytes") or 0),
@@ -400,7 +400,7 @@ async def get_warehouse_health(
 async def get_operational_health(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_scopes("read:findings")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return the consolidated operational health snapshot."""
 
     snapshot = await collect_operational_health(db)
@@ -412,12 +412,12 @@ async def get_runtime_health_summary(
     hours: int = Query(24, ge=1, le=168, description="Lookback window in hours"),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_scopes("read:findings")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Summarize agent runtime health for operational dashboards."""
 
     summaries = await summarize_runtime_health(analytics_db, hours=hours)
     return {
         "window_hours": hours,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "runtimes": summaries,
     }

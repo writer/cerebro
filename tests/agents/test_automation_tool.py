@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional, Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -26,7 +26,7 @@ class _DummySession:
 
 
 def _snapshot() -> TelemetryHealthSnapshot:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TelemetryHealthSnapshot(
         generated_at=now,
         window_start=now,
@@ -49,7 +49,7 @@ def _alert(rule: AlertRule) -> AlertResult:
     return AlertResult(
         rule=rule,
         metric_value=15,
-        triggered_at=datetime.now(timezone.utc),
+        triggered_at=datetime.now(UTC),
         message=rule.format_message(15),
         severity=rule.severity,
         channels=rule.channels,
@@ -69,7 +69,7 @@ async def test_automation_tool_returns_summary(monkeypatch) -> None:
         description="Total events dropped below baseline",
     )
 
-    async def fake_collect(*, rules: Optional[Sequence[AlertRule]] = None, **kwargs):
+    async def fake_collect(*, rules: Sequence[AlertRule] | None = None, **kwargs):
         return ((_alert(warning_rule),), _snapshot())
 
     monkeypatch.setattr(module, "default_rules", lambda: (warning_rule,))
@@ -126,9 +126,9 @@ async def test_automation_tool_applies_severity_filter(monkeypatch) -> None:
 
     captured_rules: list[Sequence[AlertRule]] = []
 
-    async def fake_collect(*, rules: Optional[Sequence[AlertRule]] = None, **kwargs):
+    async def fake_collect(*, rules: Sequence[AlertRule] | None = None, **kwargs):
         captured_rules.append(tuple(rules or ()))
-        return (tuple(), _snapshot())
+        return ((), _snapshot())
 
     monkeypatch.setattr(module, "default_rules", lambda: (info_rule, critical_rule))
     monkeypatch.setattr(module, "collect_telemetry_alerts", fake_collect)
@@ -173,8 +173,8 @@ async def test_automation_tool_respects_limit(monkeypatch) -> None:
         for idx in range(3)
     ]
 
-    async def fake_collect(*, rules: Optional[Sequence[AlertRule]] = None, **kwargs):
-        alerts = tuple(_alert(rule) for rule in rules or tuple())
+    async def fake_collect(*, rules: Sequence[AlertRule] | None = None, **kwargs):
+        alerts = tuple(_alert(rule) for rule in rules or ())
         return (alerts, _snapshot())
 
     monkeypatch.setattr(module, "default_rules", lambda: tuple(rules))

@@ -1,10 +1,10 @@
 """Domain entities - pure data structures without infrastructure dependencies."""
 
-from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime
-from uuid import UUID, uuid4
 from enum import Enum
+from typing import Any
+from uuid import UUID, uuid4
 
 
 class PrincipalType(str, Enum):
@@ -43,10 +43,10 @@ class ResourceEntity:
     external_id: str
     resource_type: str
     provider: str
-    name: Optional[str] = None
-    parent_external_id: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    tags: Dict[str, str] = field(default_factory=dict)
+    name: str | None = None
+    parent_external_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    tags: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate resource entity."""
@@ -61,10 +61,10 @@ class PrincipalEntity:
     external_id: str
     principal_type: PrincipalType
     provider: str
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    is_human: Optional[bool] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    email: str | None = None
+    display_name: str | None = None
+    is_human: bool | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate principal entity."""
@@ -82,10 +82,10 @@ class ConfigEntity:
 
     resource_external_id: str
     captured_at: datetime
-    normalized_config: Dict[str, Any]
-    raw_config: Optional[Dict[str, Any]] = None
+    normalized_config: dict[str, Any]
+    raw_config: dict[str, Any] | None = None
     collector_version: str = "1.0.0"
-    config_hash: Optional[str] = None
+    config_hash: str | None = None
 
     def __post_init__(self):
         """Validate config entity."""
@@ -99,10 +99,10 @@ class IamPermissionEntity:
 
     principal_external_id: str
     permission: str
-    resource_external_id: Optional[str] = None
-    via: Optional[str] = None
-    effective_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    resource_external_id: str | None = None
+    via: str | None = None
+    effective_at: datetime | None = None
+    expires_at: datetime | None = None
     is_admin: bool = False
     confidence: float = 1.0  # Confidence score for inferred permissions
 
@@ -124,16 +124,16 @@ class FindingEntity:
     """Domain entity representing a security finding."""
 
     rule_id: UUID
-    resource_external_id: Optional[str] = None
-    principal_external_id: Optional[str] = None
+    resource_external_id: str | None = None
+    principal_external_id: str | None = None
     title: str = ""
     summary: str = ""
     severity: Severity = Severity.MEDIUM
     status: FindingStatus = FindingStatus.OPEN
-    evidence: Dict[str, Any] = field(default_factory=dict)
-    first_seen: Optional[datetime] = None
-    last_seen: Optional[datetime] = None
-    fingerprint: Optional[str] = None
+    evidence: dict[str, Any] = field(default_factory=dict)
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+    fingerprint: str | None = None
 
     # Domain behavior
     def mark_as_suppressed(self, reason: str) -> None:
@@ -167,10 +167,10 @@ class RuleEntity:
     expression: str
     expression_lang: str = "cel"
     severity: Severity = Severity.MEDIUM
-    description: Optional[str] = None
-    providers: Set[str] = field(default_factory=set)
-    resource_types: Set[str] = field(default_factory=set)
-    framework_mappings: Dict[str, List[str]] = field(default_factory=dict)
+    description: str | None = None
+    providers: set[str] = field(default_factory=set)
+    resource_types: set[str] = field(default_factory=set)
+    framework_mappings: dict[str, list[str]] = field(default_factory=dict)
     is_active: bool = True
     version: int = 1
 
@@ -188,12 +188,12 @@ class IdentityClusterEntity:
     """Domain entity representing a cluster of related identities."""
 
     cluster_id: str
-    principals: List[PrincipalEntity] = field(default_factory=list)
+    principals: list[PrincipalEntity] = field(default_factory=list)
     confidence_score: float = 0.0
-    stitching_evidence: Dict[str, Any] = field(default_factory=dict)
+    stitching_evidence: dict[str, Any] = field(default_factory=dict)
 
     def add_principal(
-        self, principal: PrincipalEntity, evidence: Dict[str, Any]
+        self, principal: PrincipalEntity, evidence: dict[str, Any]
     ) -> None:
         """Add a principal to this cluster."""
         if principal not in self.principals:
@@ -223,15 +223,15 @@ class CollectionJobEntity:
     """Domain entity representing a collection job."""
 
     job_id: UUID = field(default_factory=uuid4)
-    org_id: Optional[UUID] = None
-    provider: Optional[str] = None
-    resource_types: List[str] = field(default_factory=list)
+    org_id: UUID | None = None
+    provider: str | None = None
+    resource_types: list[str] = field(default_factory=list)
     status: str = "pending"  # pending, running, completed, failed
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     resources_collected: int = 0
     principals_collected: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     def start(self) -> None:
         """Mark job as started."""

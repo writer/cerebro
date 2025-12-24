@@ -4,13 +4,13 @@ import asyncio
 import logging
 import threading
 from datetime import timedelta
-from typing import Dict, Any
+from typing import Any
 
-from cerebro.tasks.celery_app import celery_app
-from cerebro.core.database import async_session_factory
-from cerebro.core.security.key_store import JWTKeyStore
-from cerebro.core.security.jwt import JWTService
 from cerebro.core.config import settings
+from cerebro.core.database import async_session_factory
+from cerebro.core.security.jwt import JWTService
+from cerebro.core.security.key_store import JWTKeyStore
+from cerebro.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,8 @@ def _run_coro_sync(coro):
     except RuntimeError:
         return asyncio.run(coro)
 
-    result: Dict[str, Any] = {}
-    error: Dict[str, BaseException] = {}
+    result: dict[str, Any] = {}
+    error: dict[str, BaseException] = {}
 
     def _runner():
         try:
@@ -42,7 +42,7 @@ def _run_coro_sync(coro):
 
 
 @celery_app.task(bind=True, name="jwt_key_rotation")
-def rotate_jwt_keys_task(self=None, *args, **_) -> Dict[str, Any]:
+def rotate_jwt_keys_task(self=None, *args, **_) -> dict[str, Any]:
     """
     Celery task to rotate JWT signing keys.
 
@@ -91,7 +91,7 @@ def rotate_jwt_keys_task(self=None, *args, **_) -> Dict[str, Any]:
 
 
 @celery_app.task(bind=True, name="jwt_revocation_cleanup")
-def cleanup_jwt_revocations_task(self=None, *args, **_) -> Dict[str, Any]:
+def cleanup_jwt_revocations_task(self=None, *args, **_) -> dict[str, Any]:
     """
     Celery task to clean up expired JWT revocations from Redis.
 
@@ -131,7 +131,7 @@ def cleanup_jwt_revocations_task(self=None, *args, **_) -> Dict[str, Any]:
 
 
 @celery_app.task(bind=True, name="jwt_health_check")
-def jwt_health_check_task(self=None, *_, **__) -> Dict[str, Any]:
+def jwt_health_check_task(self=None, *_, **__) -> dict[str, Any]:
     """
     Health check task for JWT infrastructure.
 

@@ -3,36 +3,36 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
 class TextBlock:
     text: str
-    annotations: Dict[str, Any] = field(default_factory=dict)
+    annotations: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class ToolUseBlock:
     id: str
     name: str
-    input: Dict[str, Any]
+    input: dict[str, Any]
 
 
 @dataclass
 class AssistantMessage:
-    content: List[Any]
-    finish_reason: Optional[str] = None
+    content: list[Any]
+    finish_reason: str | None = None
 
 
 @dataclass
 class SystemMessage:
-    content: List[Any]
+    content: list[Any]
 
 
 @dataclass
 class ResultMessage:
-    content: List[Any]
+    content: list[Any]
 
 
 class ClaudeAgentError(Exception):

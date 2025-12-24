@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,7 +15,7 @@ from cerebro.core.user_models import User
 
 @pytest.mark.asyncio
 async def test_find_stale_admins_detects_old_accounts(test_db):
-    old_login = datetime.now(timezone.utc) - timedelta(days=200)
+    old_login = datetime.now(UTC) - timedelta(days=200)
     user = User(
         username="admin",
         email="admin@example.com",

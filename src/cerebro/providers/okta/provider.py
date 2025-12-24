@@ -1,20 +1,22 @@
 """Okta provider implementation."""
 
-from typing import Any, Dict, List, Optional, AsyncGenerator
-from datetime import datetime
-from uuid import UUID
 import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
+from typing import Any
+from uuid import UUID
 
 import httpx
 
 from cerebro.core.config import settings
+
 from ..base import (
     BaseProvider,
-    ResourceInfo,
-    PrincipalInfo,
     ConfigurationSnapshot,
     IamPermission,
+    PrincipalInfo,
     ProviderError,
+    ResourceInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,13 +25,13 @@ logger = logging.getLogger(__name__)
 class OktaProvider(BaseProvider):
     """Okta provider for collecting users, groups, and applications."""
 
-    def __init__(self, account_id: UUID, domain: str, api_token: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, account_id: UUID, domain: str, api_token: str | None = None, **kwargs: Any) -> None:
         """Initialize Okta provider."""
         super().__init__(account_id, **kwargs)
         self.domain = domain
         self.api_token = api_token or getattr(settings, "okta_api_token", None)
         self.base_url = f"https://{domain}"
-        self._client: Optional[httpx.AsyncClient] = None  # type: ignore[assignment]
+        self._client: httpx.AsyncClient | None = None  # type: ignore[assignment]
 
     @property
     def name(self) -> str:
@@ -77,7 +79,7 @@ class OktaProvider(BaseProvider):
             return False
 
     async def discover_resources(
-        self, resource_types: Optional[List[str]] = None
+        self, resource_types: list[str] | None = None
     ) -> AsyncGenerator[ResourceInfo, None]:
         """Discover Okta resources (applications, policies, network zones)."""
         if not self._client:
@@ -185,7 +187,7 @@ class OktaProvider(BaseProvider):
         """Discover Okta users as resources."""
         try:
             url = "/api/v1/users"
-            params: Optional[Dict[str, int]] = {"limit": 200}
+            params: dict[str, int] | None = {"limit": 200}
 
             while url:
                 response = await self.client.get(
@@ -313,7 +315,7 @@ class OktaProvider(BaseProvider):
             normalized_config=config,
         )
 
-    async def _get_app_config(self, app_id: str) -> Dict[str, Any]:
+    async def _get_app_config(self, app_id: str) -> dict[str, Any]:
         """Get application configuration."""
         try:
             response = await self.client.get(f"/api/v1/apps/{app_id}")
@@ -343,7 +345,7 @@ class OktaProvider(BaseProvider):
             logger.error(f"Failed to get Okta app config for {app_id}: {e}")
             return {}
 
-    async def _get_user_config(self, user_id: str) -> Dict[str, Any]:
+    async def _get_user_config(self, user_id: str) -> dict[str, Any]:
         """Get detailed user configuration for identity hygiene checks."""
         try:
             user_response = await self.client.get(f"/api/v1/users/{user_id}")
@@ -446,7 +448,7 @@ class OktaProvider(BaseProvider):
             logger.error(f"Failed to get Okta user config for {user_id}: {e}")
             return {}
 
-    async def _safe_get(self, path: str) -> Optional[Any]:
+    async def _safe_get(self, path: str) -> Any | None:
         """Fetch auxiliary Okta data with graceful fallback."""
         try:
             response = await self.client.get(path)
@@ -464,7 +466,7 @@ class OktaProvider(BaseProvider):
             logger.warning(f"Okta API request failed for {path}: {exc}")
             return None
 
-    async def _get_policy_config(self, policy_id: str) -> Dict[str, Any]:
+    async def _get_policy_config(self, policy_id: str) -> dict[str, Any]:
         """Get policy configuration."""
         try:
             response = await self.client.get(f"/api/v1/policies/{policy_id}")
@@ -495,7 +497,7 @@ class OktaProvider(BaseProvider):
             logger.error(f"Failed to get Okta policy config for {policy_id}: {e}")
             return {}
 
-    async def _get_zone_config(self, zone_id: str) -> Dict[str, Any]:
+    async def _get_zone_config(self, zone_id: str) -> dict[str, Any]:
         """Get network zone configuration."""
         try:
             response = await self.client.get(f"/api/v1/zones/{zone_id}")
@@ -519,7 +521,7 @@ class OktaProvider(BaseProvider):
             return {}
 
     async def discover_iam_edges(
-        self, resource: Optional[ResourceInfo] = None
+        self, resource: ResourceInfo | None = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover Okta permissions and assignments."""
         if not self._client:

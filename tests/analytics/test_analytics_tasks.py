@@ -1,18 +1,18 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
 from sqlalchemy import select
 
 import cerebro.tasks.analytics_tasks as analytics_tasks
+from cerebro.analytics.risk_scoring import OrganizationRiskScore, RiskSeverity
 from cerebro.analytics.time_series import (
     MetricSnapshot,
+    MetricType,
     SecurityMetricSnapshot,
     TimeSeriesCollector,
-    MetricType,
 )
-from cerebro.analytics.risk_scoring import OrganizationRiskScore, RiskSeverity
 
 sqlite3.register_adapter(UUID, lambda value: str(value))
 
@@ -39,7 +39,7 @@ async def test_collect_security_metrics_for_org_records_snapshots(
 ):
     """Ensure the analytics task persists snapshots for the organization."""
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     monkeypatch.setattr(
         analytics_tasks,
@@ -84,7 +84,7 @@ async def test_collect_security_metrics_for_org_records_snapshots(
         strategic_initiatives=["Implement IAM least privilege"],
     )
 
-    async def _fake_risk(self, org_id):  # noqa: D401
+    async def _fake_risk(self, org_id):
         return fake_risk_score
 
     monkeypatch.setattr(

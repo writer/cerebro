@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List
 
 from .models import BenchmarkCase
 
@@ -15,10 +15,10 @@ def _discover_case_files(root: Path) -> Iterable[Path]:
             yield path
 
 
-def load_benchmark_cases(directory: Path) -> List[BenchmarkCase]:
+def load_benchmark_cases(directory: Path) -> list[BenchmarkCase]:
     """Load benchmark case definitions from the provided directory."""
 
-    cases: List[BenchmarkCase] = []
+    cases: list[BenchmarkCase] = []
     for file_path in _discover_case_files(directory):
         with file_path.open("r", encoding="utf-8") as handle:
             raw = json.load(handle)

@@ -1,13 +1,13 @@
 """Compliance analytics for evidence tracking and control ownership."""
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .sql_dialect import array_has_elements_expr, days_since_expr, get_dialect_name
 
@@ -21,7 +21,7 @@ class EvidenceFreshnessReport:
     control_id: str
     control_name: str
     framework: str
-    last_collected: Optional[datetime]
+    last_collected: datetime | None
     age_days: float
     freshness_status: str  # "fresh", "aging", "stale", "missing"
     collection_frequency_required: int  # days
@@ -34,10 +34,10 @@ class ControlOwnership:
 
     control_id: str
     control_name: str
-    owner: Optional[str]
-    backup_owner: Optional[str]
+    owner: str | None
+    backup_owner: str | None
     review_frequency: int  # days
-    last_reviewed: Optional[datetime]
+    last_reviewed: datetime | None
     next_review_due: datetime
     ownership_status: str  # "assigned", "unassigned", "review_overdue"
 
@@ -50,8 +50,8 @@ class ComplianceAnalyzer:
         self.db = db_session
 
     async def analyze_evidence_freshness(
-        self, org_id: UUID, framework: Optional[str] = None
-    ) -> List[EvidenceFreshnessReport]:
+        self, org_id: UUID, framework: str | None = None
+    ) -> list[EvidenceFreshnessReport]:
         """Analyze evidence freshness across compliance controls."""
 
         logger.info(f"Analyzing evidence freshness for org {org_id}")
@@ -183,7 +183,7 @@ class ComplianceAnalyzer:
 
         return reports
 
-    async def track_control_ownership(self, org_id: UUID) -> List[ControlOwnership]:
+    async def track_control_ownership(self, org_id: UUID) -> list[ControlOwnership]:
         """Track control ownership and review status."""
 
         # For now, this returns a template since control ownership
@@ -252,7 +252,7 @@ class EvidenceFreshnessTracker:
         """Initialize evidence freshness tracker."""
         self.db = db_session
 
-    async def get_stale_evidence_summary(self, org_id: UUID) -> Dict[str, Any]:
+    async def get_stale_evidence_summary(self, org_id: UUID) -> dict[str, Any]:
         """Get summary of stale evidence requiring attention."""
 
         analyzer = ComplianceAnalyzer(self.db)

@@ -2,7 +2,9 @@
 
 import time
 from contextlib import contextmanager
-from prometheus_client import Counter, Histogram, Gauge
+
+from prometheus_client import Counter, Gauge, Histogram
+
 from .collection_metrics import cerebro_registry
 
 # JWT token metrics

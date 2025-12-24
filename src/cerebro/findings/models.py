@@ -10,7 +10,6 @@ logic and ensure a single source of truth.
 from cerebro.domain.entities import FindingStatus as _DomainFindingStatus
 from cerebro.domain.entities import Severity as _DomainSeverity
 
-
 FindingStatus = _DomainFindingStatus
 Severity = _DomainSeverity
 

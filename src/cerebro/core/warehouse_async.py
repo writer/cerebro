@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Mapping
+from typing import Any
 
 import anyio
 from sqlalchemy.engine import Result

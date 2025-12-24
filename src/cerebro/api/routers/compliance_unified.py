@@ -6,29 +6,30 @@ coherent API with proper dependency injection and real implementation.
 """
 
 import logging
-from typing import List, Optional, Dict, Any
-from uuid import UUID
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.core.database import get_db
-from cerebro.core.models import Organization
 from cerebro.api.auth import (
-    get_current_user,
-    require_scopes,
-    require_read_findings,
     User,
+    get_current_user,
+    require_read_findings,
+    require_scopes,
 )
 from cerebro.api.org_access import require_org_access
-from cerebro.api.utils import get_entity_by_id_or_404, StandardResponses
+from cerebro.api.utils import StandardResponses, get_entity_by_id_or_404
+from cerebro.compliance.evidence_service import EvidenceQueryService, EvidenceService
 
 # Compliance modules
 from cerebro.compliance.framework_registry import get_framework_registry
-from cerebro.compliance.evidence_service import EvidenceService, EvidenceQueryService
-from cerebro.compliance.storage import FileBasedEvidenceRepository
 from cerebro.compliance.models import EvidenceStatus
+from cerebro.compliance.storage import FileBasedEvidenceRepository
+from cerebro.core.database import get_db
+from cerebro.core.models import Organization
 from cerebro.query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
@@ -68,8 +69,8 @@ class EvidenceCollectionRequest(BaseModel):
     """Request to collect evidence for controls."""
 
     framework_id: str
-    control_ids: List[str]
-    test_run_id: Optional[str] = None
+    control_ids: list[str]
+    test_run_id: str | None = None
     collector_id: str = "api_user"
 
 
@@ -78,9 +79,9 @@ class EvidenceBundleRequest(BaseModel):
 
     bundle_name: str
     framework_id: str
-    control_ids: List[str]
-    period_start: Optional[datetime] = None
-    period_end: Optional[datetime] = None
+    control_ids: list[str]
+    period_start: datetime | None = None
+    period_end: datetime | None = None
     bundle_type: str = "compliance"
     description: str = ""
 
@@ -96,7 +97,7 @@ class ComplianceStatusResponse(BaseModel):
     non_compliant_controls: int
     testing_controls: int
     compliance_percentage: float
-    control_status: List[ControlSummary]
+    control_status: list[ControlSummary]
 
 
 # Dependency injection for services
@@ -124,9 +125,9 @@ def get_evidence_query_service(repository=Depends(get_evidence_repository)):
 
 @router.get("/frameworks", summary="List Compliance Frameworks")
 async def list_compliance_frameworks(
-    framework_type: Optional[str] = Query(None, description="Filter by framework type"),
+    framework_type: str | None = Query(None, description="Filter by framework type"),
     current_user: User = Depends(get_current_user),
-) -> List[FrameworkSummary]:
+) -> list[FrameworkSummary]:
     """List all available compliance frameworks."""
     try:
         registry = get_framework_registry()
@@ -175,9 +176,9 @@ async def list_compliance_frameworks(
 @router.get("/frameworks/{framework_id}", summary="Get Framework Details")
 async def get_framework_details(
     framework_id: str,
-    version: Optional[str] = Query(None, description="Framework version"),
+    version: str | None = Query(None, description="Framework version"),
     current_user: User = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get detailed information about a compliance framework."""
     try:
         registry = get_framework_registry()
@@ -243,7 +244,7 @@ async def get_framework_details(
 )
 async def get_control_details(
     framework_id: str, control_id: str, current_user: User = Depends(get_current_user)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get detailed information about a specific control."""
     try:
         registry = get_framework_registry()
@@ -301,7 +302,7 @@ async def collect_compliance_evidence(
     current_user: User = Depends(
         require_org_access(require_scopes("compliance:collect"))
     ),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Collect evidence for specified controls."""
     await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
@@ -358,13 +359,13 @@ async def collect_compliance_evidence(
 @router.get("/organizations/{org_id}/evidence", summary="List Evidence Items")
 async def list_evidence(
     org_id: UUID,
-    framework_id: Optional[str] = Query(None, description="Filter by framework"),
-    control_id: Optional[str] = Query(None, description="Filter by control"),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    framework_id: str | None = Query(None, description="Filter by framework"),
+    control_id: str | None = Query(None, description="Filter by control"),
+    status: str | None = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
     query_service: EvidenceQueryService = Depends(get_evidence_query_service),
     current_user: User = Depends(require_org_access(require_read_findings)),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """List evidence items for organization."""
     await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
@@ -413,7 +414,7 @@ async def get_evidence_details(
     db: AsyncSession = Depends(get_db),
     repository=Depends(get_evidence_repository),
     current_user: User = Depends(require_org_access(require_read_findings)),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get detailed evidence information."""
     await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
@@ -469,7 +470,7 @@ async def create_evidence_bundle(
     current_user: User = Depends(
         require_org_access(require_scopes("compliance:bundle"))
     ),
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Create evidence bundle for audit delivery."""
     await get_entity_by_id_or_404(db, Organization, org_id, "Organization not found")
 
@@ -627,9 +628,9 @@ async def get_compliance_status(
 async def _collect_evidence_background(
     evidence_service: EvidenceService,
     framework_id: str,
-    control_ids: List[str],
+    control_ids: list[str],
     collector_id: str,
-    test_run_id: Optional[str],
+    test_run_id: str | None,
 ):
     """Background task for evidence collection."""
     try:
@@ -657,7 +658,7 @@ async def _collect_evidence_background(
         logger.error(f"Background evidence collection failed: {e}")
 
 
-def _metadata_to_dict(metadata) -> Dict[str, Any]:
+def _metadata_to_dict(metadata) -> dict[str, Any]:
     """Convert metadata to dictionary for API response."""
     result = {
         "id": metadata.id,

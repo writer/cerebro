@@ -6,15 +6,15 @@ Enables agents to read source code, find functions/classes, and understand imple
 
 import ast
 from pathlib import Path
-from typing import List, Optional
+
 import structlog
 from pydantic import BaseModel, Field
 
 from cerebro.agents.tools.base import (
-    StructuredTool,
-    ToolResult,
     AgentContext,
+    StructuredTool,
     ToolPermissionLevel,
+    ToolResult,
 )
 
 logger = structlog.get_logger(__name__)
@@ -30,16 +30,16 @@ class ReadCodeInput(BaseModel):
         description="Path to code file (relative to repo root or absolute)",
         min_length=1,
     )
-    symbol_name: Optional[str] = Field(
+    symbol_name: str | None = Field(
         default=None,
         description="Optional: specific function/class name to find",
     )
-    line_start: Optional[int] = Field(
+    line_start: int | None = Field(
         default=None,
         description="Optional: start line number (1-indexed)",
         ge=1,
     )
-    line_end: Optional[int] = Field(
+    line_end: int | None = Field(
         default=None,
         description="Optional: end line number (1-indexed)",
         ge=1,
@@ -52,9 +52,9 @@ class SymbolInfo(BaseModel):
     name: str
     type: str  # function, class, method
     line_number: int
-    docstring: Optional[str]
+    docstring: str | None
     code: str
-    signature: Optional[str]
+    signature: str | None
 
 
 class ReadCodeOutput(BaseModel):
@@ -63,9 +63,9 @@ class ReadCodeOutput(BaseModel):
     success: bool
     file_path: str
     total_lines: int
-    code: Optional[str] = None
-    symbol: Optional[SymbolInfo] = None
-    symbols_found: List[str] = []  # All symbols if analyzing full file
+    code: str | None = None
+    symbol: SymbolInfo | None = None
+    symbols_found: list[str] = []  # All symbols if analyzing full file
     language: str
     message: str
 
@@ -77,11 +77,11 @@ class SearchCodeInput(BaseModel):
         description="Term to search for in code (function name, class name, etc.)",
         min_length=1,
     )
-    file_pattern: Optional[str] = Field(
+    file_pattern: str | None = Field(
         default="*.py",
         description="File pattern to search (e.g. *.py, *.ts)",
     )
-    directory: Optional[str] = Field(
+    directory: str | None = Field(
         default=None,
         description="Directory to search in (relative to repo root)",
     )
@@ -93,7 +93,7 @@ class SearchResult(BaseModel):
     file_path: str
     line_number: int
     line_content: str
-    symbol_type: Optional[str] = None  # function, class, variable
+    symbol_type: str | None = None  # function, class, variable
 
 
 class SearchCodeOutput(BaseModel):
@@ -102,7 +102,7 @@ class SearchCodeOutput(BaseModel):
     success: bool
     search_term: str
     total_matches: int
-    results: List[SearchResult]
+    results: list[SearchResult]
     searched_files: int
     message: str
 
@@ -110,7 +110,7 @@ class SearchCodeOutput(BaseModel):
 # ==================== Helper Functions ====================
 
 
-def find_python_symbol(code: str, symbol_name: str) -> Optional[SymbolInfo]:
+def find_python_symbol(code: str, symbol_name: str) -> SymbolInfo | None:
     """Parse Python AST to find a specific symbol."""
     try:
         tree = ast.parse(code)
@@ -171,7 +171,7 @@ def find_python_symbol(code: str, symbol_name: str) -> Optional[SymbolInfo]:
     return None
 
 
-def extract_all_symbols(code: str, language: str) -> List[str]:
+def extract_all_symbols(code: str, language: str) -> list[str]:
     """Extract all top-level symbols from code."""
     symbols = []
 
@@ -208,7 +208,7 @@ def detect_language(file_path: str) -> str:
     return lang_map.get(ext, "unknown")
 
 
-def find_repo_root() -> Optional[Path]:
+def find_repo_root() -> Path | None:
     """Find the repository root by looking for common markers."""
     current = Path.cwd()
 
@@ -250,9 +250,9 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
         self,
         context: AgentContext,
         file_path: str,
-        symbol_name: Optional[str] = None,
-        line_start: Optional[int] = None,
-        line_end: Optional[int] = None,
+        symbol_name: str | None = None,
+        line_start: int | None = None,
+        line_end: int | None = None,
     ) -> ToolResult:
         """Read code from a file."""
 
@@ -281,7 +281,7 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
 
             # Read file
             try:
-                with open(full_path, "r", encoding="utf-8") as f:
+                with open(full_path, encoding="utf-8") as f:
                     code = f.read()
             except UnicodeDecodeError:
                 output = ReadCodeOutput(
@@ -382,7 +382,7 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
                 file_path=file_path,
                 total_lines=0,
                 language="unknown",
-                message=f"Failed to read code: {str(e)}",
+                message=f"Failed to read code: {e!s}",
             )
 
             return ToolResult(
@@ -416,7 +416,7 @@ Useful for finding where specific logic is implemented."""
         context: AgentContext,
         search_term: str,
         file_pattern: str = "*.py",
-        directory: Optional[str] = None,
+        directory: str | None = None,
     ) -> ToolResult:
         """Search for code across repository."""
 
@@ -482,7 +482,7 @@ Useful for finding where specific logic is implemented."""
 
             for file_path in files[:100]:  # Limit to 100 files
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
+                    with open(file_path, encoding="utf-8") as f:
                         lines = f.readlines()
                         searched_files += 1
 
@@ -550,7 +550,7 @@ Useful for finding where specific logic is implemented."""
                 total_matches=0,
                 results=[],
                 searched_files=0,
-                message=f"Search failed: {str(e)}",
+                message=f"Search failed: {e!s}",
             )
 
             return ToolResult(

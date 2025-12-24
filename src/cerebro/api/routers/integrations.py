@@ -3,25 +3,26 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Literal
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.api.auth import require_scopes
+from cerebro.automation.integration_sync import analyze_state
+from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.integrations.coverage import summarize_integration_coverage
+from cerebro.integrations.freshness import IntegrationFreshnessService
 from cerebro.integrations.state import (
     IntegrationIssueEventRepository,
     IntegrationStateRepository,
 )
-from cerebro.automation.integration_sync import analyze_state
-from cerebro.core.config import settings
-from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
 from cerebro.tasks.celery_app import celery_app
-from cerebro.integrations.freshness import IntegrationFreshnessService
+from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
 
 
 class IntegrationStatus(BaseModel):
@@ -29,10 +30,10 @@ class IntegrationStatus(BaseModel):
     scope: str = Field(
         ..., description="Integration scope such as organization or tenant"
     )
-    last_timestamp: Optional[datetime] = Field(
+    last_timestamp: datetime | None = Field(
         None, description="Timestamp of the most recent sync"
     )
-    last_cursor: Optional[str] = Field(
+    last_cursor: str | None = Field(
         None, description="Opaque cursor returned by the upstream API"
     )
     metadata: dict[str, Any] = Field(
@@ -56,10 +57,10 @@ class IntegrationIssueResponse(BaseModel):
     observed_at: datetime = Field(
         ..., description="Timestamp when the issue was evaluated"
     )
-    last_timestamp: Optional[datetime] = Field(
+    last_timestamp: datetime | None = Field(
         None, description="Timestamp of the last successful sync if available"
     )
-    age_seconds: Optional[float] = Field(
+    age_seconds: float | None = Field(
         None, description="Seconds elapsed since last successful sync"
     )
     metadata: dict[str, Any] = Field(
@@ -74,27 +75,27 @@ class IntegrationIssueHistoryEvent(BaseModel):
     severity: str
     message: str
     observed_at: datetime
-    last_timestamp: Optional[datetime]
-    age_seconds: Optional[float]
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    last_timestamp: datetime | None
+    age_seconds: float | None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class IntegrationIssueTrendBucket(BaseModel):
     bucket_start: datetime
     bucket_end: datetime
-    counts: Dict[str, int] = Field(default_factory=dict)
+    counts: dict[str, int] = Field(default_factory=dict)
 
 
 class IntegrationIssueHistoryResponse(BaseModel):
-    events: List[IntegrationIssueHistoryEvent] = Field(default_factory=list)
-    buckets: List[IntegrationIssueTrendBucket] = Field(default_factory=list)
+    events: list[IntegrationIssueHistoryEvent] = Field(default_factory=list)
+    buckets: list[IntegrationIssueTrendBucket] = Field(default_factory=list)
 
 
 class IntegrationSyncRequest(BaseModel):
     integration: Literal["kandji", "sentinelone"] = Field(
         ..., description="Integration to synchronize"
     )
-    lookback_minutes: Optional[int] = Field(
+    lookback_minutes: int | None = Field(
         None,
         ge=1,
         le=1440,
@@ -115,10 +116,10 @@ class IntegrationSyncStatusResponse(BaseModel):
     finished: bool = Field(
         ..., description="True when the task has reached a terminal state"
     )
-    date_done: Optional[datetime] = Field(
+    date_done: datetime | None = Field(
         None, description="Completion timestamp if available"
     )
-    result: Optional[Any] = Field(
+    result: Any | None = Field(
         None, description="Serialized task result when available"
     )
 
@@ -136,12 +137,12 @@ class IntegrationCoverageAccounts(BaseModel):
 
 class IntegrationCoverageSummary(BaseModel):
     integration: str
-    providers: List[str]
+    providers: list[str]
     status: str
     scopes: IntegrationCoverageScopes
     accounts: IntegrationCoverageAccounts
-    coverage_ratio: Optional[float]
-    last_success: Optional[datetime]
+    coverage_ratio: float | None
+    last_success: datetime | None
     evaluated_at: datetime
 
 
@@ -149,17 +150,17 @@ class IntegrationAdminOverview(BaseModel):
     integration: str
     scope: str
     status: str
-    last_synced_at: Optional[datetime]
-    age_seconds: Optional[float]
-    age_human: Optional[str]
-    warning: Optional[str]
-    next_scheduled_sync_at: Optional[datetime]
-    duration_average_seconds: Optional[float]
-    duration_samples: List[float] = Field(default_factory=list)
-    recent_errors: List[Dict[str, Any]] = Field(default_factory=list)
+    last_synced_at: datetime | None
+    age_seconds: float | None
+    age_human: str | None
+    warning: str | None
+    next_scheduled_sync_at: datetime | None
+    duration_average_seconds: float | None
+    duration_samples: list[float] = Field(default_factory=list)
+    recent_errors: list[dict[str, Any]] = Field(default_factory=list)
     confidence: str = Field("unknown")
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    stale_threshold_hours: Optional[int] = Field(
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    stale_threshold_hours: int | None = Field(
         None, description="Stale alert threshold in hours"
     )
 
@@ -167,14 +168,14 @@ class IntegrationAdminOverview(BaseModel):
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 
-@router.get("/status", response_model=List[IntegrationStatus])
+@router.get("/status", response_model=list[IntegrationStatus])
 async def list_integration_status(
-    integration: Optional[str] = Query(
+    integration: str | None = Query(
         None, description="Filter by integration identifier"
     ),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("read:findings")),
-) -> List[IntegrationStatus]:
+) -> list[IntegrationStatus]:
     repo = IntegrationStateRepository(db)
     states = await repo.list_states(integration=integration)
     return [
@@ -189,14 +190,14 @@ async def list_integration_status(
     ]
 
 
-@router.get("/coverage", response_model=List[IntegrationCoverageSummary])
+@router.get("/coverage", response_model=list[IntegrationCoverageSummary])
 async def get_integration_coverage(
-    stale_seconds: Optional[int] = Query(
+    stale_seconds: int | None = Query(
         None, description="Override default staleness threshold in seconds"
     ),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("view:integrations")),
-) -> List[IntegrationCoverageSummary]:
+) -> list[IntegrationCoverageSummary]:
     summaries = await summarize_integration_coverage(
         db,
         stale_seconds=stale_seconds,
@@ -222,7 +223,7 @@ async def trigger_integration_sync(
     request: IntegrationSyncRequest,
     _: Any = Depends(require_scopes("collect:data")),
 ) -> IntegrationSyncJobResponse:
-    queued_at = datetime.now(timezone.utc)
+    queued_at = datetime.now(UTC)
 
     if request.integration == "kandji":
         if not settings.kandji_enabled:
@@ -254,25 +255,25 @@ async def trigger_integration_sync(
     )
 
 
-@router.get("/admin/overview", response_model=List[IntegrationAdminOverview])
+@router.get("/admin/overview", response_model=list[IntegrationAdminOverview])
 async def list_integration_admin_overview(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("view:integrations")),
-) -> List[IntegrationAdminOverview]:
+) -> list[IntegrationAdminOverview]:
     freshness_service = IntegrationFreshnessService(db)
     freshness_records = await freshness_service.list_freshness()
 
     repo = IntegrationIssueEventRepository(db)
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    since = datetime.now(UTC) - timedelta(hours=24)
     recent_events = await repo.list_events(since=since)
 
-    event_counts: Dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    event_counts: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     for event in recent_events:
         key = (event.integration, event.scope)
         event_counts[key][event.severity] += 1
 
     schedule_index = _build_schedule_index()
-    overviews: List[IntegrationAdminOverview] = []
+    overviews: list[IntegrationAdminOverview] = []
 
     for record in freshness_records:
         metadata = dict(record.metadata or {})
@@ -337,7 +338,7 @@ async def get_integration_sync_status(
     status = result.status
     date_done = result.date_done
 
-    payload: Optional[Any] = None
+    payload: Any | None = None
     if finished:
         value = result.result
         if isinstance(value, (str, int, float, bool)) or value is None:
@@ -358,25 +359,25 @@ async def get_integration_sync_status(
     )
 
 
-@router.get("/status/issues", response_model=List[IntegrationIssueResponse])
+@router.get("/status/issues", response_model=list[IntegrationIssueResponse])
 async def list_integration_issues(
-    integration: Optional[str] = Query(
+    integration: str | None = Query(
         None, description="Filter by integration identifier"
     ),
-    scope: Optional[str] = Query(None, description="Filter by scope"),
-    stale_seconds: Optional[int] = Query(
+    scope: str | None = Query(None, description="Filter by scope"),
+    stale_seconds: int | None = Query(
         None,
         description="Override default staleness threshold in seconds",
         ge=0,
     ),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("view:integrations")),
-) -> List[IntegrationIssueResponse]:
+) -> list[IntegrationIssueResponse]:
     repo = IntegrationStateRepository(db)
     states = await repo.list_states(integration=integration)
 
-    now = datetime.now(timezone.utc)
-    issues: List[IntegrationIssueResponse] = []
+    now = datetime.now(UTC)
+    issues: list[IntegrationIssueResponse] = []
     threshold = (
         stale_seconds
         if stale_seconds is not None
@@ -409,10 +410,10 @@ async def list_integration_issues(
 
 @router.get("/status/issues/history", response_model=IntegrationIssueHistoryResponse)
 async def list_integration_issue_history(
-    integration: Optional[str] = Query(
+    integration: str | None = Query(
         None, description="Filter by integration identifier"
     ),
-    scope: Optional[str] = Query(None, description="Filter by scope"),
+    scope: str | None = Query(None, description="Filter by scope"),
     hours: int = Query(24, ge=1, le=168, description="Lookback window in hours"),
     bucket_minutes: int = Query(
         60, ge=5, le=720, description="Aggregation bucket size in minutes"
@@ -424,7 +425,7 @@ async def list_integration_issue_history(
     _: Any = Depends(require_scopes("view:integrations")),
 ) -> IntegrationIssueHistoryResponse:
     issue_repo = IntegrationIssueEventRepository(db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window = timedelta(hours=hours)
     since = now - window
 
@@ -472,12 +473,12 @@ async def list_integration_issue_history(
     )
 
 
-@router.get("/status/{integration}", response_model=List[IntegrationStatus])
+@router.get("/status/{integration}", response_model=list[IntegrationStatus])
 async def get_integration_status(
     integration: str,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("view:integrations")),
-) -> List[IntegrationStatus]:
+) -> list[IntegrationStatus]:
     repo = IntegrationStateRepository(db)
     states = await repo.list_states(integration=integration)
     if not states:
@@ -494,8 +495,8 @@ async def get_integration_status(
     ]
 
 
-def _coerce_float_list(value: Any) -> List[float]:
-    samples: List[float] = []
+def _coerce_float_list(value: Any) -> list[float]:
+    samples: list[float] = []
     if isinstance(value, list):
         for item in value:
             try:
@@ -531,7 +532,7 @@ def _integration_stale_threshold(integration: str) -> int:
     return max(1, settings.operational_integration_stale_hours)
 
 
-def _build_schedule_index() -> Dict[str, Any]:
+def _build_schedule_index() -> dict[str, Any]:
     schedule_conf = getattr(celery_app.conf, "beat_schedule", {}) or {}
     return {
         str(details.get("task")): details.get("schedule")
@@ -541,8 +542,8 @@ def _build_schedule_index() -> Dict[str, Any]:
 
 
 def _compute_next_scheduled(
-    integration: str, schedule_index: Dict[str, Any]
-) -> Optional[datetime]:
+    integration: str, schedule_index: dict[str, Any]
+) -> datetime | None:
     task_name = _resolve_task_for_integration(integration, schedule_index.keys())
     if not task_name:
         return None
@@ -550,8 +551,8 @@ def _compute_next_scheduled(
     if schedule_obj is None:
         return None
 
-    now = datetime.now(timezone.utc)
-    delta: Optional[timedelta] = None
+    now = datetime.now(UTC)
+    delta: timedelta | None = None
     if isinstance(schedule_obj, (int, float)):
         delta = timedelta(seconds=float(schedule_obj))
     elif isinstance(schedule_obj, timedelta):
@@ -575,7 +576,7 @@ def _compute_next_scheduled(
 
 def _resolve_task_for_integration(
     integration: str, tasks: Iterable[str]
-) -> Optional[str]:
+) -> str | None:
     integration_key = integration.split(".")[0].lower()
     for task in tasks:
         if not isinstance(task, str):

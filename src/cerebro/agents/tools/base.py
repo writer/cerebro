@@ -8,34 +8,35 @@ This module provides the foundation for all agent tools, including:
 - Safety guardrails and approval workflows
 """
 
-from abc import ABC, abstractmethod
 import asyncio
-from collections import deque
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import os
 import time
+from abc import ABC, abstractmethod
+from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
 import anyio
 import structlog
 from pydantic import BaseModel
 
-from cerebro.rules.engine import RuleEngine
-from cerebro.agents.models import (
-    AgentSession,
-    ToolInvocation,
-    ToolInvocationStatus,
-    ToolApproval,
-    ApprovalStatus,
-)
-from cerebro.agents.review_service import AgentReviewService
 from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.metrics import record_tool_metrics
+from cerebro.agents.models import (
+    AgentSession,
+    ApprovalStatus,
+    ToolApproval,
+    ToolInvocation,
+    ToolInvocationStatus,
+)
+from cerebro.agents.review_service import AgentReviewService
 from cerebro.agents.tool_stats import performance_tracker
+from cerebro.rules.engine import RuleEngine
 
 logger = structlog.get_logger(__name__)
 
@@ -55,18 +56,18 @@ class ToolResult(BaseModel):
     """Standardized tool execution result."""
 
     success: bool
-    data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    warnings: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
+    error: str | None = None
+    warnings: list[str] | None = None
+    metadata: dict[str, Any] | None = None
 
     # Dry run preview for destructive actions
     dry_run: bool = False
-    preview: Optional[Dict[str, Any]] = None
+    preview: dict[str, Any] | None = None
 
     # Approval workflow
     requires_approval: bool = False
-    approval_id: Optional[UUID] = None
+    approval_id: UUID | None = None
 
 
 @dataclass
@@ -85,18 +86,18 @@ class AgentContext:
     agent_type: str
 
     # Security context
-    provider_scope: Optional[List[str]] = None  # aws, github, gcp, azure
-    finding_ids: Optional[List[UUID]] = None
-    incident_id: Optional[UUID] = None
-    memory_entries: Optional[List[Dict[str, Any]]] = None
+    provider_scope: list[str] | None = None  # aws, github, gcp, azure
+    finding_ids: list[UUID] | None = None
+    incident_id: UUID | None = None
+    memory_entries: list[dict[str, Any]] | None = None
 
     # Permissions and policies
     permission_level: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY
-    cel_context: Optional[Dict[str, Any]] = None
+    cel_context: dict[str, Any] | None = None
 
     # Execution controls
     dry_run: bool = True  # Default to dry-run for safety
-    roles: Optional[List[str]] = None  # User roles for RBAC
+    roles: list[str] | None = None  # User roles for RBAC
 
     def __post_init__(self):
         if self.provider_scope is None:
@@ -110,7 +111,7 @@ class AgentContext:
         if self.memory_entries is None:
             self.memory_entries = []
 
-    def build_cel_context(self, inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def build_cel_context(self, inputs: dict[str, Any] | None = None) -> dict[str, Any]:
         """Build CEL evaluation context with session and input data."""
         context = {
             "org_id": str(self.org_id),
@@ -121,7 +122,7 @@ class AgentContext:
             "provider_scope": self.provider_scope,
             "finding_count": len(self.finding_ids) if self.finding_ids else 0,
             "has_incident": self.incident_id is not None,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         # Add custom context
@@ -157,13 +158,13 @@ class Tool(ABC):
 
     @property
     @abstractmethod
-    def input_schema(self) -> Type[BaseModel]:
+    def input_schema(self) -> type[BaseModel]:
         """Pydantic model for tool input validation."""
         pass
 
     @property
     @abstractmethod
-    def output_schema(self) -> Type[BaseModel]:
+    def output_schema(self) -> type[BaseModel]:
         """Pydantic model for tool output validation."""
         pass
 
@@ -178,12 +179,12 @@ class Tool(ABC):
         return ToolPermissionLevel.READ_ONLY
 
     @property
-    def cel_policy_key(self) -> Optional[str]:
+    def cel_policy_key(self) -> str | None:
         """CEL policy key for authorization checks."""
         return None
 
     @property
-    def cel_expression(self) -> Optional[str]:
+    def cel_expression(self) -> str | None:
         """Default CEL expression for this tool."""
         return None
 
@@ -204,14 +205,14 @@ class Tool(ABC):
         """Execute the tool with given inputs and context."""
         pass
 
-    async def validate_inputs(self, raw_inputs: Dict[str, Any]) -> BaseModel:
+    async def validate_inputs(self, raw_inputs: dict[str, Any]) -> BaseModel:
         """Validate and parse tool inputs."""
         try:
             return self.input_schema(**raw_inputs)
         except Exception as e:
             raise ValueError(f"Invalid inputs for tool {self.name}: {e}")
 
-    def to_schema(self) -> Dict[str, Any]:
+    def to_schema(self) -> dict[str, Any]:
         """Convert tool to JSON schema for Claude integration."""
         return {
             "name": self.name,
@@ -239,12 +240,12 @@ class StructuredTool(Tool):
 
     tool_name: str
     tool_description: str
-    input_model: Type[BaseModel]
-    output_model: Type[BaseModel]
+    input_model: type[BaseModel]
+    output_model: type[BaseModel]
     tool_version: str = "1.0.0"
     required_permission: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY
-    tool_cel_policy_key: Optional[str] = None
-    tool_cel_expression: Optional[str] = None
+    tool_cel_policy_key: str | None = None
+    tool_cel_expression: str | None = None
 
     @property
     def name(self) -> str:
@@ -255,11 +256,11 @@ class StructuredTool(Tool):
         return self.tool_description
 
     @property
-    def input_schema(self) -> Type[BaseModel]:
+    def input_schema(self) -> type[BaseModel]:
         return self.input_model
 
     @property
-    def output_schema(self) -> Type[BaseModel]:
+    def output_schema(self) -> type[BaseModel]:
         return self.output_model
 
     @property
@@ -271,11 +272,11 @@ class StructuredTool(Tool):
         return self.required_permission
 
     @property
-    def cel_policy_key(self) -> Optional[str]:
+    def cel_policy_key(self) -> str | None:
         return self.tool_cel_policy_key
 
     @property
-    def cel_expression(self) -> Optional[str]:
+    def cel_expression(self) -> str | None:
         return self.tool_cel_expression
 
     async def execute(
@@ -296,7 +297,7 @@ class ToolRegistry:
     """Registry for managing available agent tools."""
 
     def __init__(self):
-        self._tools: Dict[str, Tool] = {}
+        self._tools: dict[str, Tool] = {}
 
     def register(self, tool: Tool) -> None:
         """Register a new tool."""
@@ -308,14 +309,14 @@ class ToolRegistry:
         self._tools[tool.name] = tool
         logger.info("Registered tool", tool_name=tool.name, version=tool.version)
 
-    def get(self, name: str) -> Optional[Tool]:
+    def get(self, name: str) -> Tool | None:
         """Get a tool by name."""
         return self._tools.get(name)
 
     def list_tools(
         self,
-        permission_level: Optional[ToolPermissionLevel] = None,
-    ) -> List[Tool]:
+        permission_level: ToolPermissionLevel | None = None,
+    ) -> list[Tool]:
         """List available tools, optionally filtered by permission level."""
         tools = list(self._tools.values())
 
@@ -336,8 +337,8 @@ class ToolRegistry:
 
     def to_schema(
         self,
-        permission_level: Optional[ToolPermissionLevel] = None,
-    ) -> List[Dict[str, Any]]:
+        permission_level: ToolPermissionLevel | None = None,
+    ) -> list[dict[str, Any]]:
         """Convert tools to JSON schema for Claude integration."""
         tools = self.list_tools(permission_level)
         return [tool.to_schema() for tool in tools]
@@ -352,9 +353,9 @@ class ToolExecutor:
     """
 
     _rate_lock: asyncio.Lock
-    _rate_buckets: Dict[str, Any]
+    _rate_buckets: dict[str, Any]
 
-    def __init__(self, rule_engine: Optional[RuleEngine] = None):
+    def __init__(self, rule_engine: RuleEngine | None = None):
         self.rule_engine = rule_engine or RuleEngine()
 
         # Process-local rate limiter (best-effort guardrail).
@@ -407,7 +408,7 @@ class ToolExecutor:
     async def execute_tool(
         self,
         tool: Tool,
-        raw_inputs: Dict[str, Any],
+        raw_inputs: dict[str, Any],
         context: AgentContext,
         dry_run: bool = False,
     ) -> ToolResult:
@@ -675,7 +676,7 @@ class ToolExecutor:
             duration = time.perf_counter() - started_at
             failure_result = await self._fail_invocation(
                 invocation,
-                f"Tool execution error: {str(e)}",
+                f"Tool execution error: {e!s}",
                 "EXECUTION_ERROR",
             )
             record_tool_metrics(
@@ -720,7 +721,7 @@ class ToolExecutor:
     async def _enforce_cel_policy(
         self,
         tool: Tool,
-        inputs: Dict[str, Any],
+        inputs: dict[str, Any],
         context: AgentContext,
         invocation: ToolInvocation,
     ) -> "CELResult":
@@ -733,8 +734,9 @@ class ToolExecutor:
 
         try:
             # Create evaluation context for rule engine
-            from cerebro.rules.engine import EvaluationContext
             from uuid import uuid4
+
+            from cerebro.rules.engine import EvaluationContext
 
             eval_context = EvaluationContext(
                 resource=cel_context,  # Pass all context as resource for now
@@ -782,13 +784,13 @@ class ToolExecutor:
             )
             return CELResult(
                 allowed=False,
-                reason=f"Policy evaluation error: {str(e)}",
+                reason=f"Policy evaluation error: {e!s}",
             )
 
     async def _create_tool_invocation(
         self,
         tool: Tool,
-        inputs: Dict[str, Any],
+        inputs: dict[str, Any],
         context: AgentContext,
     ) -> ToolInvocation:
         """Create and persist tool invocation record."""
@@ -827,7 +829,7 @@ class ToolExecutor:
             else ToolInvocationStatus.ERROR
         )
         invocation.output_data = result.model_dump()
-        invocation.completed_at = datetime.now(timezone.utc)
+        invocation.completed_at = datetime.now(UTC)
 
         await self._update_invocation(invocation)
         return result
@@ -842,7 +844,7 @@ class ToolExecutor:
         invocation.status = ToolInvocationStatus.ERROR
         invocation.error_message = error
         invocation.error_code = error_code
-        invocation.completed_at = datetime.now(timezone.utc)
+        invocation.completed_at = datetime.now(UTC)
 
         await self._update_invocation(invocation)
 
@@ -916,7 +918,7 @@ class ToolExecutor:
         tool: Tool,
         outcome: str,
         duration: float,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Send tool execution telemetry to the analytics service."""
 
@@ -975,7 +977,7 @@ class ToolExecutor:
             promotion_target=metadata.get("promotion_target"),
         )
 
-    async def _get_agent_session(self, session_id: UUID) -> Optional[AgentSession]:
+    async def _get_agent_session(self, session_id: UUID) -> AgentSession | None:
         """Fetch an :class:`AgentSession` without mutating the caller's context."""
 
         from cerebro.core.database import async_session_factory
@@ -998,8 +1000,8 @@ def tool(
     name: str,
     description: str,
     permission_level: ToolPermissionLevel = ToolPermissionLevel.READ_ONLY,
-    cel_policy_key: Optional[str] = None,
-    cel_expression: Optional[str] = None,
+    cel_policy_key: str | None = None,
+    cel_expression: str | None = None,
 ) -> Callable[[Any], Any]:
     """
     Decorator to register a function as a tool.
@@ -1014,11 +1016,11 @@ def tool(
             return await func(*args, **kwargs)
 
         # Add tool metadata to function
-        setattr(wrapper, "_tool_name", name)
-        setattr(wrapper, "_tool_description", description)
-        setattr(wrapper, "_tool_permission_level", permission_level)
-        setattr(wrapper, "_tool_cel_policy_key", cel_policy_key)
-        setattr(wrapper, "_tool_cel_expression", cel_expression)
+        wrapper._tool_name = name
+        wrapper._tool_description = description
+        wrapper._tool_permission_level = permission_level
+        wrapper._tool_cel_policy_key = cel_policy_key
+        wrapper._tool_cel_expression = cel_expression
 
         return wrapper
 

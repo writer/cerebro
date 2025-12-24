@@ -5,21 +5,21 @@ Provides REST API for OAuth app discovery, toxic combination detection,
 and quarantine management.
 """
 
-from typing import List, Optional
-from uuid import UUID
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
 import logging
+from datetime import datetime, timedelta
+from uuid import UUID
 
-from ...core.database import get_db
-from ...core.models import Organization
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...oauth_risk.registry import get_oauth_registry, AppRiskLevel
-from ...oauth_risk.toxic_combinations import get_toxic_detector
+from ...core.database import get_db
+from ...core.models import Organization
 from ...oauth_risk.quarantine import get_quarantine_manager
+from ...oauth_risk.registry import AppRiskLevel, get_oauth_registry
+from ...oauth_risk.toxic_combinations import get_toxic_detector
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class RestorationRequest(BaseModel):
     business_justification: str = Field(
         ..., description="Business justification for restoration"
     )
-    mitigation_plan: List[str] = Field(
+    mitigation_plan: list[str] = Field(
         ..., description="List of mitigation steps taken"
     )
 
@@ -49,7 +49,7 @@ class RestorationApproval(BaseModel):
     """Approval for OAuth app restoration."""
 
     restoration_id: str = Field(..., description="Restoration request ID")
-    approval_conditions: List[str] = Field(
+    approval_conditions: list[str] = Field(
         ..., description="Conditions for restoration"
     )
 
@@ -57,9 +57,9 @@ class RestorationApproval(BaseModel):
 @router.get("/organizations/{org_id}/oauth-apps")
 async def list_oauth_apps(
     org_id: UUID,
-    provider: Optional[str] = Query(None, description="Filter by provider"),
-    risk_level: Optional[str] = Query(None, description="Filter by risk level"),
-    unused_days: Optional[int] = Query(
+    provider: str | None = Query(None, description="Filter by provider"),
+    risk_level: str | None = Query(None, description="Filter by risk level"),
+    unused_days: int | None = Query(
         None, description="Filter apps unused for X days"
     ),
     without_owner: bool = Query(False, description="Filter apps without owners"),

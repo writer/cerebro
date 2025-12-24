@@ -4,19 +4,20 @@ GitHub provider table implementations.
 Exposes GitHub security resources as SQL tables.
 """
 
-from typing import AsyncGenerator, Dict, Any, Optional
-from datetime import datetime
 import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
+from typing import Any
 
-from ...query.table import ProviderSecurityTable, QueryContext
 from ...collectors.normalization import normalize_severity
 from ...query.registry import register_table
-from ...query.schema import SecurityColumn, ColumnType
+from ...query.schema import ColumnType, SecurityColumn
+from ...query.table import ProviderSecurityTable, QueryContext
 
 
 # Real GitHub API client implementation
 class GitHubClient:
-    def __init__(self, org_name: Optional[str] = None, token: Optional[str] = None):
+    def __init__(self, org_name: str | None = None, token: str | None = None):
         self.org_name = org_name
         self.token = token
         self._github = None
@@ -26,7 +27,9 @@ class GitHubClient:
         """Authenticate with GitHub API."""
         try:
             import asyncio
+
             from github import Github
+
             from cerebro.core.config import settings
 
             # Use provided credentials or fall back to settings
@@ -350,7 +353,7 @@ class GitHubRepositoryTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch repositories from GitHub API."""
         config = ctx.config or {}
         client = GitHubClient(
@@ -387,8 +390,8 @@ class GitHubRepositoryTable(ProviderSecurityTable):
             return
 
     def _parse_github_timestamp(
-        self, timestamp_str: Optional[str]
-    ) -> Optional[datetime]:
+        self, timestamp_str: str | None
+    ) -> datetime | None:
         """Parse GitHub timestamp string."""
         if not timestamp_str:
             return None
@@ -482,7 +485,7 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch vulnerability alerts from GitHub API."""
         config = ctx.config or {}
         client = GitHubClient(
@@ -522,14 +525,14 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
             logger.error(f"Error fetching GitHub vulnerability alerts: {e}")
             return
 
-    def get_repo_name(self, alert_data: Dict[str, Any]) -> str:
+    def get_repo_name(self, alert_data: dict[str, Any]) -> str:
         """Extract repository name from alert data."""
         repo = alert_data.get("repository", {})
         return repo.get("full_name", "")
 
     def _parse_github_timestamp(
-        self, timestamp_str: Optional[str]
-    ) -> Optional[datetime]:
+        self, timestamp_str: str | None
+    ) -> datetime | None:
         """Parse GitHub timestamp string."""
         if not timestamp_str:
             return None
@@ -628,7 +631,7 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch secret scanning alerts from GitHub API."""
         config = ctx.config or {}
         client = GitHubClient(
@@ -663,14 +666,14 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
             logger.error(f"Error fetching GitHub secret scanning alerts: {e}")
             return
 
-    def get_repo_name(self, alert_data: Dict[str, Any]) -> str:
+    def get_repo_name(self, alert_data: dict[str, Any]) -> str:
         """Extract repository name from alert data."""
         repo = alert_data.get("repository", {})
         return repo.get("full_name", "")
 
     def _parse_github_timestamp(
-        self, timestamp_str: Optional[str]
-    ) -> Optional[datetime]:
+        self, timestamp_str: str | None
+    ) -> datetime | None:
         """Parse GitHub timestamp string."""
         if not timestamp_str:
             return None

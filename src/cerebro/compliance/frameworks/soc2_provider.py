@@ -5,14 +5,14 @@ Implements SOC 2 Trust Services Criteria with automated evidence collection
 and validation using the pluggable framework system.
 """
 
-from typing import List, Optional, Any
+from typing import Any
 
 from ..framework_registry import (
-    FrameworkProvider,
-    FrameworkDefinition,
+    AutomationLevel,
     ControlDefinition,
     ControlType,
-    AutomationLevel,
+    FrameworkDefinition,
+    FrameworkProvider,
     TestingFrequency,
 )
 
@@ -25,11 +25,11 @@ class SOC2FrameworkProvider(FrameworkProvider):
         return "soc2"
 
     @property
-    def supported_versions(self) -> List[str]:
+    def supported_versions(self) -> list[str]:
         return ["2017", "latest"]
 
     def get_framework_definition(
-        self, version: Optional[str] = None
+        self, version: str | None = None
     ) -> FrameworkDefinition:
         """Get SOC 2 framework definition."""
         controls = self._get_soc2_controls()
@@ -78,7 +78,7 @@ class SOC2FrameworkProvider(FrameworkProvider):
             ],
         )
 
-    def _get_soc2_controls(self) -> List[ControlDefinition]:
+    def _get_soc2_controls(self) -> list[ControlDefinition]:
         """Define SOC 2 controls with evidence collection queries."""
         return [
             # CC6 - Logical and Physical Access Controls

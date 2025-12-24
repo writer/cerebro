@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -19,6 +18,8 @@ from cerebro.telemetry.schemas import (
     ArtifactPackTriggerCreate,
     ArtifactPackUpdate,
     ArtifactTaskDefinition,
+)
+from cerebro.telemetry.schemas import (
     ArtifactPackTrigger as ArtifactPackTriggerSchema,
 )
 
@@ -36,8 +37,8 @@ class PackManagementService:
         self.db = db
 
     async def list_packs(
-        self, *, org_id: Optional[UUID] = None
-    ) -> List[ArtifactPackDefinition]:
+        self, *, org_id: UUID | None = None
+    ) -> list[ArtifactPackDefinition]:
         """Return packs for an organisation (or every pack when ``org_id`` is omitted)."""
 
         stmt = (
@@ -60,7 +61,7 @@ class PackManagementService:
         return self._serialize_pack(pack)
 
     async def create_pack(
-        self, payload: ArtifactPackCreate, *, org_name: Optional[str] = None
+        self, payload: ArtifactPackCreate, *, org_name: str | None = None
     ) -> ArtifactPackDefinition:
         """Persist a new pack and eagerly build its tasks and triggers."""
         org = await self._ensure_org(org_name)
@@ -154,7 +155,7 @@ class PackManagementService:
             raise ValueError(f"Artifact pack {pack_id} not found")
         return pack
 
-    async def _ensure_org(self, org_name: Optional[str]) -> Organization:
+    async def _ensure_org(self, org_name: str | None) -> Organization:
         """Return an organisation row, lazily creating one when necessary."""
         if org_name:
             stmt = select(Organization).where(Organization.name == org_name)
@@ -174,7 +175,7 @@ class PackManagementService:
         return org
 
     async def _replace_tasks(
-        self, pack: ArtifactPack, tasks: List[ArtifactPackTaskCreate]
+        self, pack: ArtifactPack, tasks: list[ArtifactPackTaskCreate]
     ) -> None:
         """Replace the pack's task collection with freshly built ORM objects."""
         await self.db.flush()
@@ -248,7 +249,7 @@ class PackManagementService:
         )
 
     async def _replace_triggers(
-        self, pack: ArtifactPack, triggers: List[ArtifactPackTriggerCreate]
+        self, pack: ArtifactPack, triggers: list[ArtifactPackTriggerCreate]
     ) -> None:
         """Replace the trigger collection, ensuring we flush pending deletes first."""
         await self.db.flush()

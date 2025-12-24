@@ -4,8 +4,8 @@ E2E Tests: API Health and Basic Connectivity
 These tests verify that the API is running and basic endpoints work.
 """
 
-import pytest
 import httpx
+import pytest
 
 pytestmark = pytest.mark.e2e
 

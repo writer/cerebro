@@ -1,6 +1,7 @@
 """Metrics for authentication and authorization operations."""
 
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Gauge, Histogram
+
 from .collection_metrics import cerebro_registry
 
 # Login attempt metrics

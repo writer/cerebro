@@ -1,8 +1,8 @@
 """Tool invocation repository for DynamoDB."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -36,19 +36,19 @@ class ToolInvocation(BaseModel):
     org_id: UUID
     tool_name: str
     tool_version: str = "1.0"
-    input_data: Dict[str, Any]
-    output_data: Optional[Dict[str, Any]] = None
+    input_data: dict[str, Any]
+    output_data: dict[str, Any] | None = None
     status: ToolInvocationStatus = ToolInvocationStatus.PENDING
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = None
-    cel_policy_key: Optional[str] = None
-    cel_expression: Optional[str] = None
-    cel_result: Optional[bool] = None
-    cel_context: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
-    error_code: Optional[str] = None
-    celery_task_id: Optional[str] = None
-    duration_ms: Optional[int] = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+    cel_policy_key: str | None = None
+    cel_expression: str | None = None
+    cel_result: bool | None = None
+    cel_context: dict[str, Any] | None = None
+    error_message: str | None = None
+    error_code: str | None = None
+    celery_task_id: str | None = None
+    duration_ms: int | None = None
 
     class Config:
         from_attributes = True
@@ -58,7 +58,7 @@ class ToolInvocation(BaseModel):
     def invocation_id(self) -> UUID:
         return self.id
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         invocation_id = str(self.id)
         session_id = str(self.session_id)
@@ -99,7 +99,7 @@ class ToolInvocation(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ToolInvocation":
+    def from_item(cls, item: dict[str, Any]) -> "ToolInvocation":
         """Create from DynamoDB item."""
         return cls(
             id=UUID(item["id"]),
@@ -134,7 +134,7 @@ class ToolInvocationRepository:
 
     async def get(
         self, invocation_id: UUID, session_id: UUID
-    ) -> Optional[ToolInvocation]:
+    ) -> ToolInvocation | None:
         """Get tool invocation by ID.
 
         Note: Invocations use timestamp in SK, so we must scan. Consider adding
@@ -167,7 +167,7 @@ class ToolInvocationRepository:
         session_id: UUID,
         org_id: UUID,
         **updates,
-    ) -> Optional[ToolInvocation]:
+    ) -> ToolInvocation | None:
         """Update tool invocation."""
         invocation = await self.get(invocation_id, session_id)
         if not invocation:
@@ -178,9 +178,9 @@ class ToolInvocationRepository:
             ToolInvocationStatus.SUCCESS,
             ToolInvocationStatus.ERROR,
         ):
-            updates["completed_at"] = datetime.now(timezone.utc).isoformat()
+            updates["completed_at"] = datetime.now(UTC).isoformat()
             duration = (
-                datetime.now(timezone.utc) - invocation.started_at
+                datetime.now(UTC) - invocation.started_at
             ).total_seconds() * 1000
             updates["duration_ms"] = int(duration)
 
@@ -200,8 +200,8 @@ class ToolInvocationRepository:
     async def list_by_session(
         self,
         session_id: UUID,
-        limit: Optional[int] = None,
-    ) -> List[ToolInvocation]:
+        limit: int | None = None,
+    ) -> list[ToolInvocation]:
         """List tool invocations for a session."""
         items = await query(
             self._table,
@@ -216,9 +216,9 @@ class ToolInvocationRepository:
         self,
         org_id: UUID,
         tool_name: str,
-        status: Optional[ToolInvocationStatus] = None,
+        status: ToolInvocationStatus | None = None,
         limit: int = 100,
-    ) -> List[ToolInvocation]:
+    ) -> list[ToolInvocation]:
         """List tool invocations by tool name."""
         if status:
             status_val = status.value if isinstance(status, Enum) else status
@@ -245,8 +245,8 @@ class ToolInvocationRepository:
         invocation_id: UUID,
         session_id: UUID,
         org_id: UUID,
-        output_data: Dict[str, Any],
-    ) -> Optional[ToolInvocation]:
+        output_data: dict[str, Any],
+    ) -> ToolInvocation | None:
         """Mark invocation as successful."""
         return await self.update(
             invocation_id,
@@ -262,8 +262,8 @@ class ToolInvocationRepository:
         session_id: UUID,
         org_id: UUID,
         error_message: str,
-        error_code: Optional[str] = None,
-    ) -> Optional[ToolInvocation]:
+        error_code: str | None = None,
+    ) -> ToolInvocation | None:
         """Mark invocation as failed."""
         return await self.update(
             invocation_id,
@@ -274,10 +274,10 @@ class ToolInvocationRepository:
             error_code=error_code,
         )
 
-    async def get_stats_by_tool(self, org_id: UUID) -> Dict[str, Dict[str, Any]]:
+    async def get_stats_by_tool(self, org_id: UUID) -> dict[str, dict[str, Any]]:
         """Get statistics by tool name."""
         # This is expensive - would need a different access pattern for production
-        stats: Dict[str, Dict[str, Any]] = {}
+        stats: dict[str, dict[str, Any]] = {}
 
         # Query each known tool (would need to track tool names separately)
         # For now, return empty - this needs a scan or separate tracking

@@ -1,28 +1,29 @@
 """Principal management endpoints."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.api.auth import get_current_user
+from cerebro.api.schemas import PrincipalResponse
+from cerebro.api.utils import StandardFilters, get_entity_by_id_or_404, paginated_list
 from cerebro.core.database import get_db
 from cerebro.core.models import Principal
-from cerebro.api.schemas import PrincipalResponse
-from cerebro.api.auth import get_current_user
-from cerebro.api.utils import StandardFilters, get_entity_by_id_or_404, paginated_list
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
-@router.get("/", response_model=List[PrincipalResponse])
+@router.get("/", response_model=list[PrincipalResponse])
 async def list_principals(
-    principal_type: Optional[str] = Query(None, description="Filter by principal type"),
-    is_human: Optional[bool] = Query(None, description="Filter by human/non-human"),
+    principal_type: str | None = Query(None, description="Filter by principal type"),
+    is_human: bool | None = Query(None, description="Filter by human/non-human"),
     db: AsyncSession = Depends(get_db),
     filters: StandardFilters = Depends(),
 ):
     """List principals."""
-    additional_filters: Dict[str, Any] = {}
+    additional_filters: dict[str, Any] = {}
     if principal_type:
         additional_filters["principal_type"] = principal_type
     if is_human is not None:
@@ -54,7 +55,8 @@ async def get_principal_permissions(
     db: AsyncSession = Depends(get_db),
 ):
     """Get permissions for a principal."""
-    from sqlalchemy import select, and_, or_, desc
+    from sqlalchemy import and_, desc, or_, select
+
     from cerebro.core.models import IamEdge, Resource
 
     principal = await db.get(Principal, principal_id)

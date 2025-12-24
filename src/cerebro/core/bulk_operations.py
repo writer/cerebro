@@ -3,7 +3,7 @@
 import hashlib
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -25,7 +25,7 @@ class BulkOperations:
         self.db = db_session
 
     async def bulk_insert_config_snapshots(
-        self, account_id: UUID, snapshots: List[Dict[str, Any]]
+        self, account_id: UUID, snapshots: list[dict[str, Any]]
     ) -> int:
         """
         Bulk insert configuration snapshots with conflict resolution.
@@ -112,7 +112,7 @@ class BulkOperations:
 
         return total_inserted
 
-    async def bulk_insert_iam_edges(self, edges: List[Dict[str, Any]]) -> int:
+    async def bulk_insert_iam_edges(self, edges: list[dict[str, Any]]) -> int:
         """
         Bulk insert IAM edges with conflict resolution.
 
@@ -185,7 +185,7 @@ class BulkOperations:
 
     async def preload_principal_map(
         self, account_id: UUID, provider: str
-    ) -> Dict[str, UUID]:
+    ) -> dict[str, UUID]:
         """
         Preload mapping of principal external_id -> principal_id for an account.
 
@@ -199,13 +199,11 @@ class BulkOperations:
         )
 
         result = await self.db.execute(stmt)
-        return {
-            external_id: principal_id for external_id, principal_id in result.fetchall()
-        }
+        return dict(result.fetchall())
 
     async def preload_resource_map(
         self, account_id: UUID, provider: str
-    ) -> Dict[str, UUID]:
+    ) -> dict[str, UUID]:
         """
         Preload mapping of resource external_id -> resource_id for an account.
 
@@ -219,12 +217,10 @@ class BulkOperations:
         )
 
         result = await self.db.execute(stmt)
-        return {
-            external_id: resource_id for external_id, resource_id in result.fetchall()
-        }
+        return dict(result.fetchall())
 
     async def bulk_upsert_resources(
-        self, account_id: UUID, provider: str, resources: List[Dict[str, Any]]
+        self, account_id: UUID, provider: str, resources: list[dict[str, Any]]
     ) -> int:
         """
         Bulk upsert resources with conflict resolution.
@@ -257,10 +253,10 @@ class BulkOperations:
         stmt = insert(Resource).values(resources)
         stmt = stmt.on_conflict_do_update(
             index_elements=["account_id", "provider", "resource_type", "external_id"],
-            set_=dict(
-                name=stmt.excluded.name,
-                parent_external_id=stmt.excluded.parent_external_id,
-            ),
+            set_={
+                "name": stmt.excluded.name,
+                "parent_external_id": stmt.excluded.parent_external_id,
+            },
         )
 
         result = await self.db.execute(stmt)
@@ -272,7 +268,7 @@ class BulkOperations:
         return result.rowcount
 
     async def bulk_upsert_principals(
-        self, account_id: UUID, provider: str, principals: List[Dict[str, Any]]
+        self, account_id: UUID, provider: str, principals: list[dict[str, Any]]
     ) -> int:
         """
         Bulk upsert principals with conflict resolution.
@@ -308,12 +304,12 @@ class BulkOperations:
         stmt = insert(Principal).values(principals)
         stmt = stmt.on_conflict_do_update(
             index_elements=["account_id", "provider", "external_id"],
-            set_=dict(
-                principal_type=stmt.excluded.principal_type,
-                email=stmt.excluded.email,
-                display_name=stmt.excluded.display_name,
-                is_human=stmt.excluded.is_human,
-            ),
+            set_={
+                "principal_type": stmt.excluded.principal_type,
+                "email": stmt.excluded.email,
+                "display_name": stmt.excluded.display_name,
+                "is_human": stmt.excluded.is_human,
+            },
         )
 
         result = await self.db.execute(stmt)
@@ -325,7 +321,7 @@ class BulkOperations:
         return result.rowcount
 
 
-def compute_config_hash(normalized_config: Dict[str, Any]) -> bytes:
+def compute_config_hash(normalized_config: dict[str, Any]) -> bytes:
     """
     Compute SHA256 hash of normalized configuration.
 

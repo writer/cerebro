@@ -5,15 +5,15 @@ These tools provide secure access to rule management functionality, allowing age
 to test rules, create rule templates, and analyze policy effectiveness.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
 
-from cerebro.rules.engine import RuleEngine, EvaluationContext
+from cerebro.rules.engine import EvaluationContext, RuleEngine
 from cerebro.rules.exceptions import CompilationError
 
-from .base import Tool, ToolResult, AgentContext, ToolPermissionLevel
+from .base import AgentContext, Tool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -35,19 +35,19 @@ class CompileRuleOutput(BaseModel):
 
     expression: str
     compiled_successfully: bool
-    compilation_time_ms: Optional[float] = None
-    error_message: Optional[str] = None
-    suggested_fixes: List[str] = Field(default_factory=list)
+    compilation_time_ms: float | None = None
+    error_message: str | None = None
+    suggested_fixes: list[str] = Field(default_factory=list)
 
 
 class TestRuleInput(BaseModel):
     """Input for testing a rule against sample data."""
 
     expression: str = Field(description="CEL expression to test")
-    test_contexts: List[Dict[str, Any]] = Field(
+    test_contexts: list[dict[str, Any]] = Field(
         description="Sample contexts to test against"
     )
-    expected_results: Optional[List[bool]] = Field(
+    expected_results: list[bool] | None = Field(
         None, description="Expected results for validation"
     )
 
@@ -56,7 +56,7 @@ class TestRuleOutput(BaseModel):
     """Output for rule testing."""
 
     expression: str
-    test_results: List[Dict[str, Any]]
+    test_results: list[dict[str, Any]]
     success_rate: float
     total_tests: int
     passed_tests: int
@@ -112,11 +112,11 @@ class RulesTool(Tool):
             )
             return ToolResult(
                 success=False,
-                error=f"Rules operation failed: {str(e)}",
+                error=f"Rules operation failed: {e!s}",
             )
 
     async def _compile_rule(
-        self, raw_data: Dict[str, Any], context: AgentContext
+        self, raw_data: dict[str, Any], context: AgentContext
     ) -> ToolResult:
         """Compile and validate a CEL rule."""
         inputs = CompileRuleInput(**raw_data)
@@ -186,11 +186,11 @@ class RulesTool(Tool):
             logger.exception("Unexpected error during rule compilation", error=str(e))
             return ToolResult(
                 success=False,
-                error=f"Unexpected compilation error: {str(e)}",
+                error=f"Unexpected compilation error: {e!s}",
             )
 
     async def _test_rule(
-        self, raw_data: Dict[str, Any], context: AgentContext
+        self, raw_data: dict[str, Any], context: AgentContext
     ) -> ToolResult:
         """Test a rule against sample contexts."""
         inputs = TestRuleInput(**raw_data)
@@ -320,5 +320,5 @@ class RulesTool(Tool):
             logger.exception("Rule testing failed", error=str(e))
             return ToolResult(
                 success=False,
-                error=f"Rule testing error: {str(e)}",
+                error=f"Rule testing error: {e!s}",
             )

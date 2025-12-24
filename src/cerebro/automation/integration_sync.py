@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
@@ -23,30 +23,30 @@ class IntegrationIssue:
     severity: str
     message: str
     observed_at: datetime
-    last_timestamp: Optional[datetime]
-    age_seconds: Optional[float]
-    metadata: Dict[str, Any]
+    last_timestamp: datetime | None
+    age_seconds: float | None
+    metadata: dict[str, Any]
 
 
-def _normalize_timestamp(value: Optional[datetime]) -> Optional[datetime]:
+def _normalize_timestamp(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def analyze_state(
     state: IntegrationSyncState,
     now: datetime,
     stale_seconds: int,
-) -> Optional[IntegrationIssue]:
+) -> IntegrationIssue | None:
     metadata = dict(state.state_metadata or {})
     status = str(metadata.get("last_status") or "unknown").lower()
     scope = state.scope or "default"
     last_timestamp = _normalize_timestamp(state.last_timestamp)
 
-    age_seconds: Optional[float] = None
+    age_seconds: float | None = None
     if last_timestamp is not None:
         age_seconds = max((now - last_timestamp).total_seconds(), 0.0)
 
@@ -54,8 +54,8 @@ def analyze_state(
     if status == "disabled":
         return None
 
-    issue_message: Optional[str] = None
-    issue_type: Optional[str] = None
+    issue_message: str | None = None
+    issue_type: str | None = None
     severity = "warning"
 
     if status == "error":
@@ -100,7 +100,7 @@ def analyze_state(
 
 
 def should_suppress_issue(
-    metadata: Dict[str, Any],
+    metadata: dict[str, Any],
     issue: IntegrationIssue,
     now: datetime,
     cooldown_seconds: int,
@@ -118,12 +118,12 @@ def should_suppress_issue(
     except Exception:  # pragma: no cover - defensive parse
         return False
     if sent_at.tzinfo is None:
-        sent_at = sent_at.replace(tzinfo=timezone.utc)
+        sent_at = sent_at.replace(tzinfo=UTC)
 
     return (now - sent_at).total_seconds() < max(cooldown_seconds, 0)
 
 
-def _format_metadata_summary(metadata: Dict[str, Any]) -> str:
+def _format_metadata_summary(metadata: dict[str, Any]) -> str:
     summary_parts: list[str] = []
     for key in (
         "last_status_at",
@@ -150,7 +150,7 @@ def _format_metadata_summary(metadata: Dict[str, Any]) -> str:
     )
 
 
-def _format_slack_payload(issue: IntegrationIssue) -> Dict[str, Any]:
+def _format_slack_payload(issue: IntegrationIssue) -> dict[str, Any]:
     age_text = "unknown"
     if issue.age_seconds is not None:
         minutes = int(issue.age_seconds // 60)

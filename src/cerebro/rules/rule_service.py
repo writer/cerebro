@@ -1,19 +1,19 @@
 """Rule management service."""
 
-from typing import List, Optional, Dict, Any
-from uuid import UUID
 import logging
+from typing import Any
+from uuid import UUID
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
-from cerebro.core.models import Rule, Policy
+from cerebro.core.models import Policy, Rule
 from cerebro.rules.library import RuleLibrary
 
 logger = logging.getLogger(__name__)
 
 # Global rule name to ID mapping cache
-_rule_name_cache: Dict[str, UUID] = {}
+_rule_name_cache: dict[str, UUID] = {}
 
 
 class RuleService:
@@ -26,8 +26,8 @@ class RuleService:
     async def create_rule_from_template(
         self,
         template_name: str,
-        policy_id: Optional[UUID] = None,
-        org_id: Optional[UUID] = None,
+        policy_id: UUID | None = None,
+        org_id: UUID | None = None,
     ) -> Rule:
         """Create a rule from a library template."""
         # Get rule template
@@ -63,7 +63,7 @@ class RuleService:
         logger.info(f"Created rule from template: {template.name}")
         return rule
 
-    async def get_rule_by_name(self, rule_name: str) -> Optional[UUID]:
+    async def get_rule_by_name(self, rule_name: str) -> UUID | None:
         """Get rule ID by normalized name."""
         rule_name_key = self._normalize_rule_name(rule_name)
 
@@ -90,7 +90,7 @@ class RuleService:
         logger.warning(f"Rule not found for name: {rule_name}")
         return None
 
-    async def ensure_library_rules_exist(self, org_id: UUID) -> Dict[str, UUID]:
+    async def ensure_library_rules_exist(self, org_id: UUID) -> dict[str, UUID]:
         """Ensure all library rules exist in database and return name->ID mapping."""
         # Get or create default policy
         stmt = select(Policy).where(
@@ -139,9 +139,9 @@ class RuleService:
     async def get_rules_for_provider(
         self,
         provider: str,
-        resource_types: Optional[List[str]] = None,
+        resource_types: list[str] | None = None,
         active_only: bool = True,
-    ) -> List[Rule]:
+    ) -> list[Rule]:
         """Get all rules applicable to a provider."""
         stmt = select(Rule).where(Rule.provider.contains([provider]))
 
@@ -152,13 +152,13 @@ class RuleService:
             )
 
         if active_only:
-            stmt = stmt.where(Rule.is_active == True)
+            stmt = stmt.where(Rule.is_active)
 
         rules = await self.db.scalars(stmt)
         return list(rules)
 
     async def create_rule_from_producer(
-        self, producer_metadata: Dict[str, Any], policy_id: UUID, rule_expression: str
+        self, producer_metadata: dict[str, Any], policy_id: UUID, rule_expression: str
     ) -> Rule:
         """Create a rule from producer metadata."""
         rule = Rule(
@@ -192,7 +192,7 @@ class RuleService:
         """Normalize rule name for consistent lookups."""
         return name.lower().replace(" ", "_").replace(":", "").replace("-", "_")
 
-    async def sync_rules_with_producers(self, org_id: UUID) -> Dict[str, Any]:
+    async def sync_rules_with_producers(self, org_id: UUID) -> dict[str, Any]:
         """Sync database rules with registered producers."""
         from cerebro.core.interfaces import producer_registry
 

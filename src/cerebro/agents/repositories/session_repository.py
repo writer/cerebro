@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Sequence, Tuple
+from collections.abc import Iterable, Sequence
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -27,8 +27,8 @@ class AgentSessionRepository:
     async def get_session(
         self,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
-    ) -> Optional[AgentSession]:
+        org_id: UUID | None = None,
+    ) -> AgentSession | None:
         async with self._session_factory() as db_session:
             stmt = select(AgentSession).where(AgentSession.id == session_id)
             if org_id:
@@ -41,11 +41,11 @@ class AgentSessionRepository:
         self,
         *,
         org_id: UUID,
-        agent_type: Optional[AgentType] = None,
-        created_by: Optional[str] = None,
+        agent_type: AgentType | None = None,
+        created_by: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[List[AgentSession], int]:
+    ) -> tuple[list[AgentSession], int]:
         filters: Sequence = [AgentSession.org_id == org_id]
         filters = list(filters)
 
@@ -76,8 +76,8 @@ class AgentSessionRepository:
         self,
         session_id: UUID,
         *,
-        limit: Optional[int] = None,
-    ) -> List[AgentMemoryEntry]:
+        limit: int | None = None,
+    ) -> list[AgentMemoryEntry]:
         async with self._session_factory() as db_session:
             stmt = select(AgentMemoryEntry).where(
                 AgentMemoryEntry.session_id == session_id
@@ -95,7 +95,7 @@ class AgentSessionRepository:
     async def list_memory_entries_for_stats(
         self,
         session_id: UUID,
-    ) -> List[AgentMemoryEntry]:
+    ) -> list[AgentMemoryEntry]:
         return await self.list_memory_entries(session_id, limit=None)
 
     async def list_policy_suggestions(
@@ -103,7 +103,7 @@ class AgentSessionRepository:
         org_id: UUID,
         *,
         limit: int = 50,
-    ) -> List[AgentPolicySuggestion]:
+    ) -> list[AgentPolicySuggestion]:
         async with self._session_factory() as db_session:
             stmt = (
                 select(AgentPolicySuggestion)
@@ -119,8 +119,8 @@ class AgentSessionRepository:
         org_id: UUID,
         *,
         limit: int,
-        tool_name: Optional[str] = None,
-    ) -> List[Tuple[ToolInvocation, AgentSession]]:
+        tool_name: str | None = None,
+    ) -> list[tuple[ToolInvocation, AgentSession]]:
         async with self._session_factory() as db_session:
             stmt = (
                 select(ToolInvocation, AgentSession)
@@ -139,8 +139,8 @@ class AgentSessionRepository:
         self,
         session_id: UUID,
         *,
-        org_id: Optional[UUID] = None,
-    ) -> Optional[AgentSession]:
+        org_id: UUID | None = None,
+    ) -> AgentSession | None:
         async with self._session_factory() as db_session:
             stmt = (
                 select(AgentSession)

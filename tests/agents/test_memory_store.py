@@ -1,7 +1,7 @@
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import func, select, update
 
 from cerebro.agents.memory_store import AgentMemoryStore
@@ -29,7 +29,7 @@ async def org_for_memory():
         org = Organization(
             org_id=uuid4(),
             name="Memory Test Org",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         session.add(org)
         await session.commit()
@@ -84,7 +84,7 @@ async def test_memory_store_prioritizes_recent_entries(memory_session):
         older_entry, newer_entry = entries
 
         antiquated_time = (
-            older_entry.created_at or datetime.now(timezone.utc)
+            older_entry.created_at or datetime.now(UTC)
         ) - timedelta(days=10)
         await db_session.execute(
             update(AgentMemoryEntry)
@@ -99,7 +99,7 @@ async def test_memory_store_prioritizes_recent_entries(memory_session):
 
         previous_decay = newer_entry.decay_score or 1.0
         baseline_last_accessed = newer_entry.last_accessed_at or datetime.min.replace(
-            tzinfo=timezone.utc
+            tzinfo=UTC
         )
 
     snippets = await store.retrieve_relevant(

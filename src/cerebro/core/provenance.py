@@ -5,7 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, desc, or_, select
@@ -27,8 +27,8 @@ class ProvenanceRecord:
     source_api: str
     source_response_hash: str
     collector_version: str
-    raw_data: Optional[Dict[str, Any]]
-    transformations: List[str]
+    raw_data: dict[str, Any] | None
+    transformations: list[str]
 
 
 class ProvenanceTracker:
@@ -39,8 +39,8 @@ class ProvenanceTracker:
         self.db = db_session
 
     async def get_config_provenance(
-        self, resource_id: UUID, at_time: Optional[datetime] = None
-    ) -> List[ProvenanceRecord]:
+        self, resource_id: UUID, at_time: datetime | None = None
+    ) -> list[ProvenanceRecord]:
         """Get configuration provenance for a resource."""
         stmt = select(ConfigSnapshot).where(ConfigSnapshot.resource_id == resource_id)
 
@@ -70,10 +70,10 @@ class ProvenanceTracker:
     async def get_permission_history(
         self,
         principal_id: UUID,
-        resource_id: Optional[UUID] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[ProvenanceRecord]:
+        resource_id: UUID | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[ProvenanceRecord]:
         """Get permission history with full provenance."""
         stmt = select(IamEdge).where(IamEdge.principal_id == principal_id)
 
@@ -114,10 +114,10 @@ class ProvenanceTracker:
     async def get_audit_trail(
         self,
         account_id: UUID,
-        resource_external_id: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[ProvenanceRecord]:
+        resource_external_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[ProvenanceRecord]:
         """Get audit trail for forensic investigation."""
         stmt = select(AuditEvent).where(AuditEvent.account_id == account_id)
 
@@ -154,7 +154,7 @@ class ProvenanceTracker:
 
         return records
 
-    async def verify_data_integrity(self, snapshot_id: UUID) -> Dict[str, Any]:
+    async def verify_data_integrity(self, snapshot_id: UUID) -> dict[str, Any]:
         """Verify data integrity of a configuration snapshot."""
         snapshot = await self.db.get(ConfigSnapshot, snapshot_id)
         if not snapshot:
@@ -182,7 +182,7 @@ class ProvenanceTracker:
 
     async def get_temporal_diff(
         self, resource_id: UUID, time1: datetime, time2: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get configuration differences between two points in time."""
         # Get snapshots at or before each time
         stmt1 = (
@@ -268,8 +268,8 @@ class TemporalQueryEngine:
         self,
         resource_id: UUID,
         at_time: datetime,
-        permission_type: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        permission_type: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Who had access to a resource at a specific time?"""
         stmt = (
             select(IamEdge)
@@ -312,9 +312,9 @@ class TemporalQueryEngine:
         self,
         resource_id: UUID,
         config_path: str,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """When did a specific configuration value change?"""
         # This would require a more sophisticated JSONB query
         # For now, we'll get all snapshots and analyze in Python
@@ -354,7 +354,7 @@ class TemporalQueryEngine:
 
         return changes
 
-    def _get_config_value(self, config: Dict[str, Any], path: str) -> Any:
+    def _get_config_value(self, config: dict[str, Any], path: str) -> Any:
         """Get value from config using dot notation path."""
         keys = path.split(".")
         current = config

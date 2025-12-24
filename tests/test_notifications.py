@@ -23,7 +23,6 @@ from cerebro.tasks.notification_digest import (
     _generate_digest_subject,
     _group_findings_by_severity,
 )
-
 from tests.utils.time import utc_now
 
 

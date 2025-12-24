@@ -5,7 +5,7 @@ Provides structured audit logging for agent operations separate from provider au
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
@@ -17,7 +17,8 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -59,11 +60,11 @@ class AgentAuditEvent(Base):
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     actor: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     agent_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    tool_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Target resource
-    resource_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    resource_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    resource_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Timestamps
     occurred_at: Mapped[datetime] = mapped_column(
@@ -74,16 +75,16 @@ class AgentAuditEvent(Base):
     )
 
     # Detailed event data
-    event_data: Mapped[Dict[str, Any]] = mapped_column(
+    event_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
 
     # Performance tracking
-    execution_time_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    execution_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Result status
     success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 async def log_agent_event(
@@ -92,13 +93,13 @@ async def log_agent_event(
     event_type: str,
     actor: str,
     agent_type: str,
-    tool_name: Optional[str] = None,
-    resource_type: Optional[str] = None,
-    resource_id: Optional[str] = None,
-    event_data: Optional[Dict[str, Any]] = None,
-    execution_time_ms: Optional[float] = None,
+    tool_name: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    event_data: dict[str, Any] | None = None,
+    execution_time_ms: float | None = None,
     success: bool = True,
-    error_message: Optional[str] = None,
+    error_message: str | None = None,
 ) -> AgentAuditEvent:
     """
     Log an agent audit event to the database.
@@ -161,8 +162,9 @@ async def get_session_audit_trail(
     offset: int = 0,
 ) -> list[AgentAuditEvent]:
     """Get audit trail for a specific agent session."""
-    from cerebro.core.database import async_session_factory
     from sqlalchemy import select
+
+    from cerebro.core.database import async_session_factory
 
     async with async_session_factory() as session:
         query = (
@@ -179,17 +181,18 @@ async def get_session_audit_trail(
 
 async def get_org_audit_trail(
     org_id: UUID,
-    event_type: Optional[str] = None,
-    actor: Optional[str] = None,
-    resource_type: Optional[str] = None,
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
+    event_type: str | None = None,
+    actor: str | None = None,
+    resource_type: str | None = None,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[AgentAuditEvent]:
     """Get filtered audit trail for an organization."""
+    from sqlalchemy import and_, select
+
     from cerebro.core.database import async_session_factory
-    from sqlalchemy import select, and_
 
     async with async_session_factory() as session:
         conditions = [AgentAuditEvent.org_id == org_id]

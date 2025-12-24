@@ -5,10 +5,10 @@ Manages vendor onboarding, risk assessment, and ongoing monitoring.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
 from ..compliance.models import create_vendor_evidence, metadata_to_dict
 
@@ -42,7 +42,7 @@ class Vendor:
     """Vendor entity with security assessment data."""
 
     vendor_id: str
-    org_id: Optional[str]
+    org_id: str | None
     name: str
     website_url: str
     primary_contact: str
@@ -51,7 +51,7 @@ class Vendor:
     category: VendorCategory
     industry: str
     country: str
-    data_processing_locations: List[str]
+    data_processing_locations: list[str]
 
     # Risk assessment
     risk_level: VendorRiskLevel
@@ -61,31 +61,31 @@ class Vendor:
     next_review_due: datetime
 
     # Compliance
-    certifications: List[str]  # SOC2, ISO27001, etc.
-    compliance_frameworks: List[str]
-    data_processing_agreements: List[str]
+    certifications: list[str]  # SOC2, ISO27001, etc.
+    compliance_frameworks: list[str]
+    data_processing_agreements: list[str]
 
     # Security profile
     security_questionnaire_completed: bool
-    penetration_test_results: Optional[Dict[str, Any]]
-    vulnerability_disclosure_policy: Optional[str]
+    penetration_test_results: dict[str, Any] | None
+    vulnerability_disclosure_policy: str | None
     incident_response_plan: bool
 
     # Business relationship
     contract_start_date: datetime
-    contract_end_date: Optional[datetime]
-    annual_spend: Optional[float]
+    contract_end_date: datetime | None
+    annual_spend: float | None
     business_criticality: str  # "low", "medium", "high", "critical"
 
     # Data handling
-    data_types_processed: List[str]  # "PII", "PHI", "Financial", etc.
-    data_retention_period: Optional[str]
-    data_deletion_policy: Optional[str]
+    data_types_processed: list[str]  # "PII", "PHI", "Financial", etc.
+    data_retention_period: str | None
+    data_deletion_policy: str | None
 
     # Integration details
     integration_type: str  # "API", "File Transfer", "Database", etc.
-    network_access: List[str]  # IP ranges, VPN access, etc.
-    authentication_methods: List[str]
+    network_access: list[str]  # IP ranges, VPN access, etc.
+    authentication_methods: list[str]
 
     # Monitoring
     access_monitoring_enabled: bool
@@ -96,8 +96,8 @@ class Vendor:
     created_at: datetime
     updated_at: datetime
     created_by: str
-    tags: List[str]
-    metadata: Dict[str, Any]
+    tags: list[str]
+    metadata: dict[str, Any]
 
 
 class VendorRegistry:
@@ -108,7 +108,7 @@ class VendorRegistry:
     """
 
     def __init__(self):
-        self.vendors: Dict[str, Vendor] = {}
+        self.vendors: dict[str, Vendor] = {}
 
     async def register_vendor(
         self,
@@ -116,7 +116,7 @@ class VendorRegistry:
         website_url: str,
         category: VendorCategory,
         created_by: str,
-        org_id: Optional[str] = None,
+        org_id: str | None = None,
         **vendor_data,
     ) -> Vendor:
         """Register a new vendor in the system."""
@@ -340,7 +340,7 @@ class VendorRegistry:
             return "review_due_soon"
         return "active"
 
-    async def refresh_vendor_profile(self, vendor_id: str) -> Optional[Vendor]:
+    async def refresh_vendor_profile(self, vendor_id: str) -> Vendor | None:
         """Recalculate risk and metadata for a vendor."""
 
         vendor = self.vendors.get(vendor_id)
@@ -354,7 +354,7 @@ class VendorRegistry:
 
     async def get_vendors_by_risk_level(
         self, risk_level: VendorRiskLevel
-    ) -> List[Vendor]:
+    ) -> list[Vendor]:
         """Get vendors filtered by risk level."""
         return [
             vendor
@@ -362,7 +362,7 @@ class VendorRegistry:
             if vendor.risk_level == risk_level
         ]
 
-    async def get_overdue_reviews(self) -> List[Vendor]:
+    async def get_overdue_reviews(self) -> list[Vendor]:
         """Get vendors with overdue security reviews."""
         current_date = datetime.now()
         return [
@@ -371,13 +371,13 @@ class VendorRegistry:
             if vendor.next_review_due < current_date
         ]
 
-    async def get_vendors_by_category(self, category: VendorCategory) -> List[Vendor]:
+    async def get_vendors_by_category(self, category: VendorCategory) -> list[Vendor]:
         """Get vendors by category."""
         return [
             vendor for vendor in self.vendors.values() if vendor.category == category
         ]
 
-    async def get_vendors_processing_sensitive_data(self) -> List[Vendor]:
+    async def get_vendors_processing_sensitive_data(self) -> list[Vendor]:
         """Get vendors that process sensitive data types."""
         sensitive_types = ["PII", "PHI", "Financial", "Confidential"]
 
@@ -390,7 +390,7 @@ class VendorRegistry:
             )
         ]
 
-    async def generate_vendor_risk_report(self, org_id: str) -> Dict[str, Any]:
+    async def generate_vendor_risk_report(self, org_id: str) -> dict[str, Any]:
         """Generate comprehensive vendor risk report."""
         vendors = list(self.vendors.values())
 
@@ -407,7 +407,7 @@ class VendorRegistry:
         }
 
         # Category distribution
-        category_distribution: Dict[str, int] = {}
+        category_distribution: dict[str, int] = {}
         for vendor in vendors:
             category = vendor.category.value
             category_distribution[category] = category_distribution.get(category, 0) + 1

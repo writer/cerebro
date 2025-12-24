@@ -1,16 +1,17 @@
 """Metrics and time-series analytics API endpoints."""
 
-from typing import Any, Dict, List
+from typing import Any
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.analytics.time_series import MetricType, TrendAnalyzer
+from cerebro.api.auth import User, get_current_user, require_scopes
+from cerebro.api.org_access import require_org_access
 from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
-from cerebro.api.auth import get_current_user, require_scopes, User
-from cerebro.api.org_access import require_org_access
-from cerebro.analytics.time_series import TrendAnalyzer, MetricType
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -23,7 +24,7 @@ async def get_metric_trends(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get trend analysis for a specific metric."""
 
     org = await db.get(Organization, org_id)
@@ -60,7 +61,7 @@ async def get_metrics_sparklines(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, List[float]]:
+) -> dict[str, list[float]]:
     """Get sparkline data for key metrics."""
 
     org = await db.get(Organization, org_id)
@@ -95,7 +96,7 @@ async def get_card_sparkline(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get sparkline data for specific dashboard cards."""
 
     org = await db.get(Organization, org_id)

@@ -1,14 +1,13 @@
 """Identity service for principal management and identity stitching."""
 
 import logging
-from typing import List, Dict
 from uuid import UUID
 
-from cerebro.core.identity import IdentityStitcher
 from cerebro.analytics.identity_analytics import (
     IdentityAnalyzer,
     PrivilegeSprawlDetector,
 )
+from cerebro.core.identity import IdentityStitcher
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class IdentityService:
             PrivilegeSprawlDetector(db_session) if db_session else None
         )
 
-    async def stitch_identities(self, org_id: UUID) -> Dict:
+    async def stitch_identities(self, org_id: UUID) -> dict:
         """Stitch identities for an organization."""
         if not self.stitcher:
             logger.warning(
@@ -35,7 +34,7 @@ class IdentityService:
 
         try:
             # Call the actual identity stitcher
-            stitch_method = getattr(self.stitcher, "stitch_organization_identities")
+            stitch_method = self.stitcher.stitch_organization_identities
             stitching_result = await stitch_method(org_id)
 
             return {
@@ -56,7 +55,7 @@ class IdentityService:
                 "error": str(e),
             }
 
-    async def get_risky_identities(self, org_id: UUID, limit: int = 20) -> List[Dict]:
+    async def get_risky_identities(self, org_id: UUID, limit: int = 20) -> list[dict]:
         """Get identities with high risk scores using real analytics."""
         if not self.identity_analyzer:
             logger.warning(
@@ -100,7 +99,7 @@ class IdentityService:
             logger.error(f"Risk analysis failed for org {org_id}: {e}")
             return []
 
-    async def analyze_privilege_sprawl(self, org_id: UUID) -> Dict:
+    async def analyze_privilege_sprawl(self, org_id: UUID) -> dict:
         """Analyze privilege sprawl across providers using real analytics."""
         if not self.sprawl_detector:
             logger.warning(
@@ -203,7 +202,7 @@ class IdentityService:
         else:
             return "low"
 
-    def _generate_sprawl_recommendations(self, analysis) -> List[str]:
+    def _generate_sprawl_recommendations(self, analysis) -> list[str]:
         """Generate actionable recommendations for privilege sprawl reduction."""
         recommendations = []
 

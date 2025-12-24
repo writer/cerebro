@@ -3,7 +3,7 @@
 This is the DynamoDB version of the agents API.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,17 +15,16 @@ from cerebro.api.dynamodb_dependencies import (
     tool_invocation_repository,
 )
 from cerebro.core.repositories.agents import (
+    AgentMessage,
+    AgentMessageRepository,
     AgentSession,
     AgentSessionRepository,
     AgentType,
-    AgentMessage,
-    AgentMessageRepository,
     MessageRole,
     ToolInvocation,
     ToolInvocationRepository,
     ToolInvocationStatus,
 )
-
 
 # Request/Response schemas
 
@@ -39,16 +38,16 @@ class SessionCreate(BaseModel):
         pattern="^(security_analyst|incident_responder|identity_advisor|compliance_advisor|attack_path_analyst)$",
     )
     created_by: str
-    title: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None
+    title: str | None = None
+    context: dict[str, Any] | None = None
 
 
 class SessionUpdate(BaseModel):
     """Request schema for updating a session."""
 
-    title: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None
-    is_active: Optional[bool] = None
+    title: str | None = None
+    context: dict[str, Any] | None = None
+    is_active: bool | None = None
 
 
 class SessionResponse(BaseModel):
@@ -59,8 +58,8 @@ class SessionResponse(BaseModel):
     agent_type: str
     created_at: str
     created_by: str
-    title: Optional[str] = None
-    context: Dict[str, Any] = {}
+    title: str | None = None
+    context: dict[str, Any] = {}
     is_active: bool = True
 
     @classmethod
@@ -85,7 +84,7 @@ class MessageCreate(BaseModel):
     """Request schema for creating a message."""
 
     role: str = Field(..., pattern="^(user|assistant|tool|system)$")
-    content: Dict[str, Any]
+    content: dict[str, Any]
 
 
 class MessageResponse(BaseModel):
@@ -94,10 +93,10 @@ class MessageResponse(BaseModel):
     id: UUID
     session_id: UUID
     role: str
-    content: Dict[str, Any]
+    content: dict[str, Any]
     created_at: str
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
     @classmethod
     def from_entity(cls, message: AgentMessage) -> "MessageResponse":
@@ -119,13 +118,13 @@ class ToolInvocationResponse(BaseModel):
     session_id: UUID
     tool_name: str
     tool_version: str
-    input_data: Dict[str, Any]
-    output_data: Optional[Dict[str, Any]] = None
+    input_data: dict[str, Any]
+    output_data: dict[str, Any] | None = None
     status: str
     started_at: str
-    completed_at: Optional[str] = None
-    error_message: Optional[str] = None
-    duration_ms: Optional[int] = None
+    completed_at: str | None = None
+    error_message: str | None = None
+    duration_ms: int | None = None
 
     @classmethod
     def from_entity(cls, inv: ToolInvocation) -> "ToolInvocationResponse":
@@ -147,7 +146,7 @@ class ToolInvocationResponse(BaseModel):
 class SessionListResponse(BaseModel):
     """Response for listing sessions with pagination."""
 
-    sessions: List[SessionResponse]
+    sessions: list[SessionResponse]
     total: int
 
 
@@ -187,11 +186,11 @@ async def create_session(
 @router.get("/sessions/org/{org_id}", response_model=SessionListResponse)
 async def list_sessions(
     org_id: UUID,
-    agent_type: Optional[str] = Query(
+    agent_type: str | None = Query(
         None,
         pattern="^(security_analyst|incident_responder|identity_advisor|compliance_advisor|attack_path_analyst)$",
     ),
-    created_by: Optional[str] = None,
+    created_by: str | None = None,
     active_only: bool = False,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -309,15 +308,15 @@ async def create_message(
 
 
 @router.get(
-    "/sessions/{org_id}/{session_id}/messages", response_model=List[MessageResponse]
+    "/sessions/{org_id}/{session_id}/messages", response_model=list[MessageResponse]
 )
 async def list_messages(
     org_id: UUID,
     session_id: UUID,
-    limit: Optional[int] = Query(None, ge=1, le=1000),
+    limit: int | None = Query(None, ge=1, le=1000),
     session_repo: AgentSessionRepository = Depends(session_repository),
     message_repo: AgentMessageRepository = Depends(message_repository),
-) -> List[MessageResponse]:
+) -> list[MessageResponse]:
     """List messages in a session."""
     # Verify session exists
     session = await session_repo.get(session_id, org_id)
@@ -350,15 +349,15 @@ async def get_token_usage(
 
 
 @router.get(
-    "/sessions/{org_id}/{session_id}/tools", response_model=List[ToolInvocationResponse]
+    "/sessions/{org_id}/{session_id}/tools", response_model=list[ToolInvocationResponse]
 )
 async def list_tool_invocations(
     org_id: UUID,
     session_id: UUID,
-    limit: Optional[int] = Query(None, ge=1, le=1000),
+    limit: int | None = Query(None, ge=1, le=1000),
     session_repo: AgentSessionRepository = Depends(session_repository),
     tool_repo: ToolInvocationRepository = Depends(tool_invocation_repository),
-) -> List[ToolInvocationResponse]:
+) -> list[ToolInvocationResponse]:
     """List tool invocations in a session."""
     session = await session_repo.get(session_id, org_id)
     if not session:
@@ -369,17 +368,17 @@ async def list_tool_invocations(
 
 
 @router.get(
-    "/tools/org/{org_id}/{tool_name}", response_model=List[ToolInvocationResponse]
+    "/tools/org/{org_id}/{tool_name}", response_model=list[ToolInvocationResponse]
 )
 async def list_tool_invocations_by_name(
     org_id: UUID,
     tool_name: str,
-    status: Optional[str] = Query(
+    status: str | None = Query(
         None, pattern="^(pending|running|success|error|dry_run|approval_required)$"
     ),
     limit: int = Query(100, ge=1, le=1000),
     tool_repo: ToolInvocationRepository = Depends(tool_invocation_repository),
-) -> List[ToolInvocationResponse]:
+) -> list[ToolInvocationResponse]:
     """List tool invocations by tool name."""
     status_enum = ToolInvocationStatus(status) if status else None
 

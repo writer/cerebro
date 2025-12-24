@@ -1,10 +1,11 @@
 """Compliance analytics API endpoints."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.analytics.sql_dialect import (
     array_agg_ordered_expr,
@@ -12,11 +13,11 @@ from cerebro.analytics.sql_dialect import (
     get_dialect_name,
     timestamp_minus_days_expr,
 )
+from cerebro.api.auth import User, get_current_user, require_scopes
+from cerebro.api.org_access import require_org_access
 from cerebro.core.analytics_db import get_analytics_db
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
-from cerebro.api.auth import get_current_user, require_scopes, User
-from cerebro.api.org_access import require_org_access
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -27,7 +28,7 @@ async def get_severity_breakdown_chips(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get severity breakdown chips with SLA breach counts for dashboard badges."""
 
     org = await db.get(Organization, org_id)
@@ -141,13 +142,13 @@ async def get_severity_breakdown_chips(
 @router.get("/organizations/{org_id}/compliance-evidence")
 async def get_compliance_evidence_status(
     org_id: UUID,
-    framework: Optional[str] = Query(
+    framework: str | None = Query(
         None, description="Filter by compliance framework"
     ),
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get compliance evidence freshness and ownership status."""
 
     org = await db.get(Organization, org_id)
@@ -256,7 +257,7 @@ async def get_evidence_freshness_donut(
     db: AsyncSession = Depends(get_db),
     analytics_db: Any = Depends(get_analytics_db),
     current_user: User = Depends(require_org_access(require_scopes("read:findings"))),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get evidence freshness donut chart data with click-through URLs."""
 
     org = await db.get(Organization, org_id)

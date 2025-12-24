@@ -2,16 +2,16 @@
 
 import json
 import logging
-from typing import Dict, Set, Optional, Any
 from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import WebSocket, WebSocketDisconnect, Query
+from fastapi import Query, WebSocket, WebSocketDisconnect
 
 from cerebro.api.auth import TokenData
 from cerebro.core.database import async_session_factory
-from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.core.security.jwt import JWTService
+from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.metrics.auth_metrics import auth_metrics
 from cerebro.metrics.jwt_metrics import jwt_metrics
 
@@ -23,11 +23,11 @@ class ConnectionManager:
 
     def __init__(self):
         # Organization-based connection pools
-        self.org_connections: Dict[str, Set[WebSocket]] = {}
+        self.org_connections: dict[str, set[WebSocket]] = {}
         # Global connections (no org filter)
-        self.global_connections: Set[WebSocket] = set()
+        self.global_connections: set[WebSocket] = set()
 
-    async def connect(self, websocket: WebSocket, org_id: Optional[str] = None):
+    async def connect(self, websocket: WebSocket, org_id: str | None = None):
         """Accept a new WebSocket connection."""
         await websocket.accept()
 
@@ -40,7 +40,7 @@ class ConnectionManager:
             self.global_connections.add(websocket)
             logger.info("Global WebSocket connected")
 
-    def disconnect(self, websocket: WebSocket, org_id: Optional[str] = None):
+    def disconnect(self, websocket: WebSocket, org_id: str | None = None):
         """Remove a WebSocket connection."""
         if org_id and org_id in self.org_connections:
             self.org_connections[org_id].discard(websocket)
@@ -51,7 +51,7 @@ class ConnectionManager:
             self.global_connections.discard(websocket)
             logger.info("Global WebSocket disconnected")
 
-    async def send_to_org(self, org_id: str, message: Dict[str, Any]):
+    async def send_to_org(self, org_id: str, message: dict[str, Any]):
         """Send message to all connections for an organization."""
         if org_id not in self.org_connections:
             return
@@ -79,7 +79,7 @@ class ConnectionManager:
         for connection in connections_to_remove:
             self.org_connections[org_id].discard(connection)
 
-    async def send_to_all(self, message: Dict[str, Any]):
+    async def send_to_all(self, message: dict[str, Any]):
         """Send message to all connections."""
         # Add trace ID and timestamp
         message.update(
@@ -117,7 +117,7 @@ class ConnectionManager:
             for connection in connections_to_remove:
                 connections.discard(connection)
 
-    def get_connection_count(self, org_id: Optional[str] = None) -> int:
+    def get_connection_count(self, org_id: str | None = None) -> int:
         """Get number of active connections."""
         if org_id:
             return len(self.org_connections.get(org_id, set()))
@@ -132,13 +132,13 @@ class ConnectionManager:
 connection_manager = ConnectionManager()
 
 
-def _token_payload_to_data(payload: Dict[str, Any]) -> TokenData:
+def _token_payload_to_data(payload: dict[str, Any]) -> TokenData:
     username = payload.get("sub")
     scopes = payload.get("scopes", [])
     raw_org = payload.get("org_id")
     token_type = payload.get("token_type")
 
-    org_id: Optional[UUID] = None
+    org_id: UUID | None = None
     if isinstance(raw_org, str):
         try:
             org_id = UUID(raw_org)
@@ -153,7 +153,7 @@ def _token_payload_to_data(payload: Dict[str, Any]) -> TokenData:
     )
 
 
-async def authenticate_websocket_token(token: Optional[str]) -> Optional[TokenData]:
+async def authenticate_websocket_token(token: str | None) -> TokenData | None:
     """Authenticate WebSocket connection using JWT token."""
     if not token:
         return None
@@ -172,8 +172,8 @@ async def authenticate_websocket_token(token: Optional[str]) -> Optional[TokenDa
 
 async def websocket_endpoint(
     websocket: WebSocket,
-    org_id: Optional[str] = Query(None),
-    token: Optional[str] = Query(None),
+    org_id: str | None = Query(None),
+    token: str | None = Query(None),
 ):
     """WebSocket endpoint for real-time updates."""
 
@@ -237,7 +237,7 @@ async def websocket_endpoint(
 
 
 async def handle_client_message(
-    websocket: WebSocket, message: Dict[str, Any], org_id: Optional[str], username: str
+    websocket: WebSocket, message: dict[str, Any], org_id: str | None, username: str
 ):
     """Handle incoming messages from WebSocket client."""
 
@@ -268,20 +268,20 @@ class WebSocketNotifier:
     """Service for sending real-time notifications via WebSocket."""
 
     @staticmethod
-    async def notify_finding_created(org_id: str, finding_data: Dict[str, Any]):
+    async def notify_finding_created(org_id: str, finding_data: dict[str, Any]):
         """Notify of new finding creation."""
         message = {"type": "finding_created", "payload": finding_data}
         await connection_manager.send_to_org(org_id, message)
 
     @staticmethod
-    async def notify_finding_updated(org_id: str, finding_data: Dict[str, Any]):
+    async def notify_finding_updated(org_id: str, finding_data: dict[str, Any]):
         """Notify of finding update."""
         message = {"type": "finding_updated", "payload": finding_data}
         await connection_manager.send_to_org(org_id, message)
 
     @staticmethod
     async def notify_review_task_event(
-        org_id: str, event_type: str, task_data: Dict[str, Any]
+        org_id: str, event_type: str, task_data: dict[str, Any]
     ):
         """Notify clients of review task lifecycle changes."""
 
@@ -292,19 +292,19 @@ class WebSocketNotifier:
         await connection_manager.send_to_org(org_id, message)
 
     @staticmethod
-    async def notify_rule_created(org_id: str, rule_data: Dict[str, Any]):
+    async def notify_rule_created(org_id: str, rule_data: dict[str, Any]):
         """Notify of new rule creation."""
         message = {"type": "rule_created", "payload": rule_data}
         await connection_manager.send_to_org(org_id, message)
 
     @staticmethod
-    async def notify_collection_completed(org_id: str, collection_data: Dict[str, Any]):
+    async def notify_collection_completed(org_id: str, collection_data: dict[str, Any]):
         """Notify of collection completion."""
         message = {"type": "collection_completed", "payload": collection_data}
         await connection_manager.send_to_org(org_id, message)
 
     @staticmethod
-    async def notify_system_alert(alert_data: Dict[str, Any]):
+    async def notify_system_alert(alert_data: dict[str, Any]):
         """Notify all connections of system alert."""
         message = {"type": "system_alert", "payload": alert_data}
         await connection_manager.send_to_all(message)

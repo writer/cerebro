@@ -6,10 +6,11 @@ resources with severity scoring and what-if simulation capabilities.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
 import networkx as nx
 
 from .graph_model import AttackGraph, get_attack_graph
@@ -45,7 +46,7 @@ class AttackStep:
     edge_id: str
     permission: str
     privilege_level: int
-    conditions: List[str]
+    conditions: list[str]
     difficulty_score: float
     description: str
 
@@ -57,26 +58,26 @@ class AttackPath:
     path_id: str
     source_principal: str
     target_resource: str
-    steps: List[AttackStep]
+    steps: list[AttackStep]
     total_difficulty: float
     path_length: int
     severity: PathSeverity
     exploitability_score: float
     impact_score: float
-    mitigations: List[str]
-    evidence_references: List[str]
+    mitigations: list[str]
+    evidence_references: list[str]
 
 
 @dataclass
 class PathQuery:
     """Query parameters for attack path analysis."""
 
-    source_principal: Optional[str]
-    target_resource: Optional[str]
+    source_principal: str | None
+    target_resource: str | None
     max_path_length: int
     path_type: PathType
     min_privilege_level: int
-    exclude_conditions: List[str]  # Conditions to exclude from paths
+    exclude_conditions: list[str]  # Conditions to exclude from paths
 
 
 class PathAnalyzer:
@@ -91,7 +92,7 @@ class PathAnalyzer:
         self.attack_graph = attack_graph
         self.graph = attack_graph.graph
 
-    async def find_attack_paths(self, query: PathQuery) -> List[AttackPath]:
+    async def find_attack_paths(self, query: PathQuery) -> list[AttackPath]:
         """
         Find attack paths based on query parameters.
 
@@ -122,7 +123,7 @@ class PathAnalyzer:
 
         return paths
 
-    async def _find_shortest_paths(self, query: PathQuery) -> List[AttackPath]:
+    async def _find_shortest_paths(self, query: PathQuery) -> list[AttackPath]:
         """Find shortest paths between source and target."""
         paths = []
 
@@ -170,9 +171,9 @@ class PathAnalyzer:
 
         return paths
 
-    async def _find_k_step_escalation_paths(self, query: PathQuery) -> List[AttackPath]:
+    async def _find_k_step_escalation_paths(self, query: PathQuery) -> list[AttackPath]:
         """Find paths with exactly k steps for escalation analysis."""
-        paths: List[AttackPath] = []
+        paths: list[AttackPath] = []
 
         if not query.source_principal:
             return paths
@@ -229,9 +230,9 @@ class PathAnalyzer:
 
         return paths
 
-    async def _find_all_simple_paths(self, query: PathQuery) -> List[AttackPath]:
+    async def _find_all_simple_paths(self, query: PathQuery) -> list[AttackPath]:
         """Find all simple paths up to maximum length."""
-        paths: List[AttackPath] = []
+        paths: list[AttackPath] = []
 
         if not query.source_principal or not query.target_resource:
             return paths
@@ -259,9 +260,9 @@ class PathAnalyzer:
 
     async def _find_privilege_escalation_paths(
         self, query: PathQuery
-    ) -> List[AttackPath]:
+    ) -> list[AttackPath]:
         """Find paths that represent privilege escalation."""
-        paths: List[AttackPath] = []
+        paths: list[AttackPath] = []
 
         if not query.source_principal:
             return paths
@@ -291,7 +292,7 @@ class PathAnalyzer:
 
         return paths
 
-    async def _is_privilege_escalation_path(self, path: List[str]) -> bool:
+    async def _is_privilege_escalation_path(self, path: list[str]) -> bool:
         """Check if path represents privilege escalation."""
         if len(path) < 2:
             return False
@@ -317,8 +318,8 @@ class PathAnalyzer:
         return False
 
     async def _convert_to_attack_path(
-        self, path: List[str], query: PathQuery
-    ) -> Optional[AttackPath]:
+        self, path: list[str], query: PathQuery
+    ) -> AttackPath | None:
         """Convert NetworkX path to AttackPath object."""
         if len(path) < 2:
             return None
@@ -381,7 +382,7 @@ class PathAnalyzer:
             evidence_references=[],
         )
 
-    def _calculate_exploitability_score(self, steps: List[AttackStep]) -> float:
+    def _calculate_exploitability_score(self, steps: list[AttackStep]) -> float:
         """Calculate how easily exploitable this path is."""
         if not steps:
             return 0.0
@@ -436,7 +437,7 @@ class PathAnalyzer:
         else:
             return PathSeverity.LOW
 
-    def _generate_path_mitigations(self, steps: List[AttackStep]) -> List[str]:
+    def _generate_path_mitigations(self, steps: list[AttackStep]) -> list[str]:
         """Generate mitigation recommendations for attack path."""
         mitigations = []
 
@@ -447,11 +448,11 @@ class PathAnalyzer:
         has_high_privilege_step = any(step.privilege_level >= 2 for step in steps)
         has_cross_provider_step = (
             len(
-                set(
+                {
                     self.attack_graph.nodes[step.source_node].provider
                     for step in steps
                     if step.source_node in self.attack_graph.nodes
-                )
+                }
             )
             > 1
         )
@@ -499,7 +500,7 @@ class PathAnalyzer:
 
     async def simulate_principal_compromise(
         self, principal_id: str, max_steps: int = 5
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Simulate what an attacker could reach if they compromise a principal.
 
@@ -633,14 +634,14 @@ class PathAnalyzer:
             "recommended_mitigations": self._aggregate_mitigations(reachable_paths),
         }
 
-    def _aggregate_mitigations(self, paths: List[AttackPath]) -> List[str]:
+    def _aggregate_mitigations(self, paths: list[AttackPath]) -> list[str]:
         """Aggregate mitigation recommendations from multiple paths."""
         all_mitigations = []
         for path in paths:
             all_mitigations.extend(path.mitigations)
 
         # Count frequency and return top recommendations
-        mitigation_counts: Dict[str, int] = {}
+        mitigation_counts: dict[str, int] = {}
         for mitigation in all_mitigations:
             mitigation_counts[mitigation] = mitigation_counts.get(mitigation, 0) + 1
 
@@ -661,7 +662,7 @@ ATTACK_PATH_CLI_EXAMPLES = [
 
 
 # Global path analyzer cache
-_path_analyzers: Dict[str, PathAnalyzer] = {}
+_path_analyzers: dict[str, PathAnalyzer] = {}
 
 
 async def get_path_analyzer(org_id: str) -> PathAnalyzer:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence, Tuple
+from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,7 @@ async def collect_telemetry_alerts(
     rules: Sequence[AlertRule] | None = None,
     cooldown_store: AlertCooldownStore | None = None,
     db_session: AsyncSession | None = None,
-) -> tuple[Tuple[AlertResult, ...], TelemetryHealthSnapshot]:
+) -> tuple[tuple[AlertResult, ...], TelemetryHealthSnapshot]:
     """Fetch telemetry snapshot and evaluate rules, returning alerts and snapshot."""
 
     applied_rules = tuple(rules or rules_from_env())

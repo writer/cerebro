@@ -1,8 +1,8 @@
 """Account repository for DynamoDB."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -38,16 +38,16 @@ class Account(BaseModel):
     org_id: UUID
     provider: Provider
     external_id: str
-    display_name: Optional[str] = None
-    credentials_encrypted: Optional[bytes] = None
-    credentials_dek: Optional[bytes] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    display_name: str | None = None
+    credentials_encrypted: bytes | None = None
+    credentials_dek: bytes | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Config:
         from_attributes = True
         use_enum_values = True
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         account_id = str(self.account_id)
         org_id = str(self.org_id)
@@ -75,7 +75,7 @@ class Account(BaseModel):
         return item
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Account":
+    def from_item(cls, item: dict[str, Any]) -> "Account":
         """Create from DynamoDB item."""
         return cls(
             account_id=UUID(item["account_id"]),
@@ -86,7 +86,7 @@ class Account(BaseModel):
             created_at=(
                 datetime.fromisoformat(item["created_at"])
                 if item.get("created_at")
-                else datetime.now(timezone.utc)
+                else datetime.now(UTC)
             ),
         )
 
@@ -96,7 +96,7 @@ class AccountRepository:
 
     _table = TableName.CORE
 
-    async def get(self, account_id: UUID, org_id: UUID) -> Optional[Account]:
+    async def get(self, account_id: UUID, org_id: UUID) -> Account | None:
         """Get account by ID."""
         item = await get_item(
             self._table,
@@ -112,7 +112,7 @@ class AccountRepository:
 
     async def update(
         self, account_id: UUID, org_id: UUID, **updates
-    ) -> Optional[Account]:
+    ) -> Account | None:
         """Update account."""
         result = await update_item(
             self._table,
@@ -133,9 +133,9 @@ class AccountRepository:
     async def list_by_org(
         self,
         org_id: UUID,
-        provider: Optional[Provider] = None,
+        provider: Provider | None = None,
         limit: int = 100,
-    ) -> List[Account]:
+    ) -> list[Account]:
         """List accounts for an organization."""
         items = await query(
             self._table,
@@ -160,7 +160,7 @@ class AccountRepository:
         self,
         provider: Provider,
         limit: int = 100,
-    ) -> List[Account]:
+    ) -> list[Account]:
         """List accounts by provider across all orgs."""
         prov_val = provider.value if isinstance(provider, Provider) else provider
         items = await query(
@@ -176,7 +176,7 @@ class AccountRepository:
         org_id: UUID,
         provider: Provider,
         external_id: str,
-    ) -> Optional[Account]:
+    ) -> Account | None:
         """Get account by external ID."""
         accounts = await self.list_by_org(org_id, provider)
         for account in accounts:

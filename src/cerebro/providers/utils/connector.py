@@ -13,27 +13,19 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
 from concurrent.futures import Executor
 from typing import (
     Any,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    Iterable,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
     TypeVar,
 )
-
 
 T = TypeVar("T")
 E = TypeVar("E", bound=BaseException)
 
 _STOP = object()
 
-DEFAULT_RETRY_EXCEPTIONS: Tuple[Type[BaseException], ...] = (Exception,)
+DEFAULT_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (Exception,)
 
 
 def _run_next(iterator: Iterable[T]) -> Any:
@@ -50,8 +42,8 @@ async def call_async_with_retries(
     *,
     retries: int = 3,
     backoff: float = 0.5,
-    exceptions: Sequence[Type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
-    logger: Optional[logging.Logger] = None,
+    exceptions: Sequence[type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
+    logger: logging.Logger | None = None,
 ) -> T:
     """Execute an async callable with exponential backoff retries."""
 
@@ -80,10 +72,10 @@ async def call_sync_with_retries(
     *,
     retries: int = 3,
     backoff: float = 0.5,
-    exceptions: Sequence[Type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
-    logger: Optional[logging.Logger] = None,
-    loop: Optional[asyncio.AbstractEventLoop] = None,
-    executor: Optional[Executor] = None,
+    exceptions: Sequence[type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
+    logger: logging.Logger | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+    executor: Executor | None = None,
 ) -> T:
     """Run a blocking callable in the default executor with retries."""
 
@@ -115,10 +107,10 @@ async def iterate_sync_iterator(
     *,
     retries: int = 3,
     backoff: float = 0.5,
-    exceptions: Sequence[Type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
-    logger: Optional[logging.Logger] = None,
-    loop: Optional[asyncio.AbstractEventLoop] = None,
-    executor: Optional[Executor] = None,
+    exceptions: Sequence[type[BaseException]] = DEFAULT_RETRY_EXCEPTIONS,
+    logger: logging.Logger | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+    executor: Executor | None = None,
 ) -> AsyncIterator[T]:
     """Iterate over a synchronous iterator with retries and executor dispatch."""
 

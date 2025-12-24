@@ -8,12 +8,12 @@ Provides intelligent remediation suggestions based on:
 - Historical remediation patterns
 """
 
-from typing import List, Optional
 from uuid import UUID
+
+import structlog
 from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
-import structlog
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -21,13 +21,13 @@ logger = structlog.get_logger(__name__)
 class RemediationInput(BaseModel):
     """Input parameters for remediation suggestions."""
 
-    finding_id: Optional[UUID] = Field(
+    finding_id: UUID | None = Field(
         None, description="Specific finding ID to get remediation for"
     )
-    resource_type: Optional[str] = Field(
+    resource_type: str | None = Field(
         None, description="Resource type to get general remediations for"
     )
-    severity: Optional[str] = Field(
+    severity: str | None = Field(
         None, description="Filter by severity: critical, high, medium, low"
     )
     limit: int = Field(
@@ -41,13 +41,13 @@ class RemediationSuggestion(BaseModel):
     priority: int = Field(..., description="Priority (1=highest)")
     title: str = Field(..., description="Short title")
     description: str = Field(..., description="Detailed description")
-    steps: List[str] = Field(..., description="Step-by-step remediation steps")
+    steps: list[str] = Field(..., description="Step-by-step remediation steps")
     automation_available: bool = Field(..., description="Can this be automated?")
     estimated_effort: str = Field(
         ..., description="Estimated effort (minutes/hours/days)"
     )
     impact: str = Field(..., description="Impact of implementing this remediation")
-    references: List[str] = Field(default_factory=list, description="Reference links")
+    references: list[str] = Field(default_factory=list, description="Reference links")
 
 
 class RemediationTool(StructuredTool):
@@ -68,9 +68,9 @@ class RemediationTool(StructuredTool):
     async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
-        finding_id: Optional[UUID] = None,
-        resource_type: Optional[str] = None,
-        severity: Optional[str] = None,
+        finding_id: UUID | None = None,
+        resource_type: str | None = None,
+        severity: str | None = None,
         limit: int = 5,
     ) -> ToolResult:
         """
@@ -125,19 +125,20 @@ class RemediationTool(StructuredTool):
             )
             return ToolResult(
                 success=False,
-                error=f"Remediation suggestion failed: {str(e)}",
+                error=f"Remediation suggestion failed: {e!s}",
             )
 
     async def _remediate_finding(
         self,
         context: AgentContext,
         finding_id: UUID,
-    ) -> List[RemediationSuggestion]:
+    ) -> list[RemediationSuggestion]:
         """Get remediation for a specific finding."""
-        from cerebro.core.database import async_session_factory
-        from cerebro.core.models import Finding
         from sqlalchemy import select
         from sqlalchemy.orm import joinedload
+
+        from cerebro.core.database import async_session_factory
+        from cerebro.core.models import Finding
 
         async with async_session_factory() as db:
             # Get finding with related data
@@ -162,9 +163,9 @@ class RemediationTool(StructuredTool):
         self,
         context: AgentContext,
         resource_type: str,
-        severity: Optional[str],
+        severity: str | None,
         limit: int,
-    ) -> List[RemediationSuggestion]:
+    ) -> list[RemediationSuggestion]:
         """Get general remediations for a resource type."""
         # Return generic best practices for the resource type
         suggestions = self._get_best_practices(resource_type)
@@ -179,13 +180,14 @@ class RemediationTool(StructuredTool):
     async def _remediate_top_issues(
         self,
         context: AgentContext,
-        severity: Optional[str],
+        severity: str | None,
         limit: int,
-    ) -> List[RemediationSuggestion]:
+    ) -> list[RemediationSuggestion]:
         """Get remediations for top issues in the organization."""
+        from sqlalchemy import func, select
+
         from cerebro.core.database import async_session_factory
         from cerebro.core.models import Finding
-        from sqlalchemy import select, func
 
         async with async_session_factory() as db:
             # Get most common finding types
@@ -216,7 +218,7 @@ class RemediationTool(StructuredTool):
     def _generate_suggestions_for_finding(
         self,
         finding,
-    ) -> List[RemediationSuggestion]:
+    ) -> list[RemediationSuggestion]:
         """Generate specific remediation suggestions for a finding."""
         suggestions = []
 
@@ -322,7 +324,7 @@ class RemediationTool(StructuredTool):
         else:
             return "generic"
 
-    def _get_best_practices(self, resource_type: str) -> List[RemediationSuggestion]:
+    def _get_best_practices(self, resource_type: str) -> list[RemediationSuggestion]:
         """Get best practice remediations for a resource type."""
         practices = {
             "s3_bucket": [
@@ -388,7 +390,7 @@ class RemediationTool(StructuredTool):
         self,
         rule_id: UUID,
         occurrence_count: int,
-    ) -> Optional[RemediationSuggestion]:
+    ) -> RemediationSuggestion | None:
         """Generate a generic suggestion for a common issue."""
         return RemediationSuggestion(
             priority=1,

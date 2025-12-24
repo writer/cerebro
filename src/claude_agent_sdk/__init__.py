@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -11,10 +12,10 @@ class ClaudeAgentOptions:
     model: str = "claude-stub"
     temperature: float = 0.2
     max_tokens: int = 2048
-    system_prompt: Optional[str] = None
-    mcp_servers: Dict[str, Any] = field(default_factory=dict)
-    allowed_tools: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    system_prompt: str | None = None
+    mcp_servers: dict[str, Any] = field(default_factory=dict)
+    allowed_tools: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class _StubMCPServer(dict):
@@ -31,13 +32,13 @@ class ClaudeSDKClient:
     def __init__(
         self,
         api_key: str | None = None,
-        options: Optional[ClaudeAgentOptions] = None,
+        options: ClaudeAgentOptions | None = None,
         **kwargs: Any,
     ):  # pragma: no cover
         self.api_key = api_key
         self.options = options or ClaudeAgentOptions()
         self.kwargs = kwargs
-        self._messages: List[str] = []
+        self._messages: list[str] = []
 
     async def __aenter__(self):  # pragma: no cover
         return self
@@ -61,7 +62,7 @@ class ClaudeSDKClient:
 
     async def create_session(
         self, options: ClaudeAgentOptions, **kwargs: Any
-    ) -> Dict[str, Any]:  # pragma: no cover
+    ) -> dict[str, Any]:  # pragma: no cover
         return {
             "session_id": "stub-session",
             "options": options,
@@ -69,7 +70,7 @@ class ClaudeSDKClient:
         }
 
 
-def tool(name: str, description: str, input_schema: Dict[str, Any]):
+def tool(name: str, description: str, input_schema: dict[str, Any]):
     """Decorator factory mimicking the SDK's tool decorator."""
 
     def decorator(func):
@@ -83,14 +84,14 @@ def tool(name: str, description: str, input_schema: Dict[str, Any]):
     return decorator
 
 
-def create_sdk_mcp_server(name: str, version: str, tools: List[Any]) -> _StubMCPServer:
+def create_sdk_mcp_server(name: str, version: str, tools: list[Any]) -> _StubMCPServer:
     return _StubMCPServer(name=name, version=version, tools=tools)
 
 
 __all__ = [
+    "CLINotFoundError",
     "ClaudeAgentOptions",
     "ClaudeSDKClient",
-    "CLINotFoundError",
-    "tool",
     "create_sdk_mcp_server",
+    "tool",
 ]

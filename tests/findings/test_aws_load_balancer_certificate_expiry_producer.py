@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from cerebro.domain.entities import ConfigEntity, ResourceEntity, Severity
 from cerebro.findings.producers.aws.load_balancer_certificate_expiry import (
@@ -20,9 +20,9 @@ def _make_resource(lb_arn: str) -> ResourceEntity:
 
 
 def _make_cert(days_until_expiry: int) -> dict[str, str | None]:
-    expiry = datetime.now(timezone.utc) + timedelta(
+    expiry = datetime.now(UTC) + timedelta(
         days=days_until_expiry
-    )  # noqa: UP017
+    )
     return {
         "certificateArn": "arn:aws:acm:cert/example",
         "isDefault": True,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,13 +17,12 @@ from cerebro.telemetry.schemas import (
     ArtifactPackUpdate,
 )
 
-
 router = APIRouter(prefix="/packs", tags=["packs"])
 
 
 @router.get("/", response_model=list[ArtifactPackDefinition])
 async def list_packs(
-    org_id: Optional[UUID] = Query(None, description="Filter packs by organization id"),
+    org_id: UUID | None = Query(None, description="Filter packs by organization id"),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("manage:packs")),
 ):
@@ -34,7 +33,7 @@ async def list_packs(
 @router.post("/", response_model=ArtifactPackDefinition, status_code=201)
 async def create_pack(
     payload: ArtifactPackCreate,
-    org_name: Optional[str] = Query(
+    org_name: str | None = Query(
         None, description="Organization name for new pack ownership"
     ),
     db: AsyncSession = Depends(get_db),

@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import structlog
 
 _configured = False
 
 
-def configure_structlog(level: Optional[int] = None) -> None:
+def configure_structlog(level: int | None = None) -> None:
     """Configure structlog for application-wide logging.
 
     Parameters

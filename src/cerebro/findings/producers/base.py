@@ -8,7 +8,7 @@ import json
 import logging
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any, Union
 from uuid import UUID
 
@@ -146,8 +146,8 @@ class BaseFindingProducer(abc.ABC):
             ),
             severity=severity or self.severity,
             evidence=evidence_dict,
-            first_seen=datetime.now(timezone.utc),
-            last_seen=datetime.now(timezone.utc),
+            first_seen=datetime.now(UTC),
+            last_seen=datetime.now(UTC),
         )
 
         # Generate fingerprint based on rule and resource

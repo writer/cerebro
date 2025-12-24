@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, text
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import IdentityRemediationAction
 
+from .orientation import generate_orientation_summary
 from .sql_dialect import (
     array_has_elements_expr,
     get_dialect_name,
@@ -19,9 +21,6 @@ from .sql_dialect import (
     select_array_elements_subquery,
     timestamp_minus_days_expr,
 )
-
-from .orientation import generate_orientation_summary
-
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +203,7 @@ class DashboardRepository:
 
     async def get_compliance_by_framework(
         self, org_id: UUID
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Return compliance counts grouped by framework."""
 
         dialect = get_dialect_name(self._db)
@@ -271,7 +270,7 @@ class DashboardRepository:
 
         result = await self._db.execute(frameworks_query, {"org_id": org_id})
 
-        framework_compliance: Dict[str, Dict[str, Any]] = {}
+        framework_compliance: dict[str, dict[str, Any]] = {}
         for row in result.fetchall():
             total = row.total_controls or 0
             compliant = row.compliant_controls or 0
@@ -293,7 +292,7 @@ class DashboardRepository:
 
     async def get_remediation_actions(
         self, org_id: UUID
-    ) -> List[IdentityRemediationAction]:
+    ) -> list[IdentityRemediationAction]:
         statement = (
             select(IdentityRemediationAction)
             .where(IdentityRemediationAction.org_id == org_id)
@@ -313,8 +312,8 @@ class DashboardRepository:
         summary: str,
         recommended_action: str,
         priority: str,
-        evidence: List[str],
-        initiated_by: Optional[UUID] = None,
+        evidence: list[str],
+        initiated_by: UUID | None = None,
     ) -> IdentityRemediationAction:
         statement = select(IdentityRemediationAction).where(
             IdentityRemediationAction.org_id == org_id,
@@ -369,8 +368,8 @@ class DashboardRepository:
         action_id: UUID,
         status: str,
         user_id: UUID,
-        note: Optional[str] = None,
-        user_display_name: Optional[str] = None,
+        note: str | None = None,
+        user_display_name: str | None = None,
     ) -> IdentityRemediationAction:
         action = await self._db.get(IdentityRemediationAction, action_id)
         if action is None or action.org_id != org_id:
@@ -392,9 +391,7 @@ class DashboardRepository:
         action.updated_by = user_id
 
         if note:
-            action.notes = list(action.notes or []) + [
-                self._build_note_entry(user_id, note, user_display_name, now)
-            ]
+            action.notes = [*list(action.notes or []), self._build_note_entry(user_id, note, user_display_name, now)]
 
         await self._db.flush()
         return action
@@ -405,14 +402,14 @@ class DashboardRepository:
         action_ids: Sequence[UUID],
         status: str,
         user_id: UUID,
-        note: Optional[str] = None,
-        user_display_name: Optional[str] = None,
-    ) -> List[IdentityRemediationAction]:
+        note: str | None = None,
+        user_display_name: str | None = None,
+    ) -> list[IdentityRemediationAction]:
         if not action_ids:
             raise ValueError("No remediation actions supplied")
 
-        unique_ids: List[UUID] = []
-        seen: Set[UUID] = set()
+        unique_ids: list[UUID] = []
+        seen: set[UUID] = set()
         for action_id in action_ids:
             if action_id not in seen:
                 unique_ids.append(action_id)
@@ -433,7 +430,7 @@ class DashboardRepository:
             raise ValueError("Remediation action not found")
 
         now = datetime.utcnow()
-        updated: List[IdentityRemediationAction] = []
+        updated: list[IdentityRemediationAction] = []
         for action_id in unique_ids:
             action = action_lookup[action_id]
             if status == "accepted":
@@ -450,9 +447,7 @@ class DashboardRepository:
                 raise ValueError("Invalid remediation status")
 
             if note:
-                action.notes = list(action.notes or []) + [
-                    self._build_note_entry(user_id, note, user_display_name, now)
-                ]
+                action.notes = [*list(action.notes or []), self._build_note_entry(user_id, note, user_display_name, now)]
 
             action.updated_at = now
             action.updated_by = user_id
@@ -475,16 +470,14 @@ class DashboardRepository:
         action_id: UUID,
         user_id: UUID,
         note: str,
-        user_display_name: Optional[str] = None,
+        user_display_name: str | None = None,
     ) -> IdentityRemediationAction:
         action = await self._db.get(IdentityRemediationAction, action_id)
         if action is None or action.org_id != org_id:
             raise ValueError("Remediation action not found")
 
         now = datetime.utcnow()
-        action.notes = list(action.notes or []) + [
-            self._build_note_entry(user_id, note, user_display_name, now)
-        ]
+        action.notes = [*list(action.notes or []), self._build_note_entry(user_id, note, user_display_name, now)]
         action.updated_at = now
         action.updated_by = user_id
         await self._db.flush()
@@ -493,7 +486,7 @@ class DashboardRepository:
     @staticmethod
     def serialize_remediation_action(
         action: IdentityRemediationAction,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return {
             "action_id": str(action.action_id),
             "principal_id": str(action.principal_id),
@@ -519,7 +512,7 @@ class DashboardRepository:
     @staticmethod
     def serialize_remediation_actions(
         actions: Sequence[IdentityRemediationAction],
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         return [
             DashboardRepository.serialize_remediation_action(action)
             for action in actions
@@ -529,9 +522,9 @@ class DashboardRepository:
     def _build_note_entry(
         user_id: UUID,
         note: str,
-        user_display_name: Optional[str],
+        user_display_name: str | None,
         timestamp: datetime,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return {
             "note_id": str(uuid4()),
             "author_id": str(user_id),
@@ -542,7 +535,7 @@ class DashboardRepository:
 
     async def get_findings_by_provider(
         self, org_id: UUID, provider: str, limit: int = 25
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Return detailed findings for a given provider."""
 
         provider_query = text(
@@ -578,7 +571,7 @@ class DashboardRepository:
             {"org_id": org_id, "provider": provider, "limit": limit},
         )
 
-        findings: List[Dict[str, Any]] = []
+        findings: list[dict[str, Any]] = []
         for row in result.fetchall():
             findings.append(
                 {
@@ -599,7 +592,7 @@ class DashboardRepository:
 
     async def get_findings_breakdown_by_provider(
         self, org_id: UUID
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Aggregate findings by provider with severity and SLA context."""
 
         dialect = get_dialect_name(self._db)
@@ -647,7 +640,7 @@ class DashboardRepository:
 
         result = await self._db.execute(provider_query, {"org_id": org_id})
 
-        breakdown: List[Dict[str, Any]] = []
+        breakdown: list[dict[str, Any]] = []
         for row in result.fetchall():
             breakdown.append(
                 {

@@ -1,15 +1,19 @@
 """Plugin ecosystem for extensible providers and rules."""
 
-from .manager import PluginManager
+from .decorators import (  # type: ignore[import-untyped]
+    plugin,
+    provider_plugin,
+    rule_plugin,
+)
 from .loader import PluginLoader  # type: ignore[import-untyped]
+from .manager import PluginManager
 from .registry import plugin_registry  # type: ignore[import-untyped]
-from .decorators import plugin, provider_plugin, rule_plugin  # type: ignore[import-untyped]
 
 __all__ = [
-    "PluginManager",
     "PluginLoader",
-    "plugin_registry",
+    "PluginManager",
     "plugin",
+    "plugin_registry",
     "provider_plugin",
     "rule_plugin",
 ]

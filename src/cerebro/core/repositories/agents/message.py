@@ -1,8 +1,8 @@
 """Agent message repository for DynamoDB."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -33,10 +33,10 @@ class AgentMessage(BaseModel):
     session_id: UUID
     org_id: UUID
     role: MessageRole
-    content: Dict[str, Any]
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
+    content: dict[str, Any]
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
     class Config:
         from_attributes = True
@@ -46,7 +46,7 @@ class AgentMessage(BaseModel):
     def message_id(self) -> UUID:
         return self.id
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         message_id = str(self.id)
         session_id = str(self.session_id)
@@ -72,7 +72,7 @@ class AgentMessage(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "AgentMessage":
+    def from_item(cls, item: dict[str, Any]) -> "AgentMessage":
         """Create from DynamoDB item."""
         return cls(
             id=UUID(item["id"]),
@@ -91,7 +91,7 @@ class AgentMessageRepository:
 
     _table = TableName.AGENTS
 
-    async def get(self, message_id: UUID, session_id: UUID) -> Optional[AgentMessage]:
+    async def get(self, message_id: UUID, session_id: UUID) -> AgentMessage | None:
         """Get message by ID.
 
         Note: Messages use timestamp in SK, so we must scan. Consider adding
@@ -121,9 +121,9 @@ class AgentMessageRepository:
     async def list_by_session(
         self,
         session_id: UUID,
-        limit: Optional[int] = None,
-        after: Optional[datetime] = None,
-    ) -> List[AgentMessage]:
+        limit: int | None = None,
+        after: datetime | None = None,
+    ) -> list[AgentMessage]:
         """List messages for a session in chronological order."""
         if after:
             items = await query(
@@ -147,8 +147,8 @@ class AgentMessageRepository:
     async def list_by_session_desc(
         self,
         session_id: UUID,
-        limit: Optional[int] = None,
-    ) -> List[AgentMessage]:
+        limit: int | None = None,
+    ) -> list[AgentMessage]:
         """List messages for a session in reverse chronological order."""
         items = await query(
             self._table,
@@ -163,7 +163,7 @@ class AgentMessageRepository:
         self,
         session_id: UUID,
         n: int,
-    ) -> List[AgentMessage]:
+    ) -> list[AgentMessage]:
         """Get last N messages for a session."""
         messages = await self.list_by_session_desc(session_id, limit=n)
         return list(reversed(messages))
@@ -185,7 +185,7 @@ class AgentMessageRepository:
                 break
         return count
 
-    async def get_token_usage(self, session_id: UUID) -> Dict[str, int]:
+    async def get_token_usage(self, session_id: UUID) -> dict[str, int]:
         """Get total token usage for a session using pagination."""
         input_tokens = 0
         output_tokens = 0
@@ -209,7 +209,7 @@ class AgentMessageRepository:
             "total_tokens": input_tokens + output_tokens,
         }
 
-    async def bulk_create(self, messages: List[AgentMessage]) -> int:
+    async def bulk_create(self, messages: list[AgentMessage]) -> int:
         """Bulk create messages."""
         items = [m.to_item() for m in messages]
         await batch_write(self._table, put_items=items)

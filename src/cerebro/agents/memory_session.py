@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any
 
 from agents.items import TResponseInputItem
 from agents.memory import Session
@@ -37,7 +37,7 @@ class OpenAIAgentConversationSession(Session):
                 )
             cls._tables_ready = True
 
-    async def get_items(self, limit: int | None = None) -> List[TResponseInputItem]:
+    async def get_items(self, limit: int | None = None) -> list[TResponseInputItem]:
         await self._ensure_table()
         async with async_session_factory() as db_session:
             stmt = (
@@ -54,14 +54,14 @@ class OpenAIAgentConversationSession(Session):
                 )
 
             result = await db_session.execute(stmt)
-            rows: List[Dict[str, Any]] = [row[0] for row in result.all()]
+            rows: list[dict[str, Any]] = [row[0] for row in result.all()]
 
             if limit is not None:
                 rows.reverse()
 
             return [self._to_input_item(row) for row in rows]
 
-    async def add_items(self, items: List[TResponseInputItem]) -> None:
+    async def add_items(self, items: list[TResponseInputItem]) -> None:
         if not items:
             return
 
@@ -108,7 +108,7 @@ class OpenAIAgentConversationSession(Session):
                 )
 
     @staticmethod
-    def _normalize_item(item: TResponseInputItem) -> Dict[str, Any]:
+    def _normalize_item(item: TResponseInputItem) -> dict[str, Any]:
         if hasattr(item, "model_dump"):
             return item.model_dump(exclude_unset=True)  # type: ignore[union-attr,return-value]
         if isinstance(item, dict):
@@ -116,7 +116,7 @@ class OpenAIAgentConversationSession(Session):
         return {"value": item}
 
     @staticmethod
-    def _to_input_item(payload: Dict[str, Any]) -> TResponseInputItem:
+    def _to_input_item(payload: dict[str, Any]) -> TResponseInputItem:
         if "value" in payload and len(payload) == 1:
             return payload["value"]  # type: ignore[return-value]
         return payload  # type: ignore[return-value]

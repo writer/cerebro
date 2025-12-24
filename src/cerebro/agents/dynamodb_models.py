@@ -22,9 +22,9 @@ GSI2 (by status):
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -103,12 +103,12 @@ class DynamoDBAgentModel(BaseModel):
         populate_by_name = True
         use_enum_values = True
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         """Convert model to DynamoDB item format with keys."""
         raise NotImplementedError("Subclasses must implement to_dynamodb_item")
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "DynamoDBAgentModel":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> DynamoDBAgentModel:
         """Create model instance from DynamoDB item."""
         raise NotImplementedError("Subclasses must implement from_dynamodb_item")
 
@@ -127,10 +127,10 @@ class AgentSession(DynamoDBAgentModel):
     id: UUID = Field(default_factory=uuid4)
     org_id: UUID
     agent_type: AgentType
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_by: str
-    title: Optional[str] = None
-    context: Dict[str, Any] = Field(default_factory=dict)
+    title: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
 
     @property
@@ -143,7 +143,7 @@ class AgentSession(DynamoDBAgentModel):
     def get_sk(self) -> str:
         return build_sk(AgentEntityType.SESSION.value, self.id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         agent_type_val = (
             self.agent_type.value
             if isinstance(self.agent_type, Enum)
@@ -171,7 +171,7 @@ class AgentSession(DynamoDBAgentModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "AgentSession":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> AgentSession:
         return cls(
             id=UUID(item["id"]),
             org_id=UUID(item["org_id"]),
@@ -191,10 +191,10 @@ class AgentMessage(DynamoDBAgentModel):
     session_id: UUID
     org_id: UUID
     role: MessageRole
-    content: Dict[str, Any]
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
+    content: dict[str, Any]
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
     @property
     def message_id(self) -> UUID:
@@ -206,7 +206,7 @@ class AgentMessage(DynamoDBAgentModel):
     def get_sk(self) -> str:
         return f"MESSAGE#{self.created_at.isoformat()}#{self.id}"
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         role_val = self.role.value if isinstance(self.role, Enum) else self.role
 
         return {
@@ -227,7 +227,7 @@ class AgentMessage(DynamoDBAgentModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "AgentMessage":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> AgentMessage:
         return cls(
             id=UUID(item["id"]),
             session_id=UUID(item["session_id"]),
@@ -248,18 +248,18 @@ class ToolInvocation(DynamoDBAgentModel):
     org_id: UUID
     tool_name: str
     tool_version: str = "1.0"
-    input_data: Dict[str, Any]
-    output_data: Optional[Dict[str, Any]] = None
+    input_data: dict[str, Any]
+    output_data: dict[str, Any] | None = None
     status: ToolInvocationStatus = ToolInvocationStatus.PENDING
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = None
-    cel_policy_key: Optional[str] = None
-    cel_expression: Optional[str] = None
-    cel_result: Optional[bool] = None
-    cel_context: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
-    error_code: Optional[str] = None
-    celery_task_id: Optional[str] = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+    cel_policy_key: str | None = None
+    cel_expression: str | None = None
+    cel_result: bool | None = None
+    cel_context: dict[str, Any] | None = None
+    error_message: str | None = None
+    error_code: str | None = None
+    celery_task_id: str | None = None
 
     @property
     def invocation_id(self) -> UUID:
@@ -271,7 +271,7 @@ class ToolInvocation(DynamoDBAgentModel):
     def get_sk(self) -> str:
         return f"TOOL#{self.started_at.isoformat()}#{self.id}"
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         status_val = self.status.value if isinstance(self.status, Enum) else self.status
 
         return {
@@ -306,7 +306,7 @@ class ToolInvocation(DynamoDBAgentModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "ToolInvocation":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> ToolInvocation:
         return cls(
             id=UUID(item["id"]),
             session_id=UUID(item["session_id"]),
@@ -340,14 +340,14 @@ class ToolApproval(DynamoDBAgentModel):
     tool_invocation_id: UUID
     session_id: UUID
     requested_by: str
-    requested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    requested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     reason: str
-    risk_assessment: Dict[str, Any]
+    risk_assessment: dict[str, Any]
     status: ApprovalStatus = ApprovalStatus.PENDING
-    decided_by: Optional[str] = None
-    decided_at: Optional[datetime] = None
-    decision_reason: Optional[str] = None
-    expires_at: Optional[datetime] = None
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    decision_reason: str | None = None
+    expires_at: datetime | None = None
 
     def get_pk(self) -> str:
         return build_pk("ORG", self.org_id)
@@ -355,7 +355,7 @@ class ToolApproval(DynamoDBAgentModel):
     def get_sk(self) -> str:
         return build_sk(AgentEntityType.TOOL_APPROVAL.value, self.id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         status_val = self.status.value if isinstance(self.status, Enum) else self.status
 
         return {
@@ -384,7 +384,7 @@ class ToolApproval(DynamoDBAgentModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "ToolApproval":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> ToolApproval:
         return cls(
             id=UUID(item["id"]),
             org_id=UUID(item["org_id"]),
@@ -416,26 +416,26 @@ class AgentReviewTask(DynamoDBAgentModel):
     id: UUID = Field(default_factory=uuid4)
     org_id: UUID
     session_id: UUID
-    message_id: Optional[UUID] = None
-    tool_invocation_id: Optional[UUID] = None
+    message_id: UUID | None = None
+    tool_invocation_id: UUID | None = None
     title: str
-    summary: Optional[str] = None
-    payload: Dict[str, Any] = Field(default_factory=dict)
-    priority: Optional[str] = None
-    due_at: Optional[datetime] = None
-    escalated_to: Optional[str] = None
-    notification_channel: Optional[str] = None
-    ticket_reference: Optional[str] = None
+    summary: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    priority: str | None = None
+    due_at: datetime | None = None
+    escalated_to: str | None = None
+    notification_channel: str | None = None
+    ticket_reference: str | None = None
     status: ReviewTaskStatus = ReviewTaskStatus.PENDING
     created_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    promotion_target: Optional[str] = None
-    resolution_notes: Optional[str] = None
-    resolved_by: Optional[str] = None
-    resolved_at: Optional[datetime] = None
-    assigned_to: Optional[str] = None
-    assigned_at: Optional[datetime] = None
-    assigned_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    promotion_target: str | None = None
+    resolution_notes: str | None = None
+    resolved_by: str | None = None
+    resolved_at: datetime | None = None
+    assigned_to: str | None = None
+    assigned_at: datetime | None = None
+    assigned_by: str | None = None
 
     def get_pk(self) -> str:
         return build_pk("ORG", self.org_id)
@@ -443,7 +443,7 @@ class AgentReviewTask(DynamoDBAgentModel):
     def get_sk(self) -> str:
         return build_sk(AgentEntityType.REVIEW_TASK.value, self.id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         status_val = self.status.value if isinstance(self.status, Enum) else self.status
 
         return {
@@ -484,7 +484,7 @@ class AgentReviewTask(DynamoDBAgentModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "AgentReviewTask":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> AgentReviewTask:
         return cls(
             id=UUID(item["id"]),
             org_id=UUID(item["org_id"]),
@@ -531,24 +531,24 @@ class AgentMemoryEntry(DynamoDBAgentModel):
 
     id: UUID = Field(default_factory=uuid4)
     org_id: UUID
-    session_id: Optional[UUID] = None
-    agent_type: Optional[str] = None
-    role: Optional[MessageRole] = None
-    scopes: List[Dict[str, Any]] = Field(default_factory=list)
+    session_id: UUID | None = None
+    agent_type: str | None = None
+    role: MessageRole | None = None
+    scopes: list[dict[str, Any]] = Field(default_factory=list)
     scope_priority: int = 0
     content: str
-    summary: Optional[str] = None
-    content_hash: Optional[str] = None
+    summary: str | None = None
+    content_hash: str | None = None
     token_count: int = 0
-    embedding: Optional[List[float]] = None
-    embedding_norm: Optional[float] = None
-    extra_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    embedding: list[float] | None = None
+    embedding_norm: float | None = None
+    extra_metadata: dict[str, Any] | None = Field(default_factory=dict)
     decay_score: float = 1.0
     last_accessed_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
+        default_factory=lambda: datetime.now(UTC)
     )
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def get_pk(self) -> str:
         return build_pk("ORG", self.org_id)
@@ -556,7 +556,7 @@ class AgentMemoryEntry(DynamoDBAgentModel):
     def get_sk(self) -> str:
         return build_sk(AgentEntityType.MEMORY_ENTRY.value, self.id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         role_val = self.role.value if isinstance(self.role, Enum) else self.role
 
         return {
@@ -594,7 +594,7 @@ class AgentMemoryEntry(DynamoDBAgentModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "AgentMemoryEntry":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> AgentMemoryEntry:
         return cls(
             id=UUID(item["id"]),
             org_id=UUID(item["org_id"]),
@@ -627,13 +627,13 @@ class AgentRecommendation(DynamoDBAgentModel):
     title: str
     description: str
     priority: str  # critical, high, medium, low
-    action_items: List[Dict[str, Any]] = Field(default_factory=list)
-    estimated_effort: Optional[str] = None
-    implementation_timeline: Optional[str] = None
-    cis_controls: List[str] = Field(default_factory=list)
-    nist_controls: List[str] = Field(default_factory=list)
-    cwe_ids: List[int] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    action_items: list[dict[str, Any]] = Field(default_factory=list)
+    estimated_effort: str | None = None
+    implementation_timeline: str | None = None
+    cis_controls: list[str] = Field(default_factory=list)
+    nist_controls: list[str] = Field(default_factory=list)
+    cwe_ids: list[int] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     status: str = "draft"  # draft, approved, implemented, rejected
 
     def get_pk(self) -> str:
@@ -642,7 +642,7 @@ class AgentRecommendation(DynamoDBAgentModel):
     def get_sk(self) -> str:
         return build_sk(AgentEntityType.RECOMMENDATION.value, self.id)
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         return {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
@@ -668,7 +668,7 @@ class AgentRecommendation(DynamoDBAgentModel):
         }
 
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> "AgentRecommendation":
+    def from_dynamodb_item(cls, item: dict[str, Any]) -> AgentRecommendation:
         return cls(
             id=UUID(item["id"]),
             session_id=UUID(item["session_id"]),

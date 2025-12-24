@@ -15,10 +15,10 @@ Tables:
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 
-def _get_settings() -> "Settings":
+def _get_settings() -> Settings:
     """Lazy import settings to avoid circular imports."""
     from cerebro.core.config import settings
 
@@ -56,7 +56,7 @@ def _get_aws_region() -> str:
     return os.environ.get("AWS_REGION", "us-east-1")
 
 
-def _get_endpoint_url() -> Optional[str]:
+def _get_endpoint_url() -> str | None:
     """Get DynamoDB endpoint URL from settings or environment."""
     env_url = os.environ.get("DYNAMODB_ENDPOINT_URL")
     if env_url:
@@ -83,11 +83,11 @@ def get_table_name(table: TableName) -> str:
     return _get_table_name_from_settings(table.value)
 
 
-_dynamodb_client: Optional["boto3.client"] = None
-_dynamodb_resource: Optional["boto3.resource"] = None
+_dynamodb_client: boto3.client | None = None
+_dynamodb_resource: boto3.resource | None = None
 
 
-def get_dynamodb_client() -> "boto3.client":
+def get_dynamodb_client() -> boto3.client:
     """Get a cached DynamoDB client.
 
     Returns:
@@ -103,7 +103,7 @@ def get_dynamodb_client() -> "boto3.client":
         read_timeout=30,
     )
 
-    kwargs: Dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "region_name": _get_aws_region(),
         "config": config,
     }
@@ -116,7 +116,7 @@ def get_dynamodb_client() -> "boto3.client":
     return _dynamodb_client
 
 
-def get_dynamodb_resource() -> "boto3.resource":
+def get_dynamodb_resource() -> boto3.resource:
     """Get a cached DynamoDB resource for higher-level operations.
 
     Returns:
@@ -126,7 +126,7 @@ def get_dynamodb_resource() -> "boto3.resource":
     if _dynamodb_resource is not None:
         return _dynamodb_resource
 
-    kwargs: Dict[str, Any] = {"region_name": _get_aws_region()}
+    kwargs: dict[str, Any] = {"region_name": _get_aws_region()}
 
     endpoint_url = _get_endpoint_url()
     if endpoint_url:
@@ -143,7 +143,7 @@ def reset_dynamodb_clients() -> None:
     _dynamodb_resource = None
 
 
-def get_table(table: TableName) -> "boto3.dynamodb.Table":
+def get_table(table: TableName) -> boto3.dynamodb.Table:
     """Get a DynamoDB Table resource.
 
     Args:
@@ -159,7 +159,7 @@ def get_table(table: TableName) -> "boto3.dynamodb.Table":
 # Type serialization utilities
 
 
-def serialize_value(value: Any) -> Dict[str, Any]:
+def serialize_value(value: Any) -> dict[str, Any]:
     """Serialize a Python value to DynamoDB AttributeValue format.
 
     Args:
@@ -205,7 +205,7 @@ def serialize_value(value: Any) -> Dict[str, Any]:
         return {"S": str(value)}
 
 
-def deserialize_value(attr: Dict[str, Any]) -> Any:
+def deserialize_value(attr: dict[str, Any]) -> Any:
     """Deserialize a DynamoDB AttributeValue to Python value.
 
     Args:
@@ -241,7 +241,7 @@ def deserialize_value(attr: Dict[str, Any]) -> Any:
         return None
 
 
-def serialize_item(item: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def serialize_item(item: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Serialize a dictionary to DynamoDB item format.
 
     Args:
@@ -253,7 +253,7 @@ def serialize_item(item: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return {k: serialize_value(v) for k, v in item.items() if v is not None}
 
 
-def deserialize_item(item: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def deserialize_item(item: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Deserialize a DynamoDB item to Python dictionary.
 
     Args:
@@ -268,7 +268,7 @@ def deserialize_item(item: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
 # Key building utilities for single-table design
 
 
-def build_pk(entity_type: str, org_id: Union[str, UUID]) -> str:
+def build_pk(entity_type: str, org_id: str | UUID) -> str:
     """Build partition key for org-scoped entities.
 
     Args:
@@ -281,7 +281,7 @@ def build_pk(entity_type: str, org_id: Union[str, UUID]) -> str:
     return f"{entity_type}#{org_id}"
 
 
-def build_sk(entity_type: str, entity_id: Union[str, UUID], *parts: str) -> str:
+def build_sk(entity_type: str, entity_id: str | UUID, *parts: str) -> str:
     """Build sort key for entity identification.
 
     Args:
@@ -298,7 +298,7 @@ def build_sk(entity_type: str, entity_id: Union[str, UUID], *parts: str) -> str:
     return sk
 
 
-def build_gsi1_pk(index_type: str, value: Union[str, UUID]) -> str:
+def build_gsi1_pk(index_type: str, value: str | UUID) -> str:
     """Build GSI1 partition key for alternate access patterns.
 
     Args:
@@ -311,7 +311,7 @@ def build_gsi1_pk(index_type: str, value: Union[str, UUID]) -> str:
     return f"{index_type}#{value}"
 
 
-def build_gsi1_sk(sort_type: str, value: Union[str, UUID, datetime]) -> str:
+def build_gsi1_sk(sort_type: str, value: str | UUID | datetime) -> str:
     """Build GSI1 sort key.
 
     Args:
@@ -332,11 +332,11 @@ def build_gsi1_sk(sort_type: str, value: Union[str, UUID, datetime]) -> str:
 async def query_by_pk(
     table: TableName,
     pk: str,
-    sk_prefix: Optional[str] = None,
-    limit: Optional[int] = None,
+    sk_prefix: str | None = None,
+    limit: int | None = None,
     scan_forward: bool = True,
-    index_name: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    index_name: str | None = None,
+) -> list[dict[str, Any]]:
     """Query items by partition key with optional sort key prefix.
 
     Args:
@@ -356,7 +356,7 @@ async def query_by_pk(
     key_attr = "PK" if not index_name else "GSI1PK"
     sort_attr = "SK" if not index_name else "GSI1SK"
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "KeyConditionExpression": f"{key_attr} = :pk",
         "ExpressionAttributeValues": {":pk": {"S": pk}},
@@ -373,7 +373,7 @@ async def query_by_pk(
     if limit:
         params["Limit"] = limit
 
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     while True:
         response = client.query(**params)
         items.extend([deserialize_item(item) for item in response.get("Items", [])])
@@ -394,7 +394,7 @@ async def get_item(
     pk: str,
     sk: str,
     consistent_read: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Get a single item by primary key.
 
     Args:
@@ -421,8 +421,8 @@ async def get_item(
 
 async def put_item(
     table: TableName,
-    item: Dict[str, Any],
-    condition_expression: Optional[str] = None,
+    item: dict[str, Any],
+    condition_expression: str | None = None,
 ) -> None:
     """Put an item into a table.
 
@@ -434,7 +434,7 @@ async def put_item(
     client = get_dynamodb_client()
     table_name = get_table_name(table)
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "Item": serialize_item(item),
     }
@@ -449,7 +449,7 @@ async def delete_item(
     table: TableName,
     pk: str,
     sk: str,
-    condition_expression: Optional[str] = None,
+    condition_expression: str | None = None,
 ) -> None:
     """Delete an item from a table.
 
@@ -462,7 +462,7 @@ async def delete_item(
     client = get_dynamodb_client()
     table_name = get_table_name(table)
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "Key": {"PK": {"S": pk}, "SK": {"S": sk}},
     }
@@ -477,9 +477,9 @@ async def update_item(
     table: TableName,
     pk: str,
     sk: str,
-    updates: Dict[str, Any],
-    condition_expression: Optional[str] = None,
-) -> Dict[str, Any]:
+    updates: dict[str, Any],
+    condition_expression: str | None = None,
+) -> dict[str, Any]:
     """Update an item with specified attributes.
 
     Args:
@@ -506,7 +506,7 @@ async def update_item(
         attr_names[name_placeholder] = key
         attr_values[value_placeholder] = serialize_value(value)
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "Key": {"PK": {"S": pk}, "SK": {"S": sk}},
         "UpdateExpression": "SET " + ", ".join(update_parts),
@@ -524,8 +524,8 @@ async def update_item(
 
 async def batch_get_items(
     table: TableName,
-    keys: List[tuple[str, str]],
-) -> List[Dict[str, Any]]:
+    keys: list[tuple[str, str]],
+) -> list[dict[str, Any]]:
     """Batch get multiple items by primary keys.
 
     Args:
@@ -541,7 +541,7 @@ async def batch_get_items(
     client = get_dynamodb_client()
     table_name = get_table_name(table)
 
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     batch_size = 100
 
     for i in range(0, len(keys), batch_size):
@@ -560,8 +560,8 @@ async def batch_get_items(
 
 async def batch_write_items(
     table: TableName,
-    put_items: Optional[List[Dict[str, Any]]] = None,
-    delete_keys: Optional[List[tuple[str, str]]] = None,
+    put_items: list[dict[str, Any]] | None = None,
+    delete_keys: list[tuple[str, str]] | None = None,
 ) -> None:
     """Batch write (put/delete) multiple items.
 
@@ -573,7 +573,7 @@ async def batch_write_items(
     client = get_dynamodb_client()
     table_name = get_table_name(table)
 
-    requests: List[Dict[str, Any]] = []
+    requests: list[dict[str, Any]] = []
 
     if put_items:
         for item in put_items:
@@ -595,7 +595,7 @@ async def batch_write_items(
 
 
 async def transact_write_items(
-    items: List[Dict[str, Any]],
+    items: list[dict[str, Any]],
 ) -> None:
     """Execute a transactional write across tables.
 
@@ -615,8 +615,8 @@ async def transact_write_items(
 class PaginatedResult(BaseModel):
     """Result container for paginated queries."""
 
-    items: List[Dict[str, Any]]
-    last_evaluated_key: Optional[str] = None
+    items: list[dict[str, Any]]
+    last_evaluated_key: str | None = None
     count: int
     has_more: bool
 
@@ -624,12 +624,12 @@ class PaginatedResult(BaseModel):
 async def query_by_pk_paginated(
     table: TableName,
     pk: str,
-    sk_prefix: Optional[str] = None,
+    sk_prefix: str | None = None,
     limit: int = 100,
     scan_forward: bool = True,
-    index_name: Optional[str] = None,
-    cursor: Optional[str] = None,
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    index_name: str | None = None,
+    cursor: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
     """Query items by partition key with pagination support.
 
     Returns:
@@ -641,7 +641,7 @@ async def query_by_pk_paginated(
     key_attr = "PK" if not index_name else "GSI1PK"
     sort_attr = "SK" if not index_name else "GSI1SK"
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "TableName": table_name,
         "KeyConditionExpression": f"{key_attr} = :pk",
         "ExpressionAttributeValues": {":pk": {"S": pk}},
@@ -669,7 +669,7 @@ async def query_by_pk_paginated(
     return items, next_cursor
 
 
-def encode_pagination_token(key: Dict[str, Any]) -> str:
+def encode_pagination_token(key: dict[str, Any]) -> str:
     """Encode a DynamoDB LastEvaluatedKey to a pagination token.
 
     Args:
@@ -684,7 +684,7 @@ def encode_pagination_token(key: Dict[str, Any]) -> str:
     return base64.urlsafe_b64encode(json.dumps(key).encode()).decode()
 
 
-def decode_pagination_token(token: str) -> Dict[str, Any]:
+def decode_pagination_token(token: str) -> dict[str, Any]:
     """Decode a pagination token to DynamoDB ExclusiveStartKey.
 
     Args:
@@ -713,10 +713,10 @@ def set_ttl(days: int) -> int:
     """
     from datetime import timedelta
 
-    expiry = datetime.now(timezone.utc) + timedelta(days=days)
+    expiry = datetime.now(UTC) + timedelta(days=days)
     return int(expiry.timestamp())
 
 
 def get_current_timestamp() -> str:
     """Get current timestamp in ISO format for created_at/updated_at fields."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

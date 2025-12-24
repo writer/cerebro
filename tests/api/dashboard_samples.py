@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def build_sample_dashboard_response() -> dict:
-    now_dt = datetime.now(timezone.utc)
+    now_dt = datetime.now(UTC)
     now = now_dt.isoformat()
     previous = (now_dt - timedelta(days=1)).isoformat()
     stale = (now_dt - timedelta(hours=2)).isoformat()

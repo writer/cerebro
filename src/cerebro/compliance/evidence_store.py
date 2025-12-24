@@ -8,18 +8,19 @@ Provides WORM (Write-Once-Read-Many) storage for compliance evidence with
 cryptographic hashing, digital signatures, and complete audit trails.
 """
 
-import json
 import hashlib
+import json
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field, asdict
 from pathlib import Path
+from typing import Any
+
 import aiofiles
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 # Import unified enums instead of redefining them
-from .models import EvidenceStatus, EvidenceCategory
+from .models import EvidenceCategory, EvidenceStatus
 
 
 @dataclass
@@ -39,32 +40,32 @@ class EvidenceMetadata:
     collection_method: str  # "api", "sql_query", "manual_upload", "screenshot"
 
     # Compliance context
-    control_id: Optional[str] = None
-    framework_name: Optional[str] = None
-    test_run_id: Optional[str] = None
-    audit_period_start: Optional[datetime] = None
-    audit_period_end: Optional[datetime] = None
+    control_id: str | None = None
+    framework_name: str | None = None
+    test_run_id: str | None = None
+    audit_period_start: datetime | None = None
+    audit_period_end: datetime | None = None
 
     # Timestamps and lifecycle
     created_at: datetime = field(default_factory=datetime.now)
-    collected_at: Optional[datetime] = None  # When original data was collected
-    sealed_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    collected_at: datetime | None = None  # When original data was collected
+    sealed_at: datetime | None = None
+    expires_at: datetime | None = None
 
     # Security and integrity
     status: EvidenceStatus = EvidenceStatus.PENDING
-    signature: Optional[str] = None  # Digital signature
-    signature_algorithm: Optional[str] = None
-    chain_hash: Optional[str] = None  # Hash linking to previous evidence
+    signature: str | None = None  # Digital signature
+    signature_algorithm: str | None = None
+    chain_hash: str | None = None  # Hash linking to previous evidence
 
     # Classification and handling
-    pii_tags: List[str] = field(default_factory=list)
+    pii_tags: list[str] = field(default_factory=list)
     retention_class: str = "standard"  # "standard", "long_term", "permanent"
-    encryption_key_id: Optional[str] = None
+    encryption_key_id: str | None = None
 
     # Additional metadata
-    tags: Dict[str, str] = field(default_factory=dict)
-    related_evidence: List[str] = field(default_factory=list)  # Related evidence IDs
+    tags: dict[str, str] = field(default_factory=dict)
+    related_evidence: list[str] = field(default_factory=list)  # Related evidence IDs
 
 
 @dataclass
@@ -75,8 +76,8 @@ class EvidenceBundle:
     name: str
     description: str
     framework_name: str
-    control_ids: List[str]
-    evidence_ids: List[str]
+    control_ids: list[str]
+    evidence_ids: list[str]
 
     # Audit period
     period_start: datetime
@@ -85,19 +86,19 @@ class EvidenceBundle:
     # Bundle metadata
     created_at: datetime = field(default_factory=datetime.now)
     created_by: str = ""
-    bundle_hash: Optional[str] = None  # Hash of all evidence in bundle
-    manifest: Dict[str, Any] = field(default_factory=dict)
+    bundle_hash: str | None = None  # Hash of all evidence in bundle
+    manifest: dict[str, Any] = field(default_factory=dict)
 
     # Export and delivery
-    exported_at: Optional[datetime] = None
+    exported_at: datetime | None = None
     export_format: str = "zip"
-    access_granted_to: List[str] = field(default_factory=list)  # Auditor emails
+    access_granted_to: list[str] = field(default_factory=list)  # Auditor emails
 
 
 class EvidenceStore:
     """Immutable evidence storage with cryptographic integrity."""
 
-    def __init__(self, storage_path: str, signing_key_path: Optional[str] = None):
+    def __init__(self, storage_path: str, signing_key_path: str | None = None):
         self.storage_path = Path(storage_path)
         self.metadata_path = self.storage_path / "metadata"
         self.blobs_path = self.storage_path / "blobs"
@@ -115,12 +116,12 @@ class EvidenceStore:
             self.signing_key = self._load_signing_key(signing_key_path)
 
         # In-memory metadata cache
-        self._metadata_cache: Dict[str, EvidenceMetadata] = {}
-        self._chain_tip: Optional[str] = None
+        self._metadata_cache: dict[str, EvidenceMetadata] = {}
+        self._chain_tip: str | None = None
 
     async def store_evidence(
         self,
-        content: Union[bytes, str, Dict[str, Any]],
+        content: bytes | str | dict[str, Any],
         metadata: EvidenceMetadata,
         seal_immediately: bool = False,
     ) -> str:
@@ -186,7 +187,7 @@ class EvidenceStore:
 
     async def get_evidence(
         self, evidence_id: str
-    ) -> Optional[tuple[bytes, EvidenceMetadata]]:
+    ) -> tuple[bytes, EvidenceMetadata] | None:
         """Retrieve evidence content and metadata."""
         metadata = await self.get_metadata(evidence_id)
         if not metadata:
@@ -212,7 +213,7 @@ class EvidenceStore:
 
         return content, metadata
 
-    async def get_metadata(self, evidence_id: str) -> Optional[EvidenceMetadata]:
+    async def get_metadata(self, evidence_id: str) -> EvidenceMetadata | None:
         """Get evidence metadata."""
         if evidence_id in self._metadata_cache:
             return self._metadata_cache[evidence_id]
@@ -221,7 +222,7 @@ class EvidenceStore:
         if not metadata_file.exists():
             return None
 
-        async with aiofiles.open(metadata_file, "r") as f:
+        async with aiofiles.open(metadata_file) as f:
             data = json.loads(await f.read())
 
         metadata = EvidenceMetadata(**data)
@@ -315,7 +316,7 @@ class EvidenceStore:
         if not bundle_path.exists():
             raise ValueError(f"Bundle {bundle_id} not found")
 
-        async with aiofiles.open(bundle_path, "r") as f:
+        async with aiofiles.open(bundle_path) as f:
             bundle_data = json.loads(await f.read())
 
         bundle = EvidenceBundle(**bundle_data)
@@ -375,19 +376,19 @@ class EvidenceStore:
 
     async def search_evidence(
         self,
-        control_id: Optional[str] = None,
-        framework_name: Optional[str] = None,
-        category: Optional[EvidenceCategory] = None,
-        date_range: Optional[tuple[datetime, datetime]] = None,
-        tags: Optional[Dict[str, str]] = None,
-    ) -> List[EvidenceMetadata]:
+        control_id: str | None = None,
+        framework_name: str | None = None,
+        category: EvidenceCategory | None = None,
+        date_range: tuple[datetime, datetime] | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> list[EvidenceMetadata]:
         """Search for evidence matching criteria."""
         results = []
 
         # Load all metadata (in production, would use database index)
         for metadata_file in self.metadata_path.glob("*.json"):
             try:
-                async with aiofiles.open(metadata_file, "r") as f:
+                async with aiofiles.open(metadata_file) as f:
                     data = json.loads(await f.read())
                 metadata = EvidenceMetadata(**data)
 
@@ -415,7 +416,7 @@ class EvidenceStore:
 
     async def _find_by_content_hash(
         self, content_hash: str
-    ) -> Optional[EvidenceMetadata]:
+    ) -> EvidenceMetadata | None:
         """Find existing evidence by content hash."""
         for metadata in self._metadata_cache.values():
             if metadata.content_hash == content_hash:
@@ -509,7 +510,7 @@ class EvidenceStore:
 
 # Factory function for easy initialization
 def create_evidence_store(
-    storage_path: str, signing_key_path: Optional[str] = None
+    storage_path: str, signing_key_path: str | None = None
 ) -> EvidenceStore:
     """Create and initialize an evidence store."""
     return EvidenceStore(storage_path, signing_key_path)

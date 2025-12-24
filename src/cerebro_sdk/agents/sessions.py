@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.agents.models import (
-    AgentMessage,
     AgentMemoryEntry,
+    AgentMessage,
     AgentSession,
     AgentType,
     MessageRole,
 )
-
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.repositories import (
     join_filters,
@@ -24,9 +24,9 @@ from cerebro_sdk.agents.repositories import (
     sqlite_scope_fallback,
 )
 from cerebro_sdk.agents.types import (
-    AgentMessageRecord,
     AgentMemoryRecord,
     AgentMemoryStats,
+    AgentMessageRecord,
     AgentNotFoundError,
     AgentSessionRecord,
     AgentValidationError,
@@ -45,8 +45,8 @@ class AgentManager(AsyncManagerBase):
         org_id: UUID,
         agent_type: AgentType | str,
         created_by: str,
-        context: Optional[dict[str, Any]] = None,
-        title: Optional[str] = None,
+        context: dict[str, Any] | None = None,
+        title: str | None = None,
     ) -> AgentSessionRecord:
         session = AgentSession(
             org_id=org_id,
@@ -71,8 +71,8 @@ class AgentManager(AsyncManagerBase):
         created_by: str,
         finding_ids: Iterable[UUID | str],
         agent_type: AgentType | str = AgentType.SECURITY_ANALYST,
-        title: Optional[str] = None,
-        context: Optional[dict[str, Any]] = None,
+        title: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> AgentSessionRecord:
         finding_values = [str(fid) for fid in finding_ids]
         base_context = dict(context or {})
@@ -94,8 +94,8 @@ class AgentManager(AsyncManagerBase):
         created_by: str,
         incident_id: UUID | str,
         agent_type: AgentType | str = AgentType.INCIDENT_RESPONDER,
-        title: Optional[str] = None,
-        context: Optional[dict[str, Any]] = None,
+        title: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> AgentSessionRecord:
         base_context = dict(context or {})
         base_context["incident_id"] = str(incident_id)
@@ -108,8 +108,8 @@ class AgentManager(AsyncManagerBase):
         )
 
     async def get_session(
-        self, session_id: UUID, *, org_id: Optional[UUID] = None
-    ) -> Optional[AgentSessionRecord]:
+        self, session_id: UUID, *, org_id: UUID | None = None
+    ) -> AgentSessionRecord | None:
         session = await self._db.get(AgentSession, session_id)
         if not session:
             return None
@@ -122,7 +122,7 @@ class AgentManager(AsyncManagerBase):
         *,
         org_id: UUID,
         agent_type: AgentType | str | None = None,
-        created_by: Optional[str] = None,
+        created_by: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AgentSessionRecord], int]:
@@ -258,9 +258,9 @@ class AgentManager(AsyncManagerBase):
         *,
         session_id: UUID,
         role: MessageRole | str | None = None,
-        scope_type: Optional[str] = None,
-        since_hours: Optional[int] = None,
-    ) -> Optional[AgentMemoryStats]:
+        scope_type: str | None = None,
+        since_hours: int | None = None,
+    ) -> AgentMemoryStats | None:
         session = await self._db.get(AgentSession, session_id)
         if not session:
             return None
@@ -279,11 +279,11 @@ class AgentManager(AsyncManagerBase):
 
         cutoff = None
         if since_hours is not None and since_hours > 0:
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+            cutoff = datetime.now(UTC) - timedelta(hours=since_hours)
             filters.append(AgentMemoryEntry.created_at >= cutoff)
 
         where_clause = join_filters(filters)
-        recent_reference = cutoff or (datetime.now(timezone.utc) - timedelta(hours=24))
+        recent_reference = cutoff or (datetime.now(UTC) - timedelta(hours=24))
         presented_expr = func.coalesce(
             AgentMemoryEntry.extra_metadata["presented_count"].as_integer(), 0
         )
@@ -363,9 +363,9 @@ class AgentManager(AsyncManagerBase):
         highlights: list[dict[str, Any]] = []
         for row in highlight_rows:
             _, summary, decay_score, last_accessed, role_value, scopes = row
-            last_accessed = last_accessed or datetime.now(timezone.utc)
+            last_accessed = last_accessed or datetime.now(UTC)
             if last_accessed.tzinfo is None:
-                last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+                last_accessed = last_accessed.replace(tzinfo=UTC)
             scope_labels: list[str] = []
             for scope in scopes or []:
                 scope_type_value = scope.get("type")
@@ -402,12 +402,12 @@ class AgentManager(AsyncManagerBase):
         session_id: UUID,
         finding_ids: Iterable[UUID | str],
         regenerate: bool = False,
-    ) -> Optional[AgentSessionRecord]:
+    ) -> AgentSessionRecord | None:
         session = await self._db.get(AgentSession, session_id)
         if not session:
             return None
         context = dict(session.context or {})
-        existing = set(str(fid) for fid in context.get("finding_ids", []))
+        existing = {str(fid) for fid in context.get("finding_ids", [])}
         for fid in finding_ids:
             existing.add(str(fid))
         context["finding_ids"] = sorted(existing)
@@ -428,7 +428,7 @@ class AgentManager(AsyncManagerBase):
         *,
         session_id: UUID,
         incident_id: UUID | str,
-    ) -> Optional[AgentSessionRecord]:
+    ) -> AgentSessionRecord | None:
         session = await self._db.get(AgentSession, session_id)
         if not session:
             return None

@@ -5,24 +5,25 @@ Exposes GCP security resources as SQL tables following Steampipe patterns.
 """
 
 import logging
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 
-from ...query.table import ProviderSecurityTable, QueryContext
 from ...query.registry import register_table
-from ...query.schema import SecurityColumn, ColumnType
+from ...query.schema import ColumnType, SecurityColumn
+from ...query.table import ProviderSecurityTable, QueryContext
 
 logger = logging.getLogger(__name__)
 
 
 # Real GCP client implementation
 class GCPClient:
-    def __init__(self, project_id: Optional[str] = None):
+    def __init__(self, project_id: str | None = None):
         self.project_id = project_id
-        self._compute_client: Optional[Any] = None
-        self._storage_client: Optional[Any] = None
-        self._iam_client: Optional[Any] = None
-        self._credentials: Optional[Any] = None
+        self._compute_client: Any | None = None
+        self._storage_client: Any | None = None
+        self._iam_client: Any | None = None
+        self._credentials: Any | None = None
 
     async def authenticate(self):
         """Authenticate with GCP using default credentials."""
@@ -300,7 +301,7 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch GCE instances from GCP API."""
         config = ctx.config or {}
         client = GCPClient(project_id=config.get("gcp_project_id"))
@@ -328,7 +329,7 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
             # Return empty results instead of raising to prevent query engine failures
             return
 
-    def extract_external_ip(self, instance_data: Dict[str, Any]) -> Optional[str]:
+    def extract_external_ip(self, instance_data: dict[str, Any]) -> str | None:
         """Extract external IP from network interfaces."""
         interfaces = instance_data.get("networkInterfaces", [])
         for interface in interfaces:
@@ -338,7 +339,7 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
                     return config["natIP"]
         return None
 
-    def extract_internal_ip(self, instance_data: Dict[str, Any]) -> Optional[str]:
+    def extract_internal_ip(self, instance_data: dict[str, Any]) -> str | None:
         """Extract internal IP from network interfaces."""
         interfaces = instance_data.get("networkInterfaces", [])
         for interface in interfaces:
@@ -346,7 +347,7 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
                 return interface["networkIP"]
         return None
 
-    def extract_scopes(self, instance_data: Dict[str, Any]) -> List[str]:
+    def extract_scopes(self, instance_data: dict[str, Any]) -> list[str]:
         """Extract OAuth scopes from service accounts."""
         scopes = []
         service_accounts = instance_data.get("serviceAccounts", [])
@@ -354,11 +355,11 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
             scopes.extend(sa.get("scopes", []))
         return scopes
 
-    def extract_network_tags(self, instance_data: Dict[str, Any]) -> List[str]:
+    def extract_network_tags(self, instance_data: dict[str, Any]) -> list[str]:
         """Extract network tags."""
         return instance_data.get("tags", {}).get("items", [])
 
-    def _parse_gcp_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_gcp_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse GCP timestamp string."""
         if not timestamp_str:
             return None
@@ -433,7 +434,7 @@ class GCPStorageBucketTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch storage buckets from GCP API."""
         config = ctx.config or {}
         client = GCPClient(project_id=config.get("gcp_project_id"))
@@ -460,12 +461,12 @@ class GCPStorageBucketTable(ProviderSecurityTable):
             logger.error(f"Error fetching GCP storage buckets: {e}")
             return
 
-    def check_uniform_access(self, bucket_data: Dict[str, Any]) -> bool:
+    def check_uniform_access(self, bucket_data: dict[str, Any]) -> bool:
         """Check if uniform bucket-level access is enabled."""
         uniform_access = bucket_data.get("uniformBucketLevelAccess", {})
         return uniform_access.get("enabled", False)
 
-    def check_public_access(self, bucket_data: Dict[str, Any]) -> bool:
+    def check_public_access(self, bucket_data: dict[str, Any]) -> bool:
         """Check if bucket has public access."""
         iam = bucket_data.get("iam", {})
         bindings = iam.get("bindings", [])
@@ -477,12 +478,12 @@ class GCPStorageBucketTable(ProviderSecurityTable):
 
         return False
 
-    def check_versioning(self, bucket_data: Dict[str, Any]) -> bool:
+    def check_versioning(self, bucket_data: dict[str, Any]) -> bool:
         """Check if versioning is enabled."""
         versioning = bucket_data.get("versioning", {})
         return versioning.get("enabled", False)
 
-    def _parse_gcp_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_gcp_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse GCP timestamp string."""
         if not timestamp_str:
             return None
@@ -542,7 +543,7 @@ class GCPIAMPolicyTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch IAM policy bindings from GCP API."""
         config = ctx.config or {}
         client = GCPClient(project_id=config.get("gcp_project_id"))
@@ -567,7 +568,7 @@ class GCPIAMPolicyTable(ProviderSecurityTable):
             logger.error(f"Error fetching GCP IAM policies: {e}")
             return
 
-    def extract_member_type(self, binding_data: Dict[str, Any]) -> str:
+    def extract_member_type(self, binding_data: dict[str, Any]) -> str:
         """Extract member type from member string."""
         member = binding_data.get("member", "")
         if member.startswith("user:"):
@@ -583,13 +584,13 @@ class GCPIAMPolicyTable(ProviderSecurityTable):
         else:
             return "unknown"
 
-    def check_primitive_role(self, binding_data: Dict[str, Any]) -> bool:
+    def check_primitive_role(self, binding_data: dict[str, Any]) -> bool:
         """Check if role is a primitive role."""
         role = binding_data.get("role", "")
         primitive_roles = ["roles/owner", "roles/editor", "roles/viewer"]
         return role in primitive_roles
 
-    def check_condition(self, binding_data: Dict[str, Any]) -> bool:
+    def check_condition(self, binding_data: dict[str, Any]) -> bool:
         """Check if binding has conditions."""
         return binding_data.get("condition") is not None
 

@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..compliance.models import create_customer_evidence, metadata_to_dict
 
@@ -45,7 +45,7 @@ class Customer:
     """Customer entity enriched with success metrics."""
 
     customer_id: str
-    org_id: Optional[str]
+    org_id: str | None
     name: str
     primary_contact: str
     account_manager: str
@@ -53,27 +53,27 @@ class Customer:
     industry: str
     region: str
     seats_committed: int
-    annual_recurring_revenue: Optional[float]
+    annual_recurring_revenue: float | None
     product_usage_score: float
-    adoption_metrics: Dict[str, float]
+    adoption_metrics: dict[str, float]
     support_tickets_open: int
     lifecycle_stage: CustomerLifecycleStage
     health_score: float
     churn_risk_score: float
     health_band: CustomerHealthBand
     last_engagement_at: datetime
-    next_qbr_at: Optional[datetime]
+    next_qbr_at: datetime | None
     created_at: datetime
     updated_at: datetime
-    tags: List[str]
-    metadata: Dict[str, Any]
+    tags: list[str]
+    metadata: dict[str, Any]
 
 
 class CustomerRegistry:
     """Registry managing customer accounts and success telemetry."""
 
     def __init__(self):
-        self.customers: Dict[str, Customer] = {}
+        self.customers: dict[str, Customer] = {}
 
     async def register_customer(
         self,
@@ -81,7 +81,7 @@ class CustomerRegistry:
         account_manager: str,
         segment: CustomerSegment,
         created_by: str,
-        org_id: Optional[str] = None,
+        org_id: str | None = None,
         **customer_data,
     ) -> Customer:
         """Register a new customer with baseline success signals."""
@@ -232,7 +232,7 @@ class CustomerRegistry:
 
     async def refresh_customer_profile(
         self, customer_id: str, updated_by: str
-    ) -> Optional[Customer]:
+    ) -> Customer | None:
         """Refresh success telemetry for an existing customer."""
 
         customer = self.customers.get(customer_id)
@@ -244,21 +244,21 @@ class CustomerRegistry:
         customer.updated_at = datetime.now()
         return customer
 
-    def get_customers_by_segment(self, segment: CustomerSegment) -> List[Customer]:
+    def get_customers_by_segment(self, segment: CustomerSegment) -> list[Customer]:
         return [
             customer
             for customer in self.customers.values()
             if customer.segment == segment
         ]
 
-    def get_at_risk_customers(self) -> List[Customer]:
+    def get_at_risk_customers(self) -> list[Customer]:
         return [
             customer
             for customer in self.customers.values()
             if customer.health_band == CustomerHealthBand.AT_RISK
         ]
 
-    def record_engagement(self, customer_id: str, when: Optional[datetime] = None):
+    def record_engagement(self, customer_id: str, when: datetime | None = None):
         customer = self.customers.get(customer_id)
         if not customer:
             return
@@ -268,7 +268,7 @@ class CustomerRegistry:
         self._score_customer_health(customer)
         self._update_customer_metadata(customer, customer.account_manager)
 
-    def update_adoption_metrics(self, customer_id: str, metrics: Dict[str, float]):
+    def update_adoption_metrics(self, customer_id: str, metrics: dict[str, float]):
         customer = self.customers.get(customer_id)
         if not customer:
             return

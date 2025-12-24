@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from cerebro.agents.tools.base import Tool
@@ -36,7 +37,7 @@ class ToolPerformanceTracker:
     """Global tracker for tool effectiveness to aid adaptive ordering."""
 
     def __init__(self) -> None:
-        self._stats: Dict[str, _ToolStats] = {}
+        self._stats: dict[str, _ToolStats] = {}
         self._lock = asyncio.Lock()
 
     async def record(
@@ -56,19 +57,19 @@ class ToolPerformanceTracker:
 
     def sort_tools(
         self,
-        tools: Iterable["Tool"],
+        tools: Iterable[Tool],
         agent_type: str,
-    ) -> List["Tool"]:
+    ) -> list[Tool]:
         rankings = self.get_rankings(tools, agent_type)
         ordering = {item["tool_name"]: index for index, item in enumerate(rankings)}
         return sorted(tools, key=lambda tool: ordering.get(tool.name, 0))
 
     def get_rankings(
         self,
-        tools: Iterable["Tool"],
+        tools: Iterable[Tool],
         agent_type: str,
-    ) -> List[Dict[str, Any]]:
-        rankings: List[Dict[str, Any]] = []
+    ) -> list[dict[str, Any]]:
+        rankings: list[dict[str, Any]] = []
         for tool in tools:
             stats = self._stats.get(tool.name)
             base = 0.5 if stats is None else stats.success_rate

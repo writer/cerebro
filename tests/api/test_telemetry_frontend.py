@@ -3,7 +3,6 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
-
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

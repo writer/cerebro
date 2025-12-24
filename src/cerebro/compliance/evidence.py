@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import datetime as _dt
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -13,23 +14,23 @@ class EvidenceItem:
 
     control_id: str
     evidence_type: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
     collected_at: _dt.datetime = field(default_factory=lambda: _dt.datetime.utcnow())
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class EvidenceCollector:
     """Collects evidence for compliance controls using a query engine."""
 
-    def __init__(self, query_engine: Optional[Any] = None):
+    def __init__(self, query_engine: Any | None = None):
         self.query_engine = query_engine
 
     async def collect_evidence(
         self,
         control_id: str,
         sql_queries: Iterable[str],
-        org_id: Optional[str] = None,
-    ) -> List[EvidenceItem]:
+        org_id: str | None = None,
+    ) -> list[EvidenceItem]:
         """Run the supplied SQL queries and capture results as evidence items."""
 
         if self.query_engine is None:
@@ -37,7 +38,7 @@ class EvidenceCollector:
                 "EvidenceCollector requires a query_engine before collecting evidence"
             )
 
-        evidence: List[EvidenceItem] = []
+        evidence: list[EvidenceItem] = []
 
         for query in sql_queries:
             try:

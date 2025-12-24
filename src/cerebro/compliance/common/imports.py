@@ -7,7 +7,7 @@ reducing import clutter and ensuring consistency across the codebase.
 Based on Vanta MCP server patterns.
 """
 
-# ruff: noqa: F401, F403
+# ruff: noqa: F403
 
 # Core Python and typing imports
 
@@ -18,10 +18,9 @@ Based on Vanta MCP server patterns.
 # Internal imports
 
 # Re-export all utilities
-from .utils import *  # type: ignore[import-untyped]
-
 # Re-export all common descriptions
 from .descriptions import *
 
 # Re-export schema factories
 from .schemas import *
+from .utils import *  # type: ignore[import-untyped]

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import UUID
 
 from prometheus_client import CollectorRegistry
@@ -15,7 +14,6 @@ from cerebro.agents.models import (
     NotificationStatus,
     TicketStatus,
 )
-
 from cerebro_sdk.agents.base import AsyncManagerBase
 from cerebro_sdk.agents.repositories import NotificationRepository, TicketRepository
 from cerebro_sdk.agents.types import (
@@ -41,7 +39,7 @@ class AgentNotificationManager(AsyncManagerBase):
         org_id: UUID,
         task_id: UUID,
         channel: str,
-        payload: Optional[dict[str, object]] = None,
+        payload: dict[str, object] | None = None,
     ) -> AgentNotificationRecord:
         async with self._transaction():
             notification = await self._notifications.create(
@@ -60,7 +58,7 @@ class AgentNotificationManager(AsyncManagerBase):
         status: NotificationStatus | str | None = None,
         limit: int = 100,
     ) -> list[AgentNotificationRecord]:
-        status_enum: Optional[NotificationStatus] = None
+        status_enum: NotificationStatus | None = None
         if status:
             try:
                 status_enum = self._require_enum(
@@ -81,7 +79,7 @@ class AgentNotificationManager(AsyncManagerBase):
 
     async def mark_delivered(
         self, notification_id: UUID
-    ) -> Optional[AgentNotificationRecord]:
+    ) -> AgentNotificationRecord | None:
         notification = await self._notifications.get(notification_id)
         if not notification:
             return None
@@ -89,7 +87,7 @@ class AgentNotificationManager(AsyncManagerBase):
             if notification.status != NotificationStatus.PENDING:
                 raise AgentInvalidStatusError("Notification is not pending")
             notification.status = NotificationStatus.DELIVERED
-            notification.delivered_at = datetime.now(timezone.utc)
+            notification.delivered_at = datetime.now(UTC)
         await self._db.refresh(notification)
         return self._notification_to_record(notification)
 
@@ -100,7 +98,7 @@ class AgentNotificationManager(AsyncManagerBase):
         task_id: UUID,
         system: str,
         summary: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: dict[str, object] | None = None,
     ) -> AgentTicketRecord:
         details = dict(metadata or {})
         details.setdefault("summary", summary)
@@ -118,8 +116,8 @@ class AgentNotificationManager(AsyncManagerBase):
         self,
         *,
         ticket_id: UUID,
-        external_id: Optional[str] = None,
-    ) -> Optional[AgentTicketRecord]:
+        external_id: str | None = None,
+    ) -> AgentTicketRecord | None:
         ticket = await self._tickets.get(ticket_id)
         if not ticket:
             return None
@@ -127,7 +125,7 @@ class AgentNotificationManager(AsyncManagerBase):
             if ticket.status != TicketStatus.OPEN:
                 raise AgentInvalidStatusError("Ticket is not open")
             ticket.status = TicketStatus.CLOSED
-            ticket.updated_at = datetime.now(timezone.utc)
+            ticket.updated_at = datetime.now(UTC)
             if external_id:
                 ticket.external_id = external_id
         await self._db.refresh(ticket)

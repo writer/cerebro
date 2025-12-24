@@ -8,15 +8,17 @@ This tool is unique - it uses Claude's language understanding to translate
 technical security findings into actionable, human-readable explanations.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
-from pydantic import BaseModel, Field
 
-from .base import StructuredTool, AgentContext, ToolResult, ToolPermissionLevel
+import structlog
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Finding
-from sqlalchemy import select
-import structlog
+
+from .base import AgentContext, StructuredTool, ToolPermissionLevel, ToolResult
 
 logger = structlog.get_logger(__name__)
 
@@ -42,9 +44,9 @@ class SmartSummarizerOutput(BaseModel):
     severity: str
     plain_english_summary: str
     business_impact: str
-    technical_details: Dict[str, Any]
-    remediation_steps: Optional[List[str]] = None
-    estimated_remediation_time: Optional[str] = None
+    technical_details: dict[str, Any]
+    remediation_steps: list[str] | None = None
+    estimated_remediation_time: str | None = None
     audience_tailored_explanation: str
 
 
@@ -177,7 +179,7 @@ class SmartFindingSummarizerTool(StructuredTool):
         except Exception as e:
             logger.error("Smart summarization failed", error=str(e), exc_info=True)
             return ToolResult(
-                success=False, error=f"Smart summarization failed: {str(e)}"
+                success=False, error=f"Smart summarization failed: {e!s}"
             )
 
     def _generate_summary(self, finding: Finding, audience: str) -> str:
@@ -250,7 +252,7 @@ class SmartFindingSummarizerTool(StructuredTool):
             audience_key
         ]
 
-    def _generate_remediation_steps(self, finding: Finding, audience: str) -> List[str]:
+    def _generate_remediation_steps(self, finding: Finding, audience: str) -> list[str]:
         """Generate step-by-step remediation instructions."""
 
         steps = []

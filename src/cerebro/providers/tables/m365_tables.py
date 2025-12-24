@@ -5,12 +5,13 @@ Exposes Microsoft 365 security resources as SQL tables following Steampipe patte
 """
 
 import logging
-from typing import AsyncGenerator, Dict, Any, Optional
+from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 
-from ...query.table import ProviderSecurityTable, QueryContext
 from ...query.registry import register_table
-from ...query.schema import SecurityColumn, ColumnType, SecuritySchema
+from ...query.schema import ColumnType, SecurityColumn, SecuritySchema
+from ...query.table import ProviderSecurityTable, QueryContext
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +20,21 @@ logger = logging.getLogger(__name__)
 class M365Client:
     def __init__(
         self,
-        tenant_id: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
+        tenant_id: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
     ):
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
-        self._access_token: Optional[str] = None
+        self._access_token: str | None = None
         self._client: Any = None
 
     async def authenticate(self):
         """Authenticate with Microsoft Graph API."""
         try:
             import httpx
+
             from cerebro.core.config import settings
 
             # Use provided credentials or fall back to settings
@@ -97,7 +99,7 @@ class M365Client:
                     return
 
             url = "/users"
-            params: Optional[Dict[str, str]] = {
+            params: dict[str, str] | None = {
                 "$select": "id,userPrincipalName,displayName,givenName,surname,mail,mobilePhone,officeLocation,jobTitle,department,companyName,country,usageLocation,accountEnabled,createdDateTime,lastSignInDateTime,assignedLicenses,signInActivity"
             }
 
@@ -130,7 +132,7 @@ class M365Client:
                     return
 
             url = "/applications"
-            params: Optional[Dict[str, str]] = {
+            params: dict[str, str] | None = {
                 "$select": "id,appId,displayName,signInAudience,createdDateTime,publisherDomain,requiredResourceAccess,keyCredentials,passwordCredentials"
             }
 
@@ -273,7 +275,7 @@ class M365UserTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch users from Microsoft Graph API."""
         config = ctx.config or {}
         client = M365Client(
@@ -298,8 +300,8 @@ class M365UserTable(ProviderSecurityTable):
             return
 
     def _transform_m365_user(
-        self, m365_user: Dict[str, Any], tenant_id: str
-    ) -> Dict[str, Any]:
+        self, m365_user: dict[str, Any], tenant_id: str
+    ) -> dict[str, Any]:
         """Transform M365 user data to our standard schema."""
         return {
             "id": m365_user["id"],
@@ -350,7 +352,7 @@ class M365UserTable(ProviderSecurityTable):
             "sign_in_activity": m365_user.get("signInActivity", {}),
         }
 
-    def _parse_m365_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_m365_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse M365 timestamp string."""
         if not timestamp_str:
             return None
@@ -437,7 +439,7 @@ class M365ApplicationTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch applications from Microsoft Graph API."""
         config = ctx.config or {}
         client = M365Client(
@@ -468,13 +470,13 @@ class M365ApplicationTable(ProviderSecurityTable):
             logger.error(f"Error fetching M365 applications: {e}")
             return
 
-    def check_credentials(self, app_data: Dict[str, Any]) -> bool:
+    def check_credentials(self, app_data: dict[str, Any]) -> bool:
         """Check if application has authentication credentials."""
         key_creds = app_data.get("keyCredentials", [])
         password_creds = app_data.get("passwordCredentials", [])
         return len(key_creds) > 0 or len(password_creds) > 0
 
-    def count_permissions(self, app_data: Dict[str, Any]) -> int:
+    def count_permissions(self, app_data: dict[str, Any]) -> int:
         """Count total permissions requested by application."""
         resource_access = app_data.get("requiredResourceAccess", [])
         total_permissions = 0
@@ -484,7 +486,7 @@ class M365ApplicationTable(ProviderSecurityTable):
 
         return total_permissions
 
-    def _parse_m365_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_m365_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse M365 timestamp string."""
         if not timestamp_str:
             return None
@@ -568,7 +570,7 @@ class M365ConditionalAccessTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch Conditional Access policies from Microsoft Graph API."""
         config = ctx.config or {}
         client = M365Client(
@@ -601,27 +603,27 @@ class M365ConditionalAccessTable(ProviderSecurityTable):
             logger.error(f"Error fetching M365 Conditional Access policies: {e}")
             return
 
-    def check_all_users(self, policy_data: Dict[str, Any]) -> bool:
+    def check_all_users(self, policy_data: dict[str, Any]) -> bool:
         """Check if policy applies to all users."""
         conditions = policy_data.get("conditions", {})
         users = conditions.get("users", {})
         include_users = users.get("includeUsers", [])
         return "All" in include_users
 
-    def check_mfa_requirement(self, policy_data: Dict[str, Any]) -> bool:
+    def check_mfa_requirement(self, policy_data: dict[str, Any]) -> bool:
         """Check if policy requires MFA."""
         grant_controls = policy_data.get("grantControls", {})
         built_in_controls = grant_controls.get("builtInControls", [])
         return "mfa" in built_in_controls
 
-    def check_all_apps(self, policy_data: Dict[str, Any]) -> bool:
+    def check_all_apps(self, policy_data: dict[str, Any]) -> bool:
         """Check if policy applies to all applications."""
         conditions = policy_data.get("conditions", {})
         applications = conditions.get("applications", {})
         include_apps = applications.get("includeApplications", [])
         return "All" in include_apps
 
-    def _parse_m365_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_m365_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse M365 timestamp string."""
         if not timestamp_str:
             return None

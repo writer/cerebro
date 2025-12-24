@@ -24,7 +24,6 @@ Recommended pattern:
 """
 
 import asyncio
-from typing import Optional, Tuple
 
 from sqlalchemy import LargeBinary, TypeDecorator
 
@@ -47,13 +46,13 @@ class EncryptedString(TypeDecorator):
     impl = LargeBinary
     cache_ok = True
 
-    def process_bind_param(self, value: Optional[str], dialect) -> Optional[bytes]:
+    def process_bind_param(self, value: str | None, dialect) -> bytes | None:
         raise NotImplementedError(
             "EncryptedString TypeDecorator is deprecated. "
             "Use explicit async get/set methods on models instead."
         )
 
-    def process_result_value(self, value: Optional[bytes], dialect) -> Optional[str]:
+    def process_result_value(self, value: bytes | None, dialect) -> str | None:
         raise NotImplementedError(
             "EncryptedString TypeDecorator is deprecated. "
             "Use explicit async get/set methods on models instead."
@@ -68,9 +67,9 @@ class EncryptedText(EncryptedString):
 
 def create_encrypted_field_pair(
     field_name: str,
-    data_column_name: Optional[str] = None,
-    dek_column_name: Optional[str] = None,
-) -> Tuple[str, str]:
+    data_column_name: str | None = None,
+    dek_column_name: str | None = None,
+) -> tuple[str, str]:
     """Helper to create an encrypted field with automatic DEK management.
 
     Args:
@@ -131,8 +130,8 @@ class EncryptedFieldMixin:
     """
 
     async def encrypt_field(
-        self, value: Optional[str]
-    ) -> tuple[Optional[bytes], Optional[bytes]]:
+        self, value: str | None
+    ) -> tuple[bytes | None, bytes | None]:
         """Encrypt a field value.
 
         Args:
@@ -148,8 +147,8 @@ class EncryptedFieldMixin:
         return await service.encrypt_secret(value)
 
     async def decrypt_field(
-        self, encrypted_data: Optional[bytes], encrypted_dek: Optional[bytes]
-    ) -> Optional[str]:
+        self, encrypted_data: bytes | None, encrypted_dek: bytes | None
+    ) -> str | None:
         """Decrypt a field value.
 
         Args:
@@ -166,8 +165,8 @@ class EncryptedFieldMixin:
         return await service.decrypt_secret(encrypted_data, encrypted_dek)
 
     def decrypt_field_sync(
-        self, encrypted_data: Optional[bytes], encrypted_dek: Optional[bytes]
-    ) -> Optional[str]:
+        self, encrypted_data: bytes | None, encrypted_dek: bytes | None
+    ) -> str | None:
         """Decrypt a field value synchronously.
 
         Args:
@@ -188,8 +187,8 @@ class EncryptedFieldMixin:
 
 
 def encrypt_field_helper(
-    value: Optional[str],
-) -> tuple[Optional[bytes], Optional[bytes]]:
+    value: str | None,
+) -> tuple[bytes | None, bytes | None]:
     """DEPRECATED: Synchronous helper to encrypt a field value.
 
     DO NOT USE - This function uses deprecated asyncio.get_event_loop().
@@ -208,8 +207,8 @@ def encrypt_field_helper(
 
 
 def decrypt_field_helper(
-    encrypted_data: Optional[bytes], encrypted_dek: Optional[bytes]
-) -> Optional[str]:
+    encrypted_data: bytes | None, encrypted_dek: bytes | None
+) -> str | None:
     """DEPRECATED: Synchronous helper to decrypt a field value.
 
     DO NOT USE - This function uses deprecated asyncio.get_event_loop().

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from cerebro.core.config import settings
 
@@ -17,7 +16,7 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
-_registry: Optional[CollectorRegistry]
+_registry: CollectorRegistry | None
 if CollectorRegistry is not None:
     _registry = CollectorRegistry()
 else:  # pragma: no cover - handled when prometheus not installed
@@ -126,7 +125,7 @@ def record_runtime_metrics(
     input_tokens: int,
     output_tokens: int,
     tool_calls: int,
-    error_type: Optional[str] = None,
+    error_type: str | None = None,
 ) -> None:
     """Record Prometheus metrics for a runtime call if enabled."""
 
@@ -192,7 +191,7 @@ def record_tool_metrics(
     agent_type: str,
     success: bool,
     duration_seconds: float,
-    error_code: Optional[str] = None,
+    error_code: str | None = None,
 ) -> None:
     if not settings.enable_agent_metrics:
         return
@@ -216,7 +215,7 @@ def record_tool_metrics(
             ).inc()
 
 
-def get_registry() -> Optional[CollectorRegistry]:
+def get_registry() -> CollectorRegistry | None:
     """Expose the agent metrics registry for exporters."""
 
     return _registry

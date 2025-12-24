@@ -1,23 +1,22 @@
 """Customer management API endpoints."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from ...core.database import get_db
-from ...core.models import Organization
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
+from ...core.database import get_db
+from ...core.models import Organization
 from ...customer_management.customer_registry import (
+    CustomerLifecycleStage,
     CustomerRegistry,
     CustomerSegment,
-    CustomerLifecycleStage,
     get_customer_registry,
 )
-
 
 router = APIRouter()
 
@@ -27,21 +26,21 @@ class CustomerCreateRequest(BaseModel):
 
     name: str = Field(..., description="Customer name")
     account_manager: str = Field(..., description="Primary account manager email")
-    primary_contact: Optional[str] = Field(
+    primary_contact: str | None = Field(
         None, description="Primary customer contact email"
     )
     segment: str = Field(..., description="Customer segment identifier")
-    industry: Optional[str] = None
-    region: Optional[str] = None
-    seats_committed: Optional[int] = Field(None, ge=0)
-    annual_recurring_revenue: Optional[float] = Field(None, ge=0)
-    adoption_metrics: Dict[str, float] = Field(default_factory=dict)
+    industry: str | None = None
+    region: str | None = None
+    seats_committed: int | None = Field(None, ge=0)
+    annual_recurring_revenue: float | None = Field(None, ge=0)
+    adoption_metrics: dict[str, float] = Field(default_factory=dict)
     support_tickets_open: int = Field(0, ge=0)
-    lifecycle_stage: Optional[str] = Field(None, description="Lifecycle stage override")
-    last_engagement_at: Optional[datetime] = None
-    next_qbr_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    success_programs: List[str] = Field(default_factory=list)
+    lifecycle_stage: str | None = Field(None, description="Lifecycle stage override")
+    last_engagement_at: datetime | None = None
+    next_qbr_at: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    success_programs: list[str] = Field(default_factory=list)
 
     @field_validator("segment")
     @classmethod
@@ -54,7 +53,7 @@ class CustomerCreateRequest(BaseModel):
 
     @field_validator("lifecycle_stage")
     @classmethod
-    def validate_lifecycle_stage(cls, value: Optional[str]) -> Optional[str]:
+    def validate_lifecycle_stage(cls, value: str | None) -> str | None:
         if value is None:
             return value
         try:
@@ -75,7 +74,7 @@ class CustomerResponse(BaseModel):
     churnRiskScore: float
     accountManager: str
     supportTicketsOpen: int
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 def _serialize_customer(customer) -> CustomerResponse:

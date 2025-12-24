@@ -4,7 +4,7 @@ This is the DynamoDB version of the organizations API.
 It maintains the same API contract as the PostgreSQL version.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from cerebro.api.dynamodb_dependencies import org_repository
 from cerebro.core.repositories.organization import Organization, OrganizationRepository
 
-
 # Request/Response schemas
 
 
@@ -21,14 +20,14 @@ class OrganizationCreate(BaseModel):
     """Request schema for creating an organization."""
 
     name: str = Field(..., min_length=1, max_length=255)
-    slack_config: Optional[Dict[str, Any]] = None
+    slack_config: dict[str, Any] | None = None
 
 
 class OrganizationUpdate(BaseModel):
     """Request schema for updating an organization."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    slack_config: Optional[Dict[str, Any]] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    slack_config: dict[str, Any] | None = None
 
 
 class OrganizationResponse(BaseModel):
@@ -36,7 +35,7 @@ class OrganizationResponse(BaseModel):
 
     org_id: UUID
     name: str
-    slack_config: Optional[Dict[str, Any]] = None
+    slack_config: dict[str, Any] | None = None
     created_at: str
 
     class Config:
@@ -71,11 +70,11 @@ async def create_organization(
     return OrganizationResponse.from_entity(created)
 
 
-@router.get("/", response_model=List[OrganizationResponse])
+@router.get("/", response_model=list[OrganizationResponse])
 async def list_organizations(
     limit: int = Query(100, ge=1, le=1000),
     repo: OrganizationRepository = Depends(org_repository),
-) -> List[OrganizationResponse]:
+) -> list[OrganizationResponse]:
     """List all organizations."""
     orgs = await repo.list_all(limit=limit)
     return [OrganizationResponse.from_entity(org) for org in orgs]

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -28,7 +27,7 @@ def _rule() -> AlertRule:
 
 
 def _snapshot() -> TelemetryHealthSnapshot:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TelemetryHealthSnapshot(
         generated_at=now,
         window_start=now,
@@ -48,7 +47,7 @@ def _snapshot() -> TelemetryHealthSnapshot:
 
 
 def _result(rule: AlertRule) -> AlertResult:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return AlertResult(
         rule=rule,
         metric_value=0.4,
@@ -61,7 +60,7 @@ def _result(rule: AlertRule) -> AlertResult:
 
 @pytest.mark.asyncio
 async def test_send_slack_alert_posts_payload(monkeypatch) -> None:
-    calls: List[dict[str, object]] = []
+    calls: list[dict[str, object]] = []
 
     async def fake_post(url, json):  # type: ignore[override]
         calls.append({"url": url, "json": json})
@@ -81,7 +80,7 @@ async def test_send_slack_alert_posts_payload(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_send_email_alert_calls_sender(monkeypatch) -> None:
-    captured: List[tuple] = []
+    captured: list[tuple] = []
 
     async def fake_send(recipients, subject, body):
         captured.append((tuple(recipients), subject, body))

@@ -1,8 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from cerebro.analytics.datasets import DatasetBuilder
 from cerebro.agents.models import (
     AgentReviewTask,
     AgentRuntimeEvent,
@@ -10,6 +9,7 @@ from cerebro.agents.models import (
     AgentType,
     ReviewTaskStatus,
 )
+from cerebro.analytics.datasets import DatasetBuilder
 from cerebro.core.models import FrontendObservationEvent
 
 
@@ -26,7 +26,7 @@ async def test_dataset_builder_combines_streams(test_db, test_org):
     await test_db.commit()
     await test_db.refresh(session)
 
-    base_time = datetime(2024, 10, 22, 12, 0, tzinfo=timezone.utc)
+    base_time = datetime(2024, 10, 22, 12, 0, tzinfo=UTC)
 
     runtime_event = AgentRuntimeEvent(
         org_id=test_org.org_id,

@@ -1,20 +1,19 @@
 """Rule evaluator for generating findings."""
 
-from typing import Dict, List, Optional
 import logging
 
+from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc
 
 from cerebro.core.models import (
-    Rule,
-    Resource,
-    Principal,
     ConfigSnapshot,
     IamEdge,
     Organization,
+    Principal,
+    Resource,
+    Rule,
 )
-from cerebro.rules import RuleEngine, EvaluationContext, RuleResult
+from cerebro.rules import EvaluationContext, RuleEngine, RuleResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +27,8 @@ class RuleEvaluator:
         self.rule_engine = rule_engine
 
     async def evaluate_resource(
-        self, resource: Resource, rules: Optional[List[Rule]] = None
-    ) -> List[RuleResult]:
+        self, resource: Resource, rules: list[Rule] | None = None
+    ) -> list[RuleResult]:
         """Evaluate rules against a specific resource."""
         if rules is None:
             # Get applicable rules for this resource
@@ -69,8 +68,8 @@ class RuleEvaluator:
         return results
 
     async def evaluate_principal(
-        self, principal: Principal, rules: Optional[List[Rule]] = None
-    ) -> List[RuleResult]:
+        self, principal: Principal, rules: list[Rule] | None = None
+    ) -> list[RuleResult]:
         """Evaluate rules against a principal."""
         if rules is None:
             # Get applicable rules for principals
@@ -104,11 +103,11 @@ class RuleEvaluator:
     async def evaluate_organization(
         self,
         org: Organization,
-        provider: Optional[str] = None,
-        resource_types: Optional[List[str]] = None,
-    ) -> Dict[str, List[RuleResult]]:
+        provider: str | None = None,
+        resource_types: list[str] | None = None,
+    ) -> dict[str, list[RuleResult]]:
         """Evaluate rules across an entire organization."""
-        results: Dict[str, List[RuleResult]] = {}
+        results: dict[str, list[RuleResult]] = {}
 
         # Get all applicable rules for the organization
         from cerebro.core.models import Policy
@@ -118,7 +117,7 @@ class RuleEvaluator:
 
         # Then get rules for those policies
         stmt = select(Rule).where(
-            and_(Rule.policy_id.in_(policy_subquery), Rule.is_active == True)
+            and_(Rule.policy_id.in_(policy_subquery), Rule.is_active)
         )
 
         if provider:
@@ -161,10 +160,10 @@ class RuleEvaluator:
         return results
 
     async def _get_applicable_rules(
-        self, resource: Optional[Resource] = None, principal: Optional[Principal] = None
-    ) -> List[Rule]:
+        self, resource: Resource | None = None, principal: Principal | None = None
+    ) -> list[Rule]:
         """Get rules applicable to a resource or principal."""
-        stmt = select(Rule).where(Rule.is_active == True)
+        stmt = select(Rule).where(Rule.is_active)
 
         if resource:
             # Filter by provider and resource type
@@ -181,7 +180,7 @@ class RuleEvaluator:
 
         return list(await self.db.scalars(stmt))
 
-    async def _get_latest_config(self, resource: Resource) -> Optional[ConfigSnapshot]:
+    async def _get_latest_config(self, resource: Resource) -> ConfigSnapshot | None:
         """Get the latest configuration snapshot for a resource."""
         stmt = (
             select(ConfigSnapshot)
@@ -196,8 +195,8 @@ class RuleEvaluator:
         self,
         resource: Resource,
         config_snapshot: ConfigSnapshot,
-        principal: Optional[Principal] = None,
-        iam_edge: Optional[IamEdge] = None,
+        principal: Principal | None = None,
+        iam_edge: IamEdge | None = None,
     ) -> EvaluationContext:
         """Build evaluation context for rule execution."""
 

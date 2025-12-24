@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from cerebro.core.bulk_operations import compute_config_hash
-
 
 config_strategy = st.recursive(
     st.none() | st.booleans() | st.floats(allow_nan=False) | st.text() | st.integers(),
@@ -29,7 +29,7 @@ def test_hash_changes_with_modification(config):
     if isinstance(config, dict):
         modified = {**config, "__extra": str(uuid4())}
     elif isinstance(config, list):
-        modified = list(config) + [str(uuid4())]
+        modified = [*list(config), str(uuid4())]
     elif isinstance(config, (str, int, float, type(None), bool)):
         modified = [config, str(uuid4())]
 

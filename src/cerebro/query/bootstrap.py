@@ -8,21 +8,21 @@ provider table registration directly.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from .registry import TableRegistry, get_registry
 from ..providers.tables import register_all_provider_tables
+from .registry import TableRegistry, get_registry
 
 if TYPE_CHECKING:
     from .engine import QueryEngine
 
 _bootstrap_lock = threading.RLock()
 _tables_registered = False
-_shared_engine: Optional["QueryEngine"] = None
+_shared_engine: QueryEngine | None = None
 
 
 def ensure_tables_registered(
-    *, registry: Optional[TableRegistry] = None, force: bool = False
+    *, registry: TableRegistry | None = None, force: bool = False
 ) -> TableRegistry:
     """Ensure provider tables are registered on the target registry."""
 
@@ -45,7 +45,7 @@ def ensure_tables_registered(
 
 def get_query_engine(
     *,
-    registry: Optional[TableRegistry] = None,
+    registry: TableRegistry | None = None,
     force_refresh: bool = False,
     shared: bool = True,
 ):

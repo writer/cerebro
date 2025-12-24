@@ -11,9 +11,9 @@ Run with: python tests/integration/standalone_agent_test.py
 import asyncio
 import sys
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 # Add src to Python path
@@ -73,14 +73,14 @@ async def test_agent_models():
     try:
         # Import models
         from cerebro.agents.models import (
-            AgentSession,
             AgentMessage,
+            AgentSession,
             AgentType,
+            ApprovalStatus,
             MessageRole,
+            ToolApproval,
             ToolInvocation,
             ToolInvocationStatus,
-            ToolApproval,
-            ApprovalStatus,
         )
 
         # Test AgentType enum
@@ -179,8 +179,8 @@ async def test_database_operations():
         # Since aiosqlite is not available, we'll simulate database operations
         # In a real environment, this would use the full SQLAlchemy async setup
         from cerebro.agents.models import (
-            AgentSession,
             AgentMessage,
+            AgentSession,
             AgentType,
             MessageRole,
         )
@@ -261,7 +261,7 @@ async def test_streaming_simulation():
                 self.data = data
 
         class MockClaudeResponse:
-            def __init__(self, content: str, tool_calls: List[Dict] = None):
+            def __init__(self, content: str, tool_calls: list[dict] | None = None):
                 self.content = content
                 self.tool_calls = tool_calls or []
 
@@ -341,10 +341,10 @@ async def test_tool_registry_simulation():
             def register(self, tool: MockTool):
                 self.tools[tool.name] = tool
 
-            def get(self, name: str) -> Optional[MockTool]:
+            def get(self, name: str) -> MockTool | None:
                 return self.tools.get(name)
 
-            def list_tools(self) -> List[str]:
+            def list_tools(self) -> list[str]:
                 return list(self.tools.keys())
 
         # Create registry with mock tools
@@ -397,14 +397,14 @@ async def test_complete_workflow():
 
     try:
         from cerebro.agents.models import (
-            AgentSession,
             AgentMessage,
-            ToolInvocation,
-            ToolApproval,
+            AgentSession,
             AgentType,
-            MessageRole,
-            ToolInvocationStatus,
             ApprovalStatus,
+            MessageRole,
+            ToolApproval,
+            ToolInvocation,
+            ToolInvocationStatus,
         )
 
         # 1. Create incident response session
@@ -481,7 +481,7 @@ async def test_complete_workflow():
                 input_data={
                     "incident_id": "INC-2024-001",
                     "start_time": (
-                        datetime.now(timezone.utc) - timedelta(hours=24)
+                        datetime.now(UTC) - timedelta(hours=24)
                     ).isoformat(),
                     "affected_resources": [
                         "user/suspicious_account",
@@ -656,7 +656,7 @@ async def main():
     print("\n📈 System Readiness:")
     logger.info("\n📈 System Readiness:")
     readiness_items = [
-        f"✓ Agent Types: {len([t for t in ['security_analyst', 'incident_responder', 'identity_advisor', 'compliance_advisor', 'attack_path_analyst']])} configured",
+        f"✓ Agent Types: {len(['security_analyst', 'incident_responder', 'identity_advisor', 'compliance_advisor', 'attack_path_analyst'])} configured",
         f"✓ Message Roles: {len(['user', 'assistant', 'tool', 'system'])} supported",
         "✓ Tool Registry: Simulated with approval workflow",
         "✓ Streaming: Real-time response capability",

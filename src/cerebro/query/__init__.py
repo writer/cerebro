@@ -7,7 +7,7 @@ all providers in real-time, similar to Steampipe's Zero-ETL approach.
 
 from .engine import QueryEngine
 from .registry import TableRegistry
-from .table import SecurityTable
 from .schema import SecuritySchema
+from .table import SecurityTable
 
-__all__ = ["QueryEngine", "TableRegistry", "SecurityTable", "SecuritySchema"]
+__all__ = ["QueryEngine", "SecuritySchema", "SecurityTable", "TableRegistry"]

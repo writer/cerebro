@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -13,8 +13,8 @@ class WorkflowStep:
     name: str
     description: str
     action: str  # status change, assignment, notification, etc.
-    conditions: Dict[str, Any]
-    parameters: Dict[str, Any]
+    conditions: dict[str, Any]
+    parameters: dict[str, Any]
     order: int
 
 
@@ -26,9 +26,9 @@ class WorkflowTemplate:
     name: str
     description: str
     trigger: str  # on_create, on_status_change, on_sla_breach, etc.
-    conditions: Dict[str, Any]
-    steps: List[WorkflowStep]
-    metadata: Dict[str, Any]
+    conditions: dict[str, Any]
+    steps: list[WorkflowStep]
+    metadata: dict[str, Any]
 
 
 class WorkflowTemplateLibrary:
@@ -184,7 +184,7 @@ class WorkflowTemplateLibrary:
     )
 
     @classmethod
-    def get_all_templates(cls) -> List[WorkflowTemplate]:
+    def get_all_templates(cls) -> list[WorkflowTemplate]:
         """Get all available workflow templates."""
         return [
             cls.CRITICAL_ESCALATION,
@@ -194,7 +194,7 @@ class WorkflowTemplateLibrary:
         ]
 
     @classmethod
-    def get_template(cls, template_id: str) -> Optional[WorkflowTemplate]:
+    def get_template(cls, template_id: str) -> WorkflowTemplate | None:
         """Get a specific template by ID."""
         for template in cls.get_all_templates():
             if template.id == template_id:
@@ -202,7 +202,7 @@ class WorkflowTemplateLibrary:
         return None
 
     @classmethod
-    def get_templates_by_trigger(cls, trigger: str) -> List[WorkflowTemplate]:
+    def get_templates_by_trigger(cls, trigger: str) -> list[WorkflowTemplate]:
         """Get all templates for a specific trigger."""
         return [
             template
@@ -216,8 +216,8 @@ class WorkflowEngine:
 
     @staticmethod
     def evaluate_conditions(
-        conditions: Dict[str, Any],
-        context: Dict[str, Any],
+        conditions: dict[str, Any],
+        context: dict[str, Any],
     ) -> bool:
         """Evaluate if conditions match the context."""
         for key, expected_value in conditions.items():
@@ -238,7 +238,7 @@ class WorkflowEngine:
         return True
 
     @staticmethod
-    def _get_nested_value(data: Dict[str, Any], key_path: str) -> Any:
+    def _get_nested_value(data: dict[str, Any], key_path: str) -> Any:
         """Get value from nested dict using dot notation."""
         keys = key_path.split(".")
         value: Any = data
@@ -252,8 +252,8 @@ class WorkflowEngine:
     @staticmethod
     async def find_matching_templates(
         trigger: str,
-        context: Dict[str, Any],
-    ) -> List[WorkflowTemplate]:
+        context: dict[str, Any],
+    ) -> list[WorkflowTemplate]:
         """Find all templates that match the trigger and conditions."""
         matching = []
         templates = WorkflowTemplateLibrary.get_templates_by_trigger(trigger)
@@ -265,7 +265,7 @@ class WorkflowEngine:
         return matching
 
     @staticmethod
-    def to_dict(template: WorkflowTemplate) -> Dict[str, Any]:
+    def to_dict(template: WorkflowTemplate) -> dict[str, Any]:
         """Convert workflow template to dict representation."""
         return {
             "id": template.id,

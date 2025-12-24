@@ -45,14 +45,14 @@ except Exception:  # pragma: no cover
     KubernetesProvider = None  # type: ignore[misc, assignment]
 
 __all__ = [
-    "BaseProvider",
-    "ProviderError",
-    "GitHubProvider",
     "AWSProvider",
-    "GCPProvider",
     "AzureProvider",
+    "BaseProvider",
+    "GCPProvider",
+    "GitHubProvider",
     "GoogleWorkspaceProvider",
-    "OktaProvider",
-    "M365Provider",
     "KubernetesProvider",
+    "M365Provider",
+    "OktaProvider",
+    "ProviderError",
 ]

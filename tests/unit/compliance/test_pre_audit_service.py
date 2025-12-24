@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -22,8 +22,7 @@ from cerebro.compliance.preaudit_models import (
 from cerebro.core.database import async_session_factory
 from cerebro.query.engine import QueryResult
 
-
-UTC = timezone.utc
+UTC = UTC
 
 
 class _StubQueryEngine:

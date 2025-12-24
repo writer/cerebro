@@ -1,15 +1,15 @@
 """Organization management endpoints."""
 
-from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cerebro.api.auth import User, get_current_user, require_scopes
+from cerebro.api.schemas import OrganizationCreate, OrganizationResponse
 from cerebro.core.database import get_db
 from cerebro.core.models import Organization
-from cerebro.api.schemas import OrganizationCreate, OrganizationResponse
-from cerebro.api.auth import get_current_user, require_scopes, User
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -28,7 +28,7 @@ async def create_organization(
     return db_org
 
 
-@router.get("/", response_model=List[OrganizationResponse])
+@router.get("/", response_model=list[OrganizationResponse])
 async def list_organizations(
     skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)
 ):

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
 class TimestampToken:
     payload_hash: str
     timestamp: datetime
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class TimestampService:
@@ -37,7 +37,7 @@ class RFC3161Timestamper(TimestampService):
         return await super().timestamp(payload, **metadata)
 
 
-_DEFAULT_SERVICE: Optional[TimestampService] = None
+_DEFAULT_SERVICE: TimestampService | None = None
 
 
 def get_timestamp_service() -> TimestampService:

@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional
 
 from cerebro.core.config import settings
 from cerebro.core.logging import configure_structlog
 
 _logger = logging.getLogger(__name__)
-_configured_service: Optional[str] = None
+_configured_service: str | None = None
 
 
 def configure_service_observability(
     service_name: str,
     *,
     service_namespace: str = "cerebro",
-    service_version: Optional[str] = None,
+    service_version: str | None = None,
 ) -> None:
     """Configure logging and telemetry exporters for a named service."""
 
@@ -100,11 +99,11 @@ def configure_agent_observability() -> None:
     configure_service_observability(service_name="cerebro-agent-runtime")
 
 
-def _parse_otlp_headers(raw: Optional[str]) -> Optional[Dict[str, str]]:
+def _parse_otlp_headers(raw: str | None) -> dict[str, str] | None:
     if not raw:
         return None
 
-    headers: Dict[str, str] = {}
+    headers: dict[str, str] = {}
     for pair in raw.split(","):
         if "=" not in pair:
             continue

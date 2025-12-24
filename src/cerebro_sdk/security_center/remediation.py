@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable, Iterable, List, Sequence
 
 from .models import SecurityCenterCustomerInsight, SecurityCenterVendorInsight
-
 
 RemediationSeverity = str
 
@@ -55,7 +54,7 @@ def generate_remediation_actions(
     options: GenerateRemediationOptions,
 ) -> RemediationQueue:
     now = datetime.utcnow()
-    actions: List[RemediationAction] = []
+    actions: list[RemediationAction] = []
 
     for vendor in vendors:
         risk_score = vendor.residual_risk_score or vendor.inherent_risk_score or 0.0
@@ -203,8 +202,8 @@ def _build_customer_description(
     return "; ".join(parts)
 
 
-def _collect_vendor_evidence(vendor: SecurityCenterVendorInsight) -> List[str]:
-    evidence_ids: List[str] = []
+def _collect_vendor_evidence(vendor: SecurityCenterVendorInsight) -> list[str]:
+    evidence_ids: list[str] = []
     evidence = (
         vendor.metadata.get("evidence") if isinstance(vendor.metadata, dict) else None
     )
@@ -232,8 +231,8 @@ def _collect_vendor_evidence(vendor: SecurityCenterVendorInsight) -> List[str]:
     return evidence_ids
 
 
-def _collect_customer_evidence(customer: SecurityCenterCustomerInsight) -> List[str]:
-    evidence_ids: List[str] = []
+def _collect_customer_evidence(customer: SecurityCenterCustomerInsight) -> list[str]:
+    evidence_ids: list[str] = []
     evidence = (
         customer.metadata.get("evidence")
         if isinstance(customer.metadata, dict)

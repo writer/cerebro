@@ -1,11 +1,10 @@
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
 from cerebro.analytics.dashboard_analytics import DashboardAnalytics
 from cerebro.analytics.dashboard_repository import DashboardRepository
-
 from tests.api.dashboard_samples import build_sample_dashboard_response
 
 
@@ -133,7 +132,7 @@ def test_remediation_action_endpoints(
     principal_id = uuid4()
 
     def _make_action(status: str = "pending"):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return SimpleNamespace(
             action_id=test_action_id,
             principal_id=principal_id,
@@ -165,7 +164,7 @@ def test_remediation_action_endpoints(
     ):
         assert org_id == test_org.org_id
         assert action_id == test_action_id
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         action_state.status = status
         action_state.updated_at = now
         if status == "accepted":
@@ -175,15 +174,7 @@ def test_remediation_action_endpoints(
             action_state.completed_at = now
             action_state.completed_by = user_id
         if note:
-            action_state.notes = list(action_state.notes) + [
-                {
-                    "note_id": str(uuid4()),
-                    "author_id": str(user_id),
-                    "author": user_display_name,
-                    "note": note,
-                    "created_at": now.isoformat() + "Z",
-                }
-            ]
+            action_state.notes = [*list(action_state.notes), {"note_id": str(uuid4()), "author_id": str(user_id), "author": user_display_name, "note": note, "created_at": now.isoformat() + "Z"}]
         return action_state
 
     async def _fake_add_note(
@@ -196,16 +187,8 @@ def test_remediation_action_endpoints(
     ):
         assert org_id == test_org.org_id
         assert action_id == test_action_id
-        now = datetime.now(timezone.utc)
-        action_state.notes = list(action_state.notes) + [
-            {
-                "note_id": str(uuid4()),
-                "author_id": str(user_id),
-                "author": user_display_name,
-                "note": note,
-                "created_at": now.isoformat() + "Z",
-            }
-        ]
+        now = datetime.now(UTC)
+        action_state.notes = [*list(action_state.notes), {"note_id": str(uuid4()), "author_id": str(user_id), "author": user_display_name, "note": note, "created_at": now.isoformat() + "Z"}]
         action_state.updated_at = now
         return action_state
 
@@ -255,7 +238,7 @@ def test_bulk_remediation_action_endpoints(
     principal_ids = [uuid4(), uuid4()]
 
     def _make_action(action_id, principal_id, status="pending"):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return SimpleNamespace(
             action_id=action_id,
             principal_id=principal_id,
@@ -275,7 +258,7 @@ def test_bulk_remediation_action_endpoints(
         )
 
     action_state = {
-        aid: _make_action(aid, pid) for aid, pid in zip(action_ids, principal_ids)
+        aid: _make_action(aid, pid) for aid, pid in zip(action_ids, principal_ids, strict=False)
     }
 
     async def _fake_bulk_update(
@@ -289,7 +272,7 @@ def test_bulk_remediation_action_endpoints(
     ):
         assert org_id == test_org.org_id
         assert set(action_ids) == set(action_state)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         updated = []
         for aid in action_ids:
             action = action_state[aid]
@@ -302,15 +285,7 @@ def test_bulk_remediation_action_endpoints(
                 action.completed_at = now
                 action.completed_by = user_id
             if note:
-                action.notes = list(action.notes) + [
-                    {
-                        "note_id": str(uuid4()),
-                        "author_id": str(user_id),
-                        "author": user_display_name,
-                        "note": note,
-                        "created_at": now.isoformat() + "Z",
-                    }
-                ]
+                action.notes = [*list(action.notes), {"note_id": str(uuid4()), "author_id": str(user_id), "author": user_display_name, "note": note, "created_at": now.isoformat() + "Z"}]
             updated.append(action)
         return updated
 

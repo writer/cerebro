@@ -1,22 +1,22 @@
 """Forensic replay engine for historical state reconstruction."""
 
-from typing import Dict, List, Any, Optional
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
-import logging
 
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc
 
 from cerebro.core.models import (
-    Organization,
-    Resource,
-    Principal,
-    ConfigSnapshot,
-    IamEdge,
-    Finding,
     AuditEvent,
+    ConfigSnapshot,
+    Finding,
+    IamEdge,
+    Organization,
+    Principal,
+    Resource,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,13 +28,13 @@ class HistoricalPrincipal:
 
     principal_id: UUID
     external_id: str
-    display_name: Optional[str]
-    email: Optional[str]
+    display_name: str | None
+    email: str | None
     principal_type: str
     provider: str
     was_active: bool
-    permissions: List[Dict[str, Any]]
-    groups: List[str]
+    permissions: list[dict[str, Any]]
+    groups: list[str]
 
 
 @dataclass
@@ -43,12 +43,12 @@ class HistoricalResource:
 
     resource_id: UUID
     external_id: str
-    name: Optional[str]
+    name: str | None
     resource_type: str
     provider: str
-    configuration: Dict[str, Any]
-    who_had_access: List[Dict[str, Any]]
-    security_posture: Dict[str, Any]
+    configuration: dict[str, Any]
+    who_had_access: list[dict[str, Any]]
+    security_posture: dict[str, Any]
 
 
 @dataclass
@@ -57,10 +57,10 @@ class HistoricalState:
 
     timestamp: datetime
     organization: str
-    principals: List[HistoricalPrincipal]
-    resources: List[HistoricalResource]
-    active_findings: List[Dict[str, Any]]
-    security_summary: Dict[str, Any]
+    principals: list[HistoricalPrincipal]
+    resources: list[HistoricalResource]
+    active_findings: list[dict[str, Any]]
+    security_summary: dict[str, Any]
 
 
 class ForensicReplayEngine:
@@ -74,7 +74,7 @@ class ForensicReplayEngine:
         self,
         org_id: UUID,
         target_time: datetime,
-        scope: Optional[Dict[str, Any]] = None,
+        scope: dict[str, Any] | None = None,
     ) -> HistoricalState:
         """Reconstruct complete system state at a specific time."""
         org = await self.db.get(Organization, org_id)
@@ -122,8 +122,8 @@ class ForensicReplayEngine:
         return state
 
     async def _reconstruct_principals(
-        self, org_id: UUID, target_time: datetime, provider_filter: Optional[List[str]]
-    ) -> List[HistoricalPrincipal]:
+        self, org_id: UUID, target_time: datetime, provider_filter: list[str] | None
+    ) -> list[HistoricalPrincipal]:
         """Reconstruct principal state at target time."""
         # Get principals that existed at target time
         stmt = (
@@ -189,9 +189,9 @@ class ForensicReplayEngine:
         self,
         org_id: UUID,
         target_time: datetime,
-        provider_filter: Optional[List[str]],
-        resource_types: Optional[List[str]],
-    ) -> List[HistoricalResource]:
+        provider_filter: list[str] | None,
+        resource_types: list[str] | None,
+    ) -> list[HistoricalResource]:
         """Reconstruct resource state at target time."""
         # Get resources that existed at target time
         stmt = (
@@ -280,7 +280,7 @@ class ForensicReplayEngine:
 
     async def _reconstruct_active_findings(
         self, org_id: UUID, target_time: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Reconstruct what findings would have been active at target time."""
         # Get findings that were active at target time
         stmt = select(Finding).where(
@@ -323,11 +323,11 @@ class ForensicReplayEngine:
         return active_findings
 
     def _assess_historical_security_posture(
-        self, resource: Resource, config: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, resource: Resource, config: dict[str, Any]
+    ) -> dict[str, Any]:
         """Assess security posture of resource at historical point."""
-        issues: List[str] = []
-        strengths: List[str] = []
+        issues: list[str] = []
+        strengths: list[str] = []
         overall_score = 0.5
         if resource.resource_type == "aws.s3.bucket":
             # Check encryption
@@ -362,10 +362,10 @@ class ForensicReplayEngine:
 
     def _generate_security_summary(
         self,
-        principals: List[HistoricalPrincipal],
-        resources: List[HistoricalResource],
-        findings: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        principals: list[HistoricalPrincipal],
+        resources: list[HistoricalResource],
+        findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """Generate security summary for historical state."""
         # Principal analysis
         total_principals = len(principals)
@@ -438,8 +438,8 @@ class ForensicReplayEngine:
         org_id: UUID,
         incident_time: datetime,
         lookback_hours: int = 24,
-        focus_resource: Optional[UUID] = None,
-    ) -> Dict[str, Any]:
+        focus_resource: UUID | None = None,
+    ) -> dict[str, Any]:
         """Investigate a security incident using historical reconstruction."""
         start_time = incident_time - timedelta(hours=lookback_hours)
 
@@ -478,10 +478,10 @@ class ForensicReplayEngine:
         org_id: UUID,
         start_time: datetime,
         end_time: datetime,
-        focus_resource: Optional[UUID] = None,
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        focus_resource: UUID | None = None,
+    ) -> dict[str, list[dict[str, Any]]]:
         """Find all changes that occurred during a time period."""
-        changes: Dict[str, List[Dict[str, Any]]] = {
+        changes: dict[str, list[dict[str, Any]]] = {
             "configuration_changes": [],
             "permission_changes": [],
             "principal_changes": [],
@@ -583,13 +583,13 @@ class ForensicReplayEngine:
         self,
         baseline_state: HistoricalState,
         incident_state: HistoricalState,
-        changes: Dict[str, List[Dict[str, Any]]],
-    ) -> Dict[str, Any]:
+        changes: dict[str, list[dict[str, Any]]],
+    ) -> dict[str, Any]:
         """Analyze changes to understand what happened during incident."""
-        risk_escalations: List[Dict[str, Any]] = []
-        timeline: List[Dict[str, Any]] = []
-        potential_causes: List[str] = []
-        analysis: Dict[str, Any] = {
+        risk_escalations: list[dict[str, Any]] = []
+        timeline: list[dict[str, Any]] = []
+        potential_causes: list[str] = []
+        analysis: dict[str, Any] = {
             "change_summary": {},
             "risk_escalations": risk_escalations,
             "timeline": timeline,
@@ -621,7 +621,7 @@ class ForensicReplayEngine:
             )
 
         # Create timeline
-        all_events: List[Dict[str, Any]] = []
+        all_events: list[dict[str, Any]] = []
 
         for change in changes["configuration_changes"]:
             all_events.append(
@@ -665,7 +665,7 @@ class ForensicReplayEngine:
 
     async def compare_states(
         self, org_id: UUID, time1: datetime, time2: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compare system state between two points in time."""
         state1 = await self.reconstruct_state_at_time(org_id, time1)
         state2 = await self.reconstruct_state_at_time(org_id, time2)

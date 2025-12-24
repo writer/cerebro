@@ -7,7 +7,7 @@ Export OCSF events to various formats for SIEM, data lakes, and analytics platfo
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import structlog
 
@@ -41,7 +41,7 @@ class OCSFExporter:
 
     def export_to_file(
         self,
-        events: Union[OCSFEvent, List[OCSFEvent]],
+        events: OCSFEvent | list[OCSFEvent],
         output_path: Path,
         format: OCSFFormat = OCSFFormat.JSON,
         append: bool = False,
@@ -76,7 +76,7 @@ class OCSFExporter:
 
     def export_to_string(
         self,
-        events: Union[OCSFEvent, List[OCSFEvent]],
+        events: OCSFEvent | list[OCSFEvent],
         format: OCSFFormat = OCSFFormat.JSON,
         pretty: bool = True,
     ) -> str:
@@ -110,7 +110,7 @@ class OCSFExporter:
 
     def _export_json(
         self,
-        events: List[OCSFEvent],
+        events: list[OCSFEvent],
         output_path: Path,
         append: bool,
     ) -> int:
@@ -118,7 +118,7 @@ class OCSFExporter:
 
         if append and output_path.exists():
             # Load existing, append, write back
-            with open(output_path, "r") as f:
+            with open(output_path) as f:
                 existing = json.load(f)
                 if not isinstance(existing, list):
                     existing = [existing]
@@ -155,7 +155,7 @@ class OCSFExporter:
 
     def _export_jsonl(
         self,
-        events: List[OCSFEvent],
+        events: list[OCSFEvent],
         output_path: Path,
         append: bool,
     ) -> int:
@@ -179,7 +179,7 @@ class OCSFExporter:
 
     def _export_parquet(
         self,
-        events: List[OCSFEvent],
+        events: list[OCSFEvent],
         output_path: Path,
     ) -> int:
         """
@@ -223,7 +223,7 @@ class OCSFExporter:
 
     def _export_csv(
         self,
-        events: List[OCSFEvent],
+        events: list[OCSFEvent],
         output_path: Path,
         append: bool,
     ) -> int:
@@ -259,13 +259,13 @@ class OCSFExporter:
 
     def _flatten_dict(
         self,
-        d: Dict[str, Any],
+        d: dict[str, Any],
         parent_key: str = "",
         sep: str = ".",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Flatten nested dictionary with dot notation."""
 
-        items: List[tuple[str, Any]] = []
+        items: list[tuple[str, Any]] = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
 
@@ -297,9 +297,9 @@ class OCSFBatchExporter:
         self.format = format
         self.batch_size = batch_size
         self.exporter = OCSFExporter()
-        self.buffer: List[OCSFEvent] = []
+        self.buffer: list[OCSFEvent] = []
 
-    def add(self, event: OCSFEvent) -> Optional[int]:
+    def add(self, event: OCSFEvent) -> int | None:
         """
         Add event to buffer. Flush if batch size reached.
 

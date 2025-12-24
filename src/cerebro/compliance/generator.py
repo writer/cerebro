@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .frameworks import ComplianceFramework, get_framework, list_frameworks
 from .evidence import EvidenceCollector, EvidenceItem
+from .frameworks import ComplianceFramework, get_framework, list_frameworks
 
 
 @dataclass
@@ -15,7 +15,7 @@ class ControlEvaluation:
     """Summary of a single control's evaluation."""
 
     control: Any
-    evidence: List[EvidenceItem]
+    evidence: list[EvidenceItem]
 
     @property
     def successful_queries(self) -> int:
@@ -27,7 +27,7 @@ class ControlEvaluation:
     def failed_queries(self) -> int:
         return sum(1 for item in self.evidence if item.evidence_type == "query_error")
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         automation_level = getattr(self.control, "automation_level", "")
         if hasattr(automation_level, "value"):
             automation_level = automation_level.value
@@ -57,7 +57,7 @@ class ControlEvaluation:
 class ComplianceEvidenceGenerator:
     """Generate structured compliance reports for supported frameworks."""
 
-    def __init__(self, collector: Optional[EvidenceCollector] = None):
+    def __init__(self, collector: EvidenceCollector | None = None):
         self.evidence_collector = collector or EvidenceCollector()
 
     async def generate_compliance_report(
@@ -66,11 +66,11 @@ class ComplianceEvidenceGenerator:
         organization_id: str,
         period_start: datetime,
         period_end: datetime,
-        org_query_scope: Optional[str] = None,
-    ) -> Dict[str, object]:
+        org_query_scope: str | None = None,
+    ) -> dict[str, object]:
         framework = self._load_framework(framework_name)
 
-        evaluations: List[ControlEvaluation] = []
+        evaluations: list[ControlEvaluation] = []
         for control in framework.controls:
             queries = getattr(control, "sql_queries", None)
             if queries is None:
@@ -83,7 +83,7 @@ class ComplianceEvidenceGenerator:
             )
             evaluations.append(ControlEvaluation(control=control, evidence=evidence))
 
-        report: Dict[str, Any] = {
+        report: dict[str, Any] = {
             "framework": {
                 "id": framework_name.lower(),
                 "name": framework.name,
@@ -106,7 +106,7 @@ class ComplianceEvidenceGenerator:
         return report
 
     @staticmethod
-    def available_frameworks() -> List[str]:
+    def available_frameworks() -> list[str]:
         return list_frameworks()
 
     def _load_framework(self, framework_name: str) -> ComplianceFramework:
@@ -118,8 +118,8 @@ class ComplianceEvidenceGenerator:
     @staticmethod
     def _build_summary(
         framework: ComplianceFramework,
-        evaluations: List[ControlEvaluation],
-    ) -> Dict[str, object]:
+        evaluations: list[ControlEvaluation],
+    ) -> dict[str, object]:
         total_controls = len(framework.controls)
         successful_controls = sum(
             1 for evaluation in evaluations if evaluation.successful_queries > 0
@@ -144,9 +144,9 @@ class ComplianceEvidenceGenerator:
 
     @staticmethod
     def _build_evidence_summary(
-        evaluations: List[ControlEvaluation],
-    ) -> Dict[str, Dict[str, int]]:
-        summary: Dict[str, Dict[str, int]] = {}
+        evaluations: list[ControlEvaluation],
+    ) -> dict[str, dict[str, int]]:
+        summary: dict[str, dict[str, int]] = {}
         for evaluation in evaluations:
             summary[evaluation.control.control_id] = {
                 "evidence_items": len(evaluation.evidence),

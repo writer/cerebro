@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List, Mapping, MutableMapping, Optional, Sequence
-
 
 EntityKind = str
 
@@ -15,7 +14,7 @@ class EntityProfile:
     kind: EntityKind
     entity_id: str
     name: str
-    category: Optional[str] = None
+    category: str | None = None
     tags: Sequence[str] = field(default_factory=list)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
@@ -25,9 +24,9 @@ class EvidenceArtifact:
     artifact_id: str
     entity_id: str
     source: str
-    collected_at: Optional[datetime]
-    expires_at: Optional[datetime]
-    content_type: Optional[str] = None
+    collected_at: datetime | None
+    expires_at: datetime | None
+    content_type: str | None = None
     labels: Sequence[str] = field(default_factory=list)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
@@ -38,17 +37,17 @@ EvidenceLifecycleStatus = str
 @dataclass
 class EvidenceLifecycle:
     status: EvidenceLifecycleStatus
-    age_days: Optional[int]
-    ttl_days: Optional[int]
-    next_refresh_at: Optional[datetime]
+    age_days: int | None
+    ttl_days: int | None
+    next_refresh_at: datetime | None
     requires_action: bool
 
 
 @dataclass
 class LifecyclePolicy:
-    max_age_days: Optional[int] = None
-    refresh_window_days: Optional[int] = None
-    hard_expiry_days: Optional[int] = None
+    max_age_days: int | None = None
+    refresh_window_days: int | None = None
+    hard_expiry_days: int | None = None
 
 
 @dataclass
@@ -57,14 +56,14 @@ class EvidenceSetSummary:
     lifecycle: Sequence[EvidenceLifecycle]
     stale_artifacts: Sequence[EvidenceArtifact]
     expired_artifacts: Sequence[EvidenceArtifact]
-    next_refresh_at: Optional[datetime]
+    next_refresh_at: datetime | None
 
 
 def evaluate_evidence_lifecycle(
     artifact: EvidenceArtifact,
     policy: LifecyclePolicy,
     *,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> EvidenceLifecycle:
     now = now or datetime.utcnow()
     collected_at = artifact.collected_at
@@ -107,7 +106,7 @@ def summarize_evidence_set(
     artifacts: Sequence[EvidenceArtifact],
     policy: LifecyclePolicy,
     *,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> EvidenceSetSummary:
     now = now or datetime.utcnow()
     deduped = _dedupe_artifacts(artifacts)
@@ -120,11 +119,11 @@ def summarize_evidence_set(
             next_refresh_at=None,
         )
 
-    lifecycle: List[EvidenceLifecycle] = []
-    stale: List[EvidenceArtifact] = []
-    expired: List[EvidenceArtifact] = []
+    lifecycle: list[EvidenceLifecycle] = []
+    stale: list[EvidenceArtifact] = []
+    expired: list[EvidenceArtifact] = []
     status: EvidenceLifecycleStatus = "fresh"
-    next_refresh_at: Optional[datetime] = None
+    next_refresh_at: datetime | None = None
 
     for artifact in deduped:
         item_lifecycle = evaluate_evidence_lifecycle(artifact, policy, now=now)
@@ -162,7 +161,7 @@ def extract_evidence_artifacts(
     if not metadata:
         return []
 
-    artifacts: List[EvidenceArtifact] = []
+    artifacts: list[EvidenceArtifact] = []
 
     evidence = metadata.get("evidence")
     if isinstance(evidence, Mapping):
@@ -194,7 +193,7 @@ def extract_evidence_artifacts(
     return artifacts
 
 
-def _dedupe_artifacts(artifacts: Sequence[EvidenceArtifact]) -> List[EvidenceArtifact]:
+def _dedupe_artifacts(artifacts: Sequence[EvidenceArtifact]) -> list[EvidenceArtifact]:
     seen: MutableMapping[str, EvidenceArtifact] = {}
     for artifact in artifacts:
         if artifact.artifact_id not in seen:
@@ -239,7 +238,7 @@ def _to_artifact(
     )
 
 
-def _collect_labels(values: object | None) -> List[str]:
+def _collect_labels(values: object | None) -> list[str]:
     if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
         return [str(value) for value in values if isinstance(value, (str, bytes))]
     if isinstance(values, Mapping):
@@ -249,7 +248,7 @@ def _collect_labels(values: object | None) -> List[str]:
     return []
 
 
-def _coerce_datetime(value: object | None) -> Optional[datetime]:
+def _coerce_datetime(value: object | None) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -270,17 +269,17 @@ def _coerce_datetime(value: object | None) -> Optional[datetime]:
 
 
 def _compute_expiry(
-    collected_at: Optional[datetime],
-    hard_expiry_days: Optional[int],
+    collected_at: datetime | None,
+    hard_expiry_days: int | None,
     now: datetime,
-) -> Optional[datetime]:
+) -> datetime | None:
     if hard_expiry_days is None:
         return None
     base = collected_at or now
     return base + timedelta(days=hard_expiry_days)
 
 
-def _compute_age_days(collected_at: Optional[datetime], now: datetime) -> Optional[int]:
+def _compute_age_days(collected_at: datetime | None, now: datetime) -> int | None:
     if not collected_at:
         return None
     if collected_at > now:
@@ -289,10 +288,10 @@ def _compute_age_days(collected_at: Optional[datetime], now: datetime) -> Option
 
 
 def _compute_ttl_days(
-    collected_at: Optional[datetime],
-    expires_at: Optional[datetime],
-    hard_expiry_days: Optional[int],
-) -> Optional[int]:
+    collected_at: datetime | None,
+    expires_at: datetime | None,
+    hard_expiry_days: int | None,
+) -> int | None:
     if collected_at and expires_at:
         return int((expires_at - collected_at).days)
     return hard_expiry_days

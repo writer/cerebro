@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -94,7 +94,7 @@ class _ScoredTool(Tool):
 @pytest.mark.asyncio
 async def test_destructive_tool_execution_enqueues_review_task():
     async with async_session_factory() as db_session:
-        org = Organization(name="Review Org", created_at=datetime.now(timezone.utc))
+        org = Organization(name="Review Org", created_at=datetime.now(UTC))
         db_session.add(org)
         await db_session.commit()
         await db_session.refresh(org)
@@ -148,7 +148,7 @@ async def test_destructive_tool_execution_enqueues_review_task():
 @pytest.mark.asyncio
 async def test_review_task_resolution_updates_status():
     async with async_session_factory() as db_session:
-        org = Organization(name="Resolve Org", created_at=datetime.now(timezone.utc))
+        org = Organization(name="Resolve Org", created_at=datetime.now(UTC))
         db_session.add(org)
         await db_session.commit()
         await db_session.refresh(org)
@@ -189,7 +189,7 @@ async def test_review_task_resolution_updates_status():
 @pytest.mark.asyncio
 async def test_runtime_facade_skill_based_routing_prefers_openai():
     facade = AgentRuntimeFacade()
-    context: Dict[str, Any] = {"finding_ids": [str(uuid4())]}
+    context: dict[str, Any] = {"finding_ids": [str(uuid4())]}
     skill_tags = facade._extract_skill_tags(AgentType.SECURITY_ANALYST, context)  # type: ignore[attr-defined]
     assert "analysis" in skill_tags
     runtime = facade._select_runtime(AgentType.SECURITY_ANALYST, context, skill_tags)  # type: ignore[attr-defined]

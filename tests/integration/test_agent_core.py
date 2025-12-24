@@ -6,29 +6,30 @@ the full API stack that has circular dependencies.
 """
 
 import asyncio
-import pytest
 import time
-from typing import Any, Dict, List
-from uuid import UUID, uuid4
+from typing import Any
 from unittest.mock import AsyncMock, Mock
+from uuid import UUID, uuid4
 
+import pytest
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import only core agent functionality
 from cerebro.agents.models import (
-    AgentSession,
     AgentMessage,
+    AgentSession,
     AgentType,
+    ApprovalStatus,
     MessageRole,
+    ToolApproval,
     ToolInvocation,
     ToolInvocationStatus,
-    ToolApproval,
-    ApprovalStatus,
+)
+from cerebro.agents.models import (
     Base as AgentBase,
 )
-
 
 logger = structlog.get_logger(__name__)
 
@@ -36,7 +37,7 @@ logger = structlog.get_logger(__name__)
 class MockClaudeResponse:
     """Mock Claude API response for consistent testing."""
 
-    def __init__(self, content: str, tool_calls: List[Dict] = None):
+    def __init__(self, content: str, tool_calls: list[dict] | None = None):
         self.content = content
         self.tool_calls = tool_calls or []
         self.usage = {"input_tokens": 100, "output_tokens": 50}
@@ -67,7 +68,7 @@ class MockStreamChunk:
 @pytest.fixture
 async def agent_db() -> AsyncSession:
     """Create test database session with only agent tables."""
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import StaticPool
 
     # Use in-memory SQLite for tests
@@ -588,7 +589,7 @@ async def test_complete_agent_workflow():
 
     # This is a comprehensive integration test that validates
     # the agent system works end-to-end at the data layer
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import StaticPool
 
     engine = create_async_engine(

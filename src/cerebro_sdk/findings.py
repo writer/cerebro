@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import Finding, Organization
-from cerebro.findings.manager import FindingManager, FindingResult
 from cerebro.findings.evaluator import RuleEvaluator
+from cerebro.findings.manager import FindingManager, FindingResult
 from cerebro.rules.engine import rule_engine
 from cerebro_sdk.pagination import CursorPage, PageRequest, decode_cursor, encode_cursor
 
@@ -25,16 +25,16 @@ class FindingRecord:
     provider: str
     rule_id: UUID
     rule_version: int
-    resource_id: Optional[UUID]
-    principal_id: Optional[UUID]
+    resource_id: UUID | None
+    principal_id: UUID | None
     first_seen: datetime
     status: str
     severity: str
     fingerprint: str
     title: str
-    summary: Optional[str]
+    summary: str | None
     last_seen: datetime
-    evidence: Optional[dict[str, object]]
+    evidence: dict[str, object] | None
 
 
 class FindingService:
@@ -47,8 +47,8 @@ class FindingService:
         self,
         org_id: UUID,
         *,
-        status: Optional[str] = None,
-        severity: Optional[str] = None,
+        status: str | None = None,
+        severity: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[FindingRecord]:
@@ -66,10 +66,10 @@ class FindingService:
         self,
         org_id: UUID,
         *,
-        status: Optional[str] = None,
-        severity: Optional[str] = None,
-        provider: Optional[str] = None,
-        page: Optional[PageRequest] = None,
+        status: str | None = None,
+        severity: str | None = None,
+        provider: str | None = None,
+        page: PageRequest | None = None,
     ) -> CursorPage[FindingRecord]:
         request = page or PageRequest()
         limit = max(1, min(request.limit, 200))
@@ -91,14 +91,14 @@ class FindingService:
             cursor_last_seen = cursor.payload.get("last_seen")
             cursor_finding_id = cursor.payload.get("finding_id")
 
-            last_seen_dt: Optional[datetime] = None
+            last_seen_dt: datetime | None = None
             if isinstance(cursor_last_seen, str):
                 try:
                     last_seen_dt = datetime.fromisoformat(cursor_last_seen)
                 except ValueError:
                     last_seen_dt = None
 
-            finding_uuid: Optional[UUID] = None
+            finding_uuid: UUID | None = None
             if isinstance(cursor_finding_id, str):
                 try:
                     finding_uuid = UUID(cursor_finding_id)
@@ -123,7 +123,7 @@ class FindingService:
         page_rows = rows[:limit]
         items = [self._to_record(row) for row in page_rows]
 
-        next_cursor: Optional[str] = None
+        next_cursor: str | None = None
         if has_more and page_rows:
             last = page_rows[-1]
             next_cursor = encode_cursor(
@@ -135,7 +135,7 @@ class FindingService:
 
         return CursorPage(items=items, next_cursor=next_cursor)
 
-    async def get_finding(self, finding_id: UUID) -> Optional[FindingRecord]:
+    async def get_finding(self, finding_id: UUID) -> FindingRecord | None:
         stmt = select(Finding).where(Finding.finding_id == finding_id)
         finding = await self._db.scalar(stmt)
         if not finding:
@@ -156,8 +156,8 @@ class FindingService:
         self,
         org_id: UUID,
         *,
-        provider: Optional[str] = None,
-        resource_types: Optional[Iterable[str]] = None,
+        provider: str | None = None,
+        resource_types: Iterable[str] | None = None,
     ) -> FindingResult:
         org = await self._db.get(Organization, org_id)
         if not org:

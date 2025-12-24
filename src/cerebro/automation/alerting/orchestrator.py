@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
-from typing import Awaitable, Callable, Optional, Sequence
 
 import httpx
 import redis.asyncio as redis
@@ -15,9 +15,9 @@ from ..telemetry_health import TelemetryHealthSnapshot
 from .evaluator import AlertCooldownStore
 from .notify import send_email_alert, send_slack_alert
 from .results import AlertResult
+from .rules import AlertRule
 from .service import collect_telemetry_alerts
 from .store import InMemoryCooldownStore, RedisCooldownStore
-from .rules import AlertRule
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ EmailSender = Callable[[Sequence[str], str, str], Awaitable[None]]
 
 
 @asynccontextmanager
-async def _build_redis_store(redis_url: Optional[str]):  # type: ignore[misc]
+async def _build_redis_store(redis_url: str | None):  # type: ignore[misc]
     if not redis_url:
         yield None
         return
@@ -43,11 +43,11 @@ async def run_telemetry_alerts(
     window_days: int = 7,
     slack_webhooks: Sequence[str] | None = None,
     email_recipients: Sequence[str] | None = None,
-    redis_url: Optional[str] = None,
+    redis_url: str | None = None,
     dry_run: bool = False,
-    rules: Optional[Sequence[AlertRule]] = None,
-    email_sender: Optional[EmailSender] = None,
-    http_client: Optional[httpx.AsyncClient] = None,
+    rules: Sequence[AlertRule] | None = None,
+    email_sender: EmailSender | None = None,
+    http_client: httpx.AsyncClient | None = None,
 ) -> tuple[tuple[AlertResult, ...], TelemetryHealthSnapshot]:
     slack_webhooks = tuple(slack_webhooks or ())
     email_recipients = tuple(email_recipients or ())

@@ -7,7 +7,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -18,9 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import (
     Finding,
+    Organization,
     WebhookConfig,
     WebhookNotification,
-    Organization,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class WebhookPayloadTemplates:
     """Default webhook payload templates for different event types."""
 
     @staticmethod
-    def finding_created_template() -> Dict[str, Any]:
+    def finding_created_template() -> dict[str, Any]:
         """Default template for finding created events."""
         return {
             "event_type": "finding.created",
@@ -53,7 +53,7 @@ class WebhookPayloadTemplates:
         }
 
     @staticmethod
-    def compliance_failed_template() -> Dict[str, Any]:
+    def compliance_failed_template() -> dict[str, Any]:
         """Default template for compliance check failure events."""
         return {
             "event_type": "compliance.check_failed",
@@ -71,7 +71,7 @@ class WebhookPayloadTemplates:
         }
 
     @staticmethod
-    def monitoring_alert_template() -> Dict[str, Any]:
+    def monitoring_alert_template() -> dict[str, Any]:
         """Default template for monitoring alert events."""
         return {
             "event_type": "monitoring.alert",
@@ -102,7 +102,7 @@ class WebhookNotificationService:
         self.client = httpx.AsyncClient(timeout=30.0)
 
     @staticmethod
-    def _is_valid_url(url: Optional[str]) -> bool:
+    def _is_valid_url(url: str | None) -> bool:
         """Return True when the URL appears valid for HTTP(S) calls."""
         if not url:
             return False
@@ -137,7 +137,7 @@ class WebhookNotificationService:
             configs_result = await db.execute(
                 select(WebhookConfig).where(
                     WebhookConfig.org_id == org_id,
-                    WebhookConfig.enabled == True,
+                    WebhookConfig.enabled,
                     WebhookConfig.event_types.contains(["finding.created"]),
                 )
             )
@@ -205,7 +205,7 @@ class WebhookNotificationService:
         status: str,
         severity: str,
         findings_count: int,
-        account_id: Optional[str],
+        account_id: str | None,
         db: AsyncSession,
     ) -> None:
         """Send webhook notifications for compliance check failure.
@@ -235,7 +235,7 @@ class WebhookNotificationService:
             configs_result = await db.execute(
                 select(WebhookConfig).where(
                     WebhookConfig.org_id == org_id,
-                    WebhookConfig.enabled == True,
+                    WebhookConfig.enabled,
                     WebhookConfig.event_types.contains(["compliance.check_failed"]),
                 )
             )
@@ -299,9 +299,9 @@ class WebhookNotificationService:
         alert_title: str,
         alert_description: str,
         severity: str,
-        finding_id: Optional[UUID] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        db: Optional[AsyncSession] = None,
+        finding_id: UUID | None = None,
+        metadata: dict[str, Any] | None = None,
+        db: AsyncSession | None = None,
     ) -> None:
         """Send webhook notifications for monitoring alerts.
 
@@ -332,7 +332,7 @@ class WebhookNotificationService:
             configs_result = await db.execute(
                 select(WebhookConfig).where(
                     WebhookConfig.org_id == org_id,
-                    WebhookConfig.enabled == True,
+                    WebhookConfig.enabled,
                     WebhookConfig.event_types.contains(["monitoring.alert"]),
                 )
             )
@@ -389,8 +389,8 @@ class WebhookNotificationService:
             )
 
     def _render_payload(
-        self, template: Dict[str, Any], context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, template: dict[str, Any], context: dict[str, Any]
+    ) -> dict[str, Any]:
         """Render Jinja2 template with context data.
 
         Args:
@@ -401,7 +401,7 @@ class WebhookNotificationService:
             Rendered payload dictionary
         """
 
-        def render_value(value: Any, context: Dict[str, Any]) -> Any:
+        def render_value(value: Any, context: dict[str, Any]) -> Any:
             """Recursively render values in the template."""
             if isinstance(value, str):
                 try:
@@ -447,10 +447,10 @@ class WebhookNotificationService:
     async def _send_with_retry(
         self,
         config: WebhookConfig,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         event_type: str,
-        finding_id: Optional[UUID],
-        severity: Optional[str],
+        finding_id: UUID | None,
+        severity: str | None,
         db: AsyncSession,
     ) -> None:
         """Send webhook with retry logic and audit logging.
@@ -520,7 +520,7 @@ class WebhookNotificationService:
                     severity=severity,
                     payload=payload,
                     status="failed",
-                    error_message=f"Decryption error: {str(e)}",
+                    error_message=f"Decryption error: {e!s}",
                     retry_count=0,
                 )
                 db.add(notification)
@@ -599,7 +599,7 @@ class WebhookNotificationService:
                     )
 
             except httpx.TimeoutException as e:
-                last_error = f"Timeout after {config.timeout_seconds}s: {str(e)}"
+                last_error = f"Timeout after {config.timeout_seconds}s: {e!s}"
                 logger.warning(f"Webhook request timeout: {target_url}")
             except Exception as e:
                 last_error = str(e)
@@ -642,7 +642,7 @@ class WebhookNotificationService:
 
 
 # Global webhook service instance
-_webhook_service: Optional[WebhookNotificationService] = None
+_webhook_service: WebhookNotificationService | None = None
 
 
 def get_webhook_service() -> WebhookNotificationService:

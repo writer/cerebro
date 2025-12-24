@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cerebro.domain.entities import (
@@ -90,14 +90,14 @@ class M365InactivePrivilegedUserProducer(BaseFindingProducer):
 
         if (
             last_login
-            and datetime.now(timezone.utc) - last_login <= self._MAX_INACTIVITY
+            and datetime.now(UTC) - last_login <= self._MAX_INACTIVITY
         ):
             return findings
 
         if (
             not last_login
             and created
-            and datetime.now(timezone.utc) - created <= self._MAX_INACTIVITY
+            and datetime.now(UTC) - created <= self._MAX_INACTIVITY
         ):
             return findings
 
@@ -158,7 +158,7 @@ class M365InactivePrivilegedUserProducer(BaseFindingProducer):
         try:
             if value.endswith("Z"):
                 value = value.replace("Z", "+00:00")
-            return datetime.fromisoformat(value).astimezone(timezone.utc)
+            return datetime.fromisoformat(value).astimezone(UTC)
         except Exception:
             return None
 

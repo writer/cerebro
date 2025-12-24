@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -27,7 +27,7 @@ class _FakeSession:
 def _snapshot(
     missing_metadata: int = 50, total_events: int = 100
 ) -> TelemetryHealthSnapshot:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TelemetryHealthSnapshot(
         generated_at=now,
         window_start=now,
@@ -93,7 +93,7 @@ async def test_run_orchestrator_handles_delivery_errors(monkeypatch) -> None:
             severity=RuleSeverity.WARNING,
             description="Low total events",
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         alert = AlertResult(
             rule=rule,
             metric_value=20,

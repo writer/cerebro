@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 
-from cerebro.automation.daily_summary import build_slack_payload, generate_daily_summary
 from cerebro.agents.models import AgentSession
+from cerebro.automation.daily_summary import build_slack_payload, generate_daily_summary
 from cerebro.core.models import Account, Finding, Policy, Rule
 
 
@@ -40,7 +40,7 @@ async def test_generate_daily_summary_creates_session(test_db, test_org):
     await test_db.refresh(rule)
     await test_db.refresh(account)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     finding = Finding(
         finding_id=uuid4(),
         org_id=test_org.org_id,
@@ -110,7 +110,7 @@ async def test_slack_payload_includes_expected_fields(test_db, test_org):
     await test_db.refresh(rule)
     await test_db.refresh(account)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     finding = Finding(
         finding_id=uuid4(),
         org_id=test_org.org_id,

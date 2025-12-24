@@ -6,14 +6,14 @@ and approval workflows for restoration.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
-from .toxic_combinations import ToxicCombinationResult, ToxicityLevel
 from ..auditability.attestation import get_attestation_service
-from ..auditability.transparency_log import get_transparency_log, LogEntryType
+from ..auditability.transparency_log import LogEntryType, get_transparency_log
+from .toxic_combinations import ToxicCombinationResult, ToxicityLevel
 
 logger = logging.getLogger(__name__)
 
@@ -54,22 +54,22 @@ class QuarantineAction:
 
     # Risk assessment
     risk_score: float
-    toxic_patterns: List[str]
+    toxic_patterns: list[str]
 
     # Approval workflow
-    approver: Optional[str]
-    approved_at: Optional[datetime]
-    approval_justification: Optional[str]
+    approver: str | None
+    approved_at: datetime | None
+    approval_justification: str | None
 
     # Restoration details
-    restoration_conditions: List[str]
-    estimated_restoration_date: Optional[datetime]
+    restoration_conditions: list[str]
+    estimated_restoration_date: datetime | None
 
     # Attestation
     attestation_id: str
 
     # Metadata
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class QuarantineManager:
@@ -90,8 +90,8 @@ class QuarantineManager:
         }
 
     async def evaluate_for_quarantine(
-        self, toxic_results: List[ToxicCombinationResult]
-    ) -> List[QuarantineAction]:
+        self, toxic_results: list[ToxicCombinationResult]
+    ) -> list[QuarantineAction]:
         """
         Evaluate toxic combination results for quarantine actions.
 
@@ -212,7 +212,7 @@ class QuarantineManager:
 
     def _generate_restoration_conditions(
         self, toxic_result: ToxicCombinationResult
-    ) -> List[str]:
+    ) -> list[str]:
         """Generate conditions that must be met for app restoration."""
         conditions = []
 
@@ -238,8 +238,8 @@ class QuarantineManager:
         action_id: str,
         requested_by: str,
         business_justification: str,
-        mitigation_plan: List[str],
-    ) -> Dict[str, Any]:
+        mitigation_plan: list[str],
+    ) -> dict[str, Any]:
         """
         Request restoration of quarantined OAuth app.
 
@@ -283,8 +283,8 @@ class QuarantineManager:
         return restoration_request
 
     async def approve_app_restoration(
-        self, restoration_id: str, approver: str, approval_conditions: List[str]
-    ) -> Dict[str, Any]:
+        self, restoration_id: str, approver: str, approval_conditions: list[str]
+    ) -> dict[str, Any]:
         """
         Approve restoration of quarantined OAuth app.
 
@@ -331,7 +331,7 @@ class QuarantineManager:
 
         return restoration_request
 
-    async def execute_quarantine(self, action: QuarantineAction) -> Dict[str, Any]:
+    async def execute_quarantine(self, action: QuarantineAction) -> dict[str, Any]:
         """
         Execute quarantine action against OAuth app.
 
@@ -387,7 +387,7 @@ class QuarantineManager:
 
         return execution_result
 
-    async def _quarantine_google_app(self, app_id: str) -> Dict[str, Any]:
+    async def _quarantine_google_app(self, app_id: str) -> dict[str, Any]:
         """Quarantine Google Workspace OAuth app."""
         # In production, would use Google Admin SDK to revoke app
         return {
@@ -397,7 +397,7 @@ class QuarantineManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _quarantine_m365_app(self, app_id: str) -> Dict[str, Any]:
+    async def _quarantine_m365_app(self, app_id: str) -> dict[str, Any]:
         """Quarantine Microsoft 365 OAuth app."""
         # In production, would use Microsoft Graph API to disable app
         return {
@@ -407,7 +407,7 @@ class QuarantineManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _quarantine_github_app(self, app_id: str) -> Dict[str, Any]:
+    async def _quarantine_github_app(self, app_id: str) -> dict[str, Any]:
         """Quarantine GitHub OAuth app."""
         # In production, would use GitHub API to revoke app access
         return {
@@ -417,7 +417,7 @@ class QuarantineManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _quarantine_slack_app(self, app_id: str) -> Dict[str, Any]:
+    async def _quarantine_slack_app(self, app_id: str) -> dict[str, Any]:
         """Quarantine Slack OAuth app."""
         # In production, would use Slack API to uninstall app
         return {
@@ -427,7 +427,7 @@ class QuarantineManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def _load_quarantine_action(self, action_id: str) -> Dict[str, Any]:
+    async def _load_quarantine_action(self, action_id: str) -> dict[str, Any]:
         """Load quarantine action from storage."""
         # Mock implementation
         return {
@@ -438,7 +438,7 @@ class QuarantineManager:
             "risk_score": 0.9,
         }
 
-    async def _load_restoration_request(self, restoration_id: str) -> Dict[str, Any]:
+    async def _load_restoration_request(self, restoration_id: str) -> dict[str, Any]:
         """Load restoration request from storage."""
         # Mock implementation
         return {
@@ -449,7 +449,7 @@ class QuarantineManager:
             "business_justification": "Required for project X",
         }
 
-    async def get_quarantine_summary(self, org_id: str) -> Dict[str, Any]:
+    async def get_quarantine_summary(self, org_id: str) -> dict[str, Any]:
         """Get summary of quarantine actions for organization."""
         # In production, would query quarantine database
         return {

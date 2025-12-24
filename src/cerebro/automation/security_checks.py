@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import List
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cerebro.agents.tools import get_tool_registry, ToolPermissionLevel
+from cerebro.agents.tools import ToolPermissionLevel, get_tool_registry
 from cerebro.core.models import Rule
 from cerebro.core.user_models import User
 
@@ -27,12 +26,12 @@ async def find_stale_admins(
     db: AsyncSession,
     *,
     max_age_days: int = 90,
-) -> List[StaleAdminUser]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+) -> list[StaleAdminUser]:
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
 
     query = (
         select(User)
-        .where(User.is_admin == True)
+        .where(User.is_admin)
         .where(
             or_(
                 User.last_login.is_(None),
@@ -57,14 +56,14 @@ async def find_stale_admins(
 async def has_cel_canary(
     db: AsyncSession, rule_name: str = "cel.canary.policy"
 ) -> bool:
-    query = select(Rule).where(Rule.name == rule_name, Rule.is_active == True)
+    query = select(Rule).where(Rule.name == rule_name, Rule.is_active)
     result = await db.execute(query)
     return result.scalar_one_or_none() is not None
 
 
-def tools_missing_attestation() -> List[str]:
+def tools_missing_attestation() -> list[str]:
     registry = get_tool_registry()
-    issues: List[str] = []
+    issues: list[str] = []
     for tool in registry.list_tools():
         if (
             tool.permission_level

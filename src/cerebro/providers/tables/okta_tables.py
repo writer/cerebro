@@ -4,18 +4,19 @@ Okta provider table implementations.
 Exposes Okta identity resources as SQL tables.
 """
 
-from typing import AsyncGenerator, Dict, Any, Optional
-from datetime import datetime
 import logging
+from collections.abc import AsyncGenerator
+from datetime import datetime
+from typing import Any
 
-from ...query.table import ProviderSecurityTable, QueryContext
 from ...query.registry import register_table
-from ...query.schema import SecurityColumn, ColumnType, SecuritySchema
+from ...query.schema import ColumnType, SecurityColumn, SecuritySchema
+from ...query.table import ProviderSecurityTable, QueryContext
 
 
 # Real Okta API client implementation
 class OktaClient:
-    def __init__(self, domain: Optional[str] = None, api_token: Optional[str] = None):
+    def __init__(self, domain: str | None = None, api_token: str | None = None):
         self.domain = domain
         self.api_token = api_token
         self.base_url = f"https://{domain}" if domain else None
@@ -25,6 +26,7 @@ class OktaClient:
         """Authenticate with Okta API."""
         try:
             import httpx
+
             from cerebro.core.config import settings
 
             # Use provided credentials or fall back to settings
@@ -63,7 +65,7 @@ class OktaClient:
                     return
 
             url = "/api/v1/users"
-            query_params: Optional[Dict[str, Any]] = dict(params) if params else None
+            query_params: dict[str, Any] | None = dict(params) if params else None
 
             while url:
                 response = await self._client.get(
@@ -251,7 +253,7 @@ class OktaUserTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch users from Okta API."""
         config = ctx.config or {}
         client = OktaClient(
@@ -276,9 +278,9 @@ class OktaUserTable(ProviderSecurityTable):
             logger.error(f"Error fetching Okta users: {e}")
             return
 
-    def _build_okta_query_params(self, ctx: QueryContext) -> Dict[str, Any]:
+    def _build_okta_query_params(self, ctx: QueryContext) -> dict[str, Any]:
         """Build Okta API query parameters from QueryContext."""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         # Map common filters to Okta query parameters
         for filter_condition in ctx.filters:
@@ -295,7 +297,7 @@ class OktaUserTable(ProviderSecurityTable):
 
         return params
 
-    def _transform_okta_user(self, okta_user: Dict[str, Any]) -> Dict[str, Any]:
+    def _transform_okta_user(self, okta_user: dict[str, Any]) -> dict[str, Any]:
         """Transform Okta user data to our standard schema."""
         profile = okta_user.get("profile", {})
 
@@ -334,7 +336,7 @@ class OktaUserTable(ProviderSecurityTable):
         # This would come from configuration
         return "example.okta.com"
 
-    def _parse_okta_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_okta_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse Okta timestamp string."""
         if not timestamp_str:
             return None
@@ -343,7 +345,7 @@ class OktaUserTable(ProviderSecurityTable):
         except Exception:
             return None
 
-    def _check_mfa_enabled(self, user: Dict[str, Any]) -> bool:
+    def _check_mfa_enabled(self, user: dict[str, Any]) -> bool:
         """Check if MFA is enabled (simplified)."""
         # This would require additional API calls to get factors
         return False
@@ -426,7 +428,7 @@ class OktaApplicationTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch applications from Okta API."""
         config = ctx.config or {}
         client = OktaClient(
@@ -458,7 +460,7 @@ class OktaApplicationTable(ProviderSecurityTable):
         """Get Okta domain."""
         return "example.okta.com"
 
-    def _parse_okta_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_okta_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse Okta timestamp."""
         if not timestamp_str:
             return None
@@ -467,11 +469,11 @@ class OktaApplicationTable(ProviderSecurityTable):
         except Exception:
             return None
 
-    def count_assigned_users(self, app_data: Dict[str, Any]) -> int:
+    def count_assigned_users(self, app_data: dict[str, Any]) -> int:
         """Count assigned users (would require additional API call)."""
         return 0
 
-    def count_assigned_groups(self, app_data: Dict[str, Any]) -> int:
+    def count_assigned_groups(self, app_data: dict[str, Any]) -> int:
         """Count assigned groups (would require additional API call)."""
         return 0
 
@@ -520,7 +522,7 @@ class OktaGroupTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch groups from Okta API."""
         config = ctx.config or {}
         client = OktaClient(
@@ -554,7 +556,7 @@ class OktaGroupTable(ProviderSecurityTable):
         """Get Okta domain."""
         return "example.okta.com"
 
-    def _parse_okta_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+    def _parse_okta_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse Okta timestamp."""
         if not timestamp_str:
             return None
@@ -563,7 +565,7 @@ class OktaGroupTable(ProviderSecurityTable):
         except Exception:
             return None
 
-    def count_members(self, group_data: Dict[str, Any]) -> int:
+    def count_members(self, group_data: dict[str, Any]) -> int:
         """Count group members (would require additional API call)."""
         return 0
 

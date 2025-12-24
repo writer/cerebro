@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import List, Optional, Sequence
 from uuid import UUID
 
 from sqlalchemy import func, select, tuple_
@@ -52,10 +52,10 @@ class AgentAnalyticsRepository:
         *,
         session_id: UUID,
         limit: int,
-        event_type: Optional[str],
-        before: Optional[datetime],
-        before_id: Optional[UUID],
-    ) -> List[AgentRuntimeEvent]:
+        event_type: str | None,
+        before: datetime | None,
+        before_id: UUID | None,
+    ) -> list[AgentRuntimeEvent]:
         async with self._session_factory() as db_session:
             stmt = (
                 select(AgentRuntimeEvent)
@@ -86,7 +86,7 @@ class AgentAnalyticsRepository:
         self,
         *,
         session_id: UUID,
-        event_type: Optional[str],
+        event_type: str | None,
     ) -> Sequence:
         async with self._session_factory() as db_session:
             stmt = (

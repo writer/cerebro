@@ -1,17 +1,16 @@
 """Finding generation background tasks."""
 
-from typing import List, Optional
-from uuid import UUID
-from datetime import datetime
-import logging
 import asyncio
+import logging
+from datetime import datetime
+from uuid import UUID
 
-from cerebro.tasks.celery_app import celery_app
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization, Rule
-from cerebro.findings.manager import FindingManager
 from cerebro.findings.evaluator import RuleEvaluator
+from cerebro.findings.manager import FindingManager
 from cerebro.rules.engine import rule_engine
+from cerebro.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +19,9 @@ logger = logging.getLogger(__name__)
 def generate_findings_task(
     self,
     org_id: str,
-    provider: Optional[str] = None,
-    resource_types: Optional[List[str]] = None,
-    rule_ids: Optional[List[str]] = None,
+    provider: str | None = None,
+    resource_types: list[str] | None = None,
+    rule_ids: list[str] | None = None,
 ):
     """Background task to generate findings for an organization."""
 
@@ -88,7 +87,7 @@ def generate_findings_task(
 
 
 @celery_app.task(bind=True, name="cerebro.tasks.finding_tasks.evaluate_rule_batch")
-def evaluate_rule_batch(self, rule_id: str, resource_ids: List[str]):
+def evaluate_rule_batch(self, rule_id: str, resource_ids: list[str]):
     """Evaluate a specific rule against a batch of resources."""
 
     async def _evaluate():
@@ -105,6 +104,7 @@ def evaluate_rule_batch(self, rule_id: str, resource_ids: List[str]):
 
             async with async_session_factory() as db:
                 from sqlalchemy import select
+
                 from cerebro.core.models import Resource
 
                 # Get rule
@@ -165,7 +165,7 @@ def evaluate_rule_batch(self, rule_id: str, resource_ids: List[str]):
                         logger.warning(
                             f"Rule evaluation failed for resource {resource.resource_id}: {e}"
                         )
-                        errors.append(f"Resource {resource.external_id}: {str(e)}")
+                        errors.append(f"Resource {resource.external_id}: {e!s}")
 
                 logger.info(
                     f"Rule evaluation task {task_id} completed: {len(matches)} matches, {len(errors)} errors"
@@ -190,7 +190,7 @@ def evaluate_rule_batch(self, rule_id: str, resource_ids: List[str]):
     bind=True, name="cerebro.tasks.finding_tasks.update_finding_status_batch"
 )
 def update_finding_status_batch(
-    self, finding_ids: List[str], status: str, reason: Optional[str] = None
+    self, finding_ids: list[str], status: str, reason: str | None = None
 ):
     """Batch update finding statuses."""
 
@@ -207,6 +207,7 @@ def update_finding_status_batch(
 
             async with async_session_factory() as db:
                 from sqlalchemy import select
+
                 from cerebro.core.models import Finding
 
                 # Get findings
@@ -248,7 +249,7 @@ def update_finding_status_batch(
                         logger.warning(
                             f"Failed to update finding {finding.finding_id}: {e}"
                         )
-                        errors.append(f"Finding {finding.finding_id}: {str(e)}")
+                        errors.append(f"Finding {finding.finding_id}: {e!s}")
 
                 # Commit changes
                 await db.commit()

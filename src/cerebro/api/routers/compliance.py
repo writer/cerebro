@@ -2,7 +2,6 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 class PreAuditRunRequest(BaseModel):
     org_id: UUID
-    frameworks: List[str] = Field(..., min_length=1)
+    frameworks: list[str] = Field(..., min_length=1)
     audit_date: datetime
-    owner_emails: List[str] = Field(default_factory=list)
+    owner_emails: list[str] = Field(default_factory=list)
 
 
 class PreAuditRunResponse(BaseModel):
@@ -37,8 +36,8 @@ class PreAuditRunResponse(BaseModel):
 
 @router.get("/evidence/status")
 async def get_evidence_status(
-    org_id: Optional[UUID] = None,
-    framework: Optional[str] = None,
+    org_id: UUID | None = None,
+    framework: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_read_findings),
 ):

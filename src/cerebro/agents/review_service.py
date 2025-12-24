@@ -5,8 +5,8 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select
@@ -24,7 +24,6 @@ from cerebro.agents.notification_service import NotificationService
 from cerebro.agents.ticketing_service import TicketingService
 from cerebro.core.database import async_session_factory
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -37,14 +36,14 @@ class AgentReviewService:
         session: AgentSession,
         created_by: str,
         title: str,
-        summary: Optional[str] = None,
-        payload: Optional[Dict[str, Any]] = None,
-        message_id: Optional[UUID] = None,
-        tool_invocation_id: Optional[UUID] = None,
-        promotion_target: Optional[str] = None,
-        priority: Optional[str] = None,
-        due_at: Optional[datetime] = None,
-        notification_channel: Optional[str] = None,
+        summary: str | None = None,
+        payload: dict[str, Any] | None = None,
+        message_id: UUID | None = None,
+        tool_invocation_id: UUID | None = None,
+        promotion_target: str | None = None,
+        priority: str | None = None,
+        due_at: datetime | None = None,
+        notification_channel: str | None = None,
     ) -> AgentReviewTask:
         async with async_session_factory() as db_session:
             task = AgentReviewTask(
@@ -71,9 +70,9 @@ class AgentReviewService:
     async def list_tasks(
         *,
         org_id: UUID,
-        status: Optional[ReviewTaskStatus] = None,
+        status: ReviewTaskStatus | None = None,
         limit: int = 50,
-    ) -> List[AgentReviewTask]:
+    ) -> list[AgentReviewTask]:
         async with async_session_factory() as db_session:
             stmt = select(AgentReviewTask).where(AgentReviewTask.org_id == org_id)
             if status:
@@ -86,10 +85,10 @@ class AgentReviewService:
     async def list_tasks_page(
         *,
         org_id: UUID,
-        status: Optional[ReviewTaskStatus] = None,
+        status: ReviewTaskStatus | None = None,
         limit: int = 50,
-        cursor: Optional[str] = None,
-    ) -> Tuple[List[AgentReviewTask], Optional[str]]:
+        cursor: str | None = None,
+    ) -> tuple[list[AgentReviewTask], str | None]:
         normalized_limit = max(1, min(limit, 200))
 
         async with async_session_factory() as db_session:
@@ -106,14 +105,14 @@ class AgentReviewService:
                 created_raw = payload.get("created_at")
                 task_id_raw = payload.get("task_id")
 
-                created_at: Optional[datetime] = None
+                created_at: datetime | None = None
                 if isinstance(created_raw, str):
                     try:
                         created_at = datetime.fromisoformat(created_raw)
                     except ValueError:
                         created_at = None
 
-                task_uuid: Optional[UUID] = None
+                task_uuid: UUID | None = None
                 if isinstance(task_id_raw, str):
                     try:
                         task_uuid = UUID(task_id_raw)
@@ -138,7 +137,7 @@ class AgentReviewService:
         has_more = len(tasks) > normalized_limit
         page_items = tasks[:normalized_limit]
 
-        next_cursor: Optional[str] = None
+        next_cursor: str | None = None
         if has_more and page_items:
             last = page_items[-1]
             payload = {
@@ -155,8 +154,8 @@ class AgentReviewService:
         task_id: UUID,
         resolved_by: str,
         status: ReviewTaskStatus,
-        notes: Optional[str] = None,
-    ) -> Optional[AgentReviewTask]:
+        notes: str | None = None,
+    ) -> AgentReviewTask | None:
         async with async_session_factory() as db_session:
             task = await db_session.get(AgentReviewTask, task_id)
             if not task:
@@ -177,23 +176,23 @@ class AgentReviewService:
     async def bulk_update_tasks(
         *,
         org_id: UUID,
-        task_ids: List[UUID],
-        status: Optional[ReviewTaskStatus] = None,
-        resolved_by: Optional[str] = None,
-        notes: Optional[str] = None,
-        escalated_to: Optional[str] = None,
-        due_at: Optional[datetime] = None,
-        priority: Optional[str] = None,
-        notification_channel: Optional[str] = None,
-        ticket_system: Optional[str] = None,
-        ticket_summary: Optional[str] = None,
-        ticket_metadata: Optional[Dict[str, Any]] = None,
-    ) -> List[AgentReviewTask]:
+        task_ids: list[UUID],
+        status: ReviewTaskStatus | None = None,
+        resolved_by: str | None = None,
+        notes: str | None = None,
+        escalated_to: str | None = None,
+        due_at: datetime | None = None,
+        priority: str | None = None,
+        notification_channel: str | None = None,
+        ticket_system: str | None = None,
+        ticket_summary: str | None = None,
+        ticket_metadata: dict[str, Any] | None = None,
+    ) -> list[AgentReviewTask]:
         if not task_ids:
             return []
 
-        post_notifications: List[Tuple[UUID, str, Dict[str, Any]]] = []
-        post_tickets: List[Tuple[UUID, str, str, Dict[str, Any]]] = []
+        post_notifications: list[tuple[UUID, str, dict[str, Any]]] = []
+        post_tickets: list[tuple[UUID, str, str, dict[str, Any]]] = []
 
         async with async_session_factory() as db_session:
             stmt = (
@@ -317,13 +316,13 @@ class AgentReviewService:
         task: AgentReviewTask,
         *,
         status: ReviewTaskStatus,
-        resolved_by: Optional[str],
-        notes: Optional[str],
-        escalated_to: Optional[str] = None,
+        resolved_by: str | None,
+        notes: str | None,
+        escalated_to: str | None = None,
     ) -> None:
         task.status = status
         task.resolution_notes = notes
-        task.resolved_at = datetime.now(timezone.utc)
+        task.resolved_at = datetime.now(UTC)
         if resolved_by:
             task.resolved_by = resolved_by
         if status == ReviewTaskStatus.ESCALATED:
@@ -368,11 +367,11 @@ class AgentReviewService:
         elif status in {ReviewTaskStatus.REJECTED, ReviewTaskStatus.ESCALATED}:
             suggestion.reject_count = (suggestion.reject_count or 0) + 1
 
-        suggestion.last_seen = datetime.now(timezone.utc)
+        suggestion.last_seen = datetime.now(UTC)
         suggestion.details.setdefault("last_resolution_notes", task.resolution_notes)
 
     @staticmethod
-    def _serialize_for_websocket(task: AgentReviewTask) -> Dict[str, Any]:
+    def _serialize_for_websocket(task: AgentReviewTask) -> dict[str, Any]:
         return {
             "id": str(task.id),
             "org_id": str(task.org_id),
@@ -413,7 +412,7 @@ class AgentReviewService:
         task_id: UUID,
         assigned_to: str,
         assigned_by: str,
-    ) -> Optional[AgentReviewTask]:
+    ) -> AgentReviewTask | None:
         """Assign a task to a user."""
         async with async_session_factory() as db_session:
             task = await db_session.get(AgentReviewTask, task_id)
@@ -422,7 +421,7 @@ class AgentReviewService:
 
             old_assignee = task.assigned_to
             task.assigned_to = assigned_to
-            task.assigned_at = datetime.now(timezone.utc)
+            task.assigned_at = datetime.now(UTC)
             task.assigned_by = assigned_by
 
             # Record history
@@ -447,8 +446,8 @@ class AgentReviewService:
         task_id: UUID,
         author: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[AgentReviewComment]:
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentReviewComment | None:
         """Add a comment to a review task."""
         async with async_session_factory() as db_session:
             task = await db_session.get(AgentReviewTask, task_id)
@@ -481,7 +480,7 @@ class AgentReviewService:
         *,
         task_id: UUID,
         limit: int = 100,
-    ) -> List[AgentReviewComment]:
+    ) -> list[AgentReviewComment]:
         """Get all comments for a task."""
         async with async_session_factory() as db_session:
             stmt = (
@@ -498,7 +497,7 @@ class AgentReviewService:
         *,
         task_id: UUID,
         limit: int = 100,
-    ) -> List[AgentReviewHistory]:
+    ) -> list[AgentReviewHistory]:
         """Get change history for a task."""
         async with async_session_factory() as db_session:
             stmt = (
@@ -514,12 +513,12 @@ class AgentReviewService:
     async def summarize_queue(
         *,
         org_id: UUID,
-        now: Optional[datetime] = None,
-        db_session: Optional[AsyncSession] = None,
-    ) -> Dict[str, Any]:
+        now: datetime | None = None,
+        db_session: AsyncSession | None = None,
+    ) -> dict[str, Any]:
         """Summarize review queue backlog for operator dashboards."""
 
-        reference_time = now or datetime.now(timezone.utc)
+        reference_time = now or datetime.now(UTC)
 
         if db_session is None:
             async with async_session_factory() as session:
@@ -541,7 +540,7 @@ class AgentReviewService:
         *,
         org_id: UUID,
         reference_time: datetime,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         status_stmt = (
             select(
                 AgentReviewTask.status.label("status"),
@@ -673,10 +672,10 @@ class AgentReviewService:
         task_id: UUID,
         changed_by: str,
         change_type: str,
-        field_name: Optional[str] = None,
-        old_value: Optional[Dict[str, Any]] = None,
-        new_value: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        field_name: str | None = None,
+        old_value: dict[str, Any] | None = None,
+        new_value: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Record a change in the audit trail."""
         history = AgentReviewHistory(
@@ -691,13 +690,13 @@ class AgentReviewService:
         db_session.add(history)
 
     @staticmethod
-    def _encode_cursor(payload: Dict[str, Any]) -> str:
+    def _encode_cursor(payload: dict[str, Any]) -> str:
         serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
         token = base64.urlsafe_b64encode(serialized.encode("utf-8")).decode("ascii")
         return token.rstrip("=")
 
     @staticmethod
-    def _decode_cursor(token: str) -> Dict[str, Any]:
+    def _decode_cursor(token: str) -> dict[str, Any]:
         padding = "=" * (-len(token) % 4)
         raw = token + padding
         try:

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from cerebro.agents.repositories import AgentAnalyticsRepository
@@ -28,7 +28,7 @@ class AgentAnalyticsService:
         org_id: UUID,
         session_id: UUID,
         event_type: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
     ) -> None:
         await cls._repository.insert_event(
             org_id=org_id,
@@ -39,7 +39,7 @@ class AgentAnalyticsService:
 
         retention_days = max(settings.agent_runtime_event_retention_days, 1)
         if random.random() < cls._RETENTION_PROBABILITY:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+            cutoff = datetime.now(UTC) - timedelta(days=retention_days)
             await cls._repository.delete_older_than(cutoff)
 
     @classmethod
@@ -48,10 +48,10 @@ class AgentAnalyticsService:
         *,
         session_id: UUID,
         limit: int = 100,
-        event_type: Optional[str] = None,
-        before: Optional[datetime] = None,
-        before_id: Optional[UUID] = None,
-    ) -> List[Dict[str, Any]]:
+        event_type: str | None = None,
+        before: datetime | None = None,
+        before_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
         events = await cls._repository.list_events(
             session_id=session_id,
             limit=limit,
@@ -75,14 +75,14 @@ class AgentAnalyticsService:
         cls,
         *,
         session_id: UUID,
-        event_type: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        event_type: str | None = None,
+    ) -> list[dict[str, Any]]:
         result = await cls._repository.summarize_events(
             session_id=session_id,
             event_type=event_type,
         )
 
-        summaries: List[Dict[str, Any]] = []
+        summaries: list[dict[str, Any]] = []
         for row in result:
             summaries.append(
                 {
@@ -101,10 +101,10 @@ async def list_session_events(
     *,
     session_id: UUID,
     limit: int = 100,
-    event_type: Optional[str] = None,
-    before: Optional[datetime] = None,
-    before_id: Optional[UUID] = None,
-) -> List[Dict[str, Any]]:
+    event_type: str | None = None,
+    before: datetime | None = None,
+    before_id: UUID | None = None,
+) -> list[dict[str, Any]]:
     """Module-level helper for retrieving runtime events."""
 
     return await AgentAnalyticsService.list_events(

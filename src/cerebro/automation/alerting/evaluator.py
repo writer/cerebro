@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Callable, Dict, Optional, Protocol, Sequence
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
+from typing import Protocol
 
+from ..telemetry_health import TelemetryHealthSnapshot
 from .results import AlertResult
 from .rules import AlertRule, RuleComparison
-from ..telemetry_health import TelemetryHealthSnapshot
 
 
 class AlertCooldownStore(Protocol):
@@ -31,7 +32,7 @@ class AlertCooldownStore(Protocol):
 MetricAccessor = Callable[[TelemetryHealthSnapshot], float]
 
 
-def _build_metric_accessors() -> Dict[str, MetricAccessor]:
+def _build_metric_accessors() -> dict[str, MetricAccessor]:
     return {
         "total_events": lambda snap: float(snap.total_events),
         "unique_orgs": lambda snap: float(snap.unique_orgs),
@@ -79,12 +80,12 @@ async def evaluate_rules(
     snapshot: TelemetryHealthSnapshot,
     rules: Sequence[AlertRule],
     *,
-    cooldown_store: Optional[AlertCooldownStore] = None,
-    now: Optional[datetime] = None,
+    cooldown_store: AlertCooldownStore | None = None,
+    now: datetime | None = None,
 ) -> Sequence[AlertResult]:
     """Evaluate rules against a snapshot, returning fired alerts."""
 
-    current_time = now or datetime.now(timezone.utc)
+    current_time = now or datetime.now(UTC)
     fired: list[AlertResult] = []
 
     for rule in rules:

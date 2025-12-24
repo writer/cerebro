@@ -1,5 +1,4 @@
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -19,7 +18,7 @@ from cerebro.agents.self_play.tournament import (
 
 
 class DummyOrchestrator:
-    def __init__(self, results: List[SelfPlayResult]):
+    def __init__(self, results: list[SelfPlayResult]):
         self._results = results
 
     async def run_match(self, scenario: SelfPlayScenario) -> SelfPlayResult:
@@ -41,7 +40,7 @@ class DummyProvider(ScenarioProvider):
 
 
 def _make_result(success: bool, turns: int) -> SelfPlayResult:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return SelfPlayResult(
         match_id=uuid4(),
         scenario_id="scenario-a",

@@ -1,21 +1,21 @@
 """Advanced security analysis capabilities."""
 
 from .blast_radius import BlastRadiusAnalyzer, CompromiseScenario, ImpactAssessment
-from .forensic_replay import ForensicReplayEngine, HistoricalState
 from .change_replay import ChangeReplayEngine, RuleReplayResult
+from .forensic_replay import ForensicReplayEngine, HistoricalState
 from .identity_anomaly import (
-    IdentityAnomalyDetector,
     AnomalyResult,
+    IdentityAnomalyDetector,
 )  # sklearn is now installed
 
 __all__ = [
+    "AnomalyResult",
     "BlastRadiusAnalyzer",
+    "ChangeReplayEngine",
     "CompromiseScenario",
-    "ImpactAssessment",
     "ForensicReplayEngine",
     "HistoricalState",
-    "ChangeReplayEngine",
-    "RuleReplayResult",
     "IdentityAnomalyDetector",
-    "AnomalyResult",
+    "ImpactAssessment",
+    "RuleReplayResult",
 ]

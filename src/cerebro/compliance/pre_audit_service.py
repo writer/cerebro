@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -32,7 +33,6 @@ from cerebro.core.database import async_session_factory
 from cerebro.query.bootstrap import get_query_engine
 from cerebro.query.engine import QueryEngine, QueryResult
 
-
 logger = structlog.get_logger(__name__)
 
 
@@ -43,18 +43,18 @@ class ControlEvaluation:
     framework: str
     control: ComplianceControl
     status: ControlHealthStatus
-    pass_rate: Optional[float]
-    evidence_summary: Dict[str, Any]
-    issue_summary: Optional[str]
-    remediation: Optional[str]
-    priority: Optional[str]
-    owner: Optional[str]
+    pass_rate: float | None
+    evidence_summary: dict[str, Any]
+    issue_summary: str | None
+    remediation: str | None
+    priority: str | None
+    owner: str | None
 
 
 class PreAuditHealthCheckService:
     """Runs compliance control evaluations ahead of scheduled audits."""
 
-    def __init__(self, query_engine: Optional[QueryEngine] = None) -> None:
+    def __init__(self, query_engine: QueryEngine | None = None) -> None:
         self._query_engine = query_engine or get_query_engine()
 
     async def register_schedule(
@@ -77,10 +77,10 @@ class PreAuditHealthCheckService:
             raise ValueError("At least one framework must be provided")
 
         if audit_date.tzinfo is None:
-            audit_date = audit_date.replace(tzinfo=timezone.utc)
+            audit_date = audit_date.replace(tzinfo=UTC)
 
         first_run_at = audit_date - timedelta(weeks=max(prep_window_weeks, 1))
-        first_run_at = first_run_at.replace(tzinfo=timezone.utc)
+        first_run_at = first_run_at.replace(tzinfo=UTC)
 
         async with async_session_factory() as db:
             stmt = (
@@ -109,11 +109,11 @@ class PreAuditHealthCheckService:
             return schedule
 
     async def due_schedules(
-        self, *, as_of: Optional[datetime] = None
-    ) -> List[ComplianceAuditSchedule]:
+        self, *, as_of: datetime | None = None
+    ) -> list[ComplianceAuditSchedule]:
         """Return schedules that should execute a pre-audit run."""
 
-        now = as_of or datetime.now(timezone.utc)
+        now = as_of or datetime.now(UTC)
         async with async_session_factory() as db:
             stmt = (
                 select(ComplianceAuditSchedule)
@@ -177,8 +177,8 @@ class PreAuditHealthCheckService:
 
     async def _evaluate_frameworks(
         self, schedule: ComplianceAuditSchedule
-    ) -> List[ControlEvaluation]:
-        results: List[ControlEvaluation] = []
+    ) -> list[ControlEvaluation]:
+        results: list[ControlEvaluation] = []
         for framework_name in schedule.frameworks:
             framework = get_framework(framework_name)
             if not framework:
@@ -193,8 +193,8 @@ class PreAuditHealthCheckService:
         self,
         schedule: ComplianceAuditSchedule,
         framework: ComplianceFramework,
-    ) -> List[ControlEvaluation]:
-        evaluations: List[ControlEvaluation] = []
+    ) -> list[ControlEvaluation]:
+        evaluations: list[ControlEvaluation] = []
         for control in framework.controls:
             evaluation = await self._evaluate_control(schedule, framework.name, control)
             evaluations.append(evaluation)
@@ -206,14 +206,14 @@ class PreAuditHealthCheckService:
         framework_name: str,
         control: ComplianceControl,
     ) -> ControlEvaluation:
-        evidence_summary: Dict[str, Any] = {
+        evidence_summary: dict[str, Any] = {
             "queries": [],
         }
-        issues: List[str] = []
+        issues: list[str] = []
         remediation = control.remediation_guidance or None
-        owner: Optional[str] = None
+        owner: str | None = None
 
-        best_pass_rate: Optional[float] = None
+        best_pass_rate: float | None = None
         missing_evidence = False
 
         if not control.sql_queries:
@@ -284,7 +284,7 @@ class PreAuditHealthCheckService:
         if result.total_rows == 0:
             return 1.0
 
-        metrics: List[float] = []
+        metrics: list[float] = []
         for row in result.rows:
             for key in (
                 "compliance_rate",
@@ -296,7 +296,7 @@ class PreAuditHealthCheckService:
                 if isinstance(value, (int, float)):
                     metrics.append(float(value))
         if metrics:
-            normalised: List[float] = []
+            normalised: list[float] = []
             for value in metrics:
                 if value > 1.0:
                     normalised.append(min(1.0, value / 100.0))
@@ -309,7 +309,7 @@ class PreAuditHealthCheckService:
         return 0.0
 
     def _summarise_violation(
-        self, control: ComplianceControl, sample: Dict[str, Any], total_rows: int
+        self, control: ComplianceControl, sample: dict[str, Any], total_rows: int
     ) -> str:
         hint = (
             ", ".join(f"{k}={v}" for k, v in list(sample.items())[:3])
@@ -321,7 +321,7 @@ class PreAuditHealthCheckService:
     def _determine_status(
         self,
         control: ComplianceControl,
-        pass_rate: Optional[float],
+        pass_rate: float | None,
         missing_evidence: bool,
     ) -> ControlHealthStatus:
         if missing_evidence:
@@ -341,7 +341,7 @@ class PreAuditHealthCheckService:
 
     def _derive_priority(
         self, control: ComplianceControl, status: ControlHealthStatus
-    ) -> Optional[str]:
+    ) -> str | None:
         if status == ControlHealthStatus.PASSING:
             return None
         if control.control_type.name in {"PREVENTIVE", "TECHNICAL"}:
@@ -354,7 +354,7 @@ class PreAuditHealthCheckService:
         self,
         schedule: ComplianceAuditSchedule,
         run: PreAuditRun,
-        evaluations: List[ControlEvaluation],
+        evaluations: list[ControlEvaluation],
     ) -> None:
         passing = sum(1 for e in evaluations if e.status == ControlHealthStatus.PASSING)
         failing = sum(1 for e in evaluations if e.status == ControlHealthStatus.FAILING)
@@ -393,7 +393,7 @@ class PreAuditHealthCheckService:
 
     def _compute_next_run(
         self, schedule: ComplianceAuditSchedule, run_at: datetime
-    ) -> Optional[datetime]:
+    ) -> datetime | None:
         follow_up = run_at + timedelta(days=7)
         if follow_up >= schedule.audit_date:
             return None
@@ -412,7 +412,7 @@ class PreAuditHealthCheckService:
         self,
         db: AsyncSession,
         run: PreAuditRun,
-        evaluations: List[ControlEvaluation],
+        evaluations: list[ControlEvaluation],
     ) -> None:
         for evaluation in evaluations:
             finding = PreAuditControlFinding(
@@ -509,7 +509,7 @@ class PreAuditHealthCheckService:
             await db.refresh(session)
             return session
 
-    async def _assign_task(self, task_id: UUID, owner: Optional[str]) -> None:
+    async def _assign_task(self, task_id: UUID, owner: str | None) -> None:
         if not owner:
             return
 
@@ -519,7 +519,7 @@ class PreAuditHealthCheckService:
                 return
             task.assigned_to = owner
             task.assigned_by = "pre-audit"
-            task.assigned_at = datetime.now(timezone.utc)
+            task.assigned_at = datetime.now(UTC)
             await db.commit()
 
     async def _maybe_create_ticket(

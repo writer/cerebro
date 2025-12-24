@@ -6,10 +6,10 @@ outlier entitlements and detect privilege creep.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from ..query.bootstrap import get_query_engine
 
@@ -38,10 +38,10 @@ class PeerGroupBaseline:
 
     department: DepartmentType
     role_family: str  # "engineer", "manager", "analyst"
-    typical_permissions: List[str]
-    typical_resources: List[str]
-    permission_frequency: Dict[str, float]  # permission -> frequency in peer group
-    elevated_permissions: List[str]  # Permissions requiring justification
+    typical_permissions: list[str]
+    typical_resources: list[str]
+    permission_frequency: dict[str, float]  # permission -> frequency in peer group
+    elevated_permissions: list[str]  # Permissions requiring justification
     admin_permission_rate: float  # % of peer group with admin access
     total_principals: int
     baseline_date: datetime
@@ -54,11 +54,11 @@ class OutlierAnalysis:
     principal_id: str
     department: str
     role: str
-    outlier_permissions: List[Dict[str, Any]]
-    missing_common_permissions: List[str]
+    outlier_permissions: list[dict[str, Any]]
+    missing_common_permissions: list[str]
     risk_score: float
     peer_group_size: int
-    recommendations: List[str]
+    recommendations: list[str]
 
 
 class PeerGroupAnalyzer:
@@ -71,11 +71,11 @@ class PeerGroupAnalyzer:
 
     def __init__(self):
         self.query_engine = get_query_engine()
-        self.baselines: Dict[str, PeerGroupBaseline] = {}
+        self.baselines: dict[str, PeerGroupBaseline] = {}
 
     async def establish_peer_group_baselines(
         self, org_id: str
-    ) -> Dict[str, PeerGroupBaseline]:
+    ) -> dict[str, PeerGroupBaseline]:
         """
         Establish baseline permissions for each peer group.
 
@@ -98,7 +98,7 @@ class PeerGroupAnalyzer:
 
         return baselines
 
-    async def _collect_identity_data(self, org_id: str) -> List[Dict[str, Any]]:
+    async def _collect_identity_data(self, org_id: str) -> list[dict[str, Any]]:
         """Collect identity and access data across all providers."""
         identity_data = []
 
@@ -222,10 +222,10 @@ class PeerGroupAnalyzer:
             return "individual_contributor"
 
     def _group_by_peer_characteristics(
-        self, identity_data: List[Dict[str, Any]]
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        self, identity_data: list[dict[str, Any]]
+    ) -> dict[str, list[dict[str, Any]]]:
         """Group principals by department and role for peer analysis."""
-        groups: Dict[str, List[Dict[str, Any]]] = {}
+        groups: dict[str, list[dict[str, Any]]] = {}
 
         for identity in identity_data:
             department = identity["department"]
@@ -241,15 +241,15 @@ class PeerGroupAnalyzer:
         return {k: v for k, v in groups.items() if len(v) >= 3}
 
     async def _calculate_group_baseline(
-        self, group_key: str, principals: List[Dict[str, Any]]
+        self, group_key: str, principals: list[dict[str, Any]]
     ) -> PeerGroupBaseline:
         """Calculate baseline permissions for a peer group."""
         department_str, role = group_key.split("_", 1)
         department = DepartmentType(department_str)
 
         # Collect all permissions for principals in this group
-        all_permissions: List[str] = []
-        permission_counts: Dict[str, int] = {}
+        all_permissions: list[str] = []
+        permission_counts: dict[str, int] = {}
         admin_count = 0
 
         for principal in principals:
@@ -289,12 +289,12 @@ class PeerGroupAnalyzer:
 
         # Get typical resources (simplified)
         typical_resources = list(
-            set(
-                [
+            {
+
                     perm.split(":")[0] if ":" in perm else perm
                     for perm in typical_permissions
-                ]
-            )
+
+            }
         )
 
         baseline = PeerGroupBaseline(
@@ -313,7 +313,7 @@ class PeerGroupAnalyzer:
 
         return baseline
 
-    async def _get_principal_permissions(self, principal_id: str) -> List[str]:
+    async def _get_principal_permissions(self, principal_id: str) -> list[str]:
         """Get all permissions for a principal across providers."""
         permissions = []
 
@@ -361,7 +361,7 @@ class PeerGroupAnalyzer:
 
         return permissions
 
-    async def analyze_outliers(self, org_id: str) -> List[OutlierAnalysis]:
+    async def analyze_outliers(self, org_id: str) -> list[OutlierAnalysis]:
         """
         Analyze principals for outlier permissions compared to peers.
 
@@ -384,8 +384,8 @@ class PeerGroupAnalyzer:
         return outliers
 
     async def _analyze_principal_vs_peers(
-        self, identity: Dict[str, Any]
-    ) -> Optional[OutlierAnalysis]:
+        self, identity: dict[str, Any]
+    ) -> OutlierAnalysis | None:
         """Analyze a principal against their peer group baseline."""
         department = identity["department"]
         role = identity["role"]
@@ -447,8 +447,8 @@ class PeerGroupAnalyzer:
 
     def _calculate_outlier_risk_score(
         self,
-        outlier_permissions: List[Dict[str, Any]],
-        missing_permissions: List[str],
+        outlier_permissions: list[dict[str, Any]],
+        missing_permissions: list[str],
         baseline: PeerGroupBaseline,
     ) -> float:
         """Calculate risk score for outlier analysis."""
@@ -485,10 +485,10 @@ class PeerGroupAnalyzer:
 
     def _generate_outlier_recommendations(
         self,
-        outlier_permissions: List[Dict[str, Any]],
-        missing_permissions: List[str],
+        outlier_permissions: list[dict[str, Any]],
+        missing_permissions: list[str],
         baseline: PeerGroupBaseline,
-    ) -> List[str]:
+    ) -> list[str]:
         """Generate recommendations for outlier principals."""
         recommendations = []
 
@@ -526,7 +526,7 @@ class PeerGroupAnalyzer:
 
         return recommendations
 
-    async def generate_peer_group_report(self, org_id: str) -> Dict[str, Any]:
+    async def generate_peer_group_report(self, org_id: str) -> dict[str, Any]:
         """
         Generate comprehensive peer group analysis report.
 
@@ -540,7 +540,7 @@ class PeerGroupAnalyzer:
 
         # Create department summaries
         department_summaries: dict[str, dict[str, Any]] = {}
-        for group_key, baseline in baselines.items():
+        for _group_key, baseline in baselines.items():
             dept_name = baseline.department.value
 
             if dept_name not in department_summaries:

@@ -4,7 +4,6 @@ Compliance framework definitions for automated evidence generation.
 Defines control requirements and evidence mapping for major compliance frameworks.
 """
 
-from typing import List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -44,8 +43,8 @@ class ComplianceControl:
     description: str
     category: str
     control_type: ControlType
-    required_evidence: List[EvidenceType]
-    sql_queries: List[str]  # SQL queries to collect evidence
+    required_evidence: list[EvidenceType]
+    sql_queries: list[str]  # SQL queries to collect evidence
     remediation_guidance: str
     frequency: str  # How often evidence needs to be collected
     automation_level: str  # manual, semi-automated, automated
@@ -58,17 +57,17 @@ class ComplianceFramework:
     name: str
     version: str
     description: str
-    controls: List[ComplianceControl]
+    controls: list[ComplianceControl]
 
-    def get_control(self, control_id: str) -> Optional[ComplianceControl]:
+    def get_control(self, control_id: str) -> ComplianceControl | None:
         """Get a specific control by ID."""
         return next((c for c in self.controls if c.control_id == control_id), None)
 
-    def get_controls_by_category(self, category: str) -> List[ComplianceControl]:
+    def get_controls_by_category(self, category: str) -> list[ComplianceControl]:
         """Get all controls in a category."""
         return [c for c in self.controls if c.category == category]
 
-    def get_automated_controls(self) -> List[ComplianceControl]:
+    def get_automated_controls(self) -> list[ComplianceControl]:
         """Get controls that can be fully automated."""
         return [c for c in self.controls if c.automation_level == "automated"]
 
@@ -377,11 +376,11 @@ COMPLIANCE_FRAMEWORKS = {
 }
 
 
-def get_framework(framework_name: str) -> Optional[ComplianceFramework]:
+def get_framework(framework_name: str) -> ComplianceFramework | None:
     """Get a compliance framework by name."""
     return COMPLIANCE_FRAMEWORKS.get(framework_name.lower())
 
 
-def list_frameworks() -> List[str]:
+def list_frameworks() -> list[str]:
     """List all available compliance frameworks."""
     return list(COMPLIANCE_FRAMEWORKS.keys())

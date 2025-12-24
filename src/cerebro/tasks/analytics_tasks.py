@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable, Dict, List
 from uuid import UUID
 
 from celery import states
 
-from cerebro.tasks.celery_app import celery_app
-from cerebro.core.analytics_db import analytics_read_session
-from cerebro.core.database import async_session_factory
-from cerebro.core.models import Organization
+from cerebro.analytics.dashboard_repository import DashboardRepository
+from cerebro.analytics.risk_scoring import (
+    OrganizationRiskScore,
+    RiskFactor,
+    RiskScoringEngine,
+)
 from cerebro.analytics.time_series import (
     AggregationPeriod,
     MetricSnapshot,
@@ -21,17 +23,15 @@ from cerebro.analytics.time_series import (
     TimeSeriesCollector,
     store_snapshot_to_warehouse,
 )
-from cerebro.analytics.risk_scoring import (
-    RiskScoringEngine,
-    RiskFactor,
-    OrganizationRiskScore,
-)
-from cerebro.analytics.dashboard_repository import DashboardRepository
+from cerebro.core.analytics_db import analytics_read_session
+from cerebro.core.database import async_session_factory
+from cerebro.core.models import Organization
+from cerebro.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_risk_factor(factor: RiskFactor) -> Dict[str, object]:
+def _serialize_risk_factor(factor: RiskFactor) -> dict[str, object]:
     return {
         "factor_name": factor.factor_name,
         "category": factor.category,
@@ -44,7 +44,7 @@ def _serialize_risk_factor(factor: RiskFactor) -> Dict[str, object]:
     }
 
 
-def _serialize_risk_score(score: OrganizationRiskScore) -> Dict[str, object]:
+def _serialize_risk_score(score: OrganizationRiskScore) -> dict[str, object]:
     return {
         "risk_level": score.risk_level.value,
         "score_trend": score.score_trend,
@@ -63,7 +63,7 @@ def _serialize_risk_score(score: OrganizationRiskScore) -> Dict[str, object]:
     }
 
 
-async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
+async def _collect_security_metrics_for_org(org_id: UUID) -> dict[str, object]:
     async with async_session_factory() as db:
         org = await db.get(Organization, org_id)
         if not org:
@@ -84,7 +84,7 @@ async def _collect_security_metrics_for_org(org_id: UUID) -> Dict[str, object]:
 
             collector_writer = TimeSeriesCollector(db)
 
-            stored_snapshots: List[str] = []
+            stored_snapshots: list[str] = []
             for snapshot in snapshots:
                 db_snapshot = await collector_writer.store_snapshot(
                     org.org_id,
@@ -156,8 +156,8 @@ async def _collect_security_metrics_with_retry(
     max_attempts: int = 3,
     retry_backoff: float = 2.0,
     initial_delay: float = 1.0,
-    update_state_cb: Callable[[str, Dict[str, object]], None] | None = None,
-) -> Dict[str, object]:
+    update_state_cb: Callable[[str, dict[str, object]], None] | None = None,
+) -> dict[str, object]:
     """Collect metrics with retry support for transient failures."""
 
     attempt = 0
@@ -196,8 +196,8 @@ async def _collect_security_metrics_with_retry(
 async def _collect_security_metrics_for_all_orgs(
     *,
     max_attempts: int = 3,
-    update_state_cb: Callable[[str, Dict[str, object]], None] | None = None,
-) -> Dict[str, object]:
+    update_state_cb: Callable[[str, dict[str, object]], None] | None = None,
+) -> dict[str, object]:
     """Collect metrics for every organization with retry and progress callbacks."""
 
     async with async_session_factory() as db:
@@ -205,7 +205,7 @@ async def _collect_security_metrics_for_all_orgs(
 
         org_ids = list(await db.scalars(select(Organization.org_id)))
 
-    results: List[Dict[str, object]] = []
+    results: list[dict[str, object]] = []
     total = len(org_ids)
 
     for index, org_id in enumerate(org_ids, start=1):
@@ -227,7 +227,7 @@ async def _collect_security_metrics_for_all_orgs(
             results.append(result)
         except Exception as exc:  # pragma: no cover - surfaced via result payload
             logger.exception("Metric collection failed for org %s", org_id)
-            error_meta: Dict[str, object] = {"org_id": str(org_id), "error": str(exc)}
+            error_meta: dict[str, object] = {"org_id": str(org_id), "error": str(exc)}
             if update_state_cb is not None:
                 update_state_cb(states.FAILURE, error_meta)  # type: ignore[arg-type]
             results.append(error_meta)
@@ -239,10 +239,10 @@ async def _collect_security_metrics_for_all_orgs(
     bind=True,
     name="cerebro.tasks.analytics_tasks.collect_security_metrics_for_org",
 )
-def collect_security_metrics_for_org(self, org_id: str) -> Dict[str, object]:
+def collect_security_metrics_for_org(self, org_id: str) -> dict[str, object]:
     """Collect and persist security analytics for a single organization."""
 
-    async def _run() -> Dict[str, object]:
+    async def _run() -> dict[str, object]:
         try:
             self.update_state(
                 state=states.STARTED,
@@ -274,10 +274,10 @@ def collect_security_metrics_for_org(self, org_id: str) -> Dict[str, object]:
     bind=True,
     name="cerebro.tasks.analytics_tasks.collect_security_metrics_all_orgs",
 )
-def collect_security_metrics_all_orgs(self) -> Dict[str, object]:
+def collect_security_metrics_all_orgs(self) -> dict[str, object]:
     """Collect security analytics for every organization."""
 
-    async def _run() -> Dict[str, object]:
+    async def _run() -> dict[str, object]:
         return await _collect_security_metrics_for_all_orgs(
             update_state_cb=lambda state, meta: self.update_state(
                 state=state,

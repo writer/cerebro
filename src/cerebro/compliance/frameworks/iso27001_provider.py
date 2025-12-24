@@ -5,14 +5,14 @@ Implements ISO/IEC 27001:2022 Information Security Management System
 with automated evidence collection and validation.
 """
 
-from typing import List, Optional, Any
+from typing import Any
 
 from ..framework_registry import (
-    FrameworkProvider,
-    FrameworkDefinition,
+    AutomationLevel,
     ControlDefinition,
     ControlType,
-    AutomationLevel,
+    FrameworkDefinition,
+    FrameworkProvider,
     TestingFrequency,
 )
 
@@ -25,11 +25,11 @@ class ISO27001FrameworkProvider(FrameworkProvider):
         return "iso27001"
 
     @property
-    def supported_versions(self) -> List[str]:
+    def supported_versions(self) -> list[str]:
         return ["2013", "2022", "latest"]
 
     def get_framework_definition(
-        self, version: Optional[str] = None
+        self, version: str | None = None
     ) -> FrameworkDefinition:
         """Get ISO 27001 framework definition."""
         controls = self._get_iso27001_controls()
@@ -107,7 +107,7 @@ class ISO27001FrameworkProvider(FrameworkProvider):
             ],
         )
 
-    def _get_iso27001_controls(self) -> List[ControlDefinition]:
+    def _get_iso27001_controls(self) -> list[ControlDefinition]:
         """Define ISO 27001 controls with evidence collection."""
         return [
             # A.5 Information Security Policies
@@ -434,7 +434,7 @@ class ISO27001FrameworkProvider(FrameworkProvider):
                 return False
 
             logs = evidence_data.get("logs", [])
-            log_types = set(log.get("event_type", "") for log in logs)
+            log_types = {log.get("event_type", "") for log in logs}
 
             # Check for comprehensive logging
             required_log_types = {

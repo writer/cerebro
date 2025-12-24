@@ -5,12 +5,12 @@ Manages registration and discovery of security tables across all providers.
 Inspired by Steampipe's plugin registration pattern.
 """
 
-from typing import Any, Dict, List, Optional, Type
 import logging
 from collections import defaultdict
+from typing import Any
 
-from .table import SecurityTable
 from ..core.events import emit_event
+from .table import SecurityTable
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,12 @@ class TableRegistry:
     """
 
     def __init__(self):
-        self._tables: Dict[str, SecurityTable] = {}
-        self._tables_by_provider: Dict[str, List[str]] = defaultdict(list)
-        self._table_aliases: Dict[str, str] = {}
+        self._tables: dict[str, SecurityTable] = {}
+        self._tables_by_provider: dict[str, list[str]] = defaultdict(list)
+        self._table_aliases: dict[str, str] = {}
 
     def register_table(
-        self, table: SecurityTable, aliases: Optional[List[str]] = None
+        self, table: SecurityTable, aliases: list[str] | None = None
     ) -> None:
         """
         Register a security table with the query engine.
@@ -99,7 +99,7 @@ class TableRegistry:
         emit_event("table_unregistered", {"table_name": table_name})
         return True
 
-    def get_table(self, table_name: str) -> Optional[SecurityTable]:
+    def get_table(self, table_name: str) -> SecurityTable | None:
         """
         Get a registered table by name or alias.
         """
@@ -114,7 +114,7 @@ class TableRegistry:
 
         return None
 
-    def list_tables(self, provider: Optional[str] = None) -> List[str]:
+    def list_tables(self, provider: str | None = None) -> list[str]:
         """
         List all registered table names, optionally filtered by provider.
         """
@@ -123,11 +123,11 @@ class TableRegistry:
 
         return list(self._tables.keys())
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """List all providers that have registered tables."""
         return list(self._tables_by_provider.keys())
 
-    def get_table_info(self, table_name: str) -> Optional[Dict]:
+    def get_table_info(self, table_name: str) -> dict | None:
         """
         Get detailed information about a table.
         """
@@ -159,7 +159,7 @@ class TableRegistry:
             ],
         }
 
-    def find_tables_by_pattern(self, pattern: str) -> List[str]:
+    def find_tables_by_pattern(self, pattern: str) -> list[str]:
         """
         Find tables matching a pattern (supports wildcards).
 
@@ -177,13 +177,13 @@ class TableRegistry:
 
         return matching_tables
 
-    def get_schema_summary(self) -> Dict:
+    def get_schema_summary(self) -> dict:
         """
         Get a summary of all registered tables and their schemas.
 
         Useful for query planning and introspection.
         """
-        summary: Dict[str, Any] = {
+        summary: dict[str, Any] = {
             "total_tables": len(self._tables),
             "providers": list(self._tables_by_provider.keys()),
             "tables_by_provider": dict(self._tables_by_provider),
@@ -200,7 +200,7 @@ class TableRegistry:
 
         return summary
 
-    def validate_query_tables(self, table_names: List[str]) -> Dict[str, List[str]]:
+    def validate_query_tables(self, table_names: list[str]) -> dict[str, list[str]]:
         """
         Validate that all referenced table names exist.
 
@@ -230,23 +230,23 @@ def get_registry() -> TableRegistry:
     return _global_registry
 
 
-def register_table(table: SecurityTable, aliases: Optional[List[str]] = None) -> None:
+def register_table(table: SecurityTable, aliases: list[str] | None = None) -> None:
     """Register a table with the global registry."""
     _global_registry.register_table(table, aliases)
 
 
-def get_table(table_name: str) -> Optional[SecurityTable]:
+def get_table(table_name: str) -> SecurityTable | None:
     """Get a table from the global registry."""
     return _global_registry.get_table(table_name)
 
 
-def list_tables(provider: Optional[str] = None) -> List[str]:
+def list_tables(provider: str | None = None) -> list[str]:
     """List tables from the global registry."""
     return _global_registry.list_tables(provider)
 
 
 # Decorator for automatic table registration
-def security_table(name: Optional[str] = None, aliases: Optional[List[str]] = None):
+def security_table(name: str | None = None, aliases: list[str] | None = None):
     """
     Decorator to automatically register a SecurityTable class.
 
@@ -256,7 +256,7 @@ def security_table(name: Optional[str] = None, aliases: Optional[List[str]] = No
             ...
     """
 
-    def decorator(cls: Type[SecurityTable]):
+    def decorator(cls: type[SecurityTable]):
         def register_instance(*args, **kwargs):
             instance = cls(*args, **kwargs)
             if name:
@@ -285,7 +285,7 @@ class TableRegistrationContext:
             for table_name in self._registered_tables:
                 _global_registry.unregister_table(table_name)
 
-    def register_table(self, table: SecurityTable, aliases: Optional[List[str]] = None):
+    def register_table(self, table: SecurityTable, aliases: list[str] | None = None):
         """Register a table within this context."""
         register_table(table, aliases)
         self._registered_tables.append(table.name)

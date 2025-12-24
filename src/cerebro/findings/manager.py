@@ -1,17 +1,18 @@
 """Finding manager for creating and managing security findings."""
 
 import hashlib
-from typing import Any, Dict, List, Optional
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 from uuid import UUID
-import logging
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
-from cerebro.core.models import Finding, Rule, Resource, Organization
+from cerebro.core.models import Finding, Organization, Resource, Rule
 from cerebro.rules import RuleResult
+
 from .evaluator import RuleEvaluator
 from .producers import ProducerBasedFindingService, producer_registry
 
@@ -25,7 +26,7 @@ class FindingResult:
     findings_created: int = 0
     findings_updated: int = 0
     findings_closed: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class FindingManager:
@@ -40,8 +41,8 @@ class FindingManager:
     async def generate_findings(
         self,
         org: Organization,
-        provider: Optional[str] = None,
-        resource_types: Optional[List[str]] = None,
+        provider: str | None = None,
+        resource_types: list[str] | None = None,
     ) -> FindingResult:
         """Generate findings for an organization."""
         result = FindingResult()
@@ -85,7 +86,7 @@ class FindingManager:
         self,
         org: Organization,
         resource_external_id: str,
-        rule_results: List[RuleResult],
+        rule_results: list[RuleResult],
         result: FindingResult,
     ) -> None:
         """Process rule results for a specific resource."""
@@ -212,7 +213,7 @@ class FindingManager:
             logger.debug(f"Closed finding {existing_finding.finding_id}")
 
     def _generate_fingerprint(
-        self, rule_id: UUID, resource_id: Optional[UUID], principal_id: Optional[UUID]
+        self, rule_id: UUID, resource_id: UUID | None, principal_id: UUID | None
     ) -> str:
         """Generate a unique fingerprint for a finding."""
         components = [str(rule_id)]
@@ -241,8 +242,8 @@ class FindingManager:
         self,
         finding_id: UUID,
         reason: str,
-        user_id: Optional[UUID] = None,
-        expires_at: Optional[datetime] = None,
+        user_id: UUID | None = None,
+        expires_at: datetime | None = None,
     ) -> bool:
         """Suppress a specific finding."""
         finding = await self.db.get(Finding, finding_id)
@@ -286,7 +287,7 @@ class FindingManager:
 
     async def get_findings_by_status(
         self, org_id: UUID, status: str, limit: int = 100, offset: int = 0
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         """Get findings by status."""
         stmt = (
             select(Finding)
@@ -298,7 +299,7 @@ class FindingManager:
 
         return list(await self.db.scalars(stmt))
 
-    async def get_finding_stats(self, org_id: UUID) -> Dict[str, Any]:
+    async def get_finding_stats(self, org_id: UUID) -> dict[str, Any]:
         """Get finding statistics for an organization using efficient SQL aggregations."""
         from sqlalchemy import func
 
@@ -315,7 +316,7 @@ class FindingManager:
             .group_by(Finding.status)
         )
         status_results = await self.db.execute(status_stmt)
-        by_status = {status: count for status, count in status_results.fetchall()}
+        by_status = dict(status_results.fetchall())
 
         # Get counts by severity
         severity_stmt = (
@@ -324,9 +325,7 @@ class FindingManager:
             .group_by(Finding.severity)
         )
         severity_results = await self.db.execute(severity_stmt)
-        by_severity = {
-            severity: count for severity, count in severity_results.fetchall()
-        }
+        by_severity = dict(severity_results.fetchall())
 
         # Get counts by provider
         provider_stmt = (
@@ -335,9 +334,7 @@ class FindingManager:
             .group_by(Finding.provider)
         )
         provider_results = await self.db.execute(provider_stmt)
-        by_provider = {
-            provider: count for provider, count in provider_results.fetchall()
-        }
+        by_provider = dict(provider_results.fetchall())
 
         return {
             "total": total_count,

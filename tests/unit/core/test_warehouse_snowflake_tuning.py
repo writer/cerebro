@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from sqlalchemy.pool import NullPool, QueuePool
 
 from cerebro.core import warehouse

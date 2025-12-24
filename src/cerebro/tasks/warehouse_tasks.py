@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from celery import states
@@ -14,7 +14,6 @@ from sqlalchemy import text
 from cerebro.core.config import settings
 from cerebro.core.warehouse import resolve_snowflake_database_url, warehouse_session
 from cerebro.tasks.celery_app import celery_app
-
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ def refresh_rule_controls(self) -> dict[str, object]:
         or os.getenv("CEREBRO_COMPONENT")
         or "worker"
     )
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
 
     with warehouse_session() as session:
         try:
@@ -148,7 +147,7 @@ def refresh_rule_controls(self) -> dict[str, object]:
                 ).scalar()
                 or 0
             )
-            finished_at = datetime.now(timezone.utc)
+            finished_at = datetime.now(UTC)
 
             session.execute(
                 text(
@@ -185,7 +184,7 @@ def refresh_rule_controls(self) -> dict[str, object]:
                     ),
                     {
                         "status": "failed",
-                        "finished_at": datetime.now(timezone.utc),
+                        "finished_at": datetime.now(UTC),
                         "details": json.dumps({"error": str(exc)}),
                         "job_run_id": job_run_id,
                     },
@@ -225,7 +224,7 @@ def run_warehouse_data_quality_checks(self) -> dict[str, object]:
         or os.getenv("CEREBRO_COMPONENT")
         or "worker"
     )
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
 
     checks: dict[str, str] = {
         "findings_orphan_accounts": """
@@ -315,7 +314,7 @@ def run_warehouse_data_quality_checks(self) -> dict[str, object]:
 
             issue_total = sum(results.values())
             status = "success" if issue_total == 0 else "warning"
-            finished_at = datetime.now(timezone.utc)
+            finished_at = datetime.now(UTC)
 
             session.execute(
                 text(
@@ -354,7 +353,7 @@ def run_warehouse_data_quality_checks(self) -> dict[str, object]:
                     ),
                     {
                         "status": "failed",
-                        "finished_at": datetime.now(timezone.utc),
+                        "finished_at": datetime.now(UTC),
                         "details": json.dumps({"error": str(exc)}),
                         "job_run_id": job_run_id,
                     },

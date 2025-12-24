@@ -1,10 +1,9 @@
 """Google Cloud KMS implementation for envelope encryption."""
 
 import logging
-from typing import Optional
 
 from google.cloud.kms_v1 import KeyManagementServiceAsyncClient
-from google.cloud.kms_v1.types import EncryptRequest, DecryptRequest
+from google.cloud.kms_v1.types import DecryptRequest, EncryptRequest
 
 from .base import BaseKMS
 
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 class GCPKMS(BaseKMS):
     """Google Cloud KMS implementation using customer-managed keys."""
 
-    def __init__(self, key_name: str, credentials_path: Optional[str] = None):
+    def __init__(self, key_name: str, credentials_path: str | None = None):
         """Initialize GCP KMS client.
 
         Args:

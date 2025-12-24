@@ -1,8 +1,8 @@
 """Rule repository for DynamoDB."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -42,27 +42,27 @@ class Rule(BaseModel):
     """Rule entity - CEL/SQL/Rego rule expression."""
 
     rule_id: UUID = Field(default_factory=uuid4)
-    policy_id: Optional[UUID] = None
+    policy_id: UUID | None = None
     name: str
-    description: Optional[str] = None
-    provider: List[str]
-    resource_types: Optional[List[str]] = None
+    description: str | None = None
+    provider: list[str]
+    resource_types: list[str] | None = None
     expression_lang: ExpressionLang
     expression: str
     severity: Severity
-    cwe: Optional[List[str]] = None
-    cis: Optional[List[str]] = None
-    nist_800_53: Optional[List[str]] = None
-    mitre_attack: Optional[List[str]] = None
+    cwe: list[str] | None = None
+    cis: list[str] | None = None
+    nist_800_53: list[str] | None = None
+    mitre_attack: list[str] | None = None
     version: int = 1
     is_active: bool = True
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Config:
         from_attributes = True
         use_enum_values = True
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""
         rule_id = str(self.rule_id)
         severity = (
@@ -100,7 +100,7 @@ class Rule(BaseModel):
         }
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Rule":
+    def from_item(cls, item: dict[str, Any]) -> "Rule":
         """Create from DynamoDB item."""
         return cls(
             rule_id=UUID(item["rule_id"]),
@@ -121,7 +121,7 @@ class Rule(BaseModel):
             created_at=(
                 datetime.fromisoformat(item["created_at"])
                 if item.get("created_at")
-                else datetime.now(timezone.utc)
+                else datetime.now(UTC)
             ),
         )
 
@@ -131,7 +131,7 @@ class RuleRepository:
 
     _table = TableName.CORE
 
-    async def get(self, rule_id: UUID) -> Optional[Rule]:
+    async def get(self, rule_id: UUID) -> Rule | None:
         """Get rule by ID."""
         item = await get_item(
             self._table,
@@ -145,7 +145,7 @@ class RuleRepository:
         await put_item(self._table, rule.to_item())
         return rule
 
-    async def update(self, rule_id: UUID, **updates) -> Optional[Rule]:
+    async def update(self, rule_id: UUID, **updates) -> Rule | None:
         """Update rule."""
         # Increment version
         current = await self.get(rule_id)
@@ -177,9 +177,9 @@ class RuleRepository:
 
     async def list_active(
         self,
-        severity: Optional[Severity] = None,
+        severity: Severity | None = None,
         limit: int = 100,
-    ) -> List[Rule]:
+    ) -> list[Rule]:
         """List active rules."""
         if severity:
             severity_val = severity.value if isinstance(severity, Enum) else severity
@@ -204,7 +204,7 @@ class RuleRepository:
         provider: str,
         active_only: bool = True,
         limit: int = 100,
-    ) -> List[Rule]:
+    ) -> list[Rule]:
         """List rules for a provider."""
         if active_only:
             rules = await self.list_active(limit=limit * 2)
@@ -227,7 +227,7 @@ class RuleRepository:
 
         return [r for r in rules if provider in r.provider][:limit]
 
-    async def get_by_name(self, name: str) -> Optional[Rule]:
+    async def get_by_name(self, name: str) -> Rule | None:
         """Get rule by name.
 
         Note: Scans active rules. Consider adding GSI on name for better performance.
@@ -248,10 +248,10 @@ class RuleRepository:
                 break
         return None
 
-    async def deactivate(self, rule_id: UUID) -> Optional[Rule]:
+    async def deactivate(self, rule_id: UUID) -> Rule | None:
         """Deactivate a rule."""
         return await self.update(rule_id, is_active=False)
 
-    async def activate(self, rule_id: UUID) -> Optional[Rule]:
+    async def activate(self, rule_id: UUID) -> Rule | None:
         """Activate a rule."""
         return await self.update(rule_id, is_active=True)

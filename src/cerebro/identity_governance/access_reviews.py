@@ -5,16 +5,16 @@ Implements time-boxed access reviews with auto-expiry and attestation tracking.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 
-from ..core.database import async_session_factory
-from ..core.models import Principal, IamEdge
 from ..auditability.attestation import get_attestation_service
+from ..core.database import async_session_factory
+from ..core.models import IamEdge, Principal
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +50,15 @@ class AccessReviewItem:
     permission: str
     provider: str
     granted_date: datetime
-    last_used: Optional[datetime]
+    last_used: datetime | None
     business_justification: str
     risk_level: str
     reviewer_assigned: str
     status: ReviewStatus
-    decision: Optional[ReviewDecision]
-    decision_justification: Optional[str]
-    decision_date: Optional[datetime]
-    exception_expiry: Optional[datetime]
+    decision: ReviewDecision | None
+    decision_justification: str | None
+    decision_date: datetime | None
+    exception_expiry: datetime | None
 
 
 @dataclass
@@ -72,10 +72,10 @@ class AccessReview:
     created_at: datetime
     due_date: datetime
     status: ReviewStatus
-    scope: Dict[str, Any]  # Which principals/resources to review
-    review_items: List[AccessReviewItem]
-    completion_stats: Dict[str, int]
-    attestations: List[str]  # List of attestation IDs
+    scope: dict[str, Any]  # Which principals/resources to review
+    review_items: list[AccessReviewItem]
+    completion_stats: dict[str, int]
+    attestations: list[str]  # List of attestation IDs
 
 
 class AccessReviewManager:
@@ -94,7 +94,7 @@ class AccessReviewManager:
         org_id: str,
         quarter: str,  # "Q1 2024"
         created_by: str,
-        scope: Optional[Dict[str, Any]] = None,
+        scope: dict[str, Any] | None = None,
     ) -> AccessReview:
         """
         Create quarterly access review campaign.
@@ -151,8 +151,8 @@ class AccessReviewManager:
         return review
 
     async def _get_principals_in_scope(
-        self, org_id: str, scope: Dict[str, Any]
-    ) -> List[Principal]:
+        self, org_id: str, scope: dict[str, Any]
+    ) -> list[Principal]:
         """Get principals within review scope."""
         async with async_session_factory() as db:
             stmt = select(Principal).where(Principal.org_id == org_id)  # type: ignore[attr-defined]
@@ -173,7 +173,7 @@ class AccessReviewManager:
 
     async def _create_review_items_for_principal(
         self, principal: Principal, reviewer: str
-    ) -> List[AccessReviewItem]:
+    ) -> list[AccessReviewItem]:
         """Create review items for all of a principal's access."""
         items = []
 
@@ -182,7 +182,7 @@ class AccessReviewManager:
             stmt = select(IamEdge).where(
                 and_(
                     IamEdge.principal_id == principal.principal_id,
-                    IamEdge.effective == True,  # type: ignore[attr-defined]
+                    IamEdge.effective,  # type: ignore[attr-defined]
                 )
             )
 
@@ -261,8 +261,8 @@ class AccessReviewManager:
         reviewer: str,
         decision: ReviewDecision,
         justification: str,
-        exception_days: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        exception_days: int | None = None,
+    ) -> dict[str, Any]:
         """
         Record a review decision with cryptographic attestation.
 
@@ -314,7 +314,7 @@ class AccessReviewManager:
 
         return decision_record
 
-    async def get_pending_reviews(self, org_id: str) -> List[Dict[str, Any]]:
+    async def get_pending_reviews(self, org_id: str) -> list[dict[str, Any]]:
         """Get all pending access reviews for organization."""
         # In production, would query from persistent storage
         # For now, return example structure
@@ -330,7 +330,7 @@ class AccessReviewManager:
             }
         ]
 
-    async def get_overdue_reviews(self, org_id: str) -> List[Dict[str, Any]]:
+    async def get_overdue_reviews(self, org_id: str) -> list[dict[str, Any]]:
         """Get overdue access reviews requiring immediate attention."""
         # Query overdue reviews
         # For now, return example structure
@@ -346,7 +346,7 @@ class AccessReviewManager:
             }
         ]
 
-    async def auto_expire_exceptions(self, org_id: str) -> Dict[str, Any]:
+    async def auto_expire_exceptions(self, org_id: str) -> dict[str, Any]:
         """
         Auto-expire time-boxed access exceptions.
 

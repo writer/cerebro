@@ -1,9 +1,10 @@
 """Provider plugin registry system."""
 
-from typing import Dict, Type, List, Any, Optional, Callable
-import logging
 import importlib
+import logging
 import pkgutil
+from collections.abc import Callable
+from typing import Any
 
 from cerebro.domain.ports import ProviderPort
 
@@ -15,14 +16,14 @@ class ProviderRegistry:
 
     def __init__(self):
         """Initialize provider registry."""
-        self._providers: Dict[str, Type[ProviderPort]] = {}
-        self._factories: Dict[str, Callable] = {}
+        self._providers: dict[str, type[ProviderPort]] = {}
+        self._factories: dict[str, Callable] = {}
 
     def register(
         self,
         name: str,
-        provider_class: Type[ProviderPort],
-        factory: Optional[Callable] = None,
+        provider_class: type[ProviderPort],
+        factory: Callable | None = None,
     ) -> None:
         """Register a provider class."""
         if name in self._providers:
@@ -34,7 +35,7 @@ class ProviderRegistry:
 
         logger.info(f"Registered provider: {name}")
 
-    def get_provider_class(self, name: str) -> Type[ProviderPort]:
+    def get_provider_class(self, name: str) -> type[ProviderPort]:
         """Get provider class by name."""
         if name not in self._providers:
             raise ValueError(f"Unknown provider: {name}")
@@ -54,11 +55,11 @@ class ProviderRegistry:
             provider_class = self._providers[name]
             return provider_class(**kwargs)
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """List all registered providers."""
         return list(self._providers.keys())
 
-    def get_provider_info(self, name: str) -> Dict[str, Any]:
+    def get_provider_info(self, name: str) -> dict[str, Any]:
         """Get provider information."""
         if name not in self._providers:
             raise ValueError(f"Unknown provider: {name}")
@@ -81,7 +82,7 @@ class ProviderRegistry:
             package = importlib.import_module(package_name)
 
             # Walk through all modules in the package
-            for importer, modname, ispkg in pkgutil.walk_packages(
+            for _importer, modname, _ispkg in pkgutil.walk_packages(
                 package.__path__, package.__name__ + "."
             ):
                 try:
@@ -122,7 +123,7 @@ class ProviderRegistry:
 provider_registry = ProviderRegistry()
 
 
-def register_provider(name: Optional[str] = None, factory: Optional[Callable] = None):
+def register_provider(name: str | None = None, factory: Callable | None = None):
     """Decorator to register a provider class.
 
     Usage:
@@ -135,7 +136,7 @@ def register_provider(name: Optional[str] = None, factory: Optional[Callable] = 
             ...
     """
 
-    def decorator(cls: Type[ProviderPort]) -> Type[ProviderPort]:
+    def decorator(cls: type[ProviderPort]) -> type[ProviderPort]:
         provider_name = name
         if provider_name is None:
             # Try to get name from class
@@ -168,7 +169,7 @@ def create_github_provider(account_id: str, org_name: str, **kwargs):
 
 
 def create_aws_provider(
-    account_id: str, aws_account_id: str, region: Optional[str] = None, **kwargs: Any
+    account_id: str, aws_account_id: str, region: str | None = None, **kwargs: Any
 ) -> Any:
     """Factory for AWS provider."""
     from cerebro.providers.aws import AWSProvider
@@ -223,7 +224,7 @@ def init_providers():
 
 
 # CLI helper
-def list_available_providers() -> List[Dict[str, Any]]:
+def list_available_providers() -> list[dict[str, Any]]:
     """List all available providers with details."""
     providers = []
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import re
 from abc import ABC, abstractmethod
-from typing import Callable, Iterable, Optional, Pattern, Tuple
+from collections.abc import Callable, Iterable
+from re import Pattern
 
 import structlog
 
@@ -97,47 +98,47 @@ class AnthropicSQLTranslator(SQLTranslator):
         return sql_query
 
 
-FallbackRule = Tuple[Pattern[str], Callable[[int], str]]
+FallbackRule = tuple[Pattern[str], Callable[[int], str]]
 
 
-def _default_rules() -> Tuple[FallbackRule, ...]:
+def _default_rules() -> tuple[FallbackRule, ...]:
     return (
         (
             re.compile(r"mfa|multi[-\s]?factor", re.IGNORECASE),
             lambda limit: (
                 "SELECT user_name, arn, mfa_enabled "
-                "FROM aws_iam_user WHERE mfa_enabled = false ORDER BY user_name LIMIT {limit}"
-            ).format(limit=limit),
+                f"FROM aws_iam_user WHERE mfa_enabled = false ORDER BY user_name LIMIT {limit}"
+            ),
         ),
         (
             re.compile(r"s3|bucket", re.IGNORECASE),
             lambda limit: (
                 "SELECT bucket_name, region, public_access "
-                "FROM aws_s3_bucket WHERE public_access = true ORDER BY bucket_name LIMIT {limit}"
-            ).format(limit=limit),
+                f"FROM aws_s3_bucket WHERE public_access = true ORDER BY bucket_name LIMIT {limit}"
+            ),
         ),
         (
             re.compile(r"critical|high severity|findings", re.IGNORECASE),
             lambda limit: (
                 "SELECT id, title, severity, status, created_at "
-                "FROM findings WHERE severity = 'critical' ORDER BY created_at DESC LIMIT {limit}"
-            ).format(limit=limit),
+                f"FROM findings WHERE severity = 'critical' ORDER BY created_at DESC LIMIT {limit}"
+            ),
         ),
         (
             re.compile(r"admin|privileged", re.IGNORECASE),
             lambda limit: (
                 "SELECT role_name, arn, permissions "
                 "FROM aws_iam_role WHERE permissions::text LIKE '%AdministratorAccess%' "
-                "ORDER BY role_name LIMIT {limit}"
-            ).format(limit=limit),
+                f"ORDER BY role_name LIMIT {limit}"
+            ),
         ),
         (
             re.compile(r"lambda", re.IGNORECASE),
             lambda limit: (
                 "SELECT function_name, runtime, environment_variables "
                 "FROM aws_lambda_function WHERE environment_variables IS NOT NULL "
-                "AND jsonb_typeof(environment_variables) = 'object' ORDER BY function_name LIMIT {limit}"
-            ).format(limit=limit),
+                f"AND jsonb_typeof(environment_variables) = 'object' ORDER BY function_name LIMIT {limit}"
+            ),
         ),
     )
 
@@ -145,8 +146,8 @@ def _default_rules() -> Tuple[FallbackRule, ...]:
 class StaticFallbackTranslator(SQLTranslator):
     """Deterministic rule-based translator used as fallback."""
 
-    def __init__(self, rules: Optional[Iterable[FallbackRule]] = None) -> None:
-        self._rules: Tuple[FallbackRule, ...] = (
+    def __init__(self, rules: Iterable[FallbackRule] | None = None) -> None:
+        self._rules: tuple[FallbackRule, ...] = (
             tuple(rules) if rules else _default_rules()
         )
 
@@ -155,8 +156,8 @@ class StaticFallbackTranslator(SQLTranslator):
         *,
         question: str,
         limit: int,
-        schema: str,  # noqa: ARG002 - unused
-        examples: str,  # noqa: ARG002 - unused
+        schema: str,
+        examples: str,
     ) -> str:
         normalized_question = question.strip()
         for pattern, builder in self._rules:
@@ -169,8 +170,8 @@ class StaticFallbackTranslator(SQLTranslator):
 
         default_query = (
             "SELECT id, title, severity, status, created_at "
-            "FROM findings ORDER BY created_at DESC LIMIT {limit}"
-        ).format(limit=limit)
+            f"FROM findings ORDER BY created_at DESC LIMIT {limit}"
+        )
         logger.debug("Fallback translator using default query", query=default_query)
         return _finalize_query(default_query)
 
@@ -181,7 +182,7 @@ class CompositeTranslator(SQLTranslator):
     def __init__(
         self,
         *,
-        primary: Optional[SQLTranslator],
+        primary: SQLTranslator | None,
         fallback: SQLTranslator,
     ) -> None:
         self._primary = primary

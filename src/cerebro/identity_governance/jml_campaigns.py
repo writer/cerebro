@@ -6,17 +6,17 @@ HR systems (Okta/AD/Workday) and tracking identity lifecycle events.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 
+from ..auditability.transparency_log import LogEntryType, get_transparency_log
 from ..core.database import async_session_factory
 from ..core.models import IamEdge
 from ..query.bootstrap import get_query_engine
-from ..auditability.transparency_log import get_transparency_log, LogEntryType
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +54,13 @@ class JMLEvent:
     principal_id: str
     event_type: JMLEventType
     event_date: datetime
-    previous_attributes: Dict[str, Any]
-    new_attributes: Dict[str, Any]
+    previous_attributes: dict[str, Any]
+    new_attributes: dict[str, Any]
     triggered_by: str  # System or user that detected the change
     requires_review: bool
     review_deadline: datetime
-    affected_access: List[str]  # List of access that may need review
-    metadata: Dict[str, Any]
+    affected_access: list[str]  # List of access that may need review
+    metadata: dict[str, Any]
 
 
 @dataclass
@@ -72,7 +72,7 @@ class StaleAccessItem:
     permission: str
     provider: str
     granted_date: datetime
-    last_used: Optional[datetime]
+    last_used: datetime | None
     risk_score: float
     reason_stale: str
     recommended_action: str
@@ -92,7 +92,7 @@ class JMLCampaignManager:
 
     async def detect_jml_events(
         self, org_id: str, lookback_days: int = 7
-    ) -> List[JMLEvent]:
+    ) -> list[JMLEvent]:
         """
         Detect JML events by analyzing identity attribute changes.
 
@@ -163,7 +163,7 @@ class JMLCampaignManager:
 
     async def _detect_identity_changes(
         self, org_id: str, start_date: datetime, end_date: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Detect identity attribute changes across providers."""
         changes = []
 
@@ -183,20 +183,19 @@ class JMLCampaignManager:
 
     async def _detect_okta_changes(
         self, start_date: datetime, end_date: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Detect Okta user attribute changes."""
         changes = []
 
         try:
             # Query current Okta users
             result = await self.query_engine.execute_query(
-                """
+                f"""
                 SELECT user_id, username, display_name, status,
                        job_title, department, attributes, updated_at
                 FROM okta_user
-                WHERE updated_at >= '%s'
+                WHERE updated_at >= '{start_date.isoformat()}'
             """
-                % start_date.isoformat()
             )
 
             for user in result.rows:
@@ -224,20 +223,19 @@ class JMLCampaignManager:
 
     async def _detect_m365_changes(
         self, start_date: datetime, end_date: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Detect M365 user attribute changes."""
         changes = []
 
         try:
             # Query M365 users with recent updates
             result = await self.query_engine.execute_query(
-                """
+                f"""
                 SELECT user_id, user_principal_name, display_name,
                        job_title, department, account_enabled, updated_at
                 FROM m365_user
-                WHERE updated_at >= '%s'
+                WHERE updated_at >= '{start_date.isoformat()}'
             """
-                % start_date.isoformat()
             )
 
             for user in result.rows:
@@ -264,7 +262,7 @@ class JMLCampaignManager:
 
     async def _detect_aws_changes(
         self, start_date: datetime, end_date: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Detect AWS IAM user changes."""
         changes = []
 
@@ -301,7 +299,7 @@ class JMLCampaignManager:
 
         return changes
 
-    def _classify_change(self, change: Dict[str, Any]) -> Optional[JMLEventType]:
+    def _classify_change(self, change: dict[str, Any]) -> JMLEventType | None:
         """Classify identity change into JML event type."""
         previous = change["previous_attributes"]
         new = change["new_attributes"]
@@ -326,14 +324,14 @@ class JMLCampaignManager:
 
         return None
 
-    async def _get_affected_access(self, principal_id: str) -> List[str]:
+    async def _get_affected_access(self, principal_id: str) -> list[str]:
         """Get all access that might be affected by lifecycle event."""
         affected_access = []
 
         async with async_session_factory() as db:
             # Query current IAM edges for principal
             stmt = select(IamEdge).where(
-                and_(IamEdge.principal_id == principal_id, IamEdge.effective == True)  # type: ignore[attr-defined]
+                and_(IamEdge.principal_id == principal_id, IamEdge.effective)  # type: ignore[attr-defined]
             )
 
             edges = await db.scalars(stmt)
@@ -378,8 +376,8 @@ class JMLCampaignManager:
         return event_date + timedelta(days=days_to_deadline)
 
     async def identify_stale_access(
-        self, org_id: str, jml_events: List[JMLEvent]
-    ) -> List[StaleAccessItem]:
+        self, org_id: str, jml_events: list[JMLEvent]
+    ) -> list[StaleAccessItem]:
         """
         Identify access that has become stale due to JML events.
 
@@ -402,13 +400,13 @@ class JMLCampaignManager:
 
         return stale_access
 
-    async def _get_current_access(self, principal_id: str) -> List[Dict[str, Any]]:
+    async def _get_current_access(self, principal_id: str) -> list[dict[str, Any]]:
         """Get current access for a principal across all providers."""
         access_items = []
 
         async with async_session_factory() as db:
             stmt = select(IamEdge).where(
-                and_(IamEdge.principal_id == principal_id, IamEdge.effective == True)  # type: ignore[attr-defined]
+                and_(IamEdge.principal_id == principal_id, IamEdge.effective)  # type: ignore[attr-defined]
             )
 
             edges = await db.scalars(stmt)
@@ -428,8 +426,8 @@ class JMLCampaignManager:
         return access_items
 
     async def _analyze_access_staleness(
-        self, jml_event: JMLEvent, access: Dict[str, Any]
-    ) -> Optional[StaleAccessItem]:
+        self, jml_event: JMLEvent, access: dict[str, Any]
+    ) -> StaleAccessItem | None:
         """Analyze if access item is stale due to JML event."""
 
         # Risk scoring based on event type and access type
@@ -494,7 +492,7 @@ class JMLCampaignManager:
 
     async def create_jml_campaign(
         self, org_id: str, campaign_name: str, created_by: str, lookback_days: int = 30
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create a JML campaign for an organization.
 
@@ -586,8 +584,8 @@ class JMLCampaignManager:
         return campaign
 
     async def get_campaign_recommendations(
-        self, campaign_data: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, campaign_data: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """
         Generate actionable recommendations from JML campaign.
 
@@ -685,6 +683,6 @@ def get_jml_manager() -> JMLCampaignManager:
 
 async def detect_jml_events_for_org(
     org_id: str, lookback_days: int = 7
-) -> List[JMLEvent]:
+) -> list[JMLEvent]:
     """Convenience function to detect JML events."""
     return await _jml_manager.detect_jml_events(org_id, lookback_days)

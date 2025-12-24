@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Iterable, List, Tuple
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from slack_sdk.models.blocks import (
     ContextBlock,
@@ -17,7 +17,7 @@ def findings_summary_blocks(
     org_name: str,
     severity_label: str,
     findings: Iterable,
-) -> Tuple[str, List[dict]]:
+) -> tuple[str, list[dict]]:
     """Build Block Kit payload for a findings summary.
 
     Args:
@@ -37,7 +37,7 @@ def findings_summary_blocks(
         else f"No {severity_label.lower()} findings for {org_name}"
     )
 
-    blocks: List = [HeaderBlock(text=PlainTextObject(text=header_text, emoji=True))]
+    blocks: list = [HeaderBlock(text=PlainTextObject(text=header_text, emoji=True))]
 
     fallback_lines = [header_text]
 
@@ -96,6 +96,6 @@ def findings_summary_blocks(
 
 
 def _format_timestamp(dt: datetime) -> str:
-    aware = dt.astimezone(timezone.utc)
+    aware = dt.astimezone(UTC)
     ts = int(aware.timestamp())
     return f"<!date^{ts}^{{date_short_pretty}} at {{time}}|{aware.isoformat()}>"

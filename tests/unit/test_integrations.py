@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -115,7 +115,7 @@ def test_sentinelone_active_threat_filtering() -> None:
         status="resolved",
         mitigation_status="mitigated",
         analyst_verdict="benign",
-        detected_at=datetime.now(timezone.utc),
+        detected_at=datetime.now(UTC),
     )
 
     assert ingestion._is_active_threat(threat) is False
@@ -155,7 +155,7 @@ def test_kandji_build_host_telemetry_includes_serial_metadata() -> None:
 
     telemetry = ingestion._build_host_telemetry(
         device,
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         compliance=compliance,
         blueprint=blueprint,
         smart_groups=smart_groups,
@@ -188,7 +188,7 @@ def test_kandji_installed_packages_extracted() -> None:
     }
 
     telemetry = ingestion._build_host_telemetry(
-        device, collected_at=datetime.now(timezone.utc)
+        device, collected_at=datetime.now(UTC)
     )
     assert telemetry is not None
     assert telemetry.installed_packages is not None
@@ -218,7 +218,7 @@ def test_kandji_detection_normalization_uses_serial_and_cve(
 
 
 def test_chunk_events_respects_batch_size() -> None:
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     events = [
         HostEvent(
             event_id=None,
@@ -272,7 +272,7 @@ def test_sentinelone_build_host_telemetry_enriches_health_and_tags() -> None:
         agent,
         policy,
         applications,
-        datetime.now(timezone.utc),
+        datetime.now(UTC),
     )
     assert telemetry is not None
     assert telemetry.tags is not None
@@ -323,7 +323,7 @@ async def test_integration_state_repository_roundtrip() -> None:
         await conn.run_sync(IntegrationSyncState.__table__.create)
 
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    timestamp = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    timestamp = datetime(2024, 1, 1, tzinfo=UTC)
 
     async with session_factory() as session:
         repo = IntegrationStateRepository(session)
@@ -338,7 +338,7 @@ async def test_integration_state_repository_roundtrip() -> None:
         state_ts = state.last_timestamp
         assert state_ts is not None
         if state_ts.tzinfo is None:
-            state_ts = state_ts.replace(tzinfo=timezone.utc)
+            state_ts = state_ts.replace(tzinfo=UTC)
         assert state_ts == timestamp
         assert state.state_metadata == {"count": 10}
 

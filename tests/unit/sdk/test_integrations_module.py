@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,8 +8,7 @@ from cerebro.core.models import IntegrationSyncIssueEvent
 from cerebro.tasks import integration_tasks
 from cerebro_sdk.integrations import IntegrationService, IntegrationTaskRegistry
 
-
-UTC = timezone.utc
+UTC = UTC
 
 
 @pytest.mark.asyncio

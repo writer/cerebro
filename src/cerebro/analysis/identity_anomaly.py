@@ -6,20 +6,20 @@ across multiple providers using unsupervised learning techniques.
 """
 
 import logging
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 
 import pandas as pd
+from sklearn.cluster import DBSCAN
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import DBSCAN
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, IamEdge, AuditEvent, Account
+from ..core.models import Account, AuditEvent, IamEdge, Principal
 from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
@@ -56,11 +56,11 @@ class AnomalyResult:
     score: float
     confidence: float
     description: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     detected_at: datetime
-    baseline_period: Tuple[datetime, datetime]
-    affected_resources: List[str]
-    recommended_actions: List[str]
+    baseline_period: tuple[datetime, datetime]
+    affected_resources: list[str]
+    recommended_actions: list[str]
 
 
 @dataclass
@@ -69,12 +69,12 @@ class BehavioralBaseline:
 
     principal_id: str
     provider: str
-    typical_login_hours: List[int]
-    typical_access_patterns: Dict[str, float]
-    permission_levels: Dict[str, int]
-    resource_access_frequency: Dict[str, float]
-    geographic_locations: List[str]
-    baseline_period: Tuple[datetime, datetime]
+    typical_login_hours: list[int]
+    typical_access_patterns: dict[str, float]
+    permission_levels: dict[str, int]
+    resource_access_frequency: dict[str, float]
+    geographic_locations: list[str]
+    baseline_period: tuple[datetime, datetime]
     last_updated: datetime
 
 
@@ -89,7 +89,7 @@ class IdentityAnomalyDetector:
     def __init__(self, lookback_days: int = 30):
         self.lookback_days = lookback_days
         self.query_engine = get_query_engine()
-        self.baselines: Dict[str, BehavioralBaseline] = {}
+        self.baselines: dict[str, BehavioralBaseline] = {}
 
         # ML models
         self.isolation_forest = IsolationForest(
@@ -99,8 +99,8 @@ class IdentityAnomalyDetector:
         self.dbscan = DBSCAN(eps=0.5, min_samples=5)
 
     async def analyze_identity_anomalies(
-        self, org_id: str, principal_id: Optional[str] = None
-    ) -> List[AnomalyResult]:
+        self, org_id: str, principal_id: str | None = None
+    ) -> list[AnomalyResult]:
         """
         Analyze identity anomalies for an organization or specific principal.
 
@@ -168,7 +168,7 @@ class IdentityAnomalyDetector:
             raise
 
     async def _establish_baselines(
-        self, org_id: str, principal_id: Optional[str] = None
+        self, org_id: str, principal_id: str | None = None
     ):
         """Establish behavioral baselines for principals."""
         async with async_session_factory() as db:
@@ -223,7 +223,7 @@ class IdentityAnomalyDetector:
 
     async def _get_login_patterns(
         self, principal_id: str, start_date: datetime, end_date: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get login patterns using SQL query engine."""
         try:
             # Query Okta user login data
@@ -249,7 +249,7 @@ class IdentityAnomalyDetector:
         principal: Principal,
         start_date: datetime,
         end_date: datetime,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get permission change patterns from IAM edges."""
         stmt = (
             select(IamEdge)
@@ -281,7 +281,7 @@ class IdentityAnomalyDetector:
         principal: Principal,
         start_date: datetime,
         end_date: datetime,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get resource access patterns from audit events."""
         stmt = (
             select(AuditEvent)
@@ -308,7 +308,7 @@ class IdentityAnomalyDetector:
         ]
 
     async def _collect_behavioral_data(
-        self, org_id: str, principal_id: Optional[str] = None
+        self, org_id: str, principal_id: str | None = None
     ) -> pd.DataFrame:
         """Collect and structure behavioral data for ML analysis."""
         features = []
@@ -352,10 +352,10 @@ class IdentityAnomalyDetector:
                     if freq > 0.8
                 ),
                 "resource_diversity": len(
-                    set(
+                    {
                         res.split("_")[0]
                         for res in baseline.resource_access_frequency.keys()
-                    )
+                    }
                 ),
                 # Geographic patterns
                 "location_count": len(baseline.geographic_locations),
@@ -369,12 +369,12 @@ class IdentityAnomalyDetector:
 
         return pd.DataFrame(features)
 
-    async def _detect_login_anomalies(self, data: pd.DataFrame) -> List[AnomalyResult]:
+    async def _detect_login_anomalies(self, data: pd.DataFrame) -> list[AnomalyResult]:
         """Detect anomalous login patterns using isolation forest."""
         if data.empty:
             return []
 
-        anomalies: List[AnomalyResult] = []
+        anomalies: list[AnomalyResult] = []
 
         # Features for login analysis
         login_features = [
@@ -396,7 +396,7 @@ class IdentityAnomalyDetector:
         outliers = self.isolation_forest.fit_predict(X_scaled)
         scores = self.isolation_forest.decision_function(X_scaled)
 
-        for idx, (is_outlier, score) in enumerate(zip(outliers, scores)):
+        for idx, (is_outlier, score) in enumerate(zip(outliers, scores, strict=False)):
             if is_outlier == -1:  # Anomaly detected
                 principal_id = data.iloc[idx]["principal_id"]
 
@@ -432,7 +432,7 @@ class IdentityAnomalyDetector:
 
     async def _detect_permission_anomalies(
         self, data: pd.DataFrame
-    ) -> List[AnomalyResult]:
+    ) -> list[AnomalyResult]:
         """Detect permission escalation anomalies."""
         if data.empty:
             return []
@@ -482,7 +482,7 @@ class IdentityAnomalyDetector:
 
     async def _detect_access_time_anomalies(
         self, data: pd.DataFrame
-    ) -> List[AnomalyResult]:
+    ) -> list[AnomalyResult]:
         """Detect unusual access time patterns."""
         anomalies = []
 
@@ -516,7 +516,7 @@ class IdentityAnomalyDetector:
 
     async def _detect_resource_access_anomalies(
         self, data: pd.DataFrame
-    ) -> List[AnomalyResult]:
+    ) -> list[AnomalyResult]:
         """Detect unusual resource access patterns."""
         anomalies = []
 
@@ -553,7 +553,7 @@ class IdentityAnomalyDetector:
 
     async def _detect_velocity_anomalies(
         self, data: pd.DataFrame
-    ) -> List[AnomalyResult]:
+    ) -> list[AnomalyResult]:
         """Detect rapid successive action patterns."""
         # This would require time-series analysis of audit events
         # Simplified implementation for now
@@ -561,7 +561,7 @@ class IdentityAnomalyDetector:
 
     async def _detect_cross_provider_anomalies(
         self, data: pd.DataFrame
-    ) -> List[AnomalyResult]:
+    ) -> list[AnomalyResult]:
         """Detect cross-provider correlation anomalies."""
         anomalies = []
 
@@ -625,7 +625,7 @@ class IdentityAnomalyDetector:
         else:
             return RiskLevel.LOW
 
-    def _extract_typical_hours(self, login_data: List[Dict[str, Any]]) -> List[int]:
+    def _extract_typical_hours(self, login_data: list[dict[str, Any]]) -> list[int]:
         """Extract typical login hours from login data."""
         hours = []
         for login in login_data:
@@ -640,10 +640,10 @@ class IdentityAnomalyDetector:
         return list(set(hours))
 
     def _extract_access_patterns(
-        self, login_data: List[Dict[str, Any]]
-    ) -> Dict[str, float]:
+        self, login_data: list[dict[str, Any]]
+    ) -> dict[str, float]:
         """Extract access pattern frequencies."""
-        patterns: Dict[str, float] = {}
+        patterns: dict[str, float] = {}
         total = len(login_data)
 
         if total == 0:
@@ -658,8 +658,8 @@ class IdentityAnomalyDetector:
         return {k: v / total for k, v in patterns.items()}
 
     def _extract_permission_levels(
-        self, permission_data: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, permission_data: list[dict[str, Any]]
+    ) -> dict[str, int]:
         """Extract permission levels from permission data."""
         levels = {}
         for perm in permission_data:
@@ -676,10 +676,10 @@ class IdentityAnomalyDetector:
         return levels
 
     def _extract_resource_frequencies(
-        self, resource_data: List[Dict[str, Any]]
-    ) -> Dict[str, float]:
+        self, resource_data: list[dict[str, Any]]
+    ) -> dict[str, float]:
         """Extract resource access frequencies."""
-        frequencies: Dict[str, float] = {}
+        frequencies: dict[str, float] = {}
         total = len(resource_data)
 
         if total == 0:
@@ -691,7 +691,7 @@ class IdentityAnomalyDetector:
 
         return {k: v / total for k, v in frequencies.items()}
 
-    def _extract_locations(self, login_data: List[Dict[str, Any]]) -> List[str]:
+    def _extract_locations(self, login_data: list[dict[str, Any]]) -> list[str]:
         """Extract geographic locations from login metadata."""
         locations = []
         for login in login_data:
@@ -700,14 +700,14 @@ class IdentityAnomalyDetector:
                 locations.append(metadata["location"])
         return list(set(locations))
 
-    async def get_anomaly_summary(self, org_id: str) -> Dict[str, Any]:
+    async def get_anomaly_summary(self, org_id: str) -> dict[str, Any]:
         """Get a summary of detected anomalies for an organization."""
         anomalies = await self.analyze_identity_anomalies(org_id)
 
-        by_risk_level: Dict[str, int] = {}
-        by_type: Dict[str, int] = {}
-        top_principals: Dict[str, Dict[str, Any]] = {}
-        summary: Dict[str, Any] = {
+        by_risk_level: dict[str, int] = {}
+        by_type: dict[str, int] = {}
+        top_principals: dict[str, dict[str, Any]] = {}
+        summary: dict[str, Any] = {
             "total_anomalies": len(anomalies),
             "by_risk_level": by_risk_level,
             "by_type": by_type,
@@ -756,8 +756,8 @@ class IdentityAnomalyDetector:
 
 # Convenience functions
 async def detect_identity_anomalies(
-    org_id: str, principal_id: Optional[str] = None, lookback_days: int = 30
-) -> List[AnomalyResult]:
+    org_id: str, principal_id: str | None = None, lookback_days: int = 30
+) -> list[AnomalyResult]:
     """Convenience function to detect identity anomalies."""
     detector = IdentityAnomalyDetector(lookback_days=lookback_days)
     return await detector.analyze_identity_anomalies(org_id, principal_id)
@@ -765,7 +765,7 @@ async def detect_identity_anomalies(
 
 async def get_identity_anomaly_summary(
     org_id: str, lookback_days: int = 30
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Convenience function to get anomaly summary."""
     detector = IdentityAnomalyDetector(lookback_days=lookback_days)
     return await detector.get_anomaly_summary(org_id)

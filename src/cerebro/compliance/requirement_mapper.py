@@ -12,14 +12,15 @@ Key capabilities:
 - Cross-framework requirement analysis
 """
 
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import uuid4
+
 from sqlalchemy.ext.declarative import declarative_base
 
-from .evidence_data_fabric import EvidenceDataFabric, EvidenceQuery, EvidenceEntityType
+from .evidence_data_fabric import EvidenceDataFabric, EvidenceEntityType, EvidenceQuery
 
 Base = declarative_base()
 
@@ -55,25 +56,25 @@ class RequirementDefinition:
     description: str
 
     # Hierarchy
-    parent_requirement_id: Optional[str] = None
-    sub_requirements: List[str] = field(default_factory=list)
+    parent_requirement_id: str | None = None
+    sub_requirements: list[str] = field(default_factory=list)
 
     # Classification
     control_family: str = ""
     control_type: str = ""  # preventive, detective, corrective
 
     # Evidence requirements
-    evidence_types: List[str] = field(default_factory=list)
-    sufficiency_criteria: Dict[str, Any] = field(default_factory=dict)
-    freshness_requirement_days: Optional[int] = None
+    evidence_types: list[str] = field(default_factory=list)
+    sufficiency_criteria: dict[str, Any] = field(default_factory=dict)
+    freshness_requirement_days: int | None = None
 
     # Testing requirements
     testing_frequency: str = "annually"
-    sample_size_required: Optional[int] = None
+    sample_size_required: int | None = None
 
     # Context and interpretation
     implementation_guidance: str = ""
-    common_interpretations: List[str] = field(default_factory=list)
+    common_interpretations: list[str] = field(default_factory=list)
 
     # Metadata
     version: str = "1.0"
@@ -94,18 +95,18 @@ class RequirementMapping:
 
     # Mapping details
     mapping_notes: str = ""
-    differences: List[str] = field(default_factory=list)
-    additional_evidence_needed: List[str] = field(default_factory=list)
+    differences: list[str] = field(default_factory=list)
+    additional_evidence_needed: list[str] = field(default_factory=list)
 
     # Context and overrides
-    applicable_scopes: List[str] = field(
+    applicable_scopes: list[str] = field(
         default_factory=list
     )  # subsidiary, region, etc.
-    scope_overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    scope_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # Validation
-    validated_by: Optional[str] = None
-    validated_at: Optional[datetime] = None
+    validated_by: str | None = None
+    validated_at: datetime | None = None
     validation_notes: str = ""
 
     created_at: datetime = field(default_factory=datetime.now)
@@ -117,7 +118,7 @@ class EvidenceMapping:
 
     requirement_id: str
     framework_name: str
-    evidence_pattern: Dict[str, Any]  # Pattern that evidence must match
+    evidence_pattern: dict[str, Any]  # Pattern that evidence must match
     weight: float = 1.0  # How much this evidence contributes (0.0-1.0)
     mandatory: bool = True  # Whether this evidence is required or optional
     context_notes: str = ""
@@ -128,9 +129,9 @@ class RequirementMappingService:
 
     def __init__(self, evidence_fabric: EvidenceDataFabric):
         self.evidence_fabric = evidence_fabric
-        self._requirements: Dict[str, RequirementDefinition] = {}
-        self._mappings: Dict[str, RequirementMapping] = {}
-        self._evidence_mappings: Dict[str, List[EvidenceMapping]] = {}
+        self._requirements: dict[str, RequirementDefinition] = {}
+        self._mappings: dict[str, RequirementMapping] = {}
+        self._evidence_mappings: dict[str, list[EvidenceMapping]] = {}
 
         # Load framework requirement definitions
         self._load_framework_requirements()
@@ -141,7 +142,7 @@ class RequirementMappingService:
         source_framework: str,
         target_framework: str,
         confidence_threshold: MappingConfidence = MappingConfidence.MEDIUM,
-    ) -> List[RequirementMapping]:
+    ) -> list[RequirementMapping]:
         """Get mappings between two frameworks."""
 
         mappings = []
@@ -160,8 +161,8 @@ class RequirementMappingService:
         self,
         requirement_id: str,
         framework_name: str,
-        target_frameworks: Optional[List[str]] = None,
-    ) -> List[Tuple[RequirementDefinition, MappingConfidence]]:
+        target_frameworks: list[str] | None = None,
+    ) -> list[tuple[RequirementDefinition, MappingConfidence]]:
         """Find equivalent requirements across frameworks."""
 
         source_key = f"{framework_name}:{requirement_id}"
@@ -187,12 +188,12 @@ class RequirementMappingService:
         return equivalents
 
     def analyze_evidence_reuse(
-        self, requirements: List[str], scope: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, requirements: list[str], scope: str | None = None
+    ) -> dict[str, Any]:
         """Analyze how evidence can be reused across requirements."""
 
         # Group requirements by framework
-        reqs_by_framework: Dict[str, List[str]] = {}
+        reqs_by_framework: dict[str, list[str]] = {}
         for req_id in requirements:
             # Parse framework from requirement ID format
             framework = self._extract_framework_from_req(req_id)
@@ -201,9 +202,9 @@ class RequirementMappingService:
             reqs_by_framework[framework].append(req_id)
 
         # Find cross-framework mappings
-        reuse_opportunities: List[Dict[str, Any]] = []
-        duplicated_evidence: List[str] = []
-        missing_evidence: List[str] = []
+        reuse_opportunities: list[dict[str, Any]] = []
+        duplicated_evidence: list[str] = []
+        missing_evidence: list[str] = []
 
         for source_framework, source_reqs in reqs_by_framework.items():
             for target_framework, target_reqs in reqs_by_framework.items():
@@ -241,9 +242,9 @@ class RequirementMappingService:
 
     def validate_requirement_coverage(
         self,
-        requirements: List[str],
-        evidence_query_filter: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        requirements: list[str],
+        evidence_query_filter: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Validate that requirements have adequate evidence coverage."""
 
         coverage_results = {}
@@ -314,9 +315,9 @@ class RequirementMappingService:
     def generate_cross_framework_report(
         self,
         base_framework: str,
-        target_frameworks: List[str],
-        scope: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        target_frameworks: list[str],
+        scope: str | None = None,
+    ) -> dict[str, Any]:
         """Generate comprehensive cross-framework mapping report."""
 
         base_requirements = [
@@ -325,8 +326,8 @@ class RequirementMappingService:
             if req.framework_name == base_framework
         ]
 
-        mapping_summary: Dict[str, Dict[str, Any]] = {}
-        gap_analysis: Dict[str, Any] = {}
+        mapping_summary: dict[str, dict[str, Any]] = {}
+        gap_analysis: dict[str, Any] = {}
 
         for target_framework in target_frameworks:
             framework_mappings = self.get_requirement_mappings(
@@ -400,7 +401,7 @@ class RequirementMappingService:
         confidence: MappingConfidence,
         evidence_reusability: EvidenceReusability,
         mapping_notes: str = "",
-        scope_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+        scope_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> RequirementMapping:
         """Create a custom requirement mapping."""
 
@@ -599,7 +600,7 @@ class RequirementMappingService:
             return "unknown"
 
     def _count_matching_evidence(
-        self, evidence_mapping: EvidenceMapping, query_filter: Optional[Dict[str, Any]]
+        self, evidence_mapping: EvidenceMapping, query_filter: dict[str, Any] | None
     ) -> int:
         """Count evidence records matching a pattern."""
 

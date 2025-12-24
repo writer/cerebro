@@ -5,13 +5,14 @@ Replaces hardcoded framework definitions with a flexible plugin system
 that separates framework metadata from implementation details.
 """
 
+import importlib
 import logging
+import pkgutil
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-import importlib
-import pkgutil
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -63,26 +64,26 @@ class ControlDefinition:
     testing_frequency: TestingFrequency
 
     # Implementation
-    evidence_queries: List[str] = field(default_factory=list)
-    evidence_collection_methods: List[str] = field(default_factory=list)
+    evidence_queries: list[str] = field(default_factory=list)
+    evidence_collection_methods: list[str] = field(default_factory=list)
 
     # Guidance and context
     remediation_guidance: str = ""
     implementation_guidance: str = ""
-    testing_procedures: List[str] = field(default_factory=list)
+    testing_procedures: list[str] = field(default_factory=list)
 
     # Risk and impact
     risk_level: str = "medium"  # "low", "medium", "high", "critical"
     business_impact: str = ""
 
     # Dependencies and relationships
-    depends_on: List[str] = field(default_factory=list)
-    related_controls: List[str] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)
+    related_controls: list[str] = field(default_factory=list)
 
     # Metadata
-    tags: Dict[str, str] = field(default_factory=dict)
-    references: List[str] = field(default_factory=list)
-    last_updated: Optional[str] = None
+    tags: dict[str, str] = field(default_factory=dict)
+    references: list[str] = field(default_factory=list)
+    last_updated: str | None = None
     version: str = "1.0"
 
 
@@ -101,37 +102,37 @@ class FrameworkDefinition:
     framework_type: str = (
         "compliance"  # "compliance", "security", "privacy", "operational"
     )
-    industry_focus: List[str] = field(default_factory=list)
-    geographic_scope: List[str] = field(default_factory=list)
+    industry_focus: list[str] = field(default_factory=list)
+    geographic_scope: list[str] = field(default_factory=list)
 
     # Controls
-    controls: List[ControlDefinition] = field(default_factory=list)
-    control_families: Dict[str, List[str]] = field(default_factory=dict)
+    controls: list[ControlDefinition] = field(default_factory=list)
+    control_families: dict[str, list[str]] = field(default_factory=dict)
 
     # Framework metadata
-    effective_date: Optional[str] = None
+    effective_date: str | None = None
     update_frequency: str = "annually"
     certification_available: bool = False
 
     # Implementation
-    maturity_model: Dict[str, Any] = field(default_factory=dict)
-    implementation_tiers: List[str] = field(default_factory=list)
+    maturity_model: dict[str, Any] = field(default_factory=dict)
+    implementation_tiers: list[str] = field(default_factory=list)
 
     # Documentation
-    references: List[str] = field(default_factory=list)
-    documentation_urls: List[str] = field(default_factory=list)
-    training_resources: List[str] = field(default_factory=list)
+    references: list[str] = field(default_factory=list)
+    documentation_urls: list[str] = field(default_factory=list)
+    training_resources: list[str] = field(default_factory=list)
 
-    def get_control(self, control_id: str) -> Optional[ControlDefinition]:
+    def get_control(self, control_id: str) -> ControlDefinition | None:
         """Get control by ID."""
         return next((c for c in self.controls if c.control_id == control_id), None)
 
-    def get_controls_by_family(self, family: str) -> List[ControlDefinition]:
+    def get_controls_by_family(self, family: str) -> list[ControlDefinition]:
         """Get controls in a family/category."""
         family_control_ids = self.control_families.get(family, [])
         return [c for c in self.controls if c.control_id in family_control_ids]
 
-    def get_automated_controls(self) -> List[ControlDefinition]:
+    def get_automated_controls(self) -> list[ControlDefinition]:
         """Get fully automated controls."""
         return [
             c for c in self.controls if c.automation_level == AutomationLevel.AUTOMATED
@@ -139,7 +140,7 @@ class FrameworkDefinition:
 
     def get_controls_by_frequency(
         self, frequency: TestingFrequency
-    ) -> List[ControlDefinition]:
+    ) -> list[ControlDefinition]:
         """Get controls with specific testing frequency."""
         return [c for c in self.controls if c.testing_frequency == frequency]
 
@@ -155,13 +156,13 @@ class FrameworkProvider(ABC):
 
     @property
     @abstractmethod
-    def supported_versions(self) -> List[str]:
+    def supported_versions(self) -> list[str]:
         """Supported framework versions."""
         pass
 
     @abstractmethod
     def get_framework_definition(
-        self, version: Optional[str] = None
+        self, version: str | None = None
     ) -> FrameworkDefinition:
         """Get framework definition for specified version."""
         pass
@@ -173,13 +174,13 @@ class FrameworkProvider(ABC):
         """Validate that control implementation meets framework requirements."""
         pass
 
-    def get_evidence_queries(self, control_id: str) -> List[str]:
+    def get_evidence_queries(self, control_id: str) -> list[str]:
         """Get SQL queries for collecting control evidence."""
         framework = self.get_framework_definition()
         control = framework.get_control(control_id)
         return control.evidence_queries if control else []
 
-    def get_control_guidance(self, control_id: str) -> Dict[str, str]:
+    def get_control_guidance(self, control_id: str) -> dict[str, str]:
         """Get implementation and remediation guidance for a control."""
         framework = self.get_framework_definition()
         control = framework.get_control(control_id)
@@ -197,9 +198,9 @@ class FrameworkRegistry:
     """Registry for compliance framework providers."""
 
     def __init__(self):
-        self._providers: Dict[str, FrameworkProvider] = {}
-        self._framework_cache: Dict[str, FrameworkDefinition] = {}
-        self._custom_query_handlers: Dict[str, Callable] = {}
+        self._providers: dict[str, FrameworkProvider] = {}
+        self._framework_cache: dict[str, FrameworkDefinition] = {}
+        self._custom_query_handlers: dict[str, Callable] = {}
 
     def register_provider(self, provider: FrameworkProvider):
         """Register a framework provider."""
@@ -216,8 +217,8 @@ class FrameworkRegistry:
         logger.info(f"Registered custom query handler for control: {control_id}")
 
     def get_framework(
-        self, framework_id: str, version: Optional[str] = None
-    ) -> Optional[FrameworkDefinition]:
+        self, framework_id: str, version: str | None = None
+    ) -> FrameworkDefinition | None:
         """Get framework definition."""
         cache_key = f"{framework_id}:{version or 'latest'}"
 
@@ -232,11 +233,11 @@ class FrameworkRegistry:
         self._framework_cache[cache_key] = framework
         return framework
 
-    def list_frameworks(self) -> List[str]:
+    def list_frameworks(self) -> list[str]:
         """List all registered frameworks."""
         return list(self._providers.keys())
 
-    def get_frameworks_by_type(self, framework_type: str) -> List[FrameworkDefinition]:
+    def get_frameworks_by_type(self, framework_type: str) -> list[FrameworkDefinition]:
         """Get frameworks by type (compliance, security, privacy, etc.)."""
         frameworks = []
         for framework_id in self._providers:
@@ -245,7 +246,7 @@ class FrameworkRegistry:
                 frameworks.append(framework)
         return frameworks
 
-    def get_provider(self, framework_id: str) -> Optional[FrameworkProvider]:
+    def get_provider(self, framework_id: str) -> FrameworkProvider | None:
         """Get framework provider."""
         return self._providers.get(framework_id)
 
@@ -259,7 +260,7 @@ class FrameworkRegistry:
 
         return provider.validate_control_implementation(control_id, evidence_data)
 
-    def get_evidence_queries(self, framework_id: str, control_id: str) -> List[str]:
+    def get_evidence_queries(self, framework_id: str, control_id: str) -> list[str]:
         """Get evidence collection queries for a control."""
         provider = self._providers.get(framework_id)
         if not provider:
@@ -284,7 +285,7 @@ class FrameworkRegistry:
             package_path = package.__path__
 
             # Find all modules in the package
-            for finder, module_name, ispkg in pkgutil.iter_modules(package_path):
+            for _finder, module_name, ispkg in pkgutil.iter_modules(package_path):
                 if ispkg:
                     continue
 
@@ -316,7 +317,7 @@ class FrameworkRegistry:
                 f"Failed to discover framework providers in {package_name}: {e}"
             )
 
-    def get_control_matrix(self, framework_ids: List[str]) -> Dict[str, Any]:
+    def get_control_matrix(self, framework_ids: list[str]) -> dict[str, Any]:
         """Generate control mapping matrix across multiple frameworks."""
         matrix = {
             "frameworks": framework_ids,
@@ -333,7 +334,7 @@ class FrameworkRegistry:
 
         # Analyze control overlaps and gaps
         all_control_types: set[str] = set()
-        framework_controls: Dict[str, Dict[str, Any]] = {}
+        framework_controls: dict[str, dict[str, Any]] = {}
 
         for framework_id, framework in frameworks.items():
             framework_controls[framework_id] = {
@@ -415,13 +416,13 @@ def register_framework_provider(provider: FrameworkProvider):
 
 
 def get_framework(
-    framework_id: str, version: Optional[str] = None
-) -> Optional[FrameworkDefinition]:
+    framework_id: str, version: str | None = None
+) -> FrameworkDefinition | None:
     """Get framework from global registry."""
     return _registry.get_framework(framework_id, version)
 
 
-def list_frameworks() -> List[str]:
+def list_frameworks() -> list[str]:
     """List frameworks in global registry."""
     return _registry.list_frameworks()
 

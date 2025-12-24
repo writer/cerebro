@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -17,8 +17,7 @@ from cerebro.integrations.state import IntegrationIssueEventRepository
 from cerebro.tasks.integration_monitor import _get_retry_task, _maybe_queue_auto_retry
 from cerebro.tasks.integration_tasks import sync_kandji
 
-
-UTC = timezone.utc
+UTC = UTC
 
 
 def _make_state(**kwargs) -> IntegrationSyncState:

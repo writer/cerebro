@@ -1,10 +1,11 @@
 """Test configuration for integration tests without API dependencies."""
 
-import pytest
 import asyncio
 import os
-from typing import AsyncGenerator, Generator
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from collections.abc import AsyncGenerator, Generator
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from cerebro.agents.models import Base as AgentBase

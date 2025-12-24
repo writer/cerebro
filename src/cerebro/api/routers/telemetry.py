@@ -1,6 +1,6 @@
 """Telemetry ingestion API endpoints."""
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.api.auth import User, get_current_user, require_scopes
 from cerebro.core.database import get_db
 from cerebro.telemetry.schemas import (
+    ArtifactPackDefinition,
     ComplianceEvidence,
     DependencyGraph,
     FrontendObservationTelemetry,
-    ArtifactPackDefinition,
     HostEventBatch,
     HostTelemetry,
     RepositoryTelemetry,
@@ -21,7 +21,6 @@ from cerebro.telemetry.services import (
     TelemetryIngestionService,
     TelemetryProcessingError,
 )
-
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry", "Intelligence"])
 
@@ -37,7 +36,7 @@ async def receive_repository_telemetry(
     telemetry: RepositoryTelemetry,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None),
+    _authorization: str | None = Header(None),
 ):
     """Receive telemetry from repository CI/CD workflows."""
 
@@ -52,7 +51,7 @@ async def receive_runtime_telemetry(
     telemetry: RuntimeTelemetry,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None),
+    _authorization: str | None = Header(None),
 ):
     """Receive runtime telemetry from running applications."""
 
@@ -67,7 +66,7 @@ async def receive_host_telemetry(
     telemetry: HostTelemetry,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None),
+    _authorization: str | None = Header(None),
 ):
     """Receive endpoint telemetry from the Cerebro desktop agent."""
 
@@ -80,10 +79,10 @@ async def receive_host_telemetry(
 @router.get("/host/packs", response_model=list[ArtifactPackDefinition])
 async def list_host_packs(
     host_id: str = Query(..., description="Stable host identifier"),
-    hostname: Optional[str] = Query(None, description="Hostname override"),
-    organization: Optional[str] = Query(None, description="Organization name"),
-    site: Optional[str] = Query(None, description="Site or location tag"),
-    tags: Optional[list[str]] = Query(
+    hostname: str | None = Query(None, description="Hostname override"),
+    organization: str | None = Query(None, description="Organization name"),
+    site: str | None = Query(None, description="Site or location tag"),
+    tags: list[str] | None = Query(
         None, alias="tag", description="Tag filters in key=value form"
     ),
     db: AsyncSession = Depends(get_db),
@@ -120,7 +119,7 @@ async def receive_host_event_batch(
     batch: HostEventBatch,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None),
+    _authorization: str | None = Header(None),
 ):
     """Receive host event batches from the desktop agent."""
 
@@ -135,7 +134,7 @@ async def receive_compliance_evidence(
     evidence: ComplianceEvidence,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None),
+    _authorization: str | None = Header(None),
 ):
     """Receive compliance evidence collected from repositories."""
 
@@ -150,7 +149,7 @@ async def receive_dependency_graph(
     graph: DependencyGraph,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_scopes("ingest:telemetry")),
-    _authorization: Optional[str] = Header(None),
+    _authorization: str | None = Header(None),
 ):
     """Receive complete dependency graph including transitive dependencies."""
 

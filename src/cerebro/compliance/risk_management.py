@@ -13,10 +13,10 @@ Key features:
 - Automated risk workflows and notifications
 """
 
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any
 from uuid import uuid4
 
 from .evidence_data_fabric import EvidenceDataFabric
@@ -104,32 +104,32 @@ class Risk:
 
     # Risk management
     status: RiskStatus = RiskStatus.IDENTIFIED
-    owner: Optional[str] = None
-    business_unit: Optional[str] = None
+    owner: str | None = None
+    business_unit: str | None = None
 
     # Treatment planning
-    treatment_strategy: Optional[TreatmentType] = None
+    treatment_strategy: TreatmentType | None = None
     treatment_plan: str = ""
-    target_completion_date: Optional[datetime] = None
+    target_completion_date: datetime | None = None
 
     # Controls and evidence
-    related_controls: List[str] = field(default_factory=list)
-    evidence_requirements: List[str] = field(default_factory=list)
+    related_controls: list[str] = field(default_factory=list)
+    evidence_requirements: list[str] = field(default_factory=list)
 
     # Review and monitoring
-    last_review_date: Optional[datetime] = None
-    next_review_date: Optional[datetime] = None
+    last_review_date: datetime | None = None
+    next_review_date: datetime | None = None
     review_frequency_months: int = 6
 
     # Financial impact
-    estimated_financial_impact: Optional[float] = None
-    treatment_cost: Optional[float] = None
+    estimated_financial_impact: float | None = None
+    treatment_cost: float | None = None
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     created_by: str = ""
-    tags: Dict[str, str] = field(default_factory=dict)
+    tags: dict[str, str] = field(default_factory=dict)
 
     @property
     def inherent_risk_score(self) -> float:
@@ -162,25 +162,25 @@ class Vendor:
     vendor_type: str  # technology, service, supplier, etc.
 
     # Basic information
-    contact_info: Dict[str, Any] = field(default_factory=dict)
-    website: Optional[str] = None
+    contact_info: dict[str, Any] = field(default_factory=dict)
+    website: str | None = None
     headquarters_location: str = ""
 
     # Risk classification
     risk_tier: VendorRiskTier = VendorRiskTier.MEDIUM
     data_access_level: str = "none"  # none, limited, full
-    critical_services: List[str] = field(default_factory=list)
+    critical_services: list[str] = field(default_factory=list)
 
     # Contract and compliance
-    contract_start_date: Optional[datetime] = None
-    contract_end_date: Optional[datetime] = None
-    soc2_status: Optional[str] = None  # current, expired, not_applicable
-    other_certifications: List[str] = field(default_factory=list)
+    contract_start_date: datetime | None = None
+    contract_end_date: datetime | None = None
+    soc2_status: str | None = None  # current, expired, not_applicable
+    other_certifications: list[str] = field(default_factory=list)
 
     # Assessment tracking
-    last_assessment_date: Optional[datetime] = None
-    next_assessment_due: Optional[datetime] = None
-    current_risk_score: Optional[float] = None
+    last_assessment_date: datetime | None = None
+    next_assessment_due: datetime | None = None
+    current_risk_score: float | None = None
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
@@ -198,27 +198,27 @@ class VendorRiskAssessment:
     assessor: str
 
     # Questionnaire responses
-    responses: Dict[str, Any] = field(default_factory=dict)
+    responses: dict[str, Any] = field(default_factory=dict)
 
     # Risk scoring
-    security_score: Optional[float] = None
-    privacy_score: Optional[float] = None
-    operational_score: Optional[float] = None
-    financial_score: Optional[float] = None
-    overall_risk_score: Optional[float] = None
+    security_score: float | None = None
+    privacy_score: float | None = None
+    operational_score: float | None = None
+    financial_score: float | None = None
+    overall_risk_score: float | None = None
 
     # Assessment outcome
     risk_level: str = "medium"  # low, medium, high, critical
-    approved: Optional[bool] = None
-    approval_conditions: List[str] = field(default_factory=list)
+    approved: bool | None = None
+    approval_conditions: list[str] = field(default_factory=list)
 
     # Documentation
     assessment_notes: str = ""
-    remediation_items: List[str] = field(default_factory=list)
-    evidence_provided: List[str] = field(default_factory=list)
+    remediation_items: list[str] = field(default_factory=list)
+    evidence_provided: list[str] = field(default_factory=list)
 
     # Follow-up
-    next_review_date: Optional[datetime] = None
+    next_review_date: datetime | None = None
     created_at: datetime = field(default_factory=datetime.now)
 
 
@@ -236,27 +236,27 @@ class RiskTreatment:
     implementation_plan: str = ""
 
     # Timeline and responsibility
-    assigned_to: Optional[str] = None
-    start_date: Optional[datetime] = None
-    target_completion_date: Optional[datetime] = None
-    actual_completion_date: Optional[datetime] = None
+    assigned_to: str | None = None
+    start_date: datetime | None = None
+    target_completion_date: datetime | None = None
+    actual_completion_date: datetime | None = None
 
     # Progress tracking
     status: str = "planned"  # planned, in_progress, completed, on_hold
     progress_percentage: int = 0
 
     # Cost and resources
-    estimated_cost: Optional[float] = None
-    actual_cost: Optional[float] = None
-    resource_requirements: List[str] = field(default_factory=list)
+    estimated_cost: float | None = None
+    actual_cost: float | None = None
+    resource_requirements: list[str] = field(default_factory=list)
 
     # Effectiveness
-    expected_risk_reduction: Optional[float] = None
-    actual_risk_reduction: Optional[float] = None
+    expected_risk_reduction: float | None = None
+    actual_risk_reduction: float | None = None
 
     # Compliance mapping
-    related_controls: List[str] = field(default_factory=list)
-    framework_requirements: List[str] = field(default_factory=list)
+    related_controls: list[str] = field(default_factory=list)
+    framework_requirements: list[str] = field(default_factory=list)
 
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -267,10 +267,10 @@ class RiskManagementSystem:
 
     def __init__(self, evidence_fabric: EvidenceDataFabric):
         self.evidence_fabric = evidence_fabric
-        self._risks: Dict[str, Risk] = {}
-        self._vendors: Dict[str, Vendor] = {}
-        self._assessments: Dict[str, VendorRiskAssessment] = {}
-        self._treatments: Dict[str, RiskTreatment] = {}
+        self._risks: dict[str, Risk] = {}
+        self._vendors: dict[str, Vendor] = {}
+        self._assessments: dict[str, VendorRiskAssessment] = {}
+        self._treatments: dict[str, RiskTreatment] = {}
 
         # Load default risk matrix and questionnaire templates
         self._risk_matrix = self._load_default_risk_matrix()
@@ -284,7 +284,7 @@ class RiskManagementSystem:
         inherent_impact: RiskImpactLevel,
         inherent_probability: RiskProbability,
         owner: str,
-        business_unit: Optional[str] = None,
+        business_unit: str | None = None,
     ) -> Risk:
         """Create a new risk in the register."""
 
@@ -352,7 +352,7 @@ class RiskManagementSystem:
         return vendor
 
     def conduct_vendor_assessment(
-        self, vendor_id: str, assessor: str, questionnaire_responses: Dict[str, Any]
+        self, vendor_id: str, assessor: str, questionnaire_responses: dict[str, Any]
     ) -> VendorRiskAssessment:
         """Conduct a vendor risk assessment."""
 
@@ -400,7 +400,7 @@ class RiskManagementSystem:
         description: str,
         assigned_to: str,
         target_completion_date: datetime,
-        related_controls: Optional[List[str]] = None,
+        related_controls: list[str] | None = None,
     ) -> RiskTreatment:
         """Create a risk treatment action."""
 
@@ -423,7 +423,7 @@ class RiskManagementSystem:
         self._treatments[treatment_id] = treatment
         return treatment
 
-    def get_risk_dashboard_data(self) -> Dict[str, Any]:
+    def get_risk_dashboard_data(self) -> dict[str, Any]:
         """Generate executive risk dashboard data."""
 
         total_risks = len(self._risks)
@@ -575,10 +575,10 @@ class RiskManagementSystem:
 
     def generate_risk_report(
         self,
-        category_filter: Optional[RiskCategory] = None,
-        owner_filter: Optional[str] = None,
+        category_filter: RiskCategory | None = None,
+        owner_filter: str | None = None,
         include_treatments: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate comprehensive risk report."""
 
         # Filter risks
@@ -657,7 +657,7 @@ class RiskManagementSystem:
             "risks": sorted(risk_data, key=lambda x: x["residual_score"], reverse=True),
         }
 
-    def map_risks_to_controls(self, control_framework: str) -> Dict[str, Any]:
+    def map_risks_to_controls(self, control_framework: str) -> dict[str, Any]:
         """Map risks to compliance controls for integrated risk-control management."""
 
         risk_control_mappings = {}
@@ -695,8 +695,8 @@ class RiskManagementSystem:
         }
 
     def _calculate_vendor_risk_scores(
-        self, responses: Dict[str, Any]
-    ) -> Dict[str, float]:
+        self, responses: dict[str, Any]
+    ) -> dict[str, float]:
         """Calculate vendor risk scores from questionnaire responses."""
 
         # Simplified scoring algorithm - would be more sophisticated in production
@@ -706,7 +706,7 @@ class RiskManagementSystem:
             q for q in responses.keys() if "operational" in q.lower()
         ]
 
-        def calculate_category_score(questions: List[str]) -> float:
+        def calculate_category_score(questions: list[str]) -> float:
             if not questions:
                 return 5.0  # Medium risk if no data
 
@@ -737,14 +737,14 @@ class RiskManagementSystem:
             "overall_risk_score": overall_score,
         }
 
-    def _assess_control_effectiveness(self, control_ids: List[str]) -> Dict[str, Any]:
+    def _assess_control_effectiveness(self, control_ids: list[str]) -> dict[str, Any]:
         """Assess effectiveness of controls mapped to a risk."""
 
         # Query evidence for these controls
         total_controls = len(control_ids)
         effective_controls = 0
 
-        for control_id in control_ids:
+        for _control_id in control_ids:
             # Check if control has recent, passing evidence
             # This would integrate with the evidence fabric
             effective_controls += 1  # Simplified for demo
@@ -757,7 +757,7 @@ class RiskManagementSystem:
             ),
         }
 
-    def _suggest_controls_for_risk(self, risk: Risk) -> List[str]:
+    def _suggest_controls_for_risk(self, risk: Risk) -> list[str]:
         """Suggest relevant controls for an unmapped risk."""
 
         # Simple mapping based on risk category
@@ -771,7 +771,7 @@ class RiskManagementSystem:
 
         return control_suggestions.get(risk.category, ["CC1.1"])
 
-    def _load_default_risk_matrix(self) -> Dict[str, Any]:
+    def _load_default_risk_matrix(self) -> dict[str, Any]:
         """Load default 5x5 risk matrix configuration."""
 
         return {
@@ -829,7 +829,7 @@ class RiskManagementSystem:
             },
         }
 
-    def _load_vendor_questionnaire_template(self) -> Dict[str, Any]:
+    def _load_vendor_questionnaire_template(self) -> dict[str, Any]:
         """Load default vendor risk assessment questionnaire."""
 
         return {

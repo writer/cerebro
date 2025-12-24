@@ -1,24 +1,24 @@
 """CLI interface for Cerebro."""
 
 import asyncio
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
+
 import typer
+from rich import print as rprint
 from rich.console import Console
 from rich.table import Table
-from rich import print as rprint
 
-from cerebro.core.database import async_session_factory
-from cerebro.core.models import Organization, Rule, Finding
-from cerebro.collectors.manager import CollectorManager
-from cerebro.findings.manager import FindingManager
-from cerebro.findings.evaluator import RuleEvaluator
-from cerebro.rules.engine import rule_engine
-from cerebro.query.bootstrap import get_query_engine
 from cerebro.auditability.evidence_bundles import get_evidence_manager
 from cerebro.auditability.transparency_log import get_transparency_log
 from cerebro.cli.agents import app as agents_app
+from cerebro.collectors.manager import CollectorManager
+from cerebro.core.database import async_session_factory
+from cerebro.core.models import Finding, Organization, Rule
+from cerebro.findings.evaluator import RuleEvaluator
+from cerebro.findings.manager import FindingManager
 from cerebro.integrations.state import IntegrationStateRepository
+from cerebro.query.bootstrap import get_query_engine
+from cerebro.rules.engine import rule_engine
 
 app = typer.Typer(name="cerebro", help="Cerebro Security System of Record CLI")
 console = Console()
@@ -30,10 +30,10 @@ app.add_typer(agents_app, name="agents")
 @app.command()
 def collect(
     org_name: str = typer.Argument(..., help="Organization name"),
-    providers: Optional[List[str]] = typer.Option(
+    providers: list[str] | None = typer.Option(
         None, "--provider", "-p", help="Providers to collect"
     ),
-    resource_types: Optional[List[str]] = typer.Option(
+    resource_types: list[str] | None = typer.Option(
         None, "--type", "-t", help="Resource types to collect"
     ),
 ):
@@ -85,10 +85,10 @@ def collect(
 @app.command()
 def rules(
     action: str = typer.Argument(..., help="Action: list, create, test"),
-    name: Optional[str] = typer.Option(None, help="Rule name"),
-    expression: Optional[str] = typer.Option(None, help="CEL expression"),
-    severity: Optional[str] = typer.Option("medium", help="Severity level"),
-    providers: Optional[List[str]] = typer.Option(
+    name: str | None = typer.Option(None, help="Rule name"),
+    expression: str | None = typer.Option(None, help="CEL expression"),
+    severity: str | None = typer.Option("medium", help="Severity level"),
+    providers: list[str] | None = typer.Option(
         ["github"], help="Applicable providers"
     ),
 ):
@@ -99,7 +99,7 @@ def rules(
             from sqlalchemy import select
 
             if action == "list":
-                stmt = select(Rule).where(Rule.is_active == True)
+                stmt = select(Rule).where(Rule.is_active)
                 rules = list(await db.scalars(stmt))
 
                 if not rules:
@@ -164,9 +164,9 @@ def rules(
 @app.command()
 def findings(
     action: str = typer.Argument(..., help="Action: list, generate, stats"),
-    org_name: Optional[str] = typer.Option(None, help="Organization name"),
-    status: Optional[str] = typer.Option(None, help="Filter by status"),
-    severity: Optional[str] = typer.Option(None, help="Filter by severity"),
+    org_name: str | None = typer.Option(None, help="Organization name"),
+    status: str | None = typer.Option(None, help="Filter by status"),
+    severity: str | None = typer.Option(None, help="Filter by severity"),
 ):
     """Manage security findings."""
 
@@ -277,7 +277,7 @@ def findings(
 @app.command()
 def org(
     action: str = typer.Argument(..., help="Action: list, create"),
-    name: Optional[str] = typer.Option(None, help="Organization name"),
+    name: str | None = typer.Option(None, help="Organization name"),
 ):
     """Manage organizations."""
 
@@ -317,10 +317,10 @@ def org(
 
 @app.command()
 def query(
-    sql: Optional[str] = typer.Argument(None, help="SQL query to execute"),
-    file: Optional[str] = typer.Option(None, "--file", "-f", help="Read SQL from file"),
+    sql: str | None = typer.Argument(None, help="SQL query to execute"),
+    file: str | None = typer.Option(None, "--file", "-f", help="Read SQL from file"),
     output: str = typer.Option("table", help="Output format: table, json"),
-    limit: Optional[int] = typer.Option(None, help="Limit results"),
+    limit: int | None = typer.Option(None, help="Limit results"),
 ):
     """Execute SQL queries against security data."""
 
@@ -332,7 +332,7 @@ def query(
         query_sql = sql
         if file:
             try:
-                with open(file, "r") as f:
+                with open(file) as f:
                     query_sql = f.read().strip()
             except FileNotFoundError:
                 rprint(f"[red]File '{file}' not found[/red]")
@@ -402,7 +402,7 @@ def query(
 
 @app.command()
 def tables(
-    provider: Optional[str] = typer.Option(None, help="Filter by provider"),
+    provider: str | None = typer.Option(None, help="Filter by provider"),
 ):
     """List available security tables."""
 
@@ -440,10 +440,10 @@ def tables(
 @app.command()
 def evidence(
     action: str = typer.Argument(..., help="Action: export, verify, list"),
-    bundle_path: Optional[str] = typer.Option(
+    bundle_path: str | None = typer.Option(
         None, "--bundle", "-b", help="Evidence bundle file path"
     ),
-    finding_id: Optional[str] = typer.Option(
+    finding_id: str | None = typer.Option(
         None, "--finding", help="Finding ID for evidence export"
     ),
     output_dir: str = typer.Option(
@@ -542,10 +542,10 @@ def evidence(
 
 @app.command()
 def integrations(
-    integration: Optional[str] = typer.Option(
+    integration: str | None = typer.Option(
         None, help="Filter by integration identifier"
     ),
-    scope: Optional[str] = typer.Option(None, help="Filter by integration scope"),
+    scope: str | None = typer.Option(None, help="Filter by integration scope"),
     stale_after: int = typer.Option(
         3600, help="Mark syncs older than this many seconds as stale (0 to disable)"
     ),
@@ -571,13 +571,13 @@ def integrations(
             table.add_column("Age", style="magenta")
             table.add_column("Metadata", style="dim")
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             stale_threshold = stale_after if stale_after and stale_after > 0 else None
 
             for state in states:
                 last_ts = state.last_timestamp
                 if last_ts and last_ts.tzinfo is None:
-                    last_ts = last_ts.replace(tzinfo=timezone.utc)
+                    last_ts = last_ts.replace(tzinfo=UTC)
 
                 if last_ts is None:
                     last_sync_text = "[italic]never[/italic]"

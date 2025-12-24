@@ -6,16 +6,15 @@ They can be used alongside or instead of the SQLAlchemy-based dependencies.
 
 from cerebro.core.repositories import (
     AccountRepository,
+    AgentMessageRepository,
+    AgentSessionRepository,
     FindingRepository,
     OrganizationRepository,
     PrincipalRepository,
     ResourceRepository,
     RuleRepository,
-    AgentSessionRepository,
-    AgentMessageRepository,
     ToolInvocationRepository,
 )
-
 
 # Singleton instances (repositories are stateless)
 _org_repo: OrganizationRepository | None = None

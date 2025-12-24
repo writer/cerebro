@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from time import monotonic
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
@@ -57,7 +57,7 @@ class SelfPlayOrchestrator:
         """Execute a self-play match for the provided scenario."""
 
         if not getattr(self._settings, "self_play_enabled", True):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return SelfPlayResult(
                 match_id=uuid4(),
                 scenario_id=scenario.id,
@@ -74,7 +74,7 @@ class SelfPlayOrchestrator:
             )
 
         match_id = uuid4()
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         challenger_type = scenario.challenger_agent_type
         responder_type = scenario.responder_agent_type or challenger_type
 
@@ -120,13 +120,13 @@ class SelfPlayOrchestrator:
             ),
         )
 
-        transcript: List[TranscriptEntry] = []
+        transcript: list[TranscriptEntry] = []
         turn_count = 0
         tool_calls = 0
-        stop_reason: Optional[str] = None
-        success_hint: Optional[bool] = None
+        stop_reason: str | None = None
+        success_hint: bool | None = None
 
-        pending_inputs: Dict[SelfPlaySpeaker, Optional[str]] = {
+        pending_inputs: dict[SelfPlaySpeaker, str | None] = {
             SelfPlaySpeaker.CHALLENGER: scenario.challenger_prompt,
             SelfPlaySpeaker.RESPONDER: None,
         }
@@ -143,7 +143,7 @@ class SelfPlayOrchestrator:
             True,
         )
 
-        sessions: Dict[SelfPlaySpeaker, AgentSession] = {
+        sessions: dict[SelfPlaySpeaker, AgentSession] = {
             SelfPlaySpeaker.CHALLENGER: challenger_session,
             SelfPlaySpeaker.RESPONDER: responder_session,
         }
@@ -176,7 +176,7 @@ class SelfPlayOrchestrator:
                     speaker=active,
                     message=outcome.message,
                     tool_calls=outcome.tool_call_count,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     token_usage=dict(outcome.token_usage),
                     raw_response=outcome.raw_message or {},
                     duration_ms=outcome.duration_ms,
@@ -213,7 +213,7 @@ class SelfPlayOrchestrator:
             pending_inputs[next_speaker] = next_message
             active = next_speaker
 
-        ended_at = datetime.now(timezone.utc)
+        ended_at = datetime.now(UTC)
         indicated_success = bool(success_hint)
         total_duration_ms = (ended_at - started_at).total_seconds() * 1000.0
         result = await self._finalize_match(
@@ -250,7 +250,7 @@ class SelfPlayOrchestrator:
         speaker: SelfPlaySpeaker,
         agent_type: AgentType,
     ) -> AgentSession:
-        context: Dict[str, Any] = {
+        context: dict[str, Any] = {
             "_self_play": True,
             "scenario_id": scenario.id,
             "match_id": str(match_id),
@@ -295,8 +295,8 @@ class SelfPlayOrchestrator:
             turn=turn_index + 1,
         )
 
-        streamed_text: List[str] = []
-        streamed_tools: List[Dict[str, Any]] = []
+        streamed_text: list[str] = []
+        streamed_tools: list[dict[str, Any]] = []
         turn_started = monotonic()
 
         async for chunk in self._runtime_facade.send_message(
@@ -351,7 +351,7 @@ class SelfPlayOrchestrator:
     async def _fetch_latest_assistant_message(
         self,
         session: AgentSession,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         messages = await self._runtime_facade.get_session_messages(
             session,
             limit=5,
@@ -367,14 +367,14 @@ class SelfPlayOrchestrator:
     def _normalize_turn_output(
         self,
         *,
-        streamed_text: List[str],
-        streamed_tools: List[Dict[str, Any]],
-        response_message: Optional[Dict[str, Any]],
+        streamed_text: list[str],
+        streamed_tools: list[dict[str, Any]],
+        response_message: dict[str, Any] | None,
     ) -> TurnOutcome:
         text = "".join(streamed_text).strip()
         tool_events = list(streamed_tools)
-        token_usage: Dict[str, Any] = {}
-        raw_message: Optional[Dict[str, Any]] = None
+        token_usage: dict[str, Any] = {}
+        raw_message: dict[str, Any] | None = None
 
         if response_message:
             raw_message = response_message.get("content")
@@ -416,9 +416,9 @@ class SelfPlayOrchestrator:
             success_hint=success_hint,
         )
 
-    def _extract_from_blocks(self, blocks: List[Any]) -> Dict[str, Any]:
-        text_parts: List[str] = []
-        tools: List[Dict[str, Any]] = []
+    def _extract_from_blocks(self, blocks: list[Any]) -> dict[str, Any]:
+        text_parts: list[str] = []
+        tools: list[dict[str, Any]] = []
         for block in blocks:
             if not isinstance(block, dict):
                 continue
@@ -442,7 +442,7 @@ class SelfPlayOrchestrator:
     def _detect_stop_signal(
         self,
         text: str,
-    ) -> tuple[Optional[str], Optional[bool]]:
+    ) -> tuple[str | None, bool | None]:
         if not text:
             return None, None
 
@@ -467,7 +467,7 @@ class SelfPlayOrchestrator:
         speaker: SelfPlaySpeaker,
         opponent_output: str,
         first_turn: bool,
-    ) -> Optional[str]:
+    ) -> str | None:
         opponent_output = opponent_output.strip()
         if not opponent_output:
             return None
@@ -509,13 +509,13 @@ class SelfPlayOrchestrator:
         *,
         match_id: UUID,
         scenario: SelfPlayScenario,
-        sessions: Dict[SelfPlaySpeaker, AgentSession],
+        sessions: dict[SelfPlaySpeaker, AgentSession],
         started_at: datetime,
         ended_at: datetime,
         turns: int,
         tool_calls: int,
-        stop_reason: Optional[str],
-        transcript: List[TranscriptEntry],
+        stop_reason: str | None,
+        transcript: list[TranscriptEntry],
         indicated_success: bool,
         total_duration_ms: float,
     ) -> SelfPlayResult:
@@ -592,7 +592,7 @@ class SelfPlayOrchestrator:
         self,
         session: AgentSession,
         event_type: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
     ) -> None:
         if not self._analytics:
             return
@@ -615,7 +615,7 @@ class SelfPlayOrchestrator:
         match_id: UUID,
         scenario: SelfPlayScenario,
         speaker: SelfPlaySpeaker,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return {
             "match_id": str(match_id),
             "scenario_id": scenario.id,
@@ -624,7 +624,7 @@ class SelfPlayOrchestrator:
             "max_tool_calls": scenario.max_tool_calls,
         }
 
-    def _completion_payload(self, result: SelfPlayResult) -> Dict[str, Any]:
+    def _completion_payload(self, result: SelfPlayResult) -> dict[str, Any]:
         return {
             "match_id": str(result.match_id),
             "scenario_id": result.scenario_id,

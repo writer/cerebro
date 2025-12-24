@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from cerebro.automation.alerting import (
     AlertResult,
@@ -13,7 +13,7 @@ from scripts import telemetry_alerts
 
 
 def _snapshot() -> TelemetryHealthSnapshot:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TelemetryHealthSnapshot(
         generated_at=now,
         window_start=now,
@@ -41,7 +41,7 @@ def _alert() -> AlertResult:
         severity=RuleSeverity.WARNING,
         description="Total events below threshold",
     )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return AlertResult(
         rule=rule,
         metric_value=10,
@@ -68,7 +68,7 @@ def test_cli_prints_alerts(monkeypatch, capsys) -> None:
 
 def test_cli_handles_no_alerts(monkeypatch, capsys) -> None:
     async def fake_run(*args, **kwargs):
-        return (tuple(), _snapshot())
+        return ((), _snapshot())
 
     monkeypatch.setattr(telemetry_alerts, "run_telemetry_alerts", fake_run)
 

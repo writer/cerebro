@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,7 @@ class RuntimeEventAggregate:
     """Aggregated event counts for a runtime channel."""
 
     count: int
-    last_seen: Optional[datetime]
+    last_seen: datetime | None
 
 
 @dataclass
@@ -37,7 +38,7 @@ class RuntimeHealthRecord:
     window_end: datetime
     events: dict[str, RuntimeEventAggregate]
     warnings: dict[str, RuntimeEventAggregate]
-    latest_metadata: Optional[RuntimeMetadataSnapshot]
+    latest_metadata: RuntimeMetadataSnapshot | None
 
 
 class RuntimeHealthClient:
@@ -117,8 +118,8 @@ class IntegrationCoverageRecord:
     status: str
     scopes: IntegrationScopeBreakdown
     accounts: IntegrationAccountSummary
-    coverage_ratio: Optional[float]
-    last_success: Optional[datetime]
+    coverage_ratio: float | None
+    last_success: datetime | None
     evaluated_at: datetime
 
 
@@ -132,7 +133,7 @@ class IntegrationCoverageClient:
         self,
         *,
         provider_mapping: Mapping[str, Iterable[str]] | None = None,
-        stale_seconds: Optional[int] = None,
+        stale_seconds: int | None = None,
     ) -> list[IntegrationCoverageRecord]:
         raw_records = await summarize_integration_coverage(
             self._db,
@@ -185,12 +186,12 @@ class IntegrationCoverageClient:
 
 
 __all__ = [
-    "RuntimeHealthClient",
-    "RuntimeHealthRecord",
-    "RuntimeEventAggregate",
-    "RuntimeMetadataSnapshot",
+    "IntegrationAccountSummary",
     "IntegrationCoverageClient",
     "IntegrationCoverageRecord",
     "IntegrationScopeBreakdown",
-    "IntegrationAccountSummary",
+    "RuntimeEventAggregate",
+    "RuntimeHealthClient",
+    "RuntimeHealthRecord",
+    "RuntimeMetadataSnapshot",
 ]

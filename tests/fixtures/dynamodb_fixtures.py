@@ -3,21 +3,21 @@
 Provides pytest fixtures for testing with DynamoDB Local or moto mock.
 """
 
-import pytest
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import boto3
+import pytest
 from moto import mock_dynamodb
 
 
 # Test data factories
 def create_test_org(
-    org_id: UUID = None,
+    org_id: UUID | None = None,
     name: str = "Test Organization",
-    slack_config: Dict[str, Any] = None,
-) -> Dict[str, Any]:
+    slack_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Create test organization data."""
     org_id = org_id or uuid4()
     return {
@@ -27,18 +27,18 @@ def create_test_org(
         "org_id": str(org_id),
         "name": name,
         "slack_config": slack_config,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "GSI3PK": "ORG#ALL",
-        "GSI3SK": f"CREATED#{datetime.now(timezone.utc).isoformat()}",
+        "GSI3SK": f"CREATED#{datetime.now(UTC).isoformat()}",
     }
 
 
 def create_test_account(
-    account_id: UUID = None,
-    org_id: UUID = None,
+    account_id: UUID | None = None,
+    org_id: UUID | None = None,
     provider: str = "aws",
     external_id: str = "123456789012",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create test account data."""
     account_id = account_id or uuid4()
     org_id = org_id or uuid4()
@@ -57,19 +57,19 @@ def create_test_account(
 
 
 def create_test_finding(
-    finding_id: UUID = None,
-    org_id: UUID = None,
-    account_id: UUID = None,
-    rule_id: UUID = None,
+    finding_id: UUID | None = None,
+    org_id: UUID | None = None,
+    account_id: UUID | None = None,
+    rule_id: UUID | None = None,
     status: str = "open",
     severity: str = "high",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create test finding data."""
     finding_id = finding_id or uuid4()
     org_id = org_id or uuid4()
     account_id = account_id or uuid4()
     rule_id = rule_id or uuid4()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     return {
         "PK": f"ORG#{org_id}",
@@ -98,14 +98,14 @@ def create_test_finding(
 
 
 def create_test_rule(
-    rule_id: UUID = None,
+    rule_id: UUID | None = None,
     name: str = "Test Rule",
     severity: str = "high",
     is_active: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create test rule data."""
     rule_id = rule_id or uuid4()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     return {
         "PK": f"RULE#{rule_id}",
@@ -127,15 +127,15 @@ def create_test_rule(
 
 
 def create_test_session(
-    session_id: UUID = None,
-    org_id: UUID = None,
+    session_id: UUID | None = None,
+    org_id: UUID | None = None,
     agent_type: str = "security_analyst",
     created_by: str = "test-user",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create test agent session data."""
     session_id = session_id or uuid4()
     org_id = org_id or uuid4()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     return {
         "PK": f"ORG#{org_id}",
@@ -157,17 +157,17 @@ def create_test_session(
 
 
 def create_test_message(
-    message_id: UUID = None,
-    session_id: UUID = None,
-    org_id: UUID = None,
+    message_id: UUID | None = None,
+    session_id: UUID | None = None,
+    org_id: UUID | None = None,
     role: str = "user",
-    content: Dict[str, Any] = None,
-) -> Dict[str, Any]:
+    content: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Create test agent message data."""
     message_id = message_id or uuid4()
     session_id = session_id or uuid4()
     org_id = org_id or uuid4()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     return {
         "PK": f"SESSION#{session_id}",
@@ -184,10 +184,10 @@ def create_test_message(
     }
 
 
-def serialize_item(item: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def serialize_item(item: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Serialize item for DynamoDB."""
 
-    def serialize_value(value: Any) -> Dict[str, Any]:
+    def serialize_value(value: Any) -> dict[str, Any]:
         if value is None:
             return {"NULL": True}
         elif isinstance(value, bool):
@@ -213,14 +213,14 @@ class DynamoDBTestHelper:
         self.client = client
         self.table_name = table_name
 
-    def put_item(self, item: Dict[str, Any]) -> None:
+    def put_item(self, item: dict[str, Any]) -> None:
         """Put an item into the table."""
         self.client.put_item(
             TableName=self.table_name,
             Item=serialize_item(item),
         )
 
-    def get_item(self, pk: str, sk: str) -> Dict[str, Any]:
+    def get_item(self, pk: str, sk: str) -> dict[str, Any]:
         """Get an item from the table."""
         response = self.client.get_item(
             TableName=self.table_name,
@@ -228,7 +228,7 @@ class DynamoDBTestHelper:
         )
         return response.get("Item")
 
-    def query(self, pk: str, sk_prefix: str = None) -> List[Dict[str, Any]]:
+    def query(self, pk: str, sk_prefix: str | None = None) -> list[dict[str, Any]]:
         """Query items by partition key."""
         params = {
             "TableName": self.table_name,
@@ -416,7 +416,7 @@ def test_account_id() -> UUID:
 
 
 @pytest.fixture
-def test_org(dynamodb_core_helper, test_org_id) -> Dict[str, Any]:
+def test_org(dynamodb_core_helper, test_org_id) -> dict[str, Any]:
     """Create and return a test organization."""
     org = create_test_org(org_id=test_org_id, name="Test Org")
     dynamodb_core_helper.put_item(org)
@@ -424,7 +424,7 @@ def test_org(dynamodb_core_helper, test_org_id) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def test_account(dynamodb_core_helper, test_org_id, test_account_id) -> Dict[str, Any]:
+def test_account(dynamodb_core_helper, test_org_id, test_account_id) -> dict[str, Any]:
     """Create and return a test account."""
     account = create_test_account(
         account_id=test_account_id,
@@ -438,7 +438,7 @@ def test_account(dynamodb_core_helper, test_org_id, test_account_id) -> Dict[str
 @pytest.fixture
 def test_findings(
     dynamodb_core_helper, test_org_id, test_account_id
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Create and return test findings."""
     rule_id = uuid4()
     findings = [
@@ -470,7 +470,7 @@ def test_findings(
 
 
 @pytest.fixture
-def test_session(dynamodb_agents_helper, test_org_id) -> Dict[str, Any]:
+def test_session(dynamodb_agents_helper, test_org_id) -> dict[str, Any]:
     """Create and return a test agent session."""
     session = create_test_session(org_id=test_org_id)
     dynamodb_agents_helper.put_item(session)

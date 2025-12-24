@@ -8,17 +8,17 @@ clean service with proper dependency injection and storage abstraction.
 import asyncio
 import json
 import logging
-from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
+from typing import Any
 
 from .models import (
     BaseEvidenceMetadata,
     ComplianceEvidenceMetadata,
-    EvidenceStatus,
+    EvidenceBundle,
     EvidenceCategory,
     EvidenceCollectionMethod,
     EvidenceRepository,
-    EvidenceBundle,
+    EvidenceStatus,
     create_compliance_evidence,
 )
 
@@ -72,10 +72,10 @@ class EvidenceService:
         self,
         control_id: str,
         framework_name: str,
-        queries: List[str],
+        queries: list[str],
         collector_id: str = "system",
-        test_run_id: Optional[str] = None,
-    ) -> List[str]:
+        test_run_id: str | None = None,
+    ) -> list[str]:
         """
         Collect evidence for compliance controls.
 
@@ -216,7 +216,7 @@ class EvidenceService:
         self,
         resource_id: str,
         provider: str,
-        configuration_data: Dict[str, Any],
+        configuration_data: dict[str, Any],
         collector_id: str = "system",
         **metadata_kwargs,
     ) -> str:
@@ -282,7 +282,7 @@ class EvidenceService:
 
     async def collect_log_evidence(
         self,
-        log_entries: List[Dict[str, Any]],
+        log_entries: list[dict[str, Any]],
         log_type: str,
         source_system: str,
         collector_id: str = "system",
@@ -364,7 +364,7 @@ class EvidenceService:
 
     async def collect_document_evidence(
         self,
-        document_content: Union[str, bytes],
+        document_content: str | bytes,
         document_name: str,
         document_type: str,
         collector_id: str,
@@ -479,8 +479,8 @@ class EvidenceService:
         self,
         bundle_name: str,
         framework_name: str,
-        control_ids: List[str],
-        evidence_ids: List[str],
+        control_ids: list[str],
+        evidence_ids: list[str],
         created_by: str,
         **bundle_kwargs,
     ) -> str:
@@ -534,12 +534,12 @@ class EvidenceService:
         )
         return bundle_id
 
-    async def get_collection_stats(self) -> Dict[str, Any]:
+    async def get_collection_stats(self) -> dict[str, Any]:
         """Get evidence collection statistics."""
         return {**self._collection_stats, "timestamp": datetime.utcnow().isoformat()}
 
     async def _store_evidence_safely(
-        self, content: Union[str, bytes], metadata: BaseEvidenceMetadata
+        self, content: str | bytes, metadata: BaseEvidenceMetadata
     ) -> str:
         """
         Safely store evidence with error handling and retry logic.
@@ -599,8 +599,8 @@ class EvidenceQueryService:
         self.repository = repository
 
     async def get_evidence_by_control(
-        self, control_id: str, framework_name: Optional[str] = None
-    ) -> List[BaseEvidenceMetadata]:
+        self, control_id: str, framework_name: str | None = None
+    ) -> list[BaseEvidenceMetadata]:
         """Get all evidence for a specific control."""
         filters = {"tags.control_id": control_id}
         if framework_name:
@@ -610,7 +610,7 @@ class EvidenceQueryService:
 
     async def get_evidence_by_bundle(
         self, bundle_id: str
-    ) -> List[BaseEvidenceMetadata]:
+    ) -> list[BaseEvidenceMetadata]:
         """Get all evidence in a bundle."""
         bundle = await self.repository.get_bundle(bundle_id)
         if not bundle:
@@ -626,12 +626,12 @@ class EvidenceQueryService:
 
     async def search_evidence(
         self,
-        framework_name: Optional[str] = None,
-        control_id: Optional[str] = None,
-        date_range: Optional[tuple[datetime, datetime]] = None,
-        status: Optional[EvidenceStatus] = None,
-        category: Optional[EvidenceCategory] = None,
-    ) -> List[BaseEvidenceMetadata]:
+        framework_name: str | None = None,
+        control_id: str | None = None,
+        date_range: tuple[datetime, datetime] | None = None,
+        status: EvidenceStatus | None = None,
+        category: EvidenceCategory | None = None,
+    ) -> list[BaseEvidenceMetadata]:
         """Search evidence with multiple filters."""
         filters: dict[str, Any] = {}
 

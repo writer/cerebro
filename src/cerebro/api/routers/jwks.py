@@ -1,23 +1,24 @@
 """JSON Web Key Set (JWKS) endpoint for public key distribution."""
 
 import logging
-from typing import Dict, Any
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cerebro.api.auth import User, require_admin
+from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.core.security.key_store import JWTKeyStore
-from cerebro.core.config import settings
 from cerebro.metrics.jwt_metrics import jwt_metrics
-from cerebro.api.auth import require_admin, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Authentication"])
 
 
-@router.get("/.well-known/jwks.json", response_model=Dict[str, Any])
+@router.get("/.well-known/jwks.json", response_model=dict[str, Any])
 async def get_jwks(db: AsyncSession = Depends(get_db)) -> JSONResponse:
     """
     Get JSON Web Key Set (JWKS) for token verification.
@@ -57,7 +58,7 @@ async def get_jwks(db: AsyncSession = Depends(get_db)) -> JSONResponse:
 
 
 @router.get("/.well-known/openid_configuration")
-async def get_openid_configuration() -> Dict[str, Any]:
+async def get_openid_configuration() -> dict[str, Any]:
     """
     OpenID Connect Discovery endpoint.
 
@@ -97,7 +98,7 @@ async def get_openid_configuration() -> Dict[str, Any]:
 @router.get("/auth/jwks-debug")
 async def debug_jwks(
     db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Debug endpoint for JWT key information (admin only, development environments only).
 

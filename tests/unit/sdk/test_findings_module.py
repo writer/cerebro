@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -7,8 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cerebro.core.models import Finding
 from cerebro_sdk.findings import FindingService
 
-
-UTC = timezone.utc
+UTC = UTC
 
 
 @pytest.mark.asyncio

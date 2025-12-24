@@ -4,9 +4,9 @@ Security data schema definitions for SQL query engine.
 Provides standardized column definitions and data types for security resources.
 """
 
-from enum import Enum
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any
 
 
 class ColumnType(Enum):
@@ -54,8 +54,8 @@ class SecurityColumn:
     description: str
     required: bool = False
     filterable: bool = True
-    transform: Optional[str] = None  # Transformation function name
-    source_field: Optional[str] = None  # Source API field name
+    transform: str | None = None  # Transformation function name
+    source_field: str | None = None  # Source API field name
 
 
 @dataclass
@@ -63,7 +63,7 @@ class SecurityIndex:
     """Index definition for query optimization."""
 
     name: str
-    columns: List[str]
+    columns: list[str]
     unique: bool = False
 
 
@@ -100,113 +100,22 @@ class SecuritySchema:
     ]
 
     # Alert/Detection columns (CrowdStrike, SIEM patterns)
-    ALERT_COLUMNS = CORE_COLUMNS + [
-        SecurityColumn("alert_id", ColumnType.TEXT, "Alert identifier", required=True),
-        SecurityColumn("composite_id", ColumnType.TEXT, "Composite alert identifier"),
-        SecurityColumn(
-            "aggregate_id", ColumnType.TEXT, "Aggregate alert group identifier"
-        ),
-        SecurityColumn("severity", ColumnType.SEVERITY, "Alert severity level"),
-        SecurityColumn("status", ColumnType.STATUS, "Alert status"),
-        SecurityColumn("title", ColumnType.TEXT, "Alert title or name"),
-        SecurityColumn("description", ColumnType.TEXT, "Alert description"),
-        SecurityColumn("host_id", ColumnType.TEXT, "Associated host identifier"),
-        SecurityColumn("user_id", ColumnType.TEXT, "Associated user identifier"),
-        SecurityColumn("confidence", ColumnType.INTEGER, "Confidence score (0-100)"),
-        SecurityColumn("tactics", ColumnType.JSON, "MITRE ATT&CK tactics"),
-        SecurityColumn("techniques", ColumnType.JSON, "MITRE ATT&CK techniques"),
-        SecurityColumn("indicators", ColumnType.JSON, "IOCs and indicators"),
-        SecurityColumn("raw_event", ColumnType.JSON, "Original event data"),
-    ]
+    ALERT_COLUMNS = [*CORE_COLUMNS, SecurityColumn("alert_id", ColumnType.TEXT, "Alert identifier", required=True), SecurityColumn("composite_id", ColumnType.TEXT, "Composite alert identifier"), SecurityColumn("aggregate_id", ColumnType.TEXT, "Aggregate alert group identifier"), SecurityColumn("severity", ColumnType.SEVERITY, "Alert severity level"), SecurityColumn("status", ColumnType.STATUS, "Alert status"), SecurityColumn("title", ColumnType.TEXT, "Alert title or name"), SecurityColumn("description", ColumnType.TEXT, "Alert description"), SecurityColumn("host_id", ColumnType.TEXT, "Associated host identifier"), SecurityColumn("user_id", ColumnType.TEXT, "Associated user identifier"), SecurityColumn("confidence", ColumnType.INTEGER, "Confidence score (0-100)"), SecurityColumn("tactics", ColumnType.JSON, "MITRE ATT&CK tactics"), SecurityColumn("techniques", ColumnType.JSON, "MITRE ATT&CK techniques"), SecurityColumn("indicators", ColumnType.JSON, "IOCs and indicators"), SecurityColumn("raw_event", ColumnType.JSON, "Original event data")]
 
     # Identity columns (Okta, Auth0, Azure AD patterns)
-    IDENTITY_COLUMNS = CORE_COLUMNS + [
-        SecurityColumn("user_id", ColumnType.TEXT, "User identifier", required=True),
-        SecurityColumn("username", ColumnType.TEXT, "Username or login"),
-        SecurityColumn("email", ColumnType.TEXT, "User email address"),
-        SecurityColumn("display_name", ColumnType.TEXT, "User display name"),
-        SecurityColumn("status", ColumnType.STATUS, "User account status"),
-        SecurityColumn("last_login", ColumnType.TIMESTAMP, "Last successful login"),
-        SecurityColumn("failed_logins", ColumnType.INTEGER, "Failed login attempts"),
-        SecurityColumn("groups", ColumnType.JSON, "User group memberships"),
-        SecurityColumn("roles", ColumnType.JSON, "Assigned roles and permissions"),
-        SecurityColumn(
-            "mfa_enabled", ColumnType.BOOLEAN, "Multi-factor authentication enabled"
-        ),
-        SecurityColumn("locked", ColumnType.BOOLEAN, "Account locked status"),
-        SecurityColumn(
-            "password_changed", ColumnType.TIMESTAMP, "Last password change"
-        ),
-        SecurityColumn("attributes", ColumnType.JSON, "Custom user attributes"),
-    ]
+    IDENTITY_COLUMNS = [*CORE_COLUMNS, SecurityColumn("user_id", ColumnType.TEXT, "User identifier", required=True), SecurityColumn("username", ColumnType.TEXT, "Username or login"), SecurityColumn("email", ColumnType.TEXT, "User email address"), SecurityColumn("display_name", ColumnType.TEXT, "User display name"), SecurityColumn("status", ColumnType.STATUS, "User account status"), SecurityColumn("last_login", ColumnType.TIMESTAMP, "Last successful login"), SecurityColumn("failed_logins", ColumnType.INTEGER, "Failed login attempts"), SecurityColumn("groups", ColumnType.JSON, "User group memberships"), SecurityColumn("roles", ColumnType.JSON, "Assigned roles and permissions"), SecurityColumn("mfa_enabled", ColumnType.BOOLEAN, "Multi-factor authentication enabled"), SecurityColumn("locked", ColumnType.BOOLEAN, "Account locked status"), SecurityColumn("password_changed", ColumnType.TIMESTAMP, "Last password change"), SecurityColumn("attributes", ColumnType.JSON, "Custom user attributes")]
 
     # Asset/Host columns (AWS EC2, CrowdStrike hosts)
-    ASSET_COLUMNS = CORE_COLUMNS + [
-        SecurityColumn("hostname", ColumnType.TEXT, "Host or asset name"),
-        SecurityColumn("ip_address", ColumnType.TEXT, "IP address"),
-        SecurityColumn("mac_address", ColumnType.TEXT, "MAC address"),
-        SecurityColumn("os_family", ColumnType.TEXT, "Operating system family"),
-        SecurityColumn("os_version", ColumnType.TEXT, "Operating system version"),
-        SecurityColumn("agent_version", ColumnType.TEXT, "Security agent version"),
-        SecurityColumn(
-            "last_seen", ColumnType.TIMESTAMP, "Last communication timestamp"
-        ),
-        SecurityColumn("status", ColumnType.STATUS, "Asset status"),
-        SecurityColumn("criticality", ColumnType.SEVERITY, "Business criticality"),
-        SecurityColumn("owner", ColumnType.TEXT, "Asset owner"),
-        SecurityColumn("environment", ColumnType.TEXT, "Environment (prod, dev, test)"),
-        SecurityColumn(
-            "network_interfaces", ColumnType.JSON, "Network interface details"
-        ),
-        SecurityColumn(
-            "installed_software", ColumnType.JSON, "Installed software inventory"
-        ),
-    ]
+    ASSET_COLUMNS = [*CORE_COLUMNS, SecurityColumn("hostname", ColumnType.TEXT, "Host or asset name"), SecurityColumn("ip_address", ColumnType.TEXT, "IP address"), SecurityColumn("mac_address", ColumnType.TEXT, "MAC address"), SecurityColumn("os_family", ColumnType.TEXT, "Operating system family"), SecurityColumn("os_version", ColumnType.TEXT, "Operating system version"), SecurityColumn("agent_version", ColumnType.TEXT, "Security agent version"), SecurityColumn("last_seen", ColumnType.TIMESTAMP, "Last communication timestamp"), SecurityColumn("status", ColumnType.STATUS, "Asset status"), SecurityColumn("criticality", ColumnType.SEVERITY, "Business criticality"), SecurityColumn("owner", ColumnType.TEXT, "Asset owner"), SecurityColumn("environment", ColumnType.TEXT, "Environment (prod, dev, test)"), SecurityColumn("network_interfaces", ColumnType.JSON, "Network interface details"), SecurityColumn("installed_software", ColumnType.JSON, "Installed software inventory")]
 
     # Vulnerability columns (CrowdStrike Spotlight, AWS Inspector)
-    VULNERABILITY_COLUMNS = CORE_COLUMNS + [
-        SecurityColumn(
-            "vulnerability_id",
-            ColumnType.TEXT,
-            "Vulnerability identifier",
-            required=True,
-        ),
-        SecurityColumn("cve_id", ColumnType.TEXT, "CVE identifier"),
-        SecurityColumn("severity", ColumnType.SEVERITY, "Vulnerability severity"),
-        SecurityColumn("cvss_score", ColumnType.INTEGER, "CVSS base score"),
-        SecurityColumn("title", ColumnType.TEXT, "Vulnerability title"),
-        SecurityColumn("description", ColumnType.TEXT, "Vulnerability description"),
-        SecurityColumn("host_id", ColumnType.TEXT, "Affected host identifier"),
-        SecurityColumn("package_name", ColumnType.TEXT, "Affected package/software"),
-        SecurityColumn("package_version", ColumnType.TEXT, "Package version"),
-        SecurityColumn("fixed_version", ColumnType.TEXT, "Fixed version available"),
-        SecurityColumn(
-            "exploit_available", ColumnType.BOOLEAN, "Known exploits available"
-        ),
-        SecurityColumn("patch_available", ColumnType.BOOLEAN, "Patch available"),
-        SecurityColumn("first_seen", ColumnType.TIMESTAMP, "First detection timestamp"),
-        SecurityColumn("remediation", ColumnType.TEXT, "Remediation guidance"),
-    ]
+    VULNERABILITY_COLUMNS = [*CORE_COLUMNS, SecurityColumn("vulnerability_id", ColumnType.TEXT, "Vulnerability identifier", required=True), SecurityColumn("cve_id", ColumnType.TEXT, "CVE identifier"), SecurityColumn("severity", ColumnType.SEVERITY, "Vulnerability severity"), SecurityColumn("cvss_score", ColumnType.INTEGER, "CVSS base score"), SecurityColumn("title", ColumnType.TEXT, "Vulnerability title"), SecurityColumn("description", ColumnType.TEXT, "Vulnerability description"), SecurityColumn("host_id", ColumnType.TEXT, "Affected host identifier"), SecurityColumn("package_name", ColumnType.TEXT, "Affected package/software"), SecurityColumn("package_version", ColumnType.TEXT, "Package version"), SecurityColumn("fixed_version", ColumnType.TEXT, "Fixed version available"), SecurityColumn("exploit_available", ColumnType.BOOLEAN, "Known exploits available"), SecurityColumn("patch_available", ColumnType.BOOLEAN, "Patch available"), SecurityColumn("first_seen", ColumnType.TIMESTAMP, "First detection timestamp"), SecurityColumn("remediation", ColumnType.TEXT, "Remediation guidance")]
 
     # Configuration columns (AWS Config, GCP Asset Inventory)
-    CONFIG_COLUMNS = CORE_COLUMNS + [
-        SecurityColumn(
-            "resource_type", ColumnType.TEXT, "Resource type", required=True
-        ),
-        SecurityColumn("resource_name", ColumnType.TEXT, "Resource name"),
-        SecurityColumn("arn", ColumnType.TEXT, "Amazon Resource Name"),
-        SecurityColumn("configuration", ColumnType.JSON, "Current configuration"),
-        SecurityColumn("compliance_status", ColumnType.STATUS, "Compliance status"),
-        SecurityColumn("compliance_rules", ColumnType.JSON, "Applied compliance rules"),
-        SecurityColumn(
-            "configuration_recorder", ColumnType.TEXT, "Config recorder name"
-        ),
-        SecurityColumn("availability_zone", ColumnType.TEXT, "Availability zone"),
-        SecurityColumn("relationships", ColumnType.JSON, "Related resources"),
-    ]
+    CONFIG_COLUMNS = [*CORE_COLUMNS, SecurityColumn("resource_type", ColumnType.TEXT, "Resource type", required=True), SecurityColumn("resource_name", ColumnType.TEXT, "Resource name"), SecurityColumn("arn", ColumnType.TEXT, "Amazon Resource Name"), SecurityColumn("configuration", ColumnType.JSON, "Current configuration"), SecurityColumn("compliance_status", ColumnType.STATUS, "Compliance status"), SecurityColumn("compliance_rules", ColumnType.JSON, "Applied compliance rules"), SecurityColumn("configuration_recorder", ColumnType.TEXT, "Config recorder name"), SecurityColumn("availability_zone", ColumnType.TEXT, "Availability zone"), SecurityColumn("relationships", ColumnType.JSON, "Related resources")]
 
     @classmethod
-    def get_schema_for_table(cls, table_type: str) -> List[SecurityColumn]:
+    def get_schema_for_table(cls, table_type: str) -> list[SecurityColumn]:
         """Get the appropriate column schema for a table type."""
         schema_map = {
             "alert": cls.ALERT_COLUMNS,
@@ -230,8 +139,8 @@ class SecuritySchema:
 
     @classmethod
     def create_table_schema(
-        cls, table_name: str, custom_columns: Optional[List[SecurityColumn]] = None
-    ) -> Dict[str, Any]:
+        cls, table_name: str, custom_columns: list[SecurityColumn] | None = None
+    ) -> dict[str, Any]:
         """Create a complete table schema definition."""
         base_columns = cls.get_schema_for_table(table_name)
 
@@ -250,7 +159,7 @@ class SecuritySchema:
         }
 
     @classmethod
-    def _get_default_indexes(cls, columns: List[SecurityColumn]) -> List[SecurityIndex]:
+    def _get_default_indexes(cls, columns: list[SecurityColumn]) -> list[SecurityIndex]:
         """Generate default indexes for a table schema."""
         indexes = []
 

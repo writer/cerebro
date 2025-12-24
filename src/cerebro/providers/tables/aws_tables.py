@@ -5,12 +5,13 @@ Exposes AWS security resources as SQL tables following Steampipe patterns.
 """
 
 import logging
-from typing import AsyncGenerator, Dict, Any, List
+from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 
-from ...query.table import ProviderSecurityTable, QueryContext
 from ...query.registry import register_table
-from ...query.schema import SecurityColumn, ColumnType
+from ...query.schema import ColumnType, SecurityColumn
+from ...query.table import ProviderSecurityTable, QueryContext
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,7 @@ class AWSEc2InstanceTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch EC2 instances from AWS API."""
         client = AWSClient()
 
@@ -227,7 +228,7 @@ class AWSIAMUserTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch IAM users from AWS API."""
         client = AWSClient()
 
@@ -254,28 +255,28 @@ class AWSIAMUserTable(ProviderSecurityTable):
             logger.error(f"Error fetching AWS IAM users: {e}")
             raise
 
-    def check_mfa_enabled(self, user_data: Dict[str, Any]) -> bool:
+    def check_mfa_enabled(self, user_data: dict[str, Any]) -> bool:
         """Check if MFA is enabled for user."""
         # This would require additional API calls to list MFA devices
         # Simplified implementation
         return False
 
-    def get_access_keys(self, user_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def get_access_keys(self, user_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Get access keys for user."""
         # This would require additional API call
         return []
 
-    def get_attached_policies(self, user_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def get_attached_policies(self, user_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Get attached managed policies."""
         # This would require additional API call
         return []
 
-    def get_inline_policies(self, user_data: Dict[str, Any]) -> List[str]:
+    def get_inline_policies(self, user_data: dict[str, Any]) -> list[str]:
         """Get inline policy names."""
         # This would require additional API call
         return []
 
-    def get_user_groups(self, user_data: Dict[str, Any]) -> List[str]:
+    def get_user_groups(self, user_data: dict[str, Any]) -> list[str]:
         """Get user group memberships."""
         # This would require additional API call
         return []
@@ -332,7 +333,7 @@ class AWSSecurityGroupTable(ProviderSecurityTable):
 
     async def fetch_from_api(
         self, ctx: QueryContext
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Fetch Security Groups from AWS API."""
         client = AWSClient()
 

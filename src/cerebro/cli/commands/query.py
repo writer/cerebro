@@ -4,7 +4,8 @@ SQL query commands for Cerebro CLI.
 Provides interactive SQL querying capabilities for security data.
 """
 
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
 import click
 
 from ...core.database import async_session_factory
@@ -13,7 +14,12 @@ from ...query.bootstrap import get_query_engine
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ...query.engine import QueryEngine
-from ..utils import async_command, format_datetime, print_json, print_table  # type: ignore[import-untyped]
+from ..utils import (  # type: ignore[import-untyped]
+    async_command,
+    format_datetime,
+    print_json,
+    print_table,
+)
 
 
 @click.group(name="query")
@@ -36,10 +42,10 @@ def query_group():
 @click.option("--timeout", type=int, default=30, help="Query timeout in seconds")
 @async_command
 async def execute_sql(
-    sql: Optional[str],
-    file: Optional[str],
+    sql: str | None,
+    file: str | None,
     output: str,
-    limit: Optional[int],
+    limit: int | None,
     timeout: int,
 ):
     """
@@ -55,7 +61,7 @@ async def execute_sql(
     # Get SQL query
     if file:
         try:
-            with open(file, "r") as f:
+            with open(file) as f:
                 sql = f.read().strip()
         except FileNotFoundError:
             click.echo(f"Error: File '{file}' not found", err=True)
@@ -135,8 +141,8 @@ async def execute_sql(
         click.echo(f"Error executing query: {e}", err=True)
 
 
-def _derive_providers(query_engine: "QueryEngine", result) -> List[str]:
-    providers: List[str] = []
+def _derive_providers(query_engine: "QueryEngine", result) -> list[str]:
+    providers: list[str] = []
     tables = getattr(result, "tables_queried", []) or []
     if not tables:
         return providers
@@ -161,7 +167,7 @@ def _derive_providers(query_engine: "QueryEngine", result) -> List[str]:
     help="Output format",
 )
 @async_command
-async def list_tables(provider: Optional[str], output: str):
+async def list_tables(provider: str | None, output: str):
     """
     List all available security tables.
     """
@@ -269,7 +275,7 @@ async def describe_table(table_name: str, output: str):
 @query_group.command("examples")
 @click.option("--provider", help="Filter examples by provider")
 @async_command
-async def show_examples(provider: Optional[str]):
+async def show_examples(provider: str | None):
     """
     Show example SQL queries for common security use cases.
     """
@@ -485,9 +491,9 @@ async def handle_special_command(command: str, query_engine: "QueryEngine"):
 )
 @async_command
 async def query_alerts(
-    provider: Optional[str],
-    severity: Optional[str],
-    since: Optional[str],
+    provider: str | None,
+    severity: str | None,
+    since: str | None,
     limit: int,
     output: str,
 ):
@@ -536,9 +542,9 @@ async def query_alerts(
 )
 @async_command
 async def query_users(
-    provider: Optional[str],
-    status: Optional[str],
-    mfa: Optional[bool],
+    provider: str | None,
+    status: str | None,
+    mfa: bool | None,
     limit: int,
     output: str,
 ):

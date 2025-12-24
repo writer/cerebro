@@ -5,27 +5,28 @@ Provides REST API for test management, execution, and results
 using the evidence data fabric for test validation.
 """
 
-from typing import Any, Dict, List, Optional
-from uuid import UUID
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
 import logging
+from datetime import datetime, timedelta
+from typing import Any
+from uuid import UUID
 
-from ...core.database import get_db
-from ...core.models import Organization
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ...api.auth import User, require_read_findings
 from ...api.org_access import require_org_access
-from ...testing.test_registry import (
-    get_test_registry,
-    TestType,
-    TestFrequency,
-    TestStatus,
-)
 from ...compliance.evidence_data_fabric import (
     EvidenceDataFabric,
     EvidenceQuery,
+)
+from ...core.database import get_db
+from ...core.models import Organization
+from ...testing.test_registry import (
+    TestFrequency,
+    TestStatus,
+    TestType,
+    get_test_registry,
 )
 
 router = APIRouter()
@@ -38,14 +39,14 @@ class TestCreateRequest(BaseModel):
     name: str = Field(..., description="Test name")
     description: str = Field(..., description="Test description")
     test_type: str = Field(..., description="Test type (automated, manual, hybrid)")
-    sql_query: Optional[str] = Field(None, description="SQL query for automated tests")
-    manual_steps: List[str] = Field(
+    sql_query: str | None = Field(None, description="SQL query for automated tests")
+    manual_steps: list[str] = Field(
         default_factory=list, description="Manual test steps"
     )
     expected_result: str = Field(..., description="Expected test result")
     pass_criteria: str = Field(..., description="Criteria for test to pass")
     frequency: str = Field("monthly", description="Test frequency")
-    control_ids: List[str] = Field(
+    control_ids: list[str] = Field(
         default_factory=list, description="Associated control IDs"
     )
     risk_level: str = Field("medium", description="Risk level if test fails")
@@ -55,8 +56,8 @@ class TestExecutionRequest(BaseModel):
     """Request to execute security test."""
 
     test_id: str = Field(..., description="Test ID to execute")
-    manual_result: Optional[str] = Field(None, description="Manual test result")
-    evidence_references: List[str] = Field(
+    manual_result: str | None = Field(None, description="Manual test result")
+    evidence_references: list[str] = Field(
         default_factory=list, description="Evidence record IDs"
     )
 
@@ -64,9 +65,9 @@ class TestExecutionRequest(BaseModel):
 @router.get("/organizations/{org_id}/tests")
 async def list_tests(
     org_id: UUID,
-    status: Optional[str] = Query(None, description="Filter by test status"),
-    test_type: Optional[str] = Query(None, description="Filter by test type"),
-    framework: Optional[str] = Query(
+    status: str | None = Query(None, description="Filter by test status"),
+    test_type: str | None = Query(None, description="Filter by test type"),
+    framework: str | None = Query(
         None, description="Filter by compliance framework"
     ),
     overdue_only: bool = Query(False, description="Show only overdue tests"),
@@ -170,7 +171,7 @@ async def get_test_details(
         if not test:
             raise HTTPException(status_code=404, detail="Test not found")
 
-        test_details: Dict[str, Any] = {
+        test_details: dict[str, Any] = {
             "test_id": test.test_id,
             "name": test.name,
             "description": test.description,
@@ -346,10 +347,10 @@ async def get_test_summary(
 @router.get("/organizations/{org_id}/evidence/query")
 async def query_evidence_fabric(
     org_id: UUID,
-    entity_type: Optional[str] = Query(None, description="Filter by entity type"),
-    entity_id: Optional[str] = Query(None, description="Specific entity ID"),
-    source_system: Optional[str] = Query(None, description="Filter by source system"),
-    requirements: Optional[List[str]] = Query(
+    entity_type: str | None = Query(None, description="Filter by entity type"),
+    entity_id: str | None = Query(None, description="Specific entity ID"),
+    source_system: str | None = Query(None, description="Filter by source system"),
+    requirements: list[str] | None = Query(
         None, description="Filter by requirement IDs"
     ),
     since_days: int = Query(30, description="Evidence age limit", ge=1, le=365),
@@ -364,7 +365,7 @@ async def query_evidence_fabric(
 
     try:
         # Build evidence query
-        query_filters: Dict[str, Any] = {}
+        query_filters: dict[str, Any] = {}
 
         if entity_type:
             query_filters["entity_types"] = [entity_type.lower()]

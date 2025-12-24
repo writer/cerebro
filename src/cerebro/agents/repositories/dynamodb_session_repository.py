@@ -5,7 +5,6 @@ This replaces the SQLAlchemy-based AgentSessionRepository with DynamoDB operatio
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
 from uuid import UUID
 
 from cerebro.agents.dynamodb_models import (
@@ -18,11 +17,11 @@ from cerebro.agents.dynamodb_models import (
 from cerebro.core.dynamodb import (
     TableName,
     batch_write_items,
+    deserialize_item,
+    get_dynamodb_client,
     get_item,
     get_table_name,
     put_item,
-    get_dynamodb_client,
-    deserialize_item,
 )
 
 
@@ -35,8 +34,8 @@ class DynamoDBAgentSessionRepository:
     async def get_session(
         self,
         session_id: UUID,
-        org_id: Optional[UUID] = None,
-    ) -> Optional[AgentSession]:
+        org_id: UUID | None = None,
+    ) -> AgentSession | None:
         """Get a session by ID.
 
         Args:
@@ -81,11 +80,11 @@ class DynamoDBAgentSessionRepository:
         self,
         *,
         org_id: UUID,
-        agent_type: Optional[AgentType] = None,
-        created_by: Optional[str] = None,
+        agent_type: AgentType | None = None,
+        created_by: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[List[AgentSession], int]:
+    ) -> tuple[list[AgentSession], int]:
         """List sessions for an organization.
 
         Args:
@@ -144,8 +143,8 @@ class DynamoDBAgentSessionRepository:
         self,
         session_id: UUID,
         *,
-        limit: Optional[int] = None,
-    ) -> List[AgentMemoryEntry]:
+        limit: int | None = None,
+    ) -> list[AgentMemoryEntry]:
         """List memory entries for a session.
 
         Args:
@@ -176,7 +175,7 @@ class DynamoDBAgentSessionRepository:
     async def list_memory_entries_for_stats(
         self,
         session_id: UUID,
-    ) -> List[AgentMemoryEntry]:
+    ) -> list[AgentMemoryEntry]:
         """List all memory entries for statistics."""
         return await self.list_memory_entries(session_id, limit=None)
 
@@ -185,8 +184,8 @@ class DynamoDBAgentSessionRepository:
         org_id: UUID,
         *,
         limit: int,
-        tool_name: Optional[str] = None,
-    ) -> List[Tuple[ToolInvocation, AgentSession]]:
+        tool_name: str | None = None,
+    ) -> list[tuple[ToolInvocation, AgentSession]]:
         """Get latest tool invocations with their sessions.
 
         Args:
@@ -229,7 +228,7 @@ class DynamoDBAgentSessionRepository:
 
         items = [deserialize_item(item) for item in response.get("Items", [])][:limit]
 
-        results: List[Tuple[ToolInvocation, AgentSession]] = []
+        results: list[tuple[ToolInvocation, AgentSession]] = []
         for item in items:
             if item.get("entity_type") != "TOOL":
                 continue
@@ -245,8 +244,8 @@ class DynamoDBAgentSessionRepository:
         self,
         session_id: UUID,
         *,
-        org_id: Optional[UUID] = None,
-    ) -> Optional[AgentSession]:
+        org_id: UUID | None = None,
+    ) -> AgentSession | None:
         """Get session with messages and tool invocations loaded.
 
         Note: In DynamoDB, we query related items separately.
@@ -318,7 +317,7 @@ class DynamoDBAgentSessionRepository:
 
         return True
 
-    async def save(self, objects: List[object]) -> None:
+    async def save(self, objects: list[object]) -> None:
         """Save multiple objects to DynamoDB.
 
         Args:
@@ -349,7 +348,7 @@ class DynamoDBAgentSessionRepository:
         session_id: UUID,
         org_id: UUID,
         **updates: dict,
-    ) -> Optional[AgentSession]:
+    ) -> AgentSession | None:
         """Update session fields.
 
         Args:
@@ -370,7 +369,7 @@ class DynamoDBAgentSessionRepository:
             return AgentSession.from_dynamodb_item(updated)
         return None
 
-    async def add_message(self, message: "AgentMessage") -> "AgentMessage":
+    async def add_message(self, message: AgentMessage) -> AgentMessage:
         """Add a message to a session.
 
         Args:
@@ -386,8 +385,8 @@ class DynamoDBAgentSessionRepository:
     async def get_session_messages(
         self,
         session_id: UUID,
-        limit: Optional[int] = None,
-    ) -> List["AgentMessage"]:
+        limit: int | None = None,
+    ) -> list[AgentMessage]:
         """Get messages for a session.
 
         Args:
@@ -438,8 +437,8 @@ class DynamoDBAgentSessionRepository:
     async def get_session_tool_invocations(
         self,
         session_id: UUID,
-        limit: Optional[int] = None,
-    ) -> List[ToolInvocation]:
+        limit: int | None = None,
+    ) -> list[ToolInvocation]:
         """Get tool invocations for a session.
 
         Args:

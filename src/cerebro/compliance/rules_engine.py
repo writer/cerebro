@@ -14,16 +14,16 @@ Key capabilities:
 """
 
 import re
-from datetime import datetime
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import uuid4
 
 from .evidence_data_fabric import (
     EvidenceDataFabric,
-    EvidenceQuery,
     EvidenceEntityType,
+    EvidenceQuery,
     EvidenceRecord,
 )
 
@@ -75,7 +75,7 @@ class RuleCondition:
     field_path: str  # e.g., "normalized_data.mfa_enabled"
     operator: RuleOperator
     value: Any
-    entity_filter: Optional[Dict[str, Any]] = None
+    entity_filter: dict[str, Any] | None = None
     description: str = ""
 
 
@@ -90,21 +90,21 @@ class RuleDefinition:
     severity: RuleSeverity
 
     # Rule logic
-    conditions: List[RuleCondition] = field(default_factory=list)
+    conditions: list[RuleCondition] = field(default_factory=list)
     logic_operator: str = "AND"  # AND, OR
 
     # Evidence selection
-    evidence_filters: Dict[str, Any] = field(default_factory=dict)
-    time_window_days: Optional[int] = None
+    evidence_filters: dict[str, Any] = field(default_factory=dict)
+    time_window_days: int | None = None
 
     # Framework binding
-    requirements: List[str] = field(default_factory=list)
-    frameworks: List[str] = field(default_factory=list)
+    requirements: list[str] = field(default_factory=list)
+    frameworks: list[str] = field(default_factory=list)
 
     # Actions and remediation
     remediation_guidance: str = ""
-    automated_remediation: Optional[str] = None
-    alert_channels: List[str] = field(default_factory=list)
+    automated_remediation: str | None = None
+    alert_channels: list[str] = field(default_factory=list)
 
     # Metadata
     created_by: str = ""
@@ -113,8 +113,8 @@ class RuleDefinition:
     enabled: bool = True
 
     # Policy linking
-    derived_from_policy: Optional[str] = None
-    policy_statement: Optional[str] = None
+    derived_from_policy: str | None = None
+    policy_statement: str | None = None
 
 
 @dataclass
@@ -129,12 +129,12 @@ class RuleResult:
     # Evaluation details
     evaluated_at: datetime
     evidence_count: int
-    violations: List[Dict[str, Any]] = field(default_factory=list)
+    violations: list[dict[str, Any]] = field(default_factory=list)
 
     # Context
-    entity_id: Optional[str] = None
-    entity_type: Optional[str] = None
-    requirements: List[str] = field(default_factory=list)
+    entity_id: str | None = None
+    entity_type: str | None = None
+    requirements: list[str] = field(default_factory=list)
 
     # Remediation
     remediation_guidance: str = ""
@@ -200,7 +200,7 @@ class PolicyStatementParser:
         },
     }
 
-    def parse_policy_statements(self, policy_text: str) -> List[Dict[str, Any]]:
+    def parse_policy_statements(self, policy_text: str) -> list[dict[str, Any]]:
         """Extract actionable statements from policy text."""
 
         statements = []
@@ -226,7 +226,7 @@ class PolicyStatementParser:
 
         return statements
 
-    def _suggest_rules_for_statement(self, statement: str) -> List[Dict[str, Any]]:
+    def _suggest_rules_for_statement(self, statement: str) -> list[dict[str, Any]]:
         """Suggest rule definitions based on policy statement."""
 
         suggestions = []
@@ -257,9 +257,9 @@ class PolicyStatementParser:
         self,
         statement: str,
         rule_name: str,
-        requirements: List[str],
-        entity_types: List[EvidenceEntityType],
-    ) -> Optional[RuleDefinition]:
+        requirements: list[str],
+        entity_types: list[EvidenceEntityType],
+    ) -> RuleDefinition | None:
         """Generate a complete rule definition from policy statement."""
 
         suggestions = self._suggest_rules_for_statement(statement)
@@ -270,7 +270,7 @@ class PolicyStatementParser:
         best_suggestion = max(suggestions, key=lambda x: x["confidence"])
 
         conditions = []
-        for i, cond in enumerate(best_suggestion["conditions"]):
+        for _i, cond in enumerate(best_suggestion["conditions"]):
             conditions.append(
                 RuleCondition(
                     id=str(uuid4()),
@@ -302,16 +302,16 @@ class NoCodeRulesEngine:
     def __init__(self, evidence_fabric: EvidenceDataFabric):
         self.evidence_fabric = evidence_fabric
         self.policy_parser = PolicyStatementParser()
-        self._rules: Dict[str, RuleDefinition] = {}
-        self._rule_templates: Dict[str, Dict] = {}
+        self._rules: dict[str, RuleDefinition] = {}
+        self._rule_templates: dict[str, dict] = {}
         self._load_rule_templates()
 
     def create_rule_from_template(
         self,
         template_name: str,
         rule_name: str,
-        parameters: Dict[str, Any],
-        requirements: Optional[List[str]] = None,
+        parameters: dict[str, Any],
+        requirements: list[str] | None = None,
     ) -> RuleDefinition:
         """Create a rule from a predefined template."""
 
@@ -356,9 +356,9 @@ class NoCodeRulesEngine:
         self,
         name: str,
         description: str,
-        conditions: List[Dict[str, Any]],
-        evidence_filters: Dict[str, Any],
-        requirements: Optional[List[str]] = None,
+        conditions: list[dict[str, Any]],
+        evidence_filters: dict[str, Any],
+        requirements: list[str] | None = None,
         severity: str = "medium",
     ) -> RuleDefinition:
         """Create a custom rule with specific conditions."""
@@ -391,8 +391,8 @@ class NoCodeRulesEngine:
         return rule
 
     def create_rule_from_policy(
-        self, policy_text: str, policy_id: str, requirements: List[str]
-    ) -> List[RuleDefinition]:
+        self, policy_text: str, policy_id: str, requirements: list[str]
+    ) -> list[RuleDefinition]:
         """Generate rules from policy text."""
 
         statements = self.policy_parser.parse_policy_statements(policy_text)
@@ -421,8 +421,8 @@ class NoCodeRulesEngine:
     def evaluate_rule(
         self,
         rule_id: str,
-        entity_id: Optional[str] = None,
-        time_range: Optional[tuple[datetime, datetime]] = None,
+        entity_id: str | None = None,
+        time_range: tuple[datetime, datetime] | None = None,
     ) -> RuleResult:
         """Evaluate a specific rule."""
 
@@ -472,8 +472,8 @@ class NoCodeRulesEngine:
         return result
 
     def evaluate_all_rules(
-        self, entity_id: Optional[str] = None, requirements: Optional[List[str]] = None
-    ) -> List[RuleResult]:
+        self, entity_id: str | None = None, requirements: list[str] | None = None
+    ) -> list[RuleResult]:
         """Evaluate all enabled rules."""
 
         results = []
@@ -507,15 +507,15 @@ class NoCodeRulesEngine:
 
         return results
 
-    def get_rule_definition(self, rule_id: str) -> Optional[RuleDefinition]:
+    def get_rule_definition(self, rule_id: str) -> RuleDefinition | None:
         """Get rule definition by ID."""
         return self._rules.get(rule_id)
 
-    def list_rules(self) -> List[RuleDefinition]:
+    def list_rules(self) -> list[RuleDefinition]:
         """List all rules."""
         return list(self._rules.values())
 
-    def get_no_code_builder_config(self) -> Dict[str, Any]:
+    def get_no_code_builder_config(self) -> dict[str, Any]:
         """Get configuration for no-code rule builder UI."""
 
         return {
@@ -582,8 +582,8 @@ class NoCodeRulesEngine:
         }
 
     def _evaluate_conditions(
-        self, rule: RuleDefinition, evidence_records: List[EvidenceRecord]
-    ) -> List[Dict[str, Any]]:
+        self, rule: RuleDefinition, evidence_records: list[EvidenceRecord]
+    ) -> list[dict[str, Any]]:
         """Evaluate rule conditions against evidence."""
 
         violations = []
@@ -608,7 +608,7 @@ class NoCodeRulesEngine:
 
     def _evaluate_single_condition(
         self, condition: RuleCondition, record: EvidenceRecord
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Evaluate a single condition against an evidence record."""
 
         # Extract field value from record
@@ -654,7 +654,7 @@ class NoCodeRulesEngine:
         """Extract field value from evidence record using dot notation."""
 
         # Start with the record
-        current: Dict[str, Any] = {
+        current: dict[str, Any] = {
             "id": str(record.id),
             "entity_id": record.entity_id,
             "entity_name": record.entity_name,

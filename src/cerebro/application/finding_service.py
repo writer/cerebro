@@ -1,11 +1,12 @@
 """Finding service interface and implementation."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
 from uuid import UUID
 
 from cerebro.findings.producers import (
     ProducerBasedFindingService as ProducerService,
+)
+from cerebro.findings.producers import (
     producer_registry,
 )
 
@@ -15,15 +16,15 @@ class FindingService(ABC):
 
     @abstractmethod
     async def generate_findings_for_resources(
-        self, resources: List, configs: Dict, context: Optional[Dict] = None
-    ) -> List:
+        self, resources: list, configs: dict, context: dict | None = None
+    ) -> list:
         """Generate findings for multiple resources."""
         pass
 
     @abstractmethod
     async def generate_findings_for_organization(
-        self, org_id: UUID, provider_type: Optional[str] = None
-    ) -> List:
+        self, org_id: UUID, provider_type: str | None = None
+    ) -> list:
         """Generate findings for an entire organization."""
         pass
 
@@ -36,16 +37,16 @@ class DefaultFindingService(FindingService):
         self.producer_service = ProducerService(producer_registry)
 
     async def generate_findings_for_resources(
-        self, resources: List, configs: Dict, context: Optional[Dict] = None
-    ) -> List:
+        self, resources: list, configs: dict, context: dict | None = None
+    ) -> list:
         """Generate findings for multiple resources using producers."""
         return self.producer_service.generate_findings_for_resources(
             resources, configs, context
         )
 
     async def generate_findings_for_organization(
-        self, org_id: UUID, provider_type: Optional[str] = None
-    ) -> List:
+        self, org_id: UUID, provider_type: str | None = None
+    ) -> list:
         """Generate findings for an entire organization."""
         # This would typically fetch resources for the org and then call
         # generate_findings_for_resources, but that requires more integration

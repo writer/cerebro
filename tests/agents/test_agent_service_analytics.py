@@ -1,6 +1,7 @@
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
+
+import pytest
 
 from cerebro.agents.analytics_service import AgentAnalyticsService
 from cerebro.agents.models import AgentSession, AgentType
@@ -12,7 +13,7 @@ from cerebro.core.models import Organization
 @pytest.mark.asyncio
 async def test_get_session_analytics_filters_by_event_type():
     async with async_session_factory() as db_session:
-        org = Organization(name="Analytics Org", created_at=datetime.now(timezone.utc))
+        org = Organization(name="Analytics Org", created_at=datetime.now(UTC))
         db_session.add(org)
         await db_session.commit()
         await db_session.refresh(org)
@@ -61,7 +62,7 @@ async def test_get_session_analytics_filters_by_event_type():
 @pytest.mark.asyncio
 async def test_get_session_analytics_paginates_with_cursor():
     async with async_session_factory() as db_session:
-        org = Organization(name="Analytics Org", created_at=datetime.now(timezone.utc))
+        org = Organization(name="Analytics Org", created_at=datetime.now(UTC))
         db_session.add(org)
         await db_session.commit()
         await db_session.refresh(org)

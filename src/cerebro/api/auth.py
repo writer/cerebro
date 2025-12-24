@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import secrets
-from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -24,19 +23,19 @@ class Token(BaseModel):
 
     access_token: str
     token_type: str
-    refresh_token: Optional[str] = None
-    access_token_expires_in: Optional[int] = None
-    refresh_token_expires_in: Optional[int] = None
-    csrf_token: Optional[str] = None
+    refresh_token: str | None = None
+    access_token_expires_in: int | None = None
+    refresh_token_expires_in: int | None = None
+    csrf_token: str | None = None
 
 
 class TokenData(BaseModel):
     """Token payload data extracted from a JWT."""
 
-    username: Optional[str] = None
-    scopes: List[str] = Field(default_factory=list)
-    org_id: Optional[UUID] = None
-    token_type: Optional[str] = None
+    username: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    org_id: UUID | None = None
+    token_type: str | None = None
 
 
 class User(BaseModel):
@@ -44,26 +43,26 @@ class User(BaseModel):
 
     user_id: UUID
     username: str
-    email: Optional[str] = None
+    email: str | None = None
     is_admin: bool = False
-    scopes: List[str] = Field(default_factory=list)
-    org_id: Optional[UUID] = None
+    scopes: list[str] = Field(default_factory=list)
+    org_id: UUID | None = None
 
 
-async def _resolve_default_org_id(db: AsyncSession) -> Optional[UUID]:
+async def _resolve_default_org_id(db: AsyncSession) -> UUID | None:
     """Return a default organization identifier for the current tenant."""
 
     stmt = select(Organization.org_id).order_by(Organization.created_at.asc()).limit(1)
     return await db.scalar(stmt)
 
 
-def _build_token_data(payload: Dict[str, object]) -> TokenData:
+def _build_token_data(payload: dict[str, object]) -> TokenData:
     username = payload.get("sub")
     scopes = payload.get("scopes", [])
     org_id_raw = payload.get("org_id")
     token_type = payload.get("token_type")
 
-    parsed_org_id: Optional[UUID] = None
+    parsed_org_id: UUID | None = None
     if isinstance(org_id_raw, str):
         try:
             parsed_org_id = UUID(org_id_raw)
