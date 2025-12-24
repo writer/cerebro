@@ -549,7 +549,7 @@ class PreAuditHealthCheckService:
             )
             return
 
-        finding.ticket_id = ticket.ticket_id
+        finding.ticket_id = ticket.id
 
     async def _send_ready_notification(
         self,

@@ -9325,8 +9325,8 @@ export interface operations {
     list_accounts_api_v1_accounts__get: {
         parameters: {
             query?: {
-                org_id?: string;
-                provider?: string;
+                org_id?: string | null;
+                provider?: string | null;
                 skip?: number;
                 limit?: number;
             };

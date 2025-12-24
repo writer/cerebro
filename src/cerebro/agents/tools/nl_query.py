@@ -167,7 +167,7 @@ The system will automatically translate to SQL and execute the query safely."""
         self.query_engine = get_query_engine()
         self.translator = build_translator(settings)
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         question: str,

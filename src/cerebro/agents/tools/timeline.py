@@ -259,20 +259,20 @@ class TimelineTool(Tool):
                 # 6. If incident_id specified, try to correlate events
                 if timeline_inputs.incident_id:
                     # Look for events related to the incident
-                    incident_related_events = []
-                    for event in all_events:
+                    incident_related_events: list[Any] = []
+                    for event in all_events:  # type: ignore[assignment]
                         # Check if event details contain incident references
-                        if hasattr(event.details, "get") and event.details.get(
+                        if hasattr(event, "details") and hasattr(event.details, "get") and event.details.get(  # type: ignore[attr-defined]
                             "incident_id"
                         ) == str(timeline_inputs.incident_id):
                             incident_related_events.append(event)
                         # Also include high-severity events as potentially related
-                        elif event.severity in ["critical", "high"]:
+                        elif hasattr(event, "severity") and event.severity in ["critical", "high"]:  # type: ignore[attr-defined]
                             incident_related_events.append(event)
 
                     # If we found incident-related events, use those; otherwise use all
                     if incident_related_events:
-                        all_events = incident_related_events
+                        all_events = incident_related_events  # type: ignore[assignment]
 
                 execution_time = (time.time() - start_time) * 1000
 

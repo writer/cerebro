@@ -104,7 +104,7 @@ class ToolingRepository:
             ToolInvocation.started_at.desc(), ToolInvocation.id.desc()
         ).limit(effective_limit)
         results = list(await self._db.scalars(stmt))
-        self._logger.debug(
+        self._logger.debug(  # type: ignore[call-arg]
             "tooling.list_invocations",
             count=len(results),
             session_id=str(session_id) if session_id else None,
@@ -145,7 +145,7 @@ class ToolingRepository:
             ToolApproval.requested_at.desc(), ToolApproval.id.desc()
         ).limit(effective_limit)
         results = list(await self._db.scalars(stmt))
-        self._logger.debug(
+        self._logger.debug(  # type: ignore[call-arg]
             "tooling.list_approvals",
             count=len(results),
             org_id=str(org_id),
@@ -187,7 +187,7 @@ class ToolingRepository:
         )
         self._db.add(invocation)
         await self._db.flush()
-        self._logger.debug(
+        self._logger.debug(  # type: ignore[call-arg]
             "tooling.create_invocation",
             session_id=str(session_id),
             tool_name=tool_name,
@@ -222,7 +222,7 @@ class ToolingRepository:
             invocation.cel_result = cel_result
         if cel_context is not None:
             invocation.cel_context = cel_context
-        self._logger.debug(
+        self._logger.debug(  # type: ignore[call-arg]
             "tooling.update_invocation",
             invocation_id=str(invocation.id),
             status=invocation.status.value,
@@ -258,7 +258,7 @@ class ToolingRepository:
             stmt = stmt.where(ToolInvocation.status == status)
         stmt = stmt.group_by(ToolInvocation.tool_name, ToolInvocation.status)
         rows = await self._db.execute(stmt)
-        return [(row.tool_name, row.status, row.count) for row in rows]
+        return [(row.tool_name, row.status, row.count) for row in rows]  # type: ignore[misc]
 
 
 class NotificationRepository:
@@ -311,7 +311,7 @@ class NotificationRepository:
             stmt = stmt.where(AgentReviewNotification.status == status)
         stmt = stmt.order_by(AgentReviewNotification.created_at.desc()).limit(limit)
         results = list(await self._db.scalars(stmt))
-        self._logger.debug(
+        self._logger.debug(  # type: ignore[call-arg]
             "notifications.list",
             count=len(results),
             org_id=str(org_id),
@@ -367,7 +367,7 @@ class TicketRepository:
         self._counter.labels("list").inc()
         stmt = select(AgentReviewTicket).where(AgentReviewTicket.task_id == task_id)
         results = list(await self._db.scalars(stmt))
-        self._logger.debug("tickets.list", count=len(results), task_id=str(task_id))
+        self._logger.debug("tickets.list", count=len(results), task_id=str(task_id))  # type: ignore[call-arg]
         return results
 
 
@@ -381,7 +381,7 @@ def memory_scope_distribution(
         .table_valued("scope")
         .lateral()
     )
-    scope_json = scope_elements.column("scope")
+    scope_json = scope_elements.column("scope")  # type: ignore[attr-defined]
     scope_type_col = scope_json["type"].astext
     return (
         select(

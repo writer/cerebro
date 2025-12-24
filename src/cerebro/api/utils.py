@@ -53,10 +53,12 @@ def build_filtered_query(
     stmt = select(model)
 
     # Apply standard filters
-    if filters.account_id:
-        stmt = stmt.where(getattr(model, "account_id", None) == filters.account_id)
-    if filters.provider:
-        stmt = stmt.where(getattr(model, "provider", None) == filters.provider)
+    if filters.account_id and hasattr(model, "account_id"):
+        account_id_col = getattr(model, "account_id")
+        stmt = stmt.where(account_id_col == filters.account_id)
+    if filters.provider and hasattr(model, "provider"):
+        provider_col = getattr(model, "provider")
+        stmt = stmt.where(provider_col == filters.provider)
 
     # Apply additional filters
     if additional_filters:

@@ -112,7 +112,7 @@ class CollectionService:
         """Collect resources from provider."""
         resources = []
         try:
-            async for resource in provider.discover_resources(resource_types):
+            async for resource in await provider.discover_resources(resource_types):  # type: ignore[misc]
                 resources.append(resource)
         except Exception as e:
             logger.error(f"Failed to collect resources from {provider.name}: {e}")
@@ -126,7 +126,7 @@ class CollectionService:
         """Collect principals from provider."""
         principals = []
         try:
-            async for principal in provider.discover_principals():
+            async for principal in await provider.discover_principals():  # type: ignore[misc]
                 principals.append(principal)
         except Exception as e:
             logger.error(f"Failed to collect principals from {provider.name}: {e}")
@@ -158,12 +158,12 @@ class CollectionService:
 
         try:
             # Global permissions
-            async for permission in provider.discover_iam_edges():
+            async for permission in await provider.discover_iam_edges():  # type: ignore[misc]
                 permissions.append(permission)
 
             # Resource-specific permissions
             for resource in resources:
-                async for permission in provider.discover_iam_edges(resource):
+                async for permission in await provider.discover_iam_edges(resource):  # type: ignore[misc]
                     permissions.append(permission)
 
         except Exception as e:
@@ -197,6 +197,8 @@ class CollectionService:
 
     async def _send_collection_notification(self, job: CollectionJobEntity) -> None:
         """Send collection completion notification."""
+        if self.notification is None:
+            return
         try:
             from cerebro.core.config import settings
 

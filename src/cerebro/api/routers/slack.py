@@ -187,7 +187,8 @@ async def create_slack_webhook(
 
         # Mask webhook URL in response
         response_webhook = SlackWebhookResponse.model_validate(webhook)
-        response_webhook.webhook_url = _mask_url(webhook.webhook_url)
+        url_str = webhook.webhook_url.decode() if isinstance(webhook.webhook_url, bytes) else (webhook.webhook_url or "")
+        response_webhook.webhook_url = _mask_url(url_str)
 
         return response_webhook
 
@@ -221,7 +222,8 @@ async def list_slack_webhooks(
         response_webhooks = []
         for webhook in webhooks:
             response_webhook = SlackWebhookResponse.model_validate(webhook)
-            response_webhook.webhook_url = _mask_url(webhook.webhook_url)
+            url_str = webhook.webhook_url.decode() if isinstance(webhook.webhook_url, bytes) else (webhook.webhook_url or "")
+            response_webhook.webhook_url = _mask_url(url_str)
             response_webhooks.append(response_webhook)
 
         return response_webhooks
@@ -261,7 +263,8 @@ async def get_slack_webhook(
             )
 
         response_webhook = SlackWebhookResponse.model_validate(webhook)
-        response_webhook.webhook_url = _mask_url(webhook.webhook_url)
+        url_str = webhook.webhook_url.decode() if isinstance(webhook.webhook_url, bytes) else (webhook.webhook_url or "")
+        response_webhook.webhook_url = _mask_url(url_str)
 
         return response_webhook
 
@@ -269,7 +272,7 @@ async def get_slack_webhook(
         raise
     except Exception as e:
         logger.error(
-            "get_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e)
+            "get_slack_webhook_failed: webhook_id=%s, error=%s", str(webhook_id), str(e)
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -332,7 +335,8 @@ async def update_slack_webhook(
         )
 
         response_webhook = SlackWebhookResponse.model_validate(webhook)
-        response_webhook.webhook_url = _mask_url(webhook.webhook_url)
+        url_str = webhook.webhook_url.decode() if isinstance(webhook.webhook_url, bytes) else (webhook.webhook_url or "")
+        response_webhook.webhook_url = _mask_url(url_str)
 
         return response_webhook
 
@@ -340,7 +344,7 @@ async def update_slack_webhook(
         raise
     except Exception as e:
         logger.error(
-            "update_slack_webhook_failed", webhook_id=str(webhook_id), error=str(e)
+            "update_slack_webhook_failed: webhook_id=%s, error=%s", str(webhook_id), str(e)
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

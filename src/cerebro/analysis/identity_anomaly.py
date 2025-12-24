@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from ..core.database import async_session_factory
-from ..core.models import Principal, IamEdge, AuditEvent
+from ..core.models import Principal, IamEdge, AuditEvent, Account
 from ..query.bootstrap import get_query_engine
 
 logger = logging.getLogger(__name__)
@@ -173,7 +173,11 @@ class IdentityAnomalyDetector:
         """Establish behavioral baselines for principals."""
         async with async_session_factory() as db:
             # Get all principals for the organization
-            stmt = select(Principal).where(Principal.org_id == org_id)
+            stmt = (
+                select(Principal)
+                .join(Account, Principal.account_id == Account.account_id)
+                .where(Account.org_id == org_id)
+            )
             if principal_id:
                 stmt = stmt.where(Principal.principal_id == principal_id)
 
@@ -181,7 +185,7 @@ class IdentityAnomalyDetector:
 
             for principal in principals:
                 baseline = await self._calculate_baseline(db, principal)
-                self.baselines[principal.principal_id] = baseline
+                self.baselines[str(principal.principal_id)] = baseline
 
     async def _calculate_baseline(
         self, db: AsyncSession, principal: Principal
@@ -192,7 +196,7 @@ class IdentityAnomalyDetector:
 
         # Query login patterns using SQL engine
         login_data = await self._get_login_patterns(
-            principal.principal_id, start_date, end_date
+            str(principal.principal_id), start_date, end_date
         )
 
         # Query permission patterns
@@ -206,7 +210,7 @@ class IdentityAnomalyDetector:
         )
 
         return BehavioralBaseline(
-            principal_id=principal.principal_id,
+            principal_id=str(principal.principal_id),
             provider=principal.provider,
             typical_login_hours=self._extract_typical_hours(login_data),
             typical_access_patterns=self._extract_access_patterns(login_data),
@@ -252,11 +256,11 @@ class IdentityAnomalyDetector:
             .where(
                 and_(
                     IamEdge.principal_id == principal.principal_id,
-                    IamEdge.captured_at >= start_date,
-                    IamEdge.captured_at <= end_date,
+                    IamEdge.effective_at >= start_date,
+                    IamEdge.effective_at <= end_date,
                 )
             )
-            .order_by(IamEdge.captured_at)
+            .order_by(IamEdge.effective_at)
         )
 
         edges = list(await db.scalars(stmt))
@@ -265,9 +269,8 @@ class IdentityAnomalyDetector:
             {
                 "permission": edge.permission,
                 "resource_id": edge.resource_id,
-                "effective": edge.effective,
-                "captured_at": edge.captured_at,
-                "edge_type": edge.edge_type,
+                "effective_at": edge.effective_at,
+                "is_admin": edge.is_admin,
             }
             for edge in edges
         ]
@@ -284,12 +287,12 @@ class IdentityAnomalyDetector:
             select(AuditEvent)
             .where(
                 and_(
-                    AuditEvent.principal_id == principal.principal_id,
-                    AuditEvent.timestamp >= start_date,
-                    AuditEvent.timestamp <= end_date,
+                    AuditEvent.actor_external_id == principal.external_id,
+                    AuditEvent.occurred_at >= start_date,
+                    AuditEvent.occurred_at <= end_date,
                 )
             )
-            .order_by(AuditEvent.timestamp)
+            .order_by(AuditEvent.occurred_at)
         )
 
         events = list(await db.scalars(stmt))
@@ -297,10 +300,9 @@ class IdentityAnomalyDetector:
         return [
             {
                 "action": event.action,
-                "resource_type": event.resource_type,
-                "resource_id": event.resource_id,
-                "timestamp": event.timestamp,
-                "metadata": event.metadata,
+                "resource_external_id": event.resource_external_id,
+                "occurred_at": event.occurred_at,
+                "raw": event.raw,
             }
             for event in events
         ]
@@ -372,7 +374,7 @@ class IdentityAnomalyDetector:
         if data.empty:
             return []
 
-        anomalies = []
+        anomalies: List[AnomalyResult] = []
 
         # Features for login analysis
         login_features = [
@@ -641,7 +643,7 @@ class IdentityAnomalyDetector:
         self, login_data: List[Dict[str, Any]]
     ) -> Dict[str, float]:
         """Extract access pattern frequencies."""
-        patterns = {}
+        patterns: Dict[str, float] = {}
         total = len(login_data)
 
         if total == 0:
@@ -677,7 +679,7 @@ class IdentityAnomalyDetector:
         self, resource_data: List[Dict[str, Any]]
     ) -> Dict[str, float]:
         """Extract resource access frequencies."""
-        frequencies = {}
+        frequencies: Dict[str, float] = {}
         total = len(resource_data)
 
         if total == 0:
@@ -702,11 +704,14 @@ class IdentityAnomalyDetector:
         """Get a summary of detected anomalies for an organization."""
         anomalies = await self.analyze_identity_anomalies(org_id)
 
-        summary = {
+        by_risk_level: Dict[str, int] = {}
+        by_type: Dict[str, int] = {}
+        top_principals: Dict[str, Dict[str, Any]] = {}
+        summary: Dict[str, Any] = {
             "total_anomalies": len(anomalies),
-            "by_risk_level": {},
-            "by_type": {},
-            "top_principals": {},
+            "by_risk_level": by_risk_level,
+            "by_type": by_type,
+            "top_principals": top_principals,
             "summary_period": (
                 datetime.now() - timedelta(days=self.lookback_days),
                 datetime.now(),
@@ -716,31 +721,31 @@ class IdentityAnomalyDetector:
         # Group by risk level
         for anomaly in anomalies:
             risk = anomaly.risk_level.value
-            summary["by_risk_level"][risk] = summary["by_risk_level"].get(risk, 0) + 1
+            by_risk_level[risk] = by_risk_level.get(risk, 0) + 1
 
             # Group by type
             atype = anomaly.anomaly_type.value
-            summary["by_type"][atype] = summary["by_type"].get(atype, 0) + 1
+            by_type[atype] = by_type.get(atype, 0) + 1
 
             # Top principals
             pid = anomaly.principal_id
-            if pid not in summary["top_principals"]:
-                summary["top_principals"][pid] = {
+            if pid not in top_principals:
+                top_principals[pid] = {
                     "count": 0,
                     "max_risk": anomaly.risk_level.value,
                 }
-            summary["top_principals"][pid]["count"] += 1
+            top_principals[pid]["count"] += 1
 
             if (
-                RiskLevel(summary["top_principals"][pid]["max_risk"]).value
+                RiskLevel(top_principals[pid]["max_risk"]).value
                 < anomaly.risk_level.value
             ):
-                summary["top_principals"][pid]["max_risk"] = anomaly.risk_level.value
+                top_principals[pid]["max_risk"] = anomaly.risk_level.value
 
         # Sort top principals by count and risk
         summary["top_principals"] = dict(
             sorted(
-                summary["top_principals"].items(),
+                top_principals.items(),
                 key=lambda x: (x[1]["count"], x[1]["max_risk"]),
                 reverse=True,
             )[:10]

@@ -137,7 +137,7 @@ def rules(
 
                 rule = Rule(
                     name=name,
-                    provider=list(providers),
+                    provider=list(providers or []),
                     expression_lang="cel",
                     expression=expression,
                     severity=severity,
@@ -191,7 +191,7 @@ def findings(
                 if severity:
                     stmt = stmt.where(Finding.severity == severity)
 
-                findings = list(await db.scalars(stmt.limit(20)))
+                findings: list[Finding] = list(await db.scalars(stmt.limit(20)))
 
                 if not findings:
                     rprint("[yellow]No findings found[/yellow]")

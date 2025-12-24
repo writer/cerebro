@@ -271,7 +271,7 @@ class DashboardRepository:
 
         result = await self._db.execute(frameworks_query, {"org_id": org_id})
 
-        framework_compliance: Dict[str, Dict[str, float]] = {}
+        framework_compliance: Dict[str, Dict[str, Any]] = {}
         for row in result.fetchall():
             total = row.total_controls or 0
             compliant = row.compliant_controls or 0

@@ -260,7 +260,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
         if CLAUDE_OPTIONS_METADATA_SUPPORTED:
             options_kwargs["metadata"] = options_metadata
 
-        options = ClaudeAgentOptions(**options_kwargs)
+        options = ClaudeAgentOptions(**options_kwargs)  # type: ignore[arg-type]
 
         try:
             # Create Claude client and send query
@@ -349,7 +349,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                                         "type": "tool_use",
                                         "tool_call_id": tool_call_id,
                                         "tool_name": tool_name,
-                                        "input": tool_input,
+                                        "input": tool_input,  # type: ignore[dict-item]
                                     }
                                 )
 
@@ -357,16 +357,16 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                     elif isinstance(response_msg, SystemMessage):
                         logger.info(
                             "System message received",
-                            subtype=response_msg.subtype,
+                            subtype=getattr(response_msg, 'subtype', None),  # type: ignore[attr-defined]
                             session_id=session.id,
                         )
 
                         if stream:
-                            yield {
+                            yield {  # type: ignore[misc]
                                 "type": "system",
                                 "content": {
-                                    "subtype": response_msg.subtype,
-                                    "data": response_msg.data,
+                                    "subtype": getattr(response_msg, 'subtype', None),  # type: ignore[attr-defined]
+                                    "data": getattr(response_msg, 'data', None),  # type: ignore[attr-defined]
                                 },
                                 "metadata": {},
                             }
@@ -405,7 +405,7 @@ class CerebroClaudeRuntime(AgentRuntimePersistenceMixin):
                 )
 
                 assistant_text = "\n".join(
-                    block["text"]
+                    str(block["text"])  # type: ignore[misc]
                     for block in assistant_content
                     if isinstance(block, dict) and block.get("type") == "text"
                 ).strip()

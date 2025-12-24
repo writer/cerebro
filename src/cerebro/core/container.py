@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, Type, TypeVar
+from typing import Callable, Dict, Type, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -21,7 +21,7 @@ class Container:
             factory = self._factories[key]
         except KeyError as exc:
             raise KeyError(f"No factory registered for {key}") from exc
-        return factory()
+        return cast(T, factory())
 
 
 container = Container()

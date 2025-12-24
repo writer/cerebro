@@ -254,7 +254,7 @@ class SecurityTable(ABC):
 
             return pattern in value
         elif operator == "IN":
-            return resource_value in filter_value
+            return isinstance(filter_value, list) and resource_value in filter_value
         elif operator == "IS NOT NULL":
             return resource_value is not None
 

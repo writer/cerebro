@@ -26,7 +26,7 @@ EmailSender = Callable[[Sequence[str], str, str], Awaitable[None]]
 
 
 @asynccontextmanager
-async def _build_redis_store(redis_url: Optional[str]) -> AlertCooldownStore | None:
+async def _build_redis_store(redis_url: Optional[str]):  # type: ignore[misc]
     if not redis_url:
         yield None
         return
@@ -68,7 +68,7 @@ async def run_telemetry_alerts(
                 body[:256],
             )
 
-    async with _build_redis_store(redis_url) as redis_store:
+    async with _build_redis_store(redis_url) as redis_store:  # type: ignore[var-annotated]
         store: AlertCooldownStore | None = redis_store if redis_store else None
 
         if store is None and (slack_webhooks or email_recipients):

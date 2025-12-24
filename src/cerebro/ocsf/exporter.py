@@ -190,8 +190,8 @@ class OCSFExporter:
 
         try:
             import pandas as pd
-            import pyarrow as pa
-            import pyarrow.parquet as pq
+            import pyarrow as pa  # type: ignore[import-not-found]
+            import pyarrow.parquet as pq  # type: ignore[import-not-found]
         except ImportError:
             raise ImportError(
                 "Parquet export requires pandas and pyarrow: "

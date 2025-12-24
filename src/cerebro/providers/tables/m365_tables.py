@@ -26,8 +26,8 @@ class M365Client:
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
-        self._access_token = None
-        self._client = None
+        self._access_token: Optional[str] = None
+        self._client: Any = None
 
     async def authenticate(self):
         """Authenticate with Microsoft Graph API."""
@@ -97,7 +97,7 @@ class M365Client:
                     return
 
             url = "/users"
-            params = {
+            params: Optional[Dict[str, str]] = {
                 "$select": "id,userPrincipalName,displayName,givenName,surname,mail,mobilePhone,officeLocation,jobTitle,department,companyName,country,usageLocation,accountEnabled,createdDateTime,lastSignInDateTime,assignedLicenses,signInActivity"
             }
 
@@ -130,7 +130,7 @@ class M365Client:
                     return
 
             url = "/applications"
-            params = {
+            params: Optional[Dict[str, str]] = {
                 "$select": "id,appId,displayName,signInAudience,createdDateTime,publisherDomain,requiredResourceAccess,keyCredentials,passwordCredentials"
             }
 
@@ -275,10 +275,11 @@ class M365UserTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch users from Microsoft Graph API."""
+        config = ctx.config or {}
         client = M365Client(
-            tenant_id=ctx.config.get("m365_tenant_id"),
-            client_id=ctx.config.get("m365_client_id"),
-            client_secret=ctx.config.get("m365_client_secret"),
+            tenant_id=config.get("m365_tenant_id"),
+            client_id=config.get("m365_client_id"),
+            client_secret=config.get("m365_client_secret"),
         )
 
         try:
@@ -438,10 +439,11 @@ class M365ApplicationTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch applications from Microsoft Graph API."""
+        config = ctx.config or {}
         client = M365Client(
-            tenant_id=ctx.config.get("m365_tenant_id"),
-            client_id=ctx.config.get("m365_client_id"),
-            client_secret=ctx.config.get("m365_client_secret"),
+            tenant_id=config.get("m365_tenant_id"),
+            client_id=config.get("m365_client_id"),
+            client_secret=config.get("m365_client_secret"),
         )
 
         try:
@@ -568,10 +570,11 @@ class M365ConditionalAccessTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch Conditional Access policies from Microsoft Graph API."""
+        config = ctx.config or {}
         client = M365Client(
-            tenant_id=ctx.config.get("m365_tenant_id"),
-            client_id=ctx.config.get("m365_client_id"),
-            client_secret=ctx.config.get("m365_client_secret"),
+            tenant_id=config.get("m365_tenant_id"),
+            client_id=config.get("m365_client_id"),
+            client_secret=config.get("m365_client_secret"),
         )
 
         try:

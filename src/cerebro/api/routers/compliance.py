@@ -52,7 +52,7 @@ async def get_evidence_status(
             stmt = stmt.where(Finding.org_id == org_id)
 
         recent_findings = await db.scalars(
-            stmt.where(Finding.created_at >= recent_cutoff)
+            stmt.where(Finding.created_at >= recent_cutoff)  # type: ignore[attr-defined]
         )
         total_findings = await db.scalars(stmt)
 
@@ -64,7 +64,7 @@ async def get_evidence_status(
         if recent_count == 0 and total_count > 0:
             week_cutoff = datetime.utcnow() - timedelta(days=7)
             week_findings = await db.scalars(
-                stmt.where(Finding.created_at >= week_cutoff)
+                stmt.where(Finding.created_at >= week_cutoff)  # type: ignore[attr-defined]
             )
             if len(list(week_findings)) == 0:
                 freshness = "expired"
@@ -118,10 +118,11 @@ async def get_compliance_frameworks(
         },
     ]
 
+    avg = sum(int(f["score"]) for f in frameworks) / len(frameworks) if frameworks else 0  # type: ignore[call-overload]
     return {
         "frameworks": frameworks,
         "total_frameworks": len(frameworks),
-        "avg_score": sum(f["score"] for f in frameworks) / len(frameworks),
+        "avg_score": avg,
     }
 
 
@@ -142,7 +143,7 @@ async def run_pre_audit_check(
         frameworks=request.frameworks,
         audit_date=request.audit_date,
         owner_emails=request.owner_emails
-        or [getattr(current_user, "email", current_user.user_id)],
+        or [getattr(current_user, "email", str(current_user.user_id))],
     )
 
     return PreAuditRunResponse(

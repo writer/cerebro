@@ -13,7 +13,7 @@ from ...query.bootstrap import get_query_engine
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ...query.engine import QueryEngine
-from ..utils import async_command, format_datetime, print_json, print_table
+from ..utils import async_command, format_datetime, print_json, print_table  # type: ignore[import-untyped]
 
 
 @click.group(name="query")

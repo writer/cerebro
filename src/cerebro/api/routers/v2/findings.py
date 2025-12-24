@@ -195,7 +195,7 @@ async def update_finding(
     repo: FindingRepository = Depends(finding_repository),
 ) -> FindingResponse:
     """Update a finding."""
-    updates = {}
+    updates: Dict[str, Any] = {}
 
     if data.status is not None:
         updates["status"] = FindingStatus(data.status)

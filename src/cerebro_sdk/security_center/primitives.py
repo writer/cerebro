@@ -233,11 +233,7 @@ def _to_artifact(
         source=source,
         collected_at=collected_at,
         expires_at=expires_at,
-        content_type=(
-            payload.get("contentType")
-            if isinstance(payload.get("contentType"), str)
-            else None
-        ),
+        content_type=str(payload.get("contentType")) if payload.get("contentType") else None,
         labels=labels,
         metadata=payload,
     )

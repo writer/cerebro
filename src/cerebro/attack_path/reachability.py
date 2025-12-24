@@ -376,7 +376,7 @@ class ReachabilityAnalyzer:
             )
 
         # Deduplicate and prioritize by frequency
-        mitigation_counts = {}
+        mitigation_counts: Dict[str, int] = {}
         for mitigation in all_mitigations:
             mitigation_counts[mitigation] = mitigation_counts.get(mitigation, 0) + 1
 

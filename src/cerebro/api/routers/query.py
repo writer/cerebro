@@ -312,8 +312,8 @@ async def query_security_alerts(
 
     # Build parameterized query safely
     base_sql = "SELECT alert_id, repository_name, severity, created_at, title, description FROM github_vulnerability_alert"
-    conditions = []
-    params = []
+    conditions: List[str] = []
+    params: List[Any] = []
     param_count = 0
 
     if provider:
@@ -397,8 +397,8 @@ async def query_users(
 
     # Build parameterized query safely
     base_sql = "SELECT username, email, status, last_login, mfa_enabled FROM okta_user"
-    conditions = []
-    params = []
+    conditions: List[str] = []
+    params: List[Any] = []
     param_count = 0
 
     if provider:

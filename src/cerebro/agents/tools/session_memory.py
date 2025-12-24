@@ -136,7 +136,7 @@ will be useful in future conversations. This enables continuity and personalizat
         ToolPermissionLevel.WRITE_SAFE
     )  # Can write context but not destructive
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         context_key: str,
@@ -267,7 +267,7 @@ and what preferences the user expressed. Essential for continuity across session
     output_model = GetSessionHistoryOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         lookback_sessions: int = 5,
@@ -373,7 +373,7 @@ and what preferences the user expressed. Essential for continuity across session
                     )
 
                 # Find common context keys
-                context_key_counts = {}
+                context_key_counts: Dict[str, int] = {}
                 for entry in context_entries:
                     context_key_counts[entry.context_key] = (
                         context_key_counts.get(entry.context_key, 0) + 1

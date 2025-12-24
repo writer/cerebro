@@ -64,7 +64,7 @@ class IdentityStitcher:
 
         # Merge groups and calculate confidence
         clusters = []
-        processed_ids = set()
+        processed_ids: set[UUID] = set()
 
         for email, email_principals in email_groups.items():
             if not email or len(email_principals) < 2:
@@ -112,7 +112,7 @@ class IdentityStitcher:
         self, principals: List[Principal]
     ) -> Dict[str, List[Principal]]:
         """Group principals by email address."""
-        groups = {}
+        groups: dict[str, list[Principal]] = {}
         for principal in principals:
             if principal.email and principal.is_human:
                 email = principal.email.lower().strip()
@@ -123,7 +123,7 @@ class IdentityStitcher:
 
     def _group_by_name(self, principals: List[Principal]) -> Dict[str, List[Principal]]:
         """Group principals by display name."""
-        groups = {}
+        groups: dict[str, list[Principal]] = {}
         for principal in principals:
             if principal.display_name and principal.is_human:
                 # Normalize name (remove common variations)
@@ -253,14 +253,14 @@ class IdentityStitcher:
                 # Save cluster members
                 for principal in cluster.principals:
                     # Check if member already exists
-                    stmt = select(IdentityClusterMember).where(
+                    member_stmt = select(IdentityClusterMember).where(
                         and_(
                             IdentityClusterMember.cluster_id == db_cluster.cluster_id,
                             IdentityClusterMember.principal_id
                             == principal.principal_id,
                         )
                     )
-                    existing_member = await self.db.scalar(stmt)
+                    existing_member = await self.db.scalar(member_stmt)
 
                     if not existing_member:
                         member = IdentityClusterMember(

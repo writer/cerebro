@@ -49,7 +49,7 @@ class IdentityRepository:
         stmt = (
             select(IdentityClusterMember)
             .where(IdentityClusterMember.cluster_id == cluster_id)
-            .options(selectinload(IdentityClusterMember.principal))
+            .options(selectinload(IdentityClusterMember.principal))  # type: ignore[attr-defined]
         )
         result = await self.db.scalars(stmt)
         return list(result)
@@ -128,7 +128,7 @@ class FindingRepository:
                     Finding.status == "active",
                 )
             )
-            .order_by(Finding.created_at.desc())
+            .order_by(Finding.created_at.desc())  # type: ignore[attr-defined]
         )
         result = await self.db.scalars(stmt)
         return list(result)
@@ -143,7 +143,7 @@ class FindingRepository:
             and_(
                 Finding.org_id == org_id,
                 Finding.status.in_(["resolved", "fixed"]),
-                Finding.resolved_at >= cutoff_date,
+                Finding.resolved_at >= cutoff_date,  # type: ignore[attr-defined]
             )
         )
 
@@ -155,9 +155,9 @@ class FindingRepository:
 
         total_resolution_time = sum(
             [
-                (f.resolved_at - f.created_at).total_seconds() / 3600
+                (f.resolved_at - f.created_at).total_seconds() / 3600  # type: ignore[attr-defined, operator]
                 for f in findings_list
-                if f.resolved_at and f.created_at
+                if getattr(f, 'resolved_at', None) and getattr(f, 'created_at', None)
             ]
         )
 
@@ -175,9 +175,11 @@ class FindingRepository:
         breaches = {"critical": 0, "high": 0, "medium": 0, "low": 0}
 
         for finding in findings:
-            if finding.resolved_at and finding.created_at:
+            resolved_at = getattr(finding, 'resolved_at', None)
+            created_at = getattr(finding, 'created_at', None)
+            if resolved_at and created_at:
                 resolution_hours = (
-                    finding.resolved_at - finding.created_at
+                    resolved_at - created_at
                 ).total_seconds() / 3600
                 target = sla_targets.get(finding.severity, 168)
                 if resolution_hours > target:

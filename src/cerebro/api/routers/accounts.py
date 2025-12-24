@@ -66,7 +66,7 @@ async def list_accounts(
 
     stmt = stmt.offset(skip).limit(limit)
     accounts = await db.scalars(stmt)
-    return list(accounts)
+    return list(accounts)  # type: ignore[arg-type]
 
 
 @router.get("/{account_id}", response_model=AccountResponse)

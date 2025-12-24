@@ -302,7 +302,7 @@ def monitor_sync_health(self):
                         continue
 
                     coverage_state = await repo.get_state(integration, "__coverage__")
-                    metadata = coverage_state.state_metadata if coverage_state else {}
+                    metadata = (coverage_state.state_metadata if coverage_state else {}) or {}  # type: ignore[assignment]
                     last_status = (metadata or {}).get("last_coverage_status")
                     last_alert_severity = (metadata or {}).get(
                         "last_coverage_alert_status"
@@ -330,14 +330,14 @@ def monitor_sync_health(self):
                         coverage_alerts += 1
                     except httpx.HTTPError:
                         logger.exception(
-                            "integration_coverage_alert_failed",
-                            integration=integration,
-                            severity=severity,
+                            "integration_coverage_alert_failed: integration=%s, severity=%s",
+                            integration,
+                            severity,
                         )
 
-                    metadata_update = {
-                        "last_coverage_status": summary.get("status"),
-                        "last_coverage_ratio": summary.get("coverage_ratio"),
+                    metadata_update = {  # type: ignore[assignment]
+                        "last_coverage_status": str(summary.get("status") or ""),
+                        "last_coverage_ratio": str(summary.get("coverage_ratio") or ""),
                         "last_coverage_alert_status": severity,
                         "last_coverage_alert_at": now.isoformat(),
                     }

@@ -97,7 +97,7 @@ async def get_sla_breach_analysis(
     breaches = result.fetchall()
 
     # Organize by severity
-    breaches_by_severity = {"critical": [], "high": [], "medium": [], "low": []}
+    breaches_by_severity: dict[str, list[dict[str, Any]]] = {"critical": [], "high": [], "medium": [], "low": []}
 
     for breach in breaches:
         breach_data = {
@@ -294,12 +294,12 @@ async def get_warehouse_health(
                         "status": row.get("status"),
                         "component": row.get("component"),
                         "started_at": (
-                            row.get("started_at").isoformat()
+                            row.get("started_at").isoformat()  # type: ignore[union-attr]
                             if row.get("started_at")
                             else None
                         ),
                         "finished_at": (
-                            row.get("finished_at").isoformat()
+                            row.get("finished_at").isoformat()  # type: ignore[union-attr]
                             if row.get("finished_at")
                             else None
                         ),
@@ -326,7 +326,7 @@ async def get_warehouse_health(
 
             rule_controls = {
                 "last_refreshed_at": (
-                    rule_controls_row.get("last_refreshed_at").isoformat()
+                    rule_controls_row.get("last_refreshed_at").isoformat()  # type: ignore[union-attr]
                     if rule_controls_row and rule_controls_row.get("last_refreshed_at")
                     else None
                 ),
@@ -361,7 +361,7 @@ async def get_warehouse_health(
                     "row_count": int(row.get("row_count") or 0),
                     "bytes": int(row.get("bytes") or 0),
                     "last_altered": (
-                        row.get("last_altered").isoformat()
+                        row.get("last_altered").isoformat()  # type: ignore[union-attr]
                         if row.get("last_altered")
                         else None
                     ),

@@ -414,10 +414,10 @@ async def build_org_exposure_dashboard(
             TrendAlert(severity="warning", metric="customer", message=warning)
         )
     if degraded:
-        severity = "critical" if degraded >= 3 else "warning"
+        severity_level = "critical" if degraded >= 3 else "warning"
         alerts.append(
             TrendAlert(
-                severity=severity,
+                severity=severity_level,  # type: ignore[arg-type]
                 metric="integration",
                 message=f"{degraded} integration(s) reporting degraded coverage",
             )
@@ -583,9 +583,9 @@ def _collect_matching_entities(
 
     customer_id = payload.get("customerId") or payload.get("customer_id")
     if isinstance(customer_id, str):
-        match = customer_by_id.get(customer_id)
-        if match and match not in customer_matches:
-            customer_matches.append(match)
+        customer_match = customer_by_id.get(customer_id)
+        if customer_match and customer_match not in customer_matches:
+            customer_matches.append(customer_match)
 
     for value in payload.values():
         if isinstance(value, Mapping):

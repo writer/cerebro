@@ -21,11 +21,12 @@ try:
 
     IDENTITY_ANOMALY_AVAILABLE = True
 except ImportError:
-    IdentityAnomalyDetector = None
-    AnomalyResult = None
+    IdentityAnomalyDetector = None  # type: ignore[misc, assignment]
+    AnomalyResult = None  # type: ignore[misc, assignment]
     IDENTITY_ANOMALY_AVAILABLE = False
 from cerebro.compliance.generator import ComplianceEvidenceGenerator
 from cerebro.compliance.frameworks import list_frameworks, get_framework
+from cerebro.compliance.framework_registry import AutomationLevel
 from cerebro.rules.engine import rule_engine
 
 router = APIRouter()
@@ -476,7 +477,7 @@ async def list_compliance_frameworks(
         framework = get_framework(framework_name)
         if framework:
             automated_controls = len(
-                [c for c in framework.controls if c.automation_level == "automated"]
+                [c for c in framework.controls if c.automation_level == AutomationLevel.AUTOMATED]
             )
 
             framework_details.append(
@@ -508,7 +509,7 @@ async def get_compliance_framework(
             status_code=404, detail=f"Framework '{framework_name}' not found"
         )
 
-    controls_by_category = {}
+    controls_by_category: dict[str, list[dict[str, object]]] = {}
     for control in framework.controls:
         if control.category not in controls_by_category:
             controls_by_category[control.category] = []
@@ -520,9 +521,9 @@ async def get_compliance_framework(
                 "description": control.description,
                 "control_type": control.control_type.value,
                 "automation_level": control.automation_level,
-                "frequency": control.frequency,
-                "required_evidence": [e.value for e in control.required_evidence],
-                "sql_queries_count": len(control.sql_queries),
+                "frequency": getattr(control, "frequency", None),  # type: ignore[attr-defined]
+                "required_evidence": [e.value for e in getattr(control, "required_evidence", [])],  # type: ignore[attr-defined]
+                "sql_queries_count": len(getattr(control, "sql_queries", [])),  # type: ignore[attr-defined]
             }
         )
 
@@ -537,17 +538,17 @@ async def get_compliance_framework(
             "total_controls": len(framework.controls),
             "categories": len(controls_by_category),
             "automated_controls": len(
-                [c for c in framework.controls if c.automation_level == "automated"]
+                [c for c in framework.controls if c.automation_level == AutomationLevel.AUTOMATED]
             ),
             "semi_automated_controls": len(
                 [
                     c
                     for c in framework.controls
-                    if c.automation_level == "semi-automated"
+                    if c.automation_level == AutomationLevel.SEMI_AUTOMATED
                 ]
             ),
             "manual_controls": len(
-                [c for c in framework.controls if c.automation_level == "manual"]
+                [c for c in framework.controls if c.automation_level == AutomationLevel.MANUAL]
             ),
         },
         "controls_by_category": controls_by_category,

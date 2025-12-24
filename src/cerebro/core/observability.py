@@ -27,8 +27,8 @@ def configure_service_observability(
 
     if not settings.agent_otel_endpoint:
         _logger.info(
-            "Telemetry enabled but no OTLP endpoint configured; spans will stay local",
-            service_name=service_name,
+            "Telemetry enabled but no OTLP endpoint configured; spans will stay local (service=%s)",
+            service_name,
         )
         return
 
@@ -53,8 +53,8 @@ def configure_service_observability(
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError as exc:  # pragma: no cover
         _logger.warning(
-            "OpenTelemetry exporter not available; install opentelemetry-sdk and opentelemetry-exporter-otlp-proto-http",
-            error=str(exc),
+            "OpenTelemetry exporter not available; install opentelemetry-sdk and opentelemetry-exporter-otlp-proto-http: %s",
+            str(exc),
         )
         return
 
@@ -87,10 +87,10 @@ def configure_service_observability(
 
     _configured_service = service_name
     _logger.info(
-        "Configured telemetry exporter",
-        service_name=service_name,
-        endpoint=settings.agent_otel_endpoint,
-        timeout=settings.agent_otel_timeout_seconds,
+        "Configured telemetry exporter: service=%s, endpoint=%s, timeout=%s",
+        service_name,
+        settings.agent_otel_endpoint,
+        settings.agent_otel_timeout_seconds,
     )
 
 

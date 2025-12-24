@@ -114,10 +114,10 @@ class RuleService:
 
         for template in templates:
             # Check if rule exists
-            stmt = select(Rule).where(
+            rule_stmt = select(Rule).where(
                 and_(Rule.name == template.name, Rule.policy_id == policy.policy_id)
             )
-            existing_rule = await self.db.scalar(stmt)
+            existing_rule = await self.db.scalar(rule_stmt)
 
             if existing_rule:
                 rule_mapping[self._normalize_rule_name(template.name)] = (
@@ -213,7 +213,7 @@ class RuleService:
             await self.db.flush()
 
         # Get all producer info
-        producer_infos = producer_registry.get_all_producer_info()
+        producer_infos = producer_registry.get_all_producer_info()  # type: ignore[attr-defined]
         created = 0
         updated = 0
 
@@ -221,13 +221,13 @@ class RuleService:
             rule_name_key = self._normalize_rule_name(producer_info["rule_name"])
 
             # Check if rule exists
-            stmt = select(Rule).where(
+            rule_stmt = select(Rule).where(
                 and_(
                     Rule.name == producer_info["finding_name"],
                     Rule.policy_id == policy.policy_id,
                 )
             )
-            existing_rule = await self.db.scalar(stmt)
+            existing_rule = await self.db.scalar(rule_stmt)
 
             if existing_rule:
                 # Update cache

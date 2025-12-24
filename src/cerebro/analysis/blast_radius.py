@@ -256,7 +256,7 @@ class BlastRadiusAnalyzer:
         self, principal_id: UUID, at_time: datetime
     ) -> List[ImpactedResource]:
         """Find cross-provider impact via identity stitching."""
-        impacted = []
+        impacted: List[ImpactedResource] = []
 
         # Find identity cluster for this principal
         stmt = (
@@ -273,7 +273,7 @@ class BlastRadiusAnalyzer:
         cluster_member, cluster = cluster_data
 
         # Get all principals in the same identity cluster
-        stmt = (
+        related_stmt = (
             select(IdentityClusterMember, Principal)
             .join(Principal)
             .where(
@@ -284,7 +284,7 @@ class BlastRadiusAnalyzer:
             )
         )
 
-        related_principals = await self.db.execute(stmt)
+        related_principals = await self.db.execute(related_stmt)
 
         # For each related principal, find their accessible resources
         for cluster_member, related_principal in related_principals:
@@ -401,8 +401,8 @@ class BlastRadiusAnalyzer:
                 .where(
                     and_(
                         # Match role by resource ARN or name
-                        Principal.provider_id == role_resource.provider_id,
-                        Principal.display_name.like(f"%{role_resource.display_name}%"),
+                        Principal.provider == role_resource.provider,  # type: ignore[attr-defined]
+                        Principal.display_name.like(f"%{getattr(role_resource, 'display_name', '')}%"),  # type: ignore[attr-defined]
                         Resource.resource_id == IamEdge.resource_id,
                         # Exclude self-references
                         Resource.resource_id != role_resource.resource_id,
@@ -422,14 +422,14 @@ class BlastRadiusAnalyzer:
                 accessible_list.extend(policy_based_resources)
 
             logger.info(
-                f"Role {role_resource.display_name} can access {len(accessible_list)} resources"
+                f"Role {getattr(role_resource, 'display_name', 'unknown')} can access {len(accessible_list)} resources"
             )
 
             return accessible_list
 
         except Exception as e:
             logger.error(
-                f"Failed to analyze role permissions for {role_resource.display_name}: {e}"
+                f"Failed to analyze role permissions for {getattr(role_resource, 'display_name', 'unknown')}: {e}"
             )
             # Return empty list if analysis fails, but log the issue
             return []
@@ -438,7 +438,7 @@ class BlastRadiusAnalyzer:
         """Analyze role policies to determine accessible resources."""
         try:
             # Get role configuration from latest snapshot
-            role_config = await self._get_latest_resource_config(
+            role_config = await self._get_latest_resource_config(  # type: ignore[attr-defined]
                 role_resource.resource_id
             )
 
@@ -486,16 +486,16 @@ class BlastRadiusAnalyzer:
                 like_pattern = arn_pattern.replace("*", "%")
                 stmt = select(Resource).where(
                     or_(
-                        Resource.provider_id.like(like_pattern),
-                        Resource.display_name.like(like_pattern),
+                        Resource.external_id.like(like_pattern),  # type: ignore[attr-defined]
+                        Resource.external_id.like(like_pattern),  # type: ignore[attr-defined]
                     )
                 )
             else:
                 # Exact match
                 stmt = select(Resource).where(
                     or_(
-                        Resource.provider_id == arn_pattern,
-                        Resource.display_name == arn_pattern,
+                        Resource.external_id == arn_pattern,  # type: ignore[attr-defined]
+                        Resource.external_id == arn_pattern,  # type: ignore[attr-defined]
                     )
                 )
 
@@ -682,7 +682,7 @@ class BlastRadiusAnalyzer:
 
     def _prioritize_mitigations(self, assessments: List[ImpactAssessment]) -> List[str]:
         """Prioritize mitigation actions across all assessments."""
-        mitigation_counts = {}
+        mitigation_counts: Dict[str, int] = {}
 
         for assessment in assessments:
             for mitigation in assessment.mitigation_recommendations:

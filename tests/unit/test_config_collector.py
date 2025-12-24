@@ -81,8 +81,8 @@ async def test_config_collector_persists_configuration(
 ):
     collector = ConfigCollector(test_db)
 
-    collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value={"processed": 0})
-    collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value={"processed": 0})
+    collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value=0)
+    collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value=0)
     collector.bulk_ops.bulk_insert_config_snapshots = AsyncMock(return_value=1)
     collector.bulk_ops.preload_principal_map = AsyncMock(return_value={})
     collector.bulk_ops.preload_resource_map = AsyncMock(return_value={})
@@ -118,8 +118,8 @@ async def test_config_collector_records_errors_on_insert_failure(
 ):
     collector = ConfigCollector(test_db)
 
-    collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value={"processed": 0})
-    collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value={"processed": 0})
+    collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value=0)
+    collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value=0)
     collector.bulk_ops.bulk_insert_config_snapshots = AsyncMock(
         side_effect=RuntimeError("db down")
     )
@@ -151,8 +151,8 @@ async def test_config_collector_records_fetch_errors(
 ):
     collector = ConfigCollector(test_db)
 
-    collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value={"processed": 0})
-    collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value={"processed": 0})
+    collector.bulk_ops.bulk_upsert_resources = AsyncMock(return_value=0)
+    collector.bulk_ops.bulk_upsert_principals = AsyncMock(return_value=0)
     collector.bulk_ops.bulk_insert_config_snapshots = AsyncMock(return_value=0)
     collector.bulk_ops.preload_principal_map = AsyncMock(return_value={})
     collector.bulk_ops.preload_resource_map = AsyncMock(return_value={})

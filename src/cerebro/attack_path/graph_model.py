@@ -134,23 +134,23 @@ class AttackGraph:
 
     async def _add_principal_nodes(self, db: AsyncSession):
         """Add principal nodes to the graph."""
-        stmt = select(Principal).where(Principal.org_id == self.org_id)
+        stmt = select(Principal).where(Principal.org_id == self.org_id)  # type: ignore[attr-defined]
         principals = await db.scalars(stmt)
 
         for principal in principals:
             node = AttackNode(
-                node_id=principal.principal_id,
+                node_id=str(principal.principal_id),
                 node_type=NodeType.PRINCIPAL,
                 provider=principal.provider,
-                display_name=principal.display_name,
+                display_name=principal.display_name or "Unknown",
                 properties={
                     "principal_type": principal.principal_type,
                     "external_id": principal.external_id,
-                    "is_active": principal.is_active,
+                    "is_active": getattr(principal, "is_active", True),
                 },
                 risk_score=self._calculate_principal_risk_score(principal),
                 criticality=self._assess_principal_criticality(principal),
-                metadata=principal.metadata or {},
+                metadata=dict(principal.metadata or {}),  # type: ignore[arg-type]
             )
 
             self.nodes[node.node_id] = node
@@ -172,17 +172,17 @@ class AttackGraph:
 
             for resource in resources:
                 node = AttackNode(
-                    node_id=resource.resource_id,
+                    node_id=str(resource.resource_id),
                     node_type=NodeType.RESOURCE,
                     provider=resource.provider,
-                    display_name=resource.external_id,
+                    display_name=resource.external_id or "Unknown",
                     properties={
                         "resource_type": resource.resource_type,
                         "external_id": resource.external_id,
                     },
                     risk_score=self._calculate_resource_risk_score(resource),
                     criticality=self._assess_resource_criticality(resource),
-                    metadata=resource.metadata or {},
+                    metadata=dict(resource.metadata or {}),  # type: ignore[arg-type]
                 )
 
                 self.nodes[node.node_id] = node
@@ -191,16 +191,17 @@ class AttackGraph:
     async def _add_iam_edges(self, db: AsyncSession):
         """Add IAM permission edges to the graph."""
         stmt = select(IamEdge).where(
-            and_(IamEdge.org_id == self.org_id, IamEdge.effective == True)
+            and_(IamEdge.org_id == self.org_id, IamEdge.effective == True)  # type: ignore[attr-defined]
         )
         edges = await db.scalars(stmt)
 
         for iam_edge in edges:
             # Determine edge type
             edge_type = EdgeType.DIRECT_ACCESS
-            if iam_edge.edge_type == "role_assignment":
+            iam_edge_type = getattr(iam_edge, "edge_type", None)
+            if iam_edge_type == "role_assignment":
                 edge_type = EdgeType.ROLE_ASSIGNMENT
-            elif iam_edge.edge_type == "inheritance":
+            elif iam_edge_type == "inheritance":
                 edge_type = EdgeType.ROLE_INHERITANCE
 
             # Calculate edge weight (difficulty/cost of traversal)
@@ -210,15 +211,15 @@ class AttackGraph:
             privilege_level = self._get_privilege_level(iam_edge.permission)
 
             edge = AttackEdge(
-                edge_id=iam_edge.edge_id,
-                source_node=iam_edge.principal_id,
-                target_node=iam_edge.resource_id,
+                edge_id=str(iam_edge.edge_id),
+                source_node=str(iam_edge.principal_id),
+                target_node=str(iam_edge.resource_id) if iam_edge.resource_id else "",
                 edge_type=edge_type,
                 permission=iam_edge.permission,
                 weight=weight,
                 privilege_level=privilege_level,
                 conditions=self._extract_edge_conditions(iam_edge),
-                metadata=iam_edge.metadata or {},
+                metadata=dict(iam_edge.metadata or {}),  # type: ignore[arg-type]
             )
 
             self.edges[edge.edge_id] = edge
@@ -466,13 +467,13 @@ class AttackGraph:
 
     def export_graph_summary(self) -> Dict[str, Any]:
         """Export summary statistics of the attack graph."""
-        node_type_counts = {}
+        node_type_counts: Dict[str, int] = {}
         for node in self.nodes.values():
             node_type_counts[node.node_type.value] = (
                 node_type_counts.get(node.node_type.value, 0) + 1
             )
 
-        edge_type_counts = {}
+        edge_type_counts: Dict[str, int] = {}
         for edge in self.edges.values():
             edge_type_counts[edge.edge_type.value] = (
                 edge_type_counts.get(edge.edge_type.value, 0) + 1

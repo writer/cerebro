@@ -692,10 +692,12 @@ async def health_check() -> Dict[str, Any]:
     client = get_client()
     loop = asyncio.get_event_loop()
 
-    results = {
+    tables_data: dict[str, dict[str, Any]] = {}
+    errors_list: list[str] = []
+    results: dict[str, Any] = {
         "healthy": True,
-        "tables": {},
-        "errors": [],
+        "tables": tables_data,
+        "errors": errors_list,
     }
 
     for table in TableName:
@@ -705,7 +707,7 @@ async def health_check() -> Dict[str, Any]:
                 _executor, partial(client.describe_table, TableName=table_name)
             )
             table_info = response.get("Table", {})
-            results["tables"][table.value] = {
+            tables_data[table.value] = {
                 "name": table_name,
                 "status": table_info.get("TableStatus"),
                 "item_count": table_info.get("ItemCount", 0),
@@ -713,19 +715,19 @@ async def health_check() -> Dict[str, Any]:
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                results["tables"][table.value] = {
+                tables_data[table.value] = {
                     "name": table_name,
                     "status": "NOT_FOUND",
                     "error": "Table does not exist",
                 }
-                results["errors"].append(f"Table {table_name} not found")
+                errors_list.append(f"Table {table_name} not found")
             else:
-                results["tables"][table.value] = {
+                tables_data[table.value] = {
                     "name": table_name,
                     "status": "ERROR",
                     "error": str(e),
                 }
-                results["errors"].append(f"Error checking {table_name}: {e}")
+                errors_list.append(f"Error checking {table_name}: {e}")
             results["healthy"] = False
 
     return results

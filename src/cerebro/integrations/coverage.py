@@ -47,11 +47,11 @@ async def summarize_integration_coverage(
         grouped_states[state.integration].append(state)
 
     account_stmt: Select = select(
-        Account.provider, func.count().label("count")
+        Account.provider, func.count().label("account_count")
     ).group_by(Account.provider)
     account_rows = await db.execute(account_stmt)
     account_counts: Dict[str, int] = {
-        row.provider: int(row.count or 0) for row in account_rows
+        row.provider: int(row.account_count or 0) for row in account_rows
     }
 
     summaries: List[Dict[str, Any]] = []

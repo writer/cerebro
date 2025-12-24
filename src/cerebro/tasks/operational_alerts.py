@@ -71,7 +71,7 @@ async def _send_slack_alert(
             response = await client.post(webhook, json=payload)
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        logger.warning("operational_slack_alert_failed", error=str(exc))
+        logger.warning("operational_slack_alert_failed: %s", str(exc))
 
 
 async def _send_pagerduty_alert(
@@ -110,7 +110,7 @@ async def _send_pagerduty_alert(
             )
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        logger.warning("operational_pagerduty_alert_failed", error=str(exc))
+        logger.warning("operational_pagerduty_alert_failed: %s", str(exc))
 
 
 async def _send_email_alert(subject: str, body: str) -> None:
@@ -141,6 +141,7 @@ async def _send_email_alert(subject: str, body: str) -> None:
     message["To"] = ", ".join(recipients)
 
     def _send_sync() -> None:
+        client: smtplib.SMTP | smtplib.SMTP_SSL
         if settings.operational_alert_smtp_use_ssl:
             client = smtplib.SMTP_SSL(host, port, timeout=10)
         else:
@@ -158,7 +159,7 @@ async def _send_email_alert(subject: str, body: str) -> None:
     try:
         await asyncio.to_thread(_send_sync)
     except Exception as exc:  # pragma: no cover - SMTP failures should not break task
-        logger.warning("operational_email_alert_failed", error=str(exc))
+        logger.warning("operational_email_alert_failed: %s", str(exc))
 
 
 async def _evaluate_alerts() -> Dict[str, Any]:

@@ -49,7 +49,7 @@ class SecuritySelfServiceTool(StructuredTool):
         super().__init__()
         self.service = service or SelfServiceKnowledgeService()
 
-    async def _run(self, context: AgentContext, question: str) -> ToolResult:
+    async def _run(self, context: AgentContext, question: str) -> ToolResult:  # type: ignore[override]
         answer = await self.service.answer_question(
             org_id=context.org_id,
             session_id=context.session_id,

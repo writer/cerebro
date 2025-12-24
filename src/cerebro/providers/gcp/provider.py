@@ -93,14 +93,14 @@ class GCPProvider(BaseProvider):
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover GCP principals (service accounts and users)."""
         try:
-            from google.cloud import iam_v1
+            from google.cloud import iam_admin_v1
             from google.auth import default
 
             credentials, _ = default()
-            iam_client = iam_v1.IAMClient(credentials=credentials)
+            iam_client = iam_admin_v1.IAMClient(credentials=credentials)
 
             # List service accounts
-            request = iam_v1.ListServiceAccountsRequest(
+            request = iam_admin_v1.ListServiceAccountsRequest(
                 name=f"projects/{self.project_id}"
             )
 
@@ -234,18 +234,19 @@ class GCPProvider(BaseProvider):
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover GCP IAM permissions."""
         try:
-            from google.cloud import resourcemanager_v1
+            from google.cloud import resourcemanager_v3
+            from google.iam.v1 import iam_policy_pb2
             from google.auth import default
 
             credentials, _ = default()
 
             # Get IAM policy for the project
-            resourcemanager_client = resourcemanager_v1.ProjectsClient(
+            resourcemanager_client = resourcemanager_v3.ProjectsClient(
                 credentials=credentials
             )
 
             # Get IAM policy for the project
-            request = resourcemanager_v1.GetIamPolicyRequest(
+            request = iam_policy_pb2.GetIamPolicyRequest(
                 resource=f"projects/{self.project_id}"
             )
 

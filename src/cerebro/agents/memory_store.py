@@ -64,8 +64,8 @@ class AgentMemoryStore:
                 self._openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(
-                    "Failed to initialize OpenAI client for memory embeddings",
-                    error=str(exc),
+                    "Failed to initialize OpenAI client for memory embeddings: %s",
+                    str(exc),
                 )
                 self._openai_client = None
 
@@ -151,7 +151,7 @@ class AgentMemoryStore:
             )
 
         scopes = self._build_scopes(session)
-        scope_priority = min(scope["priority"] for scope in scopes) if scopes else 0
+        scope_priority = min(int(scope["priority"]) for scope in scopes) if scopes else 0  # type: ignore[call-overload]
         summary = summarize_text(message_text, self._summary_max_chars)
         now = datetime.now(timezone.utc)
         content_hash = hash_text(message_text)
@@ -223,7 +223,7 @@ class AgentMemoryStore:
 
                 existing_count = metadata_payload.get("occurrence_count", 0)
                 try:
-                    occurrence_value = int(existing_count)
+                    occurrence_value = int(existing_count)  # type: ignore[call-overload]
                 except (TypeError, ValueError):
                     occurrence_value = 0
                 metadata_payload["occurrence_count"] = occurrence_value + 1
@@ -257,7 +257,7 @@ class AgentMemoryStore:
         session: AgentSession,
         query: str,
         limit: int = 5,
-    ) -> List[str]:
+    ) -> List[Dict[str, Any]]:
         if not query or not query.strip():
             return []
 
@@ -338,10 +338,11 @@ class AgentMemoryStore:
                 float,
                 float,
                 bool,
+                float,
             ]
         ] = []
         for idx, entry in enumerate(candidates):
-            embedding = entry.embedding
+            embedding = entry.embedding  # type: ignore[assignment]
             embedding_norm = entry.embedding_norm or 1.0
             if (
                 preferred_indices is not None
@@ -484,8 +485,8 @@ class AgentMemoryStore:
                 return response.data[0].embedding
             except Exception as exc:
                 logger.debug(
-                    "Falling back to local embeddings after OpenAI error",
-                    error=str(exc),
+                    "Falling back to local embeddings after OpenAI error: %s",
+                    str(exc),
                 )
 
         if self._hashing_vectorizer is None:
@@ -498,13 +499,13 @@ class AgentMemoryStore:
         scope_map: Dict[str, set[str]] = {}
         for scope in self._build_scopes(session):
             data = scope.get("data") if isinstance(scope, dict) else None
-            if not data:
+            if not data or not isinstance(data, dict):
                 continue
             scope_type = data.get("type")
             if not scope_type:
                 continue
             value = data.get("value")
-            scope_map.setdefault(scope_type, set()).add(
+            scope_map.setdefault(str(scope_type), set()).add(
                 str(value) if value is not None else "__null__"
             )
         return scope_map
@@ -524,9 +525,9 @@ class AgentMemoryStore:
             scope_type = scope.get("type") if isinstance(scope, dict) else None
             if not scope_type:
                 continue
-            value = scope.get("value")
+            value = scope.get("value") if isinstance(scope, dict) else None
             value_key = str(value) if value is not None else "__null__"
-            value_matches = value_key in session_scope_map.get(scope_type, set())
+            value_matches = value_key in session_scope_map.get(str(scope_type), set())
 
             if scope_type == MemoryScope.SESSION.value and value_matches:
                 multiplier *= self._session_boost
@@ -886,9 +887,9 @@ class AgentMemoryStore:
     def _format_snippet(
         self, score: float, entry: AgentMemoryEntry
     ) -> tuple[str, str, List[str]]:
-        scope_labels = []
+        scope_labels: List[str] = []
         for scope in entry.scopes or []:
-            scope_type = scope.get("type")
+            scope_type = str(scope.get("type", ""))
             value = scope.get("value")
             if scope_type == MemoryScope.SESSION.value:
                 continue

@@ -176,7 +176,7 @@ class RiskScoringEngine:
         # Get finding severity distribution
         severity_query = text(
             """
-            SELECT severity, COUNT(*) as count
+            SELECT severity, COUNT(*) as severity_count
             FROM findings
             WHERE org_id = :org_id AND status = 'open'
             GROUP BY severity
@@ -184,7 +184,7 @@ class RiskScoringEngine:
         )
 
         result = await self.db.execute(severity_query, {"org_id": org_id})
-        severity_counts = {row.severity: row.count for row in result.fetchall()}
+        severity_counts = {row.severity: row.severity_count for row in result.fetchall()}
 
         # Weight by severity (higher weight = higher risk)
         severity_weights = {

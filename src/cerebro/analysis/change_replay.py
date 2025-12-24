@@ -139,7 +139,7 @@ class ChangeReplayEngine:
             "match_rate_percentage": (matches / max(evaluations, 1)) * 100,
         }
 
-        result = RuleReplayResult(
+        replay_result = RuleReplayResult(
             rule_id=rule_id,
             rule_name=rule.name,
             time_period=f"{start_time.date()} to {end_time.date()}",
@@ -156,7 +156,7 @@ class ChangeReplayEngine:
             f"{len(findings_that_would_exist)} new findings"
         )
 
-        return result
+        return replay_result
 
     async def replay_all_rules_for_quarter(
         self,
@@ -253,7 +253,7 @@ class ChangeReplayEngine:
             stmt = stmt.where(Resource.resource_type.in_(resource_types))
 
         result = await self.db.execute(stmt)
-        return result.fetchall()
+        return result.fetchall()  # type: ignore[return-value]
 
     async def _check_existing_finding(
         self, rule_id: UUID, resource_id: UUID, snapshot_time: datetime
@@ -284,19 +284,19 @@ class ChangeReplayEngine:
             return {}
 
         # Group by resource type
-        resource_type_counts = {}
+        resource_type_counts: Dict[str, int] = {}
         for snapshot, resource in snapshots:
             rt = resource.resource_type
             resource_type_counts[rt] = resource_type_counts.get(rt, 0) + 1
 
         # Provider distribution
-        provider_counts = {}
+        provider_counts: Dict[str, int] = {}
         for snapshot, resource in snapshots:
             prov = resource.provider
             provider_counts[prov] = provider_counts.get(prov, 0) + 1
 
         # Time distribution
-        time_buckets = {}
+        time_buckets: Dict[str, int] = {}
         for snapshot, resource in snapshots:
             day = snapshot.captured_at.date()
             time_buckets[str(day)] = time_buckets.get(str(day), 0) + 1
@@ -409,7 +409,7 @@ class ChangeReplayEngine:
         self, findings: List[Dict[str, Any]]
     ) -> Dict[str, int]:
         """Group findings by provider."""
-        counts = {}
+        counts: Dict[str, int] = {}
         for finding in findings:
             provider = finding["provider"]
             counts[provider] = counts.get(provider, 0) + 1
@@ -419,7 +419,7 @@ class ChangeReplayEngine:
         self, findings: List[Dict[str, Any]]
     ) -> Dict[str, int]:
         """Group findings by resource type."""
-        counts = {}
+        counts: Dict[str, int] = {}
         for finding in findings:
             resource_type = finding["resource_type"]
             counts[resource_type] = counts.get(resource_type, 0) + 1
@@ -433,7 +433,7 @@ class ChangeReplayEngine:
             return {}
 
         # Group by day
-        daily_counts = {}
+        daily_counts: Dict[str, int] = {}
         for finding in findings:
             day = finding["timestamp"][:10]  # YYYY-MM-DD
             daily_counts[day] = daily_counts.get(day, 0) + 1
@@ -530,7 +530,7 @@ class ChangeReplayEngine:
 
     def _group_by_severity(self, findings: List[Dict[str, Any]]) -> Dict[str, int]:
         """Group findings by severity."""
-        counts = {}
+        counts: Dict[str, int] = {}
         for finding in findings:
             severity = finding["severity"]
             counts[severity] = counts.get(severity, 0) + 1
@@ -589,24 +589,24 @@ class ChangeReplayEngine:
             )
 
         # Sort by effectiveness
-        rule_effectiveness.sort(key=lambda r: r["effectiveness_score"], reverse=True)
+        rule_effectiveness.sort(
+            key=lambda r: float(r.get("effectiveness_score", 0)),  # type: ignore[arg-type]
+            reverse=True
+        )
 
+        org = await self.db.get(Organization, org_id)
+        high_eff = [r for r in rule_effectiveness if float(r.get("effectiveness_score", 0)) > 0.7]  # type: ignore[arg-type]
+        low_eff = [r for r in rule_effectiveness if float(r.get("effectiveness_score", 0)) < 0.3]  # type: ignore[arg-type]
+        avg_eff = sum(float(r.get("effectiveness_score", 0)) for r in rule_effectiveness)  # type: ignore[arg-type, misc]
         return {
-            "organization": (await self.db.get(Organization, org_id)).name,
+            "organization": org.name if org else "Unknown",
             "analysis_period": f"{lookback_days} days",
             "rule_effectiveness": rule_effectiveness,
             "summary": {
                 "total_rules_analyzed": len(rule_effectiveness),
-                "high_effectiveness_rules": len(
-                    [r for r in rule_effectiveness if r["effectiveness_score"] > 0.7]
-                ),
-                "low_effectiveness_rules": len(
-                    [r for r in rule_effectiveness if r["effectiveness_score"] < 0.3]
-                ),
-                "avg_effectiveness": sum(
-                    r["effectiveness_score"] for r in rule_effectiveness
-                )
-                / max(len(rule_effectiveness), 1),
+                "high_effectiveness_rules": len(high_eff),
+                "low_effectiveness_rules": len(low_eff),
+                "avg_effectiveness": avg_eff / max(len(rule_effectiveness), 1),
             },
         }
 

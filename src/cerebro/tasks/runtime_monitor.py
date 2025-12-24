@@ -136,7 +136,7 @@ def monitor_runtime_health(self):
                 alerts_sent += 1
             except httpx.HTTPError:
                 logger.exception(
-                    "runtime_health_alert_failed", runtime=runtime, severity=severity
+                    "runtime_health_alert_failed: runtime=%s, severity=%s", runtime, severity
                 )
 
         return {"alerts": alerts_sent}

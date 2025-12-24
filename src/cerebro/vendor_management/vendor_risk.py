@@ -376,11 +376,12 @@ class VendorRiskManager:
         ORDER BY vendor_id, assessment_date DESC
         """
 
-        result = await self.db.execute(latest_assessments_query, {"org_id": org_id})
+        from sqlalchemy import text
+        result = await self.db.execute(text(latest_assessments_query), {"org_id": org_id})  # type: ignore[arg-type]
         latest_assessments = result.fetchall()
 
         # Calculate risk distribution
-        risk_distribution = {}
+        risk_distribution: Dict[str, int] = {}
         total_vendors = len(latest_assessments)
 
         for assessment in latest_assessments:

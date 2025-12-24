@@ -18,7 +18,7 @@ class LocalPlaintextKMS(BaseKMS):
 
     def __init__(self, secret_key: Optional[str] = None):
         """Initialize local KMS with Fernet encryption."""
-        self.secret_key = secret_key or os.getenv("SECRET_KEY", "default-dev-key")
+        self.secret_key: str = secret_key or os.getenv("SECRET_KEY") or "default-dev-key"
 
         # Generate Fernet key from secret
         key_material = hashlib.sha256(self.secret_key.encode()).digest()

@@ -57,7 +57,7 @@ class AzureProvider(BaseProvider):
 
             # Ensure we can enumerate storage accounts (no-op if subscription empty)
             await call_sync_with_retries(
-                lambda: list(self._storage_client.storage_accounts.list()) or True,
+                lambda: list(self._storage_client.storage_accounts.list()) or True,  # type: ignore[union-attr]
                 exceptions=(AzureError, HttpResponseError),
                 logger=logger,
             )
@@ -74,7 +74,7 @@ class AzureProvider(BaseProvider):
         assert self._storage_client is not None
 
         accounts: List[StorageAccount] = await call_sync_with_retries(
-            lambda: list(self._storage_client.storage_accounts.list()),
+            lambda: list(self._storage_client.storage_accounts.list()),  # type: ignore[union-attr]
             exceptions=(AzureError, HttpResponseError),
             logger=logger,
         )
@@ -107,7 +107,7 @@ class AzureProvider(BaseProvider):
                     "tags": account.tags or {},
                     "account_id": str(self.account_id),
                     "created_at": (
-                        getattr(account, "creation_time", None).isoformat()
+                        getattr(account, "creation_time", None).isoformat()  # type: ignore[union-attr]
                         if getattr(account, "creation_time", None)
                         else datetime.utcnow().isoformat()
                     ),
@@ -166,7 +166,7 @@ class AzureProvider(BaseProvider):
                     "tags": getattr(container, "metadata", {}) or {},
                     "account_id": str(self.account_id),
                     "created_at": (
-                        getattr(container, "last_modified", None).isoformat()
+                        getattr(container, "last_modified", None).isoformat()  # type: ignore[union-attr]
                         if getattr(container, "last_modified", None)
                         else datetime.utcnow().isoformat()
                     ),
@@ -212,7 +212,7 @@ class AzureProvider(BaseProvider):
             # Derive from ID
             account_name = resource.name
 
-        props = await self._get_account_properties(account_name, resource_group)
+        props = await self._get_account_properties(str(account_name), resource_group)
 
         if not props:
             return {}
@@ -246,7 +246,7 @@ class AzureProvider(BaseProvider):
             return {}
 
         container_props = await call_sync_with_retries(
-            lambda: self._storage_client.blob_containers.get(
+            lambda: self._storage_client.blob_containers.get(  # type: ignore[union-attr]
                 resource_group, account_name, container_name
             ),
             exceptions=(AzureError, HttpResponseError),
@@ -290,7 +290,7 @@ class AzureProvider(BaseProvider):
                 container_props, "deny_encryption_scope_override", None
             ),
             "last_modified": (
-                getattr(container_props, "last_modified", None).isoformat()
+                getattr(container_props, "last_modified", None).isoformat()  # type: ignore[union-attr]
                 if getattr(container_props, "last_modified", None)
                 else None
             ),
@@ -314,7 +314,7 @@ class AzureProvider(BaseProvider):
             return None
 
         return await call_sync_with_retries(
-            lambda: self._storage_client.storage_accounts.get_properties(
+            lambda: self._storage_client.storage_accounts.get_properties(  # type: ignore[union-attr]
                 resource_group, account_name
             ),
             exceptions=(AzureError, HttpResponseError),
@@ -328,7 +328,7 @@ class AzureProvider(BaseProvider):
             return None
 
         keys = await call_sync_with_retries(
-            lambda: self._storage_client.storage_accounts.list_keys(
+            lambda: self._storage_client.storage_accounts.list_keys(  # type: ignore[union-attr]
                 resource_group, account_name
             ),
             exceptions=(AzureError, HttpResponseError),
@@ -373,12 +373,12 @@ class AzureProvider(BaseProvider):
                         "name": blob.name,
                         "size": getattr(blob, "size", None),
                         "last_modified": (
-                            getattr(blob, "last_modified", None).isoformat()
+                            getattr(blob, "last_modified", None).isoformat()  # type: ignore[union-attr]
                             if getattr(blob, "last_modified", None)
                             else None
                         ),
                         "content_type": (
-                            getattr(blob, "content_settings", None).content_type
+                            getattr(blob, "content_settings", None).content_type  # type: ignore[union-attr]
                             if getattr(blob, "content_settings", None)
                             else None
                         ),

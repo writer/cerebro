@@ -10,7 +10,7 @@ from kombu import Queue
 try:  # pragma: no cover - protect optional import during bootstrap
     from cerebro.core.config import settings
 except Exception:  # pragma: no cover
-    settings = None
+    settings = None  # type: ignore[assignment]
 
 if settings:
     from cerebro.core.observability import configure_service_observability

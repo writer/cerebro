@@ -57,8 +57,8 @@ class OrganizationFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._pg_repo = None
-        self._dynamo_repo = None
+        self._pg_repo: Optional[Any] = None
+        self._dynamo_repo: Optional[Any] = None
 
     def _get_pg_session(self) -> Any:
         """Get PostgreSQL session."""
@@ -116,7 +116,7 @@ class OrganizationFacade:
             return await self._get_dynamo_repo().create(dynamo_org)
         else:
             # PostgreSQL only
-            from cerebro.core.models import Organization
+            from cerebro.core.models import Organization  # type: ignore[assignment]
 
             async with self._get_pg_session() as session:
                 org = Organization(**kwargs)
@@ -148,7 +148,7 @@ class AccountFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo = None
+        self._dynamo_repo: Optional[Any] = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
@@ -213,7 +213,7 @@ class FindingFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo = None
+        self._dynamo_repo: Optional[Any] = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
@@ -295,7 +295,7 @@ class FindingFacade:
             dynamo_finding = DynamoFinding(**kwargs)
             return await self._get_dynamo_repo().create(dynamo_finding)
         else:
-            from cerebro.core.models import Finding
+            from cerebro.core.models import Finding  # type: ignore[assignment]
 
             async with self._get_pg_session() as session:
                 finding = Finding(**kwargs)
@@ -349,7 +349,7 @@ class RuleFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo = None
+        self._dynamo_repo: Optional[Any] = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory
@@ -408,7 +408,7 @@ class AgentSessionFacade:
 
     def __init__(self, backend: DBBackend):
         self._backend = backend
-        self._dynamo_repo = None
+        self._dynamo_repo: Optional[Any] = None
 
     def _get_pg_session(self):
         from cerebro.core.database import async_session_factory

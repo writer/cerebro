@@ -246,7 +246,7 @@ def batch_collect_resources(
                 raise Exception("Provider authentication failed")
 
             collected = 0
-            errors = []
+            errors: List[str] = []
 
             async with async_session_factory():
                 for i, external_id in enumerate(resource_external_ids):

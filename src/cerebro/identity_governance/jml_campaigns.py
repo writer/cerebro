@@ -333,7 +333,7 @@ class JMLCampaignManager:
         async with async_session_factory() as db:
             # Query current IAM edges for principal
             stmt = select(IamEdge).where(
-                and_(IamEdge.principal_id == principal_id, IamEdge.effective == True)
+                and_(IamEdge.principal_id == principal_id, IamEdge.effective == True)  # type: ignore[attr-defined]
             )
 
             edges = await db.scalars(stmt)
@@ -408,7 +408,7 @@ class JMLCampaignManager:
 
         async with async_session_factory() as db:
             stmt = select(IamEdge).where(
-                and_(IamEdge.principal_id == principal_id, IamEdge.effective == True)
+                and_(IamEdge.principal_id == principal_id, IamEdge.effective == True)  # type: ignore[attr-defined]
             )
 
             edges = await db.scalars(stmt)
@@ -419,8 +419,8 @@ class JMLCampaignManager:
                         "resource_id": edge.resource_id,
                         "permission": edge.permission,
                         "provider": edge.provider,
-                        "granted_date": edge.captured_at,
-                        "edge_type": edge.edge_type,
+                        "granted_date": edge.captured_at,  # type: ignore[attr-defined]
+                        "edge_type": edge.edge_type,  # type: ignore[attr-defined]
                         "metadata": edge.metadata,
                     }
                 )
@@ -509,7 +509,7 @@ class JMLCampaignManager:
         stale_access = await self.identify_stale_access(org_id, jml_events)
 
         # Group stale access by principal for review
-        access_by_principal = {}
+        access_by_principal: dict[str, list[StaleAccessItem]] = {}
         for item in stale_access:
             pid = item.principal_id
             if pid not in access_by_principal:

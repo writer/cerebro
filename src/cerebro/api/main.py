@@ -271,11 +271,11 @@ configure_service_observability(service_name="cerebro-api")
 # Configure rate limiter
 default_limits = [limit for limit in settings.get_default_rate_limits() if limit]
 if default_limits:
-    limiter = Limiter(key_func=get_remote_address, default_limits=default_limits)
+    limiter = Limiter(key_func=get_remote_address, default_limits=default_limits)  # type: ignore[arg-type]
 else:
     limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 if default_limits:
     logger.info("Rate limiting enabled", default_limits=default_limits)

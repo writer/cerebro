@@ -99,7 +99,7 @@ class ProviderRegistry:
 
                             # Try to get provider name
                             try:
-                                instance = attr.__new__(attr)
+                                instance: Any = object.__new__(attr)  # type: ignore[type-var]
                                 provider_name = instance.name
                                 self.register(provider_name, attr)
                                 discovered += 1
@@ -169,7 +169,7 @@ def create_github_provider(account_id: str, org_name: str, **kwargs):
 
 def create_aws_provider(
     account_id: str, aws_account_id: str, region: Optional[str] = None, **kwargs: Any
-) -> "AWSProvider":
+) -> Any:
     """Factory for AWS provider."""
     from cerebro.providers.aws import AWSProvider
 
@@ -197,7 +197,7 @@ def create_google_workspace_provider(
     from cerebro.providers.workspace.provider import GoogleWorkspaceProvider
 
     return GoogleWorkspaceProvider(
-        account_id=account_id,
+        account_id=account_id,  # type: ignore[arg-type]
         domain=domain,
         service_account_file=service_account_file,
         delegate_user=delegate_user,
@@ -206,10 +206,10 @@ def create_google_workspace_provider(
 
 
 # Register built-in providers with factories
-provider_registry.register("github", None, create_github_provider)
-provider_registry.register("aws", None, create_aws_provider)
-provider_registry.register("gcp_enhanced", None, create_enhanced_gcp_provider)
-provider_registry.register("google_workspace", None, create_google_workspace_provider)
+provider_registry.register("github", None, create_github_provider)  # type: ignore[arg-type]
+provider_registry.register("aws", None, create_aws_provider)  # type: ignore[arg-type]
+provider_registry.register("gcp_enhanced", None, create_enhanced_gcp_provider)  # type: ignore[arg-type]
+provider_registry.register("google_workspace", None, create_google_workspace_provider)  # type: ignore[arg-type]
 
 
 def init_providers():

@@ -138,7 +138,7 @@ class FindingsListTool(Tool):
                 )
 
                 # Apply filters with proper validation
-                conditions = []
+                conditions: list[Any] = []
 
                 if list_inputs.severity:
                     # Validate severity values
@@ -286,7 +286,7 @@ class FindingsListTool(Tool):
                             "after": list_inputs.created_after,
                             "before": list_inputs.created_before,
                         },
-                        "provider_scope_enforced": len(context.provider_scope) > 0,
+                        "provider_scope_enforced": len(context.provider_scope or []) > 0,
                     },
                 )
 

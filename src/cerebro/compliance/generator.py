@@ -83,7 +83,7 @@ class ComplianceEvidenceGenerator:
             )
             evaluations.append(ControlEvaluation(control=control, evidence=evidence))
 
-        report = {
+        report: Dict[str, Any] = {
             "framework": {
                 "id": framework_name.lower(),
                 "name": framework.name,

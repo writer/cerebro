@@ -327,10 +327,10 @@ class TestEntityManager:
 
         for dep in dependencies:
             if dep.status == TestEntityStatus.ACTIVE.value:
-                validation_results["active_dependencies"] += 1
+                validation_results["active_dependencies"] += 1  # type: ignore[operator]
             else:
                 validation_results["valid"] = False
-                validation_results["failed_dependencies"].append(
+                validation_results["failed_dependencies"].append(  # type: ignore[attr-defined]
                     {
                         "entity_id": str(dep.entity_id),
                         "external_id": dep.external_id,
@@ -343,7 +343,7 @@ class TestEntityManager:
         now = datetime.utcnow()
         for dep in dependencies:
             if dep.expires_at and dep.expires_at < now:
-                validation_results["warnings"].append(
+                validation_results["warnings"].append(  # type: ignore[attr-defined]
                     f"Dependency {dep.external_id} is expired"
                 )
 

@@ -129,9 +129,9 @@ class ServalIntegrationRepository:
             record.encrypted_client_secret_dek = encrypted_client_secret_dek
 
         await self._db.commit()
-        result = await self.get(org_id)
-        assert result is not None  # Record was just created/updated
-        return result
+        settings = await self.get(org_id)
+        assert settings is not None  # Record was just created/updated
+        return settings
 
     async def delete(self, org_id: UUID) -> None:
         """Remove the integration record for the supplied organization."""

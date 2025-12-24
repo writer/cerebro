@@ -343,13 +343,13 @@ class FrameworkRegistry:
 
         # Build mapping matrix
         for control_type in all_control_types:
-            matrix["control_mappings"][control_type] = {}
+            matrix["control_mappings"][control_type] = {}  # type: ignore[index]
 
             for framework_id, controls in framework_controls.items():
                 type_controls = [
                     c for c in controls.values() if c.category == control_type
                 ]
-                matrix["control_mappings"][control_type][framework_id] = [
+                matrix["control_mappings"][control_type][framework_id] = [  # type: ignore[index]
                     {
                         "control_id": c.control_id,
                         "title": c.title,
@@ -360,7 +360,7 @@ class FrameworkRegistry:
 
         # Coverage analysis
         for framework_id, framework in frameworks.items():
-            matrix["coverage_analysis"][framework_id] = {
+            matrix["coverage_analysis"][framework_id] = {  # type: ignore[index]
                 "total_controls": len(framework.controls),
                 "automated_controls": len(framework.get_automated_controls()),
                 "control_families": len(framework.control_families),

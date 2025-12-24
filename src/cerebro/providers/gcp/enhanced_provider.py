@@ -12,7 +12,7 @@ from pathlib import Path
 import logging
 
 from google.oauth2 import service_account
-from google.cloud import compute_v1, resourcemanager_v3, iam_v1
+from google.cloud import compute_v1, resourcemanager_v3, iam_v1  # type: ignore[attr-defined]
 from googleapiclient.discovery import build
 
 from cerebro.core.config import settings
@@ -61,7 +61,7 @@ class EnhancedGCPProvider(BaseProvider):
             workspace_domain: Google Workspace domain (if applicable)
             delegate_user: User to impersonate for workspace operations
         """
-        super().__init__(account_id, **kwargs)
+        super().__init__(account_id, **kwargs)  # type: ignore[arg-type]
         self.project_id = project_id
         self.workspace_domain = workspace_domain
         self.delegate_user = delegate_user
@@ -159,19 +159,19 @@ class EnhancedGCPProvider(BaseProvider):
         """Test Google Cloud authentication."""
         try:
             # Test with a simple compute API call
-            self._compute_client = compute_v1.InstancesClient(
+            self._compute_client = compute_v1.InstancesClient(  # type: ignore[assignment]
                 credentials=self._credentials
             )
 
             # Test with resource manager to verify project access
-            self._resource_manager_client = resourcemanager_v3.ProjectsClient(
+            self._resource_manager_client = resourcemanager_v3.ProjectsClient(  # type: ignore[assignment]
                 credentials=self._credentials
             )
             request = resourcemanager_v3.GetProjectRequest(
                 name=f"projects/{self.project_id}"
             )
             await asyncio.get_event_loop().run_in_executor(
-                None, self._resource_manager_client.get_project, request
+                None, self._resource_manager_client.get_project, request  # type: ignore[attr-defined]
             )
         except Exception as e:
             raise ProviderError(f"Google Cloud authentication test failed: {e}")
@@ -180,7 +180,7 @@ class EnhancedGCPProvider(BaseProvider):
         """Set up Google Workspace authentication with domain-wide delegation."""
         try:
             # Create delegated credentials for workspace APIs
-            self._workspace_credentials = self._credentials.with_subject(
+            self._workspace_credentials = self._credentials.with_subject(  # type: ignore[attr-defined]
                 self.delegate_user
             )
 
@@ -188,7 +188,7 @@ class EnhancedGCPProvider(BaseProvider):
             loop = asyncio.get_event_loop()
 
             # Admin SDK Directory API
-            self._admin_service = await loop.run_in_executor(
+            self._admin_service = await loop.run_in_executor(  # type: ignore[func-returns-value]
                 None,
                 lambda: build(
                     "admin", "directory_v1", credentials=self._workspace_credentials
@@ -196,7 +196,7 @@ class EnhancedGCPProvider(BaseProvider):
             )
 
             # Admin SDK Reports API
-            self._reports_service = await loop.run_in_executor(
+            self._reports_service = await loop.run_in_executor(  # type: ignore[func-returns-value]
                 None,
                 lambda: build(
                     "admin", "reports_v1", credentials=self._workspace_credentials
@@ -206,7 +206,7 @@ class EnhancedGCPProvider(BaseProvider):
             # Test workspace authentication
             await loop.run_in_executor(
                 None,
-                lambda: self._admin_service.users()
+                lambda: self._admin_service.users()  # type: ignore[attr-defined]
                 .list(domain=self.workspace_domain, maxResults=1)
                 .execute(),
             )
@@ -266,7 +266,7 @@ class EnhancedGCPProvider(BaseProvider):
         """Discover GCP Compute Engine instances."""
         try:
             if not self._compute_client:
-                self._compute_client = compute_v1.InstancesClient(
+                self._compute_client = compute_v1.InstancesClient(  # type: ignore[assignment]
                     credentials=self._credentials
                 )
 
@@ -274,7 +274,7 @@ class EnhancedGCPProvider(BaseProvider):
             request = compute_v1.AggregatedListInstancesRequest(project=self.project_id)
 
             page_result = await loop.run_in_executor(
-                None, self._compute_client.aggregated_list, request
+                None, self._compute_client.aggregated_list, request  # type: ignore[attr-defined]
             )
 
             for zone, response in page_result:
@@ -338,7 +338,7 @@ class EnhancedGCPProvider(BaseProvider):
         """Discover GCP Cloud Storage buckets."""
         try:
             if not self._storage_client:
-                from google.cloud import storage
+                from google.cloud import storage  # type: ignore[attr-defined]
 
                 self._storage_client = storage.Client(
                     credentials=self._credentials, project=self.project_id
@@ -346,7 +346,7 @@ class EnhancedGCPProvider(BaseProvider):
 
             loop = asyncio.get_event_loop()
             buckets = await loop.run_in_executor(
-                None, list, self._storage_client.list_buckets()
+                None, list, self._storage_client.list_buckets()  # type: ignore[attr-defined]
             )
 
             for bucket in buckets:
@@ -421,7 +421,7 @@ class EnhancedGCPProvider(BaseProvider):
             )
 
             response = await loop.run_in_executor(
-                None, self._iam_client.list_service_accounts, request
+                None, self._iam_client.list_service_accounts, request  # type: ignore[attr-defined]
             )
 
             for sa in response.accounts:
@@ -430,7 +430,7 @@ class EnhancedGCPProvider(BaseProvider):
                     name=sa.name
                 )
                 keys_response = await loop.run_in_executor(
-                    None, self._iam_client.list_service_account_keys, keys_request
+                    None, self._iam_client.list_service_account_keys, keys_request  # type: ignore[attr-defined]
                 )
 
                 keys_info = []
@@ -657,18 +657,20 @@ class EnhancedGCPProvider(BaseProvider):
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
         """Discover GCP and Google Workspace principals."""
         # Implementation for discovering users, groups, service accounts
-        pass
+        raise NotImplementedError("discover_principals not yet implemented")
+        yield  # type: ignore[misc]
 
     async def get_resource_configuration(
         self, resource: ResourceInfo
     ) -> ConfigurationSnapshot:
         """Get comprehensive resource configuration."""
         # Implementation for collecting detailed resource configurations
-        pass
+        raise NotImplementedError("get_resource_configuration not yet implemented")
 
     async def discover_iam_edges(
         self, resource: Optional[ResourceInfo] = None
     ) -> AsyncGenerator[IamPermission, None]:
         """Discover comprehensive IAM permissions."""
         # Implementation for discovering IAM permissions across GCP and Workspace
-        pass
+        raise NotImplementedError("discover_iam_edges not yet implemented")
+        yield  # type: ignore[misc]

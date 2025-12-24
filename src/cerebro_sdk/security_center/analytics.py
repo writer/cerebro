@@ -34,7 +34,7 @@ def _coerce_number(value: object, warnings: list[str], context: str) -> float | 
         warnings.append(f"Missing value for {context}")
         return None
     try:
-        number = float(value)
+        number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         warnings.append(f"Non-numeric value for {context}")
         return None
@@ -507,8 +507,8 @@ def _filter_points_within(
     return [
         point
         for point in points
-        if isinstance(point.get("timestamp"), datetime)
-        and point["timestamp"].timestamp() >= threshold
+        if isinstance(ts := point.get("timestamp"), datetime)
+        and ts.timestamp() >= threshold
     ]
 
 

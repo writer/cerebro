@@ -61,7 +61,7 @@ class OrientationSummaryTool(StructuredTool):
     output_model = OrientationSummaryOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         window_hours: int,

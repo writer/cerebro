@@ -204,6 +204,8 @@ class EmailNotificationService:
             raise ValueError("smtp_host is required for email notifications")
 
         port_raw = getattr(config, "smtp_port", None)
+        if port_raw is None:
+            raise ValueError("SMTP port must be configured")
         try:
             port = int(port_raw)
         except (TypeError, ValueError):
@@ -375,7 +377,7 @@ class EmailNotificationService:
             status=finding.status,
             rule_id=finding.rule_id,
             finding_id=str(finding.finding_id),
-            created_at=finding.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            created_at=finding.first_seen.strftime("%Y-%m-%d %H:%M:%S UTC") if finding.first_seen else "Unknown",
             cerebro_url=self.cerebro_url,
         )
 

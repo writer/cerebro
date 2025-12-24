@@ -534,7 +534,7 @@ def _integration_stale_threshold(integration: str) -> int:
 def _build_schedule_index() -> Dict[str, Any]:
     schedule_conf = getattr(celery_app.conf, "beat_schedule", {}) or {}
     return {
-        details.get("task"): details.get("schedule")
+        str(details.get("task")): details.get("schedule")
         for details in schedule_conf.values()
         if isinstance(details, dict) and details.get("task")
     }

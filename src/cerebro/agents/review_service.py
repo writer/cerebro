@@ -272,9 +272,10 @@ class AgentReviewService:
                 await db_session.refresh(task)
 
         for task_id, channel, payload in post_notifications:
-            task = next((t for t in tasks if t.id == task_id), None)
-            if not task:
+            task_match = next((t for t in tasks if t.id == task_id), None)
+            if not task_match:
                 continue
+            task = task_match
             await NotificationService.enqueue(
                 org_id=task.org_id,
                 task_id=task.id,
@@ -283,9 +284,10 @@ class AgentReviewService:
             )
 
         for task_id, system, summary, metadata in post_tickets:
-            task = next((t for t in tasks if t.id == task_id), None)
-            if not task:
+            task_match = next((t for t in tasks if t.id == task_id), None)
+            if not task_match:
                 continue
+            task = task_match
             ticket = await TicketingService.create_ticket(
                 org_id=task.org_id,
                 task_id=task.id,
@@ -635,7 +637,7 @@ class AgentReviewService:
         priority_summary = [
             {
                 "priority": row.priority,
-                "count": int(row.count or 0),
+                "count": int(row[1] or 0),  # type: ignore[arg-type]
             }
             for row in priority_rows
         ]

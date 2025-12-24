@@ -98,14 +98,14 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
         .where(
             and_(
                 Finding.org_id == config.org_id,
-                Finding.created_at >= window_start,
-                Finding.created_at <= now,
+                Finding.created_at >= window_start,  # type: ignore[attr-defined]
+                Finding.created_at <= now,  # type: ignore[attr-defined]
             )
         )
-        .order_by(Finding.severity.desc(), Finding.created_at.desc())
+        .order_by(Finding.severity.desc(), Finding.created_at.desc())  # type: ignore[attr-defined]
         .limit(1000)
     )
-    findings = findings_result.scalars().all()
+    findings = list(findings_result.scalars().all())
 
     if not findings:
         logger.info(f"No findings for digest config {config.config_id}")
@@ -200,7 +200,7 @@ def _group_findings_by_severity(findings: List[Finding]) -> Dict[str, List[Findi
     Returns:
         Dictionary mapping severity to list of findings
     """
-    grouped = {}
+    grouped: dict[str, list[Finding]] = {}
     for finding in findings:
         severity = finding.severity or "unknown"
         if severity not in grouped:
@@ -320,9 +320,9 @@ def _generate_digest_html(
             <div class="finding">
                 <div class="finding-title">{finding.title}</div>
                 <div class="finding-meta">
-                    Provider: {finding.provider} | Resource: {finding.resource_type}
+                    Provider: {finding.provider} | Resource: {getattr(finding, 'resource_type', 'unknown')}
                     {f'| Account: {finding.account_id}' if finding.account_id else ''}
-                    {f'| Region: {finding.region}' if finding.region else ''}
+                    {f'| Region: {getattr(finding, "region", None)}' if getattr(finding, 'region', None) else ''}
                 </div>
             </div>
 """

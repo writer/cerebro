@@ -371,7 +371,7 @@ class RiskManagementSystem:
             assessment_date=datetime.now(),
             assessor=assessor,
             responses=questionnaire_responses,
-            **scores,
+            **scores,  # type: ignore[arg-type]
         )
 
         # Update vendor with latest assessment info
@@ -523,7 +523,7 @@ class RiskManagementSystem:
                 "by_category": risks_by_category,
                 "by_status": risks_by_status,
                 "high_risks": sorted(
-                    high_risks, key=lambda x: x["score"], reverse=True
+                    high_risks, key=lambda x: x["score"], reverse=True  # type: ignore[arg-type, return-value]
                 )[:10],
             },
             "treatment_summary": {
@@ -593,7 +593,7 @@ class RiskManagementSystem:
         # Risk analysis
         risk_data = []
         for risk in filtered_risks:
-            risk_info = {
+            risk_info: dict[str, object] = {
                 "id": risk.id,
                 "title": risk.title,
                 "category": risk.category.value,

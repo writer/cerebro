@@ -95,7 +95,7 @@ async def upsert_serval_config(
     repo = ServalIntegrationRepository(db)
     settings = await repo.upsert(
         org_id=org_id,
-        api_base_url=payload.api_base_url,
+        api_base_url=payload.api_base_url or "https://public.api.serval.com",
         team_id=payload.team_id,
         client_id=payload.client_id,
         client_secret=payload.client_secret,

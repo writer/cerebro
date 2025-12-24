@@ -5,7 +5,7 @@ Provides REST API for test management, execution, and results
 using the evidence data fabric for test validation.
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,7 +26,6 @@ from ...testing.test_registry import (
 from ...compliance.evidence_data_fabric import (
     EvidenceDataFabric,
     EvidenceQuery,
-    EvidenceEntityType,
 )
 
 router = APIRouter()
@@ -171,7 +170,7 @@ async def get_test_details(
         if not test:
             raise HTTPException(status_code=404, detail="Test not found")
 
-        test_details = {
+        test_details: Dict[str, Any] = {
             "test_id": test.test_id,
             "name": test.name,
             "description": test.description,
@@ -365,10 +364,10 @@ async def query_evidence_fabric(
 
     try:
         # Build evidence query
-        query_filters = {}
+        query_filters: Dict[str, Any] = {}
 
         if entity_type:
-            query_filters["entity_types"] = [EvidenceEntityType(entity_type.lower())]
+            query_filters["entity_types"] = [entity_type.lower()]
 
         if entity_id:
             query_filters["entity_ids"] = [entity_id]
@@ -385,14 +384,14 @@ async def query_evidence_fabric(
         )
         query_filters["limit"] = limit
 
-        evidence_query = EvidenceQuery(**query_filters)
+        evidence_query = EvidenceQuery(**query_filters)  # type: ignore[arg-type]
 
         # Query actual evidence fabric instead of returning mock data
-        evidence_fabric = EvidenceDataFabric(db)
+        evidence_fabric = EvidenceDataFabric(db)  # type: ignore[arg-type]
 
         try:
             # Execute real evidence query
-            evidence_results = await evidence_fabric.query_evidence(evidence_query)
+            evidence_results = await evidence_fabric.query_evidence(evidence_query)  # type: ignore[misc]
 
             # Format results for API response
             formatted_results = [

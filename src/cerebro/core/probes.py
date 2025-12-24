@@ -87,7 +87,7 @@ async def check_broker_connection(timeout: float = 2.0) -> Tuple[bool, Optional[
 
 async def _run_target(
     target: str, timeout: float
-) -> Tuple[bool, Dict[str, Dict[str, Optional[str]]]]:
+) -> Tuple[bool, Dict[str, Dict[str, bool | Optional[str]]]]:
     if target == "api-ready":
         db_ok, db_error = await check_database(timeout)
         celery_ok, celery_error = await check_celery_workers(timeout)
@@ -141,7 +141,7 @@ def main() -> int:
     except KeyboardInterrupt:  # pragma: no cover - CLI interrupt handling
         return 130
     except Exception as exc:  # pragma: no cover - surface unexpected errors
-        logger.error("Probe execution failed", target=args.target, error=str(exc))
+        logger.error("Probe execution failed: target=%s, error=%s", args.target, str(exc))
         print(json.dumps({"status": "error", "error": str(exc)}))
         return 1
 

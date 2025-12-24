@@ -4,7 +4,8 @@ Integration layer between compliance frameworks, control tests, and rule engine.
 Maps existing CEL rules to compliance controls and creates executable control tests.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
+from .framework_registry import AutomationLevel
 from datetime import datetime, timedelta
 
 from .frameworks import ComplianceControl, get_framework
@@ -38,7 +39,7 @@ class FrameworkIntegration:
             # Find rules that map to this control
             mapped_rules = self._find_rules_for_control(control, rules, framework_name)
 
-            if mapped_rules or control.sql_queries:
+            if mapped_rules or getattr(control, 'sql_queries', None):
                 test = self._create_control_test(control, framework_name, mapped_rules)
                 control_tests.append(test)
 
@@ -62,7 +63,7 @@ class FrameworkIntegration:
 
         return self._create_control_test(control, framework_name, mapped_rules)
 
-    def get_framework_coverage(self, framework_name: str) -> Dict[str, any]:
+    def get_framework_coverage(self, framework_name: str) -> Dict[str, Any]:
         """Get coverage statistics for a compliance framework."""
         framework = get_framework(framework_name)
         if not framework:
@@ -74,13 +75,13 @@ class FrameworkIntegration:
         # Calculate coverage metrics
         total_controls = len(framework.controls)
         automated_controls = len(
-            [c for c in framework.controls if c.automation_level == "automated"]
+            [c for c in framework.controls if c.automation_level == AutomationLevel.AUTOMATED]
         )
         semi_automated = len(
-            [c for c in framework.controls if c.automation_level == "semi-automated"]
+            [c for c in framework.controls if c.automation_level == AutomationLevel.SEMI_AUTOMATED]
         )
         manual_controls = len(
-            [c for c in framework.controls if c.automation_level == "manual"]
+            [c for c in framework.controls if c.automation_level == AutomationLevel.MANUAL]
         )
 
         # Count controls with tests
@@ -125,7 +126,7 @@ class FrameworkIntegration:
             ),
         }
 
-    def get_control_gaps(self, framework_name: str) -> List[Dict[str, any]]:
+    def get_control_gaps(self, framework_name: str) -> List[Dict[str, Any]]:
         """Identify controls that lack automated testing."""
         framework = get_framework(framework_name)
         if not framework:
@@ -143,12 +144,12 @@ class FrameworkIntegration:
                         "title": control.title,
                         "category": control.category,
                         "automation_level": control.automation_level,
-                        "frequency": control.frequency,
+                        "frequency": getattr(control, 'frequency', None),
                         "reason": "No rules or SQL queries available",
                         "suggested_actions": self._suggest_gap_remediation(control),
                     }
                 )
-            elif control.automation_level == "manual":
+            elif control.automation_level == AutomationLevel.MANUAL:
                 test = next(
                     t for t in control_tests if t.control_id == control.control_id
                 )
@@ -159,7 +160,7 @@ class FrameworkIntegration:
                             "title": control.title,
                             "category": control.category,
                             "automation_level": control.automation_level,
-                            "frequency": control.frequency,
+                            "frequency": getattr(control, 'frequency', None),
                             "reason": "Only SQL queries available, no CEL rules",
                             "suggested_actions": [
                                 "Create CEL rule for automated evaluation"
@@ -181,7 +182,7 @@ class FrameworkIntegration:
 
     def suggest_new_rules_for_framework(
         self, framework_name: str
-    ) -> List[Dict[str, any]]:
+    ) -> List[Dict[str, Any]]:
         """Suggest new rules that could be created to improve framework coverage."""
         framework = get_framework(framework_name)
         if not framework:
@@ -203,7 +204,7 @@ class FrameworkIntegration:
 
     async def validate_control_test_effectiveness(
         self, framework_name: str, period_days: int = 30
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """Analyze how effective control tests are at detecting issues."""
         control_tests = self.create_control_tests_for_framework(framework_name)
 
@@ -358,7 +359,7 @@ class FrameworkIntegration:
 
     def _analyze_control_for_rule_creation(
         self, control: ComplianceControl, framework_name: str
-    ) -> Optional[Dict[str, any]]:
+    ) -> Optional[Dict[str, Any]]:
         """Analyze a control to suggest new rule creation."""
         if control.control_type.value != "technical":
             return None  # Focus on technical controls for rule automation

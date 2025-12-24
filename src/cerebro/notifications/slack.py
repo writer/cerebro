@@ -127,7 +127,7 @@ class SlackMessageFormatter:
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"<!date^{int(finding.created_at.timestamp())}^{{date_short_pretty}} at {{time}}|{finding.created_at.isoformat()}>",
+                        "text": f"<!date^{int(finding.first_seen.timestamp()) if finding.first_seen else 0}^{{date_short_pretty}} at {{time}}|{finding.first_seen.isoformat() if finding.first_seen else 'Unknown'}>",
                     }
                 ],
             }

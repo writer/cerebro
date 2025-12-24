@@ -346,23 +346,23 @@ class AgentRuntimePersistenceMixin:
         try:
             store = await AgentMemoryStore.shared()
             limit = min(limit, settings.agent_memory_max_snippets)
-            # retrieve_relevant returns List[str] (the snippets themselves)
-            prompt_snippets = await store.retrieve_relevant(
+            # retrieve_relevant returns List[Dict[str, Any]] with snippet content
+            entries = await store.retrieve_relevant(
                 session=session,
                 query=query,
                 limit=limit,
             )
-            if prompt_snippets:
+            if entries:
                 await AgentAnalyticsService.record_event(
                     org_id=session.org_id,
                     session_id=session.id,
                     event_type="memory_retrieved",
                     payload={
-                        "count": len(prompt_snippets),
+                        "count": len(entries),
                     },
                 )
-            # Convert snippets to entry dicts for compatibility
-            entries = [{"snippet": s} for s in prompt_snippets]
+            # Extract snippets from entry dicts for prompt_snippets
+            prompt_snippets = [str(e.get("snippet", "")) for e in entries]
             return RetrievedMemory(prompt_snippets=prompt_snippets, entries=entries)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug(

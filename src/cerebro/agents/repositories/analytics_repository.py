@@ -41,7 +41,7 @@ class AgentAnalyticsRepository:
     async def delete_older_than(self, cutoff: datetime) -> None:
         async with self._session_factory() as db_session:
             await db_session.execute(
-                AgentRuntimeEvent.__table__.delete().where(
+                AgentRuntimeEvent.__table__.delete().where(  # type: ignore[attr-defined]
                     AgentRuntimeEvent.created_at < cutoff
                 )
             )
@@ -73,8 +73,8 @@ class AgentAnalyticsRepository:
                 if before_id:
                     stmt = stmt.where(AgentRuntimeEvent.id != before_id)
                     stmt = stmt.where(
-                        tuple_(AgentRuntimeEvent.created_at, AgentRuntimeEvent.id)
-                        < tuple_(before, before_id)
+                        tuple_(AgentRuntimeEvent.created_at, AgentRuntimeEvent.id)  # type: ignore[arg-type]
+                        < tuple_(before, before_id)  # type: ignore[arg-type]
                     )
                 else:
                     stmt = stmt.where(AgentRuntimeEvent.created_at < before)
@@ -104,4 +104,4 @@ class AgentAnalyticsRepository:
                 stmt = stmt.where(AgentRuntimeEvent.event_type == event_type)
 
             result = await db_session.execute(stmt)
-            return result
+            return list(result.all())  # type: ignore[return-value]

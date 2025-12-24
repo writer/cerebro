@@ -130,13 +130,13 @@ class UserService:
         # Add user scopes
         for scope_name in scope_names:
             # Check if user already has this scope
-            stmt = select(UserScope).where(
+            user_scope_stmt = select(UserScope).where(
                 and_(
                     UserScope.user_id == user_id,
                     UserScope.scope_id == scope_dict[scope_name],
                 )
             )
-            existing = await self.db.scalar(stmt)
+            existing = await self.db.scalar(user_scope_stmt)
 
             if not existing:
                 user_scope = UserScope(
@@ -152,15 +152,15 @@ class UserService:
     async def remove_user_scopes(self, user_id: UUID, scope_names: List[str]) -> None:
         """Remove scopes from a user."""
         # Get scope IDs
-        stmt = select(Scope.scope_id).where(Scope.name.in_(scope_names))
-        scope_ids = await self.db.scalars(stmt)
+        scope_id_stmt = select(Scope.scope_id).where(Scope.name.in_(scope_names))
+        scope_ids = await self.db.scalars(scope_id_stmt)
         scope_id_list = list(scope_ids)
 
         # Delete user scopes
-        stmt = select(UserScope).where(
+        user_scope_stmt = select(UserScope).where(
             and_(UserScope.user_id == user_id, UserScope.scope_id.in_(scope_id_list))
         )
-        user_scopes = await self.db.scalars(stmt)
+        user_scopes = await self.db.scalars(user_scope_stmt)
 
         for user_scope in user_scopes:
             await self.db.delete(user_scope)

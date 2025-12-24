@@ -326,39 +326,39 @@ class ForensicReplayEngine:
         self, resource: Resource, config: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Assess security posture of resource at historical point."""
-        posture = {
-            "overall_score": 0.5,  # Default neutral
-            "issues": [],
-            "strengths": [],
-        }
-
+        issues: List[str] = []
+        strengths: List[str] = []
+        overall_score = 0.5
         if resource.resource_type == "aws.s3.bucket":
             # Check encryption
             if not config.get("encryption", {}).get("enabled"):
-                posture["issues"].append("unencrypted")
-                posture["overall_score"] -= 0.2
+                issues.append("unencrypted")
+                overall_score -= 0.2
             else:
-                posture["strengths"].append("encrypted")
+                strengths.append("encrypted")
 
             # Check public access
             if config.get("policyAllowsPublic") or config.get("aclAllowsPublic"):
-                posture["issues"].append("public_access")
-                posture["overall_score"] -= 0.4
+                issues.append("public_access")
+                overall_score -= 0.4
             else:
-                posture["strengths"].append("private")
+                strengths.append("private")
 
         elif resource.resource_type == "github.repo":
             # Check visibility and protection
             if config.get("visibility") == "public":
                 if not config.get("branchProtection", {}).get("requirePR"):
-                    posture["issues"].append("public_no_protection")
-                    posture["overall_score"] -= 0.3
+                    issues.append("public_no_protection")
+                    overall_score -= 0.3
 
             if config.get("branchProtection", {}).get("requirePR"):
-                posture["strengths"].append("branch_protection")
+                strengths.append("branch_protection")
 
-        posture["overall_score"] = max(0.0, min(1.0, posture["overall_score"]))
-        return posture
+        return {
+            "overall_score": max(0.0, min(1.0, overall_score)),
+            "issues": issues,
+            "strengths": strengths,
+        }
 
     def _generate_security_summary(
         self,
@@ -481,7 +481,7 @@ class ForensicReplayEngine:
         focus_resource: Optional[UUID] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Find all changes that occurred during a time period."""
-        changes = {
+        changes: Dict[str, List[Dict[str, Any]]] = {
             "configuration_changes": [],
             "permission_changes": [],
             "principal_changes": [],
@@ -586,11 +586,14 @@ class ForensicReplayEngine:
         changes: Dict[str, List[Dict[str, Any]]],
     ) -> Dict[str, Any]:
         """Analyze changes to understand what happened during incident."""
-        analysis = {
+        risk_escalations: List[Dict[str, Any]] = []
+        timeline: List[Dict[str, Any]] = []
+        potential_causes: List[str] = []
+        analysis: Dict[str, Any] = {
             "change_summary": {},
-            "risk_escalations": [],
-            "timeline": [],
-            "potential_causes": [],
+            "risk_escalations": risk_escalations,
+            "timeline": timeline,
+            "potential_causes": potential_causes,
         }
 
         # Summarize change types
@@ -609,7 +612,7 @@ class ForensicReplayEngine:
         )
 
         if incident_critical > baseline_critical:
-            analysis["risk_escalations"].append(
+            risk_escalations.append(
                 {
                     "type": "new_critical_findings",
                     "count": incident_critical - baseline_critical,
@@ -618,7 +621,7 @@ class ForensicReplayEngine:
             )
 
         # Create timeline
-        all_events = []
+        all_events: List[Dict[str, Any]] = []
 
         for change in changes["configuration_changes"]:
             all_events.append(
@@ -639,13 +642,13 @@ class ForensicReplayEngine:
             )
 
         # Sort timeline by timestamp
-        analysis["timeline"] = sorted(all_events, key=lambda x: x["timestamp"])
+        timeline.extend(sorted(all_events, key=lambda x: x["timestamp"]))
 
         # Identify potential causes
         if changes["permission_changes"]:
             admin_grants = [c for c in changes["permission_changes"] if c["is_admin"]]
             if admin_grants:
-                analysis["potential_causes"].append(
+                potential_causes.append(
                     "Admin privileges granted during incident window"
                 )
 
@@ -656,7 +659,7 @@ class ForensicReplayEngine:
                 if "s3" in c["resource_type"]
             ]
             if public_changes:
-                analysis["potential_causes"].append("S3 configuration changes detected")
+                potential_causes.append("S3 configuration changes detected")
 
         return analysis
 

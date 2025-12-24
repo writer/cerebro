@@ -636,6 +636,8 @@ class QueryEngine:
 
         # Single table execution
         table = self.registry.get_table(plan.table_name)
+        if table is None:
+            raise ValueError(f"Table {plan.table_name} not found")
 
         # Create query context
         ctx = QueryContext(
@@ -685,7 +687,7 @@ class QueryEngine:
             config={},  # Empty config for now
         )
 
-        for table_name in plan.wildcard_tables:
+        for table_name in (plan.wildcard_tables or []):
             try:
                 table = self.registry.get_table(table_name)
                 if not table:
@@ -715,7 +717,7 @@ class QueryEngine:
                 continue
 
         logger.info(
-            f"Wildcard query collected {len(all_rows)} total rows from {len(plan.wildcard_tables)} tables"
+            f"Wildcard query collected {len(all_rows)} total rows from {len(plan.wildcard_tables or [])} tables"
         )
 
         # Apply sorting at engine level across all results

@@ -163,7 +163,7 @@ class QuarantineManager:
         )
 
         # Create cryptographic attestation for quarantine
-        attestation = await self.attestation_service.attest_finding_suppression(
+        attestation = await self.attestation_service.attest_finding_suppression(  # type: ignore[attr-defined]
             finding_id=action.action_id,
             actor="auto_quarantine_system",
             suppression_reason=f"OAuth app quarantined: {reason.value} - {action.toxic_patterns}",
@@ -199,7 +199,7 @@ class QuarantineManager:
     ) -> QuarantineReason:
         """Determine primary reason for quarantine."""
         # Find highest severity pattern
-        highest_severity = max(
+        highest_severity = max(  # type: ignore[type-var]
             pattern.toxicity_level for pattern in toxic_result.toxic_patterns
         )
 
@@ -294,7 +294,7 @@ class QuarantineManager:
         restoration_request = await self._load_restoration_request(restoration_id)
 
         # Create approval attestation
-        attestation = await self.attestation_service.attest_finding_suppression(
+        attestation = await self.attestation_service.attest_finding_suppression(  # type: ignore[attr-defined]
             finding_id=restoration_request["restoration_id"],
             actor=approver,
             suppression_reason=f"OAuth app restoration approved with conditions: {approval_conditions}",
@@ -337,32 +337,34 @@ class QuarantineManager:
 
         Integrates with provider APIs to actually revoke app access.
         """
-        execution_result = {
+        provider_responses: dict[str, Any] = {}
+        errors: list[str] = []
+        execution_result: dict[str, Any] = {
             "action_id": action.action_id,
             "app_id": action.app_id,
             "executed_at": datetime.now().isoformat(),
             "success": False,
-            "provider_responses": {},
-            "errors": [],
+            "provider_responses": provider_responses,
+            "errors": errors,
         }
 
         try:
             # Execute provider-specific quarantine
             if action.provider == "google_workspace":
                 result = await self._quarantine_google_app(action.app_id)
-                execution_result["provider_responses"]["google"] = result
+                provider_responses["google"] = result
 
             elif action.provider == "m365":
                 result = await self._quarantine_m365_app(action.app_id)
-                execution_result["provider_responses"]["m365"] = result
+                provider_responses["m365"] = result
 
             elif action.provider == "github":
                 result = await self._quarantine_github_app(action.app_id)
-                execution_result["provider_responses"]["github"] = result
+                provider_responses["github"] = result
 
             elif action.provider == "slack":
                 result = await self._quarantine_slack_app(action.app_id)
-                execution_result["provider_responses"]["slack"] = result
+                provider_responses["slack"] = result
 
             execution_result["success"] = True
 
@@ -381,7 +383,7 @@ class QuarantineManager:
 
         except Exception as e:
             logger.error(f"Failed to execute quarantine for {action.app_id}: {e}")
-            execution_result["errors"].append(str(e))
+            errors.append(str(e))
 
         return execution_result
 

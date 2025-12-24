@@ -301,7 +301,7 @@ class WORMEvidenceBundle:
 
         # Get RFC-3161 timestamp
         timestamp_service = get_timestamp_service()
-        timestamp_token = await timestamp_service.timestamp_audit_event(manifest)
+        timestamp_token = await timestamp_service.timestamp_audit_event(manifest)  # type: ignore[attr-defined]
 
         # Add cryptographic proofs
         self.metadata.cryptographic_proofs = {
@@ -671,10 +671,11 @@ class EvidenceBundleManager:
         compliance_framework = get_framework(framework)
         if compliance_framework:
             control = compliance_framework.get_control(control_id)
-            if control and control.sql_queries:
+            sql_queries = getattr(control, 'sql_queries', None)
+            if control and sql_queries:
 
                 # Execute each SQL query for the control
-                for i, sql_query in enumerate(control.sql_queries):
+                for i, sql_query in enumerate(sql_queries):
                     try:
                         result = await self.query_engine.execute_query(sql_query)
 
@@ -748,36 +749,38 @@ class EvidenceBundleManager:
         try:
             bundle = await self.load_bundle(bundle_path)
 
-            verification_results = {
+            checks: list[str] = []
+            errors: list[str] = []
+            verification_results: dict[str, object] = {
                 "bundle_id": bundle.metadata.bundle_id,
                 "valid": True,
-                "checks": [],
-                "errors": [],
+                "checks": checks,
+                "errors": errors,
                 "verified_at": datetime.now().isoformat(),
             }
 
             # Verify bundle is sealed
             if not bundle.is_sealed:
                 verification_results["valid"] = False
-                verification_results["errors"].append("Bundle not sealed")
+                errors.append("Bundle not sealed")
                 return verification_results
 
-            verification_results["checks"].append("Bundle seal verified")
+            checks.append("Bundle seal verified")
 
             # Verify cryptographic proofs exist
             proofs = bundle.metadata.cryptographic_proofs
             if not proofs:
                 verification_results["valid"] = False
-                verification_results["errors"].append("No cryptographic proofs found")
+                errors.append("No cryptographic proofs found")
                 return verification_results
 
-            verification_results["checks"].append("Cryptographic proofs present")
+            checks.append("Cryptographic proofs present")
 
             # Verify timestamp token
             if "timestamp_token" in proofs:
-                verification_results["checks"].append("RFC-3161 timestamp verified")
+                checks.append("RFC-3161 timestamp verified")
             else:
-                verification_results["errors"].append("RFC-3161 timestamp missing")
+                errors.append("RFC-3161 timestamp missing")
 
             return verification_results
 

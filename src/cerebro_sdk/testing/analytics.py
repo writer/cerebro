@@ -64,8 +64,8 @@ class StubRuntimeHealthClient(RuntimeHealthClient):
 
     _records: Sequence[RuntimeHealthRecord]
 
-    def __init__(self, records: Sequence[RuntimeHealthRecord]) -> None:
-        # type: ignore[call-arg] - parent expects AsyncSession but stubbing for tests
+    def __init__(self, records: Sequence[RuntimeHealthRecord]) -> None:  # type: ignore[misc]
+        # parent expects AsyncSession but stubbing for tests
         self._records = list(records)
 
     async def summarize(self, *, hours: int = 24):  # type: ignore[override]

@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # type: ignore[import-not-found]
 from io import BytesIO
 import base64
 
@@ -843,16 +843,90 @@ class ComplianceAnalytics:
 
         return f"data:image/png;base64,{image_base64}"
 
+    # Stub implementations for missing methods
+    def _analyze_evidence_coverage_for_audit(
+        self, framework: str, start: datetime, end: datetime
+    ) -> Dict[str, Any]:
+        """Analyze evidence coverage for audit period."""
+        return {"coverage_score": 0.0, "gaps": []}
+
+    def _get_control_test_results(
+        self, framework: str, start: datetime, end: datetime
+    ) -> Dict[str, Any]:
+        """Get control test results for period."""
+        return {"tests": [], "pass_rate": 0.0}
+
+    def _identify_audit_gaps(
+        self, framework: str, coverage: Dict[str, Any], results: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Identify gaps in audit readiness."""
+        return []
+
+    def _calculate_audit_readiness_score(
+        self, coverage: Dict[str, Any], results: Dict[str, Any], gaps: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Calculate overall audit readiness score."""
+        return {"score": 0.0, "package_completeness": 0.0}
+
+    def _estimate_remediation_timeline(
+        self, gaps: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Estimate timeline for gap remediation."""
+        return {"estimated_days": 0, "items": []}
+
+    def _get_framework_coverage_summary(
+        self, framework: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get framework coverage summary."""
+        return {"covered": 0, "total": 0, "percentage": 0.0}
+
+    def _get_upcoming_audit_schedule(self) -> List[Dict[str, Any]]:
+        """Get upcoming audit schedule."""
+        return []
+
+    def _create_board_appendix(
+        self, report_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Create board appendix for report."""
+        return {}
+
+    def _identify_key_accomplishments(
+        self, report_data: Dict[str, Any]
+    ) -> List[str]:
+        """Identify key accomplishments for reporting period."""
+        return []
+
+    def _identify_areas_of_concern(
+        self, report_data: Dict[str, Any], risk_data: Optional[Dict[str, Any]] = None
+    ) -> List[str]:
+        """Identify areas of concern."""
+        return []
+
+    def _generate_strategic_recommendations(
+        self, report_data: Dict[str, Any]
+    ) -> List[str]:
+        """Generate strategic recommendations."""
+        return []
+
+    def _export_to_pdf(
+        self, report_data: Dict[str, Any], template_name: str
+    ) -> bytes:
+        """Export report to PDF format."""
+        raise NotImplementedError("PDF export not yet implemented")
+
+    def _export_to_excel(
+        self, report_data: Dict[str, Any]
+    ) -> bytes:
+        """Export report to Excel format."""
+        raise NotImplementedError("Excel export not yet implemented")
+
+    def _export_to_html(
+        self, report_data: Dict[str, Any], template_name: str
+    ) -> str:
+        """Export report to HTML format."""
+        raise NotImplementedError("HTML export not yet implemented")
+
     # Additional helper methods would be implemented for:
-    # - _export_to_pdf()
-    # - _export_to_excel()
-    # - _export_to_html()
-    # - _get_framework_coverage_summary()
-    # - _get_upcoming_audit_schedule()
-    # - _create_board_appendix()
-    # - _identify_key_accomplishments()
-    # - _identify_areas_of_concern()
-    # - _generate_strategic_recommendations()
     # And many more supporting functions...
 
 

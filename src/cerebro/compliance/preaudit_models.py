@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
@@ -16,7 +16,7 @@ from sqlalchemy.types import JSON
 from cerebro.core.database import Base, engine
 
 
-def _json_type() -> Union[JSON, JSONB]:
+def _json_type() -> type:
     """Return a JSON-capable column type that works for both SQLite and Postgres."""
 
     # PostgreSQL engines expose the PGUUID driver name at runtime, but SQLAlchemy

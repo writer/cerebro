@@ -172,7 +172,7 @@ class PathAnalyzer:
 
     async def _find_k_step_escalation_paths(self, query: PathQuery) -> List[AttackPath]:
         """Find paths with exactly k steps for escalation analysis."""
-        paths = []
+        paths: List[AttackPath] = []
 
         if not query.source_principal:
             return paths
@@ -231,7 +231,7 @@ class PathAnalyzer:
 
     async def _find_all_simple_paths(self, query: PathQuery) -> List[AttackPath]:
         """Find all simple paths up to maximum length."""
-        paths = []
+        paths: List[AttackPath] = []
 
         if not query.source_principal or not query.target_resource:
             return paths
@@ -261,7 +261,7 @@ class PathAnalyzer:
         self, query: PathQuery
     ) -> List[AttackPath]:
         """Find paths that represent privilege escalation."""
-        paths = []
+        paths: List[AttackPath] = []
 
         if not query.source_principal:
             return paths
@@ -640,7 +640,7 @@ class PathAnalyzer:
             all_mitigations.extend(path.mitigations)
 
         # Count frequency and return top recommendations
-        mitigation_counts = {}
+        mitigation_counts: Dict[str, int] = {}
         for mitigation in all_mitigations:
             mitigation_counts[mitigation] = mitigation_counts.get(mitigation, 0) + 1
 

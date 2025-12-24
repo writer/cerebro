@@ -340,44 +340,44 @@ class TransparencyLog:
         """Retrieve log entries with optional filtering."""
         async with async_session_factory() as db:
             stmt = select(AuditEvent).where(
-                AuditEvent.resource_type == "transparency_log"
+                AuditEvent.action == "transparency_log"
             )
 
             if start_sequence is not None:
                 stmt = stmt.where(
-                    AuditEvent.metadata["sequence_number"].as_integer()
+                    AuditEvent.raw["sequence_number"].as_integer()
                     >= start_sequence
                 )
 
             if end_sequence is not None:
                 stmt = stmt.where(
-                    AuditEvent.metadata["sequence_number"].as_integer() <= end_sequence
+                    AuditEvent.raw["sequence_number"].as_integer() <= end_sequence
                 )
 
             if entry_type is not None:
                 stmt = stmt.where(
-                    AuditEvent.metadata["entry_type"].as_string() == entry_type.value
+                    AuditEvent.raw["entry_type"].as_string() == entry_type.value
                 )
 
-            stmt = stmt.order_by(AuditEvent.metadata["sequence_number"])
+            stmt = stmt.order_by(AuditEvent.raw["sequence_number"])
 
             events = await db.scalars(stmt)
 
             # Convert to LogEntry objects
-            entries = []
+            entries: List[LogEntry] = []
             for event in events:
-                metadata = event.metadata
+                raw = event.raw
                 entry = LogEntry(
-                    sequence_number=metadata["sequence_number"],
-                    timestamp=event.timestamp,
-                    entry_type=LogEntryType(metadata["entry_type"]),
-                    actor=event.principal_id,
-                    resource_id=event.resource_id,
+                    sequence_number=raw["sequence_number"],
+                    timestamp=event.occurred_at,
+                    entry_type=LogEntryType(raw["entry_type"]),
+                    actor=event.actor_external_id or "",
+                    resource_id=event.resource_external_id or "",
                     action=event.action,
-                    details=metadata.get("details", {}),
-                    previous_hash=metadata["previous_hash"],
-                    entry_hash=metadata["entry_hash"],
-                    signature=metadata.get("signature"),
+                    details=raw.get("details", {}),
+                    previous_hash=raw["previous_hash"],
+                    entry_hash=raw["entry_hash"],
+                    signature=raw.get("signature"),
                 )
                 entries.append(entry)
 
@@ -396,11 +396,12 @@ class TransparencyLog:
         if not entries:
             return {"valid": True, "message": "No entries to verify"}
 
-        verification_results = {
+        failed_entries: List[Dict[str, Any]] = []
+        verification_results: Dict[str, Any] = {
             "valid": True,
             "total_entries": len(entries),
             "verified_entries": 0,
-            "failed_entries": [],
+            "failed_entries": failed_entries,
             "hash_chain_valid": True,
             "signature_check_passed": 0,
             "signature_check_failed": 0,
@@ -413,7 +414,7 @@ class TransparencyLog:
             if previous_hash is not None and entry.previous_hash != previous_hash:
                 verification_results["valid"] = False
                 verification_results["hash_chain_valid"] = False
-                verification_results["failed_entries"].append(
+                failed_entries.append(
                     {
                         "sequence": entry.sequence_number,
                         "error": "Hash chain broken",
@@ -441,7 +442,7 @@ class TransparencyLog:
 
             if expected_hash != entry.entry_hash:
                 verification_results["valid"] = False
-                verification_results["failed_entries"].append(
+                failed_entries.append(
                     {
                         "sequence": entry.sequence_number,
                         "error": "Entry hash mismatch",
@@ -452,15 +453,18 @@ class TransparencyLog:
                 continue
 
             # Verify signature
+            sig_passed = int(verification_results["signature_check_passed"])
+            sig_failed = int(verification_results["signature_check_failed"])
+            verified = int(verification_results["verified_entries"])
             if entry.signature and self.verify_entry_signature(entry):
-                verification_results["signature_check_passed"] += 1
+                verification_results["signature_check_passed"] = sig_passed + 1
             elif entry.signature:
-                verification_results["signature_check_failed"] += 1
-                verification_results["failed_entries"].append(
+                verification_results["signature_check_failed"] = sig_failed + 1
+                failed_entries.append(
                     {"sequence": entry.sequence_number, "error": "Invalid signature"}
                 )
 
-            verification_results["verified_entries"] += 1
+            verification_results["verified_entries"] = verified + 1
             previous_hash = entry.entry_hash
 
         return verification_results
@@ -551,7 +555,7 @@ class TransparencyLog:
         async with async_session_factory() as db:
             # Count entries by type
             stmt = select(AuditEvent).where(
-                AuditEvent.resource_type == "transparency_log"
+                AuditEvent.action == "transparency_log"
             )
 
             all_entries = await db.scalars(stmt)
@@ -566,23 +570,23 @@ class TransparencyLog:
                 }
 
             # Group by entry type
-            entry_types = {}
+            entry_types: Dict[str, int] = {}
             latest_sequence = 0
-            earliest_time = None
-            latest_time = None
+            earliest_time: Optional[datetime] = None
+            latest_time: Optional[datetime] = None
 
             for event in entries_list:
-                metadata = event.metadata
-                entry_type = metadata.get("entry_type", "unknown")
-                sequence_num = metadata.get("sequence_number", 0)
+                raw = event.raw
+                entry_type = raw.get("entry_type", "unknown")
+                sequence_num = raw.get("sequence_number", 0)
 
                 entry_types[entry_type] = entry_types.get(entry_type, 0) + 1
                 latest_sequence = max(latest_sequence, sequence_num)
 
-                if earliest_time is None or event.timestamp < earliest_time:
-                    earliest_time = event.timestamp
-                if latest_time is None or event.timestamp > latest_time:
-                    latest_time = event.timestamp
+                if earliest_time is None or event.occurred_at < earliest_time:
+                    earliest_time = event.occurred_at
+                if latest_time is None or event.occurred_at > latest_time:
+                    latest_time = event.occurred_at
 
             return {
                 "total_entries": len(entries_list),

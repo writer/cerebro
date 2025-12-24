@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, DateTime, Text, Float
 
 from cerebro.core.database import Base
-from .test_registry import TestStatus
+from cerebro.compliance.control_tests import TestStatus
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ class TestExecutor:
     def __init__(self, db_session: AsyncSession):
         """Initialize test executor."""
         self.db = db_session
-        self._execution_context = {}
+        self._execution_context: Dict[str, Any] = {}
 
     async def execute_test(
         self,
@@ -347,7 +347,7 @@ class TestExecutor:
                     )
                 )
             else:
-                test_results.append(result)
+                test_results.append(result)  # type: ignore[arg-type]
 
         return test_results
 
@@ -440,19 +440,19 @@ class TestExecutor:
         ]
         if completed_executions:
             avg_execution_time = sum(
-                e.execution_time_ms for e in completed_executions
+                e.execution_time_ms or 0.0 for e in completed_executions
             ) / len(completed_executions)
         else:
             avg_execution_time = 0.0
 
         # Group by status
-        status_counts = {}
+        status_counts: Dict[str, int] = {}
         for execution in executions:
             status = execution.test_status or "unknown"
             status_counts[status] = status_counts.get(status, 0) + 1
 
         # Group by environment
-        env_counts = {}
+        env_counts: Dict[str, int] = {}
         for execution in executions:
             env = execution.environment
             env_counts[env] = env_counts.get(env, 0) + 1

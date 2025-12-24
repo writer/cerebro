@@ -76,7 +76,7 @@ class SmartFindingSummarizerTool(StructuredTool):
     # Read-only tool, safe for all agents
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         finding_id: str,
@@ -121,8 +121,8 @@ class SmartFindingSummarizerTool(StructuredTool):
                 business_impact = self._explain_business_impact(finding, audience)
 
                 # Extract technical details
-                technical_details = {
-                    "resource_type": finding.resource_type,
+                technical_details: dict[str, object] = {
+                    "resource_type": getattr(finding, "resource_type", None),
                     "resource_id": finding.resource_id,
                     "provider": finding.provider,
                     "rule_id": str(finding.rule_id) if finding.rule_id else None,
@@ -189,17 +189,19 @@ class SmartFindingSummarizerTool(StructuredTool):
         if finding.title:
             summary_parts.append(finding.title)
 
-        if finding.description:
+        description = getattr(finding, "description", None)
+        if description:
             # Simplify technical jargon
-            desc = finding.description
+            desc = description
             desc = desc.replace("IAM policy", "access permissions")
             desc = desc.replace("S3 bucket", "cloud storage")
             desc = desc.replace("principal", "user or service")
             summary_parts.append(desc)
 
         # Add context about what was detected
-        if finding.resource_type:
-            resource_friendly = self._humanize_resource_type(finding.resource_type)
+        resource_type = getattr(finding, "resource_type", None)
+        if resource_type:
+            resource_friendly = self._humanize_resource_type(resource_type)
             summary_parts.append(f"This affects a {resource_friendly}.")
 
         summary = " ".join(summary_parts)
@@ -254,7 +256,8 @@ class SmartFindingSummarizerTool(StructuredTool):
         steps = []
 
         # Generic steps based on finding type
-        if finding.resource_type and "s3" in finding.resource_type.lower():
+        resource_type = getattr(finding, "resource_type", None)
+        if resource_type and "s3" in resource_type.lower():
             steps = [
                 "Review the S3 bucket access policies and permissions",
                 "Remove any public access grants unless explicitly required for business purposes",
@@ -262,7 +265,7 @@ class SmartFindingSummarizerTool(StructuredTool):
                 "Set up access logging to monitor future access patterns",
                 "Verify that MFA Delete is enabled for production buckets",
             ]
-        elif finding.resource_type and "iam" in finding.resource_type.lower():
+        elif resource_type and "iam" in resource_type.lower():
             steps = [
                 "Review the IAM policy or role permissions",
                 "Apply the principle of least privilege - remove unnecessary permissions",
@@ -272,7 +275,7 @@ class SmartFindingSummarizerTool(StructuredTool):
             ]
         elif (
             "oauth" in str(finding.title).lower()
-            or "oauth" in str(finding.description).lower()
+            or "oauth" in str(getattr(finding, "description", "")).lower()
         ):
             steps = [
                 "Review the OAuth app and its requested scopes",
@@ -355,7 +358,7 @@ class SmartFindingSummarizerTool(StructuredTool):
 
 **Risk Assessment:** {business_impact}
 
-**Resource:** {finding.resource_type} - {finding.resource_id}
+**Resource:** {getattr(finding, "resource_type", "Unknown")} - {finding.resource_id}
 **Provider:** {finding.provider}
 **First Detected:** {finding.first_seen.isoformat() if finding.first_seen else 'Unknown'}
             """.strip()

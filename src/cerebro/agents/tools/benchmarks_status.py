@@ -56,7 +56,7 @@ class BenchmarksStatusTool(StructuredTool):
     output_model = BenchmarksStatusOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         include_details: bool,

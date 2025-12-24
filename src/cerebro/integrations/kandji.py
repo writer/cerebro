@@ -85,7 +85,8 @@ class KandjiClient:
                 for item in results:
                     if isinstance(item, dict):
                         yield item
-            url = payload.get("next") if isinstance(payload, dict) else None
+            next_url = payload.get("next") if isinstance(payload, dict) else None
+            url = str(next_url) if next_url else None  # type: ignore[assignment]
             params = None
 
     async def iter_vulnerability_detections(
@@ -105,7 +106,8 @@ class KandjiClient:
                 for item in results:
                     if isinstance(item, dict):
                         yield item
-            url = payload.get("next") if isinstance(payload, dict) else None
+            next_url = payload.get("next") if isinstance(payload, dict) else None
+            url = str(next_url) if next_url else None  # type: ignore[assignment]
             params = None
 
     async def get_device_details(self, device_id: str) -> Optional[Dict[str, Any]]:
@@ -169,7 +171,8 @@ class KandjiClient:
                 for item in events:
                     if isinstance(item, dict):
                         yield item
-            url = payload.get("next") if isinstance(payload, dict) else None
+            next_url = payload.get("next") if isinstance(payload, dict) else None
+            url = str(next_url) if next_url else None  # type: ignore[assignment]
             params = {}
 
     async def iter_patch_updates(
@@ -187,7 +190,8 @@ class KandjiClient:
                 for item in detections:
                     if isinstance(item, dict):
                         yield item
-            url = payload.get("next") if isinstance(payload, dict) else None
+            next_url = payload.get("next") if isinstance(payload, dict) else None
+            url = str(next_url) if next_url else None  # type: ignore[assignment]
             params = None
 
     async def _request_json(
@@ -516,11 +520,8 @@ class KandjiIngestion:
         if not serial:
             return None
 
-        mdm_device = (
-            device.get("mdm_device")
-            if isinstance(device.get("mdm_device"), dict)
-            else {}
-        )
+        mdm_raw = device.get("mdm_device")  # type: ignore[union-attr]
+        mdm_device: dict[str, Any] = mdm_raw if isinstance(mdm_raw, dict) else {}
         hostname = (
             mdm_device.get("name")
             or device.get("device_name")

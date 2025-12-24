@@ -10,7 +10,7 @@ SDKs and the bulk database helpers.
 
 import asyncio
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 import logging
@@ -61,12 +61,8 @@ class CollectionResult:
     principals_discovered: int = 0
     config_snapshots: int = 0
     iam_edges: int = 0
-    errors: List[str] = None
+    errors: List[str] = field(default_factory=list)
     duration_seconds: float = 0.0
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
 
 
 class ConfigCollector:

@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 class GCPClient:
     def __init__(self, project_id: Optional[str] = None):
         self.project_id = project_id
-        self._compute_client = None
-        self._storage_client = None
-        self._iam_client = None
-        self._credentials = None
+        self._compute_client: Optional[Any] = None
+        self._storage_client: Optional[Any] = None
+        self._iam_client: Optional[Any] = None
+        self._credentials: Optional[Any] = None
 
     async def authenticate(self):
         """Authenticate with GCP using default credentials."""
@@ -65,7 +65,7 @@ class GCPClient:
         """Get storage client."""
         if not self._storage_client:
             try:
-                from google.cloud import storage
+                from google.cloud import storage  # type: ignore[attr-defined]
 
                 if not self._credentials:
                     await self.authenticate()
@@ -206,7 +206,7 @@ class GCPClient:
             # Get project-level IAM policy
             from google.cloud import resourcemanager_v3
 
-            request = resourcemanager_v3.GetIamPolicyRequest(
+            request = resourcemanager_v3.GetIamPolicyRequest(  # type: ignore[attr-defined]
                 resource=f"projects/{self.project_id}"
             )
 
@@ -302,7 +302,8 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch GCE instances from GCP API."""
-        client = GCPClient(project_id=ctx.config.get("gcp_project_id"))
+        config = ctx.config or {}
+        client = GCPClient(project_id=config.get("gcp_project_id"))
 
         try:
             # Authenticate if needed
@@ -434,7 +435,8 @@ class GCPStorageBucketTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch storage buckets from GCP API."""
-        client = GCPClient(project_id=ctx.config.get("gcp_project_id"))
+        config = ctx.config or {}
+        client = GCPClient(project_id=config.get("gcp_project_id"))
 
         try:
             # Authenticate if needed
@@ -542,7 +544,8 @@ class GCPIAMPolicyTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch IAM policy bindings from GCP API."""
-        client = GCPClient(project_id=ctx.config.get("gcp_project_id"))
+        config = ctx.config or {}
+        client = GCPClient(project_id=config.get("gcp_project_id"))
 
         try:
             # Authenticate if needed

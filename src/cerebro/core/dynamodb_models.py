@@ -743,7 +743,7 @@ class AuditEvent(DynamoDBModel):
             self.provider.value if isinstance(self.provider, Enum) else self.provider
         )
 
-        item = {
+        item: Dict[str, Any] = {
             "PK": self.get_pk(),
             "SK": self.get_sk(),
             "entity_type": EntityType.AUDIT_EVENT.value,

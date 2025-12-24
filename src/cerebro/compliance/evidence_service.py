@@ -444,7 +444,8 @@ class EvidenceService:
             # Perform cryptographic sealing if crypto service available
             if self.crypto_service:
                 # Get evidence content for signing
-                content, _ = await self.repository.get_evidence(evidence_id)
+                result = await self.repository.get_evidence(evidence_id)
+                content = result[0] if result else None
                 if content:
                     signature = await self.crypto_service.sign_data(
                         content, evidence_id
@@ -454,7 +455,7 @@ class EvidenceService:
                             from .models import CryptographicProof
 
                             metadata.crypto_proof = CryptographicProof(
-                                content_hash=metadata.content_hash
+                                content_hash=metadata.content_hash or ""
                             )
                         metadata.crypto_proof.signature = signature
                         metadata.crypto_proof.signature_algorithm = "RSA-PSS-SHA256"
@@ -632,7 +633,7 @@ class EvidenceQueryService:
         category: Optional[EvidenceCategory] = None,
     ) -> List[BaseEvidenceMetadata]:
         """Search evidence with multiple filters."""
-        filters = {}
+        filters: dict[str, Any] = {}
 
         if framework_name:
             filters["framework_name"] = framework_name

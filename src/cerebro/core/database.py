@@ -73,7 +73,7 @@ if _engine_url.drivername.startswith("sqlite"):
         try:
             from cerebro.agents import models as agent_models
         except Exception:
-            agent_models = None
+            agent_models = None  # type: ignore[assignment]
 
         if agent_models is not None and hasattr(agent_models, "Base"):
             agent_models.Base.metadata.create_all(bind=connection)

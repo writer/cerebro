@@ -117,6 +117,8 @@ class SlackRequestParser:
     ) -> None:
         if not timestamp or not signature:
             raise SlackCommandError("Missing Slack signature headers.")
+        if not self.signing_secret:
+            raise SlackCommandError("Signing secret not configured.")
 
         try:
             request_ts = int(timestamp)

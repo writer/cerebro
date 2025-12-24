@@ -102,7 +102,8 @@ class AttackGraphScoring:
         base = self._principal_config.get("base", 0.5)
         if principal.principal_type == "service_account":
             base += self._principal_config.get("service_account_bonus", 0.2)
-        if not principal.is_active:
+        is_active = getattr(principal, "is_active", True)
+        if not is_active:
             base += self._principal_config.get("inactive_bonus", 0.3)
         if principal.provider and principal.provider != "internal":
             base += self._principal_config.get("external_bonus", 0.1)
@@ -111,7 +112,8 @@ class AttackGraphScoring:
     def principal_criticality(self, principal: Principal) -> str:
         if principal.principal_type == "service_account":
             return "high"
-        if not principal.is_active:
+        is_active = getattr(principal, "is_active", True)
+        if not is_active:
             return "medium"
         return "low"
 

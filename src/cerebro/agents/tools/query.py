@@ -89,7 +89,7 @@ class QueryTool(Tool):
                     # Query recent configuration changes - must join through resource to get org
                     from cerebro.core.models import Resource, Account
 
-                    query = (
+                    config_query = (
                         select(ConfigSnapshot, Resource)
                         .join(
                             Resource, ConfigSnapshot.resource_id == Resource.resource_id
@@ -100,7 +100,7 @@ class QueryTool(Tool):
                         .limit(query_inputs.limit)
                     )
 
-                    result = await session.execute(query)
+                    result = await session.execute(config_query)
                     rows = result.all()
 
                     results = [
@@ -136,7 +136,7 @@ class QueryTool(Tool):
 
                     from cerebro.core.models import Account
 
-                    query = (
+                    audit_query = (
                         select(AuditEvent, Account)
                         .join(Account, AuditEvent.account_id == Account.account_id)
                         .where(Account.org_id == context.org_id)
@@ -144,13 +144,13 @@ class QueryTool(Tool):
                     )
 
                     if action_filter:
-                        query = query.where(AuditEvent.action == action_filter)
+                        audit_query = audit_query.where(AuditEvent.action == action_filter)
 
-                    query = query.order_by(AuditEvent.occurred_at.desc()).limit(
+                    audit_query = audit_query.order_by(AuditEvent.occurred_at.desc()).limit(
                         query_inputs.limit
                     )
 
-                    result = await session.execute(query)
+                    result = await session.execute(audit_query)
                     rows = result.all()
 
                     results = [
@@ -173,7 +173,7 @@ class QueryTool(Tool):
 
                     from cerebro.core.models import Account, IamEdge
 
-                    query = (
+                    iam_query = (
                         select(IamEdge)
                         .join(Account, IamEdge.account_id == Account.account_id)
                         .where(Account.org_id == context.org_id)
@@ -182,18 +182,18 @@ class QueryTool(Tool):
                     if principal_id_param:
                         try:
                             principal_uuid = UUID(principal_id_param)
-                            query = query.where(IamEdge.principal_id == principal_uuid)
+                            iam_query = iam_query.where(IamEdge.principal_id == principal_uuid)
                         except (ValueError, TypeError):
                             logger.warning(
                                 "Invalid principal_id format",
                                 principal_id=principal_id_param,
                             )
 
-                    query = query.order_by(IamEdge.effective_at.desc()).limit(
+                    iam_query = iam_query.order_by(IamEdge.effective_at.desc()).limit(
                         query_inputs.limit
                     )
 
-                    result = await session.execute(query)
+                    result = await session.execute(iam_query)
                     edges = result.scalars().all()
 
                     results = [

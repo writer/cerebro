@@ -248,7 +248,7 @@ class ServiceIdentityMapper:
 
     async def _discover_azure_managed_identity(self) -> List[ServiceIdentityEdge]:
         """Discover Azure Managed Identity relationships using real Azure APIs."""
-        edges = []
+        edges: list[ServiceIdentityEdge] = []
 
         try:
             # Get Azure Resource Manager client
@@ -432,7 +432,7 @@ class ServiceIdentityMapper:
         """Get role assignments for an Azure managed identity."""
         try:
             auth_client = azure_client["auth_client"]
-            assignments = []
+            assignments: list[dict[str, Any]] = []
 
             if not principal_id:
                 return assignments
@@ -522,7 +522,7 @@ class ServiceIdentityMapper:
 
     async def _discover_k8s_service_accounts(self) -> List[ServiceIdentityEdge]:
         """Discover Kubernetes service account mappings using real Kubernetes API."""
-        edges = []
+        edges: list[ServiceIdentityEdge] = []
 
         try:
             # Get Kubernetes client
@@ -641,7 +641,7 @@ class ServiceIdentityMapper:
     async def _get_k8s_client(self):
         """Get Kubernetes API client with proper authentication."""
         try:
-            from kubernetes import client, config
+            from kubernetes import client, config  # type: ignore[import-not-found]
 
             # Try to load kubeconfig or in-cluster config
             try:
@@ -783,7 +783,7 @@ class ServiceIdentityMapper:
         service_edges = await self.discover_service_identities(org_id)
 
         # Group by risk level
-        risk_distribution = {"low": [], "medium": [], "high": []}
+        risk_distribution: dict[str, list[dict[str, Any]]] = {"low": [], "medium": [], "high": []}
 
         for edge in service_edges:
             if edge.risk_score >= 0.7:

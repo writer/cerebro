@@ -395,7 +395,7 @@ class SecurityReviewManager:
             )
 
         # Count control statuses
-        status_counts = {}
+        status_counts: Dict[str, int] = {}
         remediation_count = 0
 
         for control in controls:
@@ -494,7 +494,7 @@ class SecurityReviewManager:
         metrics = await self.calculate_review_metrics(review_id)
 
         # Group controls by category
-        controls_by_category = {}
+        controls_by_category: Dict[str, List[Dict[str, Any]]] = {}
         for control in controls:
             category = control.control_category or "General"
             if category not in controls_by_category:

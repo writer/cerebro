@@ -71,7 +71,7 @@ class AttackPathSimulatorTool(StructuredTool):
     output_model = AttackPathSimulatorOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         start_principal: Optional[str] = None,
@@ -108,9 +108,9 @@ class AttackPathSimulatorTool(StructuredTool):
 
             async with async_session_factory() as db_session:
                 # Build attack graph for this organization
-                attack_graph = await get_attack_graph(
+                attack_graph = await get_attack_graph(  # type: ignore[call-arg]
                     db_session=db_session,
-                    org_id=context.org_id,
+                    org_id=str(context.org_id),
                     provider_scope=context.provider_scope,
                 )
 
@@ -240,7 +240,7 @@ class AttackPathSimulatorTool(StructuredTool):
         Identify nodes that appear in many attack paths.
         These are critical points to monitor/protect.
         """
-        node_frequency = {}
+        node_frequency: dict[str, int] = {}
 
         for path in paths:
             nodes_in_path = set()
@@ -343,7 +343,7 @@ class BlastRadiusTool(StructuredTool):
     input_model = Input
     output_model = Output
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         principal_id: str,
@@ -362,15 +362,15 @@ class BlastRadiusTool(StructuredTool):
                 from cerebro.attack_path.reachability import ReachabilityAnalyzer
 
                 # Build graph
-                attack_graph = await get_attack_graph(
+                attack_graph = await get_attack_graph(  # type: ignore[call-arg]
                     db_session=db_session,
-                    org_id=context.org_id,
+                    org_id=str(context.org_id),
                     provider_scope=context.provider_scope,
                 )
 
                 # Compute reachability
-                reachability = ReachabilityAnalyzer(attack_graph)
-                blast_radius = await reachability.compute_blast_radius(
+                reachability = ReachabilityAnalyzer(attack_graph)  # type: ignore[call-arg]
+                blast_radius = await reachability.compute_blast_radius(  # type: ignore[attr-defined]
                     principal_id=principal_id,
                     max_hops=max_hops,
                     include_transitive=include_transitive,
@@ -379,7 +379,7 @@ class BlastRadiusTool(StructuredTool):
                 # Identify high-value targets at risk
                 high_value_targets = []
                 for resource_id in blast_radius.reachable_resources[:20]:  # Top 20
-                    resource_node = attack_graph.get_node(resource_id)
+                    resource_node = attack_graph.get_node(resource_id)  # type: ignore[attr-defined]
                     if resource_node and resource_node.get("risk_score", 0) > 7:
                         high_value_targets.append(
                             {

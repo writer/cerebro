@@ -206,7 +206,7 @@ class ExceptionManager:
         exception.revalidation_due = exception.start_date + (exception_duration / 2)
 
         # Create cryptographic attestation
-        attestation = await self.attestation_service.attest_finding_suppression(
+        attestation = await self.attestation_service.attest_finding_suppression(  # type: ignore[attr-defined]
             finding_id=exception_id,
             actor=approver,
             suppression_reason=f"Access exception approved: {approval_justification}",
@@ -253,7 +253,7 @@ class ExceptionManager:
         exception.status = ExceptionStatus.REVOKED
 
         # Create revocation attestation
-        attestation = await self.attestation_service.attest_finding_suppression(
+        attestation = await self.attestation_service.attest_finding_suppression(  # type: ignore[attr-defined]
             finding_id=exception_id,
             actor=revoked_by,
             suppression_reason=f"Exception revoked: {revocation_reason}",
@@ -288,12 +288,15 @@ class ExceptionManager:
         # Find expired exceptions (would query from database)
         expired_exceptions = await self._get_expired_exceptions(org_id, current_time)
 
-        processed_results = {
+        auto_revoked: list[dict[str, str]] = []
+        revalidation_required: list[dict[str, str]] = []
+        errors: list[dict[str, str]] = []
+        processed_results: dict[str, Any] = {
             "processed_at": current_time.isoformat(),
             "expired_count": len(expired_exceptions),
-            "auto_revoked": [],
-            "revalidation_required": [],
-            "errors": [],
+            "auto_revoked": auto_revoked,
+            "revalidation_required": revalidation_required,
+            "errors": errors,
         }
 
         for exception in expired_exceptions:
@@ -306,13 +309,13 @@ class ExceptionManager:
                         f"Exception expired on {exception.expiry_date.isoformat()}",
                     )
 
-                    processed_results["auto_revoked"].append(
+                    auto_revoked.append(
                         {
                             "exception_id": exception.exception_id,
                             "principal_id": exception.principal_id,
                             "resource_id": exception.resource_id,
                             "expired_date": exception.expiry_date.isoformat(),
-                            "attestation_id": revoked_exception.attestation_id,
+                            "attestation_id": revoked_exception.attestation_id or "",
                         }
                     )
 
@@ -323,7 +326,7 @@ class ExceptionManager:
                     # Mark for revalidation
                     exception.status = ExceptionStatus.REVALIDATION_REQUIRED
 
-                    processed_results["revalidation_required"].append(
+                    revalidation_required.append(
                         {
                             "exception_id": exception.exception_id,
                             "principal_id": exception.principal_id,
@@ -335,7 +338,7 @@ class ExceptionManager:
                 logger.error(
                     f"Failed to process expired exception {exception.exception_id}: {e}"
                 )
-                processed_results["errors"].append(
+                errors.append(
                     {"exception_id": exception.exception_id, "error": str(e)}
                 )
 

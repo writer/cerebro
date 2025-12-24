@@ -121,7 +121,7 @@ class GetSystemContextTool(StructuredTool):
     # Read-only, safe for all agents
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         include_database: bool = True,
@@ -148,7 +148,7 @@ class GetSystemContextTool(StructuredTool):
                 session_id=context.session_id,
             )
 
-            output_data = {
+            output_data: dict[str, Any] = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
             }
 

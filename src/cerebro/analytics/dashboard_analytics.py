@@ -97,7 +97,7 @@ class DashboardAnalytics:
         self.time_series = TimeSeriesCollector(db_session)
         self.trend_analyzer = TrendAnalyzer(db_session)
         self.risk_engine = RiskScoringEngine(db_session)
-        self.identity_analyzer = IdentityAnalyzer(
+        self.identity_analyzer: IdentityAnalyzer = IdentityAnalyzer(
             db_session, core_db_session=core_db_session
         )
         self.repository = DashboardRepository(db_session)
@@ -349,7 +349,7 @@ class DashboardAnalytics:
 
         result = await self.db.execute(risks_query, {"org_id": org_id})
 
-        top_risks = []
+        top_risks: List[str] = []
         for row in result.fetchall():
             severity_text = (
                 "critical"
@@ -516,9 +516,10 @@ class DashboardAnalytics:
         )
 
         # Identity analytics
+        identity_method = getattr(self.identity_analyzer, "generate_identity_dashboard_data")
         identity_data = await self._track_component(
             "identity_analytics",
-            self.identity_analyzer.generate_identity_dashboard_data(org_id),
+            identity_method(org_id),
         )
 
         # Risk heatmap

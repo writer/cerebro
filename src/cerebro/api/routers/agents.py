@@ -861,6 +861,9 @@ async def get_review_queue_summary(
 
     from cerebro.agents.review_service import AgentReviewService
 
+    if current_user.org_id is None:
+        raise HTTPException(status_code=400, detail="Organization ID required")
+
     summary = await AgentReviewService.summarize_queue(
         org_id=current_user.org_id,
         db_session=db,
@@ -943,7 +946,7 @@ async def assign_review_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return _review_task_to_response(task)
+    return _review_task_to_response(task)  # type: ignore[arg-type]
 
 
 @router.post("/review-tasks/{task_id}/comments", response_model=Dict[str, Any])
@@ -1044,6 +1047,8 @@ async def get_sla_summary(
     """Get SLA compliance summary for all pending tasks."""
     from cerebro.agents.sla_service import SLAService
 
+    if current_user.org_id is None:
+        raise HTTPException(status_code=400, detail="Organization ID required")
     summary = await SLAService.get_sla_summary(org_id=current_user.org_id)
     return summary
 
@@ -1055,6 +1060,8 @@ async def get_breached_tasks(
     """Get all tasks that have breached their SLA."""
     from cerebro.agents.sla_service import SLAService
 
+    if current_user.org_id is None:
+        raise HTTPException(status_code=400, detail="Organization ID required")
     breached = await SLAService.get_breached_tasks(org_id=current_user.org_id)
     return [status.to_dict() for status in breached]
 
@@ -1066,6 +1073,8 @@ async def get_at_risk_tasks(
     """Get all tasks at risk of breaching SLA."""
     from cerebro.agents.sla_service import SLAService
 
+    if current_user.org_id is None:
+        raise HTTPException(status_code=400, detail="Organization ID required")
     at_risk = await SLAService.get_at_risk_tasks(org_id=current_user.org_id)
     return [status.to_dict() for status in at_risk]
 

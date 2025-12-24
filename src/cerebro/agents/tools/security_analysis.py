@@ -60,7 +60,7 @@ class SecurityAnalysisTool(StructuredTool):
     output_model = SecurityAnalysisOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         analysis_type: str,
@@ -140,8 +140,8 @@ class SecurityAnalysisTool(StructuredTool):
             # Get exposed resources
             exposed_query = (
                 select(Resource)
-                .where(Resource.org_id == context.org_id)
-                .where(Resource.metadata["is_public"].astext == "true")
+                .where(Resource.org_id == context.org_id)  # type: ignore[attr-defined]
+                .where(Resource.metadata["is_public"].astext == "true")  # type: ignore[index]
             )
 
             if scope.get("providers"):
@@ -218,7 +218,7 @@ class SecurityAnalysisTool(StructuredTool):
             )
 
             result = await db.execute(query)
-            severity_counts = dict(result.all())
+            severity_counts: Dict[str, int] = dict(result.all())  # type: ignore[arg-type]
 
             # Calculate weighted risk score
             weights = {"critical": 10, "high": 5, "medium": 2, "low": 1}
@@ -285,7 +285,7 @@ class SecurityAnalysisTool(StructuredTool):
             findings = result.scalars().all()
 
             # Group by compliance framework
-            framework_gaps = {}
+            framework_gaps: Dict[str, List[Any]] = {}
             for finding in findings:
                 # This would map findings to frameworks
                 # Simplified for demo
@@ -342,7 +342,7 @@ class SecurityAnalysisTool(StructuredTool):
 
             resources_count = await db.scalar(
                 select(func.count(Resource.resource_id)).where(
-                    Resource.org_id == context.org_id
+                    Resource.org_id == context.org_id  # type: ignore[attr-defined]
                 )
             )
 
@@ -353,7 +353,7 @@ class SecurityAnalysisTool(StructuredTool):
             )
 
             # Calculate posture score (0-100, higher is better)
-            findings_per_resource = findings_count / max(resources_count, 1)
+            findings_per_resource = (findings_count or 0) / max(resources_count or 1, 1)
             posture_score = max(0, 100 - (findings_per_resource * 10))
 
             return SecurityAnalysisOutput(

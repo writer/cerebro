@@ -107,11 +107,11 @@ class BenchmarkRunner:
         value = assertion.value
 
         if assertion_type == "turn_count_max":
-            limit = int(value)
+            limit = int(value)  # type: ignore[call-overload]
             return metrics.turn_count <= limit
 
         if assertion_type == "max_tool_calls":
-            limit = int(value)
+            limit = int(value)  # type: ignore[call-overload]
             return metrics.tool_call_count <= limit
 
         if assertion_type == "requires_outcome":
@@ -121,14 +121,14 @@ class BenchmarkRunner:
             return expected in metrics.outcome.upper()
 
         if assertion_type == "max_duration_ms":
-            limit = float(value)
+            limit = float(value)  # type: ignore[arg-type]
             return metrics.total_duration_ms <= limit + 1e-6
 
         if assertion_type == "min_average_score":
             if metrics.average_score is None:
                 return False
             try:
-                threshold = float(value)
+                threshold = float(value)  # type: ignore[arg-type]
             except (TypeError, ValueError):  # pragma: no cover - defensive guard
                 return False
             return metrics.average_score >= threshold - 1e-6

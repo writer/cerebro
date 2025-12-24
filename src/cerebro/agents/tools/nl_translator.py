@@ -75,7 +75,7 @@ class AnthropicSQLTranslator(SQLTranslator):
 
         try:
             message = await asyncio.to_thread(
-                self._client.messages.create,
+                self._client.messages.create,  # type: ignore[arg-type]
                 model=self._model,
                 max_tokens=self._max_tokens,
                 temperature=self._temperature,
@@ -85,7 +85,7 @@ class AnthropicSQLTranslator(SQLTranslator):
             raise TranslationError(f"Anthropic translation failed: {exc}") from exc
 
         try:
-            sql_query = message.content[0].text.strip()
+            sql_query = message.content[0].text.strip()  # type: ignore[union-attr]
         except Exception as exc:  # pragma: no cover - defensive
             raise TranslationError(
                 "Anthropic response did not include text content"

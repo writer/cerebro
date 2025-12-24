@@ -1,6 +1,6 @@
 """Principal management endpoints."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,7 @@ async def list_principals(
     filters: StandardFilters = Depends(),
 ):
     """List principals."""
-    additional_filters = {}
+    additional_filters: Dict[str, Any] = {}
     if principal_type:
         additional_filters["principal_type"] = principal_type
     if is_human is not None:

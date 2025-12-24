@@ -781,15 +781,15 @@ class AdvancedSecurityTester:
         if test_name == "excessive_permissions_test":
             return await self._test_excessive_permissions(org_id)
         elif test_name == "stale_accounts_test":
-            return await self._test_stale_accounts(org_id)
+            return await self._test_stale_accounts(org_id)  # type: ignore[attr-defined]
         elif test_name == "unencrypted_storage_test":
             return await self._test_unencrypted_storage(org_id)
         elif test_name == "public_access_test":
-            return await self._test_public_access(org_id)
+            return await self._test_public_access(org_id)  # type: ignore[attr-defined]
         elif test_name == "weak_authentication_test":
-            return await self._test_weak_authentication(org_id)
+            return await self._test_weak_authentication(org_id)  # type: ignore[attr-defined]
         elif test_name == "privilege_escalation_test":
-            return await self._test_privilege_escalation_paths(org_id)
+            return await self._test_privilege_escalation_paths(org_id)  # type: ignore[attr-defined]
         else:
             return {"status": "skipped", "reason": f"Unknown test: {test_name}"}
 

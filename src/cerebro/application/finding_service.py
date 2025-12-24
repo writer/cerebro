@@ -53,5 +53,5 @@ class DefaultFindingService(FindingService):
         return []
 
 
-# Export the concrete implementation as FindingService
-FindingService = DefaultFindingService
+# Export the concrete implementation as FindingServiceImpl
+FindingServiceImpl = DefaultFindingService

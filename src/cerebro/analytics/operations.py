@@ -49,7 +49,7 @@ def _derive_confidence(status: str) -> str:
 
 def _build_schedule_index(schedule_conf: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        details.get("task"): details.get("schedule")
+        str(details.get("task")): details.get("schedule")
         for details in schedule_conf.values()
         if isinstance(details, dict) and details.get("task")
     }

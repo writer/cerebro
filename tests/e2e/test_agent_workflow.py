@@ -101,7 +101,7 @@ async def test_agent_session_metrics(
 
     if response.status_code == 200:
         metrics = response.json()
-        assert metrics.get("session_id")
+        assert "total_entries" in metrics
 
 
 @pytest.mark.asyncio

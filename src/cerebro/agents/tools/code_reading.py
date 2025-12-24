@@ -246,7 +246,7 @@ Can extract specific functions/classes or read entire files. Supports Python, Ty
     output_model = ReadCodeOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         file_path: str,
@@ -411,7 +411,7 @@ Useful for finding where specific logic is implemented."""
     output_model = SearchCodeOutput
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         search_term: str,

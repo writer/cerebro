@@ -325,8 +325,8 @@ class RequirementMappingService:
             if req.framework_name == base_framework
         ]
 
-        mapping_summary = {}
-        gap_analysis = {}
+        mapping_summary: Dict[str, Dict[str, Any]] = {}
+        gap_analysis: Dict[str, Any] = {}
 
         for target_framework in target_frameworks:
             framework_mappings = self.get_requirement_mappings(

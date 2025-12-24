@@ -419,8 +419,8 @@ async def approve_access_exception(
             "message": "Access exception approved",
             "data": {
                 "exception_id": exception_id,
-                "approved_at": approved_exception.approved_at.isoformat(),
-                "expiry_date": approved_exception.expiry_date.isoformat(),
+                "approved_at": approved_exception.approved_at.isoformat() if approved_exception.approved_at else None,
+                "expiry_date": approved_exception.expiry_date.isoformat() if approved_exception.expiry_date else None,
                 "attestation_id": approved_exception.attestation_id,
             },
         }

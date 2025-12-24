@@ -129,7 +129,7 @@ class IntegrationService:
         task = self._registry.get(integration)
         if task is None:
             raise ValueError(f"Unknown integration '{integration}'")
-        result = task.apply_async(kwargs=kwargs)
+        result = getattr(task, "apply_async")(kwargs=kwargs)
         return result.id
 
     @staticmethod

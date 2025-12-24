@@ -433,7 +433,7 @@ class AuditWorkflowManager:
 
         # Count tasks by status
         task_statuses: Dict[str, int] = {}
-        overdue_tasks: List[str] = []
+        overdue_tasks: List[Dict[str, Any]] = []
 
         for task_id in request_list.task_ids:
             if task_id in self._tasks:
@@ -557,7 +557,7 @@ class AuditWorkflowManager:
                 due_date = request_list.final_due_date or request_list.period_end
 
             # Determine required evidence types
-            evidence_types = [evt.value for evt in control.required_evidence]
+            evidence_types = control.evidence_collection_methods or []
 
             task = AuditTask(
                 id=task_id,

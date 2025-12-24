@@ -167,7 +167,7 @@ class EvidenceStore:
                 await f.write(content_bytes)
 
         # Update metadata status
-        metadata.status = EvidenceStatus.STORED
+        metadata.status = EvidenceStatus.STORED  # type: ignore[attr-defined]
 
         # Sign if requested and key available
         if seal_immediately and self.signing_key:
@@ -238,7 +238,10 @@ class EvidenceStore:
 
     async def verify_evidence(self, evidence_id: str) -> bool:
         """Verify evidence integrity and signature."""
-        content, metadata = await self.get_evidence(evidence_id)
+        result = await self.get_evidence(evidence_id)
+        if result is None:
+            return False
+        content, metadata = result
         if not content or not metadata:
             return False
 
@@ -331,7 +334,10 @@ class EvidenceStore:
         evidence_dir.mkdir(exist_ok=True)
 
         for evidence_id in bundle.evidence_ids:
-            content, metadata = await self.get_evidence(evidence_id)
+            result = await self.get_evidence(evidence_id)
+            if result is None:
+                continue
+            content, metadata = result
             if content and metadata:
                 # Determine file extension
                 ext = self._get_file_extension(metadata.content_type)

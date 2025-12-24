@@ -282,7 +282,7 @@ async def get_mttr_metrics(
     from datetime import datetime, timedelta
 
     cutoff_date = datetime.utcnow() - timedelta(days=timeframe_days)
-    stmt = stmt.where(Finding.resolved_at >= cutoff_date)
+    stmt = stmt.where(Finding.resolved_at >= cutoff_date)  # type: ignore[attr-defined]
 
     resolved_findings = await db.scalars(stmt)
     resolved_list = list(resolved_findings)
@@ -299,9 +299,9 @@ async def get_mttr_metrics(
     # Calculate MTTR
     total_resolution_time = sum(
         [
-            (f.resolved_at - f.created_at).total_seconds() / 3600
+            (f.resolved_at - f.created_at).total_seconds() / 3600  # type: ignore[attr-defined]
             for f in resolved_list
-            if f.resolved_at and f.created_at
+            if hasattr(f, "resolved_at") and hasattr(f, "created_at") and f.resolved_at and f.created_at  # type: ignore[attr-defined]
         ]
     )
 

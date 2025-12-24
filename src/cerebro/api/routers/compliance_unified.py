@@ -135,8 +135,7 @@ async def list_compliance_frameworks(
             frameworks = registry.get_frameworks_by_type(framework_type)
         else:
             framework_ids = registry.list_frameworks()
-            frameworks = [registry.get_framework(fid) for fid in framework_ids]
-            frameworks = [f for f in frameworks if f is not None]
+            frameworks = [f for fid in framework_ids if (f := registry.get_framework(fid)) is not None]  # type: ignore[assignment,misc]
 
         summaries = []
         for framework in frameworks:
@@ -371,7 +370,7 @@ async def list_evidence(
 
     try:
         # Build search filters
-        filters = {}
+        filters: dict[str, Any] = {}
         if framework_id:
             filters["framework_name"] = framework_id
         if control_id:
@@ -379,7 +378,7 @@ async def list_evidence(
         if status:
             filters["status"] = EvidenceStatus(status)
 
-        evidence_items = await query_service.search_evidence(**filters)
+        evidence_items = await query_service.search_evidence(**filters)  # type: ignore[arg-type]
 
         return [
             {

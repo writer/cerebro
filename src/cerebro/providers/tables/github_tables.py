@@ -41,14 +41,14 @@ class GitHubClient:
             loop = asyncio.get_event_loop()
 
             def _auth():
-                self._github = Github(token)
+                self._github = Github(token)  # type: ignore[assignment]
                 # Test authentication by getting user info
-                user = self._github.get_user()
+                user = self._github.get_user()  # type: ignore[union-attr, attr-defined]
                 user.name  # This will raise if token is invalid
 
                 # Get organization
-                self._org = self._github.get_organization(org_name)
-                self._org.name  # Test org access
+                self._org = self._github.get_organization(org_name)  # type: ignore[union-attr, attr-defined]
+                self._org.name  # type: ignore[union-attr, attr-defined]  # Test org access
                 return True
 
             return await loop.run_in_executor(None, _auth)
@@ -70,7 +70,7 @@ class GitHubClient:
             import asyncio
 
             def _get_repos():
-                return list(self._org.get_repos())
+                return list(self._org.get_repos())  # type: ignore[union-attr, attr-defined]
 
             loop = asyncio.get_event_loop()
             repos = await loop.run_in_executor(None, _get_repos)
@@ -124,7 +124,7 @@ class GitHubClient:
 
             def _get_vulns():
                 alerts = []
-                for repo in self._org.get_repos():
+                for repo in self._org.get_repos():  # type: ignore[union-attr, attr-defined]
                     try:
                         # Note: This requires special permissions and may not work for all repos
                         for alert in repo.get_vulnerability_alerts():
@@ -185,7 +185,7 @@ class GitHubClient:
 
             def _get_secrets():
                 alerts = []
-                for repo in self._org.get_repos():
+                for repo in self._org.get_repos():  # type: ignore[union-attr, attr-defined]
                     try:
                         # Note: This requires special permissions and may not work for all repos
                         for alert in repo.get_secret_scanning_alerts():
@@ -352,8 +352,9 @@ class GitHubRepositoryTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch repositories from GitHub API."""
+        config = ctx.config or {}
         client = GitHubClient(
-            org_name=ctx.config.get("github_org"), token=ctx.config.get("github_token")
+            org_name=config.get("github_org"), token=config.get("github_token")
         )
 
         try:
@@ -483,8 +484,9 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch vulnerability alerts from GitHub API."""
+        config = ctx.config or {}
         client = GitHubClient(
-            org_name=ctx.config.get("github_org"), token=ctx.config.get("github_token")
+            org_name=config.get("github_org"), token=config.get("github_token")
         )
 
         try:
@@ -628,8 +630,9 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch secret scanning alerts from GitHub API."""
+        config = ctx.config or {}
         client = GitHubClient(
-            org_name=ctx.config.get("github_org"), token=ctx.config.get("github_token")
+            org_name=config.get("github_org"), token=config.get("github_token")
         )
 
         try:

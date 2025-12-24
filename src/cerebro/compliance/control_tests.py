@@ -309,9 +309,9 @@ class ControlTestRunner:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Handle any exceptions
-        valid_results = []
+        valid_results: List[ControlTestResult] = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 # Create error result for failed test
                 test = tests[i]
                 error_result = ControlTestResult(

@@ -19,7 +19,7 @@ class OktaClient:
         self.domain = domain
         self.api_token = api_token
         self.base_url = f"https://{domain}" if domain else None
-        self._client = None
+        self._client: Any = None
 
     async def authenticate(self):
         """Authenticate with Okta API."""
@@ -55,7 +55,7 @@ class OktaClient:
             logger.error(f"Okta authentication failed: {e}")
             return False
 
-    async def list_users(self, **params):
+    async def list_users(self, **params: Any):
         """List all users from Okta API."""
         try:
             if not self._client:
@@ -63,10 +63,11 @@ class OktaClient:
                     return
 
             url = "/api/v1/users"
+            query_params: Optional[Dict[str, Any]] = dict(params) if params else None
 
             while url:
                 response = await self._client.get(
-                    url, params=params if not url.startswith("http") else None
+                    url, params=query_params if not url.startswith("http") else None
                 )
                 response.raise_for_status()
 
@@ -91,7 +92,7 @@ class OktaClient:
                     url = next_url.replace(self.base_url, "")
                 else:
                     break
-                params = None  # Parameters are included in next URL
+                query_params = None  # Parameters are included in next URL
 
         except Exception as e:
             logger.error(f"Error listing Okta users: {e}")
@@ -252,9 +253,10 @@ class OktaUserTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch users from Okta API."""
+        config = ctx.config or {}
         client = OktaClient(
-            domain=ctx.config.get("okta_domain"),
-            api_token=ctx.config.get("okta_api_token"),
+            domain=config.get("okta_domain"),
+            api_token=config.get("okta_api_token"),
         )
 
         try:
@@ -276,7 +278,7 @@ class OktaUserTable(ProviderSecurityTable):
 
     def _build_okta_query_params(self, ctx: QueryContext) -> Dict[str, Any]:
         """Build Okta API query parameters from QueryContext."""
-        params = {}
+        params: Dict[str, Any] = {}
 
         # Map common filters to Okta query parameters
         for filter_condition in ctx.filters:
@@ -426,9 +428,10 @@ class OktaApplicationTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch applications from Okta API."""
+        config = ctx.config or {}
         client = OktaClient(
-            domain=ctx.config.get("okta_domain"),
-            api_token=ctx.config.get("okta_api_token"),
+            domain=config.get("okta_domain"),
+            api_token=config.get("okta_api_token"),
         )
 
         try:
@@ -438,7 +441,7 @@ class OktaApplicationTable(ProviderSecurityTable):
             async for app in client.list_applications():
                 # Add provider metadata
                 app["provider"] = "okta"
-                app["account_id"] = ctx.config.get("okta_domain", "unknown-okta")
+                app["account_id"] = config.get("okta_domain", "unknown-okta")
                 app["region"] = "global"
                 app["created_at"] = self._parse_okta_timestamp(app.get("created"))
                 app["updated_at"] = self._parse_okta_timestamp(app.get("lastUpdated"))
@@ -519,9 +522,10 @@ class OktaGroupTable(ProviderSecurityTable):
         self, ctx: QueryContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch groups from Okta API."""
+        config = ctx.config or {}
         client = OktaClient(
-            domain=ctx.config.get("okta_domain"),
-            api_token=ctx.config.get("okta_api_token"),
+            domain=config.get("okta_domain"),
+            api_token=config.get("okta_api_token"),
         )
 
         try:
@@ -531,7 +535,7 @@ class OktaGroupTable(ProviderSecurityTable):
             async for group in client.list_groups():
                 # Add provider metadata
                 group["provider"] = "okta"
-                group["account_id"] = ctx.config.get("okta_domain", "unknown-okta")
+                group["account_id"] = config.get("okta_domain", "unknown-okta")
                 group["region"] = "global"
                 group["created_at"] = self._parse_okta_timestamp(group.get("created"))
                 group["updated_at"] = self._parse_okta_timestamp(

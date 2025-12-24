@@ -60,18 +60,18 @@ class CollectorManager:
         start_time = datetime.utcnow()
 
         # Get organization
-        stmt = select(Organization).where(Organization.org_id == org_id)
-        org = await self.db.scalar(stmt)
+        org_stmt = select(Organization).where(Organization.org_id == org_id)
+        org = await self.db.scalar(org_stmt)
 
         if not org:
             raise ValueError(f"Organization {org_id} not found")
 
         # Get accounts to collect
-        stmt = select(Account).where(Account.org_id == org.org_id)
+        account_stmt = select(Account).where(Account.org_id == org.org_id)
         if providers:
-            stmt = stmt.where(Account.provider.in_(providers))
+            account_stmt = account_stmt.where(Account.provider.in_(providers))
 
-        accounts = await self.db.scalars(stmt)
+        accounts = await self.db.scalars(account_stmt)
         account_list = list(accounts)
 
         if not account_list:
@@ -136,7 +136,7 @@ class CollectorManager:
                 account_id=account.account_id, project_id=account.external_id
             )
         elif account.provider == "google_workspace":
-            return GoogleWorkspaceProvider(
+            return GoogleWorkspaceProvider(  # type: ignore[call-arg]
                 account_id=account.account_id, domain=account.external_id
             )
         else:

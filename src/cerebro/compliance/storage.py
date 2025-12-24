@@ -322,12 +322,12 @@ class FileBasedEvidenceRepository(EvidenceRepository):
         # Add crypto proof if present
         if metadata.crypto_proof:
             result["crypto_proof"] = {
-                "content_hash": metadata.crypto_proof.content_hash,
-                "signature": metadata.crypto_proof.signature,
-                "signature_algorithm": metadata.crypto_proof.signature_algorithm,
-                "timestamp_token": metadata.crypto_proof.timestamp_token,
-                "merkle_root": metadata.crypto_proof.merkle_root,
-                "chain_hash": metadata.crypto_proof.chain_hash,
+                "content_hash": metadata.crypto_proof.content_hash or "",
+                "signature": metadata.crypto_proof.signature or "",
+                "signature_algorithm": metadata.crypto_proof.signature_algorithm or "",
+                "timestamp_token": metadata.crypto_proof.timestamp_token or "",
+                "merkle_root": metadata.crypto_proof.merkle_root or "",
+                "chain_hash": metadata.crypto_proof.chain_hash or "",
             }
 
         # Add type-specific fields
@@ -356,7 +356,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 
         # Determine metadata type and create appropriate instance
         if "control_id" in data or "framework_name" in data:
-            metadata_class = ComplianceEvidenceMetadata
+            metadata_class: type[BaseEvidenceMetadata] = ComplianceEvidenceMetadata
         else:
             metadata_class = BaseEvidenceMetadata
 

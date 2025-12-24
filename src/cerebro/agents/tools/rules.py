@@ -93,7 +93,7 @@ class RulesTool(Tool):
     async def execute(self, inputs: BaseModel, context: AgentContext) -> ToolResult:
         """Execute rule operations based on input type."""
 
-        raw_data = inputs.model_dump() if hasattr(inputs, "model_dump") else inputs
+        raw_data: dict[str, Any] = inputs.model_dump() if hasattr(inputs, "model_dump") else dict(inputs)  # type: ignore[arg-type]
         operation = raw_data.get("operation", "compile")
 
         try:
@@ -233,7 +233,7 @@ class RulesTool(Tool):
                         expected = inputs.expected_results[i]
                         matches_expected = rule_result.matched == expected
 
-                    test_result = {
+                    test_result: dict[str, Any] = {
                         "test_index": i,
                         "result": rule_result.matched,
                         "expected": expected,
@@ -303,12 +303,12 @@ class RulesTool(Tool):
                         ),
                         "success_rate_percent": success_rate,
                         "fastest_test_ms": (
-                            min([r.get("execution_time_ms", 0) for r in test_results])
+                            min([float(r.get("execution_time_ms", 0) or 0) for r in test_results])  # type: ignore[type-var]
                             if test_results
                             else 0
                         ),
                         "slowest_test_ms": (
-                            max([r.get("execution_time_ms", 0) for r in test_results])
+                            max([float(r.get("execution_time_ms", 0) or 0) for r in test_results])  # type: ignore[type-var]
                             if test_results
                             else 0
                         ),

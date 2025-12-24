@@ -14,7 +14,7 @@ from cerebro.agents.models import AgentSession, AgentType
 try:  # pragma: no cover - optional SDK
     from cerebro.agents.openai_runtime import CerebroOpenAIRuntime
 except ImportError:  # pragma: no cover
-    CerebroOpenAIRuntime = None  # type: ignore[assignment]
+    CerebroOpenAIRuntime = None  # type: ignore[misc,assignment]
 
 from cerebro.agents.runtime import CerebroClaudeRuntime
 from cerebro.core.config import settings

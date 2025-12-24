@@ -77,7 +77,7 @@ class OCSFMapper:
         # Determine activity based on finding lifecycle
         activity_id = OCSFActivityID.CREATE
         activity_name = "Create"
-        if finding.resolved_at:
+        if finding.status == "fixed":
             activity_id = OCSFActivityID.CLOSE
             activity_name = "Close"
 
@@ -91,14 +91,14 @@ class OCSFMapper:
         # Build finding info
         finding_info = OCSFFindingInfo(
             title=finding.title,
-            desc=finding.description,
-            uid=str(finding.id),
+            desc=finding.summary or "",
+            uid=str(finding.finding_id),
             types=self._extract_finding_types(finding),
-            first_seen_time=self._to_epoch_ms(finding.first_seen_at),
-            last_seen_time=self._to_epoch_ms(finding.last_seen_at),
-            created_time=self._to_epoch_ms(finding.created_at),
-            modified_time=self._to_epoch_ms(finding.updated_at),
-            src_url=f"cerebro://findings/{finding.id}",
+            first_seen_time=self._to_epoch_ms(finding.first_seen),
+            last_seen_time=self._to_epoch_ms(finding.last_seen),
+            created_time=self._to_epoch_ms(finding.first_seen),
+            modified_time=self._to_epoch_ms(finding.last_seen),
+            src_url=f"cerebro://findings/{finding.finding_id}",
         )
 
         # Build metadata
@@ -106,9 +106,9 @@ class OCSFMapper:
             version="1.4.0",
             product=self.product,
             profiles=self._determine_profiles(finding, account),
-            event_code=finding.rule_id if finding.rule_id else None,
-            correlation_uid=str(finding.id),
-            logged_time=self._to_epoch_ms(finding.created_at),
+            event_code=str(finding.rule_id) if finding.rule_id else None,
+            correlation_uid=str(finding.finding_id),
+            logged_time=self._to_epoch_ms(finding.first_seen),
         )
 
         # Map resources
@@ -117,12 +117,12 @@ class OCSFMapper:
             for resource in resources:
                 ocsf_resources.append(
                     OCSFResource(
-                        name=resource.name,
-                        uid=resource.resource_id,
+                        name=resource.name or "",
+                        uid=str(resource.resource_id),
                         type=resource.resource_type,
-                        labels=resource.tags.get("labels", []) if resource.tags else [],
+                        labels=[],  # Resource model doesn't have tags
                         data=(
-                            {"arn": resource.resource_id}
+                            {"arn": str(resource.resource_id)}
                             if resource.provider == "aws"
                             else {}
                         ),
@@ -132,31 +132,34 @@ class OCSFMapper:
         # Map cloud context
         cloud = None
         if account:
+            evidence = finding.evidence or {}
             cloud = OCSFCloud(
                 provider=account.provider.upper(),
-                region=finding.metadata.get("region") if finding.metadata else None,
+                region=evidence.get("region") if evidence else None,
                 account=OCSFAccount(
-                    uid=account.account_id,
-                    name=account.name,
+                    uid=str(account.account_id),
+                    name=account.display_name or account.external_id,
                     type="cloud_account",
                 ),
             )
 
         # Map compliance (if applicable)
         compliance = None
-        if finding.compliance_frameworks:
+        evidence = finding.evidence or {}
+        compliance_frameworks = evidence.get("compliance_frameworks", [])
+        if compliance_frameworks:
             compliance = OCSFCompliance(
-                requirements=finding.compliance_frameworks,
+                requirements=compliance_frameworks,
                 status="Fail",  # Findings represent violations
-                status_detail=f"Non-compliant with {len(finding.compliance_frameworks)} frameworks",
+                status_detail=f"Non-compliant with {len(compliance_frameworks)} frameworks",
             )
 
         # Build remediation guidance
         remediation = None
-        if finding.metadata and finding.metadata.get("remediation"):
+        if evidence and evidence.get("remediation"):
             remediation = OCSFRemediation(
-                desc=finding.metadata["remediation"],
-                references=[finding.metadata.get("documentation", "")],
+                desc=evidence["remediation"],
+                references=[evidence.get("documentation", "")],
             )
 
         # Extract observables (IoCs, principals, resource IDs)
@@ -168,8 +171,8 @@ class OCSFMapper:
         return OCSFFinding(
             type_uid=type_uid,
             type_name=f"Security Finding: {activity_name}",
-            time=self._to_epoch_ms(finding.created_at),
-            message=f"{finding.title}: {finding.description}",
+            time=self._to_epoch_ms(finding.first_seen),
+            message=f"{finding.title}: {finding.summary or ''}",
             severity_id=severity_id,
             severity=severity,
             activity_id=activity_id,
@@ -186,7 +189,7 @@ class OCSFMapper:
             cloud=cloud,
             observables=observables,
             unmapped=(
-                {"cerebro_metadata": finding.metadata} if finding.metadata else None
+                {"cerebro_evidence": finding.evidence} if finding.evidence else None
             ),
         )
 
@@ -264,8 +267,8 @@ class OCSFMapper:
             cloud = OCSFCloud(
                 provider=account.provider.upper(),
                 account=OCSFAccount(
-                    uid=account.account_id,
-                    name=account.name,
+                    uid=str(account.account_id),
+                    name=account.display_name or account.external_id,
                 ),
             )
 
@@ -359,10 +362,10 @@ class OCSFMapper:
             for principal in principals[:5]:  # Limit to 5
                 observables.append(
                     OCSFObservables(
-                        name=principal.name or "Principal",
+                        name=principal.display_name or "Principal",
                         type="user",
                         type_id=4,  # User type
-                        value=principal.principal_id,
+                        value=str(principal.principal_id),
                     )
                 )
 
@@ -381,15 +384,17 @@ class OCSFMapper:
         score = base_scores.get(finding.severity, 50)
 
         # Adjust based on age (older findings = higher risk)
-        if finding.first_seen_at:
-            age_days = (datetime.now(timezone.utc) - finding.first_seen_at).days
+        if finding.first_seen:
+            age_days = (datetime.now(timezone.utc) - finding.first_seen).days
             if age_days > 90:
                 score = min(100, score + 10)
             elif age_days > 30:
                 score = min(100, score + 5)
 
         # Adjust based on compliance frameworks (more frameworks = higher risk)
-        if finding.compliance_frameworks:
-            score = min(100, score + len(finding.compliance_frameworks) * 2)
+        evidence = finding.evidence or {}
+        compliance_frameworks = evidence.get("compliance_frameworks", [])
+        if compliance_frameworks:
+            score = min(100, score + len(compliance_frameworks) * 2)
 
         return score

@@ -53,7 +53,7 @@ def rotate_jwt_keys_task(self=None, *args, **_) -> Dict[str, Any]:
     task_ctx = args[0] if args else self
 
     async def _rotate_keys():
-        result = {"rotation_performed": False, "keys_cleaned": 0, "error": None}
+        result: dict[str, Any] = {"rotation_performed": False, "keys_cleaned": 0, "error": None}
 
         try:
             async with async_session_factory() as db:
@@ -100,7 +100,7 @@ def cleanup_jwt_revocations_task(self=None, *args, **_) -> Dict[str, Any]:
     task_ctx = args[0] if args else self
 
     async def _cleanup_revocations():
-        result = {"expired_revocations": 0, "error": None}
+        result: dict[str, Any] = {"expired_revocations": 0, "error": None}
 
         try:
             async with async_session_factory() as db:
@@ -139,7 +139,7 @@ def jwt_health_check_task(self=None, *_, **__) -> Dict[str, Any]:
     """
 
     async def _health_check():
-        result = {
+        result: dict[str, Any] = {
             "current_key_exists": False,
             "verification_keys_count": 0,
             "redis_connection": False,

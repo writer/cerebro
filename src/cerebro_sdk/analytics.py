@@ -172,7 +172,7 @@ class IntegrationCoverageClient:
                     scopes=breakdown,
                     accounts=account_summary,
                     coverage_ratio=(
-                        float(payload.get("coverage_ratio"))
+                        float(payload.get("coverage_ratio") or 0)
                         if payload.get("coverage_ratio") is not None
                         else None
                     ),

@@ -64,9 +64,9 @@ class AgentToolingManager(AsyncManagerBase):
                     await result  # type: ignore[func-returns-value]
             except Exception as exc:  # pragma: no cover
                 self._logger.warning(
-                    "tooling.listener_error",
-                    listener=repr(listener),
-                    error=str(exc),
+                    "tooling.listener_error listener=%s error=%s",
+                    repr(listener),
+                    str(exc),
                 )
 
     async def list_invocations(

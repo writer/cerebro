@@ -1104,9 +1104,9 @@ class TelemetryIngestionService:
         )
 
         existing = await self._get_existing_finding(
-            context.org_id, finding_entity.fingerprint
+            context.org_id, finding_entity.fingerprint or ""
         )
-        if existing:
+        if existing and finding_entity.fingerprint:
             existing.last_seen = timestamp
             return existing.finding_id
 

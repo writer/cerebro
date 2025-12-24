@@ -821,7 +821,7 @@ if not hasattr(IdentityAnalyzer, "identify_privilege_anomalies"):
 
         return anomalies
 
-    IdentityAnalyzer.identify_privilege_anomalies = _identify_privilege_anomalies
+    IdentityAnalyzer.identify_privilege_anomalies = _identify_privilege_anomalies  # type: ignore[attr-defined]
 
 
 if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
@@ -887,7 +887,7 @@ if not hasattr(IdentityAnalyzer, "_get_mfa_compliance_by_provider"):
 
         return compliance_data
 
-    IdentityAnalyzer._get_mfa_compliance_by_provider = _get_mfa_compliance_by_provider
+    IdentityAnalyzer._get_mfa_compliance_by_provider = _get_mfa_compliance_by_provider  # type: ignore[attr-defined]
 
 
 if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
@@ -949,7 +949,7 @@ if not hasattr(IdentityAnalyzer, "get_risk_level_breakdown"):
 
         return breakdown
 
-    IdentityAnalyzer.get_risk_level_breakdown = _get_risk_level_breakdown
+    IdentityAnalyzer.get_risk_level_breakdown = _get_risk_level_breakdown  # type: ignore[attr-defined]
 
 
 async def _build_drilldown_identities(
@@ -1070,9 +1070,9 @@ async def _generate_identity_dashboard_data(
     sprawl_analysis = await PrivilegeSprawlDetector(self.db).analyze_privilege_sprawl(
         org_id
     )
-    anomalies = await self.identify_privilege_anomalies(org_id)
-    mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)
-    risk_level_breakdown = await self.get_risk_level_breakdown(org_id)
+    anomalies = await self.identify_privilege_anomalies(org_id)  # type: ignore[attr-defined]
+    mfa_compliance = await self._get_mfa_compliance_by_provider(org_id)  # type: ignore[attr-defined]
+    risk_level_breakdown = await self.get_risk_level_breakdown(org_id)  # type: ignore[attr-defined]
 
     top_risky = sprawl_analysis.top_risky_identities[:5]
     drilldown_identities = await _build_drilldown_identities(self, top_risky)
@@ -1227,7 +1227,7 @@ async def _generate_identity_dashboard_data(
     }
 
 
-IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data
+IdentityAnalyzer.generate_identity_dashboard_data = _generate_identity_dashboard_data  # type: ignore[attr-defined]
 
 
 def _merge_remediation_action(

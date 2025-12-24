@@ -1,6 +1,6 @@
 """Maintenance background tasks."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 import logging
 import asyncio
 from datetime import datetime, timedelta
@@ -64,7 +64,7 @@ def cleanup_old_snapshots_task(self, days_old: int = 90):
                     delete_stmt = (
                         delete(ConfigSnapshot)
                         .where(ConfigSnapshot.captured_at < cutoff_date)
-                        .limit(batch_size)
+                        .limit(batch_size)  # type: ignore[attr-defined]
                     )
 
                     result = await db.execute(delete_stmt)
@@ -157,7 +157,7 @@ def vacuum_analyze_task(self, tables: Optional[List[str]] = None):
                             },
                         )
 
-                        await bulk_ops.vacuum_analyze_table(table)
+                        await bulk_ops.vacuum_analyze_table(table)  # type: ignore[attr-defined]
 
                     except Exception as e:
                         logger.warning(f"Failed to vacuum table {table}: {e}")
@@ -269,7 +269,7 @@ def health_check_task(self):
         logger.info(f"Starting health check task {task_id}")
 
         try:
-            health_status = {}
+            health_status: dict[str, Any] = {}
 
             # Database check
             self.update_state(

@@ -104,7 +104,7 @@ class IdentityAnomalyHunterTool(StructuredTool):
     # Read-only analysis, safe for all agents
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         principal_id: Optional[str] = None,

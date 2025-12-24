@@ -55,7 +55,7 @@ class BulkOperations:
             batch = snapshots[i : i + batch_size]
 
             # First, check which snapshots already exist to avoid conflicts
-            existing_keys = set()
+            existing_keys: set[tuple[Any, Any]] = set()
             if len(batch) > 0:
                 # Build list of (resource_id, config_sha) tuples to check
                 check_tuples = [(s["resource_id"], s["config_sha"]) for s in batch]
@@ -88,12 +88,12 @@ class BulkOperations:
 
             if new_snapshots:
                 # Use PostgreSQL's INSERT ... ON CONFLICT DO NOTHING for safety
-                stmt = insert(ConfigSnapshot).values(new_snapshots)
-                stmt = stmt.on_conflict_do_nothing(
+                insert_stmt = insert(ConfigSnapshot).values(new_snapshots)
+                insert_stmt = insert_stmt.on_conflict_do_nothing(
                     index_elements=["resource_id", "config_sha"]
                 )
 
-                result = await self.db.execute(stmt)
+                result = await self.db.execute(insert_stmt)
                 batch_inserted = result.rowcount
                 total_inserted += batch_inserted
 

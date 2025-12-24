@@ -73,7 +73,7 @@ class ForensicReplayTool(StructuredTool):
     # Read-only tool, safe for all agents
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         timestamp: str,
@@ -114,7 +114,7 @@ class ForensicReplayTool(StructuredTool):
                 # Optionally compute changes since then
                 changes_since = None
                 if include_changes:
-                    changes_since = await engine.compute_changes_since(
+                    changes_since = await engine.compute_changes_since(  # type: ignore[attr-defined]
                         org_id=context.org_id,
                         from_time=target_time,
                         to_time=datetime.utcnow(),
@@ -234,7 +234,7 @@ class ChangeReplayTool(StructuredTool):
     input_model = Input
     output_model = Output
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         start_time: str,
@@ -268,10 +268,10 @@ class ChangeReplayTool(StructuredTool):
             )
 
             async with async_session_factory() as db_session:
-                engine = ChangeReplayEngine(db_session)
+                engine = ChangeReplayEngine(db_session)  # type: ignore[call-arg]
 
                 # Replay changes
-                changes = await engine.replay_changes(
+                changes = await engine.replay_changes(  # type: ignore[attr-defined]
                     org_id=context.org_id,
                     start_time=start_dt,
                     end_time=end_dt,

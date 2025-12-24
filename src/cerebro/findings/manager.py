@@ -2,7 +2,7 @@
 
 import hashlib
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 import logging
@@ -25,11 +25,7 @@ class FindingResult:
     findings_created: int = 0
     findings_updated: int = 0
     findings_closed: int = 0
-    errors: List[str] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: List[str] = field(default_factory=list)
 
 
 class FindingManager:

@@ -61,7 +61,7 @@ class RuleEngine:
             "org_config": celpy.celtypes.MapType,
             "user_config": celpy.celtypes.MapType,
         }
-        return Environment(annotations=annotations)
+        return Environment(annotations=annotations)  # type: ignore[arg-type]
 
     def _get_cache_key(self, expression: str) -> str:
         """Generate cache key for expression."""
@@ -124,7 +124,7 @@ class RuleEngine:
 
             execution_time = (datetime.now() - start_time).total_seconds() * 1000
 
-            logger.debug(f"Rule {rule_id} evaluation result: {result}")
+            logger.debug(f"Rule {rule_id} evaluation result: {result}")  # type: ignore[str-bytes-safe]
 
             return RuleResult(
                 rule_id=rule_id, matched=bool(result), execution_time_ms=execution_time

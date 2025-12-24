@@ -5,7 +5,7 @@ Manages registration and discovery of security tables across all providers.
 Inspired by Steampipe's plugin registration pattern.
 """
 
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 import logging
 from collections import defaultdict
 
@@ -183,7 +183,7 @@ class TableRegistry:
 
         Useful for query planning and introspection.
         """
-        summary = {
+        summary: Dict[str, Any] = {
             "total_tables": len(self._tables),
             "providers": list(self._tables_by_provider.keys()),
             "tables_by_provider": dict(self._tables_by_provider),

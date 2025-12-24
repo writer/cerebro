@@ -35,7 +35,7 @@ def configure_structlog(level: Optional[int] = None) -> None:
 
     if log_format == "json":
         logging.basicConfig(level=level_value)
-        processors = [
+        processors: list = [
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.add_log_level,
             structlog.processors.StackInfoRenderer(),

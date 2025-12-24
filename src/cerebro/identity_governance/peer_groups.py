@@ -539,7 +539,7 @@ class PeerGroupAnalyzer:
         outliers = await self.analyze_outliers(org_id)
 
         # Create department summaries
-        department_summaries = {}
+        department_summaries: dict[str, dict[str, Any]] = {}
         for group_key, baseline in baselines.items():
             dept_name = baseline.department.value
 
@@ -548,16 +548,16 @@ class PeerGroupAnalyzer:
                     "total_principals": 0,
                     "role_families": [],
                     "typical_permissions": set(),
-                    "admin_permission_rate": 0,
+                    "admin_permission_rate": 0.0,
                     "outliers": [],
                 }
 
             dept_summary = department_summaries[dept_name]
-            dept_summary["total_principals"] += baseline.total_principals
+            dept_summary["total_principals"] = int(dept_summary["total_principals"]) + baseline.total_principals
             dept_summary["role_families"].append(baseline.role_family)
             dept_summary["typical_permissions"].update(baseline.typical_permissions)
             dept_summary["admin_permission_rate"] = max(
-                dept_summary["admin_permission_rate"], baseline.admin_permission_rate
+                float(dept_summary["admin_permission_rate"]), baseline.admin_permission_rate
             )
 
         # Add outliers to department summaries

@@ -301,7 +301,7 @@ class WebhookNotificationService:
         severity: str,
         finding_id: Optional[UUID] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        db: AsyncSession = None,
+        db: Optional[AsyncSession] = None,
     ) -> None:
         """Send webhook notifications for monitoring alerts.
 
@@ -314,6 +314,10 @@ class WebhookNotificationService:
             metadata: Optional additional metadata
             db: Database session
         """
+        if db is None:
+            logger.error("No database session provided for monitoring alert notification")
+            return
+
         try:
             # Get organization
             org_result = await db.execute(
@@ -321,7 +325,7 @@ class WebhookNotificationService:
             )
             org = org_result.scalar_one_or_none()
             if not org:
-                logger.error(f"Organization {org_id} not found")
+                logger.error("Organization %s not found", org_id)
                 return
 
             # Get active webhook configs
@@ -474,15 +478,16 @@ class WebhookNotificationService:
                     target_url = decrypted_url
             except Exception as exc:
                 logger.error(
-                    "webhook_url_decrypt_failed",
-                    config_id=str(getattr(config, "config_id", "unknown")),
-                    error=str(exc),
+                    "webhook_url_decrypt_failed: config_id=%s, error=%s",
+                    str(getattr(config, "config_id", "unknown")),
+                    str(exc),
                 )
                 raise
 
         if not self._is_valid_url(target_url):
             raise ValueError(f"Invalid webhook URL: {target_url!r}")
 
+        url: str = str(target_url)
         # Convert payload to JSON string
         payload_str = json.dumps(payload)
 
@@ -534,21 +539,21 @@ class WebhookNotificationService:
                 # Send request
                 if method == "POST":
                     response = await self.client.post(
-                        target_url,
+                        url,
                         content=payload_str,
                         headers=headers,
                         timeout=config.timeout_seconds,
                     )
                 elif method == "PUT":
                     response = await self.client.put(
-                        target_url,
+                        url,
                         content=payload_str,
                         headers=headers,
                         timeout=config.timeout_seconds,
                     )
                 elif method == "PATCH":
                     response = await self.client.patch(
-                        target_url,
+                        url,
                         content=payload_str,
                         headers=headers,
                         timeout=config.timeout_seconds,

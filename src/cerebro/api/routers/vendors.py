@@ -5,7 +5,7 @@ Provides REST API for vendor registry, security reviews, discovered vendors,
 and risk assessments using the evidence data fabric.
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -221,7 +221,7 @@ async def get_vendor_details(
 
         metadata_envelope = vendor.metadata or {}
 
-        vendor_details = {
+        vendor_details: Dict[str, Any] = {
             "vendor_id": vendor.vendor_id,
             "name": vendor.name,
             "website_url": vendor.website_url,
@@ -493,11 +493,11 @@ async def get_vendor_evidence(
         )
 
         # Query actual evidence fabric for vendor-related evidence
-        evidence_fabric = EvidenceDataFabric(db)
+        evidence_fabric = EvidenceDataFabric(db)  # type: ignore[arg-type]
 
         try:
             # Execute real evidence query
-            evidence_results = await evidence_fabric.query_evidence(evidence_query)
+            evidence_results = await evidence_fabric.query_evidence(evidence_query)  # type: ignore[misc]
 
             # Format vendor evidence results
             vendor_evidence = []

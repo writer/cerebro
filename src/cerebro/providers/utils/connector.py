@@ -40,7 +40,7 @@ def _run_next(iterator: Iterable[T]) -> Any:
     """Advance a synchronous iterator returning a sentinel when exhausted."""
 
     try:
-        return next(iterator)
+        return next(iterator)  # type: ignore[call-overload]
     except StopIteration:
         return _STOP
 

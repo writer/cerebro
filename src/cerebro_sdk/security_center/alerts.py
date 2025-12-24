@@ -133,10 +133,10 @@ def _resolve_entity(
     context: MonitoringContext,
 ) -> SecurityCenterVendorInsight | SecurityCenterCustomerInsight | None:
     if event.entity_type == "vendor":
-        resolver = context.vendor_resolver
-        return resolver(event.entity_id) if resolver else None
-    resolver = context.customer_resolver
-    return resolver(event.entity_id) if resolver else None
+        vendor_resolver = context.vendor_resolver
+        return vendor_resolver(event.entity_id) if vendor_resolver else None
+    customer_resolver = context.customer_resolver
+    return customer_resolver(event.entity_id) if customer_resolver else None
 
 
 def _build_alert(

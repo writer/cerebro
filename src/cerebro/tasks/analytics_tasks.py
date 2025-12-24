@@ -227,9 +227,9 @@ async def _collect_security_metrics_for_all_orgs(
             results.append(result)
         except Exception as exc:  # pragma: no cover - surfaced via result payload
             logger.exception("Metric collection failed for org %s", org_id)
-            error_meta = {"org_id": str(org_id), "error": str(exc)}
+            error_meta: Dict[str, object] = {"org_id": str(org_id), "error": str(exc)}
             if update_state_cb is not None:
-                update_state_cb(states.FAILURE, error_meta)
+                update_state_cb(states.FAILURE, error_meta)  # type: ignore[arg-type]
             results.append(error_meta)
 
     return {"processed": total, "results": results}

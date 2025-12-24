@@ -159,6 +159,6 @@ class RepoSecretKeyProducer(BaseFindingProducer):
         findings = self.evaluate(
             resource=resource,
             config=config,
-            context={"rule_id": rule_id, "detected_at": telemetry["timestamp"]},
+            context=ProducerRunContext.ensure({"rule_id": rule_id, "detected_at": telemetry["timestamp"]}),
         )
         return findings[0]

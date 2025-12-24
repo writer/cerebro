@@ -62,7 +62,7 @@ class JWTSigningKey(Base):
         from cryptography.hazmat.primitives import serialization
 
         public_key = serialization.load_pem_public_key(self.public_key_pem.encode())
-        public_numbers = public_key.public_numbers()
+        public_numbers = public_key.public_numbers()  # type: ignore[union-attr]
 
         # Convert to base64url-encoded integers for JWKS format
         import base64
@@ -79,8 +79,8 @@ class JWTSigningKey(Base):
             "kid": self.kid,
             "use": "sig",
             "alg": self.algorithm,
-            "n": int_to_base64url(public_numbers.n),
-            "e": int_to_base64url(public_numbers.e),
+            "n": int_to_base64url(public_numbers.n),  # type: ignore[union-attr]
+            "e": int_to_base64url(public_numbers.e),  # type: ignore[union-attr]
         }
 
 

@@ -65,7 +65,7 @@ class RemediationTool(StructuredTool):
     output_model = BaseModel  # List of suggestions returned in data field
     required_permission = ToolPermissionLevel.READ_ONLY
 
-    async def _run(
+    async def _run(  # type: ignore[override]
         self,
         context: AgentContext,
         finding_id: Optional[UUID] = None,

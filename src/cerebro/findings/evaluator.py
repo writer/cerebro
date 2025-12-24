@@ -108,7 +108,7 @@ class RuleEvaluator:
         resource_types: Optional[List[str]] = None,
     ) -> Dict[str, List[RuleResult]]:
         """Evaluate rules across an entire organization."""
-        results = {}
+        results: Dict[str, List[RuleResult]] = {}
 
         # Get all applicable rules for the organization
         from cerebro.core.models import Policy

@@ -241,7 +241,7 @@ class WorkflowEngine:
     def _get_nested_value(data: Dict[str, Any], key_path: str) -> Any:
         """Get value from nested dict using dot notation."""
         keys = key_path.split(".")
-        value = data
+        value: Any = data
         for key in keys:
             if isinstance(value, dict):
                 value = value.get(key)

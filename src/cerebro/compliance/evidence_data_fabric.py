@@ -41,7 +41,7 @@ from cerebro.core.database_types import JSONType
 
 # Import unified enums from the consolidated models
 
-Base = declarative_base()
+Base: Any = declarative_base()
 
 
 class EvidenceEntityType(Enum):
@@ -582,7 +582,7 @@ class EvidenceDataFabric:
         mfa_data: List[Dict[str, Any]] = []
         for record in evidence_records:
             if record.entity_type == EvidenceEntityType.IDENTITY.value:
-                normalized: Dict[str, Any] = record.normalized_data or {}
+                normalized: Dict[str, Any] = dict(record.normalized_data or {})
                 mfa_enabled = normalized.get("mfa_enabled", False)
                 mfa_data.append(
                     {
@@ -602,12 +602,13 @@ class EvidenceDataFabric:
                 entities_by_id[entity_id] = []
             entities_by_id[entity_id].append(item)
 
-        compliance_summary = {
+        details: List[Dict[str, Any]] = []
+        compliance_summary: Dict[str, Any] = {
             "total_identities": len(entities_by_id),
             "mfa_compliant": 0,
             "mfa_non_compliant": 0,
             "inconsistent_mfa": 0,
-            "details": [],
+            "details": details,
         }
 
         for entity_id, systems in entities_by_id.items():
@@ -623,7 +624,7 @@ class EvidenceDataFabric:
                 compliance_summary["inconsistent_mfa"] += 1
                 status = "inconsistent"
 
-            compliance_summary["details"].append(
+            details.append(
                 {
                     "entity_id": entity_id,
                     "entity_name": systems[0]["entity_name"],

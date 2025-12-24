@@ -120,8 +120,8 @@ class DatasetBuilder:
                     timestamp=event.occurred_at,
                     source="frontend",
                     event_type=event.event_type,
-                    payload=payload,
-                    labels=labels,
+                    payload=payload,  # type: ignore[arg-type]
+                    labels=labels,  # type: ignore[arg-type]
                 )
             )
         return records
@@ -163,8 +163,8 @@ class DatasetBuilder:
                     timestamp=task.created_at,
                     source="review",
                     event_type="agent_review_task",
-                    payload=payload,
-                    labels=labels,
+                    payload=payload,  # type: ignore[arg-type]
+                    labels=labels,  # type: ignore[arg-type]
                 )
             )
         return records

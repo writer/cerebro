@@ -35,9 +35,8 @@ class IdentityService:
 
         try:
             # Call the actual identity stitcher
-            stitching_result = await self.stitcher.stitch_organization_identities(
-                org_id
-            )
+            stitch_method = getattr(self.stitcher, "stitch_organization_identities")
+            stitching_result = await stitch_method(org_id)
 
             return {
                 "clusters": stitching_result.clusters,

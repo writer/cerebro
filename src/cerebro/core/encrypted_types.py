@@ -26,7 +26,7 @@ Recommended pattern:
 import asyncio
 from typing import Optional, Tuple
 
-from sqlalchemy import Column, LargeBinary, TypeDecorator
+from sqlalchemy import LargeBinary, TypeDecorator
 
 from cerebro.core.encryption import (
     get_encryption_service,

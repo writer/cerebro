@@ -52,9 +52,10 @@ class AgentPlaybook(AsyncManagerBase):
             await manager.link_findings(
                 session_id=session.session_id, finding_ids=finding_ids
             )
-            session = await manager.get_session(session.session_id)
-            if session is None:
+            refreshed_session = await manager.get_session(session.session_id)
+            if refreshed_session is None:
                 raise RuntimeError("Failed to refresh session after linking findings")
+            session = refreshed_session
         return session
 
     async def kickoff_findings_playbook(
