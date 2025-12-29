@@ -1,14 +1,14 @@
 """AWS KMS implementation for envelope encryption."""
 
 import asyncio
-import logging
 
 import boto3
+import structlog
 from botocore.exceptions import ClientError
 
 from .base import BaseKMS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AWSKMS(BaseKMS):
@@ -49,7 +49,7 @@ class AWSKMS(BaseKMS):
                 response = self._client.encrypt(KeyId=self.key_id, Plaintext=plaintext)
                 return response["CiphertextBlob"]
             except ClientError as e:
-                logger.error(f"AWS KMS encryption failed: {e}")
+                logger.error("AWS KMS encryption failed", error=str(e))
                 raise
 
         return await asyncio.to_thread(_encrypt)
@@ -62,7 +62,7 @@ class AWSKMS(BaseKMS):
                 response = self._client.decrypt(CiphertextBlob=ciphertext)
                 return response["Plaintext"]
             except ClientError as e:
-                logger.error(f"AWS KMS decryption failed: {e}")
+                logger.error("AWS KMS decryption failed", error=str(e))
                 raise
 
         return await asyncio.to_thread(_decrypt)
@@ -76,7 +76,7 @@ class AWSKMS(BaseKMS):
                 self._client.describe_key(KeyId=self.key_id)
                 return True
             except ClientError as e:
-                logger.error(f"AWS KMS connection test failed: {e}")
+                logger.error("AWS KMS connection test failed", error=str(e))
                 return False
 
         return await asyncio.to_thread(_test)

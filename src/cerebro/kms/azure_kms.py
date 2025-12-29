@@ -1,14 +1,13 @@
 """Azure Key Vault implementation for envelope encryption."""
 
-import logging
-
+import structlog
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.keys import KeyClient
 from azure.keyvault.keys.crypto import CryptographyClient, EncryptionAlgorithm
 
 from .base import BaseKMS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AzureKeyVaultKMS(BaseKMS):
@@ -56,7 +55,7 @@ class AzureKeyVaultKMS(BaseKMS):
             return await asyncio.to_thread(_encrypt)
 
         except Exception as e:
-            logger.error(f"Azure Key Vault encryption failed: {e}")
+            logger.error("Azure Key Vault encryption failed", error=str(e))
             raise
 
     async def decrypt(self, ciphertext: bytes) -> bytes:
@@ -72,7 +71,7 @@ class AzureKeyVaultKMS(BaseKMS):
             return await asyncio.to_thread(_decrypt)
 
         except Exception as e:
-            logger.error(f"Azure Key Vault decryption failed: {e}")
+            logger.error("Azure Key Vault decryption failed", error=str(e))
             raise
 
     async def test_connection(self) -> bool:
@@ -90,5 +89,5 @@ class AzureKeyVaultKMS(BaseKMS):
             return True
 
         except Exception as e:
-            logger.error(f"Azure Key Vault connection test failed: {e}")
+            logger.error("Azure Key Vault connection test failed", error=str(e))
             return False

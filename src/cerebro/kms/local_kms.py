@@ -2,14 +2,14 @@
 
 import base64
 import hashlib
-import logging
 import os
 
+import structlog
 from cryptography.fernet import Fernet
 
 from .base import BaseKMS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LocalPlaintextKMS(BaseKMS):
@@ -35,7 +35,7 @@ class LocalPlaintextKMS(BaseKMS):
         try:
             return self.fernet.encrypt(plaintext)
         except Exception as e:
-            logger.error(f"Local KMS encryption failed: {e}")
+            logger.error("Local KMS encryption failed", error=str(e))
             raise
 
     async def decrypt(self, ciphertext: bytes) -> bytes:
@@ -43,7 +43,7 @@ class LocalPlaintextKMS(BaseKMS):
         try:
             return self.fernet.decrypt(ciphertext)
         except Exception as e:
-            logger.error(f"Local KMS decryption failed: {e}")
+            logger.error("Local KMS decryption failed", error=str(e))
             raise
 
     async def test_connection(self) -> bool:
@@ -61,7 +61,7 @@ class LocalPlaintextKMS(BaseKMS):
             return success
 
         except Exception as e:
-            logger.error(f"Local KMS connection test failed: {e}")
+            logger.error("Local KMS connection test failed", error=str(e))
             return False
 
 

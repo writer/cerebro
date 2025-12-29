@@ -1,14 +1,14 @@
 """HashiCorp Vault Transit Engine implementation."""
 
 import base64
-import logging
 import os
 
 import httpx
+import structlog
 
 from .base import BaseKMS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class VaultTransitKMS(BaseKMS):
@@ -70,7 +70,7 @@ class VaultTransitKMS(BaseKMS):
                 return ciphertext.encode()
 
         except Exception as e:
-            logger.error(f"Vault Transit encryption failed: {e}")
+            logger.error("Vault Transit encryption failed", error=str(e))
             raise
 
     async def decrypt(self, ciphertext: bytes) -> bytes:
@@ -98,7 +98,7 @@ class VaultTransitKMS(BaseKMS):
                 return base64.b64decode(plaintext_b64)
 
         except Exception as e:
-            logger.error(f"Vault Transit decryption failed: {e}")
+            logger.error("Vault Transit decryption failed", error=str(e))
             raise
 
     async def test_connection(self) -> bool:
@@ -116,5 +116,5 @@ class VaultTransitKMS(BaseKMS):
             return success
 
         except Exception as e:
-            logger.error(f"Vault Transit connection test failed: {e}")
+            logger.error("Vault Transit connection test failed", error=str(e))
             return False

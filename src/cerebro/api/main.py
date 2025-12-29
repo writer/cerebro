@@ -282,6 +282,42 @@ else:
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions with consistent error response format."""
+    from fastapi.responses import JSONResponse
+
+    request_id = getattr(request.state, "request_id", None)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.__class__.__name__,
+            "detail": exc.detail,
+            "code": f"HTTP_{exc.status_code}",
+            "request_id": request_id,
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected exceptions with consistent error response format."""
+    from fastapi.responses import JSONResponse
+
+    request_id = getattr(request.state, "request_id", None)
+    logger.exception("Unhandled exception", request_id=request_id, error=str(exc))
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "InternalServerError",
+            "detail": "An unexpected error occurred",
+            "code": "INTERNAL_ERROR",
+            "request_id": request_id,
+        },
+    )
+
+
 if default_limits:
     logger.info("Rate limiting enabled", default_limits=default_limits)
 else:

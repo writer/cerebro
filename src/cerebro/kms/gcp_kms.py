@@ -1,13 +1,12 @@
 """Google Cloud KMS implementation for envelope encryption."""
 
-import logging
-
+import structlog
 from google.cloud.kms_v1 import KeyManagementServiceAsyncClient
 from google.cloud.kms_v1.types import DecryptRequest, EncryptRequest
 
 from .base import BaseKMS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class GCPKMS(BaseKMS):
@@ -44,7 +43,7 @@ class GCPKMS(BaseKMS):
             return response.ciphertext
 
         except Exception as e:
-            logger.error(f"GCP KMS encryption failed: {e}")
+            logger.error("GCP KMS encryption failed", error=str(e))
             raise
 
     async def decrypt(self, ciphertext: bytes) -> bytes:
@@ -56,7 +55,7 @@ class GCPKMS(BaseKMS):
             return response.plaintext
 
         except Exception as e:
-            logger.error(f"GCP KMS decryption failed: {e}")
+            logger.error("GCP KMS decryption failed", error=str(e))
             raise
 
     async def test_connection(self) -> bool:
@@ -70,5 +69,5 @@ class GCPKMS(BaseKMS):
             return decrypted == test_data
 
         except Exception as e:
-            logger.error(f"GCP KMS connection test failed: {e}")
+            logger.error("GCP KMS connection test failed", error=str(e))
             return False

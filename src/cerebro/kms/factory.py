@@ -1,12 +1,12 @@
 """KMS factory for creating appropriate KMS instances."""
 
-import logging
+import structlog
 
 from cerebro.core.config import settings
 
 from .base import BaseKMS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_kms() -> BaseKMS:
@@ -80,14 +80,14 @@ async def test_kms_connection() -> bool:
         success = await kms.test_connection()
 
         if success:
-            logger.info(f"KMS connection test passed for provider: {kms.name}")
+            logger.info("KMS connection test passed", provider=kms.name)
         else:
-            logger.error(f"KMS connection test failed for provider: {kms.name}")
+            logger.error("KMS connection test failed", provider=kms.name)
 
         return success
 
     except Exception as e:
-        logger.error(f"KMS connection test error: {e}")
+        logger.error("KMS connection test error", error=str(e))
         return False
 
 
