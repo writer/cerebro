@@ -2,7 +2,7 @@
 
 Provider adapters implement this contract to surface resources, principals, and
 permissions in a way that the collector understands.  The support structures
-defined here smooth out cross‑provider behaviour: dataclasses describe the
+defined here smooth out cross-provider behaviour: dataclasses describe the
 entities we persist, while helpers such as :func:`authenticated_method` and
 ``AuthenticationMixin`` ensure consistent authentication flow.
 """

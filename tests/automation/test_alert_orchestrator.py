@@ -102,7 +102,7 @@ async def test_run_telemetry_alerts_delivers_notifications(monkeypatch) -> None:
     async def fake_email(recipients, subject, body):
         email_calls.extend(recipients)
 
-    alerts, snapshot = await run_telemetry_alerts(
+    alerts, _snap = await run_telemetry_alerts(
         slack_webhooks=["https://slack.example"],
         email_recipients=["ops@example.com"],
         email_sender=fake_email,

@@ -133,7 +133,7 @@ class Risk:
 
     @property
     def inherent_risk_score(self) -> float:
-        """Calculate inherent risk score (impact × probability)."""
+        """Calculate inherent risk score (impact x probability)."""
         return self.inherent_impact.value * self.inherent_probability.value
 
     @property

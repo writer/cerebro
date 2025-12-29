@@ -270,7 +270,7 @@ class BlastRadiusAnalyzer:
         if not cluster_data:
             return impacted
 
-        cluster_member, cluster = cluster_data
+        _cluster_member, cluster = cluster_data
 
         # Get all principals in the same identity cluster
         related_stmt = (

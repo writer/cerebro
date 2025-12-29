@@ -1,9 +1,9 @@
 """Configuration collector implementation.
 
 This module contains the machinery that coordinates data ingestion from
-third‑party providers.  It defines :class:`CollectionResult`, a structured
+third-party providers.  It defines :class:`CollectionResult`, a structured
 summary describing what was collected for an account, and
-:class:`ConfigCollector`, which orchestrates the step‑by‑step harvesting of
+:class:`ConfigCollector`, which orchestrates the step-by-step harvesting of
 resources, principals, configuration snapshots, and IAM edges using provider
 SDKs and the bulk database helpers.
 """
@@ -50,7 +50,7 @@ class CollectionResult:
     iam_edges:
         Number of IAM edges persisted after deduplication.
     errors:
-        List collecting human‑readable error messages encountered mid‑flight.
+        List collecting human-readable error messages encountered mid-flight.
     duration_seconds:
         Total wall clock duration of the run.
     """
@@ -69,7 +69,7 @@ class ConfigCollector:
     """Collect resources, principals, configurations, and IAM edges for an account.
 
     The collector delegates to a :class:`~cerebro.providers.base.BaseProvider`
-    implementation for provider‑specific API access, then normalises and stores
+    implementation for provider-specific API access, then normalises and stores
     the results using :class:`~cerebro.core.bulk_operations.BulkOperations`.
     Each public method returns a :class:`CollectionResult` detailing what was
     discovered so callers can attach rich telemetry or API responses.
@@ -106,7 +106,7 @@ class ConfigCollector:
         account:
             Account model instance that identifies which records to update.
         resource_types:
-            Optional allow‑list limiting the set of resource types to collect
+            Optional allow-list limiting the set of resource types to collect
             (useful for incremental syncs).
 
         Returns
@@ -236,7 +236,7 @@ class ConfigCollector:
     async def _collect_configurations(
         self, provider: BaseProvider, account: Account, result: CollectionResult
     ) -> None:
-        """Collect per‑resource configuration snapshots with bounded concurrency."""
+        """Collect per-resource configuration snapshots with bounded concurrency."""
         with collection_metrics.time_collection(
             provider.name, str(account.account_id), "configurations"
         ):

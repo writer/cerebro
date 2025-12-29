@@ -195,41 +195,62 @@ ignore = [
     "S311", # Standard pseudo-random generators (fine for non-crypto)
     "S608", # SQL injection (false positives - we use parameterized queries)
     "E402", # Module level import not at top (intentional for lazy loading)
-    "E501", # Line too long (140 limit configured, but some strings are longer)
     "RUF012", # Mutable class attributes (Pydantic models handle this)
-    "RUF001", # Ambiguous unicode in strings
-    "RUF002", # Ambiguous unicode in docstrings
-    "RUF003", # Ambiguous unicode in comments
-    "RUF059", # Unpacked variable not used (intentional destructuring)
-    "UP007", # Use X | Y for unions (keep Optional/Union for compatibility)
-    "UP031", # Percent format (legacy code)
-    "UP045", # Use X | None (keep Optional for compatibility)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S105", "S106", "S107", "B017"]  # Allow asserts, hardcoded passwords, assert Exception in tests
-"scripts/**/*.py" = ["T201"]  # Allow print statements in scripts
-"src/cerebro/auditability/timestamping.py" = ["S324"]  # SHA1 used for RFC 3161 timestamping protocol
-"src/cerebro/core/config.py" = ["S105"]  # Default placeholder passwords in config
-"src/cerebro/analysis/secrets/catalog.py" = ["S105"]  # Enum values for secret types, not actual secrets
-"src/cerebro/api/routers/auth.py" = ["S105", "S106"]  # Token type strings, not passwords
-"src/cerebro/api/routers/email.py" = ["S105"]  # Masking password for display
-"src/cerebro/api/routers/webhooks.py" = ["S105"]  # Masking HMAC secrets for display
-"src/cerebro/integrations/kandji.py" = ["S105", "S106"]  # API config names, not secrets
-"src/cerebro/integrations/sentinelone.py" = ["S105", "S106"]  # API config names, not secrets
-"src/cerebro/notifications/slack.py" = ["S105"]  # Webhook URL config name
-"src/cerebro/notifications/webhooks.py" = ["S105"]  # Auth header config name
-"src/cerebro/attack_path/service_identity.py" = ["S105"]  # Enum value "secret_injection"
-"src/cerebro/compliance/control_tests.py" = ["S105", "S108"]  # Enum value "pass" + temp path
-"src/cerebro/ocsf/models.py" = ["S105"]  # Enum value "Pass"
-"src/cerebro/core/security/jwt.py" = ["S107"]  # token_type parameter default
-"src/cerebro/testing/test_registry.py" = ["S106"]  # pass_criteria field name
-"src/cerebro_sdk/auth.py" = ["S106", "S107"]  # token_type parameter
-"src/cerebro/agents/memory_utils.py" = ["S324"]  # SHA1 for content hashing (non-security)
-"src/cerebro/analytics/sql_dialect.py" = ["S110"]  # Intentional fallback pattern
-"src/cerebro/analysis/identity_anomaly.py" = ["S112"]  # Exception swallowing is intentional
-"src/cerebro/compliance/evidence_store.py" = ["S112"]  # Skip corrupted metadata
-"src/cerebro/api/routers/compliance_unified.py" = ["S108"]  # Temp path with env override
+# Test files
+"tests/**/*.py" = ["S101", "S105", "S106", "S107", "B017", "E501"]
+"scripts/**/*.py" = ["T201"]
+
+# Security false positives (enum values, config names, masking)
+"src/cerebro/auditability/timestamping.py" = ["S324"]  # SHA1 for RFC 3161
+"src/cerebro/agents/memory_utils.py" = ["S324"]  # SHA1 for content hashing
+"src/cerebro/core/config.py" = ["S105"]
+"src/cerebro/analysis/secrets/catalog.py" = ["S105"]  # Enum values
+"src/cerebro/api/routers/auth.py" = ["S105", "S106"]
+"src/cerebro/api/routers/email.py" = ["S105"]
+"src/cerebro/api/routers/webhooks.py" = ["S105"]
+"src/cerebro/integrations/kandji.py" = ["S105", "S106"]
+"src/cerebro/integrations/sentinelone.py" = ["S105", "S106"]
+"src/cerebro/ocsf/models.py" = ["S105"]
+"src/cerebro/core/security/jwt.py" = ["S107"]
+"src/cerebro_sdk/auth.py" = ["S106", "S107"]
+"src/cerebro/compliance/control_tests.py" = ["S105", "S108"]
+
+# Intentional exception handling patterns
+"src/cerebro/analytics/sql_dialect.py" = ["S110"]
+"src/cerebro/analysis/identity_anomaly.py" = ["S112"]
+"src/cerebro/compliance/evidence_store.py" = ["S112"]
+"src/cerebro/api/routers/compliance_unified.py" = ["S108"]
+"src/cerebro/agents/self_service.py" = ["UP031"]  # SQL parameter placeholders
+
+# Type alias definitions using Union/Optional (can't be auto-converted)
+"src/cerebro/compliance/common/schemas.py" = ["UP045"]  # Optional in dict values
+"src/cerebro/findings/producers/base.py" = ["UP007"]  # Union type alias
+"src/cerebro_sdk/streaming.py" = ["UP007"]  # Union type alias
+
+# Long string literals (compliance definitions, SQL examples, email templates)
+"src/cerebro/compliance/frameworks.py" = ["E501"]
+"src/cerebro/compliance/frameworks/iso27001_provider.py" = ["E501"]
+"src/cerebro/compliance/frameworks/soc2_provider.py" = ["E501"]
+"src/cerebro/compliance/requirement_mapper.py" = ["E501"]
+"src/cerebro/rules/library.py" = ["E501"]
+"src/cerebro/notifications/email.py" = ["E501", "RUF001"]  # ℹ️ emoji is intentional
+"src/cerebro/notifications/slack.py" = ["S105", "E501"]
+"src/cerebro/notifications/webhooks.py" = ["S105"]
+"src/cerebro/query/schema.py" = ["E501"]
+"src/cerebro/cli/commands/query.py" = ["E501"]
+"src/cerebro/agents/tools/nl_query.py" = ["E501"]
+"src/cerebro/agents/tools/query.py" = ["E501"]
+"src/cerebro/agents/tools/smart_summarizer.py" = ["E501"]
+"src/cerebro/agents/tools/identity_anomaly_hunter.py" = ["E501"]
+"src/cerebro/analytics/identity_analytics.py" = ["E501"]
+"src/cerebro/api/routers/query.py" = ["E501"]
+"src/cerebro/attack_path/service_identity.py" = ["S105", "E501"]
+"src/cerebro/testing/advanced_tests.py" = ["E501"]
+"src/cerebro/testing/test_registry.py" = ["S106", "E501"]
+"src/cerebro/providers/tables/m365_tables.py" = ["E501"]
 
 [tool.hatch.build]
 sources = ["src"]

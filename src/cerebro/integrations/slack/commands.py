@@ -257,6 +257,6 @@ class SlackCommandService:
     def _help_text() -> str:
         return (
             "Available commands:\n"
-            "• `/cerebro findings [severity]` – show recent findings (severity defaults to critical).\n"
-            "• `/cerebro incident <id>` – link an incident to an agent session (coming soon)."
+            "• `/cerebro findings [severity]` - show recent findings (severity defaults to critical).\n"
+            "• `/cerebro incident <id>` - link an incident to an agent session (coming soon)."
         )

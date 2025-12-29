@@ -30,7 +30,7 @@ def ensure_tables_registered(
 
     target_registry = registry or get_registry()
 
-    # Only bootstrap the global registry – custom registries are assumed to be
+    # Only bootstrap the global registry - custom registries are assumed to be
     # managed by the caller (used extensively in tests).
     if registry is not None and registry is not get_registry():
         return target_registry

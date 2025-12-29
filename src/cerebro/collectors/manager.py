@@ -1,7 +1,7 @@
 """Collector manager for orchestrating collection runs.
 
-The manager coordinates high‑level collection workflows.  Whereas
-``ConfigCollector`` handles the per‑account ingestion flow, this module decides
+The manager coordinates high-level collection workflows.  Whereas
+``ConfigCollector`` handles the per-account ingestion flow, this module decides
 *which* accounts to process for an organisation, instantiates the appropriate
 provider implementations, and aggregates the results for API consumers.
 """
@@ -47,15 +47,15 @@ class CollectorManager:
         org_id:
             Organisation identifier whose accounts should be processed.
         providers:
-            Optional allow‑list of provider identifiers; if supplied only matching
+            Optional allow-list of provider identifiers; if supplied only matching
             accounts are collected.
         resource_types:
-            Optional allow‑list of resource types to forward to the collector.
+            Optional allow-list of resource types to forward to the collector.
 
         Returns
         -------
         dict
-            A JSON‑serialisable payload mirroring the :class:`CollectionResult`
+            A JSON-serialisable payload mirroring the :class:`CollectionResult`
             structure for consumers of the REST API.
         """
         start_time = datetime.utcnow()
