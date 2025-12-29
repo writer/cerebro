@@ -316,7 +316,7 @@ class FindingManager:
             .group_by(Finding.status)
         )
         status_results = await self.db.execute(status_stmt)
-        by_status = dict(status_results.fetchall())
+        by_status: dict[str, int] = {row[0]: row[1] for row in status_results.fetchall()}
 
         # Get counts by severity
         severity_stmt = (
@@ -325,7 +325,7 @@ class FindingManager:
             .group_by(Finding.severity)
         )
         severity_results = await self.db.execute(severity_stmt)
-        by_severity = dict(severity_results.fetchall())
+        by_severity: dict[str, int] = {row[0]: row[1] for row in severity_results.fetchall()}
 
         # Get counts by provider
         provider_stmt = (
@@ -334,7 +334,7 @@ class FindingManager:
             .group_by(Finding.provider)
         )
         provider_results = await self.db.execute(provider_stmt)
-        by_provider = dict(provider_results.fetchall())
+        by_provider: dict[str, int] = {row[0]: row[1] for row in provider_results.fetchall()}
 
         return {
             "total": total_count,

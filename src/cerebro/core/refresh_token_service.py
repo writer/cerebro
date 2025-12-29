@@ -85,7 +85,7 @@ class RefreshTokenService:
             and_(
                 RefreshToken.token_hash == token_hash,
                 RefreshToken.expires_at > now,
-                not RefreshToken.is_revoked,
+                RefreshToken.is_revoked.is_(False),
             )
         )
 
@@ -121,7 +121,7 @@ class RefreshTokenService:
         """Revoke all refresh tokens for a user."""
 
         stmt = select(RefreshToken).where(
-            and_(RefreshToken.user_id == user_id, not RefreshToken.is_revoked)
+            and_(RefreshToken.user_id == user_id, RefreshToken.is_revoked.is_(False))
         )
 
         tokens = list(await self.db.scalars(stmt))

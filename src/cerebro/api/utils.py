@@ -55,10 +55,10 @@ def build_filtered_query(
 
     # Apply standard filters
     if filters.account_id and hasattr(model, "account_id"):
-        account_id_col = model.account_id
+        account_id_col = model.account_id  # type: ignore[attr-defined]
         stmt = stmt.where(account_id_col == filters.account_id)
     if filters.provider and hasattr(model, "provider"):
-        provider_col = model.provider
+        provider_col = model.provider  # type: ignore[attr-defined]
         stmt = stmt.where(provider_col == filters.provider)
 
     # Apply additional filters

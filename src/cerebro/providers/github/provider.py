@@ -442,7 +442,7 @@ class GitHubProvider(BaseProvider):
         while True:
             try:
                 runners_payload = await call_sync_with_retries(
-                    lambda p=page: self._rest_request(
+                    lambda p=page: self._rest_request(  # type: ignore[misc]
                         "GET",
                         f"/orgs/{self.org_name}/actions/runners",
                         params={"per_page": per_page, "page": p},
@@ -505,7 +505,7 @@ class GitHubProvider(BaseProvider):
         while True:
             try:
                 payload = await call_sync_with_retries(
-                    lambda p=page: self._rest_request(
+                    lambda p=page: self._rest_request(  # type: ignore[misc]
                         "GET",
                         f"/orgs/{self.org_name}/actions/runner-groups",
                         params={"per_page": per_page, "page": p},
@@ -565,7 +565,7 @@ class GitHubProvider(BaseProvider):
 
         while True:
             payload = await call_sync_with_retries(
-                lambda p=page: self._rest_request(
+                lambda p=page: self._rest_request(  # type: ignore[misc]
                     "GET",
                     f"/orgs/{self.org_name}/actions/runner-groups/{group_id}/repositories",
                     params={"per_page": per_page, "page": p},

@@ -1017,11 +1017,11 @@ def tool(
             return await func(*args, **kwargs)
 
         # Add tool metadata to function
-        wrapper._tool_name = name
-        wrapper._tool_description = description
-        wrapper._tool_permission_level = permission_level
-        wrapper._tool_cel_policy_key = cel_policy_key
-        wrapper._tool_cel_expression = cel_expression
+        wrapper._tool_name = name  # type: ignore[attr-defined]
+        wrapper._tool_description = description  # type: ignore[attr-defined]
+        wrapper._tool_permission_level = permission_level  # type: ignore[attr-defined]
+        wrapper._tool_cel_policy_key = cel_policy_key  # type: ignore[attr-defined]
+        wrapper._tool_cel_expression = cel_expression  # type: ignore[attr-defined]
 
         return wrapper
 

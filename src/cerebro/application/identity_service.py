@@ -34,8 +34,7 @@ class IdentityService:
 
         try:
             # Call the actual identity stitcher
-            stitch_method = self.stitcher.stitch_organization_identities
-            stitching_result = await stitch_method(org_id)
+            stitching_result = await self.stitcher.stitch_organization_identities(org_id)  # type: ignore[attr-defined]
 
             return {
                 "clusters": stitching_result.clusters,

@@ -517,10 +517,9 @@ class DashboardAnalytics:
         )
 
         # Identity analytics
-        identity_method = self.identity_analyzer.generate_identity_dashboard_data
         identity_data = await self._track_component(
             "identity_analytics",
-            identity_method(org_id),
+            self.identity_analyzer.generate_identity_dashboard_data(org_id),  # type: ignore[attr-defined]
         )
 
         # Risk heatmap

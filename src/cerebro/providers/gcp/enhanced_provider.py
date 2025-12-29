@@ -548,7 +548,7 @@ class EnhancedGCPProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda params=request_params: self._admin_service.chromeosdevices()
+                    lambda params=request_params: self._admin_service.chromeosdevices()  # type: ignore[misc]
                     .list(**params)
                     .execute(),
                 )

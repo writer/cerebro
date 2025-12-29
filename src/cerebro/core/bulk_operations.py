@@ -199,7 +199,7 @@ class BulkOperations:
         )
 
         result = await self.db.execute(stmt)
-        return dict(result.fetchall())
+        return {row[0]: row[1] for row in result.fetchall()}
 
     async def preload_resource_map(
         self, account_id: UUID, provider: str
@@ -217,7 +217,7 @@ class BulkOperations:
         )
 
         result = await self.db.execute(stmt)
-        return dict(result.fetchall())
+        return {row[0]: row[1] for row in result.fetchall()}
 
     async def bulk_upsert_resources(
         self, account_id: UUID, provider: str, resources: list[dict[str, Any]]

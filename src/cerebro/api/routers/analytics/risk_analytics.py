@@ -111,8 +111,7 @@ async def get_identity_analytics(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     identity_analyzer = IdentityAnalyzer(analytics_db, core_db_session=db)
-    identity_method = identity_analyzer.generate_identity_dashboard_data
-    identity_data = await identity_method(org_id)
+    identity_data = await identity_analyzer.generate_identity_dashboard_data(org_id)  # type: ignore[attr-defined]
 
     return identity_data
 
