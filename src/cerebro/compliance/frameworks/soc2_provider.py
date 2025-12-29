@@ -355,7 +355,7 @@ class SOC2FrameworkProvider(FrameworkProvider):
             # Check for active monitoring
             recent_alerts = [a for a in alerts if a.get("state") == "open"]
             recent_logs = [
-                l for l in logs if "security" in l.get("event_type", "").lower()
+                log for log in logs if "security" in log.get("event_type", "").lower()
             ]
 
             return len(recent_alerts) > 0 or len(recent_logs) > 0

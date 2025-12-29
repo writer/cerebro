@@ -179,7 +179,8 @@ class EnhancedGCPProvider(BaseProvider):
                 None, self._resource_manager_client.get_project, request  # type: ignore[attr-defined]
             )
         except Exception as e:
-            raise ProviderError(f"Google Cloud authentication test failed: {e}")
+            raise ProviderError(f"Google Cloud authentication test failed: {e}") from e
+
 
     async def _setup_workspace_auth(self):
         """Set up Google Workspace authentication with domain-wide delegation."""
@@ -217,7 +218,8 @@ class EnhancedGCPProvider(BaseProvider):
             )
 
         except Exception as e:
-            raise ProviderError(f"Google Workspace authentication setup failed: {e}")
+            raise ProviderError(f"Google Workspace authentication setup failed: {e}") from e
+
 
     async def discover_resources(
         self, resource_types: list[str] | None = None
@@ -546,8 +548,8 @@ class EnhancedGCPProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self._admin_service.chromeosdevices()
-                    .list(**request_params)
+                    lambda params=request_params: self._admin_service.chromeosdevices()
+                    .list(**params)
                     .execute(),
                 )
 

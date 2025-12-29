@@ -135,7 +135,8 @@ async def analyze_attack_paths(
 
     except Exception:
         logger.exception("Attack path analysis failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Attack path analysis failed")
+        raise HTTPException(status_code=500, detail="Attack path analysis failed") from None
+
 
 
 @router.post("/organizations/{org_id}/blast-radius")
@@ -190,7 +191,8 @@ async def analyze_blast_radius(
 
     except Exception:
         logger.exception("Blast radius analysis failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Blast radius analysis failed")
+        raise HTTPException(status_code=500, detail="Blast radius analysis failed") from None
+
 
 
 @router.get("/organizations/{org_id}/attack-graph/summary")
@@ -217,7 +219,8 @@ async def get_attack_graph_summary(
 
     except Exception:
         logger.exception("Attack graph summary failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Graph summary failed")
+        raise HTTPException(status_code=500, detail="Graph summary failed") from None
+
 
 
 @router.get("/organizations/{org_id}/service-identities")
@@ -288,7 +291,8 @@ async def get_service_identities(
         logger.exception(
             "Service identity analysis failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Service identity analysis failed")
+        raise HTTPException(status_code=500, detail="Service identity analysis failed") from None
+
 
 
 @router.post("/organizations/{org_id}/what-if")
@@ -318,7 +322,8 @@ async def what_if_simulation(
 
     except Exception:
         logger.exception("What-if simulation failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Simulation failed")
+        raise HTTPException(status_code=500, detail="Simulation failed") from None
+
 
 
 @router.get("/organizations/{org_id}/high-value-targets")
@@ -358,7 +363,8 @@ async def get_high_value_targets(
         logger.exception(
             "High-value targets query failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Target query failed")
+        raise HTTPException(status_code=500, detail="Target query failed") from None
+
 
 
 @router.get("/organizations/{org_id}/high-privilege-principals")
@@ -398,4 +404,5 @@ async def get_high_privilege_principals(
         logger.exception(
             "High-privilege principals query failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Principals query failed")
+        raise HTTPException(status_code=500, detail="Principals query failed") from None
+

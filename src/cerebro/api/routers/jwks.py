@@ -54,7 +54,7 @@ async def get_jwks(db: AsyncSession = Depends(get_db)) -> JSONResponse:
             logger.error(f"Failed to serve JWKS: {e}")
             raise HTTPException(
                 status_code=500, detail="Failed to retrieve public keys"
-            )
+            ) from e
 
 
 @router.get("/.well-known/openid_configuration")
@@ -92,7 +92,7 @@ async def get_openid_configuration() -> dict[str, Any]:
         logger.error(f"Failed to serve OpenID configuration: {e}")
         raise HTTPException(
             status_code=500, detail="Failed to retrieve OpenID configuration"
-        )
+        ) from e
 
 
 @router.get("/auth/jwks-debug")
@@ -156,4 +156,4 @@ async def debug_jwks(
         logger.error(f"Failed to serve JWKS debug info: {e}")
         raise HTTPException(
             status_code=500, detail="Failed to retrieve key debug information"
-        )
+        ) from e

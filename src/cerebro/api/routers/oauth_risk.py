@@ -127,7 +127,8 @@ async def list_oauth_apps(
 
     except Exception:
         logger.exception("OAuth app listing failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="OAuth app listing failed")
+        raise HTTPException(status_code=500, detail="OAuth app listing failed") from None
+
 
 
 @router.get("/organizations/{org_id}/oauth-apps/{app_id}")
@@ -196,7 +197,8 @@ async def get_oauth_app_details(
         logger.exception(
             "OAuth app details failed", extra={"org_id": str(org_id), "app_id": app_id}
         )
-        raise HTTPException(status_code=500, detail="App details failed")
+        raise HTTPException(status_code=500, detail="App details failed") from None
+
 
 
 @router.get("/organizations/{org_id}/oauth-apps/toxic-combinations")
@@ -260,7 +262,8 @@ async def detect_toxic_combinations(
         logger.exception(
             "Toxic combination detection failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Toxic detection failed")
+        raise HTTPException(status_code=500, detail="Toxic detection failed") from None
+
 
 
 @router.post("/organizations/{org_id}/oauth-apps/quarantine")
@@ -296,7 +299,8 @@ async def quarantine_oauth_app(
 
     except Exception:
         logger.exception("OAuth app quarantine failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Quarantine failed")
+        raise HTTPException(status_code=500, detail="Quarantine failed") from None
+
 
 
 @router.post("/organizations/{org_id}/oauth-apps/restore")
@@ -331,7 +335,8 @@ async def request_oauth_app_restoration(
         logger.exception(
             "OAuth app restoration request failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Restoration request failed")
+        raise HTTPException(status_code=500, detail="Restoration request failed") from None
+
 
 
 @router.post("/organizations/{org_id}/oauth-apps/restore/{restoration_id}/approve")
@@ -365,7 +370,8 @@ async def approve_oauth_app_restoration(
             "OAuth app restoration approval failed",
             extra={"org_id": str(org_id), "restoration_id": restoration_id},
         )
-        raise HTTPException(status_code=500, detail="Restoration approval failed")
+        raise HTTPException(status_code=500, detail="Restoration approval failed") from None
+
 
 
 @router.get("/organizations/{org_id}/oauth-apps/risk-report")
@@ -400,7 +406,8 @@ async def get_oauth_risk_report(
 
     except Exception:
         logger.exception("OAuth risk report failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Risk report failed")
+        raise HTTPException(status_code=500, detail="Risk report failed") from None
+
 
 
 @router.get("/organizations/{org_id}/oauth-apps/quarantine/summary")
@@ -426,7 +433,8 @@ async def get_quarantine_summary(
 
     except Exception:
         logger.exception("Quarantine summary failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Quarantine summary failed")
+        raise HTTPException(status_code=500, detail="Quarantine summary failed") from None
+
 
 
 # Convenience endpoints for common queries
@@ -474,7 +482,8 @@ async def get_high_risk_oauth_apps(
 
     except Exception:
         logger.exception("High-risk OAuth apps failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="High-risk apps failed")
+        raise HTTPException(status_code=500, detail="High-risk apps failed") from None
+
 
 
 @router.get("/organizations/{org_id}/oauth-apps/without-owners")
@@ -514,4 +523,5 @@ async def get_oauth_apps_without_owners(
         logger.exception(
             "Apps without owners query failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Query failed")
+        raise HTTPException(status_code=500, detail="Query failed") from None
+

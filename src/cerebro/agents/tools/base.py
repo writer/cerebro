@@ -210,7 +210,8 @@ class Tool(ABC):
         try:
             return self.input_schema(**raw_inputs)
         except Exception as e:
-            raise ValueError(f"Invalid inputs for tool {self.name}: {e}")
+            raise ValueError(f"Invalid inputs for tool {self.name}: {e}") from e
+
 
     def to_schema(self) -> dict[str, Any]:
         """Convert tool to JSON schema for Claude integration."""

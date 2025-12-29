@@ -196,7 +196,7 @@ class OCSFExporter:
             raise ImportError(
                 "Parquet export requires pandas and pyarrow: "
                 "pip install pandas pyarrow"
-            )
+            ) from None
 
         # Convert events to dict records
         records = [event.model_dump(exclude_none=True) for event in events]
@@ -232,7 +232,8 @@ class OCSFExporter:
         try:
             import pandas as pd
         except ImportError:
-            raise ImportError("CSV export requires pandas: pip install pandas")
+            raise ImportError("CSV export requires pandas: pip install pandas") from None
+
 
         # Flatten records
         records = [event.model_dump(exclude_none=True) for event in events]

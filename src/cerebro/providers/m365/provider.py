@@ -98,7 +98,8 @@ class M365Provider(BaseProvider):
 
         except httpx.HTTPError as e:
             logger.error(f"M365 authentication failed: {e}")
-            raise ProviderError(f"M365 authentication failed: {e}")
+            raise ProviderError(f"M365 authentication failed: {e}") from e
+
         except Exception as e:
             logger.error(f"Unexpected error during M365 auth: {e}")
             return False

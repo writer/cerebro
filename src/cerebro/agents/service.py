@@ -59,7 +59,8 @@ class AgentSessionService:
         try:
             agent_type_enum = AgentType(agent_type)
         except ValueError:
-            raise ValueError(f"Invalid agent type: {agent_type}")
+            raise ValueError(f"Invalid agent type: {agent_type}") from None
+
 
         session = await self.runtime.create_session(
             org_id=org_id,

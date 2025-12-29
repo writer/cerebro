@@ -86,11 +86,13 @@ class AuthenticationMixin:
                     return False
 
             except ProviderError:
-                # Re-raise provider errors as-is
+                # Re-raise provider errors as-is from None
+
                 raise
             except Exception as e:
                 logger.error(f"Unexpected error during {self.name} authentication: {e}")
-                raise ProviderError(f"Authentication failed: {e}")
+                raise ProviderError(f"Authentication failed: {e}") from e
+
 
     async def _run_auth_operation(self, auth_func, *args, **kwargs):
         """Run authentication operation in executor if needed."""

@@ -300,7 +300,7 @@ async def test_streaming_simulation():
         large_response = MockClaudeResponse(" ".join(["word"] * 100))  # 100 words
 
         chunk_count = 0
-        async for chunk in large_response:
+        async for _chunk in large_response:
             chunk_count += 1
             await asyncio.sleep(0.001)  # Simulate processing
 

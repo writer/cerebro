@@ -581,7 +581,8 @@ class EvidenceService:
                     logger.error(
                         f"Failed to store evidence after {max_retries} attempts: {e}"
                     )
-                    raise EvidenceStorageError(f"Storage failed: {e}")
+                    raise EvidenceStorageError(f"Storage failed: {e}") from e
+
 
                 # Wait before retry (exponential backoff)
                 await asyncio.sleep(2**attempt)

@@ -73,7 +73,8 @@ class OktaProvider(BaseProvider):
 
         except httpx.HTTPError as e:
             logger.error(f"Okta authentication failed: {e}")
-            raise ProviderError(f"Okta authentication failed: {e}")
+            raise ProviderError(f"Okta authentication failed: {e}") from e
+
         except Exception as e:
             logger.error(f"Unexpected error during Okta auth: {e}")
             return False

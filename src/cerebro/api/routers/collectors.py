@@ -38,7 +38,8 @@ async def collect_organization(
         )
         return CollectionResponse(**result)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         import logging
 
@@ -46,7 +47,8 @@ async def collect_organization(
             "Collection failed",
             extra={"org_id": str(org_id)},
         )
-        raise HTTPException(status_code=500, detail="Collection failed")
+        raise HTTPException(status_code=500, detail="Collection failed") from None
+
 
 
 @router.post("/organizations/{org_id}/collect/background")

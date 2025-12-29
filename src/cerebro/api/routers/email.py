@@ -453,7 +453,8 @@ async def test_email_config(
         logger.exception(
             "Failed to send test email", extra={"config_id": str(config_id)}
         )
-        raise HTTPException(status_code=500, detail="Failed to send test email")
+        raise HTTPException(status_code=500, detail="Failed to send test email") from None
+
 
 
 @router.get("/notifications", response_model=list[EmailNotificationResponse])

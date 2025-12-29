@@ -247,7 +247,8 @@ class JWTService:
             raise
         except Exception as e:
             logger.error(f"Unexpected error verifying JWT: {e}")
-            raise JWTError(f"Token verification failed: {e}")
+            raise JWTError(f"Token verification failed: {e}") from e
+
 
     async def revoke_token(self, token: str, reason: str = "logout") -> bool:
         """Revoke a JWT token by adding its jti to revocation list."""

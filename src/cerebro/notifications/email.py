@@ -208,7 +208,7 @@ class EmailNotificationService:
         try:
             port = int(port_raw)
         except (TypeError, ValueError):
-            raise ValueError("SMTP port must be a number between 1 and 65535")
+            raise ValueError("SMTP port must be a number between 1 and 65535") from None
 
         if not 1 <= port <= 65535:
             raise ValueError("SMTP port must be between 1 and 65535")

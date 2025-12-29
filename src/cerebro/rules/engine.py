@@ -84,7 +84,8 @@ class RuleEngine:
             return compiled_ast
         except Exception as e:
             logger.error(f"Failed to compile CEL expression: {e}")
-            raise CompilationError(f"Failed to compile expression: {e}")
+            raise CompilationError(f"Failed to compile expression: {e}") from e
+
 
     def _convert_to_cel_types(self, obj: Any) -> Any:
         """Convert Python objects to CEL types."""
@@ -132,7 +133,8 @@ class RuleEngine:
             )
 
         except CompilationError:
-            # Re-raise compilation errors
+            # Re-raise compilation errors from None
+
             raise
         except CELEvalError as e:
             execution_time = (datetime.now() - start_time).total_seconds() * 1000

@@ -114,10 +114,12 @@ async def create_vendor(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception("Vendor creation failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Vendor creation failed")
+        raise HTTPException(status_code=500, detail="Vendor creation failed") from None
+
 
 
 @router.get("/organizations/{org_id}/vendors")
@@ -194,10 +196,12 @@ async def list_vendors(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception("Vendor listing failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Vendor listing failed")
+        raise HTTPException(status_code=500, detail="Vendor listing failed") from None
+
 
 
 @router.get("/organizations/{org_id}/vendors/{vendor_id}")
@@ -302,7 +306,8 @@ async def get_vendor_details(
             "Vendor details retrieval failed",
             extra={"org_id": str(org_id), "vendor_id": vendor_id},
         )
-        raise HTTPException(status_code=500, detail="Vendor details failed")
+        raise HTTPException(status_code=500, detail="Vendor details failed") from None
+
 
 
 @router.get("/organizations/{org_id}/vendors/discovered")
@@ -389,7 +394,8 @@ async def list_discovered_vendors(
         logger.exception(
             "Discovered vendors listing failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Discovered vendors failed")
+        raise HTTPException(status_code=500, detail="Discovered vendors failed") from None
+
 
 
 @router.get("/organizations/{org_id}/vendors/risk-report")
@@ -415,7 +421,8 @@ async def get_vendor_risk_report(
 
     except Exception:
         logger.exception("Vendor risk report failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Risk report failed")
+        raise HTTPException(status_code=500, detail="Risk report failed") from None
+
 
 
 @router.post("/organizations/{org_id}/vendors/discovered/{discovered_vendor_id}/review")
@@ -453,13 +460,15 @@ async def review_discovered_vendor(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception(
             "Discovered vendor review failed",
             extra={"org_id": str(org_id), "discovered_vendor_id": discovered_vendor_id},
         )
-        raise HTTPException(status_code=500, detail="Review failed")
+        raise HTTPException(status_code=500, detail="Review failed") from None
+
 
 
 # Vendor evidence queries (leveraging the evidence data fabric)
@@ -559,4 +568,5 @@ async def get_vendor_evidence(
             "Vendor evidence retrieval failed",
             extra={"org_id": str(org_id), "vendor_id": vendor_id},
         )
-        raise HTTPException(status_code=500, detail="Evidence retrieval failed")
+        raise HTTPException(status_code=500, detail="Evidence retrieval failed") from None
+

@@ -285,19 +285,19 @@ class ChangeReplayEngine:
 
         # Group by resource type
         resource_type_counts: dict[str, int] = {}
-        for snapshot, resource in snapshots:
+        for _snapshot, resource in snapshots:
             rt = resource.resource_type
             resource_type_counts[rt] = resource_type_counts.get(rt, 0) + 1
 
         # Provider distribution
         provider_counts: dict[str, int] = {}
-        for snapshot, resource in snapshots:
+        for _snapshot, resource in snapshots:
             prov = resource.provider
             provider_counts[prov] = provider_counts.get(prov, 0) + 1
 
         # Time distribution
         time_buckets: dict[str, int] = {}
-        for snapshot, resource in snapshots:
+        for snapshot, _resource in snapshots:
             day = snapshot.captured_at.date()
             time_buckets[str(day)] = time_buckets.get(str(day), 0) + 1
 

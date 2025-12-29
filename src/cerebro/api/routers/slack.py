@@ -195,7 +195,7 @@ async def create_slack_webhook(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create Slack webhook",
-        )
+        ) from e
 
 
 @router.get("/webhooks", response_model=list[SlackWebhookResponse])
@@ -231,7 +231,7 @@ async def list_slack_webhooks(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list Slack webhooks",
-        )
+        ) from e
 
 
 @router.get("/webhooks/{webhook_id}", response_model=SlackWebhookResponse)
@@ -275,7 +275,7 @@ async def get_slack_webhook(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get Slack webhook",
-        )
+        ) from e
 
 
 @router.patch("/webhooks/{webhook_id}", response_model=SlackWebhookResponse)
@@ -347,7 +347,7 @@ async def update_slack_webhook(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update Slack webhook",
-        )
+        ) from e
 
 
 @router.delete("/webhooks/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -394,7 +394,7 @@ async def delete_slack_webhook(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete Slack webhook",
-        )
+        ) from e
 
 
 @router.get("/notifications", response_model=list[SlackNotificationResponse])
@@ -435,7 +435,7 @@ async def list_slack_notifications(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list Slack notifications",
-        )
+        ) from e
 
 
 @router.post("/commands")
@@ -576,7 +576,7 @@ async def get_slack_notification_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get Slack notification stats",
-        )
+        ) from e
 
 
 # ==================== Helper Functions ====================

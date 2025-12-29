@@ -433,13 +433,15 @@ async def create_agent_session(
         logger.warning(
             "Invalid agent session request", error=str(e), user=current_user.user_id
         )
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
 
     except Exception as e:
         logger.exception(
             "Failed to create agent session", error=str(e), user=current_user.user_id
         )
-        raise HTTPException(status_code=500, detail="Failed to create agent session")
+        raise HTTPException(status_code=500, detail="Failed to create agent session") from e
+
 
 
 @router.get("/sessions", response_model=SessionListResponse)
@@ -490,7 +492,8 @@ async def list_agent_sessions(
         logger.exception(
             "Failed to list agent sessions", error=str(e), user=current_user.user_id
         )
-        raise HTTPException(status_code=500, detail="Failed to list agent sessions")
+        raise HTTPException(status_code=500, detail="Failed to list agent sessions") from e
+
 
 
 @router.get("/sessions/{session_id}", response_model=SessionWithMessagesResponse)
@@ -573,7 +576,8 @@ async def get_agent_session(
         logger.exception(
             "Failed to get agent session", session_id=session_id, error=str(e)
         )
-        raise HTTPException(status_code=500, detail="Failed to get agent session")
+        raise HTTPException(status_code=500, detail="Failed to get agent session") from e
+
 
 
 @router.post("/sessions/{session_id}/messages")
@@ -625,7 +629,8 @@ async def send_message_to_agent(
             logger.exception(
                 "Error sending message", session_id=session_id, error=str(e)
             )
-            raise HTTPException(status_code=500, detail="Failed to send message")
+            raise HTTPException(status_code=500, detail="Failed to send message") from e
+
 
         if error:
             raise HTTPException(status_code=400, detail=error)
@@ -728,7 +733,8 @@ async def get_session_messages(
         logger.exception(
             "Failed to get session messages", session_id=session_id, error=str(e)
         )
-        raise HTTPException(status_code=500, detail="Failed to get session messages")
+        raise HTTPException(status_code=500, detail="Failed to get session messages") from e
+
 
 
 @router.get("/sessions/{session_id}/memory", response_model=list[MemoryEntryResponse])
@@ -788,7 +794,7 @@ async def get_session_memory_entries(
         )
         raise HTTPException(
             status_code=500, detail="Failed to get session memory entries"
-        )
+        ) from e
 
 
 @router.get("/sessions/{session_id}/memory/stats", response_model=MemoryStatsResponse)
@@ -1277,4 +1283,5 @@ async def agent_health():
         }
     except Exception as e:
         logger.exception("Agent health check failed", error=str(e))
-        raise HTTPException(status_code=503, detail="Agent system unavailable")
+        raise HTTPException(status_code=503, detail="Agent system unavailable") from e
+

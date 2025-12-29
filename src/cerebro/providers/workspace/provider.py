@@ -301,8 +301,8 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.admin_service.chromeosdevices()
-                    .list(**request_params)
+                    lambda params=request_params: self.admin_service.chromeosdevices()
+                    .list(**params)
                     .execute(),
                 )
 
@@ -434,8 +434,8 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.admin_service.mobiledevices()
-                    .list(**request_params)
+                    lambda params=request_params: self.admin_service.mobiledevices()
+                    .list(**params)
                     .execute(),
                 )
 
@@ -648,8 +648,8 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.admin_service.users()
-                    .list(**request_params)
+                    lambda params=request_params: self.admin_service.users()
+                    .list(**params)
                     .execute(),
                 )
 
@@ -765,8 +765,8 @@ class GoogleWorkspaceProvider(BaseProvider):
 
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.admin_service.groups()
-                    .list(**request_params)
+                    lambda params=request_params: self.admin_service.groups()
+                    .list(**params)
                     .execute(),
                 )
 
@@ -778,8 +778,8 @@ class GoogleWorkspaceProvider(BaseProvider):
                     try:
                         members_result = await loop.run_in_executor(
                             None,
-                            lambda: self.admin_service.members()
-                            .list(groupKey=group_email)
+                            lambda email=group_email: self.admin_service.members()
+                            .list(groupKey=email)
                             .execute(),
                         )
 
@@ -802,8 +802,8 @@ class GoogleWorkspaceProvider(BaseProvider):
                         if self._groups_settings_service:
                             settings_result = await loop.run_in_executor(
                                 None,
-                                lambda: self._groups_settings_service.groups()
-                                .get(groupUniqueId=group_email)
+                                lambda email=group_email: self._groups_settings_service.groups()
+                                .get(groupUniqueId=email)
                                 .execute(),
                             )
                             group_settings = {
@@ -953,8 +953,8 @@ class GoogleWorkspaceProvider(BaseProvider):
                 try:
                     assignments_result = await loop.run_in_executor(
                         None,
-                        lambda: self.admin_service.roleAssignments()
-                        .list(customer="my_customer", roleId=role_id)
+                        lambda rid=role_id: self.admin_service.roleAssignments()
+                        .list(customer="my_customer", roleId=rid)
                         .execute(),
                     )
 
@@ -1004,8 +1004,8 @@ class GoogleWorkspaceProvider(BaseProvider):
                 try:
                     members_result = await loop.run_in_executor(
                         None,
-                        lambda: self.admin_service.members()
-                        .list(groupKey=group_email)
+                        lambda email=group_email: self.admin_service.members()
+                        .list(groupKey=email)
                         .execute(),
                     )
 

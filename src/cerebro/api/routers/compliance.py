@@ -88,7 +88,7 @@ async def get_evidence_status(
         )
         raise HTTPException(
             status_code=500, detail="Evidence status calculation failed"
-        )
+        ) from None
 
 
 @router.get("/frameworks")

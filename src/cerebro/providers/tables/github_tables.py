@@ -47,11 +47,11 @@ class GitHubClient:
                 self._github = Github(token)  # type: ignore[assignment]
                 # Test authentication by getting user info
                 user = self._github.get_user()  # type: ignore[union-attr, attr-defined]
-                user.name  # This will raise if token is invalid
+                _ = user.name  # This will raise if token is invalid
 
                 # Get organization
                 self._org = self._github.get_organization(org_name)  # type: ignore[union-attr, attr-defined]
-                self._org.name  # type: ignore[union-attr, attr-defined]  # Test org access
+                _ = self._org.name  # type: ignore[union-attr, attr-defined]  # Test org access
                 return True
 
             return await loop.run_in_executor(None, _auth)

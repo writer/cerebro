@@ -497,7 +497,8 @@ async def test_webhook_config(
         logger.exception(
             "Failed to send test webhook", extra={"config_id": str(config_id)}
         )
-        raise HTTPException(status_code=500, detail="Failed to send test webhook")
+        raise HTTPException(status_code=500, detail="Failed to send test webhook") from None
+
 
 
 @router.get("/notifications", response_model=list[WebhookNotificationResponse])

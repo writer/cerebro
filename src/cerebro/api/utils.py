@@ -122,7 +122,8 @@ def validate_uuid_or_400(uuid_str: str, field_name: str = "ID") -> UUID:
     try:
         return UUID(uuid_str)
     except ValueError:
-        raise StandardResponses.bad_request(f"Invalid {field_name} format")
+        raise StandardResponses.bad_request(f"Invalid {field_name} format") from None
+
 
 
 def handle_database_error(e: Exception, operation: str = "database operation"):

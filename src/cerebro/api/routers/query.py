@@ -139,7 +139,7 @@ async def execute_sql_query(
         raise HTTPException(
             status_code=500,
             detail={"message": "Internal server error", "error": str(e)},
-        )
+        ) from e
 
 
 @router.get("/tables", response_model=TablesResponse, summary="List Security Tables")
@@ -178,7 +178,7 @@ async def list_security_tables(
         raise HTTPException(
             status_code=500,
             detail={"message": "Failed to list tables", "error": str(e)},
-        )
+        ) from e
 
 
 @router.get(
@@ -220,7 +220,7 @@ async def get_table_schema(table_name: str) -> TableDetailResponse:
         raise HTTPException(
             status_code=500,
             detail={"message": "Failed to get table schema", "error": str(e)},
-        )
+        ) from e
 
 
 @router.get("/health", summary="Query Engine Health Check")
@@ -237,7 +237,7 @@ async def query_engine_health():
         raise HTTPException(
             status_code=500,
             detail={"message": "Query engine health check failed", "error": str(e)},
-        )
+        ) from e
 
 
 # Common query examples endpoint
@@ -375,7 +375,7 @@ async def query_security_alerts(
         raise HTTPException(
             status_code=500,
             detail={"message": "Failed to query alerts", "error": str(e)},
-        )
+        ) from e
 
 
 @router.get("/users", summary="Query User Identities")
@@ -460,7 +460,7 @@ async def query_users(
         raise HTTPException(
             status_code=500,
             detail={"message": "Failed to query users", "error": str(e)},
-        )
+        ) from e
 
 
 def _derive_providers(result: QueryResult) -> list[str]:

@@ -101,7 +101,8 @@ async def create_jml_campaign(
 
     except Exception:
         logger.exception("JML campaign creation failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Campaign creation failed")
+        raise HTTPException(status_code=500, detail="Campaign creation failed") from None
+
 
 
 @router.get("/organizations/{org_id}/jml/events")
@@ -146,7 +147,8 @@ async def get_jml_events(
 
     except Exception:
         logger.exception("JML events retrieval failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="JML events failed")
+        raise HTTPException(status_code=500, detail="JML events failed") from None
+
 
 
 # Access Review Endpoints
@@ -182,7 +184,8 @@ async def create_access_review(
 
     except Exception:
         logger.exception("Access review creation failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Review creation failed")
+        raise HTTPException(status_code=500, detail="Review creation failed") from None
+
 
 
 @router.get("/organizations/{org_id}/access-reviews")
@@ -220,7 +223,8 @@ async def list_access_reviews(
 
     except Exception:
         logger.exception("Access review listing failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Review listing failed")
+        raise HTTPException(status_code=500, detail="Review listing failed") from None
+
 
 
 @router.post("/organizations/{org_id}/access-reviews/{review_id}/decisions")
@@ -258,13 +262,15 @@ async def record_review_decision(
         }
 
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid decision")
+        raise HTTPException(status_code=400, detail="Invalid decision") from None
+
     except Exception:
         logger.exception(
             "Review decision failed",
             extra={"org_id": str(org_id), "review_id": review_id},
         )
-        raise HTTPException(status_code=500, detail="Decision recording failed")
+        raise HTTPException(status_code=500, detail="Decision recording failed") from None
+
 
 
 # Peer Group Analysis Endpoints
@@ -291,7 +297,8 @@ async def get_peer_group_analysis(
 
     except Exception:
         logger.exception("Peer group analysis failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Peer group analysis failed")
+        raise HTTPException(status_code=500, detail="Peer group analysis failed") from None
+
 
 
 @router.get("/organizations/{org_id}/peer-groups/outliers")
@@ -342,7 +349,8 @@ async def get_access_outliers(
 
     except Exception:
         logger.exception("Outlier analysis failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Outlier analysis failed")
+        raise HTTPException(status_code=500, detail="Outlier analysis failed") from None
+
 
 
 # Exception Management Endpoints
@@ -389,10 +397,12 @@ async def request_access_exception(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception("Exception request failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Exception request failed")
+        raise HTTPException(status_code=500, detail="Exception request failed") from None
+
 
 
 @router.post("/organizations/{org_id}/exceptions/{exception_id}/approve")
@@ -427,13 +437,15 @@ async def approve_access_exception(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception(
             "Exception approval failed",
             extra={"org_id": str(org_id), "exception_id": exception_id},
         )
-        raise HTTPException(status_code=500, detail="Exception approval failed")
+        raise HTTPException(status_code=500, detail="Exception approval failed") from None
+
 
 
 @router.post("/organizations/{org_id}/exceptions/process-expired")
@@ -459,7 +471,8 @@ async def process_expired_exceptions(
 
     except Exception:
         logger.exception("Exception processing failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Exception processing failed")
+        raise HTTPException(status_code=500, detail="Exception processing failed") from None
+
 
 
 # Combined Identity Governance Dashboard
@@ -548,4 +561,5 @@ async def get_identity_governance_dashboard(
         logger.exception(
             "Identity governance dashboard failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Dashboard generation failed")
+        raise HTTPException(status_code=500, detail="Dashboard generation failed") from None
+

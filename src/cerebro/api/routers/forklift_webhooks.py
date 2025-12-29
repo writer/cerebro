@@ -185,7 +185,8 @@ async def receive_forklift_event(
             "Failed to process Forklift event", extra={"event_type": event_type}
         )
         await db.rollback()
-        raise HTTPException(status_code=500, detail="Event processing failed")
+        raise HTTPException(status_code=500, detail="Event processing failed") from None
+
 
 
 async def handle_drift_detected(

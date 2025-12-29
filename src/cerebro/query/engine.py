@@ -130,7 +130,8 @@ class SQLParser:
 
         except Exception as e:
             logger.error(f"Error parsing SQL query: {e}")
-            raise ValueError(f"Invalid SQL query: {e}")
+            raise ValueError(f"Invalid SQL query: {e}") from e
+
 
     def _extract_table_name(self, parsed) -> str:
         """Extract table name from parsed SQL."""

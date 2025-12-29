@@ -133,8 +133,8 @@ class AzureProvider(BaseProvider):
             )
 
             containers = await call_sync_with_retries(
-                lambda: list(
-                    blob_service_client.list_containers(include_metadata=True)
+                lambda client=blob_service_client: list(
+                    client.list_containers(include_metadata=True)
                 ),
                 exceptions=(AzureError,),
                 logger=logger,

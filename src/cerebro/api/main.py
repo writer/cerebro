@@ -596,7 +596,8 @@ async def health_db():
     except Exception as e:
         from fastapi import HTTPException
 
-        raise HTTPException(status_code=503, detail=f"Database unhealthy: {e!s}")
+        raise HTTPException(status_code=503, detail=f"Database unhealthy: {e!s}") from e
+
 
 
 @app.get("/health/celery")
@@ -617,7 +618,8 @@ async def health_celery():
             try:
                 active_tasks = inspect.active() or {}
             except Exception as exc:  # pragma: no cover - celery inspect can raise
-                raise RuntimeError(f"Failed to fetch active tasks: {exc}")
+                raise RuntimeError(f"Failed to fetch active tasks: {exc}") from exc
+
 
             try:
                 reserved_tasks = inspect.reserved() or {}
@@ -675,7 +677,7 @@ async def health_celery():
     except Exception as e:
         raise HTTPException(
             status_code=503, detail=f"Celery health check failed: {e!s}"
-        )
+        ) from e
 
 
 @app.get("/health/encryption")
@@ -707,7 +709,7 @@ async def health_encryption():
 
         raise HTTPException(
             status_code=503, detail=f"Encryption health check failed: {e!s}"
-        )
+        ) from e
 
 
 @app.get("/health/dynamodb")
@@ -737,7 +739,7 @@ async def health_dynamodb():
     except Exception as e:
         raise HTTPException(
             status_code=503, detail=f"DynamoDB health check failed: {e!s}"
-        )
+        ) from e
 
 
 if __name__ == "__main__":

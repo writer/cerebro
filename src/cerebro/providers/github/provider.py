@@ -72,11 +72,11 @@ class GitHubProvider(BaseProvider):
                 self._github = Github(settings.github_token)
                 # Test authentication by getting user info
                 user = self._github.get_user()
-                user.name  # This will raise if token is invalid
+                _ = user.name  # This will raise if token is invalid
 
                 # Get organization
                 self._org = self._github.get_organization(self.org_name)
-                self._org.name  # Test org access
+                _ = self._org.name  # Test org access
                 return True
 
             return await call_sync_with_retries(
@@ -87,7 +87,8 @@ class GitHubProvider(BaseProvider):
 
         except GithubException as e:
             logger.error(f"GitHub authentication failed: {e}")
-            raise ProviderError(f"GitHub authentication failed: {e}")
+            raise ProviderError(f"GitHub authentication failed: {e}") from e
+
         except Exception as e:
             logger.error(f"Unexpected error during GitHub auth: {e}")
             return False
@@ -441,10 +442,10 @@ class GitHubProvider(BaseProvider):
         while True:
             try:
                 runners_payload = await call_sync_with_retries(
-                    lambda: self._rest_request(
+                    lambda p=page: self._rest_request(
                         "GET",
                         f"/orgs/{self.org_name}/actions/runners",
-                        params={"per_page": per_page, "page": page},
+                        params={"per_page": per_page, "page": p},
                     ),
                     exceptions=(requests.RequestException,),
                     logger=logger,
@@ -504,10 +505,10 @@ class GitHubProvider(BaseProvider):
         while True:
             try:
                 payload = await call_sync_with_retries(
-                    lambda: self._rest_request(
+                    lambda p=page: self._rest_request(
                         "GET",
                         f"/orgs/{self.org_name}/actions/runner-groups",
-                        params={"per_page": per_page, "page": page},
+                        params={"per_page": per_page, "page": p},
                     ),
                     exceptions=(requests.RequestException,),
                     logger=logger,
@@ -564,10 +565,10 @@ class GitHubProvider(BaseProvider):
 
         while True:
             payload = await call_sync_with_retries(
-                lambda: self._rest_request(
+                lambda p=page: self._rest_request(
                     "GET",
                     f"/orgs/{self.org_name}/actions/runner-groups/{group_id}/repositories",
-                    params={"per_page": per_page, "page": page},
+                    params={"per_page": per_page, "page": p},
                 ),
                 exceptions=(requests.RequestException,),
                 logger=logger,

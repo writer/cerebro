@@ -170,7 +170,8 @@ async def list_compliance_frameworks(
 
     except Exception as e:
         logger.error(f"Failed to list frameworks: {e}")
-        raise StandardResponses.internal_error("Failed to retrieve frameworks")
+        raise StandardResponses.internal_error("Failed to retrieve frameworks") from e
+
 
 
 @router.get("/frameworks/{framework_id}", summary="Get Framework Details")
@@ -236,7 +237,8 @@ async def get_framework_details(
         raise
     except Exception as e:
         logger.error(f"Failed to get framework details: {e}")
-        raise StandardResponses.internal_error("Failed to retrieve framework details")
+        raise StandardResponses.internal_error("Failed to retrieve framework details") from e
+
 
 
 @router.get(
@@ -284,7 +286,8 @@ async def get_control_details(
         raise
     except Exception as e:
         logger.error(f"Failed to get control details: {e}")
-        raise StandardResponses.internal_error("Failed to retrieve control details")
+        raise StandardResponses.internal_error("Failed to retrieve control details") from e
+
 
 
 # === EVIDENCE COLLECTION ENDPOINTS ===
@@ -353,7 +356,8 @@ async def collect_compliance_evidence(
         raise
     except Exception as e:
         logger.error(f"Evidence collection failed: {e}")
-        raise StandardResponses.internal_error("Evidence collection failed")
+        raise StandardResponses.internal_error("Evidence collection failed") from e
+
 
 
 @router.get("/organizations/{org_id}/evidence", summary="List Evidence Items")
@@ -401,7 +405,8 @@ async def list_evidence(
 
     except Exception as e:
         logger.error(f"Failed to list evidence: {e}")
-        raise StandardResponses.internal_error("Failed to retrieve evidence")
+        raise StandardResponses.internal_error("Failed to retrieve evidence") from e
+
 
 
 @router.get(
@@ -453,7 +458,8 @@ async def get_evidence_details(
         raise
     except Exception as e:
         logger.error(f"Failed to get evidence details: {e}")
-        raise StandardResponses.internal_error("Failed to retrieve evidence details")
+        raise StandardResponses.internal_error("Failed to retrieve evidence details") from e
+
 
 
 # === EVIDENCE BUNDLE ENDPOINTS ===
@@ -521,7 +527,8 @@ async def create_evidence_bundle(
         raise
     except Exception as e:
         logger.error(f"Failed to create evidence bundle: {e}")
-        raise StandardResponses.internal_error("Failed to create evidence bundle")
+        raise StandardResponses.internal_error("Failed to create evidence bundle") from e
+
 
 
 @router.get(
@@ -619,7 +626,8 @@ async def get_compliance_status(
         raise
     except Exception as e:
         logger.error(f"Failed to get compliance status: {e}")
-        raise StandardResponses.internal_error("Failed to assess compliance status")
+        raise StandardResponses.internal_error("Failed to assess compliance status") from e
+
 
 
 # === UTILITY FUNCTIONS ===
@@ -721,4 +729,5 @@ async def compliance_health():
 
     except Exception as e:
         logger.error(f"Compliance health check failed: {e}")
-        raise StandardResponses.internal_error("Compliance service unhealthy")
+        raise StandardResponses.internal_error("Compliance service unhealthy") from e
+

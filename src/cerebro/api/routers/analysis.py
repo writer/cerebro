@@ -115,7 +115,8 @@ async def analyze_blast_radius(
 
     except Exception:
         logger.exception("Blast radius analysis failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Analysis failed")
+        raise HTTPException(status_code=500, detail="Analysis failed") from None
+
 
 
 @router.get("/organizations/{org_id}/blast-radius/report")
@@ -138,7 +139,8 @@ async def generate_blast_radius_report(
         logger.exception(
             "Blast radius report generation failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Report generation failed")
+        raise HTTPException(status_code=500, detail="Report generation failed") from None
+
 
 
 @router.post("/organizations/{org_id}/forensic-replay")
@@ -193,7 +195,8 @@ async def forensic_replay(
 
     except Exception:
         logger.exception("Forensic replay failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Forensic replay failed")
+        raise HTTPException(status_code=500, detail="Forensic replay failed") from None
+
 
 
 @router.post("/organizations/{org_id}/change-replay")
@@ -242,7 +245,8 @@ async def change_replay(
 
     except Exception:
         logger.exception("Change replay failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Change replay failed")
+        raise HTTPException(status_code=500, detail="Change replay failed") from None
+
 
 
 @router.get("/organizations/{org_id}/rule-effectiveness")
@@ -268,7 +272,8 @@ async def get_rule_effectiveness(
         logger.exception(
             "Rule effectiveness analysis failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Analysis failed")
+        raise HTTPException(status_code=500, detail="Analysis failed") from None
+
 
 
 @router.post("/organizations/{org_id}/what-if-rule")
@@ -294,7 +299,8 @@ async def what_if_rule_analysis(
 
     except Exception:
         logger.exception("What-if rule analysis failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Analysis failed")
+        raise HTTPException(status_code=500, detail="Analysis failed") from None
+
 
 
 @router.get("/organizations/{org_id}/identity/anomalies")
@@ -352,7 +358,8 @@ async def get_identity_anomalies(
         logger.exception(
             "Identity anomaly detection failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Anomaly detection failed")
+        raise HTTPException(status_code=500, detail="Anomaly detection failed") from None
+
 
 
 @router.get("/organizations/{org_id}/identity/anomalies/summary")
@@ -397,7 +404,8 @@ async def get_identity_anomaly_summary(
         logger.exception(
             "Identity anomaly summary failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Summary generation failed")
+        raise HTTPException(status_code=500, detail="Summary generation failed") from None
+
 
 
 @router.post("/organizations/{org_id}/identity/anomalies/analyze")
@@ -461,7 +469,8 @@ async def analyze_identity_anomalies_post(
         logger.exception(
             "Identity anomaly analysis failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Analysis failed")
+        raise HTTPException(status_code=500, detail="Analysis failed") from None
+
 
 
 # Compliance Evidence Generation Endpoints
@@ -588,7 +597,8 @@ async def generate_compliance_evidence(
         )
         end_date = parse(period_end) if period_end else datetime.now()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {e}") from e
+
 
     try:
         generator = ComplianceEvidenceGenerator()
@@ -607,7 +617,8 @@ async def generate_compliance_evidence(
         logger.exception(
             "Compliance evidence generation failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Evidence generation failed")
+        raise HTTPException(status_code=500, detail="Evidence generation failed") from None
+
 
 
 @router.get("/organizations/{org_id}/compliance/{framework_name}/status")
@@ -656,4 +667,5 @@ async def get_compliance_status(
         logger.exception(
             "Compliance status check failed", extra={"org_id": str(org_id)}
         )
-        raise HTTPException(status_code=500, detail="Status check failed")
+        raise HTTPException(status_code=500, detail="Status check failed") from None
+

@@ -36,7 +36,7 @@ async def get_metric_trends(
     except ValueError:
         raise HTTPException(
             status_code=400, detail=f"Invalid metric type: {metric_type}"
-        )
+        ) from None
 
     trend_analyzer = TrendAnalyzer(analytics_db)
     trend = await trend_analyzer.analyze_metric_trend(org_id, metric_enum, days_back)

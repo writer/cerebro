@@ -281,9 +281,10 @@ async def put_item(
         if error_code == "ConditionalCheckFailedException":
             raise ConditionalCheckFailedError(
                 f"Condition failed for put_item on {table_name}"
-            )
+            ) from e
         logger.error(f"DynamoDB put_item error: {e}", extra={"table": table_name})
-        raise DynamoDBError(f"Failed to put item: {e}")
+        raise DynamoDBError(f"Failed to put item: {e}") from e
+
 
 
 async def get_item(
@@ -316,7 +317,8 @@ async def get_item(
         logger.error(
             f"DynamoDB get_item error: {e}", extra={"table": table_name, "pk": pk_val}
         )
-        raise DynamoDBError(f"Failed to get item: {e}")
+        raise DynamoDBError(f"Failed to get item: {e}") from e
+
 
 
 async def delete_item(
@@ -395,12 +397,13 @@ async def update_item(
         if error_code == "ConditionalCheckFailedException":
             raise ConditionalCheckFailedError(
                 f"Condition failed for update on {table_name}"
-            )
+            ) from e
         logger.error(
             f"DynamoDB update_item error: {e}",
             extra={"table": table_name, "pk": pk_val},
         )
-        raise DynamoDBError(f"Failed to update item: {e}")
+        raise DynamoDBError(f"Failed to update item: {e}") from e
+
 
 
 async def query(
@@ -500,7 +503,8 @@ async def query(
         logger.error(
             f"DynamoDB query error: {e}", extra={"table": table_name, "pk": pk_val}
         )
-        raise DynamoDBError(f"Failed to query items: {e}")
+        raise DynamoDBError(f"Failed to query items: {e}") from e
+
 
 
 async def query_paginated(
@@ -568,7 +572,8 @@ async def query_paginated(
         logger.error(
             f"DynamoDB query_paginated error: {e}", extra={"table": table_name}
         )
-        raise DynamoDBError(f"Failed to query items: {e}")
+        raise DynamoDBError(f"Failed to query items: {e}") from e
+
 
 
 async def batch_get(

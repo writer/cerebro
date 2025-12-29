@@ -82,7 +82,8 @@ def rotate_jwt_keys_task(self=None, *args, **_) -> dict[str, Any]:
             logger.error(error_msg)
             result["error"] = str(e)
             if task_ctx is not None and hasattr(task_ctx, "retry"):
-                raise task_ctx.retry(exc=e, countdown=300, max_retries=3)
+                raise task_ctx.retry(exc=e, countdown=300, max_retries=3) from e
+
             raise
 
         return result
@@ -122,7 +123,8 @@ def cleanup_jwt_revocations_task(self=None, *args, **_) -> dict[str, Any]:
             logger.error(error_msg)
             result["error"] = str(e)
             if task_ctx is not None and hasattr(task_ctx, "retry"):
-                raise task_ctx.retry(exc=e, countdown=300, max_retries=3)
+                raise task_ctx.retry(exc=e, countdown=300, max_retries=3) from e
+
             raise
 
         return result

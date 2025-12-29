@@ -144,10 +144,12 @@ async def list_tests(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception("Test listing failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Test listing failed")
+        raise HTTPException(status_code=500, detail="Test listing failed") from None
+
 
 
 @router.get("/organizations/{org_id}/tests/{test_id}")
@@ -246,7 +248,8 @@ async def get_test_details(
             "Test details retrieval failed",
             extra={"org_id": str(org_id), "test_id": test_id},
         )
-        raise HTTPException(status_code=500, detail="Test details failed")
+        raise HTTPException(status_code=500, detail="Test details failed") from None
+
 
 
 @router.post("/organizations/{org_id}/tests")
@@ -311,10 +314,12 @@ async def create_test(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception("Test creation failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Test creation failed")
+        raise HTTPException(status_code=500, detail="Test creation failed") from None
+
 
 
 @router.get("/organizations/{org_id}/tests/summary")
@@ -340,7 +345,8 @@ async def get_test_summary(
 
     except Exception:
         logger.exception("Test summary failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Test summary failed")
+        raise HTTPException(status_code=500, detail="Test summary failed") from None
+
 
 
 # Evidence fabric integration examples
@@ -452,7 +458,9 @@ async def query_evidence_fabric(
             }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     except Exception:
         logger.exception("Evidence fabric query failed", extra={"org_id": str(org_id)})
-        raise HTTPException(status_code=500, detail="Evidence query failed")
+        raise HTTPException(status_code=500, detail="Evidence query failed") from None
+

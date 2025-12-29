@@ -33,7 +33,8 @@ async def create_rule(
         try:
             rule_engine.compile_rule(rule.expression)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Rule compilation failed: {e}")
+            raise HTTPException(status_code=400, detail=f"Rule compilation failed: {e}") from e
+
 
     db_rule = Rule(
         policy_id=rule.policy_id,
@@ -106,7 +107,8 @@ async def update_rule(
         try:
             rule_engine.compile_rule(rule_update.expression)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Rule compilation failed: {e}")
+            raise HTTPException(status_code=400, detail=f"Rule compilation failed: {e}") from e
+
 
     # Update fields
     db_rule.name = rule_update.name

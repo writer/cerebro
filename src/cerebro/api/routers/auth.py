@@ -381,7 +381,7 @@ async def refresh_token(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired refresh token",
-            )
+            ) from None
 
         user_service = UserService(db)
         user = await user_service.get_user_by_id(user_id)
@@ -390,7 +390,7 @@ async def refresh_token(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found or inactive",
-            )
+            ) from None
 
         scopes = await user_service.get_user_scopes(user_id)
         org_id = await _resolve_org_id(db)
