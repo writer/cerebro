@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.core.dynamodb_client import (
     TableName,
@@ -50,9 +50,7 @@ class ToolInvocation(BaseModel):
     celery_task_id: str | None = None
     duration_ms: int | None = None
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     @property
     def invocation_id(self) -> UUID:

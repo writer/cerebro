@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.api.dynamodb_dependencies import org_repository
 from cerebro.core.repositories.organization import Organization, OrganizationRepository
@@ -38,8 +38,7 @@ class OrganizationResponse(BaseModel):
     slack_config: dict[str, Any] | None = None
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @classmethod
     def from_entity(cls, org: Organization) -> "OrganizationResponse":

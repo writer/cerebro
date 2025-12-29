@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.core.dynamodb_client import (
     TableName,
@@ -43,9 +43,7 @@ class Account(BaseModel):
     credentials_dek: bytes | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""

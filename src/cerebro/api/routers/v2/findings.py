@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.api.dynamodb_dependencies import finding_repository
 from cerebro.core.repositories.finding import (
@@ -68,8 +68,7 @@ class FindingResponse(BaseModel):
     summary: str | None = None
     evidence: dict[str, Any] | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @classmethod
     def from_entity(cls, finding: Finding) -> "FindingResponse":

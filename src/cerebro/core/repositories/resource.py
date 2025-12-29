@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.core.dynamodb_client import (
     TableName,
@@ -35,8 +35,7 @@ class Resource(BaseModel):
     tags: dict[str, str] | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item."""

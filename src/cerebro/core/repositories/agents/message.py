@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.core.dynamodb_client import (
     TableName,
@@ -38,9 +38,7 @@ class AgentMessage(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     @property
     def message_id(self) -> UUID:

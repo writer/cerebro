@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.core.dynamodb_client import (
     TableName,
@@ -42,9 +42,7 @@ class AgentSession(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     @property
     def session_id(self) -> UUID:

@@ -27,7 +27,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from cerebro.core.dynamodb import build_pk, build_sk
 
@@ -99,9 +99,7 @@ class AgentEntityType(str, Enum):
 class DynamoDBAgentModel(BaseModel):
     """Base model for agent DynamoDB entities."""
 
-    class Config:
-        populate_by_name = True
-        use_enum_values = True
+    model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
 
     def to_dynamodb_item(self) -> dict[str, Any]:
         """Convert model to DynamoDB item format with keys."""
