@@ -468,7 +468,7 @@ class AuditWorkflowManager:
         }
 
     def get_auditor_portal_data(
-        self, request_list_id: str, auditor_email: str
+        self, request_list_id: str, _auditor_email: str
     ) -> dict[str, Any] | None:
         """Get read-only data for auditor portal."""
         if request_list_id not in self._request_lists:

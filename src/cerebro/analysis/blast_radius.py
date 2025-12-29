@@ -621,7 +621,7 @@ class BlastRadiusAnalyzer:
         return assessments
 
     async def generate_blast_radius_report(
-        self, org_id: UUID, output_format: str = "json"
+        self, org_id: UUID, _output_format: str = "json"
     ) -> dict[str, Any]:
         """Generate comprehensive blast radius report for organization."""
         org = await self.db.get(Organization, org_id)

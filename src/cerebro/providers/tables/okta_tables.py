@@ -565,7 +565,7 @@ class OktaGroupTable(ProviderSecurityTable):
         except Exception:
             return None
 
-    def count_members(self, group_data: dict[str, Any]) -> int:
+    def count_members(self, _group_data: dict[str, Any]) -> int:
         """Count group members (would require additional API call)."""
         return 0
 

@@ -899,7 +899,7 @@ class GoogleWorkspaceProvider(BaseProvider):
             normalized_config=config,
         )
 
-    async def _get_orgunit_config(self, orgunit_id: str) -> dict[str, Any]:
+    async def _get_orgunit_config(self, _orgunit_id: str) -> dict[str, Any]:
         """Get organizational unit configuration and policies."""
         # TODO: Implement orgunit configuration collection
         return {}

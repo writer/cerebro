@@ -596,7 +596,7 @@ class ComplianceAnalytics:
         }
 
     def _identify_key_actions(
-        self, compliance_data, risk_data, control_data
+        self, compliance_data, risk_data, _control_data
     ) -> list[dict[str, Any]]:
         """Identify key actions needed based on analysis."""
 

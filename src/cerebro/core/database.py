@@ -61,7 +61,7 @@ engine, _engine_url = _build_engine()
 if _engine_url.drivername.startswith("sqlite"):
 
     @event.listens_for(engine.sync_engine, "connect")
-    def _set_sqlite_schema_flag(dbapi_connection, connection_record):
+    def _set_sqlite_schema_flag(_dbapi_connection, connection_record):
         connection_record.info.setdefault("_schema_initialized", False)
 
     @event.listens_for(engine.sync_engine, "begin")

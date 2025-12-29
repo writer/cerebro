@@ -16808,8 +16808,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
-                "x-forklift-event"?: string | null;
+                "-authorization"?: string | null;
+                "-x-forklift-event"?: string | null;
                 "X-Forklift-Signature"?: string | null;
             };
             path?: never;

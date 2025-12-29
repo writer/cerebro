@@ -23,7 +23,7 @@ class FindingService(ABC):
 
     @abstractmethod
     async def generate_findings_for_organization(
-        self, org_id: UUID, provider_type: str | None = None
+        self, org_id: UUID, _provider_type: str | None = None
     ) -> list:
         """Generate findings for an entire organization."""
         pass
@@ -45,7 +45,7 @@ class DefaultFindingService(FindingService):
         )
 
     async def generate_findings_for_organization(
-        self, org_id: UUID, provider_type: str | None = None
+        self, org_id: UUID, _provider_type: str | None = None
     ) -> list:
         """Generate findings for an entire organization."""
         # This would typically fetch resources for the org and then call

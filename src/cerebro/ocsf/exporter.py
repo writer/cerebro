@@ -335,6 +335,6 @@ class OCSFBatchExporter:
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, _exc_val, _exc_tb):
         """Context manager exit - flush remaining."""
         self.flush()

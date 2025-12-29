@@ -114,8 +114,8 @@ class PRMergedEvent(BaseModel):
 async def receive_forklift_event(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    authorization: str | None = Header(None),
-    x_forklift_event: str | None = Header(None),
+    _authorization: str | None = Header(None),
+    _x_forklift_event: str | None = Header(None),
     x_forklift_signature: str | None = Header(None, alias="X-Forklift-Signature"),
 ):
     """
