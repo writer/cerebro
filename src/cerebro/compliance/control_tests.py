@@ -5,10 +5,11 @@ Bridges the gap between technical security rules and compliance framework contro
 """
 
 import asyncio
-import logging
 import os
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum

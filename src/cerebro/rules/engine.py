@@ -1,13 +1,13 @@
 """CEL rule engine implementation."""
 
 import hashlib
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 import celpy
+import structlog
 from cachetools import TTLCache
 from celpy import CELEvalError, Environment
 
@@ -15,7 +15,7 @@ from cerebro.core.config import settings
 
 from .exceptions import CompilationError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

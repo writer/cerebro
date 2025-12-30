@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import math
 import random
 from collections.abc import Iterable
@@ -11,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import delete, func, or_, select, update
 
 from cerebro.agents.memory_utils import (
@@ -30,7 +30,7 @@ from cerebro.agents.models import (
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 try:  # pragma: no cover - optional dependency
     from openai import AsyncOpenAI

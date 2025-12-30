@@ -5,9 +5,9 @@ as batched digests instead of individual messages.
 """
 
 import asyncio
-import logging
 from datetime import UTC, datetime, timedelta
 
+import structlog
 from celery import shared_task
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,7 @@ from cerebro.core.database import async_session_factory
 from cerebro.core.models import EmailConfig, EmailNotification, Finding
 from cerebro.notifications.email import get_email_service
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @shared_task(

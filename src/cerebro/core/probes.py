@@ -5,13 +5,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import logging
 
+import structlog
 from sqlalchemy import text
 
 from cerebro.core.database import async_session_factory
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def check_database(timeout: float = 2.0) -> tuple[bool, str | None]:

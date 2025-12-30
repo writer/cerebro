@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import structlog
 from celery import states
 from sqlalchemy import text
 
@@ -15,7 +15,7 @@ from cerebro.core.config import settings
 from cerebro.core.warehouse import resolve_snowflake_database_url, warehouse_session
 from cerebro.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 _DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}

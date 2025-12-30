@@ -1,18 +1,18 @@
 """Identity stitching across providers."""
 
 import hashlib
-import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import Account, Principal
 from .repositories_sqlalchemy import IdentityRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

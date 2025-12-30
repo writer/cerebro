@@ -7,13 +7,13 @@ timestamps, and chain-of-custody tracking.
 
 import hashlib
 import json
-import logging
 import zipfile
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import structlog
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -21,7 +21,7 @@ from ..query.bootstrap import get_query_engine
 from .timestamping import get_timestamp_service
 from .transparency_log import LogEntryType, get_transparency_log
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

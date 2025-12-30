@@ -5,12 +5,13 @@ from __future__ import annotations
 import abc
 import hashlib
 import json
-import logging
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from typing import Any, Union
 from uuid import UUID
+
+import structlog
 
 from cerebro.domain.entities import (
     ConfigEntity,
@@ -24,7 +25,7 @@ from cerebro.metrics import (
     record_serialization_failure,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 ProducerContext = ProducerRunContext
 ProducerContextInput = Union[ProducerRunContext, Mapping[str, Any]]

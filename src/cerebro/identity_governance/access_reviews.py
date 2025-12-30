@@ -4,19 +4,19 @@ Quarterly access review management with attestation workflows.
 Implements time-boxed access reviews with auto-expiry and attestation tracking.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import structlog
 from sqlalchemy import and_, select
 
 from ..auditability.attestation import get_attestation_service
 from ..core.database import async_session_factory
 from ..core.models import IamEdge, Principal
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ReviewStatus(Enum):

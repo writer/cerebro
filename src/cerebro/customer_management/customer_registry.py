@@ -1,14 +1,15 @@
 """Customer registry for tracking account health and lifecycle."""
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..compliance.models import create_customer_evidence, metadata_to_dict
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CustomerSegment(Enum):

@@ -6,11 +6,11 @@ Based on GAM patterns and Google Cloud best practices.
 
 import asyncio
 import json
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 
+import structlog
 from google.cloud import (  # type: ignore[attr-defined]
     compute_v1,
     iam_v1,
@@ -30,7 +30,7 @@ from ..base import (
     ResourceInfo,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class EnhancedGCPProvider(BaseProvider):

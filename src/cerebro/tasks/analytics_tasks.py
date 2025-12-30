@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
+import structlog
 from celery import states
 
 from cerebro.analytics.dashboard_repository import DashboardRepository
@@ -28,7 +28,7 @@ from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization
 from cerebro.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _serialize_risk_factor(factor: RiskFactor) -> dict[str, object]:

@@ -7,9 +7,10 @@ clean service with proper dependency injection and storage abstraction.
 
 import asyncio
 import json
-import logging
 from datetime import datetime
 from typing import Any
+
+import structlog
 
 from .models import (
     BaseEvidenceMetadata,
@@ -22,7 +23,7 @@ from .models import (
     create_compliance_evidence,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class EvidenceCollectionError(Exception):

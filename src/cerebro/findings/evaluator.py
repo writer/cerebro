@@ -1,7 +1,6 @@
 """Rule evaluator for generating findings."""
 
-import logging
-
+import structlog
 from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +14,7 @@ from cerebro.core.models import (
 )
 from cerebro.rules import EvaluationContext, RuleEngine, RuleResult
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class RuleEvaluator:

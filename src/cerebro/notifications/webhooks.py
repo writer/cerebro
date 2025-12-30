@@ -4,7 +4,6 @@ import asyncio
 import hashlib
 import hmac
 import json
-import logging
 import time
 from datetime import datetime
 from typing import Any
@@ -12,6 +11,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import httpx
+import structlog
 from jinja2 import Template, TemplateSyntaxError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from cerebro.core.models import (
     WebhookNotification,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class WebhookPayloadTemplates:

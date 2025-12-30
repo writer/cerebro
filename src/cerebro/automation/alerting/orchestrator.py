@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 
 import httpx
 import redis.asyncio as redis
+import structlog
 
 from cerebro.core.database import async_session_factory
 
@@ -19,7 +19,7 @@ from .rules import AlertRule
 from .service import collect_telemetry_alerts
 from .store import InMemoryCooldownStore, RedisCooldownStore
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 EmailSender = Callable[[Sequence[str], str, str], Awaitable[None]]

@@ -6,7 +6,6 @@ that separates framework metadata from implementation details.
 """
 
 import importlib
-import logging
 import pkgutil
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -14,7 +13,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class ControlType(Enum):

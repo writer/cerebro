@@ -5,13 +5,13 @@ Implements test entity lifecycle management, tracking, and validation
 following security testing best practices.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from sqlalchemy import Boolean, DateTime, String, Text, and_, desc, func, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from cerebro.core.database import Base
 from cerebro.core.database_types import JSONType
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TestEntityType(Enum):

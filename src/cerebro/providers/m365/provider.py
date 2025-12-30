@@ -1,12 +1,12 @@
 """Microsoft 365 provider implementation."""
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 import httpx
+import structlog
 
 from cerebro.core.config import settings
 
@@ -19,7 +19,7 @@ from ..base import (
     ResourceInfo,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class M365Provider(BaseProvider):

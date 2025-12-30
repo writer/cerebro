@@ -1,10 +1,11 @@
 """Background tasks for JWT key rotation and maintenance."""
 
 import asyncio
-import logging
 import threading
 from datetime import timedelta
 from typing import Any
+
+import structlog
 
 from cerebro.core.config import settings
 from cerebro.core.database import async_session_factory
@@ -12,7 +13,7 @@ from cerebro.core.security.jwt import JWTService
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _run_coro_sync(coro):

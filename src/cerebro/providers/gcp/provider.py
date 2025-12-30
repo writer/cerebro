@@ -1,8 +1,9 @@
 """GCP provider implementation."""
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
+
+import structlog
 
 from ..base import (
     BaseProvider,
@@ -12,7 +13,7 @@ from ..base import (
     ResourceInfo,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class GCPProvider(BaseProvider):

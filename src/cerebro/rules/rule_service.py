@@ -1,16 +1,16 @@
 """Rule management service."""
 
-import logging
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import Policy, Rule
 from cerebro.rules.library import RuleLibrary
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Global rule name to ID mapping cache
 _rule_name_cache: dict[str, UUID] = {}

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from uuid import UUID
 
+import structlog
 from azure.core.exceptions import AzureError, HttpResponseError
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.storage import StorageManagementClient
@@ -16,7 +16,7 @@ from azure.storage.blob import BlobServiceClient
 from ..base import BaseProvider, ConfigurationSnapshot, ProviderError, ResourceInfo
 from ..utils.connector import call_sync_with_retries
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _extract_resource_group(resource_id: str | None) -> str | None:

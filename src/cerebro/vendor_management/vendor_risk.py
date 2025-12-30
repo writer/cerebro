@@ -5,13 +5,13 @@ Implements comprehensive risk assessment workflows, scenario analysis,
 and risk quantification for vendor management.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from sqlalchemy import Boolean, DateTime, Float, String, Text, and_, desc, func, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,7 @@ from cerebro.core.database_types import JSONType
 
 from .vendor_registry import VendorRiskLevel
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class RiskDomain(Enum):

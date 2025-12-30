@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+import structlog
 
 from cerebro.auditability.transparency_log import LogEntryType, get_transparency_log
 from cerebro.core.config import settings
@@ -20,7 +21,7 @@ from cerebro.integrations.state import IntegrationStateRepository
 
 from .celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def _log_integration_sync(

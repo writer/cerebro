@@ -8,7 +8,6 @@ entities we persist, while helpers such as :func:`authenticated_method` and
 """
 
 import asyncio
-import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -17,7 +16,9 @@ from functools import wraps
 from typing import Any
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 def authenticated_method(func):

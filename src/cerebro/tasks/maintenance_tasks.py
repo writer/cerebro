@@ -1,15 +1,16 @@
 """Maintenance background tasks."""
 
 import asyncio
-import logging
 from datetime import datetime, timedelta
 from typing import Any
+
+import structlog
 
 from cerebro.core.bulk_operations import BulkOperations
 from cerebro.core.database import async_session_factory
 from cerebro.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(

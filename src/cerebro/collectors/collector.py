@@ -9,12 +9,12 @@ SDKs and the bulk database helpers.
 """
 
 import asyncio
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,7 @@ from cerebro.core.models import Account, Resource
 from cerebro.metrics.collection_metrics import collection_metrics
 from cerebro.providers.base import BaseProvider
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

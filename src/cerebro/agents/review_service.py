@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,7 @@ from cerebro.agents.notification_service import NotificationService
 from cerebro.agents.ticketing_service import TicketingService
 from cerebro.core.database import async_session_factory
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AgentReviewService:

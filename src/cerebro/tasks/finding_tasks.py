@@ -1,9 +1,10 @@
 """Finding generation background tasks."""
 
 import asyncio
-import logging
 from datetime import datetime
 from uuid import UUID
+
+import structlog
 
 from cerebro.core.database import async_session_factory
 from cerebro.core.models import Organization, Rule
@@ -12,7 +13,7 @@ from cerebro.findings.manager import FindingManager
 from cerebro.rules.engine import rule_engine
 from cerebro.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(bind=True, name="cerebro.tasks.finding_tasks.generate_findings_task")

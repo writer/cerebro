@@ -1,12 +1,12 @@
 """Finding manager for creating and managing security findings."""
 
 import hashlib
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,7 @@ from cerebro.rules import RuleResult
 from .evaluator import RuleEvaluator
 from .producers import ProducerBasedFindingService, producer_registry
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

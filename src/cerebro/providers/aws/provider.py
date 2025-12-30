@@ -6,12 +6,12 @@ required for risk analyses.
 """
 
 import json
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 
 import boto3
+import structlog
 from botocore.exceptions import BotoCoreError, ClientError
 
 from cerebro.core.config import settings
@@ -26,7 +26,7 @@ from ..base import (
 )
 from ..utils.connector import call_sync_with_retries, iterate_sync_iterator
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AWSProvider(BaseProvider):

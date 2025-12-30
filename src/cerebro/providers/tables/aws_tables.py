@@ -4,16 +4,17 @@ AWS provider table implementations.
 Exposes AWS security resources as SQL tables following Steampipe patterns.
 """
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
+
+import structlog
 
 from ...query.registry import register_table
 from ...query.schema import ColumnType, SecurityColumn
 from ...query.table import ProviderSecurityTable, QueryContext
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Production AWS client using boto3
 import boto3

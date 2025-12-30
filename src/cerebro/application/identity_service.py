@@ -1,7 +1,8 @@
 """Identity service for principal management and identity stitching."""
 
-import logging
 from uuid import UUID
+
+import structlog
 
 from cerebro.analytics.identity_analytics import (
     IdentityAnalyzer,
@@ -9,7 +10,7 @@ from cerebro.analytics.identity_analytics import (
 )
 from cerebro.core.identity import IdentityStitcher
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class IdentityService:

@@ -5,17 +5,18 @@ Implements automated revocation of risky apps with change tickets
 and approval workflows for restoration.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..auditability.attestation import get_attestation_service
 from ..auditability.transparency_log import LogEntryType, get_transparency_log
 from .toxic_combinations import ToxicCombinationResult, ToxicityLevel
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class QuarantineStatus(Enum):

@@ -22,7 +22,6 @@ Configuration:
 
 from __future__ import annotations
 
-import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -30,7 +29,9 @@ from enum import Enum
 from typing import Any, TypeVar
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 T = TypeVar("T")
 

@@ -5,15 +5,16 @@ Maps CI/CD runners, GitHub Actions, OIDC trust boundaries, and
 repository allow-lists for service identity attack path analysis.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..query.bootstrap import get_query_engine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ServiceIdentityType(Enum):

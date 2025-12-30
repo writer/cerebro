@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _serialize_datetime(value: Any) -> str:

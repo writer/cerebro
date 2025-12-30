@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import smtplib
 from email.mime.text import MIMEText
 from typing import Any
 
 import httpx
+import structlog
 
 from cerebro.analytics.operations import collect_operational_alert_inputs
 from cerebro.core.config import settings
@@ -16,7 +16,7 @@ from cerebro.core.database import async_session_factory
 
 from .celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def _send_slack_alert(

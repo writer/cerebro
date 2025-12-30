@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -53,7 +53,7 @@ from cerebro.telemetry.schemas import (
     ArtifactPackTrigger as ArtifactPackTriggerSchema,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TelemetryProcessingError(RuntimeError):

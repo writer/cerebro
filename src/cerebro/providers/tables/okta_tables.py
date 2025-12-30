@@ -4,10 +4,11 @@ Okta provider table implementations.
 Exposes Okta identity resources as SQL tables.
 """
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
+
+import structlog
 
 from ...query.registry import register_table
 from ...query.schema import ColumnType, SecurityColumn, SecuritySchema
@@ -179,7 +180,7 @@ class OktaClient:
             return
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class OktaUserTable(ProviderSecurityTable):

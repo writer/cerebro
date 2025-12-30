@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -22,10 +21,11 @@ from typing import Any
 from uuid import UUID
 
 import boto3
+import structlog
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Thread pool for running boto3 operations
 _executor = ThreadPoolExecutor(max_workers=10)

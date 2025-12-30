@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
+
+import structlog
 
 from ..base import (
     BaseProvider,
@@ -17,7 +18,7 @@ from ..base import (
 )
 from ..utils.connector import call_sync_with_retries
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 try:  # pragma: no cover - optional dependency

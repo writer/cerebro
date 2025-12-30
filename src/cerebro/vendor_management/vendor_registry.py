@@ -4,15 +4,16 @@ Vendor registry for tracking third-party vendors and their security profiles.
 Manages vendor onboarding, risk assessment, and ongoing monitoring.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..compliance.models import create_vendor_evidence, metadata_to_dict
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class VendorRiskLevel(Enum):

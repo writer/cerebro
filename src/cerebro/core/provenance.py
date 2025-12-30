@@ -2,18 +2,18 @@
 
 import hashlib
 import json
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import AuditEvent, ConfigSnapshot, IamEdge
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

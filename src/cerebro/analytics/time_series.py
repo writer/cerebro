@@ -1,13 +1,13 @@
 """Time series analytics for tracking security metrics over time."""
 
 import json
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from sqlalchemy import DateTime, Float, String, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,7 @@ from cerebro.core.database_types import JSONType
 
 from .sql_dialect import get_dialect_name, hours_between_expr
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class MetricType(Enum):

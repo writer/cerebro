@@ -2,14 +2,15 @@
 
 import importlib
 import importlib.util
-import logging
 from pathlib import Path
 from typing import Any
+
+import structlog
 
 from cerebro.findings.producers.base import BaseFindingProducer
 from cerebro.providers.base import BaseProvider
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PluginMetadata:

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+import structlog
 
 from cerebro.analytics.runtime_health import summarize_runtime_health
 from cerebro.core.config import settings
@@ -15,7 +15,7 @@ from cerebro.core.database import async_session_factory
 
 from .celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def _post_slack_message(webhook_url: str, payload: dict[str, Any]) -> None:

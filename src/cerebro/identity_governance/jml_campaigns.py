@@ -5,12 +5,12 @@ Detects stale access after manager/role changes by integrating with
 HR systems (Okta/AD/Workday) and tracking identity lifecycle events.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import structlog
 from sqlalchemy import and_, select
 
 from ..auditability.transparency_log import LogEntryType, get_transparency_log
@@ -18,7 +18,7 @@ from ..core.database import async_session_factory
 from ..core.models import IamEdge
 from ..query.bootstrap import get_query_engine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LifecycleStage(Enum):

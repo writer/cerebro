@@ -7,12 +7,12 @@ members, teams, and associated configuration data from GitHub organisations.
 .. _PyGithub: https://pygithub.readthedocs.io/
 """
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 
 import requests
+import structlog
 from github import Github, GithubException
 from github.Organization import Organization
 
@@ -28,7 +28,7 @@ from ..base import (
 )
 from ..utils.connector import call_sync_with_retries
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class GitHubProvider(BaseProvider):

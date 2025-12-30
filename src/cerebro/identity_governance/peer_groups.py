@@ -5,15 +5,16 @@ Implements peer group analysis (engineering vs finance) to highlight
 outlier entitlements and detect privilege creep.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..query.bootstrap import get_query_engine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class DepartmentType(Enum):

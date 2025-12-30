@@ -6,10 +6,10 @@ The manager coordinates high-level collection workflows.  Whereas
 provider implementations, and aggregates the results for API consumers.
 """
 
-import logging
 from datetime import datetime
 from typing import Any
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +23,7 @@ from cerebro.providers import (
 
 from .collector import CollectionResult, ConfigCollector
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CollectorManager:

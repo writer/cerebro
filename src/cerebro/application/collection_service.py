@@ -1,8 +1,9 @@
 """Application service for configuration collection."""
 
-import logging
 from typing import Any
 from uuid import UUID
+
+import structlog
 
 from cerebro.domain.entities import (
     CollectionJobEntity,
@@ -18,7 +19,7 @@ from cerebro.domain.ports import (
     RepositoryPort,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CollectionService:

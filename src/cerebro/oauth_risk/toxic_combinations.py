@@ -5,14 +5,15 @@ Detects dangerous combinations of OAuth scopes and settings that
 create security risks (e.g., Slack app with files:read + public links).
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+import structlog
+
 from .registry import AppRiskLevel, OAuthApp
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ToxicityLevel(Enum):

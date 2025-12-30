@@ -6,12 +6,12 @@ Provides an immutable, verifiable log of all security events with cryptographic 
 
 import hashlib
 import json
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
+import structlog
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from sqlalchemy import select
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from ..core.database import async_session_factory
 from ..core.models import AuditEvent
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LogEntryType(Enum):

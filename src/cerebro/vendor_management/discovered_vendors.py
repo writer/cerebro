@@ -5,16 +5,17 @@ Automatically discovers vendors through OAuth applications, API integrations,
 and network traffic analysis.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..oauth_risk.registry import OAuthApp, get_oauth_registry
 from ..query.bootstrap import get_query_engine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class DiscoveryMethod(Enum):

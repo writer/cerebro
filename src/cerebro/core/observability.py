@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 
 from cerebro.core.config import settings
 from cerebro.core.logging import configure_structlog
 
-_logger = logging.getLogger(__name__)
+_logger = structlog.get_logger(__name__)
 _configured_service: str | None = None
 
 

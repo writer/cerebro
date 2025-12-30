@@ -1,11 +1,11 @@
 """Bulk database operations for high-performance data ingestion."""
 
 import hashlib
-import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import settings
 from .models import ConfigSnapshot, IamEdge, Principal, Resource
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class BulkOperations:

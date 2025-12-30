@@ -1,17 +1,17 @@
 """Compliance analytics for evidence tracking and control ownership."""
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .sql_dialect import array_has_elements_expr, days_since_expr, get_dialect_name
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

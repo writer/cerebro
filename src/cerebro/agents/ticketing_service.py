@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import select
 
 from cerebro.agents.models import AgentReviewTicket, TicketStatus
@@ -14,7 +14,7 @@ from cerebro.core.database import async_session_factory
 from cerebro.integrations.serval import ServalError
 from cerebro.integrations.serval_ticket_service import ServalTicketService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _SERVAL_SYSTEM = "serval"
 

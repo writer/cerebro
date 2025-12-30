@@ -4,10 +4,11 @@ GitHub provider table implementations.
 Exposes GitHub security resources as SQL tables.
 """
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
+
+import structlog
 
 from ...collectors.normalization import normalize_severity
 from ...query.registry import register_table
@@ -234,7 +235,7 @@ class GitHubClient:
             return
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class GitHubRepositoryTable(ProviderSecurityTable):

@@ -1,14 +1,15 @@
 """Provider plugin registry system."""
 
 import importlib
-import logging
 import pkgutil
 from collections.abc import Callable
 from typing import Any
 
+import structlog
+
 from cerebro.domain.ports import ProviderPort
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ProviderRegistry:

@@ -5,20 +5,20 @@ Provides a Steampipe-inspired SQL interface for querying security data
 across all providers in real-time.
 """
 
-import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlparse
+import structlog
 
 from ..core.events import emit_event
 from .bootstrap import ensure_tables_registered
 from .registry import TableRegistry, get_registry
 from .table import QueryContext, QueryFilter
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class QueryError(Exception):

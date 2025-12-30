@@ -6,13 +6,13 @@ the same patterns as GAM (Google Apps Manager).
 """
 
 import asyncio
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import structlog
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -26,7 +26,7 @@ from ..base import (
     ResourceInfo,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class GoogleWorkspaceProvider(BaseProvider):

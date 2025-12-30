@@ -1,11 +1,11 @@
 """Refresh token service for JWT token rotation."""
 
 import hashlib
-import logging
 import secrets
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
+import structlog
 from sqlalchemy import Boolean, DateTime, String, and_, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,7 @@ from sqlalchemy.sql import func
 
 from cerebro.core.database import Base
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class RefreshToken(Base):

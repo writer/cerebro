@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 from collections import defaultdict
 from collections.abc import AsyncIterator, Iterable
@@ -13,6 +12,7 @@ from typing import Any
 from uuid import UUID, uuid5
 
 import httpx
+import structlog
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +28,7 @@ from cerebro.telemetry.schemas import (
 )
 from cerebro.telemetry.services import TelemetryIngestionService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _S1_NAMESPACE = UUID("0cbd0ef1-7d3b-4d46-b3f8-7934b85ad16f")
 _EVENT_BATCH_SIZE = 200

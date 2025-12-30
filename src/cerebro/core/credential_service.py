@@ -2,13 +2,13 @@
 
 import base64
 import json
-import logging
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from cryptography.fernet import Fernet
 from sqlalchemy import Boolean, DateTime, LargeBinary, String, and_, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -19,7 +19,7 @@ from sqlalchemy.sql import func
 from .config import settings
 from .database import Base
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

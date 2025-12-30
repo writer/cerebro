@@ -9,17 +9,18 @@ Provides sophisticated security testing capabilities including:
 - Configuration drift detection
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..compliance.evidence_data_fabric import EvidenceDataFabric
 from ..query.engine import QueryEngine
 from .test_registry import TestFrequency
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ThreatScenario(Enum):

@@ -5,13 +5,13 @@ Implements ML-based behavioral analysis to detect anomalous identity activities
 across multiple providers using unsupervised learning techniques.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
 import pandas as pd
+import structlog
 from sklearn.cluster import DBSCAN
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
@@ -22,7 +22,7 @@ from ..core.database import async_session_factory
 from ..core.models import Account, AuditEvent, IamEdge, Principal
 from ..query.bootstrap import get_query_engine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AnomalyType(Enum):

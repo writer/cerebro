@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime
 
+import structlog
 from dateutil import parser as date_parser
 
 from cerebro.core.database import async_session_factory
@@ -15,7 +15,7 @@ from cerebro.integrations.state import IntegrationStateRepository
 
 from .celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _parse_timestamp(payload: dict[str, object]) -> datetime | None:

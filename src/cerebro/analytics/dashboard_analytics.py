@@ -1,12 +1,12 @@
 """Dashboard analytics for executive and operational security insights."""
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from time import perf_counter
 from typing import Any
 from uuid import UUID
 
+import structlog
 from prometheus_client import Histogram
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ from .runtime_health import summarize_runtime_health
 from .sql_dialect import case_insensitive_like_expr, get_dialect_name
 from .time_series import MetricType, TimeSeriesCollector, TrendAnalyzer
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 dashboard_component_duration = Histogram(

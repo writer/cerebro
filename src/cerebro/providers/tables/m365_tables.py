@@ -4,16 +4,17 @@ Microsoft 365 provider table implementations.
 Exposes Microsoft 365 security resources as SQL tables following Steampipe patterns.
 """
 
-import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
+
+import structlog
 
 from ...query.registry import register_table
 from ...query.schema import ColumnType, SecurityColumn, SecuritySchema
 from ...query.table import ProviderSecurityTable, QueryContext
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # Real Microsoft Graph client implementation

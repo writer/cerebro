@@ -1,9 +1,10 @@
 """Utility functions for provider tables."""
 
-import logging
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 def parse_timestamp_safely(

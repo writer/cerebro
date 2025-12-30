@@ -6,7 +6,6 @@ for automated security testing.
 """
 
 import asyncio
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -14,6 +13,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from sqlalchemy import DateTime, Float, String, Text, and_, desc, func, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from cerebro.compliance.control_tests import TestStatus
 from cerebro.core.database import Base
 from cerebro.core.database_types import JSONType
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ExecutionStatus(Enum):

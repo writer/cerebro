@@ -5,15 +5,16 @@ Provides high-level interface for attack path analysis with
 CLI integration and what-if simulation capabilities.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import structlog
+
 from .graph_model import get_attack_graph
 from .path_analysis import AttackPath, PathQuery, PathType, get_path_analyzer
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

@@ -1,8 +1,8 @@
 """Celery application configuration."""
 
-import logging
 import os
 
+import structlog
 from celery import Celery
 from celery.schedules import crontab
 from kombu import Queue
@@ -18,7 +18,7 @@ if settings:
     role = os.getenv("CELERY_PROCESS_ROLE", "worker")
     configure_service_observability(service_name=f"cerebro-celery-{role}")
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Create Celery app
 celery_kwargs = {

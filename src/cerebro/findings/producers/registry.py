@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import importlib
-import logging
 import pkgutil
 from collections.abc import Iterable
 from types import ModuleType
 
+import structlog
+
 from .base import BaseFindingProducer, ProducerRegistry
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Global producer registry
 producer_registry = ProducerRegistry()

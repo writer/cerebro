@@ -1,10 +1,10 @@
 """Infrastructure adapters implementing domain ports."""
 
-import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ from cerebro.domain.entities import (
 )
 from cerebro.rules.engine import EvaluationContext, RuleEngine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class SQLAlchemyRepository:

@@ -1,17 +1,17 @@
 """User management service for authentication and authorization."""
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+import structlog
 from passlib.context import CryptContext
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .user_models import Scope, User, UserAuditLog, UserScope
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

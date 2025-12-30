@@ -5,15 +5,16 @@ Tracks OAuth apps across Google Workspace, M365, Slack, GitHub with
 scopes, usage, ownership, and provenance tracking.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import structlog
+
 from ..query.bootstrap import get_query_engine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AppRiskLevel(Enum):

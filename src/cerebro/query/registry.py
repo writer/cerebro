@@ -5,14 +5,15 @@ Manages registration and discovery of security tables across all providers.
 Inspired by Steampipe's plugin registration pattern.
 """
 
-import logging
 from collections import defaultdict
 from typing import Any
+
+import structlog
 
 from ..core.events import emit_event
 from .table import SecurityTable
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TableRegistry:

@@ -5,17 +5,17 @@ Implements graph algorithms to find attack paths between principals and
 resources with severity scoring and what-if simulation capabilities.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
 import networkx as nx
+import structlog
 
 from .graph_model import AttackGraph, get_attack_graph
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PathType(Enum):

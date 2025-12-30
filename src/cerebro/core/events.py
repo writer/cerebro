@@ -4,10 +4,11 @@ Simple event system for Cerebro.
 Provides basic event emission for logging and monitoring.
 """
 
-import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 def emit_event(event_type: str, data: dict[str, Any]) -> None:

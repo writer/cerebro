@@ -5,13 +5,13 @@ Models principals → roles → resources across providers with weighted edges
 for attack path analysis and blast radius calculations.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
 import networkx as nx
+import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ from ..core.models import IamEdge, Principal, Resource
 from .scoring import AttackGraphScoring
 from .service_identity import ServiceIdentityEdge, ServiceIdentityMapper, TrustMechanism
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NodeType(Enum):

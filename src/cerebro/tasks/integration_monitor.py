@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+import structlog
 
 from cerebro.automation.integration_sync import (
     analyze_state,
@@ -25,7 +25,7 @@ from cerebro.tasks.integration_tasks import sync_kandji, sync_sentinelone
 
 from .celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _get_retry_task(integration: str):

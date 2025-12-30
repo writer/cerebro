@@ -1,9 +1,10 @@
 """Collection background tasks."""
 
 import asyncio
-import logging
 from typing import Any
 from uuid import UUID
+
+import structlog
 
 from cerebro.application.collection_service import CollectionService
 from cerebro.core.database import async_session_factory
@@ -12,7 +13,7 @@ from cerebro.infrastructure.adapters import SQLAlchemyRepository
 from cerebro.infrastructure.provider_registry import get_provider_registry
 from cerebro.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(bind=True, name="cerebro.tasks.collection_tasks.collect_account_task")

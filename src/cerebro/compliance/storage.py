@@ -7,13 +7,13 @@ in the original evidence storage implementations.
 
 import hashlib
 import json
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import aiofiles
+import structlog
 
 from .models import (
     BaseEvidenceMetadata,
@@ -22,7 +22,7 @@ from .models import (
     EvidenceStatus,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class FileBasedEvidenceRepository(EvidenceRepository):

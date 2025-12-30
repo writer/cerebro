@@ -5,13 +5,14 @@ Manages security tests, control validation, and test scheduling
 following Vanta's test management patterns.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class TestStatus(Enum):

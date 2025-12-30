@@ -19,9 +19,10 @@ __all__ = ["register_all_provider_tables"]
 def register_all_provider_tables():
     """Register all provider tables with the query engine - hardened against import failures."""
     import importlib
-    import logging
 
-    logger = logging.getLogger(__name__)
+    import structlog
+
+    logger = structlog.get_logger(__name__)
 
     registration_functions = [
         ("aws_tables", "register_aws_tables"),

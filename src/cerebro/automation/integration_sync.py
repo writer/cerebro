@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import dataclasses
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+import structlog
 
 from cerebro.core.models import IntegrationSyncState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclasses.dataclass

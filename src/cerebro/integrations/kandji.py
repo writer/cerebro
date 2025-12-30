@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 from collections.abc import AsyncIterator, Iterable
 from datetime import UTC, datetime, timedelta
@@ -11,6 +10,7 @@ from typing import Any
 from uuid import UUID, uuid5
 
 import httpx
+import structlog
 from dateutil import parser as date_parser
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,7 @@ from cerebro.telemetry.schemas import (
 )
 from cerebro.telemetry.services import TelemetryIngestionService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _KANDJI_EVENT_NAMESPACE = UUID("c7070277-9e5c-431d-9487-59ac266c3a54")
 _DETECTIONS_SCOPE = "kandji.vulnerabilities"
