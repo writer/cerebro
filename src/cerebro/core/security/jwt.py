@@ -1,12 +1,12 @@
 """Enhanced JWT service with RS256, proper claims, and revocation support."""
 
-import logging
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 import redis.asyncio as redis
+import structlog
 from cryptography.hazmat.primitives import serialization
 from jose import JWTError, jwt
 
@@ -14,7 +14,7 @@ from cerebro.core.config import settings
 
 from .key_store import JWTKeyStore
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class JWTService:

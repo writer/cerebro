@@ -3,6 +3,7 @@
 from typing import Any, TypeVar
 from uuid import UUID
 
+import structlog
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -138,8 +139,7 @@ def handle_database_error(e: Exception, operation: str = "database operation"):
         raise StandardResponses.bad_request("Required field missing")
     else:
         # Log the full error for debugging
-        import logging
 
-        logger = logging.getLogger(__name__)
+        logger = structlog.get_logger(__name__)
         logger.error(f"Database error during {operation}: {e}")
         raise StandardResponses.internal_error(f"Failed to complete {operation}")

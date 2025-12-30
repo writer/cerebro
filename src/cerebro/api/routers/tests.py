@@ -5,11 +5,11 @@ Provides REST API for test management, execution, and results
 using the evidence data fabric for test validation.
 """
 
-import logging
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,7 @@ from ...testing.test_registry import (
 )
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TestCreateRequest(BaseModel):

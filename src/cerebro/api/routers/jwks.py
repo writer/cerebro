@@ -1,8 +1,8 @@
 """JSON Web Key Set (JWKS) endpoint for public key distribution."""
 
-import logging
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +13,7 @@ from cerebro.core.database import get_db
 from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.metrics.jwt_metrics import jwt_metrics
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["Authentication"])
 

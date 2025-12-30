@@ -1,11 +1,11 @@
 """API endpoints for generic webhook notification configuration and management."""
 
-import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import (
     BaseModel,
@@ -25,7 +25,7 @@ from cerebro.core.database import get_db
 from cerebro.core.models import WebhookConfig, WebhookNotification
 from cerebro.notifications.webhooks import WebhookPayloadTemplates, get_webhook_service
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["Generic Webhooks"])
 limiter = Limiter(key_func=get_remote_address)

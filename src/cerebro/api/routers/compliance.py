@@ -1,9 +1,9 @@
 """Compliance management endpoints."""
 
-import logging
 from datetime import datetime, timedelta
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -17,7 +17,7 @@ from cerebro.core.models import Finding
 
 router = APIRouter()
 _pre_audit_service = PreAuditHealthCheckService()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PreAuditRunRequest(BaseModel):

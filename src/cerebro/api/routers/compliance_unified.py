@@ -5,11 +5,11 @@ Consolidates compliance functionality from multiple modules into a single,
 coherent API with proper dependency injection and real implementation.
 """
 
-import logging
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +32,7 @@ from cerebro.core.database import get_db
 from cerebro.core.models import Organization
 from cerebro.query.bootstrap import get_query_engine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/compliance", dependencies=[Depends(get_current_user)])
 
 

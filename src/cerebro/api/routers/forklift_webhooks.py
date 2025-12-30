@@ -6,10 +6,10 @@ and creates/updates findings in Cerebro.
 
 import hashlib
 import hmac
-import logging
 from datetime import datetime
 from typing import Any, Literal
 
+import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -19,7 +19,7 @@ from cerebro.core.config import settings
 from cerebro.core.database import get_db
 from cerebro.core.models import Account, Finding, Organization, Resource, Rule
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/webhooks/forklift", tags=["Forklift Integration"])
 

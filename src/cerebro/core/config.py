@@ -1,14 +1,14 @@
 """Configuration management for Cerebro."""
 
-import logging
 import os
 from typing import Any
 from uuid import UUID
 
+import structlog
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 _DEV_ENVIRONMENTS = {"dev", "development", "test", "testing"}
 
 
@@ -962,9 +962,8 @@ class Settings(BaseSettings):
                     "Use aws, gcp, azure, or vault KMS provider for production deployments."
                 )
             # Warn even in development
-            import logging
 
-            logger = logging.getLogger(__name__)
+            logger = structlog.get_logger(__name__)
             logger.warning(
                 "Using local KMS provider with predictable key derivation. "
                 "This is insecure and should only be used for development/testing."

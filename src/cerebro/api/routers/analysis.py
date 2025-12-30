@@ -1,9 +1,9 @@
 """Advanced analysis endpoints."""
 
-import logging
 from datetime import datetime, timedelta
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,7 @@ from cerebro.compliance.generator import ComplianceEvidenceGenerator
 from cerebro.rules.engine import rule_engine
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class BlastRadiusRequest(BaseModel):

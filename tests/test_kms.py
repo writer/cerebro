@@ -2,8 +2,8 @@
 
 import pytest
 
+from cerebro.kms.factory import get_available_kms_providers, get_kms
 from cerebro.kms.local_kms import LocalPlaintextKMS
-from cerebro.kms.factory import get_kms, get_available_kms_providers
 
 
 class TestLocalPlaintextKMS:

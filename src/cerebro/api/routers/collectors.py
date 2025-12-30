@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,9 +42,8 @@ async def collect_organization(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     except Exception:
-        import logging
 
-        logging.getLogger(__name__).exception(
+        structlog.get_logger(__name__).exception(
             "Collection failed",
             extra={"org_id": str(org_id)},
         )

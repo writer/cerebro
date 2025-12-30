@@ -1,11 +1,11 @@
 """WebSocket support for real-time updates."""
 
 import json
-import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from fastapi import Query, WebSocket, WebSocketDisconnect
 
 from cerebro.api.auth import TokenData
@@ -15,7 +15,7 @@ from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.metrics.auth_metrics import auth_metrics
 from cerebro.metrics.jwt_metrics import jwt_metrics
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ConnectionManager:

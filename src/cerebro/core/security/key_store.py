@@ -1,10 +1,10 @@
 """JWT key store for managing signing keys and rotation."""
 
-import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import (
@@ -28,7 +28,7 @@ from cerebro.core.database import Base
 from cerebro.kms import BaseKMS as _BaseKMS
 from cerebro.kms import get_kms as _get_kms_factory
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class JWTSigningKey(Base):

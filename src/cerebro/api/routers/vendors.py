@@ -5,11 +5,11 @@ Provides REST API for vendor registry, security reviews, discovered vendors,
 and risk assessments using the evidence data fabric.
 """
 
-import logging
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +31,7 @@ from ...vendor_management.vendor_registry import (
 )
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class VendorCreateRequest(BaseModel):

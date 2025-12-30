@@ -5,10 +5,10 @@ Provides REST API for attack path queries, blast radius analysis,
 and service identity mapping.
 """
 
-import logging
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from ...core.database import get_db
 from ...core.models import Organization
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AttackPathQuery(BaseModel):

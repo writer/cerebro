@@ -3,10 +3,10 @@
 import asyncio
 import base64
 import hashlib
-import logging
 import os
 from collections import OrderedDict
 
+import structlog
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from cerebro.kms import BaseKMS, get_kms
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class SecretEncryptionService:

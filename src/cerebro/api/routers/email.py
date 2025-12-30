@@ -1,10 +1,10 @@
 """API endpoints for email notification configuration and management."""
 
-import logging
 from datetime import datetime
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import (
     BaseModel,
@@ -24,7 +24,7 @@ from cerebro.core.database import get_db
 from cerebro.core.models import EmailConfig, EmailNotification
 from cerebro.notifications.email import get_email_service
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/email", tags=["Email Notifications"])
 limiter = Limiter(key_func=get_remote_address)

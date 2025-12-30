@@ -5,10 +5,10 @@ Provides REST API for OAuth app discovery, toxic combination detection,
 and quarantine management.
 """
 
-import logging
 from datetime import datetime, timedelta
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,7 @@ from ...oauth_risk.registry import AppRiskLevel, get_oauth_registry
 from ...oauth_risk.toxic_combinations import get_toxic_detector
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class QuarantineRequest(BaseModel):

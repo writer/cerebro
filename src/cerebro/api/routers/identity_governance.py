@@ -5,11 +5,11 @@ Provides REST API for JML campaigns, access reviews, peer group analysis,
 and exception management.
 """
 
-import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,7 @@ from ...identity_governance.jml_campaigns import get_jml_manager
 from ...identity_governance.peer_groups import get_peer_group_analyzer
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class JMLCampaignRequest(BaseModel):
