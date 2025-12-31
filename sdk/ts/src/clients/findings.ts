@@ -5,10 +5,10 @@ import { CursorPage, PageRequest } from "../pagination.js";
 import { parseDate } from "../serialization.js";
 import { FindingRecord } from "../types.js";
 
-type FindingPayload = components["schemas"]["cerebro__api__schemas__main__FindingResponse"];
+type FindingPayload = components["schemas"]["FindingResponse"];
 type FindingPageResponse = components["schemas"]["FindingPageResponse"];
 
-const adaptFinding = createSchemaAdapter("cerebro__api__schemas__main__FindingResponse");
+const adaptFinding = createSchemaAdapter("FindingResponse");
 
 export interface ListFindingsOptions {
   orgId?: string;
@@ -96,16 +96,16 @@ function mapFinding(payload: FindingPayload): FindingRecord {
     provider: data.provider,
     ruleId: data.ruleId,
     ruleVersion: data.ruleVersion,
-    resourceId: data.resourceId,
-    principalId: data.principalId,
+    resourceId: data.resourceId ?? null,
+    principalId: data.principalId ?? null,
     firstSeen: coerceDate(data.firstSeen, payload.first_seen) ?? new Date(payload.first_seen),
     lastSeen: coerceDate(data.lastSeen, payload.last_seen) ?? new Date(payload.last_seen),
     status: data.status,
     severity: data.severity,
     fingerprint: data.fingerprint,
     title: data.title,
-    summary: data.summary,
-    evidence: data.evidence,
+    summary: data.summary ?? null,
+    evidence: data.evidence ?? null,
   }));
 }
 

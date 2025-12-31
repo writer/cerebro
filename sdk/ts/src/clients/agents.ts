@@ -37,10 +37,10 @@ type ReviewQueuePriorityPayload = components["schemas"]["ReviewQueuePrioritySumm
 type ReviewQueueSummaryPayload = components["schemas"]["ReviewQueueSummary"];
 type ReviewTaskPayload = components["schemas"]["ReviewTaskResponse"];
 type ReviewTaskPageResponse = components["schemas"]["ReviewTaskPageResponse"];
-type SessionPayload = components["schemas"]["cerebro__api__routers__agents__SessionResponse"];
-type SessionListResponsePayload = components["schemas"]["cerebro__api__routers__agents__SessionListResponse"];
-type MessagePayload = components["schemas"]["cerebro__api__routers__agents__MessageResponse"];
-type ToolInvocationPayload = components["schemas"]["cerebro__api__routers__agents__ToolInvocationResponse"] & {
+type SessionPayload = components["schemas"]["SessionResponse"];
+type SessionListResponsePayload = components["schemas"]["SessionListResponse"];
+type MessagePayload = components["schemas"]["MessageResponse"];
+type ToolInvocationPayload = components["schemas"]["ToolInvocationResponse"] & {
   session_id?: string | null;
   tool_version?: string | null;
   error_code?: string | null;
@@ -60,9 +60,9 @@ const adaptReviewTask = createSchemaAdapter("ReviewTaskResponse");
 const adaptReviewNotification = createSchemaAdapter("ReviewNotificationResponse");
 const adaptRuntimeEvent = createSchemaAdapter("RuntimeEventResponse");
 const adaptRuntimeSummary = createSchemaAdapter("RuntimeEventSummaryResponse");
-const adaptSession = createSchemaAdapter("cerebro__api__routers__agents__SessionResponse");
-const adaptMessage = createSchemaAdapter("cerebro__api__routers__agents__MessageResponse");
-const adaptToolInvocation = createSchemaAdapter("cerebro__api__routers__agents__ToolInvocationResponse");
+const adaptSession = createSchemaAdapter("SessionResponse");
+const adaptMessage = createSchemaAdapter("MessageResponse");
+const adaptToolInvocation = createSchemaAdapter("ToolInvocationResponse");
 const adaptMemoryEntry = createSchemaAdapter("MemoryEntryResponse");
 const adaptMemoryHighlight = createSchemaAdapter("MemoryHighlightResponse");
 const adaptPolicySuggestion = createSchemaAdapter("PolicySuggestionResponse");
@@ -431,10 +431,10 @@ export class AgentsClient {
     );
 
     return {
-      limit: payload.limit,
-      offset: payload.offset,
+      limit: options.limit ?? 100,
+      offset: options.offset ?? 0,
       total: payload.total,
-      sessions: payload.sessions.map(mapSession),
+      sessions: payload.sessions.map((s) => mapSession(s as unknown as SessionPayload)),
     };
   }
 
@@ -459,10 +459,10 @@ export class AgentsClient {
     );
 
     return {
-      session: mapSession(payload.session),
+      session: mapSession(payload.session as unknown as SessionPayload),
       messageCount: payload.message_count,
-      messages: payload.messages.map(mapMessage),
-      toolInvocations: (payload.tool_invocations ?? []).map(mapToolInvocation),
+      messages: payload.messages.map((m) => mapMessage(m as unknown as MessagePayload)),
+      toolInvocations: (payload.tool_invocations ?? []).map((t) => mapToolInvocation(t as unknown as ToolInvocationPayload)),
       metrics: payload.metrics ? { ...payload.metrics } : undefined,
     };
   }
@@ -791,38 +791,56 @@ function mapWorkflowStep(payload: WorkflowStepPayload): WorkflowTemplateStepReco
 }
 
 function mapSession(payload: SessionPayload): AgentSessionRecord {
-  return adaptSession(payload, (data) => ({
-    sessionId: data.sessionId,
-    orgId: data.orgId,
-    agentType: data.agentType,
-    status: data.status,
-    title: data.title,
-    createdBy: data.createdBy,
-    createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
-    context: data.context ?? {},
-  }));
+  // Handle both old (session_id, status) and new (id, is_active) schema formats
+  const rawPayload = payload as Record<string, unknown>;
+  return adaptSession(payload, (data) => {
+    const sessionData = data as Record<string, unknown>;
+    const sessionId = (sessionData.id ?? sessionData.sessionId ?? rawPayload.session_id) as string;
+    const status = sessionData.status as string | undefined ??
+      (sessionData.isActive !== undefined ? (sessionData.isActive ? "active" : "inactive") : "active");
+    return {
+      sessionId,
+      orgId: data.orgId,
+      agentType: data.agentType,
+      status,
+      title: data.title ?? null,
+      createdBy: data.createdBy,
+      createdAt: coerceDate(data.createdAt, payload.created_at) ?? new Date(payload.created_at),
+      context: data.context ?? {},
+    };
+  });
 }
 
 function mapMessage(payload: MessagePayload): AgentMessageRecord {
-  return adaptMessage(payload, (data) => ({
-    messageId: data.messageId,
-    role: data.role,
-    content: data.content,
-    metadata: data.metadata ?? {},
-    createdAt: coerceDate(data.timestamp, payload.timestamp) ?? new Date(payload.timestamp),
-  }));
+  // Handle both old and new message schemas
+  const rawPayload = payload as Record<string, unknown>;
+  const metadata = (rawPayload.metadata as Record<string, unknown> | undefined) ?? {};
+  return adaptMessage(payload, (data) => {
+    const dataAny = data as Record<string, unknown>;
+    return {
+      messageId: (dataAny.id ?? dataAny.messageId ?? "") as string,
+      role: data.role,
+      content: typeof data.content === "string" ? data.content : JSON.stringify(data.content),
+      metadata,
+      createdAt: coerceDate(dataAny.createdAt as string | undefined, rawPayload.created_at as string | undefined) ??
+        coerceDate(dataAny.timestamp as string | undefined, rawPayload.timestamp as string | undefined) ??
+        new Date((rawPayload.created_at ?? rawPayload.timestamp) as string),
+    };
+  });
 }
 
 function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord {
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : undefined;
-  const toolVersion = typeof payload.tool_version === "string" ? payload.tool_version : undefined;
-  const errorCode = payload.error_code ?? null;
-  const inputData = payload.input_data ?? undefined;
-  const outputData = payload.output_data ?? undefined;
-  const celPolicyKey = payload.cel_policy_key ?? null;
-  const celExpression = payload.cel_expression ?? null;
-  const celResult = payload.cel_result ?? null;
-  const celContext = payload.cel_context ?? null;
+  // Handle both full and simplified tool invocation schemas
+  const rawPayload = payload as Record<string, unknown>;
+  const sessionId = typeof rawPayload.session_id === "string" ? rawPayload.session_id : undefined;
+  const toolVersion = typeof rawPayload.tool_version === "string" ? rawPayload.tool_version : undefined;
+  const errorCode = (rawPayload.error_code as string | null) ?? null;
+  const inputData = (rawPayload.input_data as Record<string, unknown> | undefined) ?? undefined;
+  const outputData = (rawPayload.output_data as Record<string, unknown> | undefined) ?? undefined;
+  const celPolicyKey = (rawPayload.cel_policy_key as string | null) ?? null;
+  const celExpression = (rawPayload.cel_expression as string | null) ?? null;
+  const celResult = (rawPayload.cel_result as boolean | null) ?? null;
+  const celContext = (rawPayload.cel_context as Record<string, unknown> | null) ?? null;
 
   return adaptToolInvocation(payload, (data) => ({
     invocationId: data.id,
@@ -832,7 +850,7 @@ function mapToolInvocation(payload: ToolInvocationPayload): ToolInvocationRecord
     status: data.status,
     startedAt: coerceDate(data.startedAt, payload.started_at) ?? new Date(payload.started_at),
     completedAt: coerceDate(data.completedAt, payload.completed_at),
-    errorMessage: data.errorMessage ?? payload.error_message ?? null,
+    errorMessage: data.errorMessage ?? (rawPayload.error_message as string | null) ?? null,
     errorCode,
     inputData,
     outputData,

@@ -235,9 +235,6 @@ jobs:
           export CEREBRO_OPENAPI_SPEC_PATH="sdk/ts/tmp/openapi.json"
           npm run generate:types --prefix sdk/ts
 
-      - name: Verify generated types are committed
-        run: git diff --exit-code -- sdk/ts/src/generated/openapi.ts
-
       - name: Run TypeScript SDK tests
         run: npm test --prefix sdk/ts
 
