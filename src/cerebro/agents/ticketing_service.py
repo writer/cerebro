@@ -31,6 +31,7 @@ class TicketingService:
         summary: str,
         metadata: dict[str, Any] | None = None,
     ) -> AgentReviewTicket:
+        """Create and persist a ticket, optionally syncing to external system (e.g., Serval)."""
         # Copy metadata to avoid mutating caller-owned dictionaries.
         payload = dict(metadata or {})
         if isinstance(payload.get("serval"), dict):
@@ -93,6 +94,7 @@ class TicketingService:
     async def close_ticket(
         *, ticket_id: UUID, external_id: str | None = None
     ) -> AgentReviewTicket | None:
+        """Close a ticket locally and propagate to external system if applicable."""
         async with async_session_factory() as db_session:
             ticket = await db_session.get(AgentReviewTicket, ticket_id)
             if not ticket:
@@ -125,6 +127,7 @@ class TicketingService:
 
     @staticmethod
     async def list_tickets(*, task_id: UUID) -> list[AgentReviewTicket]:
+        """List all tickets associated with a review task."""
         async with async_session_factory() as db_session:
             stmt = select(AgentReviewTicket).where(AgentReviewTicket.task_id == task_id)
             result = await db_session.execute(stmt)

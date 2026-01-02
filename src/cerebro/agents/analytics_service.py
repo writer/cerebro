@@ -19,6 +19,7 @@ class AgentAnalyticsService:
 
     @classmethod
     def configure_repository(cls, repository: AgentAnalyticsRepository) -> None:
+        """Configure the repository instance for dependency injection."""
         cls._repository = repository
 
     @classmethod
@@ -30,6 +31,7 @@ class AgentAnalyticsService:
         event_type: str,
         payload: dict[str, Any],
     ) -> None:
+        """Record a runtime analytics event and probabilistically prune old events."""
         await cls._repository.insert_event(
             org_id=org_id,
             session_id=session_id,
@@ -52,6 +54,7 @@ class AgentAnalyticsService:
         before: datetime | None = None,
         before_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
+        """List runtime events for a session with optional filtering and pagination."""
         events = await cls._repository.list_events(
             session_id=session_id,
             limit=limit,
@@ -77,6 +80,7 @@ class AgentAnalyticsService:
         session_id: UUID,
         event_type: str | None = None,
     ) -> list[dict[str, Any]]:
+        """Get aggregated event statistics for a session."""
         result = await cls._repository.summarize_events(
             session_id=session_id,
             event_type=event_type,

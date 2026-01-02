@@ -23,6 +23,7 @@ class NotificationService:
         channel: str,
         payload: dict[str, Any] | None = None,
     ) -> AgentReviewNotification:
+        """Create and persist a new notification for a review task."""
         async with async_session_factory() as db_session:
             notification = AgentReviewNotification(
                 org_id=org_id,
@@ -43,6 +44,7 @@ class NotificationService:
         status: NotificationStatus | str | None = None,
         limit: int = 100,
     ) -> list[AgentReviewNotification]:
+        """List notifications for an organization with optional status filtering."""
         async with async_session_factory() as db_session:
             stmt = select(AgentReviewNotification).where(
                 AgentReviewNotification.org_id == org_id
@@ -62,6 +64,7 @@ class NotificationService:
     async def mark_delivered(
         *, notification_id: UUID
     ) -> AgentReviewNotification | None:
+        """Mark a pending notification as delivered with timestamp."""
         async with async_session_factory() as db_session:
             notification = await db_session.get(
                 AgentReviewNotification, notification_id

@@ -3652,36 +3652,10 @@
         "type": "object"
       },
       "FindingUpdate": {
-        "description": "Request schema for updating a finding.",
         "properties": {
-          "evidence": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Evidence"
-          },
-          "severity": {
-            "anyOf": [
-              {
-                "pattern": "^(critical|high|medium|low|info)$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Severity"
-          },
           "status": {
             "anyOf": [
               {
-                "pattern": "^(open|suppressed|accepted_risk|fixed)$",
                 "type": "string"
               },
               {
@@ -3689,17 +3663,6 @@
               }
             ],
             "title": "Status"
-          },
-          "summary": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary"
           }
         },
         "title": "FindingUpdate",
@@ -5298,44 +5261,60 @@
         "type": "object"
       },
       "MessageResponse": {
-        "description": "Response containing a single message.",
+        "description": "Response schema for message.",
         "properties": {
           "content": {
+            "additionalProperties": true,
             "title": "Content",
+            "type": "object"
+          },
+          "created_at": {
+            "title": "Created At",
             "type": "string"
           },
-          "message_id": {
+          "id": {
             "format": "uuid",
-            "title": "Message Id",
+            "title": "Id",
             "type": "string"
           },
-          "metadata": {
+          "input_tokens": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Metadata"
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
           },
           "role": {
             "title": "Role",
             "type": "string"
           },
-          "timestamp": {
-            "format": "date-time",
-            "title": "Timestamp",
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
             "type": "string"
           }
         },
         "required": [
-          "message_id",
+          "id",
+          "session_id",
           "role",
           "content",
-          "timestamp"
+          "created_at"
         ],
         "title": "MessageResponse",
         "type": "object"
@@ -7774,19 +7753,11 @@
         "type": "object"
       },
       "SessionListResponse": {
-        "description": "Response containing list of sessions.",
+        "description": "Response for listing sessions with pagination.",
         "properties": {
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "offset": {
-            "title": "Offset",
-            "type": "integer"
-          },
           "sessions": {
             "items": {
-              "$ref": "#/components/schemas/cerebro__api__routers__agents__SessionResponse"
+              "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
             },
             "title": "Sessions",
             "type": "array"
@@ -7798,15 +7769,13 @@
         },
         "required": [
           "sessions",
-          "total",
-          "limit",
-          "offset"
+          "total"
         ],
         "title": "SessionListResponse",
         "type": "object"
       },
       "SessionResponse": {
-        "description": "Response schema for session.",
+        "description": "Response containing session information.",
         "properties": {
           "agent_type": {
             "title": "Agent Type",
@@ -7814,11 +7783,11 @@
           },
           "context": {
             "additionalProperties": true,
-            "default": {},
             "title": "Context",
             "type": "object"
           },
           "created_at": {
+            "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
@@ -7826,19 +7795,18 @@
             "title": "Created By",
             "type": "string"
           },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "is_active": {
-            "default": true,
-            "title": "Is Active",
-            "type": "boolean"
-          },
           "org_id": {
             "format": "uuid",
             "title": "Org Id",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
             "type": "string"
           },
           "title": {
@@ -7854,11 +7822,14 @@
           }
         },
         "required": [
-          "id",
+          "session_id",
           "org_id",
           "agent_type",
+          "title",
           "created_at",
-          "created_by"
+          "created_by",
+          "status",
+          "context"
         ],
         "title": "SessionResponse",
         "type": "object"
@@ -7913,7 +7884,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/MessageResponse"
+              "$ref": "#/components/schemas/cerebro__api__routers__agents__MessageResponse"
             },
             "title": "Messages",
             "type": "array"
@@ -7924,11 +7895,11 @@
             "type": "object"
           },
           "session": {
-            "$ref": "#/components/schemas/cerebro__api__routers__agents__SessionResponse"
+            "$ref": "#/components/schemas/SessionResponse"
           },
           "tool_invocations": {
             "items": {
-              "$ref": "#/components/schemas/ToolInvocationResponse"
+              "$ref": "#/components/schemas/cerebro__api__routers__agents__ToolInvocationResponse"
             },
             "title": "Tool Invocations",
             "type": "array"
@@ -8924,11 +8895,11 @@
         "type": "object"
       },
       "ToolInvocationResponse": {
+        "description": "Response schema for tool invocation.",
         "properties": {
           "completed_at": {
             "anyOf": [
               {
-                "format": "date-time",
                 "type": "string"
               },
               {
@@ -8936,6 +8907,17 @@
               }
             ],
             "title": "Completed At"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
           },
           "error_message": {
             "anyOf": [
@@ -8953,8 +8935,29 @@
             "title": "Id",
             "type": "string"
           },
+          "input_data": {
+            "additionalProperties": true,
+            "title": "Input Data",
+            "type": "object"
+          },
+          "output_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Data"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
           "started_at": {
-            "format": "date-time",
             "title": "Started At",
             "type": "string"
           },
@@ -8965,15 +8968,20 @@
           "tool_name": {
             "title": "Tool Name",
             "type": "string"
+          },
+          "tool_version": {
+            "title": "Tool Version",
+            "type": "string"
           }
         },
         "required": [
           "id",
+          "session_id",
           "tool_name",
+          "tool_version",
+          "input_data",
           "status",
-          "started_at",
-          "completed_at",
-          "error_message"
+          "started_at"
         ],
         "title": "ToolInvocationResponse",
         "type": "object"
@@ -9841,128 +9849,60 @@
         "title": "WorkflowEvaluationRequest",
         "type": "object"
       },
-      "cerebro__api__routers__agents__SessionResponse": {
-        "description": "Response containing session information.",
-        "properties": {
-          "agent_type": {
-            "title": "Agent Type",
-            "type": "string"
-          },
-          "context": {
-            "additionalProperties": true,
-            "title": "Context",
-            "type": "object"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "created_by": {
-            "title": "Created By",
-            "type": "string"
-          },
-          "org_id": {
-            "format": "uuid",
-            "title": "Org Id",
-            "type": "string"
-          },
-          "session_id": {
-            "format": "uuid",
-            "title": "Session Id",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          }
-        },
-        "required": [
-          "session_id",
-          "org_id",
-          "agent_type",
-          "title",
-          "created_at",
-          "created_by",
-          "status",
-          "context"
-        ],
-        "title": "SessionResponse",
-        "type": "object"
-      },
-      "cerebro__api__routers__v2__agents__MessageResponse": {
-        "description": "Response schema for message.",
+      "cerebro__api__routers__agents__MessageResponse": {
+        "description": "Response containing a single message.",
         "properties": {
           "content": {
-            "additionalProperties": true,
             "title": "Content",
-            "type": "object"
-          },
-          "created_at": {
-            "title": "Created At",
             "type": "string"
           },
-          "id": {
+          "message_id": {
             "format": "uuid",
-            "title": "Id",
+            "title": "Message Id",
             "type": "string"
           },
-          "input_tokens": {
+          "metadata": {
             "anyOf": [
               {
-                "type": "integer"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Input Tokens"
-          },
-          "output_tokens": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Output Tokens"
+            "title": "Metadata"
           },
           "role": {
             "title": "Role",
             "type": "string"
           },
-          "session_id": {
-            "format": "uuid",
-            "title": "Session Id",
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "session_id",
+          "message_id",
           "role",
           "content",
-          "created_at"
+          "timestamp"
         ],
         "title": "MessageResponse",
         "type": "object"
       },
-      "cerebro__api__routers__v2__agents__SessionListResponse": {
-        "description": "Response for listing sessions with pagination.",
+      "cerebro__api__routers__agents__SessionListResponse": {
+        "description": "Response containing list of sessions.",
         "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
           "sessions": {
             "items": {
               "$ref": "#/components/schemas/SessionResponse"
@@ -9977,17 +9917,19 @@
         },
         "required": [
           "sessions",
-          "total"
+          "total",
+          "limit",
+          "offset"
         ],
         "title": "SessionListResponse",
         "type": "object"
       },
-      "cerebro__api__routers__v2__agents__ToolInvocationResponse": {
-        "description": "Response schema for tool invocation.",
+      "cerebro__api__routers__agents__ToolInvocationResponse": {
         "properties": {
           "completed_at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
@@ -9995,17 +9937,6 @@
               }
             ],
             "title": "Completed At"
-          },
-          "duration_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Ms"
           },
           "error_message": {
             "anyOf": [
@@ -10023,29 +9954,8 @@
             "title": "Id",
             "type": "string"
           },
-          "input_data": {
-            "additionalProperties": true,
-            "title": "Input Data",
-            "type": "object"
-          },
-          "output_data": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Output Data"
-          },
-          "session_id": {
-            "format": "uuid",
-            "title": "Session Id",
-            "type": "string"
-          },
           "started_at": {
+            "format": "date-time",
             "title": "Started At",
             "type": "string"
           },
@@ -10056,22 +9966,129 @@
           "tool_name": {
             "title": "Tool Name",
             "type": "string"
-          },
-          "tool_version": {
-            "title": "Tool Version",
-            "type": "string"
           }
         },
         "required": [
           "id",
-          "session_id",
           "tool_name",
-          "tool_version",
-          "input_data",
           "status",
-          "started_at"
+          "started_at",
+          "completed_at",
+          "error_message"
         ],
         "title": "ToolInvocationResponse",
+        "type": "object"
+      },
+      "cerebro__api__routers__v2__agents__SessionResponse": {
+        "description": "Response schema for session.",
+        "properties": {
+          "agent_type": {
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Context",
+            "type": "object"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "org_id": {
+            "format": "uuid",
+            "title": "Org Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "org_id",
+          "agent_type",
+          "created_at",
+          "created_by"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
+      "cerebro__api__routers__v2__findings__FindingUpdate": {
+        "description": "Request schema for updating a finding.",
+        "properties": {
+          "evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "pattern": "^(critical|high|medium|low|info)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "pattern": "^(open|suppressed|accepted_risk|fixed)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "title": "FindingUpdate",
         "type": "object"
       },
       "cerebro__api__routers__v2__organizations__OrganizationResponse": {
@@ -10271,23 +10288,6 @@
           "by_provider"
         ],
         "title": "FindingStats",
-        "type": "object"
-      },
-      "cerebro__api__schemas__main__FindingUpdate": {
-        "properties": {
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          }
-        },
-        "title": "FindingUpdate",
         "type": "object"
       },
       "cerebro__api__schemas__main__OrganizationCreate": {
@@ -11431,7 +11431,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionListResponse"
+                  "$ref": "#/components/schemas/cerebro__api__routers__agents__SessionListResponse"
                 }
               }
             },
@@ -11471,7 +11471,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__agents__SessionResponse"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             },
@@ -11898,7 +11898,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/MessageResponse"
+                    "$ref": "#/components/schemas/cerebro__api__routers__agents__MessageResponse"
                   },
                   "title": "Response Get Session Messages Api V1 Agents Sessions  Session Id  Messages Get",
                   "type": "array"
@@ -16519,7 +16519,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/cerebro__api__schemas__main__FindingUpdate"
+                "$ref": "#/components/schemas/FindingUpdate"
               }
             }
           },
@@ -23137,7 +23137,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
+                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
                 }
               }
             },
@@ -23249,7 +23249,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionListResponse"
+                  "$ref": "#/components/schemas/SessionListResponse"
                 }
               }
             },
@@ -23352,7 +23352,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
+                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
                 }
               }
             },
@@ -23416,7 +23416,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
+                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
                 }
               }
             },
@@ -23472,7 +23472,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
+                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
                 }
               }
             },
@@ -23547,7 +23547,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__MessageResponse"
+                    "$ref": "#/components/schemas/MessageResponse"
                   },
                   "title": "Response List Messages Api V2 Agents Sessions  Org Id   Session Id  Messages Get",
                   "type": "array"
@@ -23614,7 +23614,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__MessageResponse"
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             },
@@ -23745,7 +23745,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__ToolInvocationResponse"
+                    "$ref": "#/components/schemas/ToolInvocationResponse"
                   },
                   "title": "Response List Tool Invocations Api V2 Agents Sessions  Org Id   Session Id  Tools Get",
                   "type": "array"
@@ -23833,7 +23833,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__ToolInvocationResponse"
+                    "$ref": "#/components/schemas/ToolInvocationResponse"
                   },
                   "title": "Response List Tool Invocations By Name Api V2 Agents Tools Org  Org Id   Tool Name  Get",
                   "type": "array"
@@ -24178,7 +24178,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FindingUpdate"
+                "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingUpdate"
               }
             }
           },

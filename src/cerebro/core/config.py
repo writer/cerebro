@@ -179,10 +179,12 @@ class APISettings(BaseModel):
     model_config = SettingsConfigDict(populate_by_name=True)
 
     def get_allowed_origins(self, environment: str) -> list[str]:
+        """Get CORS allowed origins for the specified environment."""
         env = environment.lower()
         return self.api_allowed_origins_overrides.get(env, self.api_allowed_origins)
 
     def get_default_rate_limits(self, environment: str) -> list[str]:
+        """Get default rate limit rules for the specified environment."""
         env = environment.lower()
         return self.api_default_rate_limits_overrides.get(
             env, self.api_default_rate_limits
