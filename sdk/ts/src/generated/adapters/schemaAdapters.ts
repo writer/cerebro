@@ -101,23 +101,29 @@ export const schemaAdapterDefinitions = {
     snakeCaseDateKeys: ["due_at"],
     deep: true,
   },
-  "cerebro__api__routers__agents__MessageResponse": {
-    schema: "cerebro__api__routers__agents__MessageResponse",
-    snakeCaseDateKeys: ["timestamp"],
-    deep: true,
-  },
   "cerebro__api__routers__agents__SessionListResponse": {
     schema: "cerebro__api__routers__agents__SessionListResponse",
     snakeCaseDateKeys: [],
     deep: true,
   },
-  "cerebro__api__routers__agents__ToolInvocationResponse": {
-    schema: "cerebro__api__routers__agents__ToolInvocationResponse",
-    snakeCaseDateKeys: ["completed_at","started_at"],
-  },
-  "cerebro__api__routers__v2__agents__SessionResponse": {
-    schema: "cerebro__api__routers__v2__agents__SessionResponse",
+  "cerebro__api__routers__agents__SessionResponse": {
+    schema: "cerebro__api__routers__agents__SessionResponse",
     snakeCaseDateKeys: ["created_at"],
+    deep: true,
+  },
+  "cerebro__api__routers__v2__agents__MessageResponse": {
+    schema: "cerebro__api__routers__v2__agents__MessageResponse",
+    snakeCaseDateKeys: ["created_at"],
+    deep: true,
+  },
+  "cerebro__api__routers__v2__agents__ToolInvocationResponse": {
+    schema: "cerebro__api__routers__v2__agents__ToolInvocationResponse",
+    snakeCaseDateKeys: ["completed_at","started_at"],
+    deep: true,
+  },
+  "cerebro__api__routers__v2__findings__FindingStats": {
+    schema: "cerebro__api__routers__v2__findings__FindingStats",
+    snakeCaseDateKeys: [],
     deep: true,
   },
   "cerebro__api__routers__v2__findings__FindingUpdate": {
@@ -133,11 +139,6 @@ export const schemaAdapterDefinitions = {
   "cerebro__api__schemas__main__FindingResponse": {
     schema: "cerebro__api__schemas__main__FindingResponse",
     snakeCaseDateKeys: ["first_seen","last_seen"],
-    deep: true,
-  },
-  "cerebro__api__schemas__main__FindingStats": {
-    schema: "cerebro__api__schemas__main__FindingStats",
-    snakeCaseDateKeys: [],
     deep: true,
   },
   "cerebro__api__schemas__main__OrganizationCreate": {
@@ -407,7 +408,7 @@ export const schemaAdapterDefinitions = {
   },
   "MessageResponse": {
     schema: "MessageResponse",
-    snakeCaseDateKeys: ["created_at"],
+    snakeCaseDateKeys: ["timestamp"],
     deep: true,
   },
   "NetworkConnection": {
@@ -720,7 +721,6 @@ export const schemaAdapterDefinitions = {
   "ToolInvocationResponse": {
     schema: "ToolInvocationResponse",
     snakeCaseDateKeys: ["completed_at","started_at"],
-    deep: true,
   },
   "User": {
     schema: "User",

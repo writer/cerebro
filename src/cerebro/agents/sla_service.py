@@ -49,6 +49,7 @@ class SLAStatus:
         self.is_at_risk = is_at_risk
 
     def to_dict(self) -> dict:
+        """Serialize SLA status to a dictionary for API responses."""
         return {
             "task_id": str(self.task.id),
             "sla_hours": self.sla_hours,

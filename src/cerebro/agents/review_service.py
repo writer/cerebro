@@ -45,6 +45,7 @@ class AgentReviewService:
         due_at: datetime | None = None,
         notification_channel: str | None = None,
     ) -> AgentReviewTask:
+        """Create a new review task for human approval."""
         async with async_session_factory() as db_session:
             task = AgentReviewTask(
                 org_id=session.org_id,
@@ -73,6 +74,7 @@ class AgentReviewService:
         status: ReviewTaskStatus | None = None,
         limit: int = 50,
     ) -> list[AgentReviewTask]:
+        """List review tasks for an organization with optional status filtering."""
         async with async_session_factory() as db_session:
             stmt = select(AgentReviewTask).where(AgentReviewTask.org_id == org_id)
             if status:
