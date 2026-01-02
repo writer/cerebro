@@ -6242,13 +6242,16 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /** Items */
-            items: components["schemas"]["FindingResponse"][];
+            items: components["schemas"]["cerebro__api__schemas__main__FindingResponse"][];
             /** Next Cursor */
             next_cursor?: string | null;
             /** Warnings */
             warnings?: string[];
         };
-        /** FindingResponse */
+        /**
+         * FindingResponse
+         * @description Response schema for finding.
+         */
         FindingResponse: {
             /**
              * Account Id
@@ -6256,7 +6259,7 @@ export interface components {
              */
             account_id: string;
             /** Evidence */
-            evidence: {
+            evidence?: {
                 [key: string]: unknown;
             } | null;
             /**
@@ -6266,15 +6269,9 @@ export interface components {
             finding_id: string;
             /** Fingerprint */
             fingerprint: string;
-            /**
-             * First Seen
-             * Format: date-time
-             */
+            /** First Seen */
             first_seen: string;
-            /**
-             * Last Seen
-             * Format: date-time
-             */
+            /** Last Seen */
             last_seen: string;
             /**
              * Org Id
@@ -6282,11 +6279,11 @@ export interface components {
              */
             org_id: string;
             /** Principal Id */
-            principal_id: string | null;
+            principal_id?: string | null;
             /** Provider */
             provider: string;
             /** Resource Id */
-            resource_id: string | null;
+            resource_id?: string | null;
             /**
              * Rule Id
              * Format: uuid
@@ -6299,16 +6296,15 @@ export interface components {
             /** Status */
             status: string;
             /** Summary */
-            summary: string | null;
+            summary?: string | null;
             /** Title */
             title: string;
         };
-        /** FindingStats */
+        /**
+         * FindingStats
+         * @description Statistics about findings.
+         */
         FindingStats: {
-            /** By Provider */
-            by_provider: {
-                [key: string]: number;
-            };
             /** By Severity */
             by_severity: {
                 [key: string]: number;
@@ -7077,31 +7073,27 @@ export interface components {
         };
         /**
          * MessageResponse
-         * @description Response schema for message.
+         * @description Response containing a single message.
          */
         MessageResponse: {
             /** Content */
-            content: {
-                [key: string]: unknown;
-            };
-            /** Created At */
-            created_at: string;
+            content: string;
             /**
-             * Id
+             * Message Id
              * Format: uuid
              */
-            id: string;
-            /** Input Tokens */
-            input_tokens?: number | null;
-            /** Output Tokens */
-            output_tokens?: number | null;
+            message_id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** Role */
             role: string;
             /**
-             * Session Id
-             * Format: uuid
+             * Timestamp
+             * Format: date-time
              */
-            session_id: string;
+            timestamp: string;
         };
         /**
          * NetworkConnection
@@ -8125,42 +8117,45 @@ export interface components {
             /** Offset */
             offset: number;
             /** Sessions */
-            sessions: components["schemas"]["SessionResponse"][];
+            sessions: components["schemas"]["cerebro__api__routers__agents__SessionResponse"][];
             /** Total */
             total: number;
         };
         /**
          * SessionResponse
-         * @description Response containing session information.
+         * @description Response schema for session.
          */
         SessionResponse: {
             /** Agent Type */
             agent_type: string;
-            /** Context */
+            /**
+             * Context
+             * @default {}
+             */
             context: {
                 [key: string]: unknown;
             };
-            /**
-             * Created At
-             * Format: date-time
-             */
+            /** Created At */
             created_at: string;
             /** Created By */
             created_by: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
             /**
              * Org Id
              * Format: uuid
              */
             org_id: string;
-            /**
-             * Session Id
-             * Format: uuid
-             */
-            session_id: string;
-            /** Status */
-            status: string;
             /** Title */
-            title: string | null;
+            title?: string | null;
         };
         /**
          * SessionUpdate
@@ -8184,12 +8179,12 @@ export interface components {
             /** Message Count */
             message_count: number;
             /** Messages */
-            messages: components["schemas"]["cerebro__api__routers__agents__MessageResponse"][];
+            messages: components["schemas"]["MessageResponse"][];
             /** Metrics */
             metrics?: {
                 [key: string]: unknown;
             };
-            session: components["schemas"]["SessionResponse"];
+            session: components["schemas"]["cerebro__api__routers__agents__SessionResponse"];
             /** Tool Invocations */
             tool_invocations?: components["schemas"]["ToolInvocationResponse"][];
         };
@@ -9042,28 +9037,65 @@ export interface components {
             trigger: string;
         };
         /**
-         * MessageResponse
-         * @description Response containing a single message.
+         * SessionResponse
+         * @description Response containing session information.
          */
-        cerebro__api__routers__agents__MessageResponse: {
-            /** Content */
-            content: string;
+        cerebro__api__routers__agents__SessionResponse: {
+            /** Agent Type */
+            agent_type: string;
+            /** Context */
+            context: {
+                [key: string]: unknown;
+            };
             /**
-             * Message Id
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Org Id
              * Format: uuid
              */
-            message_id: string;
-            /** Metadata */
-            metadata?: {
+            org_id: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string | null;
+        };
+        /**
+         * MessageResponse
+         * @description Response schema for message.
+         */
+        cerebro__api__routers__v2__agents__MessageResponse: {
+            /** Content */
+            content: {
                 [key: string]: unknown;
-            } | null;
+            };
+            /** Created At */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Input Tokens */
+            input_tokens?: number | null;
+            /** Output Tokens */
+            output_tokens?: number | null;
             /** Role */
             role: string;
             /**
-             * Timestamp
-             * Format: date-time
+             * Session Id
+             * Format: uuid
              */
-            timestamp: string;
+            session_id: string;
         };
         /**
          * SessionListResponse
@@ -9071,45 +9103,9 @@ export interface components {
          */
         cerebro__api__routers__v2__agents__SessionListResponse: {
             /** Sessions */
-            sessions: components["schemas"]["cerebro__api__routers__v2__agents__SessionResponse"][];
+            sessions: components["schemas"]["SessionResponse"][];
             /** Total */
             total: number;
-        };
-        /**
-         * SessionResponse
-         * @description Response schema for session.
-         */
-        cerebro__api__routers__v2__agents__SessionResponse: {
-            /** Agent Type */
-            agent_type: string;
-            /**
-             * Context
-             * @default {}
-             */
-            context: {
-                [key: string]: unknown;
-            };
-            /** Created At */
-            created_at: string;
-            /** Created By */
-            created_by: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Org Id
-             * Format: uuid
-             */
-            org_id: string;
-            /** Title */
-            title?: string | null;
         };
         /**
          * ToolInvocationResponse
@@ -9150,74 +9146,6 @@ export interface components {
             tool_version: string;
         };
         /**
-         * FindingResponse
-         * @description Response schema for finding.
-         */
-        cerebro__api__routers__v2__findings__FindingResponse: {
-            /**
-             * Account Id
-             * Format: uuid
-             */
-            account_id: string;
-            /** Evidence */
-            evidence?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Finding Id
-             * Format: uuid
-             */
-            finding_id: string;
-            /** Fingerprint */
-            fingerprint: string;
-            /** First Seen */
-            first_seen: string;
-            /** Last Seen */
-            last_seen: string;
-            /**
-             * Org Id
-             * Format: uuid
-             */
-            org_id: string;
-            /** Principal Id */
-            principal_id?: string | null;
-            /** Provider */
-            provider: string;
-            /** Resource Id */
-            resource_id?: string | null;
-            /**
-             * Rule Id
-             * Format: uuid
-             */
-            rule_id: string;
-            /** Rule Version */
-            rule_version: number;
-            /** Severity */
-            severity: string;
-            /** Status */
-            status: string;
-            /** Summary */
-            summary?: string | null;
-            /** Title */
-            title: string;
-        };
-        /**
-         * FindingStats
-         * @description Statistics about findings.
-         */
-        cerebro__api__routers__v2__findings__FindingStats: {
-            /** By Severity */
-            by_severity: {
-                [key: string]: number;
-            };
-            /** By Status */
-            by_status: {
-                [key: string]: number;
-            };
-            /** Total */
-            total: number;
-        };
-        /**
          * OrganizationResponse
          * @description Response schema for organization.
          */
@@ -9235,6 +9163,78 @@ export interface components {
             slack_config?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** FindingResponse */
+        cerebro__api__schemas__main__FindingResponse: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Finding Id
+             * Format: uuid
+             */
+            finding_id: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Principal Id */
+            principal_id: string | null;
+            /** Provider */
+            provider: string;
+            /** Resource Id */
+            resource_id: string | null;
+            /**
+             * Rule Id
+             * Format: uuid
+             */
+            rule_id: string;
+            /** Rule Version */
+            rule_version: number;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string | null;
+            /** Title */
+            title: string;
+        };
+        /** FindingStats */
+        cerebro__api__schemas__main__FindingStats: {
+            /** By Provider */
+            by_provider: {
+                [key: string]: number;
+            };
+            /** By Severity */
+            by_severity: {
+                [key: string]: number;
+            };
+            /** By Status */
+            by_status: {
+                [key: string]: number;
+            };
+            /** Total */
+            total: number;
         };
         /** FindingUpdate */
         cerebro__api__schemas__main__FindingUpdate: {
@@ -9993,7 +9993,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
+                    "application/json": components["schemas"]["cerebro__api__routers__agents__SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10204,7 +10204,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__agents__MessageResponse"][];
+                    "application/json": components["schemas"]["MessageResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -12860,7 +12860,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FindingResponse"][];
+                    "application/json": components["schemas"]["cerebro__api__schemas__main__FindingResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -12961,7 +12961,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FindingStats"];
+                    "application/json": components["schemas"]["cerebro__api__schemas__main__FindingStats"];
                 };
             };
             /** @description Validation Error */
@@ -13028,7 +13028,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FindingResponse"];
+                    "application/json": components["schemas"]["cerebro__api__schemas__main__FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -13063,7 +13063,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FindingResponse"];
+                    "application/json": components["schemas"]["cerebro__api__schemas__main__FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16856,7 +16856,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__agents__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16925,7 +16925,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__agents__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16991,7 +16991,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__agents__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17023,7 +17023,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__agents__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17057,7 +17057,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MessageResponse"][];
+                    "application/json": components["schemas"]["cerebro__api__routers__v2__agents__MessageResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -17093,7 +17093,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MessageResponse"];
+                    "application/json": components["schemas"]["cerebro__api__routers__v2__agents__MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17227,7 +17227,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"];
+                    "application/json": components["schemas"]["FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17262,7 +17262,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"][];
+                    "application/json": components["schemas"]["FindingResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -17293,7 +17293,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingStats"];
+                    "application/json": components["schemas"]["FindingStats"];
                 };
             };
             /** @description Validation Error */
@@ -17325,7 +17325,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"];
+                    "application/json": components["schemas"]["FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17391,7 +17391,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"];
+                    "application/json": components["schemas"]["FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17423,7 +17423,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"];
+                    "application/json": components["schemas"]["FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17455,7 +17455,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"];
+                    "application/json": components["schemas"]["FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17487,7 +17487,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"];
+                    "application/json": components["schemas"]["FindingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17520,7 +17520,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["cerebro__api__routers__v2__findings__FindingResponse"][];
+                    "application/json": components["schemas"]["FindingResponse"][];
                 };
             };
             /** @description Validation Error */

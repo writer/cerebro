@@ -101,9 +101,14 @@ export const schemaAdapterDefinitions = {
     snakeCaseDateKeys: ["due_at"],
     deep: true,
   },
-  "cerebro__api__routers__agents__MessageResponse": {
-    schema: "cerebro__api__routers__agents__MessageResponse",
-    snakeCaseDateKeys: ["timestamp"],
+  "cerebro__api__routers__agents__SessionResponse": {
+    schema: "cerebro__api__routers__agents__SessionResponse",
+    snakeCaseDateKeys: ["created_at"],
+    deep: true,
+  },
+  "cerebro__api__routers__v2__agents__MessageResponse": {
+    schema: "cerebro__api__routers__v2__agents__MessageResponse",
+    snakeCaseDateKeys: ["created_at"],
     deep: true,
   },
   "cerebro__api__routers__v2__agents__SessionListResponse": {
@@ -111,29 +116,24 @@ export const schemaAdapterDefinitions = {
     snakeCaseDateKeys: [],
     deep: true,
   },
-  "cerebro__api__routers__v2__agents__SessionResponse": {
-    schema: "cerebro__api__routers__v2__agents__SessionResponse",
-    snakeCaseDateKeys: ["created_at"],
-    deep: true,
-  },
   "cerebro__api__routers__v2__agents__ToolInvocationResponse": {
     schema: "cerebro__api__routers__v2__agents__ToolInvocationResponse",
     snakeCaseDateKeys: ["completed_at","started_at"],
     deep: true,
   },
-  "cerebro__api__routers__v2__findings__FindingResponse": {
-    schema: "cerebro__api__routers__v2__findings__FindingResponse",
-    snakeCaseDateKeys: [],
-    deep: true,
-  },
-  "cerebro__api__routers__v2__findings__FindingStats": {
-    schema: "cerebro__api__routers__v2__findings__FindingStats",
-    snakeCaseDateKeys: [],
-    deep: true,
-  },
   "cerebro__api__routers__v2__organizations__OrganizationResponse": {
     schema: "cerebro__api__routers__v2__organizations__OrganizationResponse",
     snakeCaseDateKeys: ["created_at"],
+    deep: true,
+  },
+  "cerebro__api__schemas__main__FindingResponse": {
+    schema: "cerebro__api__schemas__main__FindingResponse",
+    snakeCaseDateKeys: ["first_seen","last_seen"],
+    deep: true,
+  },
+  "cerebro__api__schemas__main__FindingStats": {
+    schema: "cerebro__api__schemas__main__FindingStats",
+    snakeCaseDateKeys: [],
     deep: true,
   },
   "cerebro__api__schemas__main__FindingUpdate": {
@@ -272,7 +272,7 @@ export const schemaAdapterDefinitions = {
   },
   "FindingResponse": {
     schema: "FindingResponse",
-    snakeCaseDateKeys: ["first_seen","last_seen"],
+    snakeCaseDateKeys: [],
     deep: true,
   },
   "FindingStats": {
@@ -408,7 +408,7 @@ export const schemaAdapterDefinitions = {
   },
   "MessageResponse": {
     schema: "MessageResponse",
-    snakeCaseDateKeys: ["created_at"],
+    snakeCaseDateKeys: ["timestamp"],
     deep: true,
   },
   "NetworkConnection": {

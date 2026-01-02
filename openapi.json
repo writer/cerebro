@@ -3471,7 +3471,7 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/FindingResponse"
+              "$ref": "#/components/schemas/cerebro__api__schemas__main__FindingResponse"
             },
             "title": "Items",
             "type": "array"
@@ -3502,6 +3502,7 @@
         "type": "object"
       },
       "FindingResponse": {
+        "description": "Response schema for finding.",
         "properties": {
           "account_id": {
             "format": "uuid",
@@ -3530,12 +3531,10 @@
             "type": "string"
           },
           "first_seen": {
-            "format": "date-time",
             "title": "First Seen",
             "type": "string"
           },
           "last_seen": {
-            "format": "date-time",
             "title": "Last Seen",
             "type": "string"
           },
@@ -3612,29 +3611,19 @@
           "provider",
           "rule_id",
           "rule_version",
-          "resource_id",
-          "principal_id",
           "first_seen",
           "last_seen",
           "status",
           "severity",
           "fingerprint",
-          "title",
-          "summary",
-          "evidence"
+          "title"
         ],
         "title": "FindingResponse",
         "type": "object"
       },
       "FindingStats": {
+        "description": "Statistics about findings.",
         "properties": {
-          "by_provider": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "By Provider",
-            "type": "object"
-          },
           "by_severity": {
             "additionalProperties": {
               "type": "integer"
@@ -3657,8 +3646,7 @@
         "required": [
           "total",
           "by_status",
-          "by_severity",
-          "by_provider"
+          "by_severity"
         ],
         "title": "FindingStats",
         "type": "object"
@@ -5310,60 +5298,44 @@
         "type": "object"
       },
       "MessageResponse": {
-        "description": "Response schema for message.",
+        "description": "Response containing a single message.",
         "properties": {
           "content": {
-            "additionalProperties": true,
             "title": "Content",
-            "type": "object"
-          },
-          "created_at": {
-            "title": "Created At",
             "type": "string"
           },
-          "id": {
+          "message_id": {
             "format": "uuid",
-            "title": "Id",
+            "title": "Message Id",
             "type": "string"
           },
-          "input_tokens": {
+          "metadata": {
             "anyOf": [
               {
-                "type": "integer"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Input Tokens"
-          },
-          "output_tokens": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Output Tokens"
+            "title": "Metadata"
           },
           "role": {
             "title": "Role",
             "type": "string"
           },
-          "session_id": {
-            "format": "uuid",
-            "title": "Session Id",
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "session_id",
+          "message_id",
           "role",
           "content",
-          "created_at"
+          "timestamp"
         ],
         "title": "MessageResponse",
         "type": "object"
@@ -7814,7 +7786,7 @@
           },
           "sessions": {
             "items": {
-              "$ref": "#/components/schemas/SessionResponse"
+              "$ref": "#/components/schemas/cerebro__api__routers__agents__SessionResponse"
             },
             "title": "Sessions",
             "type": "array"
@@ -7834,7 +7806,7 @@
         "type": "object"
       },
       "SessionResponse": {
-        "description": "Response containing session information.",
+        "description": "Response schema for session.",
         "properties": {
           "agent_type": {
             "title": "Agent Type",
@@ -7842,11 +7814,11 @@
           },
           "context": {
             "additionalProperties": true,
+            "default": {},
             "title": "Context",
             "type": "object"
           },
           "created_at": {
-            "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
@@ -7854,18 +7826,19 @@
             "title": "Created By",
             "type": "string"
           },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
           "org_id": {
             "format": "uuid",
             "title": "Org Id",
-            "type": "string"
-          },
-          "session_id": {
-            "format": "uuid",
-            "title": "Session Id",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
             "type": "string"
           },
           "title": {
@@ -7881,14 +7854,11 @@
           }
         },
         "required": [
-          "session_id",
+          "id",
           "org_id",
           "agent_type",
-          "title",
           "created_at",
-          "created_by",
-          "status",
-          "context"
+          "created_by"
         ],
         "title": "SessionResponse",
         "type": "object"
@@ -7943,7 +7913,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/cerebro__api__routers__agents__MessageResponse"
+              "$ref": "#/components/schemas/MessageResponse"
             },
             "title": "Messages",
             "type": "array"
@@ -7954,7 +7924,7 @@
             "type": "object"
           },
           "session": {
-            "$ref": "#/components/schemas/SessionResponse"
+            "$ref": "#/components/schemas/cerebro__api__routers__agents__SessionResponse"
           },
           "tool_invocations": {
             "items": {
@@ -9871,73 +9841,8 @@
         "title": "WorkflowEvaluationRequest",
         "type": "object"
       },
-      "cerebro__api__routers__agents__MessageResponse": {
-        "description": "Response containing a single message.",
-        "properties": {
-          "content": {
-            "title": "Content",
-            "type": "string"
-          },
-          "message_id": {
-            "format": "uuid",
-            "title": "Message Id",
-            "type": "string"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metadata"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "timestamp": {
-            "format": "date-time",
-            "title": "Timestamp",
-            "type": "string"
-          }
-        },
-        "required": [
-          "message_id",
-          "role",
-          "content",
-          "timestamp"
-        ],
-        "title": "MessageResponse",
-        "type": "object"
-      },
-      "cerebro__api__routers__v2__agents__SessionListResponse": {
-        "description": "Response for listing sessions with pagination.",
-        "properties": {
-          "sessions": {
-            "items": {
-              "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
-            },
-            "title": "Sessions",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "sessions",
-          "total"
-        ],
-        "title": "SessionListResponse",
-        "type": "object"
-      },
-      "cerebro__api__routers__v2__agents__SessionResponse": {
-        "description": "Response schema for session.",
+      "cerebro__api__routers__agents__SessionResponse": {
+        "description": "Response containing session information.",
         "properties": {
           "agent_type": {
             "title": "Agent Type",
@@ -9945,11 +9850,11 @@
           },
           "context": {
             "additionalProperties": true,
-            "default": {},
             "title": "Context",
             "type": "object"
           },
           "created_at": {
+            "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
@@ -9957,19 +9862,18 @@
             "title": "Created By",
             "type": "string"
           },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "is_active": {
-            "default": true,
-            "title": "Is Active",
-            "type": "boolean"
-          },
           "org_id": {
             "format": "uuid",
             "title": "Org Id",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
             "type": "string"
           },
           "title": {
@@ -9985,13 +9889,97 @@
           }
         },
         "required": [
-          "id",
+          "session_id",
           "org_id",
           "agent_type",
+          "title",
           "created_at",
-          "created_by"
+          "created_by",
+          "status",
+          "context"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "cerebro__api__routers__v2__agents__MessageResponse": {
+        "description": "Response schema for message.",
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "MessageResponse",
+        "type": "object"
+      },
+      "cerebro__api__routers__v2__agents__SessionListResponse": {
+        "description": "Response for listing sessions with pagination.",
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionResponse"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sessions",
+          "total"
+        ],
+        "title": "SessionListResponse",
         "type": "object"
       },
       "cerebro__api__routers__v2__agents__ToolInvocationResponse": {
@@ -10086,8 +10074,44 @@
         "title": "ToolInvocationResponse",
         "type": "object"
       },
-      "cerebro__api__routers__v2__findings__FindingResponse": {
-        "description": "Response schema for finding.",
+      "cerebro__api__routers__v2__organizations__OrganizationResponse": {
+        "description": "Response schema for organization.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "org_id": {
+            "format": "uuid",
+            "title": "Org Id",
+            "type": "string"
+          },
+          "slack_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slack Config"
+          }
+        },
+        "required": [
+          "org_id",
+          "name",
+          "created_at"
+        ],
+        "title": "OrganizationResponse",
+        "type": "object"
+      },
+      "cerebro__api__schemas__main__FindingResponse": {
         "properties": {
           "account_id": {
             "format": "uuid",
@@ -10116,10 +10140,12 @@
             "type": "string"
           },
           "first_seen": {
+            "format": "date-time",
             "title": "First Seen",
             "type": "string"
           },
           "last_seen": {
+            "format": "date-time",
             "title": "Last Seen",
             "type": "string"
           },
@@ -10196,19 +10222,29 @@
           "provider",
           "rule_id",
           "rule_version",
+          "resource_id",
+          "principal_id",
           "first_seen",
           "last_seen",
           "status",
           "severity",
           "fingerprint",
-          "title"
+          "title",
+          "summary",
+          "evidence"
         ],
         "title": "FindingResponse",
         "type": "object"
       },
-      "cerebro__api__routers__v2__findings__FindingStats": {
-        "description": "Statistics about findings.",
+      "cerebro__api__schemas__main__FindingStats": {
         "properties": {
+          "by_provider": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Provider",
+            "type": "object"
+          },
           "by_severity": {
             "additionalProperties": {
               "type": "integer"
@@ -10231,46 +10267,10 @@
         "required": [
           "total",
           "by_status",
-          "by_severity"
+          "by_severity",
+          "by_provider"
         ],
         "title": "FindingStats",
-        "type": "object"
-      },
-      "cerebro__api__routers__v2__organizations__OrganizationResponse": {
-        "description": "Response schema for organization.",
-        "properties": {
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "org_id": {
-            "format": "uuid",
-            "title": "Org Id",
-            "type": "string"
-          },
-          "slack_config": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Slack Config"
-          }
-        },
-        "required": [
-          "org_id",
-          "name",
-          "created_at"
-        ],
-        "title": "OrganizationResponse",
         "type": "object"
       },
       "cerebro__api__schemas__main__FindingUpdate": {
@@ -11471,7 +11471,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
+                  "$ref": "#/components/schemas/cerebro__api__routers__agents__SessionResponse"
                 }
               }
             },
@@ -11898,7 +11898,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/cerebro__api__routers__agents__MessageResponse"
+                    "$ref": "#/components/schemas/MessageResponse"
                   },
                   "title": "Response Get Session Messages Api V1 Agents Sessions  Session Id  Messages Get",
                   "type": "array"
@@ -16109,7 +16109,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/FindingResponse"
+                    "$ref": "#/components/schemas/cerebro__api__schemas__main__FindingResponse"
                   },
                   "title": "Response List Findings Api V1 Findings  Get",
                   "type": "array"
@@ -16308,7 +16308,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FindingStats"
+                  "$ref": "#/components/schemas/cerebro__api__schemas__main__FindingStats"
                 }
               }
             },
@@ -16478,7 +16478,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FindingResponse"
+                  "$ref": "#/components/schemas/cerebro__api__schemas__main__FindingResponse"
                 }
               }
             },
@@ -16530,7 +16530,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FindingResponse"
+                  "$ref": "#/components/schemas/cerebro__api__schemas__main__FindingResponse"
                 }
               }
             },
@@ -23137,7 +23137,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             },
@@ -23352,7 +23352,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             },
@@ -23416,7 +23416,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             },
@@ -23472,7 +23472,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__SessionResponse"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             },
@@ -23547,7 +23547,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/MessageResponse"
+                    "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__MessageResponse"
                   },
                   "title": "Response List Messages Api V2 Agents Sessions  Org Id   Session Id  Messages Get",
                   "type": "array"
@@ -23614,7 +23614,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
+                  "$ref": "#/components/schemas/cerebro__api__routers__v2__agents__MessageResponse"
                 }
               }
             },
@@ -23880,7 +23880,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                  "$ref": "#/components/schemas/FindingResponse"
                 }
               }
             },
@@ -23973,7 +23973,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                    "$ref": "#/components/schemas/FindingResponse"
                   },
                   "title": "Response List Findings By Org Api V2 Findings Org  Org Id  Get",
                   "type": "array"
@@ -24022,7 +24022,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingStats"
+                  "$ref": "#/components/schemas/FindingStats"
                 }
               }
             },
@@ -24125,7 +24125,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                  "$ref": "#/components/schemas/FindingResponse"
                 }
               }
             },
@@ -24189,7 +24189,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                  "$ref": "#/components/schemas/FindingResponse"
                 }
               }
             },
@@ -24245,7 +24245,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                  "$ref": "#/components/schemas/FindingResponse"
                 }
               }
             },
@@ -24301,7 +24301,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                  "$ref": "#/components/schemas/FindingResponse"
                 }
               }
             },
@@ -24357,7 +24357,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                  "$ref": "#/components/schemas/FindingResponse"
                 }
               }
             },
@@ -24416,7 +24416,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/cerebro__api__routers__v2__findings__FindingResponse"
+                    "$ref": "#/components/schemas/FindingResponse"
                   },
                   "title": "Response List Findings By Rule Api V2 Findings Rule  Rule Id  Get",
                   "type": "array"
