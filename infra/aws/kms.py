@@ -10,6 +10,8 @@ Creates customer-managed KMS keys for encrypting:
 - S3 buckets
 """
 
+from typing import Dict, List, Optional, Union
+
 import pulumi
 import pulumi_aws as aws
 
@@ -19,7 +21,7 @@ def create_kms_key(
     description: str,
     enable_key_rotation: bool = True,
     deletion_window_in_days: int = 30,
-    tags: dict[str, str] | None = None,
+    tags: Optional[Dict[str, str]] = None,
 ) -> aws.kms.Key:
     """
     Create a customer-managed KMS key.
@@ -61,8 +63,8 @@ def create_kms_key(
 def create_key_policy(
     name: str,
     key_id: pulumi.Output[str],
-    admin_arns: list[str] = None,
-    user_arns: list[str] = None,
+    admin_arns: Optional[List[str]] = None,
+    user_arns: Optional[List[str]] = None,
 ) -> aws.kms.KeyPolicy:
     """
     Create a KMS key policy with admin and user permissions.
@@ -153,8 +155,8 @@ def create_key_policy(
 
 def create_cloudwatch_logs_key(
     name: str,
-    tags: dict[str, str] | None = None,
-) -> dict[str, aws.kms.Key | aws.kms.Alias]:
+    tags: Optional[Dict[str, str]] = None,
+) -> Dict[str, Union[aws.kms.Key, aws.kms.Alias]]:
     """
     Create a KMS key specifically for CloudWatch Logs encryption.
 
@@ -236,8 +238,8 @@ def create_cloudwatch_logs_key(
 
 def create_s3_key(
     name: str,
-    tags: dict[str, str] | None = None,
-) -> dict[str, aws.kms.Key | aws.kms.Alias]:
+    tags: Optional[Dict[str, str]] = None,
+) -> Dict[str, Union[aws.kms.Key, aws.kms.Alias]]:
     """
     Create a KMS key specifically for S3 bucket encryption.
 

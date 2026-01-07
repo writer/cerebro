@@ -4,18 +4,20 @@ AWS Backup module for Cerebro.
 Provides automated backup plans for databases and other resources.
 """
 
+from typing import Dict, List, Optional
+
 import pulumi
 import pulumi_aws as aws
 
 
 def create_backup_plan(
     name: str,
-    resource_arns: list[pulumi.Input[str]],
+    resource_arns: List[pulumi.Input[str]],
     backup_retention_days: int = 35,
     backup_schedule: str = "cron(0 5 ? * * *)",
-    copy_to_region: str | None = None,
-    tags: dict[str, str] | None = None,
-) -> dict[str, pulumi.Output]:
+    copy_to_region: Optional[str] = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> Dict[str, pulumi.Output]:
     """
     Create an AWS Backup plan with daily and weekly backup rules.
 

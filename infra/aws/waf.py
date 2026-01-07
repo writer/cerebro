@@ -4,6 +4,8 @@ AWS WAF (Web Application Firewall) module for Cerebro.
 Provides protection against common web exploits and rate limiting.
 """
 
+from typing import Dict, Optional
+
 import pulumi
 import pulumi_aws as aws
 
@@ -12,9 +14,9 @@ def create_waf(
     name: str,
     alb_arn: pulumi.Input[str],
     rate_limit: int = 2000,
-    log_group_kms_key_id: pulumi.Input[str] | None = None,
-    tags: dict[str, str] | None = None,
-) -> dict[str, pulumi.Output]:
+    log_group_kms_key_id: Optional[pulumi.Input[str]] = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> Dict[str, pulumi.Output]:
     """
     Create a WAF WebACL with common security rules.
 

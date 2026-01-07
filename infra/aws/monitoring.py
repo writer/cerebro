@@ -8,9 +8,11 @@ Creates:
 - Log metric filters
 """
 
+import json
+from typing import Dict, List, Optional
+
 import pulumi
 import pulumi_aws as aws
-import json
 
 
 def create_monitoring(
@@ -18,15 +20,15 @@ def create_monitoring(
     alb_arn_suffix: pulumi.Output[str],
     target_group_arn_suffix: pulumi.Output[str],
     ecs_cluster_name: pulumi.Output[str],
-    ecs_service_names: list[pulumi.Output[str]],
-    dynamodb_table_names: list[pulumi.Output[str]],
+    ecs_service_names: List[pulumi.Output[str]],
+    dynamodb_table_names: List[pulumi.Output[str]],
     redis_cluster_id: pulumi.Output[str],
-    alarm_email: str = None,
-    alarm_slack_channel_id: str = None,
-    alarm_slack_workspace_id: str = None,
+    alarm_email: Optional[str] = None,
+    alarm_slack_channel_id: Optional[str] = None,
+    alarm_slack_workspace_id: Optional[str] = None,
     log_retention_days: int = 30,
-    tags: dict[str, str] | None = None,
-) -> dict:
+    tags: Optional[Dict[str, str]] = None,
+) -> Dict:
     """
     Create monitoring infrastructure with alarms and dashboards.
 

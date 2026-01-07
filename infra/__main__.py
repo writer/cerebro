@@ -41,16 +41,27 @@ alb_internal = config.get_bool("albInternal")
 if alb_internal is None:
     alb_internal = True
 
+# Feature flags for production hardening
+enable_waf = _config_bool("enableWaf", False)
+waf_rate_limit = _config_int("wafRateLimit", 2000)
+enable_backup = _config_bool("enableBackup", False)
+backup_retention_days = _config_int("backupRetentionDays", 35)
+enable_blue_green = _config_bool("enableBlueGreen", False)
+blue_green_termination_wait = _config_int("blueGreenTerminationWait", 5)
+
 # Import AWS modules
 from aws import (
-    networking,
-    secrets,
-    dynamodb,
+    backup,
+    blue_green,
     cache,
-    kms,
     compute,
+    dynamodb,
+    kms,
     load_balancer,
     monitoring,
+    networking,
+    secrets,
+    waf,
 )
 
 # Create VPC and networking
@@ -213,6 +224,69 @@ monitoring_stack = monitoring.create_monitoring(
     log_retention_days=config.get_int("logRetentionDays") or 30,
 )
 
+# WAF - Web Application Firewall
+waf_stack = None
+if enable_waf:
+    waf_stack = waf.create_waf(
+        name=f"cerebro-{environment}",
+        alb_arn=alb_stack["alb"].arn,
+        rate_limit=waf_rate_limit,
+        tags={
+            "Project": "Cerebro",
+            "Environment": environment,
+        },
+    )
+
+# Automated Backups for DynamoDB tables
+backup_stack = None
+if enable_backup:
+    backup_stack = backup.create_backup_plan(
+        name=f"cerebro-{environment}",
+        resource_arns=[
+            dynamodb_stack["core_table_arn"],
+            dynamodb_stack["audit_table_arn"],
+            dynamodb_stack["agents_table_arn"],
+            dynamodb_stack["notifications_table_arn"],
+            dynamodb_stack["users_table_arn"],
+        ],
+        backup_retention_days=backup_retention_days,
+        tags={
+            "Project": "Cerebro",
+            "Environment": environment,
+        },
+    )
+
+# Blue-Green Deployment for ECS API service
+blue_green_stack = None
+if enable_blue_green:
+    # Create green target group for blue-green deployments
+    green_target_group = blue_green.create_green_target_group(
+        name=f"cerebro-{environment}-api",
+        vpc_id=vpc_stack["vpc_id"],
+        container_port=8000,
+        health_check_path="/health",
+        tags={
+            "Project": "Cerebro",
+            "Environment": environment,
+        },
+    )
+
+    blue_green_stack = blue_green.create_blue_green_deployment(
+        name=f"cerebro-{environment}-api",
+        cluster_name=ecs_stack["cluster"].name,
+        service_name=ecs_stack["api_service"].name,
+        listener_arn=alb_stack["listener"].arn,
+        target_group_names=(
+            alb_stack["target_group"].name,
+            green_target_group.name,
+        ),
+        termination_wait_time_minutes=blue_green_termination_wait,
+        tags={
+            "Project": "Cerebro",
+            "Environment": environment,
+        },
+    )
+
 # Export outputs
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export(
@@ -255,6 +329,18 @@ pulumi.export(
         "rediss://:", redis_password, "@", redis_stack["primary_endpoint"], ":6379/0"
     ),
 )
+
+# Export new production hardening features
+if waf_stack:
+    pulumi.export("waf_web_acl_arn", waf_stack["web_acl"].arn)
+
+if backup_stack:
+    pulumi.export("backup_vault_arn", backup_stack["vault"].arn)
+    pulumi.export("backup_plan_id", backup_stack["plan"].id)
+
+if blue_green_stack:
+    pulumi.export("codedeploy_app_name", blue_green_stack["application"].name)
+    pulumi.export("codedeploy_deployment_group", blue_green_stack["deployment_group"].deployment_group_name)
 
 pulumi.export(
     "readme",

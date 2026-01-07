@@ -4,6 +4,8 @@ AWS RDS Proxy module for Cerebro.
 Provides connection pooling and IAM authentication for RDS/Aurora databases.
 """
 
+from typing import Dict, List, Optional
+
 import pulumi
 import pulumi_aws as aws
 
@@ -11,7 +13,7 @@ import pulumi_aws as aws
 def create_rds_proxy(
     name: str,
     vpc_id: pulumi.Input[str],
-    subnet_ids: pulumi.Input[list[str]],
+    subnet_ids: pulumi.Input[List[str]],
     security_group_id: pulumi.Input[str],
     db_cluster_identifier: pulumi.Input[str],
     cluster_resource_id: pulumi.Input[str],
@@ -20,8 +22,8 @@ def create_rds_proxy(
     max_connections_percent: int = 80,
     max_idle_connections_percent: int = 50,
     idle_client_timeout: int = 1800,
-    tags: dict[str, str] | None = None,
-) -> dict[str, pulumi.Output]:
+    tags: Optional[Dict[str, str]] = None,
+) -> Dict[str, pulumi.Output]:
     """
     Create an RDS Proxy with IAM authentication.
 

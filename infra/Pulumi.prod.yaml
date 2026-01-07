@@ -3,6 +3,13 @@ config:
   cerebro:environment: production
   cerebro:domain: ""
   cerebro:albInternal: "true"
+  # Production hardening features
+  cerebro:enableWaf: "true"
+  cerebro:wafRateLimit: "2000"
+  cerebro:enableBackup: "true"
+  cerebro:backupRetentionDays: "35"
+  cerebro:enableBlueGreen: "true"
+  cerebro:blueGreenTerminationWait: "5"
   cerebro:secretKey:
     secure: AAABAAgQwhh0V0cTTCBScqkRBGUSwx+IMOJCK7mwnhj2hFK+GZL/KwqCepf7cJspFyVG/m1eeKu2PUH/cnQPNnxIAT6+zUIgmVVIOg==
   cerebro:dbPassword:

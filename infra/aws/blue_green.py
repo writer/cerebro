@@ -4,6 +4,8 @@ AWS CodeDeploy Blue-Green Deployment module for Cerebro.
 Provides zero-downtime deployments with automatic rollback.
 """
 
+from typing import Dict, Optional, Tuple
+
 import pulumi
 import pulumi_aws as aws
 
@@ -13,10 +15,10 @@ def create_blue_green_deployment(
     cluster_name: pulumi.Input[str],
     service_name: pulumi.Input[str],
     listener_arn: pulumi.Input[str],
-    target_group_names: tuple[pulumi.Input[str], pulumi.Input[str]],
+    target_group_names: Tuple[pulumi.Input[str], pulumi.Input[str]],
     termination_wait_time_minutes: int = 5,
-    tags: dict[str, str] | None = None,
-) -> dict[str, pulumi.Output]:
+    tags: Optional[Dict[str, str]] = None,
+) -> Dict[str, pulumi.Output]:
     """
     Create CodeDeploy resources for ECS blue-green deployments.
 
@@ -127,7 +129,7 @@ def create_green_target_group(
     vpc_id: pulumi.Input[str],
     container_port: int,
     health_check_path: str = "/health",
-    tags: dict[str, str] | None = None,
+    tags: Optional[Dict[str, str]] = None,
 ) -> aws.lb.TargetGroup:
     """
     Create a secondary (green) target group for blue-green deployments.
