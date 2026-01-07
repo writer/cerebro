@@ -8,7 +8,7 @@ config:
   cerebro:wafRateLimit: "2000"
   cerebro:enableBackup: "true"
   cerebro:backupRetentionDays: "35"
-  cerebro:enableBlueGreen: "true"
+  cerebro:enableBlueGreen: "false"
   cerebro:blueGreenTerminationWait: "5"
   cerebro:secretKey:
     secure: AAABAAgQwhh0V0cTTCBScqkRBGUSwx+IMOJCK7mwnhj2hFK+GZL/KwqCepf7cJspFyVG/m1eeKu2PUH/cnQPNnxIAT6+zUIgmVVIOg==

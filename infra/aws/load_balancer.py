@@ -83,7 +83,7 @@ def create_application_load_balancer(
 
     # Create HTTP listener (redirect to HTTPS if certificate exists)
     if certificate_domain:
-        aws.lb.Listener(
+        http_listener = aws.lb.Listener(
             f"{name}-http-listener",
             load_balancer_arn=alb.arn,
             port=80,
@@ -100,7 +100,7 @@ def create_application_load_balancer(
             ],
         )
     else:
-        aws.lb.Listener(
+        http_listener = aws.lb.Listener(
             f"{name}-http-listener",
             load_balancer_arn=alb.arn,
             port=80,
@@ -116,6 +116,7 @@ def create_application_load_balancer(
     result = {
         "alb": alb,
         "target_group": target_group,
+        "listener": http_listener,
         "dns_name": alb.dns_name,
         "zone_id": alb.zone_id,
     }
