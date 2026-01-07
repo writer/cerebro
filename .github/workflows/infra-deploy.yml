@@ -1,0 +1,122 @@
+name: Infrastructure Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-deploy.yml"
+      - ".github/actions/pulumi/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - preview
+          - prod
+      refresh:
+        description: "Refresh state before deploying"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pulumi-prod-stack
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: 'us-east-1'
+  AWS_ACCOUNT_ID: '073877318660'
+  MANAGEMENT_ACCOUNT_ID: '533267360238'
+  CODEDEPLOY_APP: 'cerebro-production-api'
+  CODEDEPLOY_DG: 'cerebro-production-api-dg'
+  CONTAINER_NAME: 'cerebro-api'
+  CONTAINER_PORT: '8000'
+
+jobs:
+  # Preview changes on push to main
+  pulumi_preview:
+    name: Pulumi Preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preview')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preview Pulumi
+        uses: ./.github/actions/pulumi
+        with:
+          command: preview
+          stack-name: 'writer-ai/cerebro/prod'
+          aws-region: ${{ env.AWS_REGION }}
+          account-id: ${{ env.AWS_ACCOUNT_ID }}
+          refresh: ${{ github.event.inputs.refresh || 'false' }}
+
+  # Deploy on workflow_dispatch with prod environment
+  pulumi_up_prod:
+    name: Pulumi Deploy Prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    outputs:
+      alb-dns-name: ${{ steps.pulumi.outputs.alb-dns-name }}
+      ecs-cluster-name: ${{ steps.pulumi.outputs.ecs-cluster-name }}
+      api-url: ${{ steps.pulumi.outputs.api-url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Pulumi
+        id: pulumi
+        uses: ./.github/actions/pulumi
+        with:
+          command: up
+          stack-name: 'writer-ai/cerebro/prod'
+          aws-region: ${{ env.AWS_REGION }}
+          account-id: ${{ env.AWS_ACCOUNT_ID }}
+          refresh: ${{ github.event.inputs.refresh || 'false' }}
+
+      - name: Summary
+        run: |
+          echo "## Infrastructure Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **API URL:** ${{ steps.pulumi.outputs.api-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **ALB DNS:** ${{ steps.pulumi.outputs.alb-dns-name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **ECS Cluster:** ${{ steps.pulumi.outputs.ecs-cluster-name }}" >> $GITHUB_STEP_SUMMARY
+
+  # Force ECS deployment after infra changes (uses existing image)
+  deploy_ecs:
+    name: Force ECS Deployment
+    runs-on: ubuntu-latest
+    needs: pulumi_up_prod
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    steps:
+      - name: Configure AWS credentials
+        uses: writerInternal/aws-git-roles@v1
+        with:
+          aws-account-id: ${{ env.MANAGEMENT_ACCOUNT_ID }}
+          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
+
+      - name: Force ECS deployment
+        env:
+          ECS_CLUSTER_NAME: ${{ needs.pulumi_up_prod.outputs.ecs-cluster-name }}
+        run: |
+          echo "Forcing new deployment for API service"
+          echo "Cluster: $ECS_CLUSTER_NAME"
+          
+          # Force deployment for all services
+          for service in cerebro-production-api cerebro-production-worker cerebro-production-beat; do
+            echo "Deploying $service..."
+            aws ecs update-service \
+              --cluster "$ECS_CLUSTER_NAME" \
+              --service "$service" \
+              --force-new-deployment || echo "Service $service not found or failed"
+          done
+          
+          echo "Deployment initiated. ECS will roll out the changes."

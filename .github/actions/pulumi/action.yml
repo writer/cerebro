@@ -1,0 +1,106 @@
+name: "Pulumi Action"
+description: "Executes Pulumi commands with AWS OIDC configuration for Cerebro"
+inputs:
+  command:
+    description: "Pulumi command to run (up, preview, destroy)"
+    required: true
+  stack-name:
+    description: "Pulumi stack name (e.g., writer-ai/cerebro/prod)"
+    required: true
+  aws-region:
+    description: "AWS region"
+    required: false
+    default: "us-east-1"
+  account-id:
+    description: "AWS account ID"
+    required: true
+  management-account-id:
+    description: "Management account ID"
+    required: false
+    default: "533267360238"
+  pulumi-organization:
+    description: "Pulumi Cloud organization"
+    required: false
+    default: "writer-ai"
+  refresh:
+    description: "Refresh the Pulumi stack"
+    required: false
+    default: "false"
+  container-image:
+    description: "Container image to deploy (default: use existing)"
+    required: false
+    default: ""
+
+outputs:
+  alb-dns-name:
+    description: "ALB DNS name from Pulumi stack"
+    value: ${{ steps.outputs.outputs.alb-dns-name }}
+  ecs-cluster-name:
+    description: "ECS cluster name from Pulumi stack"
+    value: ${{ steps.outputs.outputs.ecs-cluster-name }}
+  api-url:
+    description: "API URL from Pulumi stack"
+    value: ${{ steps.outputs.outputs.api-url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install infra dependencies
+      shell: bash
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        pip install -r requirements.txt
+      working-directory: infra
+
+    - name: Configure AWS credentials
+      uses: writerInternal/aws-git-roles@v1
+      with:
+        aws-account-id: ${{ inputs.management-account-id }}
+        aws-region: ${{ inputs.aws-region }}
+        assume-role-arn: arn:aws:iam::${{ inputs.account-id }}:role/writer-aws-deployment-role
+
+    - name: Authenticate with Pulumi Cloud
+      uses: pulumi/auth-actions@v1
+      with:
+        organization: ${{ inputs.pulumi-organization }}
+        requested-token-type: urn:pulumi:token-type:access_token:organization
+
+    - name: Set container image config
+      if: ${{ inputs.container-image != '' }}
+      shell: bash
+      working-directory: infra
+      env:
+        STACK_NAME: ${{ inputs.stack-name }}
+        CONTAINER_IMAGE: ${{ inputs.container-image }}
+      run: |
+        source .venv/bin/activate
+        pulumi stack select "$STACK_NAME"
+        pulumi config set containerImage "$CONTAINER_IMAGE"
+
+    - name: Run Pulumi
+      uses: pulumi/actions@v6
+      with:
+        command: ${{ inputs.command }}
+        stack-name: ${{ inputs.stack-name }}
+        diff: true
+        work-dir: infra
+        refresh: ${{ inputs.refresh }}
+
+    - name: Get Pulumi outputs
+      id: outputs
+      if: ${{ inputs.command == 'up' }}
+      shell: bash
+      working-directory: infra
+      env:
+        STACK_NAME: ${{ inputs.stack-name }}
+      run: |
+        source .venv/bin/activate
+        echo "alb-dns-name=$(pulumi stack output alb_dns_name --stack "$STACK_NAME")" >> $GITHUB_OUTPUT
+        echo "ecs-cluster-name=$(pulumi stack output ecs_cluster_name --stack "$STACK_NAME")" >> $GITHUB_OUTPUT
+        echo "api-url=$(pulumi stack output api_url --stack "$STACK_NAME")" >> $GITHUB_OUTPUT
