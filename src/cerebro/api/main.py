@@ -31,6 +31,7 @@ from .routers import (
     agents,
     analysis,
     analytics,
+    api_keys,
     attack_path,
     auth,
     automation,
@@ -60,6 +61,7 @@ from .routers import (
     webhooks,
     websockets,
 )
+from . import oidc_auth
 from .routers.v2 import (
     agents as agents_v2,
 )
@@ -161,12 +163,43 @@ def custom_openapi() -> dict:
         },
     )
 
-    components.setdefault("securitySchemes", {}).setdefault(
+    security_schemes = components.setdefault("securitySchemes", {})
+    security_schemes.setdefault(
         "HTTPBearer",
         {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
     )
+    security_schemes.setdefault(
+        "APIKeyHeader",
+        {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API key for machine-to-machine authentication",
+        },
+    )
 
-    schema.setdefault("security", [{"HTTPBearer": []}])
+    schema.setdefault("security", [{"HTTPBearer": []}, {"APIKeyHeader": []}])
+
+    # Add RFC 7807 Problem Details schema
+    schemas.setdefault(
+        "ProblemDetail",
+        {
+            "title": "ProblemDetail",
+            "description": "RFC 7807 Problem Details response",
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "format": "uri", "description": "A URI reference identifying the problem type"},
+                "title": {"type": "string", "description": "Short summary of the problem"},
+                "status": {"type": "integer", "description": "HTTP status code"},
+                "detail": {"type": "string", "description": "Human-readable explanation"},
+                "instance": {"type": "string", "format": "uri", "description": "URI identifying this occurrence"},
+                "code": {"type": "string", "description": "Machine-readable error code"},
+                "request_id": {"type": "string", "description": "Request ID for debugging"},
+                "errors": {"type": "array", "items": {"type": "object"}, "description": "Detailed validation errors"},
+            },
+            "required": ["type", "title", "status", "detail", "code"],
+        },
+    )
 
     schema.setdefault(
         "x-websocket-endpoints",
@@ -346,6 +379,14 @@ app.add_middleware(
     allow_headers=settings.api_cors_allow_headers,
 )
 
+# Add API versioning middleware
+from cerebro.api.versioning import APIVersionMiddleware
+app.add_middleware(APIVersionMiddleware)
+
+# Add rate limit headers middleware
+from cerebro.api.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware, default_limit=100, window_seconds=60)
+
 
 @app.get(f"{settings.api_v1_prefix}/openapi.json", include_in_schema=False)
 async def get_versioned_openapi() -> dict:
@@ -380,6 +421,20 @@ async def record_request_metrics(request: Request, call_next):
 # Include routers
 app.include_router(
     auth.router, prefix=f"{settings.api_v1_prefix}/auth", tags=["authentication"]
+)
+
+# OIDC/Okta authentication
+app.include_router(
+    oidc_auth.router,
+    prefix=f"{settings.api_v1_prefix}/auth/oidc",
+    tags=["authentication", "oidc"],
+)
+
+# API Key management
+app.include_router(
+    api_keys.router,
+    prefix=f"{settings.api_v1_prefix}/api-keys",
+    tags=["api-keys", "authentication"],
 )
 
 app.include_router(

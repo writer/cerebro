@@ -652,6 +652,50 @@ class Settings(BaseSettings):
         default=None, description="Okta domain (e.g., company.okta.com)"
     )
 
+    # OIDC/OAuth2 Authentication (supports Okta, Azure AD, Google, Auth0, etc.)
+    oidc_client_id: str | None = Field(
+        default=None, description="OIDC client ID for SSO authentication"
+    )
+    oidc_client_secret: str | None = Field(
+        default=None, description="OIDC client secret for SSO authentication"
+    )
+    oidc_issuer: str | None = Field(
+        default=None,
+        description="OIDC issuer URL (e.g., https://company.okta.com)",
+    )
+    oidc_scopes: list[str] = Field(
+        default_factory=lambda: ["openid", "email", "profile", "groups"],
+        description="OIDC scopes to request during authentication",
+    )
+    oidc_username_claim: str = Field(
+        default="email",
+        description="OIDC claim to use as username",
+    )
+    oidc_email_claim: str = Field(
+        default="email",
+        description="OIDC claim to use for email",
+    )
+    oidc_groups_claim: str | None = Field(
+        default="groups",
+        description="OIDC claim containing user groups (for role mapping)",
+    )
+    oidc_auto_provision_users: bool = Field(
+        default=True,
+        description="Automatically create users on first OIDC login",
+    )
+    oidc_group_scope_map: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Map OIDC groups to Cerebro scopes (e.g., {'admins': ['admin']})",
+    )
+
+    # Okta-specific OIDC settings (alternative to generic OIDC)
+    okta_client_id: str | None = Field(
+        default=None, description="Okta OAuth client ID"
+    )
+    okta_client_secret: str | None = Field(
+        default=None, description="Okta OAuth client secret"
+    )
+
     # Microsoft 365 Integration
     m365_tenant_id: str | None = Field(
         default=None, description="Microsoft 365 tenant ID"
