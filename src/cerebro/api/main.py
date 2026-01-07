@@ -26,6 +26,7 @@ from cerebro.core.security.key_store import JWTKeyStore
 from cerebro.metrics import api_metrics
 from cerebro.metrics.jwt_metrics import jwt_metrics
 
+from . import oidc_auth
 from .routers import (
     accounts,
     agents,
@@ -61,16 +62,9 @@ from .routers import (
     webhooks,
     websockets,
 )
-from . import oidc_auth
-from .routers.v2 import (
-    agents as agents_v2,
-)
-from .routers.v2 import (
-    findings as findings_v2,
-)
-from .routers.v2 import (
-    organizations as organizations_v2,
-)
+from .routers.v2 import agents as agents_v2
+from .routers.v2 import findings as findings_v2
+from .routers.v2 import organizations as organizations_v2
 
 # Configure logging
 configure_structlog()
