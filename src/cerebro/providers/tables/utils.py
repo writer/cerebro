@@ -31,13 +31,8 @@ def parse_timestamp_safely(
         # Try direct ISO parsing
         return datetime.fromisoformat(timestamp_str)
 
-    except (ValueError, AttributeError) as e:
+    except (ValueError, AttributeError, TypeError) as e:
         logger.warning(f"Failed to parse {provider} timestamp '{timestamp_str}': {e}")
-        return None
-    except Exception as e:
-        logger.error(
-            f"Unexpected error parsing {provider} timestamp '{timestamp_str}': {e}"
-        )
         return None
 
 
@@ -69,11 +64,8 @@ def validate_string_input(
 
         return cleaned
 
-    except (AttributeError, TypeError) as e:
+    except (AttributeError, TypeError, ValueError) as e:
         logger.error(f"Invalid {field_name} type: {type(input_str)} - {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error validating {field_name}: {e}")
         return None
 
 
@@ -94,11 +86,8 @@ def safe_int_conversion(value, field_name: str, default: int = 0) -> int:
 
     try:
         return int(value)
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError, AttributeError) as e:
         logger.warning(f"Failed to convert {field_name} to int: {value} - {e}")
-        return default
-    except Exception as e:
-        logger.error(f"Unexpected error converting {field_name} to int: {value} - {e}")
         return default
 
 
@@ -123,6 +112,6 @@ def safe_bool_conversion(value, field_name: str, default: bool = False) -> bool:
         if isinstance(value, str):
             return value.lower() in ("true", "1", "yes", "on")
         return bool(value)
-    except Exception as e:
+    except (ValueError, TypeError, AttributeError) as e:
         logger.warning(f"Failed to convert {field_name} to bool: {value} - {e}")
         return default

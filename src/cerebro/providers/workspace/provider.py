@@ -899,20 +899,124 @@ class GoogleWorkspaceProvider(BaseProvider):
             normalized_config=config,
         )
 
-    async def _get_orgunit_config(self, _orgunit_id: str) -> dict[str, Any]:
+    async def _get_orgunit_config(self, orgunit_id: str) -> dict[str, Any]:
         """Get organizational unit configuration and policies."""
-        # TODO: Implement orgunit configuration collection
-        return {}
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self.admin_service.orgunits()
+                .get(customerId="my_customer", orgUnitPath=orgunit_id)
+                .execute(),
+            )
+
+            return {
+                "org_unit_id": result.get("orgUnitId"),
+                "name": result.get("name"),
+                "org_unit_path": result.get("orgUnitPath"),
+                "parent_org_unit_id": result.get("parentOrgUnitId"),
+                "parent_org_unit_path": result.get("parentOrgUnitPath"),
+                "description": result.get("description"),
+                "block_inheritance": result.get("blockInheritance", False),
+                "etag": result.get("etag"),
+            }
+        except HttpError as e:
+            logger.warning(f"Failed to get orgunit config for {orgunit_id}: {e}")
+            return {}
 
     async def _get_chromeos_config(self, device_id: str) -> dict[str, Any]:
         """Get Chrome OS device configuration and policies."""
-        # TODO: Implement Chrome OS device configuration collection
-        return {}
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self.admin_service.chromeosdevices()
+                .get(customerId="my_customer", deviceId=device_id, projection="FULL")
+                .execute(),
+            )
+
+            return {
+                "device_id": result.get("deviceId"),
+                "serial_number": result.get("serialNumber"),
+                "status": result.get("status"),
+                "model": result.get("model"),
+                "platform_version": result.get("platformVersion"),
+                "os_version": result.get("osVersion"),
+                "firmware_version": result.get("firmwareVersion"),
+                "boot_mode": result.get("bootMode"),
+                "org_unit_path": result.get("orgUnitPath"),
+                "annotated_user": result.get("annotatedUser"),
+                "annotated_location": result.get("annotatedLocation"),
+                "notes": result.get("notes"),
+                "last_sync": result.get("lastSync"),
+                "auto_update_expiration": result.get("autoUpdateExpiration"),
+                "mac_address": result.get("macAddress"),
+                "ethernet_mac_address": result.get("ethernetMacAddress"),
+                "recent_users": [
+                    {"email": u.get("email"), "type": u.get("type")}
+                    for u in result.get("recentUsers", [])
+                ],
+                "tpm_version_info": result.get("tpmVersionInfo"),
+            }
+        except HttpError as e:
+            logger.warning(f"Failed to get Chrome OS config for {device_id}: {e}")
+            return {}
 
     async def _get_admin_role_config(self, role_id: str) -> dict[str, Any]:
         """Get admin role configuration and privileges."""
-        # TODO: Implement admin role configuration collection
-        return {}
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self.admin_service.roles()
+                .get(customer="my_customer", roleId=role_id)
+                .execute(),
+            )
+
+            privileges = []
+            for privilege in result.get("rolePrivileges", []):
+                privileges.append(
+                    {
+                        "privilege_name": privilege.get("privilegeName"),
+                        "service_id": privilege.get("serviceId"),
+                    }
+                )
+
+            # Get role assignments
+            assignments = []
+            try:
+                assignments_result = await loop.run_in_executor(
+                    None,
+                    lambda: self.admin_service.roleAssignments()
+                    .list(customer="my_customer", roleId=role_id)
+                    .execute(),
+                )
+                for assignment in assignments_result.get("items", []):
+                    assignments.append(
+                        {
+                            "assigned_to": assignment.get("assignedTo"),
+                            "scope_type": assignment.get("scopeType"),
+                            "org_unit_id": assignment.get("orgUnitId"),
+                        }
+                    )
+            except HttpError:
+                pass
+
+            return {
+                "role_id": result.get("roleId"),
+                "role_name": result.get("roleName"),
+                "role_description": result.get("roleDescription"),
+                "is_system_role": result.get("isSystemRole", False),
+                "is_super_admin": result.get("isSuperAdminRole", False),
+                "privileges": privileges,
+                "privilege_count": len(privileges),
+                "assignments": assignments,
+                "assignment_count": len(assignments),
+                "etag": result.get("etag"),
+            }
+        except HttpError as e:
+            logger.warning(f"Failed to get admin role config for {role_id}: {e}")
+            return {}
 
     async def discover_iam_edges(
         self, resource: ResourceInfo | None = None

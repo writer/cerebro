@@ -406,7 +406,7 @@ class CerebroOpenAIRuntime(AgentRuntimePersistenceMixin):
                     "metadata": {"session_id": str(session.id)},
                 }
 
-        except Exception as exc:  # pragma: no cover - runtime guard
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.exception(
                 "OpenAI agent message processing failed",
                 session_id=session.id,

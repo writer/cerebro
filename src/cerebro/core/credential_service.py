@@ -147,7 +147,7 @@ class CredentialService:
             logger.info(f"Stored encrypted credentials for provider {provider}")
             return True
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to store credentials for {provider}: {e}")
             await self.db.rollback()
             return False
@@ -186,7 +186,7 @@ class CredentialService:
                 expires_at=cred_store.expires_at,
             )
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to retrieve credentials for {provider}: {e}")
             return None
 
@@ -209,7 +209,7 @@ class CredentialService:
 
             return False
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to delete credentials for {provider}: {e}")
             return False
 
@@ -298,6 +298,6 @@ class CredentialService:
             # Test authentication
             return await provider_instance.authenticate()
 
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Credential test failed for {provider}: {e}")
             return False

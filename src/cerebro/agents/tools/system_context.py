@@ -9,7 +9,7 @@ This complements get_org_context by adding infrastructure/ops awareness.
 
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 import structlog
@@ -326,7 +326,9 @@ class GetSystemContextTool(StructuredTool):
                                 if row.last_collection
                                 else None
                             ),
-                            "error_rate": None,  # TODO: Calculate from audit events
+                            "error_rate": await self._calculate_provider_error_rate(
+                                db_session, row.provider
+                            ),
                         }
                     )
 
@@ -364,11 +366,11 @@ class GetSystemContextTool(StructuredTool):
                     memory_usage_mb = None
 
                 return {
-                    "uptime_seconds": None,  # TODO: Track from app start
+                    "uptime_seconds": self._get_uptime_seconds(),
                     "memory_usage_mb": memory_usage_mb,
                     "active_agent_sessions": active_sessions or 0,
                     "total_organizations": total_orgs or 0,
-                    "background_tasks_running": 0,  # TODO: Query from Celery
+                    "background_tasks_running": await self._get_background_tasks_count(),
                 }
 
         except Exception as e:
@@ -380,3 +382,57 @@ class GetSystemContextTool(StructuredTool):
                 "total_organizations": 0,
                 "background_tasks_running": 0,
             }
+
+    async def _calculate_provider_error_rate(
+        self, db_session: Any, provider: str
+    ) -> float | None:
+        """Calculate error rate for a provider from recent audit events."""
+        try:
+            from datetime import timedelta
+
+            from cerebro.core.models import AuditEvent
+
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            total_stmt = select(func.count(AuditEvent.event_id)).where(
+                AuditEvent.event_type.like(f"%{provider}%"),
+                AuditEvent.created_at >= cutoff,
+            )
+            error_stmt = select(func.count(AuditEvent.event_id)).where(
+                AuditEvent.event_type.like(f"%{provider}%"),
+                AuditEvent.created_at >= cutoff,
+                AuditEvent.status == "error",
+            )
+
+            total = await db_session.scalar(total_stmt)
+            errors = await db_session.scalar(error_stmt)
+
+            if total and total > 0:
+                return round((errors or 0) / total * 100, 2)
+            return 0.0
+        except Exception:
+            return None
+
+    def _get_uptime_seconds(self) -> float | None:
+        """Get application uptime in seconds."""
+        try:
+            import psutil
+
+            process = psutil.Process()
+            return (datetime.now(timezone.utc) - datetime.fromtimestamp(
+                process.create_time(), tz=timezone.utc
+            )).total_seconds()
+        except Exception:
+            return None
+
+    async def _get_background_tasks_count(self) -> int:
+        """Get count of running background tasks from Celery."""
+        try:
+            from cerebro.tasks.celery_app import celery_app
+
+            inspect = celery_app.control.inspect(timeout=2.0)
+            active = inspect.active()
+            if active:
+                return sum(len(tasks) for tasks in active.values())
+            return 0
+        except Exception:
+            return 0

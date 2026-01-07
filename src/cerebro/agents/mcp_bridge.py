@@ -100,7 +100,7 @@ def cerebro_tool_to_mcp(
                     "isError": True,
                 }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.exception(
                 "MCP tool execution failed", tool_name=cerebro_tool.name, error=str(e)
             )

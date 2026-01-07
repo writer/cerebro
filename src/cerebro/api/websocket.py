@@ -71,7 +71,7 @@ class ConnectionManager:
         for connection in self.org_connections[org_id]:
             try:
                 await connection.send_text(message_text)
-            except Exception as e:
+            except (OSError, RuntimeError, ConnectionError) as e:
                 logger.warning(f"Failed to send message to WebSocket: {e}")
                 connections_to_remove.add(connection)
 
@@ -93,7 +93,7 @@ class ConnectionManager:
         for connection in self.global_connections:
             try:
                 await connection.send_text(message_text)
-            except Exception as e:
+            except (OSError, RuntimeError, ConnectionError) as e:
                 logger.warning(f"Failed to send message to global WebSocket: {e}")
                 global_connections_to_remove.add(connection)
 
@@ -107,7 +107,7 @@ class ConnectionManager:
             for connection in connections:
                 try:
                     await connection.send_text(message_text)
-                except Exception as e:
+                except (OSError, RuntimeError, ConnectionError) as e:
                     logger.warning(
                         f"Failed to send message to org {org_id} WebSocket: {e}"
                     )
@@ -165,7 +165,7 @@ async def authenticate_websocket_token(token: str | None) -> TokenData | None:
             jwt_service = JWTService(key_store, metrics=jwt_metrics)
             payload = await jwt_service.verify_token(token, expected_type="access")
         return _token_payload_to_data(payload)
-    except Exception as e:  # pragma: no cover - defensive path
+    except (OSError, RuntimeError, ValueError) as e:
         logger.warning(f"WebSocket authentication failed: {e}")
         return None
 
@@ -226,7 +226,7 @@ async def websocket_endpoint(
 
             except WebSocketDisconnect:
                 break
-            except Exception as e:
+            except (OSError, RuntimeError, ConnectionError) as e:
                 logger.error(f"WebSocket error: {e}")
                 break
 

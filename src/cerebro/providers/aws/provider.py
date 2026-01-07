@@ -85,7 +85,7 @@ class AWSProvider(BaseProvider):
             logger.error(f"AWS authentication failed: {e}")
             raise ProviderError(f"AWS authentication failed: {e}") from e
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Unexpected error during AWS auth: {e}")
             return False
 

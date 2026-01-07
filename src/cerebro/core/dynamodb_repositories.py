@@ -83,7 +83,7 @@ class OrganizationRepository:
         try:
             await delete_item(self._table, pk, sk)
             return True
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return False
 
     async def list_all(
@@ -209,7 +209,7 @@ class AccountRepository:
         try:
             await delete_item(self._table, pk, sk)
             return True
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return False
 
 
@@ -781,5 +781,5 @@ class SuppressionRepository:
         try:
             await delete_item(self._table, pk, sk)
             return True
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return False

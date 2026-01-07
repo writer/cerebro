@@ -346,7 +346,7 @@ class SlackNotificationService:
                         },
                     )
 
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(
                 "send_finding_notification_failed",
                 org_id=str(org_id),
@@ -403,7 +403,7 @@ class SlackNotificationService:
                     db=db,
                 )
 
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(
                 "send_compliance_alert_failed",
                 org_id=str(org_id),
@@ -463,7 +463,7 @@ class SlackNotificationService:
                     db=db,
                 )
 
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(
                 "send_monitoring_alert_failed",
                 org_id=str(org_id),
@@ -509,7 +509,7 @@ class SlackNotificationService:
                 raise ValueError("Failed to decrypt webhook URL")
             if not webhook_url.startswith("https://hooks.slack.com/"):
                 raise ValueError("Invalid Slack webhook URL format")
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(
                 "webhook_url_decryption_failed",
                 webhook_id=str(webhook.webhook_id),
@@ -577,7 +577,7 @@ class SlackNotificationService:
                         error=last_error,
                     )
 
-            except Exception as e:
+            except (httpx.HTTPError, OSError, TimeoutError) as e:
                 last_error = str(e)
                 logger.warning(
                     "slack_send_exception",

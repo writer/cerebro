@@ -62,13 +62,13 @@ async def _process_email_digests_async():
             for config in configs:
                 try:
                     await _process_config_digest(config, db)
-                except Exception as e:
+                except (OSError, RuntimeError, ValueError) as e:
                     logger.error(
                         f"Failed to process digest for config {config.config_id}: {e}",
                         exc_info=True,
                     )
 
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         logger.error(f"Failed to process email digests: {e}", exc_info=True)
         raise
 
@@ -137,7 +137,7 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
     if config.smtp_password:
         try:
             smtp_password = await config.get_smtp_password()
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to decrypt SMTP password: {e}")
             return
 
@@ -171,7 +171,7 @@ async def _process_config_digest(config: EmailConfig, db: AsyncSession):
             f"Sent email digest for config {config.config_id} with {len(findings)} findings"
         )
 
-    except Exception as e:
+    except (OSError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to send digest email: {e}", exc_info=True)
 
         # Log failed digest

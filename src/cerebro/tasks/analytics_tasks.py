@@ -165,7 +165,7 @@ async def _collect_security_metrics_with_retry(
     while True:
         try:
             return await _collect_security_metrics_for_org(org_id)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             attempt += 1
             logger.warning(
                 "Metric collection attempt %s/%s failed for org %s: %s",
@@ -225,7 +225,7 @@ async def _collect_security_metrics_for_all_orgs(
                 update_state_cb=update_state_cb,
             )
             results.append(result)
-        except Exception as exc:  # pragma: no cover - surfaced via result payload
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.exception("Metric collection failed for org %s", org_id)
             error_meta: dict[str, object] = {"org_id": str(org_id), "error": str(exc)}
             if update_state_cb is not None:
@@ -262,7 +262,7 @@ def collect_security_metrics_for_org(self, org_id: str) -> dict[str, object]:
                 meta={"status": "Completed", **result},
             )
             return result
-        except Exception as exc:  # pragma: no cover - surfaced through Celery
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.exception("Metric collection failed for org %s", org_id)
             self.update_state(state=states.FAILURE, meta={"error": str(exc)})
             raise

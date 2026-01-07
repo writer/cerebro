@@ -90,7 +90,7 @@ class AuthenticationMixin:
                 # Re-raise provider errors as-is from None
 
                 raise
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 logger.error(f"Unexpected error during {self.name} authentication: {e}")
                 raise ProviderError(f"Authentication failed: {e}") from e
 
@@ -216,7 +216,7 @@ class BaseProvider(AuthenticationMixin, ABC):
         """Test connection to the provider."""
         try:
             return await self.authenticate()
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Connection test failed for {self.provider_name}: {e}")
             return False
 

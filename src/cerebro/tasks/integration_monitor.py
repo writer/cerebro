@@ -105,7 +105,7 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=UTC)
         return parsed
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 

@@ -7,9 +7,9 @@ from celery import Celery
 from celery.schedules import crontab
 from kombu import Queue
 
-try:  # pragma: no cover - protect optional import during bootstrap
+try:
     from cerebro.core.config import settings
-except Exception:  # pragma: no cover
+except ImportError:
     settings = None  # type: ignore[assignment]
 
 if settings:

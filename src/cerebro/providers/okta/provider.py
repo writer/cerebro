@@ -75,7 +75,7 @@ class OktaProvider(BaseProvider):
             logger.error(f"Okta authentication failed: {e}")
             raise ProviderError(f"Okta authentication failed: {e}") from e
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Unexpected error during Okta auth: {e}")
             return False
 
@@ -127,7 +127,7 @@ class OktaProvider(BaseProvider):
                         "visibility": app.get("visibility", {}),
                     },
                 )
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(f"Failed to discover Okta applications: {e}")
 
     async def _discover_policies(self) -> AsyncGenerator[ResourceInfo, None]:
@@ -157,7 +157,7 @@ class OktaProvider(BaseProvider):
                             "last_updated": policy.get("lastUpdated"),
                         },
                     )
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(f"Failed to discover Okta policies: {e}")
 
     async def _discover_network_zones(self) -> AsyncGenerator[ResourceInfo, None]:
@@ -181,7 +181,7 @@ class OktaProvider(BaseProvider):
                         "last_updated": zone.get("lastUpdated"),
                     },
                 )
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(f"Failed to discover Okta network zones: {e}")
 
     async def _discover_users(self) -> AsyncGenerator[ResourceInfo, None]:
@@ -231,7 +231,7 @@ class OktaProvider(BaseProvider):
                     break
                 params = None
 
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(f"Failed to discover Okta users: {e}")
 
     async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
@@ -264,7 +264,7 @@ class OktaProvider(BaseProvider):
                         "employee_number": profile.get("employeeNumber"),
                     },
                 )
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(f"Failed to discover Okta users: {e}")
 
         # Discover groups
@@ -289,7 +289,7 @@ class OktaProvider(BaseProvider):
                         "last_membership_updated": group.get("lastMembershipUpdated"),
                     },
                 )
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.error(f"Failed to discover Okta groups: {e}")
 
     async def get_resource_configuration(

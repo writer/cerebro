@@ -112,7 +112,7 @@ def cleanup_old_snapshots_task(self, days_old: int = 90):
                     "cutoff_date": cutoff_date.isoformat(),
                 }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Cleanup task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise
@@ -159,9 +159,9 @@ def vacuum_analyze_task(self, tables: list[str] | None = None):
                             },
                         )
 
-                        await bulk_ops.vacuum_analyze_table(table)  # type: ignore[attr-defined]
+                        await bulk_ops.vacuum_analyze_table(table)
 
-                    except Exception as e:
+                    except (OSError, RuntimeError) as e:
                         logger.warning(f"Failed to vacuum table {table}: {e}")
 
                 logger.info(
@@ -170,7 +170,7 @@ def vacuum_analyze_task(self, tables: list[str] | None = None):
 
                 return {"tables_vacuumed": tables_to_vacuum, "completed": True}
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Vacuum task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise
@@ -227,8 +227,29 @@ def update_identity_clusters_task(self, org_id: str):
                     },
                 )
 
-                # TODO: Save clusters to database
-                # For now, just log the results
+                # Save clusters to database
+                from cerebro.core.models import IdentityCluster, IdentityClusterMember
+
+                for cluster in clusters:
+                    try:
+                        db_cluster = IdentityCluster(
+                            org_id=UUID(org_id),
+                            confidence_score=cluster.confidence_score,
+                            stitching_evidence=cluster.stitching_evidence,
+                        )
+                        db.add(db_cluster)
+                        await db.flush()
+
+                        for principal in cluster.principals:
+                            member = IdentityClusterMember(
+                                cluster_id=db_cluster.cluster_id,
+                                principal_id=principal.principal_id,
+                            )
+                            db.add(member)
+                        await db.commit()
+                    except (OSError, RuntimeError, ValueError) as cluster_err:
+                        logger.warning(f"Failed to save cluster: {cluster_err}")
+                        await db.rollback()
 
                 high_confidence_clusters = [
                     c for c in clusters if c.confidence_score > 0.8
@@ -255,7 +276,7 @@ def update_identity_clusters_task(self, org_id: str):
                     ],
                 }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Identity cluster task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise
@@ -288,7 +309,7 @@ def health_check_task(self):
                         "status": "healthy",
                         "latency_ms": None,
                     }
-            except Exception as e:
+            except (OSError, RuntimeError, TimeoutError) as e:
                 health_status["database"] = {"status": "unhealthy", "error": str(e)}
 
             # Redis check
@@ -305,7 +326,7 @@ def health_check_task(self):
                 r = redis.from_url(redis_url)
                 r.ping()
                 health_status["redis"] = {"status": "healthy"}
-            except Exception as e:
+            except (OSError, ConnectionError, TimeoutError) as e:
                 health_status["redis"] = {"status": "unhealthy", "error": str(e)}
 
             # Provider availability check
@@ -325,7 +346,7 @@ def health_check_task(self):
                     "available_providers": providers,
                     "count": len(providers),
                 }
-            except Exception as e:
+            except (ImportError, RuntimeError, ValueError) as e:
                 health_status["providers"] = {"status": "unhealthy", "error": str(e)}
 
             # Overall health
@@ -344,7 +365,7 @@ def health_check_task(self):
 
             return health_status
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Health check task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise

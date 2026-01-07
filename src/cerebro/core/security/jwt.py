@@ -123,7 +123,7 @@ class JWTService:
             )
             return token
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to create JWT token for user {username}: {e}")
             raise
 
@@ -245,7 +245,7 @@ class JWTService:
         except JWTError as e:
             logger.debug(f"JWT verification failed: {e}")
             raise
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Unexpected error verifying JWT: {e}")
             raise JWTError(f"Token verification failed: {e}") from e
 
@@ -278,7 +278,7 @@ class JWTService:
             logger.info(f"Revoked JWT token {jti} (reason: {reason})")
             return True
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to revoke token: {e}")
             return False
 
@@ -304,7 +304,7 @@ class JWTService:
             logger.warning(f"Blocked all tokens for user {username} (reason: {reason})")
             return 1  # We don't track exact count for user-level blocks
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to block user tokens for {username}: {e}")
             return 0
 
@@ -318,7 +318,7 @@ class JWTService:
 
             return bool(is_revoked)
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError) as e:
             logger.warning(f"Failed to check token revocation status for {jti}: {e}")
             # Fail open for availability, but log the issue
             return False
@@ -332,7 +332,7 @@ class JWTService:
 
             return bool(is_blocked)
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError) as e:
             logger.warning(f"Failed to check user block status for {username}: {e}")
             return False
 
@@ -369,7 +369,7 @@ class JWTService:
 
             return expired_count
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to cleanup expired revocations: {e}")
             return 0
 
@@ -393,6 +393,6 @@ class JWTService:
                 "is_expired": unverified_payload.get("exp", 0) < time.time(),
             }
 
-        except Exception as e:
+        except (ValueError, KeyError) as e:
             logger.debug(f"Failed to get token info: {e}")
             return None

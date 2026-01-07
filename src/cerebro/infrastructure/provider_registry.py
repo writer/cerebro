@@ -4,6 +4,7 @@ import importlib
 import pkgutil
 from collections.abc import Callable
 from typing import Any
+from uuid import UUID
 
 import structlog
 
@@ -23,14 +24,15 @@ class ProviderRegistry:
     def register(
         self,
         name: str,
-        provider_class: type[ProviderPort],
-        factory: Callable | None = None,
+        provider_class: type[ProviderPort] | None,
+        factory: Callable[..., ProviderPort] | None = None,
     ) -> None:
         """Register a provider class."""
         if name in self._providers:
             logger.warning(f"Provider {name} already registered, overriding")
 
-        self._providers[name] = provider_class
+        if provider_class is not None:
+            self._providers[name] = provider_class
         if factory:
             self._factories[name] = factory
 
@@ -189,17 +191,23 @@ def create_enhanced_gcp_provider(account_id: str, project_id: str, **kwargs):
 
 
 def create_google_workspace_provider(
-    account_id: str,
+    account_id: str | UUID,
     domain: str,
     service_account_file: str,
     delegate_user: str,
-    **kwargs,
-):
+    **kwargs: Any,
+) -> Any:
     """Factory for Google Workspace provider."""
+    from uuid import UUID as UUIDType
+
     from cerebro.providers.workspace.provider import GoogleWorkspaceProvider
 
+    # Convert string to UUID if needed
+    if isinstance(account_id, str):
+        account_id = UUIDType(account_id)
+
     return GoogleWorkspaceProvider(
-        account_id=account_id,  # type: ignore[arg-type]
+        account_id=account_id,
         domain=domain,
         service_account_file=service_account_file,
         delegate_user=delegate_user,
@@ -208,10 +216,10 @@ def create_google_workspace_provider(
 
 
 # Register built-in providers with factories
-provider_registry.register("github", None, create_github_provider)  # type: ignore[arg-type]
-provider_registry.register("aws", None, create_aws_provider)  # type: ignore[arg-type]
-provider_registry.register("gcp_enhanced", None, create_enhanced_gcp_provider)  # type: ignore[arg-type]
-provider_registry.register("google_workspace", None, create_google_workspace_provider)  # type: ignore[arg-type]
+provider_registry.register("github", None, create_github_provider)
+provider_registry.register("aws", None, create_aws_provider)
+provider_registry.register("gcp_enhanced", None, create_enhanced_gcp_provider)
+provider_registry.register("google_workspace", None, create_google_workspace_provider)
 
 
 def init_providers():

@@ -64,7 +64,7 @@ def _get_endpoint_url() -> str | None:
     try:
         settings = _get_settings()
         return settings.dynamodb_endpoint_url
-    except Exception:
+    except (ImportError, AttributeError):
         return None
 
 

@@ -178,7 +178,7 @@ def sync_sentinelone(self, lookback_minutes: int | None = 30) -> Any:
                 async with async_session_factory() as db:
                     ingestion = SentinelOneIngestion(client)
                     result = await ingestion.ingest(db, since=since)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, ConnectionError) as exc:
             error_payload = {
                 "status": "error",
                 "error": str(exc),
@@ -254,7 +254,7 @@ def sync_kandji(self) -> Any:
                         agent_version="kandji-sync/1.0",
                     )
                     result = await ingestion.ingest(db)
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, ConnectionError) as exc:
                 error_payload = {
                     "status": "error",
                     "error": str(exc),

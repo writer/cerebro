@@ -11,6 +11,7 @@ from uuid import UUID
 
 import structlog
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -562,7 +563,13 @@ class TelemetryIngestionService:
                 if finding:
                     findings.append(finding)
 
-            # TODO: persist dependency graph, malicious package detections, license checks.
+            # Persist dependency graph data
+            await self._persist_dependency_graph(
+                context.resource_id,
+                payload.dependency_graph,
+                payload.malicious_packages,
+                payload.license_violations,
+            )
 
             secret_stub = {
                 "repository": payload.repository,
@@ -1532,7 +1539,57 @@ class TelemetryIngestionService:
                     ),
                 )
 
-        # TODO: Parse pip-audit, go, maven vulnerability formats.
+        # Parse pip-audit vulnerabilities
+        if scan.pip_audit and isinstance(scan.pip_audit, list):
+            for vuln in scan.pip_audit:
+                if not isinstance(vuln, dict):
+                    continue
+                yield DependencyVulnerability(
+                    package_name=vuln.get("name", "unknown"),
+                    package_version=vuln.get("version", "unknown"),
+                    vulnerability_id=vuln.get("id", "CVE-UNKNOWN"),
+                    severity=vuln.get("severity", "medium").upper(),
+                    description=vuln.get("description"),
+                    fixed_version=vuln.get("fix_versions", [None])[0]
+                    if vuln.get("fix_versions")
+                    else None,
+                )
+
+        # Parse Go vulnerabilities (govulncheck format)
+        if scan.go and isinstance(scan.go, dict):
+            go_vulns = scan.go.get("vulns", [])
+            for vuln in go_vulns:
+                if not isinstance(vuln, dict):
+                    continue
+                modules = vuln.get("modules", [{}])
+                for module in modules:
+                    yield DependencyVulnerability(
+                        package_name=module.get("path", "unknown"),
+                        package_version=module.get("found_version", "unknown"),
+                        vulnerability_id=vuln.get("osv", {}).get("id", "GO-UNKNOWN"),
+                        severity=self._map_go_severity(
+                            vuln.get("osv", {}).get("severity", [])
+                        ),
+                        description=vuln.get("osv", {}).get("summary"),
+                        fixed_version=module.get("fixed_version"),
+                    )
+
+        # Parse Maven vulnerabilities (OWASP dependency-check format)
+        if scan.maven and isinstance(scan.maven, dict):
+            dependencies = scan.maven.get("dependencies", [])
+            for dep in dependencies:
+                if not isinstance(dep, dict):
+                    continue
+                for vuln in dep.get("vulnerabilities", []):
+                    yield DependencyVulnerability(
+                        package_name=dep.get("fileName", "unknown"),
+                        package_version=dep.get("version", "unknown"),
+                        vulnerability_id=vuln.get("name", "CVE-UNKNOWN"),
+                        severity=vuln.get("severity", "medium").upper(),
+                        description=vuln.get("description"),
+                        fixed_version=None,
+                        cwe=vuln.get("cwes", [None])[0] if vuln.get("cwes") else None,
+                    )
 
     async def _get_existing_finding(
         self, org_id: UUID, fingerprint: str
@@ -1544,8 +1601,99 @@ class TelemetryIngestionService:
         return await self.db.scalar(stmt)
 
     async def _store_sbom(self, resource_id: UUID, sbom: dict[str, Any]) -> None:
-        # TODO: implement persistence once schema is available
-        logger.info("SBOM stored", extra={"resource_id": str(resource_id)})
+        """Persist SBOM data as a configuration snapshot."""
+        try:
+            config_json = json.dumps(sbom, sort_keys=True, default=str)
+            config_sha = hashlib.sha256(config_json.encode("utf-8")).digest()
+
+            stmt = select(ConfigSnapshot).where(
+                ConfigSnapshot.resource_id == resource_id,
+                ConfigSnapshot.config_sha == config_sha,
+            )
+            existing = await self.db.scalar(stmt)
+            if existing:
+                existing.captured_at = datetime.now(UTC)
+                existing.normalized_config = {"sbom": sbom}
+                await self.db.flush()
+                logger.info(
+                    "SBOM updated",
+                    extra={"resource_id": str(resource_id), "snapshot_id": str(existing.snapshot_id)},
+                )
+                return
+
+            snapshot = ConfigSnapshot(
+                resource_id=resource_id,
+                captured_at=datetime.now(UTC),
+                config_sha=config_sha,
+                normalized_config={"sbom": sbom},
+                collector_version="telemetry",
+            )
+            self.db.add(snapshot)
+            await self.db.flush()
+            logger.info(
+                "SBOM stored",
+                extra={"resource_id": str(resource_id), "snapshot_id": str(snapshot.snapshot_id)},
+            )
+        except SQLAlchemyError as e:
+            logger.warning(f"Failed to store SBOM for resource {resource_id}: {e}")
+
+    async def _persist_dependency_graph(
+        self,
+        resource_id: UUID,
+        dependency_graph: dict[str, Any] | None,
+        malicious_packages: list[dict[str, Any]] | None,
+        license_violations: list[dict[str, Any]] | None,
+    ) -> None:
+        """Persist dependency graph data including malicious packages and license violations."""
+        if not any([dependency_graph, malicious_packages, license_violations]):
+            return
+
+        try:
+            data = {
+                "dependency_graph": dependency_graph or {},
+                "malicious_packages": malicious_packages or [],
+                "license_violations": license_violations or [],
+                "collected_at": datetime.now(UTC).isoformat(),
+            }
+            config_json = json.dumps(data, sort_keys=True, default=str)
+            config_sha = hashlib.sha256(config_json.encode("utf-8")).digest()
+
+            snapshot = ConfigSnapshot(
+                resource_id=resource_id,
+                captured_at=datetime.now(UTC),
+                config_sha=config_sha,
+                normalized_config=data,
+                collector_version="telemetry-dependency-graph",
+            )
+            self.db.add(snapshot)
+            await self.db.flush()
+            logger.info(
+                "Dependency graph persisted",
+                extra={
+                    "resource_id": str(resource_id),
+                    "malicious_count": len(malicious_packages or []),
+                    "license_violation_count": len(license_violations or []),
+                },
+            )
+        except SQLAlchemyError as e:
+            logger.warning(f"Failed to persist dependency graph for {resource_id}: {e}")
+
+    def _map_go_severity(self, severity_list: list[dict[str, Any]]) -> str:
+        """Map Go vulnerability severity to standard format."""
+        if not severity_list:
+            return "MEDIUM"
+        for sev in severity_list:
+            if sev.get("type") == "CVSS_V3":
+                score = sev.get("score", 0)
+                if score >= 9.0:
+                    return "CRITICAL"
+                elif score >= 7.0:
+                    return "HIGH"
+                elif score >= 4.0:
+                    return "MEDIUM"
+                else:
+                    return "LOW"
+        return "MEDIUM"
 
     def _fingerprint(self, prefix: str, *parts: str) -> str:
         data = "-".join(parts)

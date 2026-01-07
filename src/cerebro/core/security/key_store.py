@@ -239,7 +239,7 @@ class JWTKeyStore:
             logger.info(f"Created new JWT signing key with kid: {kid}")
             return signing_key
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to create new signing key: {e}")
             if self.metrics:
                 self.metrics.record_key_rotation(False)
@@ -256,7 +256,7 @@ class JWTKeyStore:
             )
             return private_key_bytes
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to decrypt private key {signing_key.kid}: {e}")
             raise
 
@@ -333,7 +333,7 @@ class JWTKeyStore:
             try:
                 jwks_entry = key.to_jwks_entry()
                 keys.append(jwks_entry)
-            except Exception as e:
+            except (ValueError, KeyError) as e:
                 logger.warning(f"Failed to convert key {key.kid} to JWKS format: {e}")
 
         return {"keys": keys}

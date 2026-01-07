@@ -21,7 +21,7 @@ async def check_database(timeout: float = 2.0) -> tuple[bool, str | None]:
         async with async_session_factory() as session:
             await asyncio.wait_for(session.execute(text("SELECT 1")), timeout=timeout)
         return True, None
-    except Exception as exc:  # pragma: no cover - surface runtime errors
+    except (OSError, TimeoutError, RuntimeError) as exc:
         return False, str(exc)
 
 
@@ -30,7 +30,7 @@ async def check_celery_workers(timeout: float = 2.0) -> tuple[bool, str | None]:
 
     try:
         from cerebro.tasks.celery_app import celery_app
-    except Exception as exc:  # pragma: no cover - import errors surfaced at runtime
+    except ImportError as exc:
         return False, f"Failed to import celery app: {exc}"
 
     loop = asyncio.get_running_loop()
@@ -38,7 +38,7 @@ async def check_celery_workers(timeout: float = 2.0) -> tuple[bool, str | None]:
     def _ping() -> bool:
         try:
             responses = celery_app.control.ping(timeout=timeout)
-        except Exception as exc:  # pragma: no cover - celery communication errors
+        except (ConnectionError, TimeoutError, OSError) as exc:
             raise RuntimeError(str(exc)) from exc
         return bool(responses)
 
@@ -47,7 +47,7 @@ async def check_celery_workers(timeout: float = 2.0) -> tuple[bool, str | None]:
             loop.run_in_executor(None, _ping),
             timeout=timeout + 1.0,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, TimeoutError, asyncio.TimeoutError) as exc:
         return False, str(exc)
 
     if not result:
@@ -61,7 +61,7 @@ async def check_broker_connection(timeout: float = 2.0) -> tuple[bool, str | Non
 
     try:
         from cerebro.tasks.celery_app import celery_app
-    except Exception as exc:  # pragma: no cover - import errors surfaced at runtime
+    except ImportError as exc:
         return False, f"Failed to import celery app: {exc}"
 
     loop = asyncio.get_running_loop()
@@ -78,7 +78,7 @@ async def check_broker_connection(timeout: float = 2.0) -> tuple[bool, str | Non
             loop.run_in_executor(None, _connect),
             timeout=timeout + 1.0,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, TimeoutError, asyncio.TimeoutError) as exc:
         return False, str(exc)
 
     return True, None
@@ -137,9 +137,9 @@ def main() -> int:
 
     try:
         ready, checks = asyncio.run(_run_target(args.target, args.timeout))
-    except KeyboardInterrupt:  # pragma: no cover - CLI interrupt handling
+    except KeyboardInterrupt:
         return 130
-    except Exception as exc:  # pragma: no cover - surface unexpected errors
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.error("Probe execution failed: target=%s, error=%s", args.target, str(exc))
         print(json.dumps({"status": "error", "error": str(exc)}))
         return 1

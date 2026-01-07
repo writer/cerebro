@@ -110,7 +110,7 @@ class AgentRuntimePersistenceMixin:
                     org_context_success=org_context_result.success,
                     system_context_success=system_context_result.success,
                 )
-        except Exception as exc:  # pragma: no cover - defensive logging only
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning(
                 "Context auto-loading failed, continuing without",
                 org_id=org_id,
@@ -128,7 +128,7 @@ class AgentRuntimePersistenceMixin:
                     org_id=org_id,
                     memory_entries=len(session_memory),
                 )
-        except Exception as exc:  # pragma: no cover - defensive logging only
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning(
                 "Session memory loading failed, continuing without",
                 org_id=org_id,
@@ -331,7 +331,7 @@ class AgentRuntimePersistenceMixin:
                 content=content,
                 metadata=metadata,
             )
-        except Exception as exc:  # pragma: no cover - defensive logging
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.debug(
                 "Failed to capture agent memory entry",
                 session_id=session.id,
@@ -367,7 +367,7 @@ class AgentRuntimePersistenceMixin:
             # Extract snippets from entry dicts for prompt_snippets
             prompt_snippets = [str(e.get("snippet", "")) for e in entries]
             return RetrievedMemory(prompt_snippets=prompt_snippets, entries=entries)
-        except Exception as exc:  # pragma: no cover - defensive logging
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.debug(
                 "Failed to retrieve agent memory",
                 session_id=session.id,

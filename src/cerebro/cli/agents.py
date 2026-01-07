@@ -19,9 +19,9 @@ from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
-from sqlalchemy import select
+from sqlalchemy import desc, func, select
 
-from cerebro.agents.models import AgentType, ApprovalStatus
+from cerebro.agents.models import AgentSession, AgentType, ApprovalStatus
 from cerebro.agents.service import (
     AgentAnalyticsService,
     AgentSessionService,
@@ -502,8 +502,41 @@ def status(
         console.print(table)
 
         if detailed:
-            # TODO: Show detailed metrics like token usage, tool invocations, etc.
-            rprint("\n[yellow]Detailed metrics coming soon...[/yellow]")
+            # Show detailed metrics
+            from cerebro.agents.models import AgentToolInvocation
+
+            tool_stmt = (
+                select(
+                    AgentToolInvocation.tool_name,
+                    func.count(AgentToolInvocation.invocation_id).label("count"),
+                    func.avg(AgentToolInvocation.duration_ms).label("avg_duration"),
+                )
+                .where(AgentToolInvocation.session_id.in_(
+                    select(AgentSession.id).where(AgentSession.is_active.is_(True))
+                ))
+                .group_by(AgentToolInvocation.tool_name)
+                .order_by(desc("count"))
+                .limit(10)
+            )
+            tool_results = await db.execute(tool_stmt)
+            tool_rows = tool_results.fetchall()
+
+            if tool_rows:
+                rprint("\n[bold]Top Tool Invocations:[/bold]")
+                tool_table = Table()
+                tool_table.add_column("Tool", style="cyan")
+                tool_table.add_column("Invocations", style="green")
+                tool_table.add_column("Avg Duration (ms)", style="yellow")
+
+                for row in tool_rows:
+                    tool_table.add_row(
+                        row.tool_name,
+                        str(row.count),
+                        f"{row.avg_duration:.1f}" if row.avg_duration else "N/A",
+                    )
+                console.print(tool_table)
+            else:
+                rprint("\n[dim]No tool invocation data available[/dim]")
 
     asyncio.run(_status())
 

@@ -107,7 +107,7 @@ def collect_account_task(
                     ),
                 }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Collection task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise
@@ -204,7 +204,7 @@ def collect_organization_task(
                     "account_tasks": account_tasks,
                 }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Organization collection task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise
@@ -277,7 +277,7 @@ def batch_collect_resources(
                             },
                         )
 
-                    except Exception as e:
+                    except (OSError, RuntimeError, ValueError) as e:
                         logger.warning(f"Failed to collect {external_id}: {e}")
                         errors.append(f"{external_id}: {e!s}")
 
@@ -291,7 +291,7 @@ def batch_collect_resources(
                 "total": len(resource_external_ids),
             }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Batch collection task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise

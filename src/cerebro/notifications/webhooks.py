@@ -185,13 +185,13 @@ class WebhookNotificationService:
                         severity=finding.severity,
                         db=db,
                     )
-                except Exception as e:
+                except (httpx.HTTPError, ValueError, OSError) as e:
                     logger.error(
                         f"Failed to send webhook notification {config.config_id}: {e}",
                         exc_info=True,
                     )
 
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, OSError) as e:
             logger.error(
                 f"Error sending finding webhook notifications: {e}", exc_info=True
             )
@@ -282,13 +282,13 @@ class WebhookNotificationService:
                         severity=severity,
                         db=db,
                     )
-                except Exception as e:
+                except (httpx.HTTPError, ValueError, OSError) as e:
                     logger.error(
                         f"Failed to send webhook notification {config.config_id}: {e}",
                         exc_info=True,
                     )
 
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, OSError) as e:
             logger.error(
                 f"Error sending compliance webhook notifications: {e}", exc_info=True
             )
@@ -377,13 +377,13 @@ class WebhookNotificationService:
                         severity=severity,
                         db=db,
                     )
-                except Exception as e:
+                except (httpx.HTTPError, ValueError, OSError) as e:
                     logger.error(
                         f"Failed to send webhook notification {config.config_id}: {e}",
                         exc_info=True,
                     )
 
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, OSError) as e:
             logger.error(
                 f"Error sending monitoring webhook notifications: {e}", exc_info=True
             )
@@ -476,7 +476,7 @@ class WebhookNotificationService:
                 decrypted_url = await config.get_webhook_url()
                 if decrypted_url:
                     target_url = decrypted_url
-            except Exception as exc:
+            except (ValueError, RuntimeError, OSError) as exc:
                 logger.error(
                     "webhook_url_decrypt_failed: config_id=%s, error=%s",
                     str(getattr(config, "config_id", "unknown")),
@@ -505,7 +505,7 @@ class WebhookNotificationService:
                     raise ValueError("Failed to decrypt HMAC secret")
                 signature = self._generate_hmac_signature(payload_str, hmac_secret)
                 headers["X-Webhook-Signature"] = f"sha256={signature}"
-            except Exception as e:
+            except (ValueError, RuntimeError, OSError) as e:
                 logger.error(
                     f"HMAC secret decryption failed for config {config.config_id}: {e}",
                     exc_info=True,
@@ -601,7 +601,7 @@ class WebhookNotificationService:
             except httpx.TimeoutException as e:
                 last_error = f"Timeout after {config.timeout_seconds}s: {e!s}"
                 logger.warning(f"Webhook request timeout: {target_url}")
-            except Exception as e:
+            except (httpx.HTTPError, OSError, ValueError) as e:
                 last_error = str(e)
                 logger.warning(f"Webhook request failed: {e}")
 

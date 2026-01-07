@@ -79,7 +79,7 @@ def generate_findings_task(
                     "errors": result.errors,
                 }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Finding generation task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise
@@ -162,7 +162,7 @@ def evaluate_rule_batch(self, rule_id: str, resource_ids: list[str]):
                             },
                         )
 
-                    except Exception as e:
+                    except (OSError, RuntimeError, ValueError) as e:
                         logger.warning(
                             f"Rule evaluation failed for resource {resource.resource_id}: {e}"
                         )
@@ -179,7 +179,7 @@ def evaluate_rule_batch(self, rule_id: str, resource_ids: list[str]):
                     "errors": errors,
                 }
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Rule evaluation task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise
@@ -246,7 +246,7 @@ def update_finding_status_batch(
                             },
                         )
 
-                    except Exception as e:
+                    except (OSError, RuntimeError, ValueError) as e:
                         logger.warning(
                             f"Failed to update finding {finding.finding_id}: {e}"
                         )
@@ -261,7 +261,7 @@ def update_finding_status_batch(
 
                 return {"updated": updated, "errors": errors, "total": len(findings)}
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Batch finding update task {task_id} failed: {e}")
             self.update_state(state="FAILURE", meta={"error": str(e)})
             raise

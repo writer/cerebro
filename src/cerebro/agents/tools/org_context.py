@@ -343,7 +343,9 @@ class GetOrgContextTool(StructuredTool):
                     "account_count": provider_accounts.get(provider, 0),
                     "resource_count": provider_resources.get(provider, 0),
                     "principal_count": provider_principals.get(provider, 0),
-                    "last_collected": None,  # TODO: Add from collection metadata
+                    "last_collected": await self._get_last_collection_time(
+                        db_session, org_id, provider
+                    ),
                 }
             )
 
@@ -393,6 +395,24 @@ class GetOrgContextTool(StructuredTool):
         stats["open_findings"] = open_finding_count or 0
 
         return stats
+
+    async def _get_last_collection_time(
+        self, db_session: Any, org_id: UUID, provider: str
+    ) -> str | None:
+        """Get the last collection time for a provider."""
+        from cerebro.core.models import ConfigSnapshot
+
+        try:
+            stmt = (
+                select(func.max(ConfigSnapshot.captured_at))
+                .join(Resource, ConfigSnapshot.resource_id == Resource.resource_id)
+                .join(Account, Resource.account_id == Account.account_id)
+                .where(Account.org_id == org_id, Resource.provider == provider)
+            )
+            result = await db_session.scalar(stmt)
+            return result.isoformat() if result else None
+        except Exception:
+            return None
 
     async def _get_system_info(self) -> dict[str, Any]:
         """Get system/platform information."""

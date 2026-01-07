@@ -78,7 +78,7 @@ def rotate_jwt_keys_task(self=None, *args, **_) -> dict[str, Any]:
                 if cleaned_count > 0:
                     logger.info(f"Cleaned up {cleaned_count} expired JWT keys")
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             error_msg = f"JWT key rotation task failed: {e}"
             logger.error(error_msg)
             result["error"] = str(e)
@@ -119,7 +119,7 @@ def cleanup_jwt_revocations_task(self=None, *args, **_) -> dict[str, Any]:
                 else:
                     logger.debug("No expired JWT revocations found")
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             error_msg = f"JWT revocation cleanup task failed: {e}"
             logger.error(error_msg)
             result["error"] = str(e)
@@ -174,11 +174,11 @@ def jwt_health_check_task(self=None, *_, **__) -> dict[str, Any]:
                     redis_client = await jwt_service._get_redis()
                     await redis_client.ping()
                     result["redis_connection"] = True
-                except Exception:
+                except (OSError, ConnectionError, TimeoutError):
                     result["redis_connection"] = False
                     logger.warning("Redis connection test failed in JWT health check")
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             error_msg = f"JWT health check failed: {e}"
             logger.error(error_msg)
             result["error"] = str(e)

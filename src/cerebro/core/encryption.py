@@ -115,7 +115,7 @@ class SecretEncryptionService:
             )
             return encrypted_secret, encrypted_dek
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to encrypt secret: {e}", exc_info=True)
             raise
 
@@ -166,7 +166,7 @@ class SecretEncryptionService:
 
             return plaintext_bytes.decode("utf-8")
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             # Audit log: Decryption failure (security-relevant)
             logger.error(
                 "secret_decryption_failed",
@@ -205,7 +205,7 @@ class SecretEncryptionService:
             logger.info("Successfully rotated DEK for secret")
             return new_encrypted_secret, new_encrypted_dek
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Failed to rotate DEK: {e}", exc_info=True)
             raise
 
@@ -234,7 +234,7 @@ class SecretEncryptionService:
             logger.info(f"Encryption service test passed (KMS: {self.kms.name})")
             return True
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Encryption service test failed: {e}", exc_info=True)
             return False
 

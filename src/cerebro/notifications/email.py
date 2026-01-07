@@ -261,7 +261,7 @@ class EmailNotificationService:
                 if self._should_send_finding(config, finding):
                     await self._send_finding_email(config, finding, org, db)
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error("send_finding_notification_failed", error=str(e))
 
     async def send_compliance_alert(
@@ -303,7 +303,7 @@ class EmailNotificationService:
                     config, control_id, control_title, failure_count, org, db
                 )
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error("send_compliance_alert_failed", error=str(e))
 
     async def send_monitoring_alert(
@@ -346,7 +346,7 @@ class EmailNotificationService:
                     config, alert_title, alert_description, severity, org, db
                 )
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error("send_monitoring_alert_failed", error=str(e))
 
     def _should_send_finding(self, config: EmailConfig, finding: Finding) -> bool:
@@ -486,7 +486,7 @@ class EmailNotificationService:
                 smtp_password = await config.get_smtp_password()
                 if not smtp_password and config.smtp_username:
                     raise ValueError("Failed to decrypt SMTP password")
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 logger.error(f"SMTP password decryption failed: {e}", exc_info=True)
                 # Log failure and abort
                 notification = EmailNotification(
@@ -545,7 +545,7 @@ class EmailNotificationService:
                 )
                 return
 
-            except Exception as e:
+            except (OSError, ConnectionError, TimeoutError) as e:
                 last_error = str(e)
                 logger.warning(
                     "email_send_failed",

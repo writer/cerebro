@@ -61,7 +61,7 @@ def _get_settings():
         from cerebro.core.config import settings
 
         return settings
-    except Exception:
+    except ImportError:
         return None
 
 

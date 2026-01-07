@@ -10,9 +10,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
+from slowapi import _rate_limit_exceeded_handler as rate_limit_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
 
 from cerebro.agents.metrics import get_registry
 from cerebro.core.config import settings
@@ -276,11 +279,20 @@ configure_service_observability(service_name="cerebro-api")
 # Configure rate limiter
 default_limits = [limit for limit in settings.get_default_rate_limits() if limit]
 if default_limits:
-    limiter = Limiter(key_func=get_remote_address, default_limits=default_limits)  # type: ignore[arg-type]
+    limiter = Limiter(key_func=get_remote_address, default_limits=default_limits)
 else:
     limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+
+async def _handle_rate_limit(
+    request: StarletteRequest, exc: RateLimitExceeded
+) -> StarletteResponse:
+    """Type-safe rate limit handler wrapper."""
+    return await rate_limit_handler(request, exc)
+
+
+app.add_exception_handler(RateLimitExceeded, _handle_rate_limit)
 
 
 @app.exception_handler(HTTPException)
@@ -359,8 +371,10 @@ async def record_request_metrics(request: Request, call_next):
                 method=request.method,
                 path_template=path_template,
             )
-        except Exception:  # pragma: no cover - metrics should not break requests
-            logger.debug("api_metrics_record_failed", path=path_template)
+        except (ValueError, TypeError, RuntimeError) as metric_err:
+            logger.debug(
+                "api_metrics_record_failed", path=path_template, error=str(metric_err)
+            )
 
 
 # Include routers
@@ -572,7 +586,7 @@ async def _jwt_rotation_worker(interval: int) -> None:
                     logger.info("Background JWT key cleanup executed", cleaned=cleaned)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # pragma: no cover - defensive logging
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("JWT rotation worker iteration failed", error=str(exc))
 
         await asyncio.sleep(interval)
@@ -629,7 +643,7 @@ async def health_db():
         async with async_session_factory() as db:
             await db.execute(text("SELECT 1"))
             return {"status": "healthy", "database": "connected"}
-    except Exception as e:
+    except (OSError, RuntimeError, TimeoutError) as e:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=503, detail=f"Database unhealthy: {e!s}") from e
@@ -647,24 +661,23 @@ async def health_celery():
     try:
 
         def get_celery_status():
-            inspect = celery_app.control.inspect(timeout=5.0)  # type: ignore[arg-type]
+            inspect = celery_app.control.inspect(timeout=5.0)
             if inspect is None:
                 raise RuntimeError("No Celery workers responded to inspect")
 
             try:
                 active_tasks = inspect.active() or {}
-            except Exception as exc:  # pragma: no cover - celery inspect can raise
+            except (ConnectionError, TimeoutError, RuntimeError) as exc:
                 raise RuntimeError(f"Failed to fetch active tasks: {exc}") from exc
-
 
             try:
                 reserved_tasks = inspect.reserved() or {}
-            except Exception:  # pragma: no cover
+            except (ConnectionError, TimeoutError):
                 reserved_tasks = {}
 
             try:
                 worker_stats = inspect.stats() or {}
-            except Exception:  # pragma: no cover
+            except (ConnectionError, TimeoutError):
                 worker_stats = {}
 
             total_active = sum(len(tasks) for tasks in active_tasks.values())
@@ -710,7 +723,7 @@ async def health_celery():
         raise
     except TimeoutError as exc:
         raise HTTPException(status_code=503, detail="Celery inspect timed out") from exc
-    except Exception as e:
+    except (OSError, RuntimeError, ConnectionError) as e:
         raise HTTPException(
             status_code=503, detail=f"Celery health check failed: {e!s}"
         ) from e
@@ -740,7 +753,7 @@ async def health_encryption():
             "cache_stats": service.get_cache_stats(),
         }
 
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         from fastapi import HTTPException
 
         raise HTTPException(

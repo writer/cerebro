@@ -273,7 +273,7 @@ class IdentityStitcher:
 
                 saved_clusters += 1
 
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 logger.error(
                     f"Failed to save identity cluster {cluster.cluster_id}: {e}"
                 )

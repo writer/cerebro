@@ -4,45 +4,71 @@ from __future__ import annotations
 
 from .base import BaseProvider, ProviderError
 
-try:  # pragma: no cover - optional dependency
-    from .github import GitHubProvider
-except Exception:  # pragma: no cover
-    GitHubProvider = None  # type: ignore[misc, assignment]
+# Optional provider imports - handle missing dependencies gracefully
+GitHubProvider: type[BaseProvider] | None = None
+AWSProvider: type[BaseProvider] | None = None
+GCPProvider: type[BaseProvider] | None = None
+AzureProvider: type[BaseProvider] | None = None
+GoogleWorkspaceProvider: type[BaseProvider] | None = None
+OktaProvider: type[BaseProvider] | None = None
+M365Provider: type[BaseProvider] | None = None
+KubernetesProvider: type[BaseProvider] | None = None
 
-try:  # pragma: no cover - optional dependency
-    from .aws import AWSProvider
-except Exception:  # pragma: no cover
-    AWSProvider = None  # type: ignore[misc, assignment]
+try:
+    from .github import GitHubProvider as _GitHubProvider
 
-try:  # pragma: no cover - optional dependency
-    from .gcp import GCPProvider
-except Exception:  # pragma: no cover
-    GCPProvider = None  # type: ignore[misc, assignment]
+    GitHubProvider = _GitHubProvider
+except ImportError:
+    pass
 
-try:  # pragma: no cover - optional dependency
-    from .azure import AzureProvider
-except Exception:  # pragma: no cover
-    AzureProvider = None  # type: ignore[misc, assignment]
+try:
+    from .aws import AWSProvider as _AWSProvider
 
-try:  # pragma: no cover - optional dependency
-    from .workspace import GoogleWorkspaceProvider
-except Exception:  # pragma: no cover
-    GoogleWorkspaceProvider = None  # type: ignore[misc, assignment]
+    AWSProvider = _AWSProvider
+except ImportError:
+    pass
 
-try:  # pragma: no cover - optional dependency
-    from .okta import OktaProvider
-except Exception:  # pragma: no cover
-    OktaProvider = None  # type: ignore[misc, assignment]
+try:
+    from .gcp import GCPProvider as _GCPProvider
 
-try:  # pragma: no cover - optional dependency
-    from .m365 import M365Provider
-except Exception:  # pragma: no cover
-    M365Provider = None  # type: ignore[misc, assignment]
+    GCPProvider = _GCPProvider
+except ImportError:
+    pass
 
-try:  # pragma: no cover - optional dependency
-    from .kubernetes import KubernetesProvider
-except Exception:  # pragma: no cover
-    KubernetesProvider = None  # type: ignore[misc, assignment]
+try:
+    from .azure import AzureProvider as _AzureProvider
+
+    AzureProvider = _AzureProvider
+except ImportError:
+    pass
+
+try:
+    from .workspace import GoogleWorkspaceProvider as _GoogleWorkspaceProvider
+
+    GoogleWorkspaceProvider = _GoogleWorkspaceProvider
+except ImportError:
+    pass
+
+try:
+    from .okta import OktaProvider as _OktaProvider
+
+    OktaProvider = _OktaProvider
+except ImportError:
+    pass
+
+try:
+    from .m365 import M365Provider as _M365Provider
+
+    M365Provider = _M365Provider
+except ImportError:
+    pass
+
+try:
+    from .kubernetes import KubernetesProvider as _KubernetesProvider
+
+    KubernetesProvider = _KubernetesProvider
+except ImportError:
+    pass
 
 __all__ = [
     "AWSProvider",

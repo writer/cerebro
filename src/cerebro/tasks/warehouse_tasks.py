@@ -169,7 +169,7 @@ def refresh_rule_controls(self) -> dict[str, object]:
 
             session.commit()
 
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.exception("Failed to refresh rule_controls")
             try:
                 session.execute(
@@ -190,7 +190,7 @@ def refresh_rule_controls(self) -> dict[str, object]:
                     },
                 )
                 session.commit()
-            except Exception:  # pragma: no cover
+            except (OSError, RuntimeError):
                 session.rollback()
             raise
 
@@ -338,7 +338,7 @@ def run_warehouse_data_quality_checks(self) -> dict[str, object]:
 
             session.commit()
 
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.exception("Failed to run warehouse DQ checks")
             try:
                 session.execute(
@@ -359,7 +359,7 @@ def run_warehouse_data_quality_checks(self) -> dict[str, object]:
                     },
                 )
                 session.commit()
-            except Exception:  # pragma: no cover
+            except (OSError, RuntimeError):
                 session.rollback()
             raise
 

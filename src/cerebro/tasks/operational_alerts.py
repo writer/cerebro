@@ -158,7 +158,7 @@ async def _send_email_alert(subject: str, body: str) -> None:
 
     try:
         await asyncio.to_thread(_send_sync)
-    except Exception as exc:  # pragma: no cover - SMTP failures should not break task
+    except (OSError, ConnectionError, TimeoutError) as exc:
         logger.warning("operational_email_alert_failed: %s", str(exc))
 
 

@@ -1,8 +1,12 @@
 """Rule evaluator for generating findings."""
 
+from typing import Any
+from uuid import UUID
+
 import structlog
 from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 
 from cerebro.core.models import (
     ConfigSnapshot,
@@ -17,13 +21,131 @@ from cerebro.rules import EvaluationContext, RuleEngine, RuleResult
 logger = structlog.get_logger(__name__)
 
 
+class OrgConfigProvider:
+    """Provides organization-level configuration for rule evaluation."""
+
+    def __init__(self, db_session: AsyncSession) -> None:
+        self.db = db_session
+        self._cache: dict[UUID, dict[str, Any]] = {}
+
+    async def get_org_config(self, org_id: UUID) -> dict[str, Any]:
+        """Get organization configuration for rule evaluation."""
+        if org_id in self._cache:
+            return self._cache[org_id]
+
+        try:
+            stmt = select(Organization).where(Organization.org_id == org_id)
+            org = await self.db.scalar(stmt)
+            if not org:
+                return {}
+
+            config = {
+                "org_id": str(org.org_id),
+                "name": org.name,
+                "settings": org.settings if hasattr(org, "settings") else {},
+                "security_policies": await self._get_security_policies(org_id),
+                "compliance_requirements": await self._get_compliance_requirements(
+                    org_id
+                ),
+            }
+            self._cache[org_id] = config
+            return config
+        except SQLAlchemyError as e:
+            logger.warning(f"Failed to load org config for {org_id}: {e}")
+            return {}
+
+    async def _get_security_policies(self, org_id: UUID) -> dict[str, Any]:
+        """Get organization security policies."""
+        from cerebro.core.models import Policy
+
+        try:
+            stmt = select(Policy).where(
+                and_(Policy.org_id == org_id, Policy.is_active.is_(True))
+            )
+            result = await self.db.scalars(stmt)
+            policies = list(result)
+            return {
+                "mfa_required": any(
+                    p.name.lower().find("mfa") >= 0 for p in policies
+                ),
+                "password_policy_enabled": any(
+                    p.name.lower().find("password") >= 0 for p in policies
+                ),
+                "active_policy_count": len(policies),
+            }
+        except SQLAlchemyError:
+            return {}
+
+    async def _get_compliance_requirements(self, org_id: UUID) -> list[str]:
+        """Get organization compliance framework requirements."""
+        return []
+
+
+class UserConfigProvider:
+    """Provides user-level configuration for rule evaluation."""
+
+    def __init__(self, db_session: AsyncSession) -> None:
+        self.db = db_session
+        self._cache: dict[str, dict[str, Any]] = {}
+
+    async def get_user_config(self, principal: Principal) -> dict[str, Any]:
+        """Get user configuration for rule evaluation."""
+        cache_key = str(principal.principal_id)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        config = {
+            "principal_id": str(principal.principal_id),
+            "email": principal.email,
+            "is_human": principal.is_human,
+            "mfa_enabled": await self._check_mfa_status(principal),
+            "last_login": await self._get_last_login(principal),
+            "risk_factors": await self._get_risk_factors(principal),
+        }
+        self._cache[cache_key] = config
+        return config
+
+    async def _check_mfa_status(self, principal: Principal) -> bool:
+        """Check if MFA is enabled for the principal."""
+        metadata = principal.metadata or {}
+        return bool(
+            metadata.get("mfa_enabled")
+            or metadata.get("is_enrolled_in_2sv")
+            or metadata.get("two_factor_enabled")
+        )
+
+    async def _get_last_login(self, principal: Principal) -> str | None:
+        """Get the last login timestamp for the principal."""
+        metadata = principal.metadata or {}
+        last_login = metadata.get("last_login_time") or metadata.get("last_login")
+        return str(last_login) if last_login else None
+
+    async def _get_risk_factors(self, principal: Principal) -> list[str]:
+        """Get risk factors for the principal."""
+        risk_factors = []
+        metadata = principal.metadata or {}
+
+        if not await self._check_mfa_status(principal):
+            risk_factors.append("mfa_not_enabled")
+
+        if metadata.get("suspended"):
+            risk_factors.append("account_suspended")
+
+        if metadata.get("is_admin") or metadata.get("is_delegated_admin"):
+            risk_factors.append("elevated_privileges")
+
+        return risk_factors
+
+
 class RuleEvaluator:
     """Evaluates rules against resources to generate findings."""
 
-    def __init__(self, db_session: AsyncSession, rule_engine: RuleEngine):
+    def __init__(self, db_session: AsyncSession, rule_engine: RuleEngine) -> None:
         """Initialize rule evaluator."""
         self.db = db_session
         self.rule_engine = rule_engine
+        self._org_config_provider = OrgConfigProvider(db_session)
+        self._user_config_provider = UserConfigProvider(db_session)
 
     async def evaluate_resource(
         self, resource: Resource, rules: list[Rule] | None = None
@@ -238,15 +360,34 @@ class RuleEvaluator:
                 "is_admin": iam_edge.is_admin,
             }
 
-        # TODO: Add org_config and user_config if needed
+        # Get org_config from the resource's account
+        org_config = None
+        try:
+            from cerebro.core.models import Account
+
+            account_stmt = select(Account).where(
+                Account.account_id == resource.account_id
+            )
+            account = await self.db.scalar(account_stmt)
+            if account and account.org_id:
+                org_config = await self._org_config_provider.get_org_config(
+                    account.org_id
+                )
+        except SQLAlchemyError as e:
+            logger.warning(f"Failed to load org config: {e}")
+
+        # Get user_config if principal is provided
+        user_config = None
+        if principal:
+            user_config = await self._user_config_provider.get_user_config(principal)
 
         return EvaluationContext(
             resource=resource_context,
             config=config_context,
             principal=principal_context,
             iam_edge=iam_edge_context,
-            org_config=None,  # TODO: Implement org config
-            user_config=None,  # TODO: Implement user config
+            org_config=org_config,
+            user_config=user_config,
         )
 
     async def _build_principal_context(self, principal: Principal) -> EvaluationContext:
@@ -260,8 +401,10 @@ class RuleEvaluator:
             "is_human": principal.is_human,
         }
 
+        # Get user_config with MFA status and risk factors
+        user_config = await self._user_config_provider.get_user_config(principal)
+
         return EvaluationContext(
             principal=principal_context,
-            # TODO: Add user_config for MFA checks etc.
-            user_config=None,
+            user_config=user_config,
         )

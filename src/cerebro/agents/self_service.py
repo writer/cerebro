@@ -307,7 +307,7 @@ class SelfServiceKnowledgeService:
 
         try:
             answer = await handler(org_id, classification, question)
-        except Exception as exc:  # pragma: no cover - defensive guardrail
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.exception("Self-service question handler failed", exc_info=exc)
             answer = SelfServiceAnswer(
                 question_type=QuestionType.UNKNOWN,
@@ -649,7 +649,7 @@ class SelfServiceKnowledgeService:
     ) -> QueryResult:
         try:
             return await self.query_engine.execute_query(sql, params=params)
-        except Exception as exc:  # pragma: no cover - defensive guardrail
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("Self-service query failed", sql=sql, error=str(exc))
             return QueryResult(
                 columns=[],
