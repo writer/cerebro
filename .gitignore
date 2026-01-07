@@ -152,6 +152,8 @@ openapi.json
 
 # Service account keys
 *.json
+!/package.json
+!/commitlint.config.js
 !sdk/ts/package.json
 !sdk/ts/package-lock.json
 !sdk/ts/tsconfig.json

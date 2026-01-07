@@ -22,7 +22,10 @@ def create_monitoring(
     dynamodb_table_names: list[pulumi.Output[str]],
     redis_cluster_id: pulumi.Output[str],
     alarm_email: str = None,
+    alarm_slack_channel_id: str = None,
+    alarm_slack_workspace_id: str = None,
     log_retention_days: int = 30,
+    tags: dict[str, str] | None = None,
 ) -> dict:
     """
     Create monitoring infrastructure with alarms and dashboards.
@@ -41,26 +44,76 @@ def create_monitoring(
     Returns:
         Dictionary with monitoring resources
     """
+    resource_tags = tags or {}
     result = {}
 
+    # Determine if we need an SNS topic
+    slack_configured = alarm_slack_channel_id and alarm_slack_workspace_id
+    needs_sns = alarm_email or slack_configured
+
     # Create SNS topic for alarms
-    if alarm_email:
+    alarm_topic = None
+    if needs_sns:
         alarm_topic = aws.sns.Topic(
             f"{name}-alarms",
             name=f"{name}-alarms",
             tags={
+                **resource_tags,
                 "Name": f"{name}-alarms",
             },
         )
 
-        aws.sns.TopicSubscription(
-            f"{name}-alarm-email",
-            topic=alarm_topic.arn,
-            protocol="email",
-            endpoint=alarm_email,
-        )
-
         result["alarm_topic"] = alarm_topic
+
+        # Email subscription
+        if alarm_email:
+            aws.sns.TopicSubscription(
+                f"{name}-alarm-email",
+                topic=alarm_topic.arn,
+                protocol="email",
+                endpoint=alarm_email,
+            )
+
+        # Slack integration via AWS Chatbot
+        if slack_configured:
+            chatbot_role = aws.iam.Role(
+                f"{name}-chatbot-role",
+                name=f"{name}-chatbot-role",
+                assume_role_policy=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "chatbot.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    }
+                ),
+                tags=resource_tags,
+            )
+
+            aws.iam.RolePolicyAttachment(
+                f"{name}-chatbot-policy",
+                role=chatbot_role.name,
+                policy_arn="arn:aws:iam::aws:policy/AWSResourceExplorerReadOnlyAccess",
+            )
+
+            slack_channel = aws.chatbot.SlackChannelConfiguration(
+                f"{name}-slack-channel",
+                configuration_name=f"{name}-alarms",
+                iam_role_arn=chatbot_role.arn,
+                slack_channel_id=alarm_slack_channel_id,
+                slack_team_id=alarm_slack_workspace_id,
+                sns_topic_arns=[alarm_topic.arn],
+                logging_level="ERROR",
+                guardrail_policy_arns=["arn:aws:iam::aws:policy/ReadOnlyAccess"],
+                tags=resource_tags,
+            )
+
+            result["chatbot_role"] = chatbot_role
+            result["slack_channel"] = slack_channel
 
     # ALB Alarms
     _create_alb_alarms(

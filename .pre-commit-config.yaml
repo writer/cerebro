@@ -7,6 +7,11 @@ repos:
         language: system
         pass_filenames: false
         stages: [commit]
+      - id: commitlint
+        name: Lint commit message
+        entry: npx --no -- commitlint --edit
+        language: system
+        stages: [commit-msg]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.8
     hooks:

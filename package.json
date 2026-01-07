@@ -1,0 +1,18 @@
+{
+  "name": "cerebro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cerebro - Cloud Security Posture Management",
+  "scripts": {
+    "prepare": "husky || true",
+    "commitlint": "commitlint --edit"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
