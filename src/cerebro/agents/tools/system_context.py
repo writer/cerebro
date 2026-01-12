@@ -9,7 +9,7 @@ This complements get_org_context by adding infrastructure/ops awareness.
 
 import os
 import sys
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -392,7 +392,7 @@ class GetSystemContextTool(StructuredTool):
 
             from cerebro.core.models import AuditEvent
 
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            cutoff = datetime.now(UTC) - timedelta(hours=24)
             total_stmt = select(func.count(AuditEvent.event_id)).where(
                 AuditEvent.event_type.like(f"%{provider}%"),
                 AuditEvent.created_at >= cutoff,
@@ -418,8 +418,8 @@ class GetSystemContextTool(StructuredTool):
             import psutil
 
             process = psutil.Process()
-            return (datetime.now(timezone.utc) - datetime.fromtimestamp(
-                process.create_time(), tz=timezone.utc
+            return (datetime.now(UTC) - datetime.fromtimestamp(
+                process.create_time(), tz=UTC
             )).total_seconds()
         except Exception:
             return None

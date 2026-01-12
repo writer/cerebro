@@ -47,7 +47,7 @@ async def check_celery_workers(timeout: float = 2.0) -> tuple[bool, str | None]:
             loop.run_in_executor(None, _ping),
             timeout=timeout + 1.0,
         )
-    except (OSError, RuntimeError, TimeoutError, asyncio.TimeoutError) as exc:
+    except (OSError, RuntimeError, TimeoutError) as exc:
         return False, str(exc)
 
     if not result:
@@ -78,7 +78,7 @@ async def check_broker_connection(timeout: float = 2.0) -> tuple[bool, str | Non
             loop.run_in_executor(None, _connect),
             timeout=timeout + 1.0,
         )
-    except (OSError, RuntimeError, TimeoutError, asyncio.TimeoutError) as exc:
+    except (OSError, RuntimeError, TimeoutError) as exc:
         return False, str(exc)
 
     return True, None

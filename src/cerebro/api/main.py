@@ -375,10 +375,12 @@ app.add_middleware(
 
 # Add API versioning middleware
 from cerebro.api.versioning import APIVersionMiddleware
+
 app.add_middleware(APIVersionMiddleware)
 
 # Add rate limit headers middleware
 from cerebro.api.rate_limit import RateLimitMiddleware
+
 app.add_middleware(RateLimitMiddleware, default_limit=100, window_seconds=60)
 
 

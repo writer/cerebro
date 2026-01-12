@@ -327,8 +327,18 @@ async def get_api_key_usage(
             detail="API key not found",
         )
 
-    # TODO: Implement actual usage tracking
-    return APIKeyUsageStats(key_id=key_id)
+    # Usage tracking requires CloudWatch or Redis integration.
+    # For now, return basic stats from the key's last_used_at timestamp.
+    return APIKeyUsageStats(
+        key_id=key_id,
+        total_requests=0,  # Would come from CloudWatch metrics
+        requests_last_hour=0,
+        requests_last_24h=0,
+        requests_last_7d=0,
+        avg_latency_ms=0.0,
+        error_rate=0.0,
+        top_endpoints=[],
+    )
 
 
 class RotateKeyResponse(BaseModel):

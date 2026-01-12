@@ -867,7 +867,8 @@ class EnhancedGCPProvider(BaseProvider):
                         if instance.shielded_instance_config
                         else None,
                     }
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Failed to parse instance config: {e}")
                     continue
             return {}
         except Exception as e:

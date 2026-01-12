@@ -5,8 +5,8 @@ from uuid import UUID
 
 import structlog
 from sqlalchemy import and_, desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cerebro.core.models import (
     ConfigSnapshot,
