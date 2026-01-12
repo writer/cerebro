@@ -531,6 +531,8 @@ class DependencyGraph(BaseModel):
     dependency_graph: dict[str, Any]
     licenses: dict[str, Any]
     vulnerabilities: list[DependencyVulnerability]
+    malicious_packages: list[dict[str, Any]] | None = None
+    license_violations: list[dict[str, Any]] | None = None
 
 
 class FrontendObservationTelemetry(BaseModel):

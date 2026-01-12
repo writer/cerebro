@@ -41,6 +41,8 @@ async def test_authenticate_success(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_authenticate_wrong_account(monkeypatch):
+    from cerebro.providers.base import ProviderError
+
     session = MagicMock()
     sts = MagicMock()
     sts.get_caller_identity.return_value = {"Account": "000000000000"}
@@ -65,7 +67,8 @@ async def test_authenticate_wrong_account(monkeypatch):
         region="us-east-1",
     )
 
-    assert await provider.authenticate() is False
+    with pytest.raises(ProviderError, match="Expected account 123456789012"):
+        await provider.authenticate()
 
 
 @pytest.mark.asyncio
