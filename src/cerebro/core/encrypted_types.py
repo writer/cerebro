@@ -1,68 +1,22 @@
-"""SQLAlchemy type decorators for encrypted fields with envelope encryption.
+"""Encryption utilities for SQLAlchemy models with envelope encryption.
 
-DEPRECATION WARNING: The TypeDecorator approach (EncryptedString, EncryptedText) is
-deprecated and should not be used. Use explicit async get/set methods on models instead.
+This module provides helper classes and functions for encrypting sensitive
+fields in SQLAlchemy models using envelope encryption (data encrypted with
+a DEK, DEK encrypted with KEK).
 
 Recommended pattern:
-    class EmailConfig(Base):
+    class EmailConfig(Base, EncryptedFieldMixin):
         smtp_password: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
         smtp_password_dek: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
 
         async def get_smtp_password(self) -> Optional[str]:
-            if not self.smtp_password or not self.smtp_password_dek:
-                return None
-            service = get_encryption_service()
-            return await service.decrypt_secret(self.smtp_password, self.smtp_password_dek)
+            return await self.decrypt_field(self.smtp_password, self.smtp_password_dek)
 
         async def set_smtp_password(self, password: Optional[str]) -> None:
-            if password is None:
-                self.smtp_password = None
-                self.smtp_password_dek = None
-                return
-            service = get_encryption_service()
-            self.smtp_password, self.smtp_password_dek = await service.encrypt_secret(password)
+            self.smtp_password, self.smtp_password_dek = await self.encrypt_field(password)
 """
 
-import asyncio
-
-from sqlalchemy import LargeBinary, TypeDecorator
-
-from cerebro.core.encryption import (
-    get_encryption_service,
-)
-
-
-class EncryptedString(TypeDecorator):
-    """DEPRECATED: SQLAlchemy type for encrypted string fields.
-
-    DO NOT USE - This TypeDecorator has limitations:
-    - Runs in sync context, problematic for async encryption
-    - Cannot handle DEK storage properly
-    - Fallback to plaintext on error is insecure
-
-    Use explicit async get/set methods on models instead (see module docstring).
-    """
-
-    impl = LargeBinary
-    cache_ok = True
-
-    def process_bind_param(self, value: str | None, dialect) -> bytes | None:
-        raise NotImplementedError(
-            "EncryptedString TypeDecorator is deprecated. "
-            "Use explicit async get/set methods on models instead."
-        )
-
-    def process_result_value(self, value: bytes | None, dialect) -> str | None:
-        raise NotImplementedError(
-            "EncryptedString TypeDecorator is deprecated. "
-            "Use explicit async get/set methods on models instead."
-        )
-
-
-class EncryptedText(EncryptedString):
-    """DEPRECATED: Alias for EncryptedString. DO NOT USE."""
-
-    pass
+from cerebro.core.encryption import get_encryption_service
 
 
 def create_encrypted_field_pair(
@@ -164,64 +118,4 @@ class EncryptedFieldMixin:
         service = get_encryption_service()
         return await service.decrypt_secret(encrypted_data, encrypted_dek)
 
-    def decrypt_field_sync(
-        self, encrypted_data: bytes | None, encrypted_dek: bytes | None
-    ) -> str | None:
-        """Decrypt a field value synchronously.
 
-        Args:
-            encrypted_data: Encrypted data
-            encrypted_dek: Encrypted DEK
-
-        Returns:
-            Decrypted plaintext or None
-        """
-        if encrypted_data is None or encrypted_dek is None:
-            return None
-
-        loop = asyncio.get_event_loop()
-        service = get_encryption_service()
-        return loop.run_until_complete(
-            service.decrypt_secret(encrypted_data, encrypted_dek)
-        )
-
-
-def encrypt_field_helper(
-    value: str | None,
-) -> tuple[bytes | None, bytes | None]:
-    """DEPRECATED: Synchronous helper to encrypt a field value.
-
-    DO NOT USE - This function uses deprecated asyncio.get_event_loop().
-    Use async methods directly on models instead.
-
-    Args:
-        value: Plaintext value
-
-    Returns:
-        Tuple of (encrypted_data, encrypted_dek)
-    """
-    raise NotImplementedError(
-        "encrypt_field_helper is deprecated. "
-        "Use async model methods like 'await model.set_smtp_password(value)' instead."
-    )
-
-
-def decrypt_field_helper(
-    encrypted_data: bytes | None, encrypted_dek: bytes | None
-) -> str | None:
-    """DEPRECATED: Synchronous helper to decrypt a field value.
-
-    DO NOT USE - This function uses deprecated asyncio.get_event_loop().
-    Use async methods directly on models instead.
-
-    Args:
-        encrypted_data: Encrypted data
-        encrypted_dek: Encrypted DEK
-
-    Returns:
-        Decrypted plaintext
-    """
-    raise NotImplementedError(
-        "decrypt_field_helper is deprecated. "
-        "Use async model methods like 'await model.get_smtp_password()' instead."
-    )

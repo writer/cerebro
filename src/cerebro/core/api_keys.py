@@ -10,11 +10,14 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import structlog
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from cerebro.core.repositories.api_key import APIKeyRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -198,10 +201,22 @@ def validate_api_key_format(key: str) -> bool:
 
 
 class APIKeyService:
-    """Service for managing API keys."""
+    """Service for managing API keys.
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    Uses DynamoDB repository for persistent storage.
+    """
+
+    def __init__(self, repository: APIKeyRepository | None = None):
+        self._repository = repository
+
+    @property
+    def repository(self) -> APIKeyRepository:
+        """Lazy-load repository to avoid circular imports."""
+        if self._repository is None:
+            from cerebro.core.repositories.api_key import APIKeyRepository
+
+            self._repository = APIKeyRepository()
+        return self._repository
 
     async def create_key(
         self,
@@ -248,9 +263,8 @@ class APIKeyService:
             metadata=request.metadata,
         )
 
-        # Store in DynamoDB (using repository pattern)
-        # For now, we'll use a simple in-memory approach
-        # TODO: Implement DynamoDB storage via repository
+        # Store in DynamoDB via repository
+        await self.repository.create(api_key)
 
         logger.info(
             "api_key_created",
@@ -272,11 +286,28 @@ class APIKeyService:
         if not validate_api_key_format(key):
             return None
 
-        # TODO: Implement DynamoDB lookup via repository
-        # key_hash = hash_api_key(key)
-        # For now, return None (will be implemented with repository)
+        key_hash = hash_api_key(key)
+        api_key = await self.repository.get_by_hash(key_hash)
 
-        return None
+        if api_key is None:
+            return None
+
+        # Check if key is active
+        if not api_key.is_active:
+            logger.warning("api_key_inactive", key_id=str(api_key.key_id))
+            return None
+
+        # Check if key is revoked
+        if api_key.revoked_at is not None:
+            logger.warning("api_key_revoked", key_id=str(api_key.key_id))
+            return None
+
+        # Check if key is expired
+        if api_key.expires_at and api_key.expires_at < datetime.now(UTC):
+            logger.warning("api_key_expired", key_id=str(api_key.key_id))
+            return None
+
+        return api_key
 
     async def revoke_key(
         self,
@@ -285,14 +316,17 @@ class APIKeyService:
         revoked_by: UUID | None = None,
     ) -> bool:
         """Revoke an API key."""
-        # TODO: Implement DynamoDB update
-        logger.info(
-            "api_key_revoked",
-            key_id=str(key_id),
-            org_id=str(org_id),
-            revoked_by=str(revoked_by) if revoked_by else None,
-        )
-        return True
+        success = await self.repository.revoke(key_id, org_id, revoked_by)
+
+        if success:
+            logger.info(
+                "api_key_revoked",
+                key_id=str(key_id),
+                org_id=str(org_id),
+                revoked_by=str(revoked_by) if revoked_by else None,
+            )
+
+        return success
 
     async def list_keys(
         self,
@@ -301,17 +335,20 @@ class APIKeyService:
         limit: int = 100,
     ) -> list[APIKey]:
         """List API keys for an organization."""
-        # TODO: Implement DynamoDB query
-        return []
+        return await self.repository.list_by_org(org_id, include_revoked, limit)
+
+    async def get_key(self, key_id: UUID, org_id: UUID) -> APIKey | None:
+        """Get an API key by ID."""
+        return await self.repository.get(key_id, org_id)
 
     async def update_last_used(
         self,
         key_id: UUID,
+        org_id: UUID,
         ip_address: str | None = None,
     ) -> None:
         """Update the last used timestamp for a key."""
-        # TODO: Implement DynamoDB update (with conditional write for rate limiting)
-        pass
+        await self.repository.update_last_used(key_id, org_id, ip_address)
 
     async def rotate_key(
         self,
@@ -324,13 +361,60 @@ class APIKeyService:
 
         Returns the new key entity and the new key string.
         """
-        # TODO: Implement key rotation
-        # 1. Create new key with same scopes/settings
-        # 2. Mark old key for expiration after grace period
-        # 3. Return new key
-        raise NotImplementedError("Key rotation not yet implemented")
+        # Get the existing key
+        existing_key = await self.repository.get(key_id, org_id)
+        if existing_key is None:
+            raise ValueError(f"API key {key_id} not found")
+
+        if existing_key.revoked_at is not None:
+            raise ValueError("Cannot rotate a revoked key")
+
+        # Generate new key with same settings
+        full_key, key_hash, key_prefix = generate_api_key(existing_key.is_test_key)
+
+        new_key = APIKey(
+            org_id=org_id,
+            name=f"{existing_key.name} (rotated)",
+            description=existing_key.description,
+            key_hash=key_hash,
+            key_prefix=key_prefix,
+            scopes=existing_key.scopes,
+            rate_limit_per_minute=existing_key.rate_limit_per_minute,
+            is_test_key=existing_key.is_test_key,
+            expires_at=existing_key.expires_at,
+            created_by=existing_key.created_by,
+            metadata={
+                **existing_key.metadata,
+                "rotated_from": str(existing_key.key_id),
+                "rotated_at": datetime.now(UTC).isoformat(),
+            },
+        )
+
+        # Create the new key
+        await self.repository.create(new_key)
+
+        # Mark the old key for expiration after grace period
+        grace_expiry = datetime.now(UTC) + timedelta(hours=grace_period_hours)
+        await self.repository.update(
+            key_id,
+            org_id,
+            expires_at=grace_expiry,
+        )
+
+        logger.info(
+            "api_key_rotated",
+            old_key_id=str(key_id),
+            new_key_id=str(new_key.key_id),
+            org_id=str(org_id),
+            grace_period_hours=grace_period_hours,
+        )
+
+        return new_key, full_key
 
     async def get_usage_stats(self, key_id: UUID) -> APIKeyUsageStats:
-        """Get usage statistics for an API key."""
-        # TODO: Implement usage tracking via CloudWatch/DynamoDB
+        """Get usage statistics for an API key.
+
+        Note: Basic implementation. For production, integrate with CloudWatch
+        or a dedicated metrics store.
+        """
         return APIKeyUsageStats(key_id=key_id)

@@ -235,6 +235,7 @@ ignore = [
 "src/cerebro/compliance/frameworks/iso27001_provider.py" = ["E501"]
 "src/cerebro/compliance/frameworks/soc2_provider.py" = ["E501"]
 "src/cerebro/compliance/requirement_mapper.py" = ["E501"]
+"src/cerebro/compliance/reporting_analytics.py" = ["E501"]  # HTML template strings
 "src/cerebro/rules/library.py" = ["E501"]
 "src/cerebro/notifications/email.py" = ["E501", "RUF001"]  # ℹ️ emoji is intentional
 "src/cerebro/notifications/slack.py" = ["S105", "E501"]
