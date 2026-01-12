@@ -73,7 +73,7 @@ class Customer:
 class CustomerRegistry:
     """Registry managing customer accounts and success telemetry."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.customers: dict[str, Customer] = {}
 
     async def register_customer(
@@ -83,7 +83,7 @@ class CustomerRegistry:
         segment: CustomerSegment,
         created_by: str,
         org_id: str | None = None,
-        **customer_data,
+        **customer_data: Any,
     ) -> Customer:
         """Register a new customer with baseline success signals."""
 
@@ -138,7 +138,7 @@ class CustomerRegistry:
         logger.info("Registered customer: %s (%s)", name, customer_id)
         return customer
 
-    def _score_customer_health(self, customer: Customer):
+    def _score_customer_health(self, customer: Customer) -> None:
         """Calculate health and churn risk signals from usage and support data."""
 
         score = customer.product_usage_score
@@ -171,7 +171,7 @@ class CustomerRegistry:
         elif score > 0.85:
             customer.lifecycle_stage = CustomerLifecycleStage.EXPANSION
 
-    def _update_customer_metadata(self, customer: Customer, created_by: str):
+    def _update_customer_metadata(self, customer: Customer, created_by: str) -> None:
         """Generate structured metadata envelope for downstream analytics."""
 
         success_programs = customer.metadata.get("success_programs", [])
@@ -259,7 +259,7 @@ class CustomerRegistry:
             if customer.health_band == CustomerHealthBand.AT_RISK
         ]
 
-    def record_engagement(self, customer_id: str, when: datetime | None = None):
+    def record_engagement(self, customer_id: str, when: datetime | None = None) -> None:
         customer = self.customers.get(customer_id)
         if not customer:
             return
@@ -269,7 +269,7 @@ class CustomerRegistry:
         self._score_customer_health(customer)
         self._update_customer_metadata(customer, customer.account_manager)
 
-    def update_adoption_metrics(self, customer_id: str, metrics: dict[str, float]):
+    def update_adoption_metrics(self, customer_id: str, metrics: dict[str, float]) -> None:
         customer = self.customers.get(customer_id)
         if not customer:
             return

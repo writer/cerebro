@@ -99,11 +99,11 @@ class TestRegistry:
     control validation and continuous monitoring.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.tests: dict[str, SecurityTest] = {}
         self._initialize_default_tests()
 
-    def _initialize_default_tests(self):
+    def _initialize_default_tests(self) -> None:
         """Initialize default security tests."""
         default_tests = [
             # Access Control Tests

@@ -44,7 +44,7 @@ class AWSKMS(BaseKMS):
     async def encrypt(self, plaintext: bytes) -> bytes:
         """Encrypt data with AWS KMS."""
 
-        def _encrypt():
+        def _encrypt() -> bytes:
             try:
                 response = self._client.encrypt(KeyId=self.key_id, Plaintext=plaintext)
                 return response["CiphertextBlob"]
@@ -57,7 +57,7 @@ class AWSKMS(BaseKMS):
     async def decrypt(self, ciphertext: bytes) -> bytes:
         """Decrypt data with AWS KMS."""
 
-        def _decrypt():
+        def _decrypt() -> bytes:
             try:
                 response = self._client.decrypt(CiphertextBlob=ciphertext)
                 return response["Plaintext"]
@@ -70,7 +70,7 @@ class AWSKMS(BaseKMS):
     async def test_connection(self) -> bool:
         """Test AWS KMS connectivity and permissions."""
 
-        def _test():
+        def _test() -> bool:
             try:
                 # Test by describing the key
                 self._client.describe_key(KeyId=self.key_id)

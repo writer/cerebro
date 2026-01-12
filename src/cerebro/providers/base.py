@@ -9,7 +9,7 @@ entities we persist, while helpers such as :func:`authenticated_method` and
 
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
@@ -21,11 +21,11 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
-def authenticated_method(func):
+def authenticated_method(func: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator ensuring the provider is authenticated before executing a method."""
 
     @wraps(func)
-    async def wrapper(self, *args, **kwargs):
+    async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         if not self._is_authenticated:
             await self.authenticate()
         return await func(self, *args, **kwargs)
@@ -68,7 +68,7 @@ class AuthenticationMixin:
         """Provider name - to be overridden by subclass."""
         raise NotImplementedError("Subclass must implement name property")
 
-    async def safe_authenticate(self, auth_func, *args, **kwargs) -> bool:
+    async def safe_authenticate(self, auth_func: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
         """Common authentication pattern with error handling and logging."""
         async with self._auth_lock:
             if self._is_authenticated:
@@ -95,7 +95,7 @@ class AuthenticationMixin:
                 raise ProviderError(f"Authentication failed: {e}") from e
 
 
-    async def _run_auth_operation(self, auth_func, *args, **kwargs):
+    async def _run_auth_operation(self, auth_func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Run authentication operation in executor if needed."""
         if asyncio.iscoroutinefunction(auth_func):
             return await auth_func(*args, **kwargs)
@@ -103,7 +103,7 @@ class AuthenticationMixin:
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, auth_func, *args, **kwargs)
 
-    def reset_authentication(self):
+    def reset_authentication(self) -> None:
         """Reset authentication state (useful for credential rotation)."""
         self._is_authenticated = False
 
@@ -164,7 +164,7 @@ class IamPermission:
 class BaseProvider(AuthenticationMixin, ABC):
     """Base class for concrete provider implementations."""
 
-    def __init__(self, account_id: UUID, **kwargs):
+    def __init__(self, account_id: UUID, **kwargs: Any) -> None:
         """Initialize provider."""
         super().__init__(**kwargs)
         self.account_id = account_id

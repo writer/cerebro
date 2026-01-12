@@ -1,6 +1,7 @@
 """Metrics for data collection operations."""
 
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 
 import structlog
@@ -99,7 +100,7 @@ class CollectionMetrics:
 
     @staticmethod
     @contextmanager
-    def time_collection(provider: str, account_id: str, operation: str):
+    def time_collection(provider: str, account_id: str, operation: str) -> Generator[None, None, None]:
         """Context manager to time collection operations."""
         concurrent_collections_active.inc()
         start_time = time.time()
@@ -122,7 +123,7 @@ class CollectionMetrics:
 
     @staticmethod
     @contextmanager
-    def time_bulk_operation(operation: str, item_count: int):
+    def time_bulk_operation(operation: str, item_count: int) -> Generator[None, None, None]:
         """Context manager to time bulk database operations."""
         # Categorize batch size for better metrics
         if item_count < 100:
@@ -154,7 +155,7 @@ class CollectionMetrics:
 
     @staticmethod
     @contextmanager
-    def time_provider_api(provider: str, endpoint: str):
+    def time_provider_api(provider: str, endpoint: str) -> Generator[None, None, None]:
         """Context manager to time provider API calls."""
         start_time = time.time()
         status_code = "unknown"
@@ -188,19 +189,19 @@ class CollectionMetrics:
     @staticmethod
     def record_configs_collected(
         provider: str, account_id: str, resource_type: str, count: int
-    ):
+    ) -> None:
         """Record configuration snapshots collected."""
         config_snapshots_collected.labels(
             provider=provider, account_id=account_id, resource_type=resource_type
         ).inc(count)
 
     @staticmethod
-    def record_iam_edges_collected(provider: str, account_id: str, count: int):
+    def record_iam_edges_collected(provider: str, account_id: str, count: int) -> None:
         """Record IAM edges collected."""
         iam_edges_collected.labels(provider=provider, account_id=account_id).inc(count)
 
     @staticmethod
-    def set_queue_depth(queue_type: str, depth: int):
+    def set_queue_depth(queue_type: str, depth: int) -> None:
         """Set collection queue depth."""
         collection_queue_depth.labels(queue_type=queue_type).set(depth)
 

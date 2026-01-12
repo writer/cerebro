@@ -108,7 +108,7 @@ class VendorRegistry:
     Tracks vendor security profiles, risk assessments, and compliance status.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.vendors: dict[str, Vendor] = {}
 
     async def register_vendor(
@@ -118,7 +118,7 @@ class VendorRegistry:
         category: VendorCategory,
         created_by: str,
         org_id: str | None = None,
-        **vendor_data,
+        **vendor_data: Any,
     ) -> Vendor:
         """Register a new vendor in the system."""
         vendor_id = (
@@ -181,7 +181,7 @@ class VendorRegistry:
 
         return vendor
 
-    async def _assess_vendor_risk(self, vendor: Vendor):
+    async def _assess_vendor_risk(self, vendor: Vendor) -> None:
         """Perform initial vendor risk assessment."""
         risk_score = 0.5  # Base risk
 
@@ -240,7 +240,7 @@ class VendorRegistry:
         else:
             vendor.risk_level = VendorRiskLevel.LOW
 
-    def _update_vendor_metadata(self, vendor: Vendor):
+    def _update_vendor_metadata(self, vendor: Vendor) -> None:
         """Generate rich metadata envelope for vendor consumers."""
 
         lifecycle_stage = self._determine_lifecycle_stage(vendor)

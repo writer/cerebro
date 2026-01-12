@@ -423,7 +423,7 @@ class EvidenceStore:
                 return metadata
         return None
 
-    async def _store_metadata(self, metadata: EvidenceMetadata):
+    async def _store_metadata(self, metadata: EvidenceMetadata) -> None:
         """Store evidence metadata to disk."""
         metadata_file = self.metadata_path / f"{metadata.id}.json"
         async with aiofiles.open(metadata_file, "w") as f:
@@ -477,7 +477,7 @@ class EvidenceStore:
         except Exception:
             return False
 
-    def _load_signing_key(self, key_path: str):
+    def _load_signing_key(self, key_path: str) -> None:
         """Load RSA signing key."""
         key_file = Path(key_path)
         if not key_file.exists():

@@ -231,17 +231,17 @@ class SecurityTable(ABC):
 
         # Type-specific comparisons
         if operator == "=":
-            return resource_value == filter_value
+            return bool(resource_value == filter_value)
         elif operator == "!=":
-            return resource_value != filter_value
+            return bool(resource_value != filter_value)
         elif operator == ">":
-            return resource_value > filter_value
+            return bool(resource_value > filter_value)
         elif operator == ">=":
-            return resource_value >= filter_value
+            return bool(resource_value >= filter_value)
         elif operator == "<":
-            return resource_value < filter_value
+            return bool(resource_value < filter_value)
         elif operator == "<=":
-            return resource_value <= filter_value
+            return bool(resource_value <= filter_value)
         elif operator in {"LIKE", "ILIKE"}:
             pattern = str(filter_value).lower()
             value = str(resource_value).lower()

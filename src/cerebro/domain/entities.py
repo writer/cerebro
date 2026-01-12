@@ -48,7 +48,7 @@ class ResourceEntity:
     metadata: dict[str, Any] = field(default_factory=dict)
     tags: dict[str, str] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate resource entity."""
         if not self.external_id or not self.resource_type or not self.provider:
             raise ValueError("external_id, resource_type, and provider are required")
@@ -66,7 +66,7 @@ class PrincipalEntity:
     is_human: bool | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate principal entity."""
         if not self.external_id or not self.provider:
             raise ValueError("external_id and provider are required")
@@ -87,7 +87,7 @@ class ConfigEntity:
     collector_version: str = "1.0.0"
     config_hash: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate config entity."""
         if not self.resource_external_id or not self.normalized_config:
             raise ValueError("resource_external_id and normalized_config are required")
@@ -106,7 +106,7 @@ class IamPermissionEntity:
     is_admin: bool = False
     confidence: float = 1.0  # Confidence score for inferred permissions
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate IAM permission."""
         if not self.principal_external_id or not self.permission:
             raise ValueError("principal_external_id and permission are required")
@@ -174,7 +174,7 @@ class RuleEntity:
     is_active: bool = True
     version: int = 1
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate rule entity."""
         if not self.name or not self.expression:
             raise ValueError("name and expression are required")

@@ -143,7 +143,7 @@ async def iterate_sync_iterator(
         if item is _STOP:
             break
 
-        yield item  # type: ignore[misc]
+        yield item
 
 
 def partial(operation: Callable[..., T], *args: Any, **kwargs: Any) -> Callable[[], T]:

@@ -579,7 +579,7 @@ class PolicyManagementSystem:
             },
         }
 
-    async def _create_attestation_requirements(self, policy: PolicyDocument):
+    async def _create_attestation_requirements(self, policy: PolicyDocument) -> None:
         """Create attestation requirements for all applicable employees."""
 
         # Get target employees
@@ -613,7 +613,7 @@ class PolicyManagementSystem:
 
         return approvers
 
-    def _load_default_templates(self):
+    def _load_default_templates(self) -> None:
         """Load default policy templates."""
 
         templates = [
@@ -681,7 +681,7 @@ Usage may be monitored and logged for security purposes.
             self._templates[template.id] = template
 
     # Employee management methods
-    def add_employee(self, employee: Employee):
+    def add_employee(self, employee: Employee) -> None:
         """Add an employee to the system."""
         self._employees[employee.id] = employee
 

@@ -16,14 +16,14 @@ def get_dialect_name(db: Any) -> str:
 
     bind = getattr(db, "bind", None)
     if bind is not None and getattr(bind, "dialect", None) is not None:
-        return bind.dialect.name
+        return str(bind.dialect.name)
 
     get_bind = getattr(db, "get_bind", None)
     if callable(get_bind):
         try:
             bind = get_bind()
             if bind is not None and getattr(bind, "dialect", None) is not None:
-                return bind.dialect.name
+                return str(bind.dialect.name)
         except Exception:
             pass
 

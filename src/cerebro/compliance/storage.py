@@ -33,7 +33,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
     with proper dependency injection and clean architecture.
     """
 
-    def __init__(self, storage_path: str, crypto_service=None):
+    def __init__(self, storage_path: str, crypto_service: Any = None) -> None:
         """
         Initialize file-based repository.
 
@@ -54,7 +54,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
         self._metadata_cache: dict[str, BaseEvidenceMetadata] = {}
         self._bundle_cache: dict[str, EvidenceBundle] = {}
 
-    def _ensure_directories(self):
+    def _ensure_directories(self) -> None:
         """Ensure storage directory structure exists."""
         for path in [
             self.storage_path,

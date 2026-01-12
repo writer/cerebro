@@ -139,8 +139,8 @@ class BaseEvidenceMetadata:
     parent_bundle_id: str | None = None
 
     def add_custody_entry(
-        self, action: str, actor_id: str, actor_type: str = "user", **details
-    ):
+        self, action: str, actor_id: str, actor_type: str = "user", **details: Any
+    ) -> None:
         """Add an entry to the chain of custody."""
         entry = ChainOfCustodyEntry(
             action=action,
@@ -360,7 +360,7 @@ class EvidenceBundle:
     legal_hold: bool = False
     destruction_date: datetime | None = None
 
-    def add_evidence(self, evidence_id: str):
+    def add_evidence(self, evidence_id: str) -> None:
         """Add evidence to bundle."""
         if evidence_id not in self.evidence_ids:
             self.evidence_ids.append(evidence_id)
@@ -371,7 +371,7 @@ class EvidenceBundle:
         self.bundle_hash = hashlib.sha256(combined.encode()).hexdigest()
         return self.bundle_hash
 
-    def seal_bundle(self):
+    def seal_bundle(self) -> None:
         """Mark bundle as sealed (immutable)."""
         self.sealed = True
         self.manifest["sealed_at"] = datetime.utcnow().isoformat()
@@ -400,7 +400,7 @@ class EvidenceRepository(ABC):
         pass
 
     @abstractmethod
-    async def search_evidence(self, **filters) -> list[BaseEvidenceMetadata]:
+    async def search_evidence(self, **filters: Any) -> list[BaseEvidenceMetadata]:
         """Search evidence by filters."""
         pass
 
@@ -417,7 +417,7 @@ class EvidenceRepository(ABC):
 
 # Factory functions for creating evidence metadata
 def create_compliance_evidence(
-    control_id: str, framework_name: str, **kwargs
+    control_id: str, framework_name: str, **kwargs: Any
 ) -> ComplianceEvidenceMetadata:
     """Create compliance evidence metadata."""
     metadata = ComplianceEvidenceMetadata(
@@ -430,7 +430,7 @@ def create_compliance_evidence(
     return metadata
 
 
-def create_forensic_evidence(incident_id: str, **kwargs) -> ForensicEvidenceMetadata:
+def create_forensic_evidence(incident_id: str, **kwargs: Any) -> ForensicEvidenceMetadata:
     """Create forensic evidence metadata."""
     metadata = ForensicEvidenceMetadata(
         incident_id=incident_id,
@@ -442,7 +442,7 @@ def create_forensic_evidence(incident_id: str, **kwargs) -> ForensicEvidenceMeta
     return metadata
 
 
-def create_audit_evidence(audit_firm: str, **kwargs) -> AuditEvidenceMetadata:
+def create_audit_evidence(audit_firm: str, **kwargs: Any) -> AuditEvidenceMetadata:
     """Create audit evidence metadata."""
     metadata = AuditEvidenceMetadata(
         audit_firm=audit_firm,
@@ -605,4 +605,6 @@ def metadata_to_dict(metadata: BaseEvidenceMetadata) -> dict[str, Any]:
         return value
 
     raw = asdict(metadata)
-    return _convert(raw)
+    result = _convert(raw)
+    # asdict always returns a dict, so _convert will return a dict
+    return result  # type: ignore[return-value]

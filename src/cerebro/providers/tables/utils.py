@@ -1,6 +1,7 @@
 """Utility functions for provider tables."""
 
 from datetime import datetime
+from typing import Any
 
 import structlog
 
@@ -69,7 +70,7 @@ def validate_string_input(
         return None
 
 
-def safe_int_conversion(value, field_name: str, default: int = 0) -> int:
+def safe_int_conversion(value: Any, field_name: str, default: int = 0) -> int:
     """
     Safely convert value to integer.
 
@@ -91,7 +92,7 @@ def safe_int_conversion(value, field_name: str, default: int = 0) -> int:
         return default
 
 
-def safe_bool_conversion(value, field_name: str, default: bool = False) -> bool:
+def safe_bool_conversion(value: Any, field_name: str, default: bool = False) -> bool:
     """
     Safely convert value to boolean.
 
