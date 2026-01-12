@@ -41,6 +41,7 @@ from .routers import (
     compliance_unified,
     customers,
     email,
+    executive_dashboard,
     findings,
     forklift_webhooks,
     identity_governance,
@@ -515,6 +516,13 @@ app.include_router(
 
 app.include_router(
     analytics.router, prefix=f"{settings.api_v1_prefix}/analytics", tags=["analytics"]
+)
+
+# Executive Dashboard API
+app.include_router(
+    executive_dashboard.router,
+    prefix=f"{settings.api_v1_prefix}",
+    tags=["executive", "dashboard"],
 )
 
 app.include_router(websockets.router, tags=["websockets"])

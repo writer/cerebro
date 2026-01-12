@@ -39,11 +39,13 @@ from ..framework_registry import (
     register_framework_provider,
 )
 from .iso27001_provider import ISO27001FrameworkProvider
+from .nist_csf_provider import NISTCSFFrameworkProvider
 from .soc2_provider import SOC2FrameworkProvider
 
 # Register all providers
 register_framework_provider(SOC2FrameworkProvider())
 register_framework_provider(ISO27001FrameworkProvider())
+register_framework_provider(NISTCSFFrameworkProvider())
 
 __all__ = [
     "ComplianceControl",
@@ -52,6 +54,7 @@ __all__ = [
     "EvidenceType",
     "ISO27001Framework",
     "ISO27001FrameworkProvider",
+    "NISTCSFFrameworkProvider",
     "PCIDSSFramework",
     "SOC2Framework",
     "SOC2FrameworkProvider",
