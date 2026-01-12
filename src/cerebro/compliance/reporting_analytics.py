@@ -946,63 +946,11 @@ class ComplianceAnalytics:
         except ImportError:
             pass
 
-        # Last resort: return HTML wrapped in a simple text-based PDF structure
-        # This is a minimal PDF that embeds HTML content as text
-        html_bytes = html_content.encode("utf-8")
-        return self._create_minimal_pdf(html_bytes, report_data.get("title", "Compliance Report"))
-
-    def _create_minimal_pdf(self, content: bytes, title: str) -> bytes:
-        """Create minimal PDF structure with text content.
-
-        This is a fallback when proper PDF libraries are not available.
-        """
-        # Basic PDF structure
-        pdf_content = f"""%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]
-   /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj
-4 0 obj
-<< /Length 200 >>
-stream
-BT
-/F1 16 Tf
-50 750 Td
-({title}) Tj
-0 -30 Td
-/F1 10 Tf
-(Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}) Tj
-0 -20 Td
-(This report requires a PDF viewer that supports embedded content.) Tj
-0 -20 Td
-(For full formatting, install weasyprint or xhtml2pdf.) Tj
-ET
-endstream
-endobj
-5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
-endobj
-xref
-0 6
-0000000000 65535 f
-0000000009 00000 n
-0000000058 00000 n
-0000000115 00000 n
-0000000266 00000 n
-0000000518 00000 n
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-595
-%%EOF
-"""
-        return pdf_content.encode("latin-1")
+        # No PDF library available - raise an error with helpful message
+        raise ImportError(
+            "PDF export requires weasyprint or xhtml2pdf. "
+            "Install with: pip install weasyprint or pip install xhtml2pdf"
+        )
 
     def _export_to_excel(
         self, report_data: dict[str, Any]
