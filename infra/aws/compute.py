@@ -88,10 +88,8 @@ def create_ecs_cluster(
             )
         ],
         health_check_grace_period_seconds=120,
-        deployment_configuration=aws.ecs.ServiceDeploymentConfigurationArgs(
-            maximum_percent=200,
-            minimum_healthy_percent=100,
-        ),
+        deployment_maximum_percent=200,
+        deployment_minimum_healthy_percent=100,
         tags={"Name": f"{name}-service"},
     )
 

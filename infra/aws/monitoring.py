@@ -27,7 +27,7 @@ def create_monitoring(
     # High error rate alarm
     aws.cloudwatch.MetricAlarm(
         f"{name}-5xx-alarm",
-        alarm_name=f"{name}-high-5xx-errors",
+        name=f"{name}-high-5xx-errors",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="HTTPCode_Target_5XX_Count",
@@ -47,7 +47,7 @@ def create_monitoring(
     # High latency alarm
     aws.cloudwatch.MetricAlarm(
         f"{name}-latency-alarm",
-        alarm_name=f"{name}-high-latency",
+        name=f"{name}-high-latency",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=3,
         metric_name="TargetResponseTime",
@@ -67,7 +67,7 @@ def create_monitoring(
     # Unhealthy targets alarm
     aws.cloudwatch.MetricAlarm(
         f"{name}-unhealthy-alarm",
-        alarm_name=f"{name}-unhealthy-targets",
+        name=f"{name}-unhealthy-targets",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=2,
         metric_name="UnHealthyHostCount",
@@ -87,7 +87,7 @@ def create_monitoring(
     # ECS CPU alarm
     aws.cloudwatch.MetricAlarm(
         f"{name}-cpu-alarm",
-        alarm_name=f"{name}-high-cpu",
+        name=f"{name}-high-cpu",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=3,
         metric_name="CPUUtilization",
@@ -107,7 +107,7 @@ def create_monitoring(
     # ECS Memory alarm
     aws.cloudwatch.MetricAlarm(
         f"{name}-memory-alarm",
-        alarm_name=f"{name}-high-memory",
+        name=f"{name}-high-memory",
         comparison_operator="GreaterThanThreshold",
         evaluation_periods=3,
         metric_name="MemoryUtilization",
