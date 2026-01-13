@@ -201,6 +201,22 @@ func TestTicket_Fields(t *testing.T) {
 	if len(ticket.FindingIDs) != 2 {
 		t.Error("finding IDs field incorrect")
 	}
+
+	if len(ticket.AssetIDs) != 1 {
+		t.Error("asset IDs field incorrect")
+	}
+
+	if ticket.ExternalURL != "https://jira.example.com/JIRA-123" {
+		t.Error("external URL field incorrect")
+	}
+
+	if ticket.CreatedAt.IsZero() {
+		t.Error("created at field incorrect")
+	}
+
+	if ticket.UpdatedAt.IsZero() {
+		t.Error("updated at field incorrect")
+	}
 }
 
 func TestTicketUpdate_Fields(t *testing.T) {
@@ -215,6 +231,10 @@ func TestTicketUpdate_Fields(t *testing.T) {
 
 	if *update.Status != "in_progress" {
 		t.Error("status field incorrect")
+	}
+
+	if *update.Priority != "critical" {
+		t.Error("priority field incorrect")
 	}
 
 	if len(update.Labels) != 1 {
@@ -235,6 +255,10 @@ func TestTicketFilter_Fields(t *testing.T) {
 
 	if filter.Status != "open" {
 		t.Error("status field incorrect")
+	}
+
+	if filter.Priority != "high" {
+		t.Error("priority field incorrect")
 	}
 
 	if filter.Limit != 10 {

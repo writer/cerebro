@@ -75,7 +75,7 @@ func (c *SyncClient) SyncFromCloudQuery(ctx context.Context) ([]SyncResult, erro
 		}
 	}
 
-	var results []SyncResult
+	results := make([]SyncResult, 0, len(tables))
 	for _, table := range tables {
 		start := time.Now()
 		result := SyncResult{
@@ -166,8 +166,8 @@ func (c *SyncClient) insertRows(ctx context.Context, table string, rows []map[st
 }
 
 func buildInsertParams(row map[string]interface{}) ([]string, []interface{}) {
-	var cols []string
-	var vals []interface{}
+	cols := make([]string, 0, len(row))
+	vals := make([]interface{}, 0, len(row))
 
 	for k, v := range row {
 		cols = append(cols, k)
@@ -203,7 +203,7 @@ func (c *SyncClient) QueryTable(ctx context.Context, table, where string, limit 
 		return nil, err
 	}
 
-	var results []map[string]interface{}
+	var results []map[string]interface{} //nolint:prealloc // size unknown until iteration
 	for rows.Next() {
 		values := make([]interface{}, len(columns))
 		valuePtrs := make([]interface{}, len(columns))
@@ -283,7 +283,7 @@ func (c *SyncClient) ListAvailableTables(ctx context.Context) ([]string, error) 
 	}
 	defer rows.Close()
 
-	var tables []string
+	var tables []string //nolint:prealloc // size unknown until iteration
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {

@@ -83,7 +83,11 @@ func TestServer_Handler(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL)
+	req, err := http.NewRequestWithContext(context.Background(), "GET", ts.URL, nil)
+	if err != nil {
+		t.Fatalf("create request failed: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}

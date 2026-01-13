@@ -304,6 +304,12 @@ func TestTool(t *testing.T) {
 	if tool.Name != "test_tool" {
 		t.Errorf("expected name 'test_tool', got '%s'", tool.Name)
 	}
+	if tool.Description != "A test tool" {
+		t.Errorf("expected description 'A test tool', got '%s'", tool.Description)
+	}
+	if tool.Parameters["type"] != "object" {
+		t.Error("expected parameters type to be 'object'")
+	}
 	if !tool.RequiresApproval {
 		t.Error("expected RequiresApproval to be true")
 	}
@@ -334,8 +340,14 @@ func TestSessionContext(t *testing.T) {
 	if len(ctx.FindingIDs) != 2 {
 		t.Errorf("expected 2 finding IDs, got %d", len(ctx.FindingIDs))
 	}
+	if len(ctx.AssetIDs) != 1 {
+		t.Errorf("expected 1 asset ID, got %d", len(ctx.AssetIDs))
+	}
 	if ctx.Investigation.Severity != "high" {
 		t.Errorf("expected severity 'high', got '%s'", ctx.Investigation.Severity)
+	}
+	if ctx.Metadata["source"] != "alert" {
+		t.Error("expected metadata source to be 'alert'")
 	}
 }
 
@@ -357,6 +369,12 @@ func TestInvestigation(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
+	if inv.ID != "inv-123" {
+		t.Errorf("expected ID 'inv-123', got '%s'", inv.ID)
+	}
+	if inv.Description != "Suspicious activity detected" {
+		t.Errorf("expected description 'Suspicious activity detected', got '%s'", inv.Description)
+	}
 	if inv.Severity != "critical" {
 		t.Errorf("expected severity 'critical', got '%s'", inv.Severity)
 	}

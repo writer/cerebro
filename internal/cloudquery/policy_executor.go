@@ -503,7 +503,7 @@ func (pe *PolicyExecutor) GetSummary(results []PolicyResult) []PolicySummary {
 		}
 	}
 
-	var summaries []PolicySummary
+	summaries := make([]PolicySummary, 0, len(summaryMap))
 	for _, s := range summaryMap {
 		if s.TotalChecked > 0 {
 			s.PassRate = float64(s.Passed) / float64(s.TotalChecked) * 100
@@ -550,7 +550,7 @@ func (pe *PolicyExecutor) runSQL(ctx context.Context, query string) ([]PolicyRes
 	}
 	defer rows.Close()
 
-	var results []PolicyResult
+	var results []PolicyResult //nolint:prealloc // size unknown until iteration
 	for rows.Next() {
 		var r PolicyResult
 		if err := rows.Scan(&r.Framework, &r.CheckID, &r.Title, &r.AccountID, &r.ResourceID, &r.Status); err != nil {

@@ -444,7 +444,7 @@ func GetAllTableDefinitions() map[string]TableDefinition {
 
 // GenerateCreateTableSQL generates Snowflake CREATE TABLE statement
 func GenerateCreateTableSQL(table TableDefinition) string {
-	var cols []string
+	cols := make([]string, 0, len(table.Columns)+1) // +1 for _cq_sync_time
 	var pks []string
 
 	for _, col := range table.Columns {
