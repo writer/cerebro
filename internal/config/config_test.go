@@ -7,9 +7,9 @@ import (
 
 func TestLoadDefaults(t *testing.T) {
 	os.Clearenv()
-	
+
 	cfg := Load()
-	
+
 	if cfg.Port != 8080 {
 		t.Errorf("expected default port 8080, got %d", cfg.Port)
 	}

@@ -29,15 +29,15 @@ type Node struct {
 type NodeType string
 
 const (
-	NodeTypeIdentity      NodeType = "identity"
-	NodeTypeRole          NodeType = "role"
-	NodeTypeResource      NodeType = "resource"
-	NodeTypeNetwork       NodeType = "network"
-	NodeTypeCompute       NodeType = "compute"
-	NodeTypeStorage       NodeType = "storage"
-	NodeTypeDatabase      NodeType = "database"
-	NodeTypeSecret        NodeType = "secret"
-	NodeTypeExternal      NodeType = "external"
+	NodeTypeIdentity NodeType = "identity"
+	NodeTypeRole     NodeType = "role"
+	NodeTypeResource NodeType = "resource"
+	NodeTypeNetwork  NodeType = "network"
+	NodeTypeCompute  NodeType = "compute"
+	NodeTypeStorage  NodeType = "storage"
+	NodeTypeDatabase NodeType = "database"
+	NodeTypeSecret   NodeType = "secret"
+	NodeTypeExternal NodeType = "external"
 )
 
 type RiskLevel string
@@ -77,24 +77,24 @@ const (
 
 // AttackPath represents a discovered attack path
 type AttackPath struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Severity    RiskLevel `json:"severity"`
-	Score       int      `json:"score"`
-	Nodes       []string `json:"nodes"`
-	Edges       []string `json:"edges"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	Severity    RiskLevel    `json:"severity"`
+	Score       int          `json:"score"`
+	Nodes       []string     `json:"nodes"`
+	Edges       []string     `json:"edges"`
 	Steps       []AttackStep `json:"steps"`
-	Remediation []string `json:"remediation"`
+	Remediation []string     `json:"remediation"`
 }
 
 type AttackStep struct {
-	Order       int      `json:"order"`
-	Action      string   `json:"action"`
-	Source      string   `json:"source"`
-	Target      string   `json:"target"`
-	Technique   string   `json:"technique,omitempty"` // MITRE ATT&CK technique
-	Description string   `json:"description"`
+	Order       int    `json:"order"`
+	Action      string `json:"action"`
+	Source      string `json:"source"`
+	Target      string `json:"target"`
+	Technique   string `json:"technique,omitempty"` // MITRE ATT&CK technique
+	Description string `json:"description"`
 }
 
 func NewGraph() *Graph {
@@ -132,7 +132,7 @@ func (g *Graph) GetEdges(nodeID string) []*Edge {
 func (g *Graph) GetAllNodes() []*Node {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	
+
 	nodes := make([]*Node, 0, len(g.nodes))
 	for _, n := range g.nodes {
 		nodes = append(nodes, n)
@@ -142,9 +142,9 @@ func (g *Graph) GetAllNodes() []*Node {
 
 // PathFinder discovers attack paths in the graph
 type PathFinder struct {
-	graph      *Graph
-	maxDepth   int
-	highValue  map[string]bool // high-value target node IDs
+	graph     *Graph
+	maxDepth  int
+	highValue map[string]bool // high-value target node IDs
 }
 
 func NewPathFinder(graph *Graph, maxDepth int) *PathFinder {
@@ -164,14 +164,14 @@ func (pf *PathFinder) SetHighValueTargets(nodeIDs []string) {
 // FindPaths discovers attack paths from external entry points to high-value targets
 func (pf *PathFinder) FindPaths(ctx context.Context) []*AttackPath {
 	var paths []*AttackPath
-	
+
 	// Find entry points (external-facing or compromised nodes)
 	entryPoints := pf.findEntryPoints()
-	
+
 	for _, entry := range entryPoints {
 		// BFS to find paths to high-value targets
 		discovered := pf.bfs(entry.ID, pf.maxDepth)
-		
+
 		for targetID, path := range discovered {
 			if pf.highValue[targetID] {
 				attackPath := pf.buildAttackPath(entry, path)
@@ -181,37 +181,37 @@ func (pf *PathFinder) FindPaths(ctx context.Context) []*AttackPath {
 			}
 		}
 	}
-	
+
 	// Sort by severity/score
 	sort.Slice(paths, func(i, j int) bool {
 		return paths[i].Score > paths[j].Score
 	})
-	
+
 	return paths
 }
 
 func (pf *PathFinder) findEntryPoints() []*Node {
 	var entries []*Node
-	
+
 	for _, node := range pf.graph.nodes {
 		// External-facing resources
 		if node.Type == NodeTypeExternal {
 			entries = append(entries, node)
 			continue
 		}
-		
+
 		// Public resources
 		if public, ok := node.Properties["public"].(bool); ok && public {
 			entries = append(entries, node)
 			continue
 		}
-		
+
 		// Resources with critical findings
 		if node.Risk == RiskCritical && len(node.Findings) > 0 {
 			entries = append(entries, node)
 		}
 	}
-	
+
 	return entries
 }
 
@@ -223,27 +223,27 @@ func (pf *PathFinder) bfs(startID string, maxDepth int) map[string][]string {
 		path   []string
 		depth  int
 	}{{startID, []string{startID}, 0}}
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		if current.depth >= maxDepth {
 			continue
 		}
-		
+
 		if visited[current.nodeID] {
 			continue
 		}
 		visited[current.nodeID] = true
-		
+
 		edges := pf.graph.GetEdges(current.nodeID)
 		for _, edge := range edges {
 			newPath := append([]string{}, current.path...)
 			newPath = append(newPath, edge.Target)
-			
+
 			discovered[edge.Target] = newPath
-			
+
 			queue = append(queue, struct {
 				nodeID string
 				path   []string
@@ -251,7 +251,7 @@ func (pf *PathFinder) bfs(startID string, maxDepth int) map[string][]string {
 			}{edge.Target, newPath, current.depth + 1})
 		}
 	}
-	
+
 	return discovered
 }
 
@@ -259,55 +259,55 @@ func (pf *PathFinder) buildAttackPath(entry *Node, nodePath []string) *AttackPat
 	if len(nodePath) < 2 {
 		return nil
 	}
-	
+
 	path := &AttackPath{
 		ID:    entry.ID + "-" + nodePath[len(nodePath)-1],
 		Nodes: nodePath,
 		Steps: make([]AttackStep, 0),
 	}
-	
+
 	// Build steps from edges
 	var edgeIDs []string
 	score := 0
-	
+
 	for i := 0; i < len(nodePath)-1; i++ {
 		sourceID := nodePath[i]
 		targetID := nodePath[i+1]
-		
+
 		edges := pf.graph.GetEdges(sourceID)
 		for _, edge := range edges {
 			if edge.Target == targetID {
 				edgeIDs = append(edgeIDs, edge.ID)
-				
+
 				sourceNode, _ := pf.graph.GetNode(sourceID)
 				targetNode, _ := pf.graph.GetNode(targetID)
-				
+
 				step := AttackStep{
 					Order:  i + 1,
 					Action: string(edge.Type),
 					Source: sourceNode.Name,
 					Target: targetNode.Name,
 				}
-				
+
 				// Add MITRE technique mapping
 				step.Technique = mapToMITRE(edge.Type, targetNode.Type)
 				step.Description = describeStep(edge, sourceNode, targetNode)
-				
+
 				path.Steps = append(path.Steps, step)
-				
+
 				// Calculate score based on edge risk
 				score += riskScore(edge.Risk)
 			}
 		}
 	}
-	
+
 	path.Edges = edgeIDs
 	path.Score = score
 	path.Severity = scoreSeverity(score)
 	path.Title = generateTitle(path)
 	path.Description = generateDescription(path)
 	path.Remediation = generateRemediation(path)
-	
+
 	return path
 }
 
@@ -320,7 +320,7 @@ func mapToMITRE(edgeType EdgeType, _ NodeType) string {
 		EdgeTypeNetworkAccess: "T1021", // Remote Services
 		EdgeTypeExposedTo:     "T1190", // Exploit Public-Facing Application
 	}
-	
+
 	if technique, ok := mapping[edgeType]; ok {
 		return technique
 	}
@@ -380,13 +380,13 @@ func generateTitle(path *AttackPath) string {
 }
 
 func generateDescription(path *AttackPath) string {
-	return "This attack path shows how an attacker could reach a high-value target through " + 
-		   string(rune(len(path.Steps))) + " steps"
+	return "This attack path shows how an attacker could reach a high-value target through " +
+		string(rune(len(path.Steps))) + " steps"
 }
 
 func generateRemediation(path *AttackPath) []string {
 	var remediation []string
-	
+
 	for _, step := range path.Steps {
 		switch step.Action {
 		case string(EdgeTypeCanAssume):
@@ -397,7 +397,7 @@ func generateRemediation(path *AttackPath) []string {
 			remediation = append(remediation, "Review network security group rules")
 		}
 	}
-	
+
 	// Deduplicate
 	seen := make(map[string]bool)
 	var unique []string
@@ -407,6 +407,6 @@ func generateRemediation(path *AttackPath) []string {
 			unique = append(unique, r)
 		}
 	}
-	
+
 	return unique
 }

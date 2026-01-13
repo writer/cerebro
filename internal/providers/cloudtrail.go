@@ -197,13 +197,9 @@ func (c *CloudTrailProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncR
 	}
 
 	// Sync IAM changes
-	iamChanges, err := c.syncIAMChanges(ctx)
-	if err != nil {
-		result.Errors = append(result.Errors, "iam_changes: "+err.Error())
-	} else {
-		result.Tables = append(result.Tables, *iamChanges)
-		result.TotalRows += iamChanges.Rows
-	}
+	iamChanges := c.syncIAMChanges(ctx)
+	result.Tables = append(result.Tables, *iamChanges)
+	result.TotalRows += iamChanges.Rows
 
 	result.CompletedAt = time.Now()
 	result.Duration = result.CompletedAt.Sub(start)
@@ -291,7 +287,7 @@ func (c *CloudTrailProvider) syncConsoleLogins(ctx context.Context) (*TableResul
 	return result, nil
 }
 
-func (c *CloudTrailProvider) syncIAMChanges(ctx context.Context) (*TableResult, error) {
+func (c *CloudTrailProvider) syncIAMChanges(ctx context.Context) *TableResult {
 	result := &TableResult{Name: "cloudtrail_iam_changes"}
 
 	startTime := time.Now().AddDate(0, 0, -c.lookbackDays)
@@ -334,7 +330,7 @@ func (c *CloudTrailProvider) syncIAMChanges(ctx context.Context) (*TableResult, 
 
 	result.Rows = int64(len(allIAMEvents))
 	result.Inserted = result.Rows
-	return result, nil
+	return result
 }
 
 // _parseCloudTrailEvent extracts relevant fields from a CloudTrail event

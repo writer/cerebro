@@ -2041,7 +2041,7 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 	// Process findings through response engine
 	if s.app.RuntimeRespond != nil {
 		for _, f := range findings {
-			s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
+			_, _ = s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
 		}
 	}
 
@@ -2279,7 +2279,7 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 			// Process through response engine
 			if s.app.RuntimeRespond != nil {
 				for _, f := range findings {
-					s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
+					_, _ = s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
 				}
 			}
 		}

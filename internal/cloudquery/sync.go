@@ -149,7 +149,7 @@ func (c *SyncClient) insertRows(ctx context.Context, table string, rows []map[st
 			placeholders[i] = "?"
 		}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", //nolint:gosec // G201 - table name is from internal definitions
 			table, joinStrings(cols, ", "), joinStrings(placeholders, ", "))
 
 		if _, err := tx.ExecContext(ctx, query, vals...); err != nil {

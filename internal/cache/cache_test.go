@@ -42,7 +42,7 @@ func TestLRUExpiration(t *testing.T) {
 	c := NewLRU(10, 50*time.Millisecond)
 
 	c.Set("a", 1)
-	
+
 	if _, ok := c.Get("a"); !ok {
 		t.Error("expected 'a' to exist before expiration")
 	}
@@ -91,7 +91,7 @@ func TestPolicyCache(t *testing.T) {
 func BenchmarkLRUSet(b *testing.B) {
 	c := NewLRU(1000, time.Hour)
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		c.Set("key", i)
 	}
@@ -101,7 +101,7 @@ func BenchmarkLRUGet(b *testing.B) {
 	c := NewLRU(1000, time.Hour)
 	c.Set("key", "value")
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		c.Get("key")
 	}
