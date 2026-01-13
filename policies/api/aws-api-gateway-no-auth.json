@@ -1,0 +1,14 @@
+{
+  "id": "aws-api-gateway-no-authorization",
+  "name": "AWS API Gateway No Authorization",
+  "description": "API Gateway endpoint has no authorization configured",
+  "effect": "forbid",
+  "resource": "aws::apigateway::method",
+  "conditions": [
+    "authorization_type == 'NONE'",
+    "api_key_required != true"
+  ],
+  "severity": "high",
+  "tags": ["api", "apigateway", "authentication", "public-api"],
+  "remediation": "Configure IAM, Cognito, or Lambda authorizer for the API Gateway method."
+}
