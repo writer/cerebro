@@ -23,6 +23,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
 	"github.com/writerinternal/cerebro/internal/metrics"
+	"github.com/writerinternal/cerebro/internal/remediation"
 )
 
 // Server is the fully wired API server
@@ -201,6 +202,19 @@ func (s *Server) setupRoutes() {
 
 		// Slack integration
 		r.Post("/slack/commands", s.slackCommands)
+
+		// Remediation/automation endpoints
+		r.Route("/remediation", func(r chi.Router) {
+			r.Get("/rules", s.listRemediationRules)
+			r.Post("/rules", s.createRemediationRule)
+			r.Get("/rules/{id}", s.getRemediationRule)
+			r.Post("/rules/{id}/enable", s.enableRemediationRule)
+			r.Post("/rules/{id}/disable", s.disableRemediationRule)
+			r.Get("/executions", s.listRemediationExecutions)
+			r.Get("/executions/{id}", s.getRemediationExecution)
+			r.Post("/executions/{id}/approve", s.approveExecution)
+			r.Post("/executions/{id}/reject", s.rejectExecution)
+		})
 
 		// Admin/health endpoints
 		r.Route("/admin", func(r chi.Router) {
@@ -1748,4 +1762,131 @@ func (s *Server) slackCommands(w http.ResponseWriter, r *http.Request) {
 		s.app.Findings,
 	)
 	handler.ServeHTTP(w, r)
+}
+
+// Remediation endpoints
+
+func (s *Server) listRemediationRules(w http.ResponseWriter, r *http.Request) {
+	engine := remediation.NewEngine(s.app.Logger)
+	rules := engine.ListRules()
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"rules": rules,
+		"count": len(rules),
+	})
+}
+
+func (s *Server) createRemediationRule(w http.ResponseWriter, r *http.Request) {
+	var rule remediation.Rule
+	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	engine := remediation.NewEngine(s.app.Logger)
+	if err := engine.AddRule(rule); err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusCreated, rule)
+}
+
+func (s *Server) getRemediationRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	engine := remediation.NewEngine(s.app.Logger)
+	rule, ok := engine.GetRule(id)
+	if !ok {
+		s.error(w, http.StatusNotFound, "rule not found")
+		return
+	}
+	s.json(w, http.StatusOK, rule)
+}
+
+func (s *Server) enableRemediationRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	engine := remediation.NewEngine(s.app.Logger)
+	if err := engine.EnableRule(id); err != nil {
+		s.error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "enabled"})
+}
+
+func (s *Server) disableRemediationRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	engine := remediation.NewEngine(s.app.Logger)
+	if err := engine.DisableRule(id); err != nil {
+		s.error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "disabled"})
+}
+
+func (s *Server) listRemediationExecutions(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	engine := remediation.NewEngine(s.app.Logger)
+	executions := engine.ListExecutions(limit)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"executions": executions,
+		"count":      len(executions),
+	})
+}
+
+func (s *Server) getRemediationExecution(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	engine := remediation.NewEngine(s.app.Logger)
+	execution, ok := engine.GetExecution(id)
+	if !ok {
+		s.error(w, http.StatusNotFound, "execution not found")
+		return
+	}
+	s.json(w, http.StatusOK, execution)
+}
+
+func (s *Server) approveExecution(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	
+	var req struct {
+		ApproverID string `json:"approver_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	engine := remediation.NewEngine(s.app.Logger)
+	executor := remediation.NewExecutor(engine, s.app.Ticketing, s.app.Notifications, s.app.Findings)
+
+	if err := executor.Approve(r.Context(), id, req.ApproverID); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]string{"status": "approved"})
+}
+
+func (s *Server) rejectExecution(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	
+	var req struct {
+		RejecterID string `json:"rejecter_id"`
+		Reason     string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	engine := remediation.NewEngine(s.app.Logger)
+	executor := remediation.NewExecutor(engine, s.app.Ticketing, s.app.Notifications, s.app.Findings)
+
+	if err := executor.Reject(r.Context(), id, req.RejecterID, req.Reason); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]string{"status": "rejected"})
 }

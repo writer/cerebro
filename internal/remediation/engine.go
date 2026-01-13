@@ -1,0 +1,400 @@
+package remediation
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Engine orchestrates auto-remediation playbooks
+type Engine struct {
+	rules      []Rule
+	executions map[string]*Execution
+	logger     *slog.Logger
+	mu         sync.RWMutex
+}
+
+// Rule defines when and how to auto-remediate
+type Rule struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Enabled     bool              `json:"enabled"`
+	Trigger     Trigger           `json:"trigger"`
+	Actions     []Action          `json:"actions"`
+	Conditions  map[string]string `json:"conditions,omitempty"`
+	CreatedAt   time.Time         `json:"created_at"`
+}
+
+// Trigger defines what causes a rule to fire
+type Trigger struct {
+	Type     TriggerType `json:"type"`
+	Severity string      `json:"severity,omitempty"` // critical, high, medium, low
+	PolicyID string      `json:"policy_id,omitempty"`
+	Tags     []string    `json:"tags,omitempty"`
+}
+
+type TriggerType string
+
+const (
+	TriggerFindingCreated TriggerType = "finding.created"
+	TriggerFindingOpen    TriggerType = "finding.open"
+	TriggerSchedule       TriggerType = "schedule"
+	TriggerManual         TriggerType = "manual"
+)
+
+// Action defines what to do when rule triggers
+type Action struct {
+	Type             ActionType        `json:"type"`
+	Config           map[string]string `json:"config"`
+	RequiresApproval bool              `json:"requires_approval"`
+	TimeoutSeconds   int               `json:"timeout_seconds,omitempty"`
+}
+
+type ActionType string
+
+const (
+	ActionCreateTicket    ActionType = "create_ticket"
+	ActionNotifySlack     ActionType = "notify_slack"
+	ActionNotifyPagerDuty ActionType = "notify_pagerduty"
+	ActionResolveFinding  ActionType = "resolve_finding"
+	ActionRunWebhook      ActionType = "run_webhook"
+	ActionTagResource     ActionType = "tag_resource"
+)
+
+// Execution tracks a rule execution
+type Execution struct {
+	ID           string           `json:"id"`
+	RuleID       string           `json:"rule_id"`
+	RuleName     string           `json:"rule_name"`
+	Status       ExecutionStatus  `json:"status"`
+	TriggerData  map[string]any   `json:"trigger_data"`
+	Actions      []ActionResult   `json:"actions"`
+	StartedAt    time.Time        `json:"started_at"`
+	CompletedAt  *time.Time       `json:"completed_at,omitempty"`
+	Error        string           `json:"error,omitempty"`
+	ApprovalID   string           `json:"approval_id,omitempty"`
+}
+
+type ExecutionStatus string
+
+const (
+	ExecutionPending    ExecutionStatus = "pending"
+	ExecutionRunning    ExecutionStatus = "running"
+	ExecutionApproval   ExecutionStatus = "awaiting_approval"
+	ExecutionCompleted  ExecutionStatus = "completed"
+	ExecutionFailed     ExecutionStatus = "failed"
+	ExecutionCancelled  ExecutionStatus = "cancelled"
+)
+
+type ActionResult struct {
+	ActionType ActionType `json:"action_type"`
+	Status     string     `json:"status"`
+	Output     string     `json:"output,omitempty"`
+	Error      string     `json:"error,omitempty"`
+	StartedAt  time.Time  `json:"started_at"`
+	Duration   string     `json:"duration,omitempty"`
+}
+
+func NewEngine(logger *slog.Logger) *Engine {
+	e := &Engine{
+		rules:      make([]Rule, 0),
+		executions: make(map[string]*Execution),
+		logger:     logger,
+	}
+	e.loadDefaultRules()
+	return e
+}
+
+func (e *Engine) loadDefaultRules() {
+	e.rules = []Rule{
+		{
+			ID:          "auto-ticket-critical",
+			Name:        "Auto-create ticket for critical findings",
+			Description: "Automatically creates a Jira ticket when a critical finding is detected",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				Severity: "critical",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "security,critical,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#security-alerts",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "pagerduty-critical",
+			Name:        "Page on-call for critical findings",
+			Description: "Creates PagerDuty incident for critical security findings",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				Severity: "critical",
+			},
+			Actions: []Action{
+				{
+					Type: ActionNotifyPagerDuty,
+					Config: map[string]string{
+						"urgency": "high",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "auto-ticket-high",
+			Name:        "Auto-create ticket for high findings",
+			Description: "Automatically creates a ticket for high severity findings",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				Severity: "high",
+			},
+			Actions: []Action{
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "high",
+						"labels":   "security,high,auto-generated",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+		{
+			ID:          "s3-public-notify",
+			Name:        "Alert on public S3 bucket",
+			Description: "Immediately notify when a public S3 bucket is detected",
+			Enabled:     true,
+			Trigger: Trigger{
+				Type:     TriggerFindingCreated,
+				PolicyID: "aws-s3-bucket-no-public-access",
+			},
+			Actions: []Action{
+				{
+					Type: ActionNotifySlack,
+					Config: map[string]string{
+						"channel": "#security-alerts",
+						"message": "PUBLIC S3 BUCKET DETECTED - Immediate review required",
+					},
+					RequiresApproval: false,
+				},
+				{
+					Type: ActionCreateTicket,
+					Config: map[string]string{
+						"priority": "highest",
+						"labels":   "s3,public-access,data-exposure",
+					},
+					RequiresApproval: false,
+				},
+			},
+		},
+	}
+}
+
+// AddRule adds a new rule
+func (e *Engine) AddRule(rule Rule) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if rule.ID == "" {
+		rule.ID = uuid.New().String()
+	}
+	rule.CreatedAt = time.Now().UTC()
+
+	e.rules = append(e.rules, rule)
+	return nil
+}
+
+// GetRule gets a rule by ID
+func (e *Engine) GetRule(id string) (*Rule, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	for i := range e.rules {
+		if e.rules[i].ID == id {
+			return &e.rules[i], true
+		}
+	}
+	return nil, false
+}
+
+// ListRules returns all rules
+func (e *Engine) ListRules() []Rule {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return append([]Rule{}, e.rules...)
+}
+
+// EnableRule enables a rule
+func (e *Engine) EnableRule(id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for i := range e.rules {
+		if e.rules[i].ID == id {
+			e.rules[i].Enabled = true
+			return nil
+		}
+	}
+	return fmt.Errorf("rule not found: %s", id)
+}
+
+// DisableRule disables a rule
+func (e *Engine) DisableRule(id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for i := range e.rules {
+		if e.rules[i].ID == id {
+			e.rules[i].Enabled = false
+			return nil
+		}
+	}
+	return fmt.Errorf("rule not found: %s", id)
+}
+
+// Evaluate checks if any rules match the given event
+func (e *Engine) Evaluate(ctx context.Context, event Event) ([]*Execution, error) {
+	e.mu.RLock()
+	rules := append([]Rule{}, e.rules...)
+	e.mu.RUnlock()
+
+	var executions []*Execution
+
+	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+
+		if e.matchesTrigger(rule.Trigger, event) {
+			exec := e.createExecution(rule, event)
+			executions = append(executions, exec)
+
+			e.mu.Lock()
+			e.executions[exec.ID] = exec
+			e.mu.Unlock()
+
+			e.logger.Info("rule triggered",
+				"rule_id", rule.ID,
+				"rule_name", rule.Name,
+				"execution_id", exec.ID,
+			)
+		}
+	}
+
+	return executions, nil
+}
+
+// Event represents something that can trigger rules
+type Event struct {
+	Type      TriggerType    `json:"type"`
+	FindingID string         `json:"finding_id,omitempty"`
+	Severity  string         `json:"severity,omitempty"`
+	PolicyID  string         `json:"policy_id,omitempty"`
+	Tags      []string       `json:"tags,omitempty"`
+	Data      map[string]any `json:"data,omitempty"`
+}
+
+func (e *Engine) matchesTrigger(trigger Trigger, event Event) bool {
+	if trigger.Type != event.Type {
+		return false
+	}
+
+	if trigger.Severity != "" && trigger.Severity != event.Severity {
+		return false
+	}
+
+	if trigger.PolicyID != "" && trigger.PolicyID != event.PolicyID {
+		return false
+	}
+
+	// Check tag matching
+	if len(trigger.Tags) > 0 {
+		matched := false
+		for _, tt := range trigger.Tags {
+			for _, et := range event.Tags {
+				if tt == et {
+					matched = true
+					break
+				}
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (e *Engine) createExecution(rule Rule, event Event) *Execution {
+	return &Execution{
+		ID:       uuid.New().String(),
+		RuleID:   rule.ID,
+		RuleName: rule.Name,
+		Status:   ExecutionPending,
+		TriggerData: map[string]any{
+			"event_type":  event.Type,
+			"finding_id":  event.FindingID,
+			"severity":    event.Severity,
+			"policy_id":   event.PolicyID,
+		},
+		Actions:   make([]ActionResult, 0),
+		StartedAt: time.Now().UTC(),
+	}
+}
+
+// GetExecution gets an execution by ID
+func (e *Engine) GetExecution(id string) (*Execution, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	exec, ok := e.executions[id]
+	return exec, ok
+}
+
+// ListExecutions returns recent executions
+func (e *Engine) ListExecutions(limit int) []*Execution {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	execs := make([]*Execution, 0, len(e.executions))
+	for _, ex := range e.executions {
+		execs = append(execs, ex)
+	}
+
+	// Sort by started time descending (most recent first)
+	for i := 0; i < len(execs)-1; i++ {
+		for j := i + 1; j < len(execs); j++ {
+			if execs[j].StartedAt.After(execs[i].StartedAt) {
+				execs[i], execs[j] = execs[j], execs[i]
+			}
+		}
+	}
+
+	if len(execs) > limit {
+		execs = execs[:limit]
+	}
+
+	return execs
+}
