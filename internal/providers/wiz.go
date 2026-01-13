@@ -451,3 +451,135 @@ func (w *WizProvider) syncVulnerabilities(ctx context.Context) (*TableResult, er
 	result.Inserted = result.Rows
 	return result, nil
 }
+
+func (w *WizProvider) syncAttackPaths(ctx context.Context) (*TableResult, error) {
+	result := &TableResult{Name: "wiz_attack_paths"}
+
+	query := `
+		query AttackPaths($first: Int) {
+			attackPaths(first: $first) {
+				nodes {
+					id
+					severity
+					sourceResource { id type }
+					targetResource { id type isAdmin }
+					pathSteps { description }
+					riskFactors
+				}
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`
+
+	body, err := w.graphQLQuery(ctx, query, map[string]interface{}{"first": 500})
+	if err != nil {
+		return result, err
+	}
+
+	var response struct {
+		Data struct {
+			AttackPaths struct {
+				Nodes []map[string]interface{} `json:"nodes"`
+			} `json:"attackPaths"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return result, err
+	}
+
+	result.Rows = int64(len(response.Data.AttackPaths.Nodes))
+	result.Inserted = result.Rows
+	return result, nil
+}
+
+func (w *WizProvider) syncSecrets(ctx context.Context) (*TableResult, error) {
+	result := &TableResult{Name: "wiz_secrets"}
+
+	query := `
+		query SecretFindings($first: Int) {
+			secretFindings(first: $first) {
+				nodes {
+					id
+					resource { id type }
+					secretType
+					isCleartext
+					properties {
+						grantsHighPrivilege
+						grantsAdmin
+						grantsSensitiveDataAccess
+						crossAccountAccess
+						validatedExposed
+					}
+				}
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`
+
+	body, err := w.graphQLQuery(ctx, query, map[string]interface{}{"first": 500})
+	if err != nil {
+		return result, err
+	}
+
+	var response struct {
+		Data struct {
+			SecretFindings struct {
+				Nodes []map[string]interface{} `json:"nodes"`
+			} `json:"secretFindings"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return result, err
+	}
+
+	result.Rows = int64(len(response.Data.SecretFindings.Nodes))
+	result.Inserted = result.Rows
+	return result, nil
+}
+
+func (w *WizProvider) syncIdentities(ctx context.Context) (*TableResult, error) {
+	result := &TableResult{Name: "wiz_identities"}
+
+	query := `
+		query CloudIdentities($first: Int) {
+			cloudIdentities(first: $first) {
+				nodes {
+					id
+					type
+					name
+					email
+					cloudPlatform
+					isThirdParty
+					hasAdminRole
+					hasHighPrivilege
+					hasSensitiveDataAccess
+					mfaEnabled
+					lastActivityDaysAgo
+					accessKeyCount
+					accessKeyLastRotatedDaysAgo
+				}
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`
+
+	body, err := w.graphQLQuery(ctx, query, map[string]interface{}{"first": 500})
+	if err != nil {
+		return result, err
+	}
+
+	var response struct {
+		Data struct {
+			CloudIdentities struct {
+				Nodes []map[string]interface{} `json:"nodes"`
+			} `json:"cloudIdentities"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return result, err
+	}
+
+	result.Rows = int64(len(response.Data.CloudIdentities.Nodes))
+	result.Inserted = result.Rows
+	return result, nil
+}
