@@ -19,7 +19,8 @@ def _serialize_datetime(value: Any) -> str:
     if isinstance(value, datetime):
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        result: str = value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        return result
     return str(value)
 
 
@@ -68,7 +69,7 @@ class ServalClient:
         self._ensure_client_initialized()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: Any) -> None:
         await self.close()
 
     async def close(self) -> None:
@@ -294,7 +295,8 @@ class ServalClient:
         """Make an authenticated request and parse the JSON response."""
         response = await self._request(method, path, **kwargs)
         try:
-            return response.json()
+            data: dict[str, Any] = response.json()
+            return data
         except ValueError as exc:
             raise ServalError("Serval API response was not valid JSON") from exc
 

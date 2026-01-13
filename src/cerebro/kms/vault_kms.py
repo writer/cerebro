@@ -66,8 +66,8 @@ class VaultTransitKMS(BaseKMS):
                     raise Exception(f"Vault encrypt errors: {data['errors']}")
 
                 # Return the ciphertext (Vault format: "vault:v1:...")
-                ciphertext = data["data"]["ciphertext"]
-                return ciphertext.encode()
+                ciphertext_str: str = data["data"]["ciphertext"]
+                return ciphertext_str.encode()
 
         except Exception as e:
             logger.error("Vault Transit encryption failed", error=str(e))

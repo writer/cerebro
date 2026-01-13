@@ -47,10 +47,11 @@ class AzureKeyVaultKMS(BaseKMS):
             # Azure Key Vault crypto operations are sync
             import asyncio
 
-            def _encrypt():
-                return self.crypto_client.encrypt(
+            def _encrypt() -> bytes:
+                result: bytes = self.crypto_client.encrypt(
                     EncryptionAlgorithm.rsa_oaep_256, plaintext
                 ).ciphertext
+                return result
 
             return await asyncio.to_thread(_encrypt)
 
@@ -63,10 +64,11 @@ class AzureKeyVaultKMS(BaseKMS):
         try:
             import asyncio
 
-            def _decrypt():
-                return self.crypto_client.decrypt(
+            def _decrypt() -> bytes:
+                result: bytes = self.crypto_client.decrypt(
                     EncryptionAlgorithm.rsa_oaep_256, ciphertext
                 ).plaintext
+                return result
 
             return await asyncio.to_thread(_decrypt)
 
@@ -80,7 +82,7 @@ class AzureKeyVaultKMS(BaseKMS):
             # Test by listing keys (requires read permission)
             import asyncio
 
-            def _test():
+            def _test() -> bool:
                 keys = list(self.key_client.list_properties_of_keys())
                 return len(keys) >= 0  # Should not raise exception
 
