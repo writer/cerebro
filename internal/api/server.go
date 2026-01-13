@@ -275,6 +275,12 @@ func (s *Server) setupRoutes() {
 			r.Post("/ensure-tables", s.ensureCloudQueryTables)
 		})
 
+		// Scan management endpoints
+		r.Route("/scan", func(r chi.Router) {
+			r.Get("/watermarks", s.getScanWatermarks)
+			r.Get("/coverage", s.getPolicyCoverage)
+		})
+
 		// Telemetry ingestion (for agents)
 		r.Route("/telemetry", func(r chi.Router) {
 			r.Post("/ingest", s.ingestTelemetry)
@@ -2476,6 +2482,51 @@ func (s *Server) ensureCloudQueryTables(w http.ResponseWriter, r *http.Request) 
 		"status":   "ok",
 		"provider": provider,
 		"message":  "tables created successfully",
+	})
+}
+
+// Scan management handlers
+
+func (s *Server) getScanWatermarks(w http.ResponseWriter, r *http.Request) {
+	if s.app.ScanWatermarks == nil {
+		s.error(w, http.StatusServiceUnavailable, "scan watermarks not initialized")
+		return
+	}
+
+	stats := s.app.ScanWatermarks.Stats()
+	s.json(w, http.StatusOK, stats)
+}
+
+func (s *Server) getPolicyCoverage(w http.ResponseWriter, r *http.Request) {
+	if s.app.CloudQuery == nil {
+		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+		return
+	}
+
+	// Get available tables from CloudQuery
+	availableTables, err := s.app.CloudQuery.ListAvailableTables(r.Context())
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Check which policies can be evaluated
+	gaps := s.app.Policy.ValidateTableCoverage(availableTables)
+
+	// Calculate coverage stats
+	totalPolicies := len(s.app.Policy.ListPolicies())
+	coveredPolicies := totalPolicies - len(gaps)
+	coveragePercent := 0.0
+	if totalPolicies > 0 {
+		coveragePercent = float64(coveredPolicies) / float64(totalPolicies) * 100
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"total_policies":    totalPolicies,
+		"covered_policies":  coveredPolicies,
+		"coverage_percent":  coveragePercent,
+		"available_tables":  len(availableTables),
+		"gaps":              gaps,
 	})
 }
 

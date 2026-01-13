@@ -102,6 +102,12 @@ type App struct {
 	// CloudQuery table management
 	CloudQuery *cloudquery.TableManager
 
+	// Incremental scanning
+	ScanWatermarks *scanner.WatermarkStore
+
+	// File-based findings (for dev mode)
+	FileFindings *findings.FileStore
+
 	// New services
 	RBAC           *auth.RBAC
 	ThreatIntel    *threatintel.ThreatIntelService
@@ -319,6 +325,8 @@ func New(ctx context.Context) (*App, error) {
 	app.initRepositories()
 	app.initSnowflakeFindings(ctx)
 	app.initCloudQuery()
+	app.initScanWatermarks(ctx)
+	app.initFileFindings()
 
 	// Initialize new services
 	app.initRBAC()
@@ -721,6 +729,42 @@ func (a *App) initCloudQuery() {
 	}
 	a.CloudQuery = cloudquery.NewTableManager(a.Snowflake, a.Config.SnowflakeSchema)
 	a.Logger.Info("cloudquery table manager initialized")
+}
+
+func (a *App) initScanWatermarks(ctx context.Context) {
+	var db interface{ Query(string) error }
+	if a.Snowflake != nil {
+		a.ScanWatermarks = scanner.NewWatermarkStore(a.Snowflake.DB())
+		// Load existing watermarks
+		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil {
+			a.Logger.Warn("failed to load scan watermarks", "error", err)
+		}
+	} else {
+		a.ScanWatermarks = scanner.NewWatermarkStore(nil)
+	}
+	_ = db // unused but shows pattern
+	a.Logger.Info("scan watermarks initialized")
+}
+
+func (a *App) initFileFindings() {
+	// Only enable file-based findings in dev mode when Snowflake is not available
+	if a.Snowflake != nil {
+		return
+	}
+
+	filePath := findings.DefaultFilePath()
+	if path := os.Getenv("CEREBRO_FINDINGS_FILE"); path != "" {
+		filePath = path
+	}
+
+	store, err := findings.NewFileStore(filePath)
+	if err != nil {
+		a.Logger.Warn("failed to initialize file findings store", "error", err)
+		return
+	}
+
+	a.FileFindings = store
+	a.Logger.Info("file-based findings store initialized", "path", filePath)
 }
 
 // Close cleanly shuts down all services
