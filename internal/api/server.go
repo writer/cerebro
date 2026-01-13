@@ -22,6 +22,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
+	"github.com/writerinternal/cerebro/internal/metrics"
 )
 
 // Server is the fully wired API server
@@ -230,15 +231,8 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
-	stats := s.app.Findings.Stats()
-	cacheStats := s.app.Cache.Stats()
-
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"findings":       stats,
-		"cache":          cacheStats,
-		"policies_count": len(s.app.Policy.ListPolicies()),
-		"agents_count":   len(s.app.Agents.ListAgents()),
-	})
+	// Use Prometheus metrics handler
+	metrics.Handler().ServeHTTP(w, r)
 }
 
 // Query endpoints
