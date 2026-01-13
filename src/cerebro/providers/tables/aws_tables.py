@@ -368,7 +368,7 @@ class AWSSecurityGroupTable(ProviderSecurityTable):
             raise
 
 
-def register_aws_tables():
+def register_aws_tables() -> None:
     """Register all AWS tables with the query engine."""
     register_table(AWSEc2InstanceTable(), aliases=["aws_ec2", "ec2_instances"])
     register_table(AWSIAMUserTable(), aliases=["aws_users", "iam_users"])

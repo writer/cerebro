@@ -4,7 +4,7 @@ GCP provider table implementations.
 Exposes GCP security resources as SQL tables following Steampipe patterns.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import datetime
 from typing import Any
 
@@ -26,7 +26,7 @@ class GCPClient:
         self._iam_client: Any | None = None
         self._credentials: Any | None = None
 
-    async def authenticate(self):
+    async def authenticate(self) -> bool:
         """Authenticate with GCP using default credentials."""
         try:
             from google.auth import default
@@ -47,7 +47,7 @@ class GCPClient:
             logger.error(f"GCP authentication failed: {e}")
             return False
 
-    async def get_compute_client(self):
+    async def get_compute_client(self) -> Any:
         """Get compute client."""
         if not self._compute_client:
             try:
@@ -63,7 +63,7 @@ class GCPClient:
                 raise
         return self._compute_client
 
-    async def get_storage_client(self):
+    async def get_storage_client(self) -> Any:
         """Get storage client."""
         if not self._storage_client:
             try:
@@ -79,7 +79,7 @@ class GCPClient:
                 raise
         return self._storage_client
 
-    async def get_iam_client(self):
+    async def get_iam_client(self) -> Any:
         """Get IAM client."""
         if not self._iam_client:
             try:
@@ -101,7 +101,7 @@ class GCPClient:
             await self.authenticate()
         return self.project_id or "unknown-project"
 
-    async def list_instances(self):
+    async def list_instances(self) -> AsyncIterator[dict[str, Any]]:
         """List all compute instances."""
         try:
             from google.cloud import compute_v1
@@ -160,7 +160,7 @@ class GCPClient:
             # Fallback to empty results rather than crashing
             return
 
-    async def list_buckets(self):
+    async def list_buckets(self) -> AsyncIterator[dict[str, Any]]:
         """List all storage buckets."""
         try:
             storage_client = await self.get_storage_client()
@@ -200,7 +200,7 @@ class GCPClient:
             logger.error(f"Error listing GCP buckets: {e}")
             return
 
-    async def list_iam_policy_bindings(self):
+    async def list_iam_policy_bindings(self) -> AsyncIterator[dict[str, Any]]:
         """List IAM policy bindings."""
         try:
             iam_client = await self.get_iam_client()
@@ -233,7 +233,7 @@ class GCPClient:
 class GCPComputeInstanceTable(ProviderSecurityTable):
     """GCP Compute Engine instances as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         gce_columns = [
             SecurityColumn(
                 "instance_id",
@@ -337,7 +337,8 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
             access_configs = interface.get("accessConfigs", [])
             for config in access_configs:
                 if "natIP" in config:
-                    return config["natIP"]
+                    nat_ip: str = config["natIP"]
+                    return nat_ip
         return None
 
     def extract_internal_ip(self, instance_data: dict[str, Any]) -> str | None:
@@ -345,12 +346,13 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
         interfaces = instance_data.get("networkInterfaces", [])
         for interface in interfaces:
             if "networkIP" in interface:
-                return interface["networkIP"]
+                network_ip: str = interface["networkIP"]
+                return network_ip
         return None
 
     def extract_scopes(self, instance_data: dict[str, Any]) -> list[str]:
         """Extract OAuth scopes from service accounts."""
-        scopes = []
+        scopes: list[str] = []
         service_accounts = instance_data.get("serviceAccounts", [])
         for sa in service_accounts:
             scopes.extend(sa.get("scopes", []))
@@ -358,7 +360,8 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
 
     def extract_network_tags(self, instance_data: dict[str, Any]) -> list[str]:
         """Extract network tags."""
-        return instance_data.get("tags", {}).get("items", [])
+        items: list[str] = instance_data.get("tags", {}).get("items", [])
+        return items
 
     def _parse_gcp_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse GCP timestamp string."""
@@ -373,7 +376,7 @@ class GCPComputeInstanceTable(ProviderSecurityTable):
 class GCPStorageBucketTable(ProviderSecurityTable):
     """GCP Cloud Storage buckets as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         bucket_columns = [
             SecurityColumn(
                 "bucket_id",
@@ -465,7 +468,8 @@ class GCPStorageBucketTable(ProviderSecurityTable):
     def check_uniform_access(self, bucket_data: dict[str, Any]) -> bool:
         """Check if uniform bucket-level access is enabled."""
         uniform_access = bucket_data.get("uniformBucketLevelAccess", {})
-        return uniform_access.get("enabled", False)
+        result: bool = uniform_access.get("enabled", False)
+        return result
 
     def check_public_access(self, bucket_data: dict[str, Any]) -> bool:
         """Check if bucket has public access."""
@@ -482,7 +486,8 @@ class GCPStorageBucketTable(ProviderSecurityTable):
     def check_versioning(self, bucket_data: dict[str, Any]) -> bool:
         """Check if versioning is enabled."""
         versioning = bucket_data.get("versioning", {})
-        return versioning.get("enabled", False)
+        result: bool = versioning.get("enabled", False)
+        return result
 
     def _parse_gcp_timestamp(self, timestamp_str: str | None) -> datetime | None:
         """Parse GCP timestamp string."""
@@ -497,7 +502,7 @@ class GCPStorageBucketTable(ProviderSecurityTable):
 class GCPIAMPolicyTable(ProviderSecurityTable):
     """GCP IAM policy bindings as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         iam_columns = [
             SecurityColumn(
                 "member",
@@ -596,7 +601,7 @@ class GCPIAMPolicyTable(ProviderSecurityTable):
         return binding_data.get("condition") is not None
 
 
-def register_gcp_tables():
+def register_gcp_tables() -> None:
     """Register all GCP tables with the query engine."""
     register_table(
         GCPComputeInstanceTable(), aliases=["gcp_instances", "gce_instances"]
