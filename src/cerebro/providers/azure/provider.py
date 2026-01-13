@@ -23,6 +23,7 @@ from azure.mgmt.authorization import AuthorizationManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.storage import StorageManagementClient
+from azure.mgmt.storage.models import StorageAccount
 from azure.storage.blob import BlobServiceClient
 
 from ..base import (

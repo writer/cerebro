@@ -11,7 +11,7 @@ from .postgresql_ssl_disabled import AzurePostgreSQLSSLDisabledProducer
 from .sqlserver_public_access import AzureSQLServerPublicAccessProducer
 from .storage_network_access_allow import AzureStorageNetworkAccessAllowProducer
 from .storage_public_write import AzureStoragePublicWriteProducer
-from .storage_secret_artifacts import AzureStorageSecretArtifactsProducer
+from .storage_secret_artifacts import AzureStorageSecretArtifactProducer
 from .user_mfa_disabled import AzureUserMfaProducer
 from .vm_unmanaged_disk import AzureVMUnmanagedDiskProducer
 
@@ -27,7 +27,7 @@ __all__ = [
     "AzureSQLServerPublicAccessProducer",
     "AzureStorageNetworkAccessAllowProducer",
     "AzureStoragePublicWriteProducer",
-    "AzureStorageSecretArtifactsProducer",
+    "AzureStorageSecretArtifactProducer",
     "AzureUserMfaProducer",
     "AzureVMUnmanagedDiskProducer",
 ]

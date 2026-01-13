@@ -1,23 +1,23 @@
 """AWS finding producers."""
 
 from .apigateway_public import APIGatewayPublicProducer
-from .bucket_cleartext_key import AwsBucketCleartextKeyProducer
+from .bucket_cleartext_key import BucketCleartextKeyProducer
 from .cloudfront_http_allowed import CloudFrontHTTPAllowedProducer
 from .cloudtrail_not_enabled import CloudTrailNotEnabledProducer
-from .codebuild_public_trigger import AwsCodeBuildPublicTriggerProducer
+from .codebuild_public_trigger import CodeBuildPublicTriggerProducer
+from .codebuild_source_credential import CodeBuildSharedCredentialProducer
 from .config_recorder_disabled import ConfigRecorderDisabledProducer
-from .codebuild_source_credential import AwsCodeBuildSourceCredentialProducer
 from .dynamodb_encryption_default import DynamoDBEncryptionDefaultProducer
 from .ebs_encryption_disabled import EBSEncryptionDisabledProducer
-from .ec2_instance_public_ip import Ec2InstancePublicIpProducer
-from .elasticache_public_subnet import ElastiCachePublicSubnetProducer
+from .ec2_instance_public_ip import EC2InstancePublicIPProducer
 from .ec2_internet_facing_iam import EC2InternetFacingIAMProducer
 from .ecr_public_repository import ECRPublicRepositoryProducer
 from .eks_public_access import EKSPublicAccessProducer
+from .elasticache_public_subnet import ElastiCachePublicSubnetProducer
 from .guardduty_disabled import GuardDutyDisabledProducer
 from .iam_password_policy_weak import IAMPasswordPolicyWeakProducer
 from .iam_root_account_usage import IAMRootAccountUsageProducer
-from .iam_user_without_mfa import AwsIamUserWithoutMfaProducer
+from .iam_user_without_mfa import IAMUserWithoutMFAProducer
 from .kms_key_rotation_disabled import KMSKeyRotationDisabledProducer
 from .lambda_public_access import LambdaPublicAccessProducer
 from .load_balancer_certificate_expiry import AwsLoadBalancerCertificateExpiryProducer
@@ -28,52 +28,52 @@ from .load_balancer_weak_tls import AwsLoadBalancerWeakTlsProducer
 from .opensearch_public_access import OpenSearchPublicAccessProducer
 from .rds_public_access import RDSPublicAccessProducer
 from .redshift_public_access import RedshiftPublicAccessProducer
-from .s3_bucket_public import AwsS3BucketPublicProducer
-from .s3_bucket_unencrypted import AwsS3BucketUnencryptedProducer
+from .s3_bucket_public import S3BucketPublicProducer
+from .s3_bucket_unencrypted import S3BucketUnencryptedProducer
 from .secretsmanager_rotation_disabled import SecretsManagerRotationDisabledProducer
 from .security_group_admin_port import AwsSecurityGroupAdminPortProducer
 from .security_group_public_ingress import AwsSecurityGroupPublicIngressProducer
 from .service_account_open_assume import AwsServiceAccountOpenAssumeProducer
 from .sns_public_access import SNSPublicAccessProducer
 from .sqs_public_access import SQSPublicAccessProducer
-from .storage_write_access import AwsStorageWriteAccessProducer
+from .storage_write_access import StorageWriteAccessProducer
 
 __all__ = [
     "APIGatewayPublicProducer",
-    "AwsBucketCleartextKeyProducer",
-    "CloudFrontHTTPAllowedProducer",
-    "ConfigRecorderDisabledProducer",
-    "AwsCodeBuildPublicTriggerProducer",
-    "AwsCodeBuildSourceCredentialProducer",
-    "AwsIamUserWithoutMfaProducer",
     "AwsLoadBalancerCertificateExpiryProducer",
     "AwsLoadBalancerMissingHttpsProducer",
     "AwsLoadBalancerPublicHttpProducer",
     "AwsLoadBalancerTargetExposureProducer",
     "AwsLoadBalancerWeakTlsProducer",
-    "AwsS3BucketPublicProducer",
-    "AwsS3BucketUnencryptedProducer",
     "AwsSecurityGroupAdminPortProducer",
     "AwsSecurityGroupPublicIngressProducer",
     "AwsServiceAccountOpenAssumeProducer",
-    "AwsStorageWriteAccessProducer",
+    "BucketCleartextKeyProducer",
+    "CloudFrontHTTPAllowedProducer",
     "CloudTrailNotEnabledProducer",
+    "CodeBuildPublicTriggerProducer",
+    "CodeBuildSharedCredentialProducer",
+    "ConfigRecorderDisabledProducer",
     "DynamoDBEncryptionDefaultProducer",
     "EBSEncryptionDisabledProducer",
+    "EC2InstancePublicIPProducer",
     "EC2InternetFacingIAMProducer",
-    "ElastiCachePublicSubnetProducer",
     "ECRPublicRepositoryProducer",
     "EKSPublicAccessProducer",
-    "Ec2InstancePublicIpProducer",
+    "ElastiCachePublicSubnetProducer",
     "GuardDutyDisabledProducer",
     "IAMPasswordPolicyWeakProducer",
     "IAMRootAccountUsageProducer",
+    "IAMUserWithoutMFAProducer",
     "KMSKeyRotationDisabledProducer",
     "LambdaPublicAccessProducer",
     "OpenSearchPublicAccessProducer",
     "RDSPublicAccessProducer",
     "RedshiftPublicAccessProducer",
+    "S3BucketPublicProducer",
+    "S3BucketUnencryptedProducer",
     "SNSPublicAccessProducer",
     "SQSPublicAccessProducer",
     "SecretsManagerRotationDisabledProducer",
+    "StorageWriteAccessProducer",
 ]
