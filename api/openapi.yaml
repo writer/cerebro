@@ -1,0 +1,1277 @@
+openapi: 3.0.3
+info:
+  title: Cerebro API
+  description: |
+    Cerebro is a cloud security posture management (CSPM) platform that provides:
+    - Policy-based security scanning across AWS, GCP, Azure, and Kubernetes
+    - Identity and access governance
+    - Compliance frameworks and audit reporting
+    - Attack path analysis
+    - Agent-based investigation
+  version: 2.0.0
+  contact:
+    name: Security Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://cerebro.internal.company.com
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+tags:
+  - name: Health
+    description: Health and readiness endpoints
+  - name: Assets
+    description: Cloud asset inventory
+  - name: Policies
+    description: Security policy management
+  - name: Findings
+    description: Security findings and violations
+  - name: Compliance
+    description: Compliance frameworks and reporting
+  - name: Identity
+    description: Identity governance and access reviews
+  - name: Agents
+    description: AI-powered investigation agents
+  - name: Tickets
+    description: Ticketing integration (Jira, Linear)
+  - name: Webhooks
+    description: Webhook management
+  - name: Admin
+    description: Administrative endpoints
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /ready:
+    get:
+      tags: [Health]
+      summary: Readiness check
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+
+  /metrics:
+    get:
+      tags: [Health]
+      summary: Prometheus metrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/v1/tables:
+    get:
+      tags: [Assets]
+      summary: List available tables
+      responses:
+        '200':
+          description: List of CloudQuery tables
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TablesResponse'
+
+  /api/v1/query:
+    post:
+      tags: [Assets]
+      summary: Execute SQL query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+
+  /api/v1/assets/{table}:
+    get:
+      tags: [Assets]
+      summary: List assets from a table
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+          example: aws_s3_buckets
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetsResponse'
+
+  /api/v1/assets/{table}/{id}:
+    get:
+      tags: [Assets]
+      summary: Get a specific asset
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Asset details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+
+  /api/v1/policies:
+    get:
+      tags: [Policies]
+      summary: List all policies
+      responses:
+        '200':
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PoliciesResponse'
+    post:
+      tags: [Policies]
+      summary: Create a new policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Policy'
+      responses:
+        '201':
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+
+  /api/v1/policies/{id}:
+    get:
+      tags: [Policies]
+      summary: Get a specific policy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Policy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+
+  /api/v1/policies/evaluate:
+    post:
+      tags: [Policies]
+      summary: Evaluate policies against an asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateRequest'
+      responses:
+        '200':
+          description: Evaluation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateResponse'
+
+  /api/v1/findings:
+    get:
+      tags: [Findings]
+      summary: List findings
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, resolved, suppressed]
+        - name: policy_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of findings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingsResponse'
+
+  /api/v1/findings/stats:
+    get:
+      tags: [Findings]
+      summary: Get findings statistics
+      responses:
+        '200':
+          description: Findings statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingsStats'
+
+  /api/v1/findings/{id}:
+    get:
+      tags: [Findings]
+      summary: Get a specific finding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Finding details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Finding'
+
+  /api/v1/findings/scan:
+    post:
+      tags: [Findings]
+      summary: Trigger a security scan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tables:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+
+  /api/v1/findings/{id}/resolve:
+    post:
+      tags: [Findings]
+      summary: Resolve a finding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolution:
+                  type: string
+      responses:
+        '200':
+          description: Finding resolved
+
+  /api/v1/findings/{id}/suppress:
+    post:
+      tags: [Findings]
+      summary: Suppress a finding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Finding suppressed
+
+  /api/v1/compliance/frameworks:
+    get:
+      tags: [Compliance]
+      summary: List compliance frameworks
+      responses:
+        '200':
+          description: List of frameworks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameworksResponse'
+
+  /api/v1/compliance/frameworks/{id}:
+    get:
+      tags: [Compliance]
+      summary: Get a compliance framework
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: soc2-type2
+      responses:
+        '200':
+          description: Framework details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Framework'
+
+  /api/v1/compliance/frameworks/{id}/report:
+    get:
+      tags: [Compliance]
+      summary: Generate compliance report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Compliance report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceReport'
+
+  /api/v1/compliance/frameworks/{id}/pre-audit:
+    get:
+      tags: [Compliance]
+      summary: Pre-audit health check
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pre-audit assessment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreAuditReport'
+
+  /api/v1/compliance/frameworks/{id}/export:
+    get:
+      tags: [Compliance]
+      summary: Export audit package
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit package data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditPackage'
+
+  /api/v1/identity/stale-access:
+    get:
+      tags: [Identity]
+      summary: Detect stale access
+      responses:
+        '200':
+          description: Stale access findings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaleAccessResponse'
+
+  /api/v1/identity/report:
+    get:
+      tags: [Identity]
+      summary: Generate identity report
+      responses:
+        '200':
+          description: Identity posture report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityReport'
+
+  /api/v1/identity/reviews:
+    get:
+      tags: [Identity]
+      summary: List access reviews
+      responses:
+        '200':
+          description: List of access reviews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsResponse'
+    post:
+      tags: [Identity]
+      summary: Create access review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessReview'
+
+  /api/v1/agents:
+    get:
+      tags: [Agents]
+      summary: List available agents
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentsResponse'
+
+  /api/v1/agents/sessions:
+    post:
+      tags: [Agents]
+      summary: Create agent session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+
+  /api/v1/agents/sessions/{id}/messages:
+    get:
+      tags: [Agents]
+      summary: Get session messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesResponse'
+    post:
+      tags: [Agents]
+      summary: Send message to agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+      responses:
+        '200':
+          description: Agent response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /api/v1/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List webhooks
+      responses:
+        '200':
+          description: List of webhooks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhooksResponse'
+    post:
+      tags: [Webhooks]
+      summary: Create webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+  /api/v1/webhooks/{id}:
+    get:
+      tags: [Webhooks]
+      summary: Get webhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Webhook details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+    delete:
+      tags: [Webhooks]
+      summary: Delete webhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Webhook deleted
+
+  /api/v1/admin/health:
+    get:
+      tags: [Admin]
+      summary: System health dashboard
+      responses:
+        '200':
+          description: System health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHealth'
+
+  /api/v1/admin/sync/status:
+    get:
+      tags: [Admin]
+      summary: Data sync status
+      responses:
+        '200':
+          description: Sync status per provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatus'
+
+  /api/v1/scheduler/status:
+    get:
+      tags: [Admin]
+      summary: Scheduler status
+      responses:
+        '200':
+          description: Scheduler status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulerStatus'
+
+  /api/v1/scheduler/jobs:
+    get:
+      tags: [Admin]
+      summary: List scheduled jobs
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobsResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+        maximum: 1000
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+
+    ReadyResponse:
+      type: object
+      properties:
+        ready:
+          type: boolean
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+
+    TablesResponse:
+      type: object
+      properties:
+        tables:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+
+    QueryRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          example: "SELECT * FROM aws_s3_buckets LIMIT 10"
+        limit:
+          type: integer
+
+    QueryResponse:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: object
+        count:
+          type: integer
+
+    AssetsResponse:
+      type: object
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Asset'
+        count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Asset:
+      type: object
+      additionalProperties: true
+
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        effect:
+          type: string
+          enum: [permit, forbid]
+        resource:
+          type: string
+        conditions:
+          type: array
+          items:
+            type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        tags:
+          type: array
+          items:
+            type: string
+
+    PoliciesResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Policy'
+        count:
+          type: integer
+
+    EvaluateRequest:
+      type: object
+      properties:
+        asset:
+          type: object
+        policy_ids:
+          type: array
+          items:
+            type: string
+
+    EvaluateResponse:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+
+    Finding:
+      type: object
+      properties:
+        id:
+          type: string
+        policy_id:
+          type: string
+        policy_name:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        resource:
+          type: object
+        description:
+          type: string
+        remediation:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    FindingsResponse:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    FindingsStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        by_severity:
+          type: object
+          additionalProperties:
+            type: integer
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        by_policy:
+          type: object
+          additionalProperties:
+            type: integer
+
+    ScanResponse:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        scanned:
+          type: integer
+        duration_ms:
+          type: integer
+
+    Framework:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/Control'
+
+    Control:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        policy_ids:
+          type: array
+          items:
+            type: string
+
+    FrameworksResponse:
+      type: object
+      properties:
+        frameworks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Framework'
+        count:
+          type: integer
+
+    ComplianceReport:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/ComplianceSummary'
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ControlStatus'
+
+    ComplianceSummary:
+      type: object
+      properties:
+        total_controls:
+          type: integer
+        passing_controls:
+          type: integer
+        failing_controls:
+          type: integer
+        compliance_score:
+          type: number
+
+    ControlStatus:
+      type: object
+      properties:
+        control_id:
+          type: string
+        status:
+          type: string
+          enum: [passing, failing, unknown]
+
+    PreAuditReport:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        estimated_outcome:
+          type: string
+        summary:
+          type: object
+        controls:
+          type: array
+          items:
+            type: object
+        recommendations:
+          type: array
+          items:
+            type: string
+
+    AuditPackage:
+      type: object
+      properties:
+        manifest:
+          type: object
+        controls:
+          type: array
+          items:
+            type: object
+
+    StaleAccessResponse:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleAccessFinding'
+        count:
+          type: integer
+        summary:
+          type: object
+
+    StaleAccessFinding:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        severity:
+          type: string
+        principal:
+          type: object
+        provider:
+          type: string
+        last_activity:
+          type: string
+          format: date-time
+        days_since:
+          type: integer
+        details:
+          type: string
+        remediation:
+          type: string
+
+    IdentityReport:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        summary:
+          type: object
+        by_provider:
+          type: object
+        stale_access:
+          type: object
+        privileged_users:
+          type: array
+          items:
+            type: object
+        recommendations:
+          type: array
+          items:
+            type: string
+
+    AccessReview:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ReviewsResponse:
+      type: object
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessReview'
+        count:
+          type: integer
+
+    CreateReviewRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [user_access, service_account, privileged]
+        reviewers:
+          type: array
+          items:
+            type: string
+
+    AgentsResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+
+    AgentSession:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateSessionRequest:
+      type: object
+      required: [agent_id]
+      properties:
+        agent_id:
+          type: string
+        user_id:
+          type: string
+        finding_ids:
+          type: array
+          items:
+            type: string
+        context:
+          type: object
+
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+
+    MessagesResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    WebhooksResponse:
+      type: object
+      properties:
+        webhooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Webhook'
+        count:
+          type: integer
+
+    CreateWebhookRequest:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+
+    AdminHealth:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        snowflake:
+          type: object
+          properties:
+            status:
+              type: string
+            latency_ms:
+              type: integer
+        findings:
+          type: object
+        cache:
+          type: object
+        policies:
+          type: object
+        agents:
+          type: object
+
+    SyncStatus:
+      type: object
+      properties:
+        sources:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              last_sync:
+                type: string
+                format: date-time
+              status:
+                type: string
+              age:
+                type: string
+        stale_threshold:
+          type: string
+        checked_at:
+          type: string
+          format: date-time
+
+    SchedulerStatus:
+      type: object
+      properties:
+        running:
+          type: boolean
+        jobs_count:
+          type: integer
+
+    JobsResponse:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              interval:
+                type: string
+              last_run:
+                type: string
+                format: date-time
+              next_run:
+                type: string
+                format: date-time
+              enabled:
+                type: boolean
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_more:
+          type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object

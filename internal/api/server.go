@@ -65,6 +65,8 @@ func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.health)
 	s.router.Get("/ready", s.ready)
 	s.router.Get("/metrics", s.metrics)
+	s.router.Get("/openapi.yaml", s.openAPISpec)
+	s.router.Get("/docs", s.swaggerUI)
 
 	s.router.Route("/api/v1", func(r chi.Router) {
 		// Query endpoints
@@ -112,6 +114,13 @@ func (s *Server) setupRoutes() {
 			r.Get("/sessions/{id}", s.getSession)
 			r.Post("/sessions/{id}/messages", s.sendMessage)
 			r.Get("/sessions/{id}/messages", s.getMessages)
+		})
+
+		// Incident response endpoints
+		r.Route("/incidents", func(r chi.Router) {
+			r.Post("/", s.createIncident)
+			r.Get("/playbooks", s.listPlaybooks)
+			r.Get("/playbooks/{id}", s.getPlaybook)
 		})
 
 		// Ticketing endpoints
@@ -187,7 +196,11 @@ func (s *Server) setupRoutes() {
 		r.Route("/notifications", func(r chi.Router) {
 			r.Get("/", s.listNotifiers)
 			r.Post("/test", s.testNotifications)
+			r.Get("/digest", s.dailyDigest)
 		})
+
+		// Slack integration
+		r.Post("/slack/commands", s.slackCommands)
 
 		// Admin/health endpoints
 		r.Route("/admin", func(r chi.Router) {
@@ -259,6 +272,37 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	// Use Prometheus metrics handler
 	metrics.Handler().ServeHTTP(w, r)
+}
+
+func (s *Server) openAPISpec(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml")
+	http.ServeFile(w, r, "api/openapi.yaml")
+}
+
+func (s *Server) swaggerUI(w http.ResponseWriter, r *http.Request) {
+	html := `<!DOCTYPE html>
+<html>
+<head>
+  <title>Cerebro API Documentation</title>
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = function() {
+      SwaggerUIBundle({
+        url: "/openapi.yaml",
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+        layout: "BaseLayout"
+      });
+    }
+  </script>
+</body>
+</html>`
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = w.Write([]byte(html))
 }
 
 // Admin health dashboard
@@ -990,6 +1034,53 @@ func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, map[string]interface{}{"messages": session.Messages, "count": len(session.Messages)})
 }
 
+// Incident response endpoints
+
+func (s *Server) createIncident(w http.ResponseWriter, r *http.Request) {
+	var req agents.CreateIncidentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.Title == "" {
+		s.error(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	if req.Severity == "" {
+		req.Severity = "medium"
+	}
+
+	ir := agents.NewIncidentResponse(s.app.Agents)
+	incident, err := ir.CreateIncident(r.Context(), req)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusCreated, incident)
+}
+
+func (s *Server) listPlaybooks(w http.ResponseWriter, r *http.Request) {
+	ir := agents.NewIncidentResponse(s.app.Agents)
+	playbooks := ir.ListPlaybooks()
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"playbooks": playbooks,
+		"count":     len(playbooks),
+	})
+}
+
+func (s *Server) getPlaybook(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ir := agents.NewIncidentResponse(s.app.Agents)
+	playbook := ir.GetPlaybook(id)
+	if playbook == nil {
+		s.error(w, http.StatusNotFound, "playbook not found")
+		return
+	}
+	s.json(w, http.StatusOK, playbook)
+}
+
 // Ticketing endpoints
 
 func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
@@ -1638,4 +1729,23 @@ func (s *Server) testNotifications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
+func (s *Server) dailyDigest(w http.ResponseWriter, r *http.Request) {
+	handler := notifications.NewSlackCommandHandler(
+		notifications.SlackCommandConfig{},
+		s.app.Findings,
+	)
+	digest := handler.DailyDigest()
+	s.json(w, http.StatusOK, digest)
+}
+
+func (s *Server) slackCommands(w http.ResponseWriter, r *http.Request) {
+	handler := notifications.NewSlackCommandHandler(
+		notifications.SlackCommandConfig{
+			SigningSecret: s.app.Config.SlackSigningSecret,
+		},
+		s.app.Findings,
+	)
+	handler.ServeHTTP(w, r)
 }

@@ -92,8 +92,9 @@ type Config struct {
 	WebhookURLs []string
 
 	// Notifications
-	SlackWebhookURL string
-	PagerDutyKey    string
+	SlackWebhookURL    string
+	SlackSigningSecret string
+	PagerDutyKey       string
 
 	// Scheduler
 	ScanInterval string // e.g., "1h", "30m"
@@ -127,6 +128,7 @@ func LoadConfig() *Config {
 		OktaDomain:                getEnv("OKTA_DOMAIN", ""),
 		OktaAPIToken:              getEnv("OKTA_API_TOKEN", ""),
 		SlackWebhookURL:           getEnv("SLACK_WEBHOOK_URL", ""),
+		SlackSigningSecret:       getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),
 		ScanInterval:              getEnv("SCAN_INTERVAL", ""),
 		ScanTables:                getEnv("SCAN_TABLES", ""),

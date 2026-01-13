@@ -19,6 +19,10 @@ type Config struct {
 	RateLimitEnabled  bool
 	RateLimitRequests int
 	RateLimitWindow   time.Duration
+
+	// Slack integration
+	SlackSigningSecret string
+	SlackWebhookURL    string
 }
 
 func Load() *Config {
@@ -34,6 +38,9 @@ func Load() *Config {
 		RateLimitEnabled:  getEnvBool("RATE_LIMIT_ENABLED", false),
 		RateLimitRequests: getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 		RateLimitWindow:   getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
+
+		SlackSigningSecret: getEnv("SLACK_SIGNING_SECRET", ""),
+		SlackWebhookURL:    getEnv("SLACK_WEBHOOK_URL", ""),
 	}
 }
 
