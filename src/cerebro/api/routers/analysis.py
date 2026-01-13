@@ -1,6 +1,7 @@
 """Advanced analysis endpoints."""
 
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -63,7 +64,7 @@ async def analyze_blast_radius(
     request: BlastRadiusRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Analyze blast radius for principal compromise."""
     # Verify organization exists
     org = await db.get(Organization, org_id)
@@ -124,7 +125,7 @@ async def generate_blast_radius_report(
     org_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Generate organization-wide blast radius report."""
     org = await db.get(Organization, org_id)
     if not org:
@@ -149,7 +150,7 @@ async def forensic_replay(
     request: ForensicReplayRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Reconstruct system state at a historical point in time."""
     org = await db.get(Organization, org_id)
     if not org:
@@ -205,7 +206,7 @@ async def change_replay(
     request: ChangeReplayRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Replay rule changes against historical data."""
     org = await db.get(Organization, org_id)
     if not org:
@@ -255,7 +256,7 @@ async def get_rule_effectiveness(
     lookback_days: int = Query(default=90, description="Days to look back"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Get rule effectiveness analysis."""
     org = await db.get(Organization, org_id)
     if not org:
@@ -284,7 +285,7 @@ async def what_if_rule_analysis(
     time_period_days: int = Query(default=30, description="Days to analyze"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Analyze what would happen if a rule had been active."""
     org = await db.get(Organization, org_id)
     if not org:
@@ -314,7 +315,7 @@ async def get_identity_anomalies(
     ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Detect identity anomalies using machine learning."""
     if not IDENTITY_ANOMALY_AVAILABLE:
         raise HTTPException(
@@ -370,7 +371,7 @@ async def get_identity_anomaly_summary(
     ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Get summary of identity anomalies for organization."""
     if not IDENTITY_ANOMALY_AVAILABLE:
         raise HTTPException(
@@ -414,7 +415,7 @@ async def analyze_identity_anomalies_post(
     request: IdentityAnomalyRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Run identity anomaly analysis with custom parameters."""
     if not IDENTITY_ANOMALY_AVAILABLE:
         raise HTTPException(
@@ -477,7 +478,7 @@ async def analyze_identity_anomalies_post(
 @router.get("/compliance/frameworks")
 async def list_compliance_frameworks(
     current_user: User = Depends(require_read_findings),
-):
+) -> dict[str, Any]:
     """List all available compliance frameworks."""
     frameworks = list_frameworks()
     framework_details = []
@@ -510,7 +511,7 @@ async def list_compliance_frameworks(
 async def get_compliance_framework(
     framework_name: str,
     current_user: User = Depends(require_read_findings),
-):
+) -> dict[str, Any]:
     """Get detailed information about a specific compliance framework."""
     framework = get_framework(framework_name)
     if not framework:
@@ -530,9 +531,9 @@ async def get_compliance_framework(
                 "description": control.description,
                 "control_type": control.control_type.value,
                 "automation_level": control.automation_level,
-                "frequency": getattr(control, "frequency", None),  # type: ignore[attr-defined]
-                "required_evidence": [e.value for e in getattr(control, "required_evidence", [])],  # type: ignore[attr-defined]
-                "sql_queries_count": len(getattr(control, "sql_queries", [])),  # type: ignore[attr-defined]
+                "frequency": getattr(control, "frequency", None),
+                "required_evidence": [e.value for e in getattr(control, "required_evidence", [])],
+                "sql_queries_count": len(getattr(control, "sql_queries", [])),
             }
         )
 
@@ -576,7 +577,7 @@ async def generate_compliance_evidence(
     ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Generate compliance evidence report for an organization."""
     org = await db.get(Organization, org_id)
     if not org:
@@ -627,7 +628,7 @@ async def get_compliance_status(
     framework_name: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_org_access(require_read_findings)),
-):
+) -> dict[str, Any]:
     """Get current compliance status for an organization and framework."""
     org = await db.get(Organization, org_id)
     if not org:

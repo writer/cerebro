@@ -1050,5 +1050,101 @@ def delete(
     asyncio.run(_delete())
 
 
+@app.command()
+def hunt(
+    org_name: str = typer.Argument(..., help="Organization name to hunt in"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report findings without creating tasks"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """
+    Run the Hunter agent to find proactive high-risk attack paths.
+    
+    Identifies privilege escalation and critical attack paths using the 
+    graph engine and creates review tasks for remediation.
+    """
+    
+    async def _hunt() -> None:
+        # Find organization
+        async with async_session_factory() as db:
+            stmt = select(Organization).where(Organization.name == org_name)
+            org = await db.scalar(stmt)
+
+            if not org:
+                rprint(f"[red]Organization '{org_name}' not found[/red]")
+                return
+                
+            from cerebro.agents.hunter import HunterService
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+            ) as progress:
+                task = progress.add_task("Hunting for attack paths...", total=None)
+                
+                try:
+                    results = await HunterService.hunt(org.org_id, dry_run=dry_run)
+                    progress.update(task, completed=1)
+                    
+                    if json_output:
+                        # Serialize results
+                        output = []
+                        for res in results:
+                            if hasattr(res, 'id'): # It's a task model
+                                output.append({
+                                    "task_id": str(res.id),
+                                    "title": res.title,
+                                    "priority": res.priority,
+                                    "status": "created"
+                                })
+                            else: # Dictionary from dry run
+                                output.append(res)
+                        print(json.dumps(output, indent=2))
+                        return
+
+                    if not results:
+                        rprint("[green]🛡️  Hunter found no new high-risk attack paths.[/green]")
+                        return
+
+                    if dry_run:
+                        rprint(f"[yellow]🔍 Hunter found {len(results)} potential attack paths (Dry Run):[/yellow]")
+                        table = Table()
+                        table.add_column("Type", style="cyan")
+                        table.add_column("Severity", style="red")
+                        table.add_column("Steps", style="white")
+                        table.add_column("Target", style="yellow")
+                        
+                        for res in results:
+                            table.add_row(
+                                res['type'],
+                                res['severity'].upper(),
+                                str(res['steps']),
+                                res['target']
+                            )
+                        console.print(table)
+                    else:
+                        rprint(f"[red]🚨 Hunter identified {len(results)} high-risk paths and created remediation tasks:[/red]")
+                        table = Table()
+                        table.add_column("Task ID", style="cyan")
+                        table.add_column("Priority", style="red")
+                        table.add_column("Title", style="white")
+                        
+                        for task in results:
+                            table.add_row(
+                                str(task.id),
+                                str(task.priority).upper(),
+                                task.title
+                            )
+                        console.print(table)
+                        rprint("\n[blue]View tasks with: cerebro agents review list " + org_name + "[/blue]")
+
+                except Exception as e:
+                    rprint(f"[red]Hunter failed: {e}[/red]")
+                    import traceback
+                    rprint(traceback.format_exc())
+
+    asyncio.run(_hunt())
+
+
 if __name__ == "__main__":
     app()
