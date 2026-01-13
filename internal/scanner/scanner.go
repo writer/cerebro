@@ -97,6 +97,7 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 
 	// Feed assets to workers
 	go func() {
+		defer close(assetCh) // Always close channel when done
 		for _, asset := range assets {
 			select {
 			case assetCh <- asset:
@@ -104,7 +105,6 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 				return
 			}
 		}
-		close(assetCh)
 	}()
 
 	// Collect results
