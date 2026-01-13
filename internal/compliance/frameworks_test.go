@@ -174,3 +174,58 @@ func TestGetControlsForPolicy(t *testing.T) {
 		t.Error("expected aws-iam-user-mfa-enabled to be in PCI DSS")
 	}
 }
+
+func TestSeverityWeight(t *testing.T) {
+	tests := []struct {
+		severity ControlSeverity
+		want     int
+	}{
+		{SeverityCritical, 10},
+		{SeverityHigh, 5},
+		{SeverityMedium, 2},
+		{SeverityLow, 1},
+		{"", 2}, // Default to medium
+	}
+
+	for _, tt := range tests {
+		if got := tt.severity.Weight(); got != tt.want {
+			t.Errorf("Severity(%q).Weight() = %d, want %d", tt.severity, got, tt.want)
+		}
+	}
+}
+
+func TestCalculateWeightedScore(t *testing.T) {
+	controls := []Control{
+		{ID: "1", Severity: SeverityCritical}, // weight 10
+		{ID: "2", Severity: SeverityHigh},     // weight 5
+		{ID: "3", Severity: SeverityMedium},   // weight 2
+		{ID: "4", Severity: SeverityLow},      // weight 1
+	}
+	// Total weight: 18
+
+	// All passing
+	failing := map[string]bool{}
+	score, total, passing := CalculateWeightedScore(controls, failing)
+	if score != 100 {
+		t.Errorf("all passing score = %.1f, want 100", score)
+	}
+	if total != 18 || passing != 18 {
+		t.Errorf("weights = %d/%d, want 18/18", passing, total)
+	}
+
+	// Critical control failing
+	failing = map[string]bool{"1": true}
+	score, _, _ = CalculateWeightedScore(controls, failing)
+	// Passing weight: 5+2+1=8, Total: 18, Score: 8/18*100 = 44.4%
+	if score < 44 || score > 45 {
+		t.Errorf("critical failing score = %.1f, want ~44.4", score)
+	}
+
+	// Low control failing
+	failing = map[string]bool{"4": true}
+	score, _, _ = CalculateWeightedScore(controls, failing)
+	// Passing weight: 10+5+2=17, Total: 18, Score: 17/18*100 = 94.4%
+	if score < 94 || score > 95 {
+		t.Errorf("low failing score = %.1f, want ~94.4", score)
+	}
+}

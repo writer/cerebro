@@ -14,12 +14,39 @@ type Framework struct {
 	Controls    []Control `json:"controls"`
 }
 
+// ControlSeverity represents the criticality of a control
+type ControlSeverity string
+
+const (
+	SeverityCritical ControlSeverity = "critical"
+	SeverityHigh     ControlSeverity = "high"
+	SeverityMedium   ControlSeverity = "medium"
+	SeverityLow      ControlSeverity = "low"
+)
+
+// SeverityWeight returns the numeric weight for a severity level
+func (s ControlSeverity) Weight() int {
+	switch s {
+	case SeverityCritical:
+		return 10
+	case SeverityHigh:
+		return 5
+	case SeverityMedium:
+		return 2
+	case SeverityLow:
+		return 1
+	default:
+		return 2 // Default to medium
+	}
+}
+
 // Control represents a specific requirement within a framework
 type Control struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	PolicyIDs   []string `json:"policy_ids"` // Cerebro policy IDs that implement this control
+	ID          string          `json:"id"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Severity    ControlSeverity `json:"severity,omitempty"` // Control criticality for weighted scoring
+	PolicyIDs   []string        `json:"policy_ids"`         // Cerebro policy IDs that implement this control
 }
 
 // ControlStatus represents the evaluation status of a control
@@ -45,7 +72,8 @@ type ComplianceSummary struct {
 	TotalControls   int     `json:"total_controls"`
 	PassingControls int     `json:"passing_controls"`
 	FailingControls int     `json:"failing_controls"`
-	ComplianceScore float64 `json:"compliance_score"`
+	ComplianceScore float64 `json:"compliance_score"`         // Simple percentage
+	WeightedScore   float64 `json:"weighted_score,omitempty"` // Severity-weighted score
 }
 
 // =============================================================================
@@ -63,54 +91,63 @@ var CISAWSv15 = Framework{
 			ID:          "1.4",
 			Title:       "Ensure no root user access key exists",
 			Description: "The root user is the most privileged user in an AWS account. Access keys provide programmatic access.",
+			Severity:    SeverityCritical,
 			PolicyIDs:   []string{"aws-iam-root-no-access-keys"},
 		},
 		{
 			ID:          "1.5",
 			Title:       "Ensure MFA is enabled for the root user",
 			Description: "The root user has unrestricted access. MFA adds an extra layer of protection.",
+			Severity:    SeverityCritical,
 			PolicyIDs:   []string{"aws-iam-root-mfa-enabled"},
 		},
 		{
 			ID:          "1.8",
 			Title:       "Ensure IAM password policy requires minimum length of 14 or greater",
 			Description: "Password policies enforce password complexity requirements.",
+			Severity:    SeverityMedium,
 			PolicyIDs:   []string{"aws-iam-password-policy"},
 		},
 		{
 			ID:          "1.9",
 			Title:       "Ensure IAM password policy prevents password reuse",
 			Description: "Preventing password reuse increases account resiliency.",
+			Severity:    SeverityMedium,
 			PolicyIDs:   []string{"aws-iam-password-policy"},
 		},
 		{
 			ID:          "1.10",
 			Title:       "Ensure MFA is enabled for all IAM users with console access",
 			Description: "MFA adds an extra layer of protection for interactive logins.",
+			Severity:    SeverityHigh,
 			PolicyIDs:   []string{"aws-iam-user-mfa-enabled"},
 		},
 		{
 			ID:          "1.12",
 			Title:       "Ensure credentials unused for 45 days or greater are disabled",
 			Description: "Unused credentials should be disabled to reduce attack surface.",
+			Severity:    SeverityMedium,
 			PolicyIDs:   []string{"aws-iam-user-console-inactive", "aws-iam-user-unused-credentials"},
 		},
 		{
 			ID:          "1.14",
 			Title:       "Ensure access keys are rotated every 90 days or less",
 			Description: "Rotating access keys reduces the risk from compromised keys.",
+			Severity:    SeverityHigh,
 			PolicyIDs:   []string{"aws-iam-access-key-rotation"},
 		},
 		{
 			ID:          "1.15",
 			Title:       "Ensure IAM users receive permissions only through groups",
 			Description: "Assigning permissions through groups simplifies access management.",
+			Severity:    SeverityLow,
 			PolicyIDs:   []string{"aws-iam-no-policies-attached-user"},
 		},
 		{
 			ID:          "1.16",
 			Title:       "Ensure IAM policies that allow full '*:*' administrative privileges are not attached",
 			Description: "IAM policies should follow least privilege principles.",
+			Severity:    SeverityCritical,
 			PolicyIDs:   []string{"aws-iam-policy-no-admin-star"},
 		},
 
@@ -119,12 +156,14 @@ var CISAWSv15 = Framework{
 			ID:          "2.1.1",
 			Title:       "Ensure S3 bucket encryption is enabled",
 			Description: "S3 bucket default encryption provides encryption at rest.",
+			Severity:    SeverityHigh,
 			PolicyIDs:   []string{"aws-s3-bucket-encryption-enabled"},
 		},
 		{
 			ID:          "2.1.2",
 			Title:       "Ensure S3 bucket policy requires SSL",
 			Description: "S3 bucket policies should require TLS for data in transit.",
+			Severity:    SeverityHigh,
 			PolicyIDs:   []string{"aws-s3-bucket-ssl-only"},
 		},
 		{
@@ -663,4 +702,27 @@ func GetControlsForPolicy(policyID string) []struct {
 	}
 
 	return results
+}
+
+// CalculateWeightedScore calculates a severity-weighted compliance score
+// Returns (weightedScore, totalWeight, passingWeight)
+func CalculateWeightedScore(controls []Control, failingControlIDs map[string]bool) (float64, int, int) {
+	totalWeight := 0
+	passingWeight := 0
+
+	for _, ctrl := range controls {
+		weight := ctrl.Severity.Weight()
+		totalWeight += weight
+
+		if !failingControlIDs[ctrl.ID] {
+			passingWeight += weight
+		}
+	}
+
+	if totalWeight == 0 {
+		return 0, 0, 0
+	}
+
+	score := float64(passingWeight) / float64(totalWeight) * 100
+	return score, totalWeight, passingWeight
 }

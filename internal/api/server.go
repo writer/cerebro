@@ -847,6 +847,15 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		report.Summary.ComplianceScore = float64(passing) / float64(len(framework.Controls)) * 100
 	}
 
+	// Calculate weighted score based on control severity
+	failingControlIDs := make(map[string]bool)
+	for _, ctrl := range report.Controls {
+		if ctrl.Status == "failing" {
+			failingControlIDs[ctrl.ControlID] = true
+		}
+	}
+	report.Summary.WeightedScore, _, _ = compliance.CalculateWeightedScore(framework.Controls, failingControlIDs)
+
 	// Include data freshness warning if available
 	var dataWarning string
 	if s.app.CloudQuery != nil {
