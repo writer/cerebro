@@ -478,3 +478,20 @@ func joinStrings(strs []string, sep string) string {
 	}
 	return result
 }
+
+// GetAllTables returns all table definitions as a slice
+func GetAllTables() []TableDefinition {
+	all := GetAllTableDefinitions()
+	tables := make([]TableDefinition, 0, len(all))
+	for _, t := range all {
+		tables = append(tables, t)
+	}
+	return tables
+}
+
+// GetTableByName returns a table definition by name
+func GetTableByName(name string) (TableDefinition, bool) {
+	all := GetAllTableDefinitions()
+	t, ok := all[name]
+	return t, ok
+}

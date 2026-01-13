@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sf "github.com/snowflakedb/gosnowflake"
+
 	"github.com/writerinternal/cerebro/internal/cerrors"
 )
 

@@ -248,10 +248,11 @@ func TestSyncOptions_Fields(t *testing.T) {
 
 func TestSyncResult_Fields(t *testing.T) {
 	now := time.Now()
+	completed := now.Add(5 * time.Second)
 	result := &SyncResult{
 		Provider:    "test",
 		StartedAt:   now,
-		CompletedAt: now.Add(5 * time.Second),
+		CompletedAt: completed,
 		Duration:    5 * time.Second,
 		TotalRows:   1000,
 		Tables: []TableResult{
@@ -264,11 +265,15 @@ func TestSyncResult_Fields(t *testing.T) {
 	if result.Provider != "test" {
 		t.Error("Provider field incorrect")
 	}
-
+	if result.StartedAt != now {
+		t.Error("StartedAt field incorrect")
+	}
+	if result.CompletedAt != completed {
+		t.Error("CompletedAt field incorrect")
+	}
 	if result.TotalRows != 1000 {
 		t.Error("TotalRows field incorrect")
 	}
-
 	if result.Duration != 5*time.Second {
 		t.Error("Duration field incorrect")
 	}

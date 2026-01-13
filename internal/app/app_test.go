@@ -342,11 +342,27 @@ func TestConfig_Fields(t *testing.T) {
 	if cfg.Port != 8080 {
 		t.Error("Port field incorrect")
 	}
-
+	if cfg.LogLevel != "info" {
+		t.Error("LogLevel field incorrect")
+	}
+	if cfg.SnowflakeDatabase != "CEREBRO" {
+		t.Error("SnowflakeDatabase field incorrect")
+	}
+	if cfg.SnowflakeSchema != "CEREBRO" {
+		t.Error("SnowflakeSchema field incorrect")
+	}
+	if cfg.PoliciesPath != "policies" {
+		t.Error("PoliciesPath field incorrect")
+	}
+	if cfg.ScanInterval != "1h" {
+		t.Error("ScanInterval field incorrect")
+	}
 	if cfg.RateLimitEnabled != true {
 		t.Error("RateLimitEnabled field incorrect")
 	}
-
+	if cfg.RateLimitRequests != 1000 {
+		t.Error("RateLimitRequests field incorrect")
+	}
 	if cfg.RateLimitWindow != time.Hour {
 		t.Error("RateLimitWindow field incorrect")
 	}

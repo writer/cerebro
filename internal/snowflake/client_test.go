@@ -86,3 +86,110 @@ func containsAt(s, substr string, start int) bool {
 	}
 	return false
 }
+
+func TestValidateTableName_Valid(t *testing.T) {
+	validNames := []string{
+		"aws_iam_users",
+		"my_table",
+		"Table123",
+		"_internal",
+	}
+
+	for _, name := range validNames {
+		if err := ValidateTableName(name); err != nil {
+			t.Errorf("ValidateTableName(%q) = %v, want nil", name, err)
+		}
+	}
+}
+
+func TestValidateTableName_Invalid(t *testing.T) {
+	invalidNames := []string{
+		"",
+		"table; DROP TABLE users",
+		"table--comment",
+		"table/*comment*/",
+		"table'quote",
+		"123_starts_with_number",
+		"table name with spaces",
+		"table OR 1=1",
+	}
+
+	for _, name := range invalidNames {
+		if err := ValidateTableName(name); err == nil {
+			t.Errorf("ValidateTableName(%q) = nil, want error", name)
+		}
+	}
+}
+
+func TestValidateTableNameStrict_KnownPrefixes(t *testing.T) {
+	knownPrefixes := []string{
+		"aws_iam_users",
+		"gcp_compute_instances",
+		"azure_storage_accounts",
+		"cerebro_findings",
+		"okta_users",
+	}
+
+	for _, name := range knownPrefixes {
+		if err := ValidateTableNameStrict(name); err != nil {
+			t.Errorf("ValidateTableNameStrict(%q) = %v, want nil", name, err)
+		}
+	}
+}
+
+func TestValidateTableNameStrict_UnknownPrefix(t *testing.T) {
+	if err := ValidateTableNameStrict("unknown_table"); err == nil {
+		t.Error("ValidateTableNameStrict should reject unknown prefixes")
+	}
+}
+
+func TestQuoteIdentifier(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"table", `"table"`},
+		{"my_table", `"my_table"`},
+		{`table"quote`, `"table""quote"`},
+	}
+
+	for _, tc := range tests {
+		result := QuoteIdentifier(tc.input)
+		if result != tc.expected {
+			t.Errorf("QuoteIdentifier(%q) = %q, want %q", tc.input, result, tc.expected)
+		}
+	}
+}
+
+func TestSafeTableRef_Valid(t *testing.T) {
+	ref, err := SafeTableRef("CEREBRO", "RAW", "aws_iam_users")
+	if err != nil {
+		t.Errorf("SafeTableRef returned error: %v", err)
+	}
+
+	expected := "CEREBRO.RAW.aws_iam_users"
+	if ref != expected {
+		t.Errorf("SafeTableRef = %q, want %q", ref, expected)
+	}
+}
+
+func TestSafeTableRef_InvalidTable(t *testing.T) {
+	_, err := SafeTableRef("CEREBRO", "RAW", "table; DROP")
+	if err == nil {
+		t.Error("SafeTableRef should reject invalid table name")
+	}
+}
+
+func TestSafeTableRef_InvalidDatabase(t *testing.T) {
+	_, err := SafeTableRef("bad;db", "RAW", "aws_iam_users")
+	if err == nil {
+		t.Error("SafeTableRef should reject invalid database name")
+	}
+}
+
+func TestSafeTableRef_InvalidSchema(t *testing.T) {
+	_, err := SafeTableRef("CEREBRO", "bad schema", "aws_iam_users")
+	if err == nil {
+		t.Error("SafeTableRef should reject invalid schema name")
+	}
+}

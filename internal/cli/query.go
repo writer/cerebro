@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"github.com/writerinternal/cerebro/internal/config"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
