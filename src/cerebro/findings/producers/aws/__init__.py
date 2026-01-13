@@ -1,13 +1,16 @@
 """AWS finding producers."""
 
 from .bucket_cleartext_key import AwsBucketCleartextKeyProducer
+from .cloudtrail_not_enabled import CloudTrailNotEnabledProducer
 from .codebuild_public_trigger import AwsCodeBuildPublicTriggerProducer
 from .codebuild_source_credential import AwsCodeBuildSourceCredentialProducer
+from .ebs_encryption_disabled import EBSEncryptionDisabledProducer
 from .ec2_instance_public_ip import Ec2InstancePublicIpProducer
 from .ec2_internet_facing_iam import EC2InternetFacingIAMProducer
 from .ecr_public_repository import ECRPublicRepositoryProducer
 from .iam_root_account_usage import IAMRootAccountUsageProducer
 from .iam_user_without_mfa import AwsIamUserWithoutMfaProducer
+from .kms_key_rotation_disabled import KMSKeyRotationDisabledProducer
 from .lambda_public_access import LambdaPublicAccessProducer
 from .load_balancer_certificate_expiry import AwsLoadBalancerCertificateExpiryProducer
 from .load_balancer_missing_https import AwsLoadBalancerMissingHttpsProducer
@@ -38,10 +41,13 @@ __all__ = [
     "AwsSecurityGroupPublicIngressProducer",
     "AwsServiceAccountOpenAssumeProducer",
     "AwsStorageWriteAccessProducer",
+    "CloudTrailNotEnabledProducer",
+    "EBSEncryptionDisabledProducer",
     "EC2InternetFacingIAMProducer",
     "ECRPublicRepositoryProducer",
     "Ec2InstancePublicIpProducer",
     "IAMRootAccountUsageProducer",
+    "KMSKeyRotationDisabledProducer",
     "LambdaPublicAccessProducer",
     "RDSPublicAccessProducer",
 ]
