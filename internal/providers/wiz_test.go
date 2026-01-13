@@ -399,6 +399,7 @@ func TestWizProviderSync(t *testing.T) {
 				"vulnerabilityFindings": map[string]interface{}{"nodes": []interface{}{}, "pageInfo": map[string]interface{}{"hasNextPage": false}},
 				"secretFindings":        map[string]interface{}{"nodes": []interface{}{}, "pageInfo": map[string]interface{}{"hasNextPage": false}},
 				"cloudIdentities":       map[string]interface{}{"nodes": []interface{}{}, "pageInfo": map[string]interface{}{"hasNextPage": false}},
+				"attackPaths":           map[string]interface{}{"nodes": []interface{}{}, "pageInfo": map[string]interface{}{"hasNextPage": false}},
 			},
 		})
 	}))
@@ -419,8 +420,8 @@ func TestWizProviderSync(t *testing.T) {
 		t.Errorf("expected provider 'wiz', got '%s'", result.Provider)
 	}
 
-	// Should have synced 5 tables (resources, issues, vulns, secrets, identities)
-	if len(result.Tables) != 5 {
-		t.Errorf("expected 5 tables synced, got %d", len(result.Tables))
+	// Should have synced 6 tables (resources, issues, vulns, secrets, identities, attack_paths)
+	if len(result.Tables) != 6 {
+		t.Errorf("expected 6 tables synced, got %d", len(result.Tables))
 	}
 }

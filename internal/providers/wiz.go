@@ -266,6 +266,15 @@ func (w *WizProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, 
 		result.TotalRows += identities.Rows
 	}
 
+	// Sync attack paths
+	attackPaths, err := w.syncAttackPaths(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "attack_paths: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *attackPaths)
+		result.TotalRows += attackPaths.Rows
+	}
+
 	result.CompletedAt = time.Now()
 	result.Duration = result.CompletedAt.Sub(start)
 
@@ -350,8 +359,9 @@ func (w *WizProvider) graphQLQuery(ctx context.Context, query string, variables 
 	return respBody, nil
 }
 
-// paginatedQuery executes a GraphQL query with pagination support
-func (w *WizProvider) paginatedQuery(ctx context.Context, query string, pageSize int, extractNodes func([]byte) ([]map[string]interface{}, string, bool, error)) ([]map[string]interface{}, error) {
+// _paginatedQuery executes a GraphQL query with pagination support
+// TODO: Use this for large data syncs that need pagination
+func (w *WizProvider) _paginatedQuery(ctx context.Context, query string, pageSize int, extractNodes func([]byte) ([]map[string]interface{}, string, bool, error)) ([]map[string]interface{}, error) { //nolint:unused
 	var allNodes []map[string]interface{}
 	var cursor string
 	hasNextPage := true
