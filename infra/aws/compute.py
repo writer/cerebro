@@ -24,6 +24,7 @@ def create_ecs_cluster(
     log_retention_days: int = 30,
     environment: dict = None,
     secret_keys: list[str] = None,
+    external_secrets_prefix: str = None,
 ) -> dict:
     """
     Create ECS cluster with Fargate service for Go API.
@@ -42,7 +43,7 @@ def create_ecs_cluster(
     )
 
     # IAM roles
-    execution_role = _create_execution_role(name, secrets_arn, kms_key_id)
+    execution_role = _create_execution_role(name, secrets_arn, kms_key_id, external_secrets_prefix)
     task_role = _create_task_role(name, kms_key_id)
 
     # CloudWatch log group
@@ -65,6 +66,7 @@ def create_ecs_cluster(
         secrets_arn=secrets_arn,
         environment=environment or {},
         secret_keys=secret_keys or ["SNOWFLAKE_CONNECTION_STRING"],
+        external_secrets_prefix=external_secrets_prefix,
     )
 
     # ECS Service
@@ -149,6 +151,7 @@ def _create_execution_role(
     name: str,
     secrets_arn: pulumi.Output[str],
     kms_key_id: pulumi.Output[str],
+    external_secrets_prefix: str = None,
 ) -> aws.iam.Role:
     """Create IAM execution role for ECS."""
     role = aws.iam.Role(
@@ -170,17 +173,28 @@ def _create_execution_role(
         policy_arn="arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
     )
 
+    # Get account/region for ARN construction
+    caller = aws.get_caller_identity()
+    region = aws.get_region()
+
+    if external_secrets_prefix:
+        # External secrets mode: allow access to Infisical-synced secrets
+        secrets_resource = f"arn:aws:secretsmanager:{region.name}:{caller.account_id}:secret:{external_secrets_prefix}/*"
+    else:
+        # Pulumi-managed secret
+        secrets_resource = secrets_arn
+
     aws.iam.RolePolicy(
         f"{name}-exec-secrets",
         role=role.name,
-        policy=pulumi.Output.all(secrets_arn, kms_key_id).apply(
+        policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
             lambda args: json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [
                     {
                         "Effect": "Allow",
                         "Action": ["secretsmanager:GetSecretValue"],
-                        "Resource": args[0],
+                        "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
                     },
                     {
                         "Effect": "Allow",
@@ -238,15 +252,30 @@ def _create_task_definition(
     secrets_arn: pulumi.Output[str],
     environment: dict,
     secret_keys: list[str],
+    external_secrets_prefix: str = None,
 ) -> aws.ecs.TaskDefinition:
     """Create ECS task definition."""
-    region = aws.get_region().name
+    region_obj = aws.get_region()
+    region = region_obj.name
+    caller = aws.get_caller_identity()
 
     # Build secrets list dynamically based on what's configured
-    secrets_list = [
-        {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
-        for key in secret_keys
-    ]
+    if external_secrets_prefix:
+        # External secrets mode: each secret is a separate Secrets Manager secret
+        # synced by Infisical to {prefix}/{KEY}
+        secrets_list = [
+            {
+                "name": key,
+                "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}"
+            }
+            for key in secret_keys
+        ]
+    else:
+        # Pulumi-managed single secret with multiple keys
+        secrets_list = [
+            {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
+            for key in secret_keys
+        ]
 
     container_def = {
         "name": "cerebro",

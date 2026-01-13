@@ -51,6 +51,11 @@ enable_infisical = _config_bool("enableInfisicalSyncRole", False)
 infisical_principal_arn = config.get("infisicalAssumeRolePrincipalArn")
 infisical_external_id = config.get("infisicalExternalId")
 
+# External secrets (Infisical-synced) - when enabled, secrets are read from 
+# AWS Secrets Manager instead of Pulumi config
+use_external_secrets = _config_bool("useExternalSecrets", False)
+external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{environment}"
+
 # =============================================================================
 # NETWORKING
 # =============================================================================
@@ -77,38 +82,62 @@ kms_key = kms.create_kms_key(
 # SECRETS
 # =============================================================================
 
-# Build secrets dict from config - only include configured secrets
-secrets_dict = {
-    "SNOWFLAKE_CONNECTION_STRING": config.require_secret("snowflakeConnectionString"),
-}
-secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
+# When using external secrets (Infisical), secrets are synced to AWS Secrets Manager
+# and referenced by ARN. Otherwise, we create our own secret from Pulumi config.
+if use_external_secrets:
+    # External secrets mode: reference Infisical-synced secrets
+    # Secrets should be synced to: {prefix}/SNOWFLAKE_CONNECTION_STRING, etc.
+    cerebro_secrets = None  # No Pulumi-managed secret
+    
+    # List of secret keys that will be injected from external secrets
+    secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
+    
+    # Optional external secrets - check if they exist
+    optional_secrets = [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "SLACK_WEBHOOK_URL",
+        "JIRA_API_TOKEN",
+        "LINEAR_API_KEY",
+    ]
+    # In external mode, we assume all configured secrets exist
+    # The actual existence is validated at runtime by ECS
+    for key in optional_secrets:
+        if config.get_bool(f"enable{key.replace('_', ' ').title().replace(' ', '')}"):
+            secret_keys.append(key)
+else:
+    # Pulumi-managed secrets mode
+    secrets_dict = {
+        "SNOWFLAKE_CONNECTION_STRING": config.require_secret("snowflakeConnectionString"),
+    }
+    secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
 
-# Optional secrets - only add if configured
-if config.get_secret("anthropicApiKey"):
-    secrets_dict["ANTHROPIC_API_KEY"] = config.get_secret("anthropicApiKey")
-    secret_keys.append("ANTHROPIC_API_KEY")
+    # Optional secrets - only add if configured
+    if config.get_secret("anthropicApiKey"):
+        secrets_dict["ANTHROPIC_API_KEY"] = config.get_secret("anthropicApiKey")
+        secret_keys.append("ANTHROPIC_API_KEY")
 
-if config.get_secret("openaiApiKey"):
-    secrets_dict["OPENAI_API_KEY"] = config.get_secret("openaiApiKey")
-    secret_keys.append("OPENAI_API_KEY")
+    if config.get_secret("openaiApiKey"):
+        secrets_dict["OPENAI_API_KEY"] = config.get_secret("openaiApiKey")
+        secret_keys.append("OPENAI_API_KEY")
 
-if config.get_secret("slackWebhookUrl"):
-    secrets_dict["SLACK_WEBHOOK_URL"] = config.get_secret("slackWebhookUrl")
-    secret_keys.append("SLACK_WEBHOOK_URL")
+    if config.get_secret("slackWebhookUrl"):
+        secrets_dict["SLACK_WEBHOOK_URL"] = config.get_secret("slackWebhookUrl")
+        secret_keys.append("SLACK_WEBHOOK_URL")
 
-if config.get_secret("jiraApiToken"):
-    secrets_dict["JIRA_API_TOKEN"] = config.get_secret("jiraApiToken")
-    secret_keys.append("JIRA_API_TOKEN")
+    if config.get_secret("jiraApiToken"):
+        secrets_dict["JIRA_API_TOKEN"] = config.get_secret("jiraApiToken")
+        secret_keys.append("JIRA_API_TOKEN")
 
-if config.get_secret("linearApiKey"):
-    secrets_dict["LINEAR_API_KEY"] = config.get_secret("linearApiKey")
-    secret_keys.append("LINEAR_API_KEY")
+    if config.get_secret("linearApiKey"):
+        secrets_dict["LINEAR_API_KEY"] = config.get_secret("linearApiKey")
+        secret_keys.append("LINEAR_API_KEY")
 
-cerebro_secrets = secrets.create_secrets(
-    name=f"cerebro-{environment}",
-    secrets=secrets_dict,
-    kms_key_arn=kms_key.arn,
-)
+    cerebro_secrets = secrets.create_secrets(
+        name=f"cerebro-{environment}",
+        secrets=secrets_dict,
+        kms_key_arn=kms_key.arn,
+    )
 
 # =============================================================================
 # LOAD BALANCER
@@ -157,7 +186,7 @@ ecs_stack = compute.create_ecs_cluster(
     vpc_id=vpc_stack["vpc_id"],
     subnet_ids=vpc_stack["private_subnet_ids"],
     security_group_id=vpc_stack["app_security_group_id"],
-    secrets_arn=cerebro_secrets.arn,
+    secrets_arn=cerebro_secrets.arn if cerebro_secrets else None,
     kms_key_id=kms_key.id,
     target_group_arn=alb_stack["target_group"].arn,
     container_image=container_image,
@@ -168,6 +197,7 @@ ecs_stack = compute.create_ecs_cluster(
     log_retention_days=log_retention_days,
     environment=app_environment,
     secret_keys=secret_keys,
+    external_secrets_prefix=external_secrets_prefix if use_external_secrets else None,
 )
 
 # =============================================================================
