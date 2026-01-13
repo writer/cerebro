@@ -65,8 +65,8 @@ type SlackField struct {
 }
 
 type SlackBlock struct {
-	Type string      `json:"type"`
-	Text *SlackText  `json:"text,omitempty"`
+	Type string     `json:"type"`
+	Text *SlackText `json:"text,omitempty"`
 }
 
 type SlackText struct {
@@ -98,7 +98,7 @@ func (h *SlackCommandHandler) HandleCommand(cmd SlackCommand) SlackResponse {
 
 func (h *SlackCommandHandler) findingsCommand(args []string) SlackResponse {
 	filter := findings.FindingFilter{}
-	
+
 	// Parse arguments
 	for _, arg := range args {
 		switch {

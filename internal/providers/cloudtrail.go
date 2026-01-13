@@ -14,10 +14,10 @@ import (
 // CloudTrailProvider syncs audit logs from AWS CloudTrail
 type CloudTrailProvider struct {
 	*BaseProvider
-	region     string
-	trailARN   string
+	region       string
+	trailARN     string
 	lookbackDays int
-	client     *cloudtrail.Client
+	client       *cloudtrail.Client
 }
 
 func NewCloudTrailProvider() *CloudTrailProvider {
@@ -231,8 +231,8 @@ func (c *CloudTrailProvider) syncEvents(ctx context.Context) (*TableResult, erro
 	endTime := time.Now()
 
 	input := &cloudtrail.LookupEventsInput{
-		StartTime: &startTime,
-		EndTime:   &endTime,
+		StartTime:  &startTime,
+		EndTime:    &endTime,
 		MaxResults: intPtr(50),
 	}
 

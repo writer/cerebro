@@ -211,8 +211,8 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 
 	// Sync Dependabot alerts
 	for _, repo := range repoNames {
-		alerts, err := g.syncDependabotAlerts(ctx, repo)
-		if err != nil {
+		alerts, depErr := g.syncDependabotAlerts(ctx, repo)
+		if depErr != nil {
 			// Some repos may not have Dependabot enabled
 			continue
 		}
@@ -221,8 +221,8 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 
 	// Sync code scanning alerts
 	for _, repo := range repoNames {
-		alerts, err := g.syncCodeScanningAlerts(ctx, repo)
-		if err != nil {
+		alerts, codeErr := g.syncCodeScanningAlerts(ctx, repo)
+		if codeErr != nil {
 			continue
 		}
 		result.TotalRows += alerts.Rows
@@ -230,8 +230,8 @@ func (g *GitHubProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResul
 
 	// Sync secret scanning alerts
 	for _, repo := range repoNames {
-		alerts, err := g.syncSecretScanningAlerts(ctx, repo)
-		if err != nil {
+		alerts, secErr := g.syncSecretScanningAlerts(ctx, repo)
+		if secErr != nil {
 			continue
 		}
 		result.TotalRows += alerts.Rows

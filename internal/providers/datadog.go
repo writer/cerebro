@@ -256,7 +256,7 @@ func (d *DatadogProvider) syncSecuritySignals(ctx context.Context) (*TableResult
 
 	// Get signals from the last 24 hours
 	now := time.Now()
-	from := now.Add(-24 * time.Hour).Unix() * 1000
+	from := now.Add(-24*time.Hour).Unix() * 1000
 	to := now.Unix() * 1000
 
 	path := fmt.Sprintf("/api/v2/security_monitoring/signals?filter[from]=%d&filter[to]=%d&page[limit]=100", from, to)

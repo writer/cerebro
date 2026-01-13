@@ -119,6 +119,33 @@ type Config struct {
 	TenableAccessKey string
 	TenableSecretKey string
 
+	// Qualys Provider
+	QualysUsername string
+	QualysPassword string
+	QualysPlatform string
+
+	// Semgrep Provider
+	SemgrepAPIToken string
+
+	// GitLab Provider
+	GitLabToken   string
+	GitLabBaseURL string
+
+	// Terraform Cloud Provider
+	TerraformCloudToken string
+
+	// Splunk Provider
+	SplunkURL   string
+	SplunkToken string
+
+	// Auth0 Provider
+	Auth0Domain       string
+	Auth0ClientID     string
+	Auth0ClientSecret string
+
+	// Cloudflare Provider
+	CloudflareAPIToken string
+
 	// Webhooks
 	WebhookURLs []string
 
@@ -175,6 +202,19 @@ func LoadConfig() *Config {
 		SentinelOneBaseURL:        getEnv("SENTINELONE_BASE_URL", ""),
 		TenableAccessKey:          getEnv("TENABLE_ACCESS_KEY", ""),
 		TenableSecretKey:          getEnv("TENABLE_SECRET_KEY", ""),
+		QualysUsername:            getEnv("QUALYS_USERNAME", ""),
+		QualysPassword:            getEnv("QUALYS_PASSWORD", ""),
+		QualysPlatform:            getEnv("QUALYS_PLATFORM", "US1"),
+		SemgrepAPIToken:           getEnv("SEMGREP_API_TOKEN", ""),
+		GitLabToken:               getEnv("GITLAB_TOKEN", ""),
+		GitLabBaseURL:             getEnv("GITLAB_BASE_URL", "https://gitlab.com"),
+		TerraformCloudToken:       getEnv("TFC_TOKEN", ""),
+		SplunkURL:                 getEnv("SPLUNK_URL", ""),
+		SplunkToken:               getEnv("SPLUNK_TOKEN", ""),
+		Auth0Domain:               getEnv("AUTH0_DOMAIN", ""),
+		Auth0ClientID:             getEnv("AUTH0_CLIENT_ID", ""),
+		Auth0ClientSecret:         getEnv("AUTH0_CLIENT_SECRET", ""),
+		CloudflareAPIToken:        getEnv("CLOUDFLARE_API_TOKEN", ""),
 		SlackWebhookURL:           getEnv("SLACK_WEBHOOK_URL", ""),
 		SlackSigningSecret:       getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),

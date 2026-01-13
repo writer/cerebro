@@ -150,6 +150,305 @@ spec:
     domain: "${OKTA_DOMAIN}"
 
 ---
+# Snyk - Vulnerability Scanning & SAST
+kind: source
+spec:
+  name: snyk
+  path: cloudquery/snyk
+  registry: cloudquery
+  version: "v4.0.0"
+  tables:
+    - snyk_organizations
+    - snyk_projects
+    - snyk_issues
+    - snyk_dependencies
+    - snyk_licenses
+  destinations: ["snowflake"]
+  spec:
+    # Uses SNYK_API_TOKEN from env
+    org_ids:
+      - "${SNYK_ORG_ID}"
+
+---
+# Wiz - Cloud Security Posture
+kind: source
+spec:
+  name: wiz
+  path: cloudquery/wiz
+  registry: cloudquery
+  version: "v2.0.0"
+  tables:
+    - wiz_cloud_resources
+    - wiz_issues
+    - wiz_vulnerabilities
+    - wiz_configurations
+    - wiz_controls
+  destinations: ["snowflake"]
+  spec:
+    # Uses WIZ_CLIENT_ID, WIZ_CLIENT_SECRET from env
+    client_id: "${WIZ_CLIENT_ID}"
+    client_secret: "${WIZ_CLIENT_SECRET}"
+
+---
+# CrowdStrike - Endpoint Security
+kind: source
+spec:
+  name: crowdstrike
+  path: cloudquery/crowdstrike
+  registry: cloudquery
+  version: "v4.0.0"
+  tables:
+    - crowdstrike_hosts
+    - crowdstrike_detections
+    - crowdstrike_vulnerabilities
+    - crowdstrike_incidents
+    - crowdstrike_iocs
+  destinations: ["snowflake"]
+  spec:
+    # Uses CROWDSTRIKE_CLIENT_ID, CROWDSTRIKE_CLIENT_SECRET from env
+    client_id: "${CROWDSTRIKE_CLIENT_ID}"
+    client_secret: "${CROWDSTRIKE_CLIENT_SECRET}"
+    cloud: us-1  # us-1, us-2, eu-1, us-gov-1
+
+---
+# SentinelOne - Endpoint Detection & Response
+kind: source
+spec:
+  name: sentinelone
+  path: cloudquery/sentinelone
+  registry: cloudquery
+  version: "v3.0.0"
+  tables:
+    - sentinelone_agents
+    - sentinelone_threats
+    - sentinelone_activities
+    - sentinelone_sites
+    - sentinelone_groups
+  destinations: ["snowflake"]
+  spec:
+    # Uses SENTINELONE_API_TOKEN from env
+    api_token: "${SENTINELONE_API_TOKEN}"
+    base_url: "${SENTINELONE_BASE_URL}"
+
+---
+# Tenable - Vulnerability Management
+kind: source
+spec:
+  name: tenable
+  path: cloudquery/tenable
+  registry: cloudquery
+  version: "v5.0.0"
+  tables:
+    - tenable_assets
+    - tenable_vulnerabilities
+    - tenable_plugins
+    - tenable_scans
+    - tenable_agents
+  destinations: ["snowflake"]
+  spec:
+    # Uses TENABLE_ACCESS_KEY, TENABLE_SECRET_KEY from env
+    access_key: "${TENABLE_ACCESS_KEY}"
+    secret_key: "${TENABLE_SECRET_KEY}"
+
+---
+# Datadog - Security & Observability
+kind: source
+spec:
+  name: datadog
+  path: cloudquery/datadog
+  registry: cloudquery
+  version: "v6.0.0"
+  tables:
+    - datadog_hosts
+    - datadog_monitors
+    - datadog_dashboards
+    - datadog_downtimes
+    - datadog_users
+    - datadog_roles
+  destinations: ["snowflake"]
+  spec:
+    # Uses DATADOG_API_KEY, DATADOG_APP_KEY from env
+    api_key: "${DATADOG_API_KEY}"
+    app_key: "${DATADOG_APP_KEY}"
+    site: "${DATADOG_SITE}"  # datadoghq.com, datadoghq.eu, etc.
+
+---
+# Qualys - Vulnerability Management
+kind: source
+spec:
+  name: qualys
+  path: cloudquery/qualys
+  registry: cloudquery
+  version: "v2.0.0"
+  tables:
+    - qualys_hosts
+    - qualys_host_detections
+    - qualys_knowledge_base
+    - qualys_scans
+    - qualys_web_apps
+  destinations: ["snowflake"]
+  spec:
+    # Uses QUALYS_USERNAME, QUALYS_PASSWORD from env
+    username: "${QUALYS_USERNAME}"
+    password: "${QUALYS_PASSWORD}"
+    platform: "${QUALYS_PLATFORM}"  # US1, US2, US3, EU1, EU2, etc.
+
+---
+# Semgrep - SAST
+kind: source
+spec:
+  name: semgrep
+  path: cloudquery/semgrep
+  registry: cloudquery
+  version: "v2.0.0"
+  tables:
+    - semgrep_deployments
+    - semgrep_projects
+    - semgrep_findings
+  destinations: ["snowflake"]
+  spec:
+    # Uses SEMGREP_API_TOKEN from env
+    api_token: "${SEMGREP_API_TOKEN}"
+
+---
+# GitLab - DevSecOps
+kind: source
+spec:
+  name: gitlab
+  path: cloudquery/gitlab
+  registry: cloudquery
+  version: "v5.0.0"
+  tables:
+    - gitlab_projects
+    - gitlab_groups
+    - gitlab_users
+    - gitlab_merge_requests
+    - gitlab_pipelines
+    - gitlab_vulnerabilities
+  destinations: ["snowflake"]
+  spec:
+    # Uses GITLAB_TOKEN from env
+    token: "${GITLAB_TOKEN}"
+    base_url: "${GITLAB_BASE_URL}"  # https://gitlab.com or self-hosted
+
+---
+# Terraform Cloud - IaC Security
+kind: source
+spec:
+  name: terraform-cloud
+  path: cloudquery/terraform-cloud
+  registry: cloudquery
+  version: "v3.0.0"
+  tables:
+    - terraform_cloud_organizations
+    - terraform_cloud_workspaces
+    - terraform_cloud_runs
+    - terraform_cloud_state_versions
+    - terraform_cloud_variables
+  destinations: ["snowflake"]
+  spec:
+    # Uses TFC_TOKEN from env
+    token: "${TFC_TOKEN}"
+
+---
+# Splunk - SIEM
+kind: source
+spec:
+  name: splunk
+  path: cloudquery/splunk
+  registry: cloudquery
+  version: "v2.0.0"
+  tables:
+    - splunk_indexes
+    - splunk_saved_searches
+    - splunk_users
+    - splunk_roles
+  destinations: ["snowflake"]
+  spec:
+    # Uses SPLUNK_URL, SPLUNK_TOKEN from env
+    url: "${SPLUNK_URL}"
+    token: "${SPLUNK_TOKEN}"
+
+---
+# Slack - Communication Security
+kind: source
+spec:
+  name: slack
+  path: cloudquery/slack
+  registry: cloudquery
+  version: "v4.0.0"
+  tables:
+    - slack_users
+    - slack_conversations
+    - slack_teams
+    - slack_user_groups
+  destinations: ["snowflake"]
+  spec:
+    # Uses SLACK_TOKEN from env (requires admin scopes)
+    token: "${SLACK_ADMIN_TOKEN}"
+
+---
+# Auth0 - Identity Security
+kind: source
+spec:
+  name: auth0
+  path: cloudquery/auth0
+  registry: cloudquery
+  version: "v2.0.0"
+  tables:
+    - auth0_users
+    - auth0_clients
+    - auth0_connections
+    - auth0_roles
+    - auth0_logs
+  destinations: ["snowflake"]
+  spec:
+    # Uses AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET from env
+    domain: "${AUTH0_DOMAIN}"
+    client_id: "${AUTH0_CLIENT_ID}"
+    client_secret: "${AUTH0_CLIENT_SECRET}"
+
+---
+# Azure AD / Entra ID - Identity
+kind: source
+spec:
+  name: azure-ad
+  path: cloudquery/entraid
+  registry: cloudquery
+  version: "v3.0.0"
+  tables:
+    - azure_ad_users
+    - azure_ad_groups
+    - azure_ad_applications
+    - azure_ad_service_principals
+    - azure_ad_conditional_access_policies
+    - azure_ad_directory_roles
+    - azure_ad_sign_in_logs
+  destinations: ["snowflake"]
+  spec:
+    # Uses AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET from env
+
+---
+# Cloudflare - Network Security
+kind: source
+spec:
+  name: cloudflare
+  path: cloudquery/cloudflare
+  registry: cloudquery
+  version: "v7.0.0"
+  tables:
+    - cloudflare_accounts
+    - cloudflare_zones
+    - cloudflare_dns_records
+    - cloudflare_firewall_rules
+    - cloudflare_access_applications
+    - cloudflare_waf_rules
+  destinations: ["snowflake"]
+  spec:
+    # Uses CLOUDFLARE_API_TOKEN from env
+    api_token: "${CLOUDFLARE_API_TOKEN}"
+
+---
 kind: destination
 spec:
   name: snowflake
