@@ -163,21 +163,25 @@ func (a *Agent) batchSender(ctx context.Context) {
 }
 
 func (a *Agent) sendBatch(events []Event) error {
+	return a.sendBatchWithContext(context.Background(), events)
+}
+
+func (a *Agent) sendBatchWithContext(ctx context.Context, events []Event) error {
 	if a.config.CerebroURL == "" {
 		return nil
 	}
 
 	data, err := json.Marshal(map[string]interface{}{
-		"events":      events,
-		"node":        a.config.NodeName,
-		"cluster":     a.config.ClusterName,
+		"events":        events,
+		"node":          a.config.NodeName,
+		"cluster":       a.config.ClusterName,
 		"agent_version": "1.0.0",
 	})
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "POST", a.config.CerebroURL+"/api/v1/telemetry/ingest", nil)
+	req, err := http.NewRequestWithContext(ctx, "POST", a.config.CerebroURL+"/api/v1/telemetry/ingest", nil)
 	if err != nil {
 		return err
 	}
