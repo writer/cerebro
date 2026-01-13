@@ -5,67 +5,6 @@ import (
 	"time"
 )
 
-func TestSyncConfig_Fields(t *testing.T) {
-	cfg := SyncConfig{
-		CloudQueryURL:     "https://api.cloudquery.io",
-		SnowflakeDatabase: "CEREBRO",
-		SnowflakeSchema:   "RAW",
-		SyncInterval:      1 * time.Hour,
-		Tables:            []string{"aws_iam_users", "aws_s3_buckets"},
-	}
-
-	if cfg.CloudQueryURL != "https://api.cloudquery.io" {
-		t.Error("CloudQueryURL field incorrect")
-	}
-
-	if cfg.SnowflakeDatabase != "CEREBRO" {
-		t.Error("SnowflakeDatabase field incorrect")
-	}
-
-	if cfg.SnowflakeSchema != "RAW" {
-		t.Error("SnowflakeSchema field incorrect")
-	}
-
-	if cfg.SyncInterval != 1*time.Hour {
-		t.Error("SyncInterval field incorrect")
-	}
-
-	if len(cfg.Tables) != 2 {
-		t.Error("Tables count incorrect")
-	}
-}
-
-func TestSyncResult_Fields(t *testing.T) {
-	now := time.Now()
-	result := SyncResult{
-		Table:      "aws_iam_users",
-		RowsSynced: 100,
-		Duration:   5.5,
-		SyncedAt:   now,
-		Error:      "",
-	}
-
-	if result.Table != "aws_iam_users" {
-		t.Error("Table field incorrect")
-	}
-
-	if result.RowsSynced != 100 {
-		t.Error("RowsSynced field incorrect")
-	}
-
-	if result.Duration != 5.5 {
-		t.Error("Duration field incorrect")
-	}
-
-	if result.SyncedAt.IsZero() {
-		t.Error("SyncedAt field should not be zero")
-	}
-
-	if result.Error != "" {
-		t.Error("Error should be empty")
-	}
-}
-
 func TestTableStats_Fields(t *testing.T) {
 	now := time.Now()
 	stats := &TableStats{
@@ -92,44 +31,81 @@ func TestTableStats_Fields(t *testing.T) {
 	}
 }
 
-func TestBuildInsertParams(t *testing.T) {
-	row := map[string]interface{}{
-		"id":    "123",
-		"name":  "test",
-		"count": 42,
+func TestAssetInventory_Fields(t *testing.T) {
+	inventory := &AssetInventory{
+		Tables: map[string]int64{
+			"aws_s3_buckets":    100,
+			"aws_ec2_instances": 50,
+		},
+		TotalAssets: 150,
+		LastUpdated: time.Now(),
 	}
 
-	cols, vals := buildInsertParams(row)
-
-	if len(cols) != 3 {
-		t.Errorf("expected 3 columns, got %d", len(cols))
+	if len(inventory.Tables) != 2 {
+		t.Error("Tables count incorrect")
 	}
 
-	if len(vals) != 3 {
-		t.Errorf("expected 3 values, got %d", len(vals))
+	if inventory.Tables["aws_s3_buckets"] != 100 {
+		t.Error("aws_s3_buckets count incorrect")
 	}
 
-	// Check that cols and vals match
-	colSet := make(map[string]bool)
-	for _, c := range cols {
-		colSet[c] = true
+	if inventory.TotalAssets != 150 {
+		t.Error("TotalAssets incorrect")
 	}
 
-	if !colSet["id"] || !colSet["name"] || !colSet["count"] {
-		t.Error("missing expected columns")
+	if inventory.LastUpdated.IsZero() {
+		t.Error("LastUpdated should not be zero")
 	}
 }
 
-func TestBuildInsertParams_Empty(t *testing.T) {
-	row := map[string]interface{}{}
-
-	cols, vals := buildInsertParams(row)
-
-	if len(cols) != 0 {
-		t.Error("expected 0 columns for empty row")
+func TestDataFreshness_Fields(t *testing.T) {
+	now := time.Now()
+	freshness := &DataFreshness{
+		Table:          "aws_iam_users",
+		LastSyncTime:   &now,
+		HoursSinceSync: 2.5,
+		IsStale:        false,
 	}
 
-	if len(vals) != 0 {
-		t.Error("expected 0 values for empty row")
+	if freshness.Table != "aws_iam_users" {
+		t.Error("Table field incorrect")
+	}
+
+	if freshness.LastSyncTime == nil {
+		t.Error("LastSyncTime should not be nil")
+	}
+
+	if freshness.HoursSinceSync != 2.5 {
+		t.Error("HoursSinceSync incorrect")
+	}
+
+	if freshness.IsStale {
+		t.Error("IsStale should be false")
+	}
+}
+
+func TestDataFreshness_Stale(t *testing.T) {
+	staleTime := time.Now().Add(-48 * time.Hour)
+	freshness := &DataFreshness{
+		Table:          "aws_rds_instances",
+		LastSyncTime:   &staleTime,
+		HoursSinceSync: 48,
+		IsStale:        true,
+	}
+
+	if !freshness.IsStale {
+		t.Error("IsStale should be true for data > 24 hours old")
+	}
+}
+
+func TestTableManager_NewTableManager(t *testing.T) {
+	// Can't test with real Snowflake, but verify struct creation
+	manager := &TableManager{
+		snowflake: nil,
+		schema:    "CEREBRO",
+	}
+
+	if manager.schema != "CEREBRO" {
+		t.Error("schema field incorrect")
 	}
 }

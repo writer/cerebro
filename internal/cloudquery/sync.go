@@ -1,59 +1,44 @@
+// Package cloudquery provides utilities for working with CloudQuery-synced data.
+//
+// CloudQuery is an external ELT tool that syncs cloud provider data to Snowflake.
+// This package provides:
+//   - Table schema definitions for CloudQuery tables (tables.go)
+//   - DDL generation for creating tables in Snowflake
+//   - Inventory and statistics queries for CloudQuery data
+//
+// Data sync is handled by the CloudQuery CLI via the `cerebro sync` command.
+// Policy evaluation is handled by the Cedar engine in internal/policy/.
 package cloudquery
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
-// SyncClient handles synchronization with CloudQuery data
-type SyncClient struct {
-	snowflake  *snowflake.Client
-	httpClient *http.Client
-	config     SyncConfig
+// TableManager provides utilities for managing CloudQuery tables in Snowflake
+type TableManager struct {
+	snowflake *snowflake.Client
+	schema    string
 }
 
-// SyncConfig holds configuration for CloudQuery sync
-type SyncConfig struct {
-	CloudQueryURL     string // URL to CloudQuery API if using hosted
-	SnowflakeDatabase string
-	SnowflakeSchema   string
-	SyncInterval      time.Duration
-	Tables            []string // Specific tables to sync, empty means all
-}
-
-// SyncResult represents the result of a sync operation
-type SyncResult struct {
-	Table      string    `json:"table"`
-	RowsSynced int64     `json:"rows_synced"`
-	Duration   float64   `json:"duration_seconds"`
-	Error      string    `json:"error,omitempty"`
-	SyncedAt   time.Time `json:"synced_at"`
-}
-
-// NewSyncClient creates a new CloudQuery sync client
-func NewSyncClient(sf *snowflake.Client, config SyncConfig) *SyncClient {
-	return &SyncClient{
+// NewTableManager creates a new table manager
+func NewTableManager(sf *snowflake.Client, schema string) *TableManager {
+	return &TableManager{
 		snowflake: sf,
-		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
-		config: config,
+		schema:    schema,
 	}
 }
 
-// EnsureTables creates all CloudQuery tables in Snowflake
-func (c *SyncClient) EnsureTables(ctx context.Context) error {
+// EnsureTables creates all CloudQuery tables in Snowflake if they don't exist
+func (m *TableManager) EnsureTables(ctx context.Context) error {
 	tables := GetAllTableDefinitions()
 
 	for _, table := range tables {
 		sql := GenerateCreateTableSQL(table)
-		if _, err := c.snowflake.DB().ExecContext(ctx, sql); err != nil {
+		if _, err := m.snowflake.DB().ExecContext(ctx, sql); err != nil {
 			return fmt.Errorf("create table %s: %w", table.Name, err)
 		}
 	}
@@ -61,202 +46,46 @@ func (c *SyncClient) EnsureTables(ctx context.Context) error {
 	return nil
 }
 
-// SyncFromCloudQuery pulls data from CloudQuery API (if using hosted CloudQuery)
-func (c *SyncClient) SyncFromCloudQuery(ctx context.Context) ([]SyncResult, error) {
-	if c.config.CloudQueryURL == "" {
-		return nil, fmt.Errorf("CloudQuery URL not configured")
-	}
+// EnsureAWSTables creates only AWS CloudQuery tables
+func (m *TableManager) EnsureAWSTables(ctx context.Context) error {
+	tables := GetAllTableDefinitions()
 
-	tables := c.config.Tables
-	if len(tables) == 0 {
-		// Get all table names
-		for name := range GetAllTableDefinitions() {
-			tables = append(tables, name)
-		}
-	}
-
-	results := make([]SyncResult, 0, len(tables))
 	for _, table := range tables {
-		start := time.Now()
-		result := SyncResult{
-			Table:    table,
-			SyncedAt: start,
+		sql := GenerateCreateTableSQL(table)
+		if _, err := m.snowflake.DB().ExecContext(ctx, sql); err != nil {
+			return fmt.Errorf("create table %s: %w", table.Name, err)
 		}
-
-		count, err := c.syncTable(ctx, table)
-		if err != nil {
-			result.Error = err.Error()
-		} else {
-			result.RowsSynced = count
-		}
-
-		result.Duration = time.Since(start).Seconds()
-		results = append(results, result)
 	}
 
-	return results, nil
+	return nil
 }
 
-func (c *SyncClient) syncTable(ctx context.Context, table string) (int64, error) {
-	url := fmt.Sprintf("%s/tables/%s/data", c.config.CloudQueryURL, table)
+// EnsureGCPTables creates only GCP CloudQuery tables
+func (m *TableManager) EnsureGCPTables(ctx context.Context) error {
+	tables := GetAllGCPTableDefinitions()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return 0, err
+	for _, table := range tables {
+		sql := GenerateCreateTableSQL(table)
+		if _, err := m.snowflake.DB().ExecContext(ctx, sql); err != nil {
+			return fmt.Errorf("create table %s: %w", table.Name, err)
+		}
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	var rows []map[string]interface{}
-	if err := json.Unmarshal(body, &rows); err != nil {
-		return 0, err
-	}
-
-	return c.insertRows(ctx, table, rows)
+	return nil
 }
 
-func (c *SyncClient) insertRows(ctx context.Context, table string, rows []map[string]interface{}) (int64, error) {
-	if len(rows) == 0 {
-		return 0, nil
-	}
+// EnsureAzureTables creates only Azure CloudQuery tables
+func (m *TableManager) EnsureAzureTables(ctx context.Context) error {
+	tables := GetAllAzureTableDefinitions()
 
-	tx, err := c.snowflake.DB().BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	var count int64
-	for _, row := range rows {
-		cols, vals := buildInsertParams(row)
-		placeholders := make([]string, len(vals))
-		for i := range placeholders {
-			placeholders[i] = "?"
+	for _, table := range tables {
+		sql := GenerateCreateTableSQL(table)
+		if _, err := m.snowflake.DB().ExecContext(ctx, sql); err != nil {
+			return fmt.Errorf("create table %s: %w", table.Name, err)
 		}
-
-		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", //nolint:gosec // G201 - table name is from internal definitions
-			table, joinStrings(cols, ", "), joinStrings(placeholders, ", "))
-
-		if _, err := tx.ExecContext(ctx, query, vals...); err != nil {
-			continue // Skip failed rows
-		}
-		count++
 	}
 
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-
-	return count, nil
-}
-
-func buildInsertParams(row map[string]interface{}) ([]string, []interface{}) {
-	cols := make([]string, 0, len(row))
-	vals := make([]interface{}, 0, len(row))
-
-	for k, v := range row {
-		cols = append(cols, k)
-		vals = append(vals, v)
-	}
-
-	return cols, vals
-}
-
-// QueryTable runs a custom query against a CloudQuery table
-func (c *SyncClient) QueryTable(ctx context.Context, table, where string, limit int) ([]map[string]interface{}, error) {
-	// Validate table name to prevent SQL injection
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return nil, fmt.Errorf("invalid table name: %w", err)
-	}
-
-	query := fmt.Sprintf("SELECT * FROM %s", table)
-	if where != "" {
-		query += " WHERE " + where
-	}
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
-	}
-
-	rows, err := c.snowflake.DB().QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	var results []map[string]interface{} //nolint:prealloc // size unknown until iteration
-	for rows.Next() {
-		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			continue
-		}
-
-		row := make(map[string]interface{})
-		for i, col := range columns {
-			row[col] = values[i]
-		}
-		results = append(results, row)
-	}
-
-	return results, rows.Err()
-}
-
-// GetTableStats returns statistics for a CloudQuery table
-func (c *SyncClient) GetTableStats(ctx context.Context, table string) (*TableStats, error) {
-	// Validate table name to prevent SQL injection
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return nil, fmt.Errorf("invalid table name: %w", err)
-	}
-
-	stats := &TableStats{
-		Table: table,
-	}
-
-	// Get row count
-	var count int64
-	row := c.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
-	if err := row.Scan(&count); err != nil {
-		return nil, err
-	}
-	stats.RowCount = count
-
-	// Get last sync time
-	var lastSync *time.Time
-	row = c.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT MAX(_cq_sync_time) FROM %s", table))
-	_ = row.Scan(&lastSync)
-	stats.LastSync = lastSync
-
-	// Get unique accounts
-	var accounts int64
-	row = c.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(DISTINCT account_id) FROM %s", table))
-	_ = row.Scan(&accounts)
-	stats.UniqueAccounts = accounts
-
-	return stats, nil
+	return nil
 }
 
 // TableStats holds statistics for a CloudQuery table
@@ -267,23 +96,56 @@ type TableStats struct {
 	UniqueAccounts int64      `json:"unique_accounts"`
 }
 
-// ListAvailableTables returns tables that exist in Snowflake
-func (c *SyncClient) ListAvailableTables(ctx context.Context) ([]string, error) {
+// GetTableStats returns statistics for a CloudQuery table
+func (m *TableManager) GetTableStats(ctx context.Context, table string) (*TableStats, error) {
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return nil, fmt.Errorf("invalid table name: %w", err)
+	}
+
+	stats := &TableStats{
+		Table: table,
+	}
+
+	// Get row count
+	var count int64
+	row := m.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+	if err := row.Scan(&count); err != nil {
+		return nil, err
+	}
+	stats.RowCount = count
+
+	// Get last sync time (CloudQuery adds _cq_sync_time column)
+	var lastSync *time.Time
+	row = m.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT MAX(_cq_sync_time) FROM %s", table))
+	_ = row.Scan(&lastSync) // Ignore error - column may not exist
+	stats.LastSync = lastSync
+
+	// Get unique accounts
+	var accounts int64
+	row = m.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(DISTINCT account_id) FROM %s", table))
+	_ = row.Scan(&accounts) // Ignore error - column may not exist
+	stats.UniqueAccounts = accounts
+
+	return stats, nil
+}
+
+// ListAvailableTables returns CloudQuery tables that exist in Snowflake
+func (m *TableManager) ListAvailableTables(ctx context.Context) ([]string, error) {
 	query := fmt.Sprintf(`
 		SELECT table_name 
 		FROM information_schema.tables 
 		WHERE table_schema = '%s' 
-		AND table_name LIKE 'aws_%%'
+		AND (table_name LIKE 'aws_%%' OR table_name LIKE 'gcp_%%' OR table_name LIKE 'azure_%%')
 		ORDER BY table_name
-	`, c.config.SnowflakeSchema)
+	`, m.schema)
 
-	rows, err := c.snowflake.DB().QueryContext(ctx, query)
+	rows, err := m.snowflake.DB().QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var tables []string //nolint:prealloc // size unknown until iteration
+	var tables []string
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
@@ -295,8 +157,16 @@ func (c *SyncClient) ListAvailableTables(ctx context.Context) ([]string, error) 
 	return tables, rows.Err()
 }
 
-// GetAssetInventory returns asset counts by type
-func (c *SyncClient) GetAssetInventory(ctx context.Context) (map[string]int64, error) {
+// AssetInventory holds counts of assets by table
+type AssetInventory struct {
+	Tables      map[string]int64 `json:"tables"`
+	TotalAssets int64            `json:"total_assets"`
+	LastUpdated time.Time        `json:"last_updated"`
+}
+
+// GetAssetInventory returns asset counts by CloudQuery table
+func (m *TableManager) GetAssetInventory(ctx context.Context) (*AssetInventory, error) {
+	// Core tables to check for inventory
 	tables := []string{
 		"aws_ec2_instances",
 		"aws_s3_buckets",
@@ -306,74 +176,57 @@ func (c *SyncClient) GetAssetInventory(ctx context.Context) (map[string]int64, e
 		"aws_iam_roles",
 		"aws_ec2_security_groups",
 		"aws_ec2_vpcs",
+		"aws_kms_keys",
+		"aws_cloudtrail_trails",
 	}
 
-	inventory := make(map[string]int64)
+	inventory := &AssetInventory{
+		Tables:      make(map[string]int64),
+		LastUpdated: time.Now(),
+	}
+
 	for _, table := range tables {
 		var count int64
-		row := c.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+		row := m.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
 		if err := row.Scan(&count); err != nil {
-			continue
+			continue // Table may not exist
 		}
-		inventory[table] = count
+		inventory.Tables[table] = count
+		inventory.TotalAssets += count
 	}
 
 	return inventory, nil
 }
 
-// GetComplianceOverview returns compliance summary across frameworks
-func (c *SyncClient) GetComplianceOverview(ctx context.Context) (*ComplianceOverview, error) {
-	overview := &ComplianceOverview{
-		Frameworks: make(map[string]*FrameworkCompliance),
-	}
-
-	query := `
-		SELECT 
-			framework,
-			COUNT(*) as total,
-			SUM(CASE WHEN status = 'pass' THEN 1 ELSE 0 END) as passed,
-			SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) as failed
-		FROM policy_results
-		WHERE evaluated_at > DATEADD(day, -1, CURRENT_TIMESTAMP())
-		GROUP BY framework
-	`
-
-	rows, err := c.snowflake.DB().QueryContext(ctx, query)
-	if err != nil {
-		return overview, nil // Return empty if table doesn't exist
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var framework string
-		var total, passed, failed int64
-		if err := rows.Scan(&framework, &total, &passed, &failed); err != nil {
-			continue
-		}
-		overview.Frameworks[framework] = &FrameworkCompliance{
-			Framework:    framework,
-			TotalChecks:  total,
-			PassedChecks: passed,
-			FailedChecks: failed,
-		}
-		if total > 0 {
-			overview.Frameworks[framework].ComplianceRate = float64(passed) / float64(total) * 100
-		}
-	}
-
-	return overview, nil
+// DataFreshness holds information about data freshness
+type DataFreshness struct {
+	Table         string     `json:"table"`
+	LastSyncTime  *time.Time `json:"last_sync_time"`
+	HoursSinceSync float64   `json:"hours_since_sync"`
+	IsStale       bool       `json:"is_stale"` // True if > 24 hours old
 }
 
-// ComplianceOverview holds compliance summary across frameworks
-type ComplianceOverview struct {
-	Frameworks map[string]*FrameworkCompliance `json:"frameworks"`
-}
+// CheckDataFreshness checks how fresh the CloudQuery data is
+func (m *TableManager) CheckDataFreshness(ctx context.Context, table string) (*DataFreshness, error) {
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return nil, fmt.Errorf("invalid table name: %w", err)
+	}
 
-// FrameworkCompliance holds compliance for a single framework
-type FrameworkCompliance struct {
-	Framework      string  `json:"framework"`
-	TotalChecks    int64   `json:"total_checks"`
-	PassedChecks   int64   `json:"passed_checks"`
-	FailedChecks   int64   `json:"failed_checks"`
-	ComplianceRate float64 `json:"compliance_rate"`
+	freshness := &DataFreshness{
+		Table: table,
+	}
+
+	var lastSync *time.Time
+	row := m.snowflake.DB().QueryRowContext(ctx, fmt.Sprintf("SELECT MAX(_cq_sync_time) FROM %s", table))
+	if err := row.Scan(&lastSync); err != nil {
+		return freshness, nil // Return with nil timestamp if column doesn't exist
+	}
+
+	freshness.LastSyncTime = lastSync
+	if lastSync != nil {
+		freshness.HoursSinceSync = time.Since(*lastSync).Hours()
+		freshness.IsStale = freshness.HoursSinceSync > 24
+	}
+
+	return freshness, nil
 }

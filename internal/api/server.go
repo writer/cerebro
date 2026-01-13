@@ -266,6 +266,15 @@ func (s *Server) setupRoutes() {
 			r.Post("/tenants", s.createTenant)
 		})
 
+		// CloudQuery table management endpoints
+		r.Route("/cloudquery", func(r chi.Router) {
+			r.Get("/tables", s.listCloudQueryTables)
+			r.Get("/inventory", s.getAssetInventory)
+			r.Get("/freshness/{table}", s.checkDataFreshness)
+			r.Get("/stats/{table}", s.getTableStats)
+			r.Post("/ensure-tables", s.ensureCloudQueryTables)
+		})
+
 		// Telemetry ingestion (for agents)
 		r.Route("/telemetry", func(r chi.Router) {
 			r.Post("/ingest", s.ingestTelemetry)
@@ -2293,6 +2302,115 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"processed": len(payload.Events),
 		"findings":  totalFindings,
+	})
+}
+
+// CloudQuery handlers
+
+func (s *Server) listCloudQueryTables(w http.ResponseWriter, r *http.Request) {
+	if s.app.CloudQuery == nil {
+		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+		return
+	}
+
+	tables, err := s.app.CloudQuery.ListAvailableTables(r.Context())
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"tables": tables,
+		"count":  len(tables),
+	})
+}
+
+func (s *Server) getAssetInventory(w http.ResponseWriter, r *http.Request) {
+	if s.app.CloudQuery == nil {
+		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+		return
+	}
+
+	inventory, err := s.app.CloudQuery.GetAssetInventory(r.Context())
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, inventory)
+}
+
+func (s *Server) checkDataFreshness(w http.ResponseWriter, r *http.Request) {
+	if s.app.CloudQuery == nil {
+		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+		return
+	}
+
+	table := chi.URLParam(r, "table")
+	if table == "" {
+		s.error(w, http.StatusBadRequest, "table name required")
+		return
+	}
+
+	freshness, err := s.app.CloudQuery.CheckDataFreshness(r.Context(), table)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, freshness)
+}
+
+func (s *Server) getTableStats(w http.ResponseWriter, r *http.Request) {
+	if s.app.CloudQuery == nil {
+		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+		return
+	}
+
+	table := chi.URLParam(r, "table")
+	if table == "" {
+		s.error(w, http.StatusBadRequest, "table name required")
+		return
+	}
+
+	stats, err := s.app.CloudQuery.GetTableStats(r.Context(), table)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, stats)
+}
+
+func (s *Server) ensureCloudQueryTables(w http.ResponseWriter, r *http.Request) {
+	if s.app.CloudQuery == nil {
+		s.error(w, http.StatusServiceUnavailable, "cloudquery not initialized")
+		return
+	}
+
+	provider := r.URL.Query().Get("provider")
+	var err error
+
+	switch provider {
+	case "aws":
+		err = s.app.CloudQuery.EnsureAWSTables(r.Context())
+	case "gcp":
+		err = s.app.CloudQuery.EnsureGCPTables(r.Context())
+	case "azure":
+		err = s.app.CloudQuery.EnsureAzureTables(r.Context())
+	default:
+		err = s.app.CloudQuery.EnsureTables(r.Context())
+	}
+
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"status":   "ok",
+		"provider": provider,
+		"message":  "tables created successfully",
 	})
 }
 

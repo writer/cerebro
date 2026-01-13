@@ -5,8 +5,8 @@ import "testing"
 func TestGetFrameworks(t *testing.T) {
 	frameworks := GetFrameworks()
 
-	if len(frameworks) != 4 {
-		t.Errorf("expected 4 frameworks, got %d", len(frameworks))
+	if len(frameworks) != 6 {
+		t.Errorf("expected 6 frameworks, got %d", len(frameworks))
 	}
 
 	ids := make(map[string]bool)
@@ -14,7 +14,7 @@ func TestGetFrameworks(t *testing.T) {
 		ids[f.ID] = true
 	}
 
-	expected := []string{"cis-aws-1.4", "cis-gcp-1.2", "cis-azure-1.4", "soc2-type2"}
+	expected := []string{"cis-aws-1.5", "pci-dss-4.0", "hipaa-security", "soc2-type2", "cis-gcp-1.3", "cis-azure-1.5"}
 	for _, id := range expected {
 		if !ids[id] {
 			t.Errorf("missing framework: %s", id)
@@ -28,8 +28,12 @@ func TestGetFramework(t *testing.T) {
 		wantNil  bool
 		wantName string
 	}{
-		{"cis-aws-1.4", false, "CIS AWS Foundations Benchmark"},
+		{"cis-aws-1.5", false, "CIS AWS Foundations Benchmark"},
+		{"pci-dss-4.0", false, "PCI DSS"},
+		{"hipaa-security", false, "HIPAA Security Rule"},
 		{"soc2-type2", false, "SOC 2 Type II"},
+		{"cis-gcp-1.3", false, "CIS Google Cloud Platform Benchmark"},
+		{"cis-azure-1.5", false, "CIS Microsoft Azure Foundations Benchmark"},
 		{"nonexistent", true, ""},
 	}
 
@@ -42,7 +46,7 @@ func TestGetFramework(t *testing.T) {
 			if !tt.wantNil && f == nil {
 				t.Error("expected framework, got nil")
 			}
-			if !tt.wantNil && f.Name != tt.wantName {
+			if !tt.wantNil && f != nil && f.Name != tt.wantName {
 				t.Errorf("expected name '%s', got '%s'", tt.wantName, f.Name)
 			}
 		})
@@ -50,13 +54,14 @@ func TestGetFramework(t *testing.T) {
 }
 
 func TestCISAWSControls(t *testing.T) {
-	f := GetFramework("cis-aws-1.4")
+	f := GetFramework("cis-aws-1.5")
 	if f == nil {
 		t.Fatal("CIS AWS framework not found")
 	}
 
-	if len(f.Controls) != 5 {
-		t.Errorf("expected 5 controls, got %d", len(f.Controls))
+	// Should have many controls now
+	if len(f.Controls) < 20 {
+		t.Errorf("expected at least 20 controls, got %d", len(f.Controls))
 	}
 
 	// Check that controls have policy mappings
@@ -67,14 +72,60 @@ func TestCISAWSControls(t *testing.T) {
 	}
 }
 
+func TestPCIDSSControls(t *testing.T) {
+	f := GetFramework("pci-dss-4.0")
+	if f == nil {
+		t.Fatal("PCI DSS framework not found")
+	}
+
+	if len(f.Controls) < 10 {
+		t.Errorf("expected at least 10 PCI DSS controls, got %d", len(f.Controls))
+	}
+
+	// Check that encryption requirements exist
+	var hasEncryption bool
+	for _, c := range f.Controls {
+		if c.ID == "3.5.1" || c.ID == "4.2.1" {
+			hasEncryption = true
+			break
+		}
+	}
+	if !hasEncryption {
+		t.Error("PCI DSS should have encryption controls")
+	}
+}
+
+func TestHIPAAControls(t *testing.T) {
+	f := GetFramework("hipaa-security")
+	if f == nil {
+		t.Fatal("HIPAA framework not found")
+	}
+
+	if len(f.Controls) < 8 {
+		t.Errorf("expected at least 8 HIPAA controls, got %d", len(f.Controls))
+	}
+
+	// Check for audit controls
+	var hasAudit bool
+	for _, c := range f.Controls {
+		if c.ID == "164.312(b)" {
+			hasAudit = true
+			break
+		}
+	}
+	if !hasAudit {
+		t.Error("HIPAA should have audit controls")
+	}
+}
+
 func TestSOC2Controls(t *testing.T) {
 	f := GetFramework("soc2-type2")
 	if f == nil {
 		t.Fatal("SOC 2 framework not found")
 	}
 
-	if len(f.Controls) != 3 {
-		t.Errorf("expected 3 controls, got %d", len(f.Controls))
+	if len(f.Controls) < 8 {
+		t.Errorf("expected at least 8 SOC 2 controls, got %d", len(f.Controls))
 	}
 
 	// CC6.1 should have multiple policy mappings
@@ -92,5 +143,34 @@ func TestSOC2Controls(t *testing.T) {
 
 	if len(cc61.PolicyIDs) < 2 {
 		t.Errorf("expected CC6.1 to have multiple policy mappings, got %d", len(cc61.PolicyIDs))
+	}
+}
+
+func TestGetFrameworkIDs(t *testing.T) {
+	ids := GetFrameworkIDs()
+	if len(ids) != 6 {
+		t.Errorf("expected 6 framework IDs, got %d", len(ids))
+	}
+}
+
+func TestGetControlsForPolicy(t *testing.T) {
+	// aws-iam-user-mfa-enabled should be referenced by multiple frameworks
+	controls := GetControlsForPolicy("aws-iam-user-mfa-enabled")
+
+	if len(controls) < 3 {
+		t.Errorf("expected aws-iam-user-mfa-enabled to be in at least 3 frameworks, got %d", len(controls))
+	}
+
+	// Verify the frameworks include CIS, PCI-DSS, and HIPAA
+	frameworks := make(map[string]bool)
+	for _, c := range controls {
+		frameworks[c.Framework.ID] = true
+	}
+
+	if !frameworks["cis-aws-1.5"] {
+		t.Error("expected aws-iam-user-mfa-enabled to be in CIS AWS")
+	}
+	if !frameworks["pci-dss-4.0"] {
+		t.Error("expected aws-iam-user-mfa-enabled to be in PCI DSS")
 	}
 }

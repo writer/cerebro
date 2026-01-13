@@ -45,6 +45,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/attackpath"
 	"github.com/writerinternal/cerebro/internal/auth"
 	"github.com/writerinternal/cerebro/internal/cache"
+	"github.com/writerinternal/cerebro/internal/cloudquery"
 	"github.com/writerinternal/cerebro/internal/compliance"
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/health"
@@ -97,6 +98,9 @@ type App struct {
 
 	// Snowflake-backed stores (when available)
 	SnowflakeFindings *findings.SnowflakeStore
+
+	// CloudQuery table management
+	CloudQuery *cloudquery.TableManager
 
 	// New services
 	RBAC           *auth.RBAC
@@ -314,6 +318,7 @@ func New(ctx context.Context) (*App, error) {
 	app.initScheduler(ctx)
 	app.initRepositories()
 	app.initSnowflakeFindings(ctx)
+	app.initCloudQuery()
 
 	// Initialize new services
 	app.initRBAC()
@@ -690,6 +695,14 @@ func (a *App) initSnowflakeFindings(ctx context.Context) {
 	} else {
 		a.Logger.Info("loaded findings from snowflake", "count", a.SnowflakeFindings.Stats().Total)
 	}
+}
+
+func (a *App) initCloudQuery() {
+	if a.Snowflake == nil {
+		return
+	}
+	a.CloudQuery = cloudquery.NewTableManager(a.Snowflake, a.Config.SnowflakeSchema)
+	a.Logger.Info("cloudquery table manager initialized")
 }
 
 // Close cleanly shuts down all services
