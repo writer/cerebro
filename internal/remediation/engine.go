@@ -88,7 +88,7 @@ const (
 	ExecutionApproval   ExecutionStatus = "awaiting_approval"
 	ExecutionCompleted  ExecutionStatus = "completed"
 	ExecutionFailed     ExecutionStatus = "failed"
-	ExecutionCancelled  ExecutionStatus = "cancelled"
+	ExecutionCancelled  ExecutionStatus = "canceled"
 )
 
 type ActionResult struct {

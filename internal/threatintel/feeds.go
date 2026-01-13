@@ -221,10 +221,7 @@ func (s *ThreatIntelService) SyncFeed(ctx context.Context, feedID string) error 
 		return fmt.Errorf("read body: %w", err)
 	}
 
-	count, err := s.parseFeed(feed, body)
-	if err != nil {
-		return fmt.Errorf("parse feed: %w", err)
-	}
+	count := s.parseFeed(feed, body)
 
 	s.mu.Lock()
 	feed.LastSync = time.Now().UTC()
@@ -236,20 +233,16 @@ func (s *ThreatIntelService) SyncFeed(ctx context.Context, feedID string) error 
 	return nil
 }
 
-func (s *ThreatIntelService) parseFeed(feed Feed, data []byte) (int, error) {
-	count := 0
-
+func (s *ThreatIntelService) parseFeed(feed Feed, data []byte) int {
 	switch feed.ID {
 	case "cisa-kev":
-		count = s.parseCISAKEV(data)
+		return s.parseCISAKEV(data)
 	case "abuse-ch-ip":
-		count = s.parseAbuseChIP(data)
+		return s.parseAbuseChIP(data)
 	default:
 		// Generic JSON parsing
-		count = s.parseGenericJSON(feed, data)
+		return s.parseGenericJSON(data)
 	}
-
-	return count, nil
 }
 
 func (s *ThreatIntelService) parseCISAKEV(data []byte) int {
@@ -366,7 +359,7 @@ func (s *ThreatIntelService) parseAbuseChIPAlt(data []byte) int {
 	return count
 }
 
-func (s *ThreatIntelService) parseGenericJSON(feed Feed, data []byte) int {
+func (s *ThreatIntelService) parseGenericJSON(data []byte) int {
 	// Try to parse as array of objects
 	var items []map[string]interface{}
 	if err := json.Unmarshal(data, &items); err != nil {

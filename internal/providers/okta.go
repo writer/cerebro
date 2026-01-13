@@ -36,7 +36,7 @@ func (o *OktaProvider) Configure(ctx context.Context, config map[string]interfac
 }
 
 func (o *OktaProvider) Test(ctx context.Context) error {
-	_, err := o.request(ctx, "GET", "/api/v1/users?limit=1", nil)
+	_, err := o.request(ctx, "/api/v1/users?limit=1")
 	return err
 }
 
@@ -145,7 +145,7 @@ func (o *OktaProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 func (o *OktaProvider) syncUsers(ctx context.Context) (*TableResult, error) {
 	result := &TableResult{Name: "okta_users"}
 
-	body, err := o.request(ctx, "GET", "/api/v1/users", nil)
+	body, err := o.request(ctx, "/api/v1/users")
 	if err != nil {
 		return result, err
 	}
@@ -163,7 +163,7 @@ func (o *OktaProvider) syncUsers(ctx context.Context) (*TableResult, error) {
 func (o *OktaProvider) syncGroups(ctx context.Context) (*TableResult, error) {
 	result := &TableResult{Name: "okta_groups"}
 
-	body, err := o.request(ctx, "GET", "/api/v1/groups", nil)
+	body, err := o.request(ctx, "/api/v1/groups")
 	if err != nil {
 		return result, err
 	}
@@ -181,7 +181,7 @@ func (o *OktaProvider) syncGroups(ctx context.Context) (*TableResult, error) {
 func (o *OktaProvider) syncApplications(ctx context.Context) (*TableResult, error) {
 	result := &TableResult{Name: "okta_applications"}
 
-	body, err := o.request(ctx, "GET", "/api/v1/apps", nil)
+	body, err := o.request(ctx, "/api/v1/apps")
 	if err != nil {
 		return result, err
 	}
@@ -196,10 +196,10 @@ func (o *OktaProvider) syncApplications(ctx context.Context) (*TableResult, erro
 	return result, nil
 }
 
-func (o *OktaProvider) request(ctx context.Context, _, path string, body io.Reader) ([]byte, error) {
+func (o *OktaProvider) request(ctx context.Context, path string) ([]byte, error) {
 	url := fmt.Sprintf("https://%s%s", o.domain, path)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}

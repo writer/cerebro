@@ -181,7 +181,7 @@ func (ex *Executor) notifySlack(ctx context.Context, action Action, execution *E
 	})
 }
 
-func (ex *Executor) notifyPagerDuty(ctx context.Context, action Action, execution *Execution) error {
+func (ex *Executor) notifyPagerDuty(ctx context.Context, _ Action, execution *Execution) error {
 	if ex.notifications == nil {
 		return fmt.Errorf("notifications not configured")
 	}
@@ -207,7 +207,7 @@ func (ex *Executor) notifyPagerDuty(ctx context.Context, action Action, executio
 	})
 }
 
-func (ex *Executor) resolveFinding(ctx context.Context, action Action, execution *Execution) error {
+func (ex *Executor) resolveFinding(_ context.Context, _ Action, execution *Execution) error {
 	if ex.findings == nil {
 		return fmt.Errorf("findings store not configured")
 	}
@@ -224,7 +224,7 @@ func (ex *Executor) resolveFinding(ctx context.Context, action Action, execution
 	return nil
 }
 
-func (ex *Executor) runWebhook(ctx context.Context, action Action, execution *Execution) error {
+func (ex *Executor) runWebhook(_ context.Context, action Action, _ *Execution) error {
 	// Would make HTTP request to configured webhook URL
 	// For now, just validate config exists
 	url := action.Config["url"]
