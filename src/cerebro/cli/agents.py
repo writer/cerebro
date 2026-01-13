@@ -50,10 +50,10 @@ def create(
     context_file: str | None = typer.Option(
         None, "--context", help="JSON file with agent context"
     ),
-):
+) -> None:
     """Create a new agent session."""
 
-    async def _create():
+    async def _create() -> None:
         # Find organization
         async with async_session_factory() as db:
             stmt = select(Organization).where(Organization.name == org_name)
@@ -146,10 +146,10 @@ def list(
     ),
     offset: int = typer.Option(0, "--offset", help="Offset for pagination"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
-):
+) -> None:
     """List agent sessions for an organization."""
 
-    async def _list():
+    async def _list() -> None:
         # Find organization
         async with async_session_factory() as db:
             stmt = select(Organization).where(Organization.name == org_name)
@@ -258,10 +258,10 @@ def chat(
     ),
     user_id: str = typer.Option("cli_user", "--user", help="User identifier"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream responses"),
-):
+) -> None:
     """Start an interactive chat session with an agent."""
 
-    async def _chat():
+    async def _chat() -> None:
         service = AgentSessionService()
 
         # Validate session exists
@@ -389,7 +389,7 @@ def chat(
     asyncio.run(_chat())
 
 
-def _show_chat_help():
+def _show_chat_help() -> None:
     """Show chat session help."""
     help_panel = Panel(
         """[bold]Chat Commands:[/bold]
@@ -410,7 +410,7 @@ def _show_chat_help():
     console.print(help_panel)
 
 
-async def _show_session_status(service: AgentSessionService, session_id: UUID):
+async def _show_session_status(service: AgentSessionService, session_id: UUID) -> None:
     """Show detailed session status."""
     try:
         session = await service.get_session(session_id)
@@ -447,10 +447,10 @@ def status(
     detailed: bool = typer.Option(
         False, "--detailed", "-d", help="Show detailed metrics"
     ),
-):
+) -> None:
     """Show agent session status and metrics."""
 
-    async def _status():
+    async def _status() -> None:
         service = AgentSessionService()
 
         try:
@@ -503,18 +503,17 @@ def status(
 
         if detailed:
             # Show detailed metrics
-            from cerebro.agents.models import AgentToolInvocation
+            from cerebro.agents.models import ToolInvocation
 
             tool_stmt = (
                 select(
-                    AgentToolInvocation.tool_name,
-                    func.count(AgentToolInvocation.invocation_id).label("count"),
-                    func.avg(AgentToolInvocation.duration_ms).label("avg_duration"),
+                    ToolInvocation.tool_name,
+                    func.count(ToolInvocation.id).label("count"),
                 )
-                .where(AgentToolInvocation.session_id.in_(
+                .where(ToolInvocation.session_id.in_(
                     select(AgentSession.id).where(AgentSession.is_active.is_(True))
                 ))
-                .group_by(AgentToolInvocation.tool_name)
+                .group_by(ToolInvocation.tool_name)
                 .order_by(desc("count"))
                 .limit(10)
             )
@@ -526,13 +525,11 @@ def status(
                 tool_table = Table()
                 tool_table.add_column("Tool", style="cyan")
                 tool_table.add_column("Invocations", style="green")
-                tool_table.add_column("Avg Duration (ms)", style="yellow")
 
                 for row in tool_rows:
                     tool_table.add_row(
                         row.tool_name,
                         str(row.count),
-                        f"{row.avg_duration:.1f}" if row.avg_duration else "N/A",
                     )
                 console.print(tool_table)
             else:
@@ -552,10 +549,10 @@ def approve(
     auto_confirm: bool = typer.Option(
         False, "--yes", "-y", help="Skip confirmation prompt"
     ),
-):
+) -> None:
     """Approve a pending tool invocation."""
 
-    async def _approve():
+    async def _approve() -> None:
         # Find organization
         async with async_session_factory() as db:
             stmt = select(Organization).where(Organization.name == org_name)
@@ -672,10 +669,10 @@ def reject(
     auto_confirm: bool = typer.Option(
         False, "--yes", "-y", help="Skip confirmation prompt"
     ),
-):
+) -> None:
     """Reject a pending tool invocation."""
 
-    async def _reject():
+    async def _reject() -> None:
         # Find organization
         async with async_session_factory() as db:
             stmt = select(Organization).where(Organization.name == org_name)
@@ -748,10 +745,10 @@ def pending(
     ),
     offset: int = typer.Option(0, "--offset", help="Offset for pagination"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
-):
+) -> None:
     """List pending tool approvals."""
 
-    async def _pending():
+    async def _pending() -> None:
         # Find organization
         async with async_session_factory() as db:
             stmt = select(Organization).where(Organization.name == org_name)
@@ -879,10 +876,10 @@ def analytics(
     org_name: str = typer.Argument(..., help="Organization name"),
     days: int = typer.Option(30, "--days", "-d", help="Number of days to analyze"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
-):
+) -> None:
     """Show agent usage analytics for an organization."""
 
-    async def _analytics():
+    async def _analytics() -> None:
         # Find organization
         async with async_session_factory() as db:
             stmt = select(Organization).where(Organization.name == org_name)
@@ -995,10 +992,10 @@ def delete(
     auto_confirm: bool = typer.Option(
         False, "--yes", "-y", help="Skip confirmation prompt"
     ),
-):
+) -> None:
     """Delete an agent session."""
 
-    async def _delete():
+    async def _delete() -> None:
         # Find organization
         async with async_session_factory() as db:
             stmt = select(Organization).where(Organization.name == org_name)
