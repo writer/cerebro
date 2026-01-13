@@ -359,37 +359,6 @@ func (w *WizProvider) graphQLQuery(ctx context.Context, query string, variables 
 	return respBody, nil
 }
 
-// _paginatedQuery executes a GraphQL query with pagination support
-// TODO: Use this for large data syncs that need pagination
-func (w *WizProvider) _paginatedQuery(ctx context.Context, query string, pageSize int, extractNodes func([]byte) ([]map[string]interface{}, string, bool, error)) ([]map[string]interface{}, error) { //nolint:unused
-	var allNodes []map[string]interface{}
-	var cursor string
-	hasNextPage := true
-
-	for hasNextPage {
-		variables := map[string]interface{}{"first": pageSize}
-		if cursor != "" {
-			variables["after"] = cursor
-		}
-
-		body, err := w.graphQLQuery(ctx, query, variables)
-		if err != nil {
-			return allNodes, err
-		}
-
-		nodes, nextCursor, more, err := extractNodes(body)
-		if err != nil {
-			return allNodes, fmt.Errorf("extract nodes: %w", err)
-		}
-
-		allNodes = append(allNodes, nodes...)
-		cursor = nextCursor
-		hasNextPage = more
-	}
-
-	return allNodes, nil
-}
-
 func (w *WizProvider) syncCloudResources(ctx context.Context) (*TableResult, error) {
 	result := &TableResult{Name: "wiz_cloud_resources"}
 

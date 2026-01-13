@@ -432,7 +432,7 @@ func NewTrivyScanner(binaryPath string) *TrivyScanner {
 func (s *TrivyScanner) ScanImage(ctx context.Context, imageRef string) (*ContainerScanResult, error) {
 	// Would execute trivy image --format json <imageRef>
 	// and parse the JSON output
-	return nil, fmt.Errorf("Trivy binary execution not implemented")
+	return nil, fmt.Errorf("trivy binary execution not implemented")
 }
 
 // ParseTrivyOutput parses Trivy JSON output

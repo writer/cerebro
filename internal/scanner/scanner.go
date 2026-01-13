@@ -151,7 +151,7 @@ func (s *Scanner) StreamScan(ctx context.Context, assetStream <-chan map[string]
 	for asset := range assetStream {
 		select {
 		case <-ctx.Done():
-			result.AssetsScanned = int(atomic.LoadInt64(&scanned))
+			result.Scanned = atomic.LoadInt64(&scanned)
 			result.Duration = time.Since(start)
 			return result
 		case sem <- struct{}{}:
