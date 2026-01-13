@@ -22,16 +22,16 @@ logger = structlog.get_logger(__name__)
 
 
 try:  # pragma: no cover - optional dependency
-    from kubernetes import client, config  # type: ignore
-    from kubernetes.client import ApiException  # type: ignore
-    from kubernetes.config.config_exception import ConfigException  # type: ignore
+    from kubernetes import client, config
+    from kubernetes.client import ApiException
+    from kubernetes.config.config_exception import ConfigException
 
     _K8S_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
-    client = None  # type: ignore
-    config = None  # type: ignore
-    ApiException = Exception  # type: ignore
-    ConfigException = Exception  # type: ignore
+    client = None  # type: ignore[assignment]
+    config = None  # type: ignore[assignment]
+    ApiException = Exception  # type: ignore[assignment, misc]
+    ConfigException = Exception  # type: ignore[assignment, misc]
     _K8S_AVAILABLE = False
 
 
@@ -40,7 +40,7 @@ class KubernetesProvider(BaseProvider):
 
     def __init__(
         self,
-        account_id,
+        account_id: str,
         cluster_name: str,
         kubeconfig_path: str | None = None,
         kube_context: str | None = None,

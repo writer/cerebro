@@ -6,6 +6,7 @@ Inspired by Steampipe's plugin registration pattern.
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 from typing import Any
 
 import structlog
@@ -24,7 +25,7 @@ class TableRegistry:
     Similar to Steampipe's TableMap pattern.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._tables: dict[str, SecurityTable] = {}
         self._tables_by_provider: dict[str, list[str]] = defaultdict(list)
         self._table_aliases: dict[str, str] = {}
@@ -247,7 +248,9 @@ def list_tables(provider: str | None = None) -> list[str]:
 
 
 # Decorator for automatic table registration
-def security_table(name: str | None = None, aliases: list[str] | None = None):
+def security_table(
+    name: str | None = None, aliases: list[str] | None = None
+) -> Callable[[type[SecurityTable]], Callable[..., SecurityTable]]:
     """
     Decorator to automatically register a SecurityTable class.
 
@@ -257,8 +260,8 @@ def security_table(name: str | None = None, aliases: list[str] | None = None):
             ...
     """
 
-    def decorator(cls: type[SecurityTable]):
-        def register_instance(*args, **kwargs):
+    def decorator(cls: type[SecurityTable]) -> Callable[..., SecurityTable]:
+        def register_instance(*args: Any, **kwargs: Any) -> SecurityTable:
             instance = cls(*args, **kwargs)
             if name:
                 instance.name = name
@@ -274,19 +277,19 @@ def security_table(name: str | None = None, aliases: list[str] | None = None):
 class TableRegistrationContext:
     """Context manager for bulk table registration/unregistration."""
 
-    def __init__(self):
-        self._registered_tables = []
+    def __init__(self) -> None:
+        self._registered_tables: list[str] = []
 
-    def __enter__(self):
+    def __enter__(self) -> "TableRegistrationContext":
         return self
 
-    def __exit__(self, exc_type, _exc_val, _exc_tb):
+    def __exit__(self, exc_type: type[BaseException] | None, _exc_val: BaseException | None, _exc_tb: Any) -> None:
         # Cleanup on error
         if exc_type:
             for table_name in self._registered_tables:
                 _global_registry.unregister_table(table_name)
 
-    def register_table(self, table: SecurityTable, aliases: list[str] | None = None):
+    def register_table(self, table: SecurityTable, aliases: list[str] | None = None) -> None:
         """Register a table within this context."""
         register_table(table, aliases)
         self._registered_tables.append(table.name)

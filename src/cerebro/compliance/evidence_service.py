@@ -47,7 +47,7 @@ class EvidenceService:
     """
 
     def __init__(
-        self, repository: EvidenceRepository, query_engine=None, crypto_service=None
+        self, repository: EvidenceRepository, query_engine: Any = None, crypto_service: Any = None
     ):
         """
         Initialize evidence service.
@@ -219,7 +219,7 @@ class EvidenceService:
         provider: str,
         configuration_data: dict[str, Any],
         collector_id: str = "system",
-        **metadata_kwargs,
+        **metadata_kwargs: Any,
     ) -> str:
         """
         Collect configuration evidence for resources.
@@ -287,7 +287,7 @@ class EvidenceService:
         log_type: str,
         source_system: str,
         collector_id: str = "system",
-        **metadata_kwargs,
+        **metadata_kwargs: Any,
     ) -> str:
         """
         Collect log evidence (access logs, audit logs, etc.).
@@ -369,7 +369,7 @@ class EvidenceService:
         document_name: str,
         document_type: str,
         collector_id: str,
-        **metadata_kwargs,
+        **metadata_kwargs: Any,
     ) -> str:
         """
         Collect document evidence (policies, procedures, etc.).
@@ -483,7 +483,7 @@ class EvidenceService:
         control_ids: list[str],
         evidence_ids: list[str],
         created_by: str,
-        **bundle_kwargs,
+        **bundle_kwargs: Any,
     ) -> str:
         """
         Create evidence bundle for audit delivery.

@@ -270,7 +270,8 @@ class FrameworkRegistry:
         # Check for custom query handler first
         if control_id in self._custom_query_handlers:
             try:
-                return self._custom_query_handlers[control_id]()
+                result: list[str] = self._custom_query_handlers[control_id]()
+                return result
             except Exception as e:
                 logger.error(f"Custom query handler failed for {control_id}: {e}")
 
