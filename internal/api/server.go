@@ -100,6 +100,8 @@ func (s *Server) setupRoutes() {
 			r.Get("/frameworks", s.listFrameworks)
 			r.Get("/frameworks/{id}", s.getFramework)
 			r.Get("/frameworks/{id}/report", s.generateComplianceReport)
+			r.Get("/frameworks/{id}/pre-audit", s.preAuditCheck)
+			r.Get("/frameworks/{id}/export", s.exportAuditPackage)
 		})
 
 		// Agent endpoints
@@ -186,6 +188,12 @@ func (s *Server) setupRoutes() {
 			r.Get("/", s.listNotifiers)
 			r.Post("/test", s.testNotifications)
 		})
+
+		// Admin/health endpoints
+		r.Route("/admin", func(r chi.Router) {
+			r.Get("/health", s.adminHealth)
+			r.Get("/sync/status", s.syncStatus)
+		})
 	})
 }
 
@@ -243,6 +251,159 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	// Use Prometheus metrics handler
 	metrics.Handler().ServeHTTP(w, r)
+}
+
+// Admin health dashboard
+func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
+	health := map[string]interface{}{
+		"timestamp": time.Now().UTC(),
+	}
+
+	// Snowflake status
+	if s.app.Snowflake != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		start := time.Now()
+		err := s.app.Snowflake.Ping(ctx)
+		cancel()
+		latency := time.Since(start).Milliseconds()
+
+		if err != nil {
+			health["snowflake"] = map[string]interface{}{
+				"status":     "unhealthy",
+				"error":      err.Error(),
+				"latency_ms": latency,
+			}
+		} else {
+			health["snowflake"] = map[string]interface{}{
+				"status":     "healthy",
+				"latency_ms": latency,
+			}
+		}
+	} else {
+		health["snowflake"] = map[string]interface{}{"status": "not_configured"}
+	}
+
+	// Findings stats
+	stats := s.app.Findings.Stats()
+	health["findings"] = map[string]interface{}{
+		"total":    stats.Total,
+		"open":     stats.ByStatus["open"],
+		"critical": stats.BySeverity["critical"],
+		"high":     stats.BySeverity["high"],
+		"medium":   stats.BySeverity["medium"],
+		"low":      stats.BySeverity["low"],
+	}
+
+	// Cache stats
+	cacheStats := s.app.Cache.Stats()
+	health["cache"] = cacheStats
+
+	// Policies and agents
+	health["policies"] = map[string]interface{}{
+		"loaded": len(s.app.Policy.ListPolicies()),
+	}
+	health["agents"] = map[string]interface{}{
+		"registered": len(s.app.Agents.ListAgents()),
+	}
+	health["providers"] = map[string]interface{}{
+		"registered": len(s.app.Providers.List()),
+	}
+
+	// Scheduler status
+	if s.app.Scheduler != nil {
+		health["scheduler"] = map[string]interface{}{
+			"configured": true,
+		}
+	}
+
+	s.json(w, http.StatusOK, health)
+}
+
+// Sync status - data freshness from CloudQuery
+func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		return
+	}
+
+	// Query _cq_sync_time from key tables to determine freshness
+	tables := []string{
+		"aws_s3_buckets",
+		"aws_iam_users",
+		"aws_ec2_instances",
+		"gcp_storage_buckets",
+		"gcp_compute_instances",
+		"azure_storage_accounts",
+		"k8s_core_pods",
+	}
+
+	sources := make(map[string]interface{})
+	staleThreshold := 6 * time.Hour
+
+	for _, table := range tables {
+		query := fmt.Sprintf("SELECT MAX(_cq_sync_time) as last_sync FROM %s", table)
+		result, err := s.app.Snowflake.Query(r.Context(), query)
+		if err != nil {
+			continue // Table might not exist
+		}
+
+		if len(result.Rows) > 0 && result.Rows[0]["LAST_SYNC"] != nil {
+			var lastSync time.Time
+			switch v := result.Rows[0]["LAST_SYNC"].(type) {
+			case time.Time:
+				lastSync = v
+			case string:
+				lastSync, _ = time.Parse(time.RFC3339, v)
+			}
+
+			if !lastSync.IsZero() {
+				status := "fresh"
+				if time.Since(lastSync) > staleThreshold {
+					status = "stale"
+				}
+
+				// Extract provider from table name
+				provider := "unknown"
+				if len(table) > 4 {
+					switch {
+					case table[:3] == "aws":
+						provider = "aws"
+					case table[:3] == "gcp":
+						provider = "gcp"
+					case table[:5] == "azure":
+						provider = "azure"
+					case table[:3] == "k8s":
+						provider = "kubernetes"
+					}
+				}
+
+				if existing, ok := sources[provider].(map[string]interface{}); ok {
+					// Keep the most recent sync time
+					if existingTime, ok := existing["last_sync"].(time.Time); ok {
+						if lastSync.After(existingTime) {
+							sources[provider] = map[string]interface{}{
+								"last_sync": lastSync,
+								"status":    status,
+								"age":       time.Since(lastSync).String(),
+							}
+						}
+					}
+				} else {
+					sources[provider] = map[string]interface{}{
+						"last_sync": lastSync,
+						"status":    status,
+						"age":       time.Since(lastSync).String(),
+					}
+				}
+			}
+		}
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"sources":         sources,
+		"stale_threshold": staleThreshold.String(),
+		"checked_at":      time.Now().UTC(),
+	})
 }
 
 // Query endpoints
@@ -522,6 +683,164 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 	}
 
 	s.json(w, http.StatusOK, report)
+}
+
+// Pre-audit health check - predicts audit outcome
+func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	framework := compliance.GetFramework(id)
+	if framework == nil {
+		s.error(w, http.StatusNotFound, "framework not found")
+		return
+	}
+
+	findingsStats := s.app.Findings.Stats()
+
+	type ControlCheck struct {
+		ControlID   string   `json:"control_id"`
+		Title       string   `json:"title"`
+		Status      string   `json:"status"` // passing, failing, at_risk
+		Issues      []string `json:"issues,omitempty"`
+		Findings    []string `json:"findings,omitempty"`
+		Remediation string   `json:"remediation,omitempty"`
+	}
+
+	var checks []ControlCheck
+	passing, failing, atRisk := 0, 0, 0
+
+	for _, ctrl := range framework.Controls {
+		check := ControlCheck{
+			ControlID: ctrl.ID,
+			Title:     ctrl.Title,
+			Status:    "passing",
+		}
+
+		for _, policyID := range ctrl.PolicyIDs {
+			if count, ok := findingsStats.ByPolicy[policyID]; ok && count > 0 {
+				check.Status = "failing"
+				check.Issues = append(check.Issues, fmt.Sprintf("%d findings for policy %s", count, policyID))
+				check.Findings = append(check.Findings, policyID)
+			}
+		}
+
+		switch check.Status {
+		case "passing":
+			passing++
+		case "failing":
+			failing++
+			check.Remediation = "Review and remediate findings before audit"
+		case "at_risk":
+			atRisk++
+		}
+
+		checks = append(checks, check)
+	}
+
+	// Determine estimated outcome
+	outcome := "PASS"
+	if failing > 0 {
+		outcome = fmt.Sprintf("PASS WITH %d EXCEPTIONS", failing)
+	}
+	if float64(failing)/float64(len(framework.Controls)) > 0.2 {
+		outcome = "AT RISK - RECOMMEND POSTPONING"
+	}
+
+	score := 0.0
+	if len(framework.Controls) > 0 {
+		score = float64(passing) / float64(len(framework.Controls)) * 100
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"framework_id":      framework.ID,
+		"framework_name":    framework.Name,
+		"generated_at":      time.Now().UTC().Format(time.RFC3339),
+		"estimated_outcome": outcome,
+		"summary": map[string]interface{}{
+			"total_controls":   len(framework.Controls),
+			"passing":          passing,
+			"failing":          failing,
+			"at_risk":          atRisk,
+			"compliance_score": fmt.Sprintf("%.1f%%", score),
+		},
+		"controls": checks,
+		"recommendations": s.generateAuditRecommendations(failing, atRisk, len(framework.Controls)),
+	})
+}
+
+func (s *Server) generateAuditRecommendations(failing, atRisk, total int) []string {
+	var recs []string
+
+	if failing > 0 {
+		recs = append(recs, fmt.Sprintf("Remediate %d failing controls before audit", failing))
+	}
+	if atRisk > 0 {
+		recs = append(recs, fmt.Sprintf("Review %d at-risk controls", atRisk))
+	}
+	if failing == 0 && atRisk == 0 {
+		recs = append(recs, "All controls passing - ready for audit")
+	}
+	if float64(failing)/float64(total) > 0.1 {
+		recs = append(recs, "Consider postponing audit until critical issues are resolved")
+	}
+
+	return recs
+}
+
+// Export audit package with evidence
+func (s *Server) exportAuditPackage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	framework := compliance.GetFramework(id)
+	if framework == nil {
+		s.error(w, http.StatusNotFound, "framework not found")
+		return
+	}
+
+	// Generate manifest
+	manifest := map[string]interface{}{
+		"framework_id":   framework.ID,
+		"framework_name": framework.Name,
+		"version":        framework.Version,
+		"generated_at":   time.Now().UTC().Format(time.RFC3339),
+		"generated_by":   "cerebro",
+	}
+
+	// Gather evidence for each control
+	findingsStats := s.app.Findings.Stats()
+	controlEvidence := make([]map[string]interface{}, len(framework.Controls))
+
+	for i, ctrl := range framework.Controls {
+		status := "passing"
+		var relatedFindings []string
+
+		for _, policyID := range ctrl.PolicyIDs {
+			if count, ok := findingsStats.ByPolicy[policyID]; ok && count > 0 {
+				status = "failing"
+				relatedFindings = append(relatedFindings, policyID)
+			}
+		}
+
+		controlEvidence[i] = map[string]interface{}{
+			"control_id":  ctrl.ID,
+			"title":       ctrl.Title,
+			"description": ctrl.Description,
+			"status":      status,
+			"policies":    ctrl.PolicyIDs,
+			"findings":    relatedFindings,
+		}
+	}
+
+	// In a real implementation, this would:
+	// 1. Query Snowflake for actual asset data
+	// 2. Bundle findings as JSON evidence
+	// 3. Create a ZIP file with manifest + evidence
+	// 4. Stream the ZIP to the client
+
+	// For now, return JSON that could be used to build the package
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"manifest": manifest,
+		"controls": controlEvidence,
+		"note":     "Use CLI 'cerebro compliance export' to generate downloadable ZIP package",
+	})
 }
 
 // Agent endpoints

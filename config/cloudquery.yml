@@ -45,6 +45,40 @@ spec:
     subscriptions: []  # Empty = all subscriptions
 
 ---
+kind: source
+spec:
+  name: k8s
+  path: cloudquery/k8s
+  registry: cloudquery
+  version: "v12.0.0"
+  tables:
+    - k8s_core_pods
+    - k8s_core_namespaces
+    - k8s_core_services
+    - k8s_core_secrets
+    - k8s_core_configmaps
+    - k8s_core_service_accounts
+    - k8s_networking_ingresses
+    - k8s_networking_network_policies
+    - k8s_rbac_cluster_roles
+    - k8s_rbac_cluster_role_bindings
+    - k8s_rbac_roles
+    - k8s_rbac_role_bindings
+    - k8s_apps_deployments
+    - k8s_apps_daemonsets
+    - k8s_apps_statefulsets
+    - k8s_apps_replicasets
+    - k8s_batch_jobs
+    - k8s_batch_cron_jobs
+  destinations: ["snowflake"]
+  spec:
+    # Uses KUBECONFIG or in-cluster config
+    # For multiple clusters, specify contexts:
+    # contexts:
+    #   - name: "production"
+    #   - name: "staging"
+
+---
 kind: destination
 spec:
   name: snowflake
