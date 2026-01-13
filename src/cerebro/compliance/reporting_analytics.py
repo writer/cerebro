@@ -22,10 +22,10 @@ from io import BytesIO
 from typing import Any
 
 try:
-    import matplotlib.pyplot as plt  # type: ignore[import-not-found]
+    import matplotlib.pyplot as plt
     HAS_MATPLOTLIB = True
 except ImportError:
-    plt = None  # type: ignore[assignment]
+    plt = None
     HAS_MATPLOTLIB = False
 
 from .evidence_data_fabric import EvidenceDataFabric, EvidenceQuery
@@ -601,7 +601,7 @@ class ComplianceAnalytics:
         }
 
     def _identify_key_actions(
-        self, compliance_data, risk_data, _control_data
+        self, compliance_data: dict[str, Any], risk_data: dict[str, Any], _control_data: dict[str, Any]
     ) -> list[dict[str, Any]]:
         """Identify key actions needed based on analysis."""
 
@@ -716,7 +716,8 @@ class ComplianceAnalytics:
             end_date = datetime.now()
             start_date = end_date - timedelta(days=30)
             freshness_data = self._analyze_evidence_freshness(start_date, end_date)
-            return freshness_data["average_freshness_score"]
+            score: float = freshness_data["average_freshness_score"]
+            return score
 
         return 0.0
 
@@ -928,7 +929,7 @@ class ComplianceAnalytics:
 
         # Try weasyprint first (best quality)
         try:
-            from weasyprint import HTML  # type: ignore[import-not-found]
+            from weasyprint import HTML
 
             pdf_buffer = BytesIO()
             HTML(string=html_content).write_pdf(pdf_buffer)
@@ -938,7 +939,7 @@ class ComplianceAnalytics:
 
         # Try xhtml2pdf as fallback
         try:
-            from xhtml2pdf import pisa  # type: ignore[import-not-found]
+            from xhtml2pdf import pisa
 
             pdf_buffer = BytesIO()
             pisa.CreatePDF(html_content, dest=pdf_buffer)
@@ -960,8 +961,8 @@ class ComplianceAnalytics:
         Uses openpyxl if available, otherwise creates CSV-compatible format.
         """
         try:
-            from openpyxl import Workbook  # type: ignore[import-not-found]
-            from openpyxl.styles import Font  # type: ignore[import-not-found]
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
 
             wb = Workbook()
 
