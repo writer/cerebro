@@ -1,12 +1,5 @@
 """
-AWS ECS Fargate compute infrastructure.
-
-Creates:
-- ECS cluster with Fargate
-- Task definitions for API, workers, beat scheduler, and monitoring
-- ECS services with autoscaling
-- IAM roles and policies
-- CloudWatch log groups
+AWS ECS Fargate compute for Cerebro Go application.
 """
 
 import json
@@ -21,62 +14,20 @@ def create_ecs_cluster(
     subnet_ids: list[pulumi.Output[str]],
     security_group_id: pulumi.Output[str],
     secrets_arn: pulumi.Output[str],
-    dynamodb_table_arns: list[pulumi.Output[str]],
-    dynamodb_core_table: pulumi.Output[str],
-    dynamodb_audit_table: pulumi.Output[str],
-    dynamodb_agents_table: pulumi.Output[str],
-    dynamodb_notifications_table: pulumi.Output[str],
-    dynamodb_users_table: pulumi.Output[str],
-    redis_endpoint: pulumi.Output[str],
-    redis_password: pulumi.Input[str],
     kms_key_id: pulumi.Output[str],
     target_group_arn: pulumi.Output[str],
-    container_image: str = "cerebro:latest",
+    container_image: str,
     api_cpu: int = 1024,
     api_memory: int = 2048,
     api_min_instances: int = 2,
-    api_max_instances: int = 20,
-    worker_cpu: int = 2048,
-    worker_memory: int = 4096,
-    worker_min_instances: int = 2,
-    worker_max_instances: int = 50,
+    api_max_instances: int = 10,
     log_retention_days: int = 30,
-    enable_flower: bool = True,
+    environment: dict = None,
 ) -> dict:
     """
-    Create ECS cluster with Fargate services.
-
-    Args:
-        name: Cluster name prefix
-        vpc_id: VPC ID
-        subnet_ids: Private subnet IDs for ECS tasks
-        security_group_id: Security group for ECS tasks
-        secrets_arn: Secrets Manager ARN for environment variables
-        dynamodb_table_arns: List of DynamoDB table ARNs for IAM permissions
-        dynamodb_core_table: DynamoDB core table name
-        dynamodb_audit_table: DynamoDB audit table name
-        dynamodb_agents_table: DynamoDB agents table name
-        dynamodb_notifications_table: DynamoDB notifications table name
-        dynamodb_users_table: DynamoDB users table name
-        redis_endpoint: Redis endpoint
-        redis_password: Redis password
-        kms_key_id: KMS key ID for encryption
-        target_group_arn: ALB target group ARN for API service
-        container_image: Docker image URI (ECR)
-        api_cpu: API task CPU units (1024 = 1 vCPU)
-        api_memory: API task memory in MB
-        api_min_instances: Minimum API instances
-        api_max_instances: Maximum API instances
-        worker_cpu: Worker task CPU units
-        worker_memory: Worker task memory in MB
-        worker_min_instances: Minimum worker instances
-        worker_max_instances: Maximum worker instances
-        enable_flower: Deploy Flower monitoring UI
-
-    Returns:
-        Dictionary with ECS resources
+    Create ECS cluster with Fargate service for Go API.
     """
-    # Create ECS cluster
+    # ECS Cluster
     cluster = aws.ecs.Cluster(
         f"{name}-cluster",
         name=f"{name}-cluster",
@@ -86,77 +37,40 @@ def create_ecs_cluster(
                 value="enabled",
             )
         ],
-        tags={
-            "Name": f"{name}-cluster",
-            "ManagedBy": "Pulumi",
-        },
+        tags={"Name": f"{name}-cluster"},
     )
 
-    # Create IAM execution role (for pulling images, secrets)
+    # IAM roles
     execution_role = _create_execution_role(name, secrets_arn, kms_key_id)
+    task_role = _create_task_role(name, kms_key_id)
 
-    # Create IAM task role (for application AWS API access including DynamoDB)
-    task_role = _create_task_role(name, kms_key_id, dynamodb_table_arns)
-
-    # Create CloudWatch log groups
-    api_log_group = _create_log_group(
-        f"/ecs/{name}-api", retention_days=log_retention_days
-    )
-    worker_log_group = _create_log_group(
-        f"/ecs/{name}-worker", retention_days=log_retention_days
-    )
-    beat_log_group = _create_log_group(
-        f"/ecs/{name}-beat", retention_days=log_retention_days
+    # CloudWatch log group
+    log_group = aws.cloudwatch.LogGroup(
+        f"{name}-logs",
+        name=f"/ecs/{name}",
+        retention_in_days=log_retention_days,
+        tags={"Name": f"{name}-logs"},
     )
 
-    # Base environment variables
-    base_env = {
-        # DynamoDB table names
-        "DYNAMODB_CORE_TABLE": dynamodb_core_table,
-        "DYNAMODB_AUDIT_TABLE": dynamodb_audit_table,
-        "DYNAMODB_AGENTS_TABLE": dynamodb_agents_table,
-        "DYNAMODB_NOTIFICATIONS_TABLE": dynamodb_notifications_table,
-        "DYNAMODB_USERS_TABLE": dynamodb_users_table,
-        # Redis connection
-        "REDIS_URL": pulumi.Output.all(redis_endpoint, redis_password).apply(
-            lambda args: _build_redis_url(*args)
-        ),
-        # Encryption
-        "KMS_KEY_ID": kms_key_id,
-        "KMS_PROVIDER": "aws",
-        # AWS region for DynamoDB
-        "AWS_REGION": aws.get_region().name,
-    }
-
-    # Create API task definition
-    api_task_definition = _create_task_definition(
-        name=f"{name}-api",
-        container_name="cerebro-api",
+    # Task definition
+    task_definition = _create_task_definition(
+        name=name,
         container_image=container_image,
-        command=[
-            "uvicorn",
-            "cerebro.api.main:app",
-            "--host",
-            "0.0.0.0",
-            "--port",
-            "8000",
-        ],
         cpu=api_cpu,
         memory=api_memory,
         execution_role_arn=execution_role.arn,
         task_role_arn=task_role.arn,
-        log_group=api_log_group.name,
-        environment=base_env,
+        log_group_name=log_group.name,
         secrets_arn=secrets_arn,
-        port_mappings=[{"containerPort": 8000, "protocol": "tcp"}],
+        environment=environment or {},
     )
 
-    # Create API service
+    # ECS Service
     api_service = aws.ecs.Service(
-        f"{name}-api-service",
+        f"{name}-service",
         name=f"{name}-api",
         cluster=cluster.id,
-        task_definition=api_task_definition.arn,
+        task_definition=task_definition.arn,
         desired_count=api_min_instances,
         launch_type="FARGATE",
         network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
@@ -167,33 +81,33 @@ def create_ecs_cluster(
         load_balancers=[
             aws.ecs.ServiceLoadBalancerArgs(
                 target_group_arn=target_group_arn,
-                container_name="cerebro-api",
-                container_port=8000,
+                container_name="cerebro",
+                container_port=8080,
             )
         ],
-        health_check_grace_period_seconds=60,
-        tags={
-            "Name": f"{name}-api-service",
-        },
+        health_check_grace_period_seconds=120,
+        deployment_configuration=aws.ecs.ServiceDeploymentConfigurationArgs(
+            maximum_percent=200,
+            minimum_healthy_percent=100,
+        ),
+        tags={"Name": f"{name}-service"},
     )
 
-    # Create API autoscaling target
-    api_scaling_target = aws.appautoscaling.Target(
-        f"{name}-api-scaling-target",
+    # Auto Scaling
+    scaling_target = aws.appautoscaling.Target(
+        f"{name}-scaling-target",
         service_namespace="ecs",
-        resource_id=pulumi.Output.concat(
-            "service/", cluster.name, "/", api_service.name
-        ),
+        resource_id=pulumi.Output.concat("service/", cluster.name, "/", api_service.name),
         scalable_dimension="ecs:service:DesiredCount",
         min_capacity=api_min_instances,
         max_capacity=api_max_instances,
     )
 
-    # CPU-based scaling for API
+    # CPU scaling policy
     aws.appautoscaling.Policy(
-        f"{name}-api-cpu-scaling",
+        f"{name}-cpu-scaling",
         service_namespace="ecs",
-        resource_id=api_scaling_target.resource_id,
+        resource_id=scaling_target.resource_id,
         scalable_dimension="ecs:service:DesiredCount",
         policy_type="TargetTrackingScaling",
         target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
@@ -206,150 +120,29 @@ def create_ecs_cluster(
         ),
     )
 
-    # Create Worker task definition
-    worker_task_definition = _create_task_definition(
-        name=f"{name}-worker",
-        container_name="cerebro-worker",
-        container_image=container_image,
-        command=["celery", "-A", "cerebro.tasks.celery_app", "worker", "-l", "info"],
-        cpu=worker_cpu,
-        memory=worker_memory,
-        execution_role_arn=execution_role.arn,
-        task_role_arn=task_role.arn,
-        log_group=worker_log_group.name,
-        environment=base_env,
-        secrets_arn=secrets_arn,
-    )
-
-    # Create Worker service
-    worker_service = aws.ecs.Service(
-        f"{name}-worker-service",
-        name=f"{name}-worker",
-        cluster=cluster.id,
-        task_definition=worker_task_definition.arn,
-        desired_count=worker_min_instances,
-        launch_type="FARGATE",
-        network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-            subnets=subnet_ids,
-            security_groups=[security_group_id],
-            assign_public_ip=False,
-        ),
-        tags={
-            "Name": f"{name}-worker-service",
-        },
-    )
-
-    # Create Worker autoscaling target
-    worker_scaling_target = aws.appautoscaling.Target(
-        f"{name}-worker-scaling-target",
-        service_namespace="ecs",
-        resource_id=pulumi.Output.concat(
-            "service/", cluster.name, "/", worker_service.name
-        ),
-        scalable_dimension="ecs:service:DesiredCount",
-        min_capacity=worker_min_instances,
-        max_capacity=worker_max_instances,
-    )
-
-    # CPU-based scaling for workers
+    # Memory scaling policy
     aws.appautoscaling.Policy(
-        f"{name}-worker-cpu-scaling",
+        f"{name}-memory-scaling",
         service_namespace="ecs",
-        resource_id=worker_scaling_target.resource_id,
+        resource_id=scaling_target.resource_id,
         scalable_dimension="ecs:service:DesiredCount",
         policy_type="TargetTrackingScaling",
         target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
-            target_value=70.0,
+            target_value=80.0,
             predefined_metric_specification=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs(
-                predefined_metric_type="ECSServiceAverageCPUUtilization",
+                predefined_metric_type="ECSServiceAverageMemoryUtilization",
             ),
             scale_in_cooldown=300,
             scale_out_cooldown=60,
         ),
     )
 
-    # Create Beat (scheduler) task definition
-    beat_task_definition = _create_task_definition(
-        name=f"{name}-beat",
-        container_name="cerebro-beat",
-        container_image=container_image,
-        command=["celery", "-A", "cerebro.tasks.celery_app", "beat", "-l", "info"],
-        cpu=512,
-        memory=1024,
-        execution_role_arn=execution_role.arn,
-        task_role_arn=task_role.arn,
-        log_group=beat_log_group.name,
-        environment=base_env,
-        secrets_arn=secrets_arn,
-    )
-
-    # Create Beat service (single instance)
-    beat_service = aws.ecs.Service(
-        f"{name}-beat-service",
-        name=f"{name}-beat",
-        cluster=cluster.id,
-        task_definition=beat_task_definition.arn,
-        desired_count=1,
-        launch_type="FARGATE",
-        network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-            subnets=subnet_ids,
-            security_groups=[security_group_id],
-            assign_public_ip=False,
-        ),
-        tags={
-            "Name": f"{name}-beat-service",
-        },
-    )
-
-    result = {
+    return {
         "cluster": cluster,
         "api_service": api_service,
-        "worker_service": worker_service,
-        "beat_service": beat_service,
-        "execution_role": execution_role,
-        "task_role": task_role,
+        "task_definition": task_definition,
+        "log_group": log_group,
     }
-
-    # Optional Flower monitoring UI
-    if enable_flower:
-        flower_log_group = _create_log_group(
-            f"/ecs/{name}-flower", retention_days=log_retention_days
-        )
-        flower_task_definition = _create_task_definition(
-            name=f"{name}-flower",
-            container_name="cerebro-flower",
-            container_image=container_image,
-            command=["celery", "-A", "cerebro.tasks.celery_app", "flower"],
-            cpu=512,
-            memory=1024,
-            execution_role_arn=execution_role.arn,
-            task_role_arn=task_role.arn,
-            log_group=flower_log_group.name,
-            environment=base_env,
-            secrets_arn=secrets_arn,
-            port_mappings=[{"containerPort": 5555, "protocol": "tcp"}],
-        )
-
-        flower_service = aws.ecs.Service(
-            f"{name}-flower-service",
-            name=f"{name}-flower",
-            cluster=cluster.id,
-            task_definition=flower_task_definition.arn,
-            desired_count=1,
-            launch_type="FARGATE",
-            network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-                subnets=subnet_ids,
-                security_groups=[security_group_id],
-                assign_public_ip=False,
-            ),
-            tags={
-                "Name": f"{name}-flower-service",
-            },
-        )
-
-        result["flower_service"] = flower_service
-
-    return result
 
 
 def _create_execution_role(
@@ -357,213 +150,131 @@ def _create_execution_role(
     secrets_arn: pulumi.Output[str],
     kms_key_id: pulumi.Output[str],
 ) -> aws.iam.Role:
-    """Create IAM role for ECS task execution."""
+    """Create IAM execution role for ECS."""
     role = aws.iam.Role(
-        f"{name}-execution-role",
-        assume_role_policy=json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"Service": "ecs-tasks.amazonaws.com"},
-                        "Action": "sts:AssumeRole",
-                    }
-                ],
-            }
-        ),
-        tags={"Name": f"{name}-execution-role"},
+        f"{name}-exec-role",
+        assume_role_policy=json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }],
+        }),
+        tags={"Name": f"{name}-exec-role"},
     )
 
-    # Attach AWS managed policy for ECS task execution
     aws.iam.RolePolicyAttachment(
-        f"{name}-execution-policy-attachment",
+        f"{name}-exec-policy",
         role=role.name,
         policy_arn="arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
     )
 
-    # Add inline policy for Secrets Manager and KMS access
     aws.iam.RolePolicy(
-        f"{name}-execution-secrets-policy",
+        f"{name}-exec-secrets",
         role=role.name,
         policy=pulumi.Output.all(secrets_arn, kms_key_id).apply(
-            lambda args: json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "secretsmanager:GetSecretValue",
-                            ],
-                            "Resource": args[0],
-                        },
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "kms:Decrypt",
-                                "kms:DescribeKey",
-                            ],
-                            "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
-                        },
-                    ],
-                }
-            )
-        ),
-    )
-
-    return role
-
-
-def _create_task_role(
-    name: str,
-    kms_key_id: pulumi.Output[str],
-    dynamodb_table_arns: list[pulumi.Output[str]],
-) -> aws.iam.Role:
-    """Create IAM role for ECS tasks (application permissions including DynamoDB)."""
-    role = aws.iam.Role(
-        f"{name}-task-role",
-        assume_role_policy=json.dumps(
-            {
+            lambda args: json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [
                     {
                         "Effect": "Allow",
-                        "Principal": {"Service": "ecs-tasks.amazonaws.com"},
-                        "Action": "sts:AssumeRole",
-                    }
+                        "Action": ["secretsmanager:GetSecretValue"],
+                        "Resource": args[0],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["kms:Decrypt"],
+                        "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
+                    },
                 ],
-            }
-        ),
-        tags={"Name": f"{name}-task-role"},
-    )
-
-    # Add inline policy for KMS access (for application encryption)
-    aws.iam.RolePolicy(
-        f"{name}-task-kms-policy",
-        role=role.name,
-        policy=kms_key_id.apply(
-            lambda key_id: json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "kms:Encrypt",
-                                "kms:Decrypt",
-                                "kms:GenerateDataKey",
-                                "kms:DescribeKey",
-                            ],
-                            "Resource": f"arn:aws:kms:*:*:key/{key_id}",
-                        }
-                    ],
-                }
-            )
-        ),
-    )
-
-    # Add inline policy for DynamoDB access
-    aws.iam.RolePolicy(
-        f"{name}-task-dynamodb-policy",
-        role=role.name,
-        policy=pulumi.Output.all(*dynamodb_table_arns).apply(
-            lambda arns: json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Sid": "DynamoDBTableAccess",
-                            "Effect": "Allow",
-                            "Action": [
-                                "dynamodb:GetItem",
-                                "dynamodb:PutItem",
-                                "dynamodb:UpdateItem",
-                                "dynamodb:DeleteItem",
-                                "dynamodb:BatchGetItem",
-                                "dynamodb:BatchWriteItem",
-                                "dynamodb:Query",
-                                "dynamodb:Scan",
-                                "dynamodb:TransactGetItems",
-                                "dynamodb:TransactWriteItems",
-                                "dynamodb:ConditionCheckItem",
-                            ],
-                            "Resource": [
-                                *arns,
-                                *[f"{arn}/index/*" for arn in arns],
-                            ],
-                        },
-                        {
-                            "Sid": "DynamoDBStreamAccess",
-                            "Effect": "Allow",
-                            "Action": [
-                                "dynamodb:DescribeStream",
-                                "dynamodb:GetRecords",
-                                "dynamodb:GetShardIterator",
-                                "dynamodb:ListStreams",
-                            ],
-                            "Resource": [f"{arn}/stream/*" for arn in arns],
-                        },
-                    ],
-                }
-            )
+            })
         ),
     )
 
     return role
 
 
-def _create_log_group(name: str, retention_days: int = 30) -> aws.cloudwatch.LogGroup:
-    """Create CloudWatch log group."""
-    return aws.cloudwatch.LogGroup(
-        name.replace("/", "-"),
-        name=name,
-        retention_in_days=retention_days,
-        tags={
-            "Name": name,
-        },
+def _create_task_role(name: str, kms_key_id: pulumi.Output[str]) -> aws.iam.Role:
+    """Create IAM task role for application."""
+    role = aws.iam.Role(
+        f"{name}-task-role",
+        assume_role_policy=json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }],
+        }),
+        tags={"Name": f"{name}-task-role"},
     )
+
+    # CloudWatch metrics
+    aws.iam.RolePolicy(
+        f"{name}-task-cloudwatch",
+        role=role.name,
+        policy=json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": ["cloudwatch:PutMetricData"],
+                "Resource": "*",
+            }],
+        }),
+    )
+
+    return role
 
 
 def _create_task_definition(
     name: str,
-    container_name: str,
     container_image: str,
-    command: list[str],
     cpu: int,
     memory: int,
     execution_role_arn: pulumi.Output[str],
     task_role_arn: pulumi.Output[str],
-    log_group: pulumi.Output[str],
-    environment: dict,
+    log_group_name: pulumi.Output[str],
     secrets_arn: pulumi.Output[str],
-    port_mappings: list[dict] = None,
+    environment: dict,
 ) -> aws.ecs.TaskDefinition:
     """Create ECS task definition."""
+    region = aws.get_region().name
+
     container_def = {
-        "name": container_name,
+        "name": "cerebro",
         "image": container_image,
-        "command": command,
+        "command": ["serve"],
         "essential": True,
+        "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
         "logConfiguration": {
             "logDriver": "awslogs",
             "options": {
-                "awslogs-group": log_group,
-                "awslogs-region": aws.get_region().name,
+                "awslogs-group": log_group_name,
+                "awslogs-region": region,
                 "awslogs-stream-prefix": "ecs",
             },
         },
-        "environment": [
-            {"name": key, "value": value} for key, value in environment.items()
+        "environment": [{"name": k, "value": str(v)} for k, v in environment.items()],
+        "secrets": [
+            {"name": "SNOWFLAKE_CONNECTION_STRING", "valueFrom": pulumi.Output.concat(secrets_arn, ":SNOWFLAKE_CONNECTION_STRING::")},
+            {"name": "ANTHROPIC_API_KEY", "valueFrom": pulumi.Output.concat(secrets_arn, ":ANTHROPIC_API_KEY::")},
+            {"name": "OPENAI_API_KEY", "valueFrom": pulumi.Output.concat(secrets_arn, ":OPENAI_API_KEY::")},
+            {"name": "SLACK_WEBHOOK_URL", "valueFrom": pulumi.Output.concat(secrets_arn, ":SLACK_WEBHOOK_URL::")},
+            {"name": "JIRA_API_TOKEN", "valueFrom": pulumi.Output.concat(secrets_arn, ":JIRA_API_TOKEN::")},
+            {"name": "LINEAR_API_KEY", "valueFrom": pulumi.Output.concat(secrets_arn, ":LINEAR_API_KEY::")},
         ],
-        "secrets": _build_secret_references(secrets_arn),
+        "healthCheck": {
+            "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"],
+            "interval": 30,
+            "timeout": 5,
+            "retries": 3,
+            "startPeriod": 60,
+        },
     }
 
-    if port_mappings:
-        container_def["portMappings"] = port_mappings
-
     return aws.ecs.TaskDefinition(
-        f"{name}-task-def",
+        f"{name}-task",
         family=name,
         cpu=str(cpu),
         memory=str(memory),
@@ -572,42 +283,5 @@ def _create_task_definition(
         execution_role_arn=execution_role_arn,
         task_role_arn=task_role_arn,
         container_definitions=pulumi.Output.json_dumps([container_def]),
-        tags={
-            "Name": name,
-        },
+        tags={"Name": f"{name}-task"},
     )
-
-
-def _build_redis_url(endpoint: str, password: str) -> str:
-    """Compose the Redis connection URL used by Celery."""
-    return f"rediss://:{password}@{endpoint}:6379/0"
-
-
-def _build_secret_references(secrets_arn: pulumi.Output[str]) -> list[dict]:
-    """Return the set of secret environment variable mappings."""
-    return [
-        {
-            "name": "REDIS_PASSWORD",
-            "valueFrom": pulumi.Output.concat(secrets_arn, ":REDIS_PASSWORD::"),
-        },
-        {
-            "name": "SECRET_KEY",
-            "valueFrom": pulumi.Output.concat(secrets_arn, ":SECRET_KEY::"),
-        },
-        {
-            "name": "CEREBRO_AUTOMATION_ORG_ID",
-            "valueFrom": pulumi.Output.concat(
-                secrets_arn, ":CEREBRO_AUTOMATION_ORG_ID::"
-            ),
-        },
-        {
-            "name": "CEREBRO_SESSION_BASE_URL",
-            "valueFrom": pulumi.Output.concat(
-                secrets_arn, ":CEREBRO_SESSION_BASE_URL::"
-            ),
-        },
-        {
-            "name": "AUTONOMY_SLACK_WEBHOOK",
-            "valueFrom": pulumi.Output.concat(secrets_arn, ":AUTONOMY_SLACK_WEBHOOK::"),
-        },
-    ]

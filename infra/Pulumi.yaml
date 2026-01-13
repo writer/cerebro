@@ -1,6 +1,6 @@
 name: cerebro
 runtime: python
-description: Production infrastructure for Cerebro Security Platform
+description: Infrastructure for Cerebro Security Platform (Go)
 
 config:
   cerebro:environment:
@@ -11,48 +11,29 @@ config:
   cerebro:domain:
     type: string
     default: ""
-    description: Primary domain for Cerebro (optional; leave blank for internal-only access)
+    description: Custom domain for Cerebro API (optional)
 
-  cerebro:secretKey:
+  cerebro:containerImage:
+    type: string
+    description: Container image URI (ECR)
+
+  # Snowflake connection (required)
+  cerebro:snowflakeConnectionString:
     type: string
     secret: true
-    description: Secret key for JWT tokens
+    description: Snowflake connection string
 
-  cerebro:dbPassword:
+  cerebro:snowflakeDatabase:
     type: string
-    secret: true
-    description: Database password
+    default: CEREBRO
+    description: Snowflake database name
 
-  cerebro:redisPassword:
+  cerebro:snowflakeSchema:
     type: string
-    secret: true
-    description: Redis password
+    default: RAW
+    description: Snowflake schema name
 
-  cerebro:automationOrgId:
-    type: string
-    default: ""
-    description: Organization ID used by automation workflows
-
-  cerebro:sessionBaseUrl:
-    type: string
-    default: ""
-    description: Base URL for linking to Cerebro agent sessions (optional)
-
-  cerebro:autonomySlackWebhook:
-    type: string
-    secret: true
-    description: Slack webhook for autonomy automation notifications
-
-  cerebro:apiMinInstances:
-    type: integer
-    default: 2
-    description: Minimum number of API server instances
-
-  cerebro:apiMaxInstances:
-    type: integer
-    default: 20
-    description: Maximum number of API server instances
-
+  # ECS sizing
   cerebro:apiCpu:
     type: integer
     default: 1024
@@ -63,77 +44,71 @@ config:
     default: 2048
     description: API task memory in MB
 
-  cerebro:workerMinInstances:
+  cerebro:apiMinInstances:
     type: integer
     default: 2
-    description: Minimum number of Celery worker instances
+    description: Minimum API instances
 
-  cerebro:workerMaxInstances:
+  cerebro:apiMaxInstances:
     type: integer
-    default: 50
-    description: Maximum number of Celery worker instances
+    default: 10
+    description: Maximum API instances
 
-  cerebro:workerCpu:
-    type: integer
-    default: 2048
-    description: Worker task CPU units
-
-  cerebro:workerMemory:
-    type: integer
-    default: 4096
-    description: Worker task memory in MB
-
-  cerebro:dbInstanceClass:
+  # Optional integrations
+  cerebro:anthropicApiKey:
     type: string
-    default: db.r6g.xlarge
-    description: RDS instance class
+    secret: true
+    description: Anthropic API key for AI agents
 
-  cerebro:dbStorageSize:
-    type: integer
-    default: 500
-    description: RDS storage size in GB
-
-  cerebro:redisNodeType:
+  cerebro:openaiApiKey:
     type: string
-    default: cache.r6g.large
-    description: ElastiCache node type
+    secret: true
+    description: OpenAI API key for AI agents
 
-  cerebro:enableMultiAz:
+  cerebro:slackWebhookUrl:
+    type: string
+    secret: true
+    description: Slack webhook URL for notifications
+
+  cerebro:jiraBaseUrl:
+    type: string
+    description: Jira base URL
+
+  cerebro:jiraEmail:
+    type: string
+    description: Jira email
+
+  cerebro:jiraApiToken:
+    type: string
+    secret: true
+    description: Jira API token
+
+  cerebro:jiraProject:
+    type: string
+    default: SEC
+    description: Default Jira project key
+
+  cerebro:linearApiKey:
+    type: string
+    secret: true
+    description: Linear API key
+
+  cerebro:linearTeamId:
+    type: string
+    description: Linear team ID
+
+  # Feature flags
+  cerebro:enableWaf:
     type: boolean
     default: true
-    description: Enable Multi-AZ for database
+    description: Enable AWS WAF
 
-  cerebro:enableReadReplicas:
+  cerebro:albInternal:
     type: boolean
     default: true
-    description: Enable read replicas
-
-  cerebro:readReplicaCount:
-    type: integer
-    default: 2
-    description: Number of read replicas
-
-  cerebro:backupRetentionDays:
-    type: integer
-    default: 30
-    description: Database backup retention in days
+    description: Deploy ALB as internal only
 
   cerebro:logRetentionDays:
     type: integer
     default: 30
     description: CloudWatch log retention in days
-
-  cerebro:enableCloudFront:
-    type: boolean
-    default: false
-    description: Enable CloudFront CDN
-
-  cerebro:enableFlower:
-    type: boolean
-    default: true
-    description: Enable Flower monitoring UI
-
-  cerebro:albInternal:
-    type: boolean
-    description: Deploy the Application Load Balancer as internal-only (no public ingress)
-
