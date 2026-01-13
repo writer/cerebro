@@ -57,7 +57,7 @@ class AzureProvider(BaseProvider):
         self,
         account_id: UUID,
         subscription_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(account_id, **kwargs)
         if not subscription_id:
@@ -128,13 +128,16 @@ class AzureProvider(BaseProvider):
 
         for account in accounts:
             resource_group = _extract_resource_group(account.id)
+            account_name = account.name or ""
+            if not account_name or not resource_group:
+                continue
             account_props = await self._get_account_properties(
-                account.name, resource_group
+                account_name, resource_group
             )
 
             if not resource_types or "azure.storage.account" in resource_types:
                 metadata = {
-                    "account_name": account.name,
+                    "account_name": account_name,
                     "resource_group": resource_group,
                     "kind": account.kind,
                     "sku": getattr(account.sku, "name", None),
@@ -161,8 +164,8 @@ class AzureProvider(BaseProvider):
                 }
 
                 yield ResourceInfo(
-                    external_id=account.id,
-                    name=account.name,
+                    external_id=account.id or "",
+                    name=account_name,
                     resource_type="azure.storage.account",
                     metadata=metadata,
                 )
@@ -170,12 +173,12 @@ class AzureProvider(BaseProvider):
             if resource_types and "azure.storage.container" not in resource_types:
                 continue
 
-            account_key = await self._get_account_key(account.name, resource_group)
+            account_key = await self._get_account_key(account_name, resource_group)
             if not account_key:
                 continue
 
             blob_service_client = BlobServiceClient(
-                account_url=f"https://{account.name}.blob.core.windows.net",
+                account_url=f"https://{account_name}.blob.core.windows.net",
                 credential=account_key,
             )
 
@@ -257,9 +260,11 @@ class AzureProvider(BaseProvider):
             # Get instance view for power state
             instance_view = None
             if resource_group and vm.name:
+                rg_str = resource_group
+                name_str = vm.name
                 try:
                     instance_view = await call_sync_with_retries(
-                        lambda rg=resource_group, name=vm.name: (
+                        lambda rg=rg_str, name=name_str: (
                             self._compute_client.virtual_machines.instance_view(rg, name)  # type: ignore[union-attr]
                         ),
                         exceptions=(AzureError, HttpResponseError),
@@ -454,7 +459,7 @@ class AzureProvider(BaseProvider):
             )
 
     @staticmethod
-    def _serialize_image_reference(image_ref) -> dict[str, Any] | None:
+    def _serialize_image_reference(image_ref: Any) -> dict[str, Any] | None:
         """Serialize VM image reference."""
         if not image_ref:
             return None
@@ -520,9 +525,10 @@ class AzureProvider(BaseProvider):
             # Get role definition name if not cached
             role_def_id = assignment.role_definition_id
             if role_def_id and role_def_id not in role_definitions:
+                rid_str = role_def_id
                 try:
                     role_def = await call_sync_with_retries(
-                        lambda rid=role_def_id: self._auth_client.role_definitions.get_by_id(rid),  # type: ignore[union-attr]
+                        lambda rid=rid_str: self._auth_client.role_definitions.get_by_id(rid),  # type: ignore[union-attr]
                         exceptions=(AzureError, HttpResponseError),
                         logger=logger,
                     )
@@ -674,7 +680,7 @@ class AzureProvider(BaseProvider):
 
     async def _get_account_properties(
         self, account_name: str, resource_group: str | None
-    ):
+    ) -> Any:
         if not resource_group:
             logger.warning(
                 "Resource group not found for storage account %s", account_name
@@ -705,7 +711,8 @@ class AzureProvider(BaseProvider):
         key_items = getattr(keys, "keys", []) or []
         if not key_items:
             return None
-        return key_items[0].value
+        key_value: str | None = key_items[0].value
+        return key_value
 
     async def _sample_container_objects(
         self,
@@ -758,7 +765,7 @@ class AzureProvider(BaseProvider):
             return []
 
     @staticmethod
-    def _serialize_network_rules(rule_set) -> dict[str, object]:
+    def _serialize_network_rules(rule_set: Any) -> dict[str, object]:
         if not rule_set:
             return {}
         return {
@@ -775,7 +782,7 @@ class AzureProvider(BaseProvider):
         }
 
     @staticmethod
-    def _serialize_encryption(encryption) -> dict[str, object]:
+    def _serialize_encryption(encryption: Any) -> dict[str, object]:
         if not encryption:
             return {}
         services = getattr(encryption, "services", None)
@@ -795,7 +802,7 @@ class AzureProvider(BaseProvider):
         }
 
     @staticmethod
-    def _serialize_identity(identity) -> dict[str, object]:
+    def _serialize_identity(identity: Any) -> dict[str, object]:
         if not identity:
             return {}
         return {
@@ -805,7 +812,7 @@ class AzureProvider(BaseProvider):
         }
 
     @staticmethod
-    def _serialize_signed_identifiers(signed_identifiers) -> list[dict[str, object]]:
+    def _serialize_signed_identifiers(signed_identifiers: Any) -> list[dict[str, object]]:
         if not signed_identifiers:
             return []
         serialized: list[dict[str, object]] = []
