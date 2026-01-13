@@ -795,14 +795,14 @@ func splitTables(s string) []string {
 // defaultScanTables returns the comprehensive list of CloudQuery tables to scan
 func defaultScanTables() []string {
 	return []string{
-		// IAM
+		// AWS IAM
 		"aws_iam_users",
 		"aws_iam_roles",
 		"aws_iam_policies",
 		"aws_iam_groups",
-		// S3
+		// AWS S3
 		"aws_s3_buckets",
-		// EC2
+		// AWS EC2
 		"aws_ec2_instances",
 		"aws_ec2_security_groups",
 		"aws_ec2_vpcs",
@@ -810,53 +810,78 @@ func defaultScanTables() []string {
 		"aws_ec2_ebs_volumes",
 		"aws_ec2_ebs_snapshots",
 		"aws_ec2_amis",
-		// RDS
+		// AWS RDS
 		"aws_rds_db_instances",
 		"aws_rds_db_clusters",
-		// Lambda
+		// AWS Lambda
 		"aws_lambda_functions",
-		// ELB/ALB
+		// AWS ELB/ALB
 		"aws_elbv2_load_balancers",
 		"aws_elbv2_target_groups",
-		// KMS
+		// AWS KMS
 		"aws_kms_keys",
-		// CloudTrail
+		// AWS CloudTrail
 		"aws_cloudtrail_trails",
-		// CloudWatch
+		// AWS CloudWatch
 		"aws_cloudwatch_alarms",
 		"aws_cloudwatch_log_groups",
-		// Config
+		// AWS Config
 		"aws_config_configuration_recorders",
-		// GuardDuty
+		// AWS GuardDuty
 		"aws_guardduty_detectors",
-		// EKS
+		// AWS EKS
 		"aws_eks_clusters",
-		// ECR
+		// AWS ECR
 		"aws_ecr_repositories",
-		// Secrets Manager
+		// AWS Secrets Manager
 		"aws_secretsmanager_secrets",
-		// SNS/SQS
+		// AWS SNS/SQS
 		"aws_sns_topics",
 		"aws_sqs_queues",
-		// VPC Flow Logs
+		// AWS VPC Flow Logs
 		"aws_ec2_flow_logs",
-		// DynamoDB
+		// AWS DynamoDB
 		"aws_dynamodb_tables",
-		// Redshift
+		// AWS Redshift
 		"aws_redshift_clusters",
-		// ElastiCache
+		// AWS ElastiCache
 		"aws_elasticache_clusters",
-		// OpenSearch
+		// AWS OpenSearch
 		"aws_opensearch_domains",
-		// API Gateway
+		// AWS API Gateway
 		"aws_apigateway_rest_apis",
-		// CloudFront
+		// AWS CloudFront
 		"aws_cloudfront_distributions",
-		// CodeBuild
+		// AWS CodeBuild
 		"aws_codebuild_projects",
-		// ECS
+		// AWS ECS
 		"aws_ecs_clusters",
 		"aws_ecs_task_definitions",
+		// GCP Compute
+		"gcp_compute_instances",
+		"gcp_compute_firewalls",
+		// GCP IAM
+		"gcp_iam_service_accounts",
+		"gcp_iam_roles",
+		// GCP Storage
+		"gcp_storage_buckets",
+		// GCP SQL
+		"gcp_sql_instances",
+		// GCP GKE
+		"gcp_container_clusters",
+		// Azure VMs
+		"azure_compute_virtual_machines",
+		// Azure Storage
+		"azure_storage_accounts",
+		"azure_storage_containers",
+		// Azure SQL
+		"azure_sql_servers",
+		"azure_sql_databases",
+		// Azure Network
+		"azure_network_security_groups",
+		// Azure Identity
+		"azure_ad_users",
+		"azure_ad_service_principals",
 	}
 }
 
@@ -910,6 +935,21 @@ func (a *App) initHealth() {
 	a.Health.Register("findings_store", health.PingCheck("findings_store", func(ctx context.Context) error {
 		if a.Findings == nil {
 			return fmt.Errorf("not initialized")
+		}
+		return nil
+	}))
+
+	a.Health.Register("cloudquery_data", health.PingCheck("cloudquery_data", func(ctx context.Context) error {
+		if a.CloudQuery == nil {
+			return fmt.Errorf("not configured")
+		}
+		// Check that at least some tables have data
+		tables, err := a.CloudQuery.ListAvailableTables(ctx)
+		if err != nil {
+			return fmt.Errorf("cannot list tables: %w", err)
+		}
+		if len(tables) == 0 {
+			return fmt.Errorf("no cloudquery tables found - sync may be needed")
 		}
 		return nil
 	}))
