@@ -37,7 +37,7 @@ const (
 	CategoryReverseShell        DetectionCategory = "reverse_shell"
 	CategoryMalware             DetectionCategory = "malware"
 	CategoryPersistence         DetectionCategory = "persistence"
-	CategoryCredentialAccess    DetectionCategory = "credential_access"
+	CategoryCredentialAccess    DetectionCategory = "credential_access" //nolint:gosec // G101 false positive - category name, not a credential
 	CategoryContainerDrift      DetectionCategory = "container_drift"
 )
 

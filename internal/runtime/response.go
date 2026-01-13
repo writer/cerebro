@@ -57,7 +57,7 @@ const (
 	ActionQuarantineFile   ResponseActionType = "quarantine_file"
 	ActionBlockIP          ResponseActionType = "block_ip"
 	ActionBlockDomain      ResponseActionType = "block_domain"
-	ActionRevokeCredentials ResponseActionType = "revoke_credentials"
+	ActionRevokeCredentials ResponseActionType = "revoke_credentials" //nolint:gosec // G101 false positive - this is an action type name, not a credential
 	ActionScaleDown        ResponseActionType = "scale_down"
 	ActionAlert            ResponseActionType = "alert"
 	ActionCreateTicket     ResponseActionType = "create_ticket"
@@ -281,7 +281,7 @@ func (e *ResponseEngine) ProcessFinding(ctx context.Context, finding *RuntimeFin
 		}
 
 		if e.matchesTriggers(finding, policy.Triggers) {
-			return e.createExecution(ctx, policy, finding)
+			return e.createExecution(ctx, policy, finding), nil
 		}
 	}
 
@@ -324,7 +324,7 @@ func severityMatches(actual, required string) bool {
 	return severityRank[actual] >= severityRank[required]
 }
 
-func (e *ResponseEngine) createExecution(ctx context.Context, policy *ResponsePolicy, finding *RuntimeFinding) (*ResponseExecution, error) {
+func (e *ResponseEngine) createExecution(ctx context.Context, policy *ResponsePolicy, finding *RuntimeFinding) *ResponseExecution {
 	execution := &ResponseExecution{
 		ID:           fmt.Sprintf("exec-%s-%d", policy.ID, time.Now().UnixNano()),
 		PolicyID:     policy.ID,
@@ -341,7 +341,7 @@ func (e *ResponseEngine) createExecution(ctx context.Context, policy *ResponsePo
 		e.mu.Lock()
 		e.executions = append(e.executions, execution)
 		e.mu.Unlock()
-		return execution, nil
+		return execution
 	}
 
 	// Execute immediately
@@ -361,7 +361,7 @@ func (e *ResponseEngine) createExecution(ctx context.Context, policy *ResponsePo
 	e.executions = append(e.executions, execution)
 	e.mu.Unlock()
 
-	return execution, nil
+	return execution
 }
 
 func (e *ResponseEngine) executeActions(ctx context.Context, execution *ResponseExecution, actions []PolicyAction, finding *RuntimeFinding) error {
