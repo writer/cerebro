@@ -337,8 +337,9 @@ func (c *CloudTrailProvider) syncIAMChanges(ctx context.Context) (*TableResult, 
 	return result, nil
 }
 
-// parseCloudTrailEvent extracts relevant fields from a CloudTrail event
-func parseCloudTrailEvent(event types.Event) map[string]interface{} {
+// _parseCloudTrailEvent extracts relevant fields from a CloudTrail event
+// TODO: Wire this into event processing
+func _parseCloudTrailEvent(event types.Event) map[string]interface{} { //nolint:unused
 	result := map[string]interface{}{
 		"event_id":     event.EventId,
 		"event_name":   event.EventName,

@@ -139,23 +139,23 @@ func (a *Agent) batchSender(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			if len(batch) > 0 {
-				a.sendBatch(batch)
+				_ = a.sendBatch(batch)
 			}
 			return
 		case <-a.stopCh:
 			if len(batch) > 0 {
-				a.sendBatch(batch)
+				_ = a.sendBatch(batch)
 			}
 			return
 		case event := <-a.telemetry:
 			batch = append(batch, event)
 			if len(batch) >= a.config.BatchSize {
-				a.sendBatch(batch)
+				_ = a.sendBatch(batch)
 				batch = make([]Event, 0, a.config.BatchSize)
 			}
 		case <-ticker.C:
 			if len(batch) > 0 {
-				a.sendBatch(batch)
+				_ = a.sendBatch(batch)
 				batch = make([]Event, 0, a.config.BatchSize)
 			}
 		}
@@ -202,7 +202,7 @@ func (a *Agent) sendBatch(events []Event) error {
 func (a *Agent) Stop() {
 	close(a.stopCh)
 	for _, c := range a.collectors {
-		c.Stop()
+		_ = c.Stop()
 	}
 	a.wg.Wait()
 }
