@@ -251,7 +251,6 @@ def _create_task_definition(
     container_def = {
         "name": "cerebro",
         "image": container_image,
-        "command": ["serve"],
         "essential": True,
         "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
         "logConfiguration": {
@@ -280,6 +279,10 @@ def _create_task_definition(
         memory=str(memory),
         network_mode="awsvpc",
         requires_compatibilities=["FARGATE"],
+        runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
+            operating_system_family="LINUX",
+            cpu_architecture="ARM64",
+        ),
         execution_role_arn=execution_role_arn,
         task_role_arn=task_role_arn,
         container_definitions=pulumi.Output.json_dumps([container_def]),

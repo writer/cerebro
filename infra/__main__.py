@@ -14,7 +14,7 @@ Deploys:
 import pulumi
 import pulumi_aws as aws
 
-from aws import compute, kms, load_balancer, monitoring, networking, secrets, waf
+from aws import compute, infisical, kms, load_balancer, monitoring, networking, secrets, waf
 
 # Configuration
 config = pulumi.Config()
@@ -45,6 +45,11 @@ api_max_instances = _config_int("apiMaxInstances", 10)
 # Feature flags
 enable_waf = _config_bool("enableWaf", True)
 log_retention_days = _config_int("logRetentionDays", 30)
+
+# Infisical integration
+enable_infisical = _config_bool("enableInfisicalSyncRole", False)
+infisical_principal_arn = config.get("infisicalAssumeRolePrincipalArn")
+infisical_external_id = config.get("infisicalExternalId")
 
 # =============================================================================
 # NETWORKING
@@ -212,3 +217,17 @@ pulumi.export(
 
 if waf_stack:
     pulumi.export("waf_web_acl_arn", waf_stack["web_acl"].arn)
+
+# =============================================================================
+# INFISICAL (optional)
+# =============================================================================
+
+infisical_stack = None
+if enable_infisical and infisical_principal_arn:
+    infisical_stack = infisical.create_infisical_sync_role(
+        name=f"cerebro-{environment}",
+        assume_role_principal_arn=infisical_principal_arn,
+        external_id=infisical_external_id,
+        kms_key_arn=kms_key.arn,
+    )
+    pulumi.export("infisical_role_arn", infisical_stack["role_arn"])

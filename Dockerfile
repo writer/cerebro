@@ -28,3 +28,4 @@ WORKDIR /app
 EXPOSE 8080
 
 ENTRYPOINT ["/usr/local/bin/cerebro"]
+CMD ["serve"]
