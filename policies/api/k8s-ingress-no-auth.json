@@ -1,0 +1,15 @@
+{
+  "id": "k8s-ingress-no-authentication",
+  "name": "Kubernetes Ingress No Authentication",
+  "description": "Kubernetes Ingress lacks authentication annotations",
+  "effect": "forbid",
+  "resource": "kubernetes::networking::ingress",
+  "conditions": [
+    "annotations not contains 'nginx.ingress.kubernetes.io/auth-url'",
+    "annotations not contains 'nginx.ingress.kubernetes.io/auth-signin'",
+    "annotations not contains 'traefik.ingress.kubernetes.io/router.middlewares'"
+  ],
+  "severity": "medium",
+  "tags": ["api", "kubernetes", "ingress", "authentication"],
+  "remediation": "Configure external authentication via ingress annotations or use a service mesh."
+}

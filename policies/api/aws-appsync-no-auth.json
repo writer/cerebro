@@ -1,0 +1,14 @@
+{
+  "id": "aws-appsync-no-authorization",
+  "name": "AWS AppSync No Authorization",
+  "description": "AppSync GraphQL API has no authorization configured",
+  "effect": "forbid",
+  "resource": "aws::appsync::graphql_api",
+  "conditions": [
+    "authentication_type == 'API_KEY'",
+    "additional_authentication_providers.length == 0"
+  ],
+  "severity": "high",
+  "tags": ["api", "appsync", "graphql", "authentication"],
+  "remediation": "Configure Cognito, IAM, or OIDC authentication for the AppSync API."
+}

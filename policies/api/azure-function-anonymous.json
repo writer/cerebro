@@ -1,0 +1,13 @@
+{
+  "id": "azure-function-anonymous-access",
+  "name": "Azure Function Anonymous Access",
+  "description": "Azure Function allows anonymous HTTP trigger access",
+  "effect": "forbid",
+  "resource": "azure::web::function",
+  "conditions": [
+    "auth_level == 'anonymous'"
+  ],
+  "severity": "high",
+  "tags": ["api", "azure-functions", "serverless", "authentication"],
+  "remediation": "Set auth_level to 'function' or 'admin' and configure Azure AD authentication."
+}
