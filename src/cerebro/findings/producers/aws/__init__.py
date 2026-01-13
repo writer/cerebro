@@ -5,6 +5,7 @@ from .bucket_cleartext_key import AwsBucketCleartextKeyProducer
 from .cloudfront_http_allowed import CloudFrontHTTPAllowedProducer
 from .cloudtrail_not_enabled import CloudTrailNotEnabledProducer
 from .codebuild_public_trigger import AwsCodeBuildPublicTriggerProducer
+from .config_recorder_disabled import ConfigRecorderDisabledProducer
 from .codebuild_source_credential import AwsCodeBuildSourceCredentialProducer
 from .dynamodb_encryption_default import DynamoDBEncryptionDefaultProducer
 from .ebs_encryption_disabled import EBSEncryptionDisabledProducer
@@ -13,6 +14,8 @@ from .elasticache_public_subnet import ElastiCachePublicSubnetProducer
 from .ec2_internet_facing_iam import EC2InternetFacingIAMProducer
 from .ecr_public_repository import ECRPublicRepositoryProducer
 from .eks_public_access import EKSPublicAccessProducer
+from .guardduty_disabled import GuardDutyDisabledProducer
+from .iam_password_policy_weak import IAMPasswordPolicyWeakProducer
 from .iam_root_account_usage import IAMRootAccountUsageProducer
 from .iam_user_without_mfa import AwsIamUserWithoutMfaProducer
 from .kms_key_rotation_disabled import KMSKeyRotationDisabledProducer
@@ -39,6 +42,7 @@ __all__ = [
     "APIGatewayPublicProducer",
     "AwsBucketCleartextKeyProducer",
     "CloudFrontHTTPAllowedProducer",
+    "ConfigRecorderDisabledProducer",
     "AwsCodeBuildPublicTriggerProducer",
     "AwsCodeBuildSourceCredentialProducer",
     "AwsIamUserWithoutMfaProducer",
@@ -61,6 +65,8 @@ __all__ = [
     "ECRPublicRepositoryProducer",
     "EKSPublicAccessProducer",
     "Ec2InstancePublicIpProducer",
+    "GuardDutyDisabledProducer",
+    "IAMPasswordPolicyWeakProducer",
     "IAMRootAccountUsageProducer",
     "KMSKeyRotationDisabledProducer",
     "LambdaPublicAccessProducer",
