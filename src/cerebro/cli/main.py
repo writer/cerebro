@@ -36,10 +36,10 @@ def collect(
     resource_types: list[str] | None = typer.Option(
         None, "--type", "-t", help="Resource types to collect"
     ),
-):
+) -> None:
     """Collect configuration data for an organization."""
 
-    async def _collect():
+    async def _collect() -> None:
         async with async_session_factory() as db:
             # Find organization
             from sqlalchemy import select
@@ -91,10 +91,10 @@ def rules(
     providers: list[str] | None = typer.Option(
         ["github"], help="Applicable providers"
     ),
-):
+) -> None:
     """Manage security rules."""
 
-    async def _rules():
+    async def _rules() -> None:
         async with async_session_factory() as db:
             from sqlalchemy import select
 
@@ -167,10 +167,10 @@ def findings(
     org_name: str | None = typer.Option(None, help="Organization name"),
     status: str | None = typer.Option(None, help="Filter by status"),
     severity: str | None = typer.Option(None, help="Filter by severity"),
-):
+) -> None:
     """Manage security findings."""
 
-    async def _findings():
+    async def _findings() -> None:
         async with async_session_factory() as db:
             from sqlalchemy import select
 
@@ -278,10 +278,10 @@ def findings(
 def org(
     action: str = typer.Argument(..., help="Action: list, create"),
     name: str | None = typer.Option(None, help="Organization name"),
-):
+) -> None:
     """Manage organizations."""
 
-    async def _org():
+    async def _org() -> None:
         async with async_session_factory() as db:
             from sqlalchemy import select
 
@@ -321,10 +321,10 @@ def query(
     file: str | None = typer.Option(None, "--file", "-f", help="Read SQL from file"),
     output: str = typer.Option("table", help="Output format: table, json"),
     limit: int | None = typer.Option(None, help="Limit results"),
-):
+) -> None:
     """Execute SQL queries against security data."""
 
-    async def _query():
+    async def _query() -> None:
         # Initialize query engine
         query_engine = get_query_engine()
 
@@ -403,10 +403,10 @@ def query(
 @app.command()
 def tables(
     provider: str | None = typer.Option(None, help="Filter by provider"),
-):
+) -> None:
     """List available security tables."""
 
-    async def _tables():
+    async def _tables() -> None:
         query_engine = get_query_engine()
 
         try:
@@ -449,10 +449,10 @@ def evidence(
     output_dir: str = typer.Option(
         "./evidence", "--output", "-o", help="Output directory for evidence bundles"
     ),
-):
+) -> None:
     """Manage cryptographic evidence bundles."""
 
-    async def _evidence():
+    async def _evidence() -> None:
         evidence_manager = get_evidence_manager()
 
         if action == "export":
@@ -549,10 +549,10 @@ def integrations(
     stale_after: int = typer.Option(
         3600, help="Mark syncs older than this many seconds as stale (0 to disable)"
     ),
-):
+) -> None:
     """Display integration synchronization freshness."""
 
-    async def _integrations():
+    async def _integrations() -> None:
         async with async_session_factory() as db:
             repo = IntegrationStateRepository(db)
             states = await repo.list_states(integration=integration)

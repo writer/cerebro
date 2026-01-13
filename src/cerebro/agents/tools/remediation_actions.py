@@ -119,7 +119,7 @@ class RemediationActionTool(StructuredTool):
     tool_version = "1.0.0"
     input_model = RemediationActionInput
     output_model = BaseModel
-    required_permission = ToolPermissionLevel.WRITE
+    required_permission = ToolPermissionLevel.WRITE_DESTRUCTIVE
 
     # Blast radius limits - max resources that can be affected in one execution
     MAX_RESOURCES_PER_ACTION = 10
@@ -253,7 +253,7 @@ class RemediationActionTool(StructuredTool):
         parameters: dict[str, Any],
     ) -> dict[str, Any]:
         """Validate that an action can be executed."""
-        validation = {
+        validation: dict[str, Any] = {
             "valid": True,
             "reason": None,
             "affected_resources": 1,
@@ -481,7 +481,7 @@ class RemediationActionTool(StructuredTool):
         channel = parameters.get("channel", "slack")
         recipients = parameters.get("recipients", [])
 
-        rollback_data = {}  # Notifications cannot be rolled back
+        rollback_data: dict[str, Any] = {}  # Notifications cannot be rolled back
         changes = [f"Sent {channel} notification to {len(recipients)} recipients"]
 
         logger.info("Sent notification", channel=channel, recipients=recipients)
@@ -539,7 +539,7 @@ class RemediationActionTool(StructuredTool):
             finding = result.scalar_one_or_none()
             if finding:
                 finding.status = status
-                finding.updated_at = datetime.now(UTC)
+                finding.last_seen = datetime.now(UTC)
                 await db.commit()
                 logger.info("Updated finding status", finding_id=finding_id, status=status)
 
@@ -556,7 +556,7 @@ class RollbackTool(StructuredTool):
     tool_version = "1.0.0"
     input_model = RollbackInput
     output_model = BaseModel
-    required_permission = ToolPermissionLevel.WRITE
+    required_permission = ToolPermissionLevel.WRITE_DESTRUCTIVE
 
     async def _run(  # type: ignore[override]
         self,
