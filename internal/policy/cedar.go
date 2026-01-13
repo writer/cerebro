@@ -162,12 +162,16 @@ func (e *Engine) matchPolicy(p *Policy, req *EvalRequest) bool {
 }
 
 func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) string {
+	// All conditions must match for a violation (AND logic)
+	if len(p.Conditions) == 0 {
+		return ""
+	}
 	for _, cond := range p.Conditions {
-		if violated := evaluateCondition(cond, asset); violated {
-			return p.Description
+		if !evaluateCondition(cond, asset) {
+			return "" // If any condition doesn't match, no violation
 		}
 	}
-	return ""
+	return p.Description // All conditions matched - violation
 }
 
 func evaluateCondition(condition string, asset map[string]interface{}) bool {

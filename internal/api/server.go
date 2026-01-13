@@ -455,6 +455,10 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 	staleThreshold := 6 * time.Hour
 
 	for _, table := range tables {
+		// Validate table name (these are hardcoded above, but validate for safety)
+		if err := snowflake.ValidateTableName(table); err != nil {
+			continue
+		}
 		query := fmt.Sprintf("SELECT MAX(_cq_sync_time) as last_sync FROM %s", table)
 		result, err := s.app.Snowflake.Query(r.Context(), query)
 		if err != nil {

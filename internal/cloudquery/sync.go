@@ -179,6 +179,11 @@ func buildInsertParams(row map[string]interface{}) ([]string, []interface{}) {
 
 // QueryTable runs a custom query against a CloudQuery table
 func (c *SyncClient) QueryTable(ctx context.Context, table, where string, limit int) ([]map[string]interface{}, error) {
+	// Validate table name to prevent SQL injection
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return nil, fmt.Errorf("invalid table name: %w", err)
+	}
+
 	query := fmt.Sprintf("SELECT * FROM %s", table)
 	if where != "" {
 		query += " WHERE " + where
@@ -222,6 +227,11 @@ func (c *SyncClient) QueryTable(ctx context.Context, table, where string, limit 
 
 // GetTableStats returns statistics for a CloudQuery table
 func (c *SyncClient) GetTableStats(ctx context.Context, table string) (*TableStats, error) {
+	// Validate table name to prevent SQL injection
+	if err := snowflake.ValidateTableName(table); err != nil {
+		return nil, fmt.Errorf("invalid table name: %w", err)
+	}
+
 	stats := &TableStats{
 		Table: table,
 	}

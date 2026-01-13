@@ -232,7 +232,7 @@ func (c *CloudTrailProvider) syncEvents(ctx context.Context) (*TableResult, erro
 		MaxResults: intPtr(50),
 	}
 
-	var allEvents []types.Event
+	var parsedEvents []map[string]interface{}
 	paginator := cloudtrail.NewLookupEventsPaginator(c.client, input)
 
 	for paginator.HasMorePages() {
@@ -240,15 +240,20 @@ func (c *CloudTrailProvider) syncEvents(ctx context.Context) (*TableResult, erro
 		if err != nil {
 			return result, err
 		}
-		allEvents = append(allEvents, output.Events...)
+
+		// Parse each event to extract rich details
+		for _, event := range output.Events {
+			parsed := parseCloudTrailEvent(event)
+			parsedEvents = append(parsedEvents, parsed)
+		}
 
 		// Limit total events for performance
-		if len(allEvents) >= 10000 {
+		if len(parsedEvents) >= 10000 {
 			break
 		}
 	}
 
-	result.Rows = int64(len(allEvents))
+	result.Rows = int64(len(parsedEvents))
 	result.Inserted = result.Rows
 	return result, nil
 }
@@ -333,9 +338,8 @@ func (c *CloudTrailProvider) syncIAMChanges(ctx context.Context) *TableResult {
 	return result
 }
 
-// _parseCloudTrailEvent extracts relevant fields from a CloudTrail event
-// TODO: Wire this into event processing
-func _parseCloudTrailEvent(event types.Event) map[string]interface{} { //nolint:unused
+// parseCloudTrailEvent extracts relevant fields from a CloudTrail event
+func parseCloudTrailEvent(event types.Event) map[string]interface{} {
 	result := map[string]interface{}{
 		"event_id":     event.EventId,
 		"event_name":   event.EventName,

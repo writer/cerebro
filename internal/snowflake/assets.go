@@ -25,9 +25,16 @@ type AssetFilter struct {
 }
 
 func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
-	// Build base query - table name is validated internally, not user input
-	// nosemgrep: go.lang.security.audit.sqli.tainted-sql-string
-	query := "SELECT * FROM " + c.database + "." + c.schema + "." + table
+	// Validate table name to prevent SQL injection
+	if err := ValidateTableName(table); err != nil {
+		return nil, fmt.Errorf("invalid table name: %w", err)
+	}
+
+	tableRef, err := SafeTableRef(c.database, c.schema, table)
+	if err != nil {
+		return nil, err
+	}
+	query := "SELECT * FROM " + tableRef
 
 	var conditions []string
 	var args []interface{}
@@ -69,7 +76,11 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 }
 
 func (c *Client) GetAssetByID(ctx context.Context, table, id string) (map[string]interface{}, error) {
-	query := fmt.Sprintf("SELECT * FROM %s.%s.%s WHERE _cq_id = ? LIMIT 1", c.database, c.schema, table)
+	tableRef, err := SafeTableRef(c.database, c.schema, table)
+	if err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf("SELECT * FROM %s WHERE _cq_id = ? LIMIT 1", tableRef)
 	result, err := c.Query(ctx, query, id)
 	if err != nil {
 		return nil, err
@@ -81,7 +92,11 @@ func (c *Client) GetAssetByID(ctx context.Context, table, id string) (map[string
 }
 
 func (c *Client) CountAssets(ctx context.Context, table string) (int64, error) {
-	query := fmt.Sprintf("SELECT COUNT(*) as count FROM %s.%s.%s", c.database, c.schema, table)
+	tableRef, err := SafeTableRef(c.database, c.schema, table)
+	if err != nil {
+		return 0, err
+	}
+	query := fmt.Sprintf("SELECT COUNT(*) as count FROM %s", tableRef)
 	result, err := c.Query(ctx, query)
 	if err != nil {
 		return 0, err
