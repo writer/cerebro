@@ -53,6 +53,12 @@ jobs:
         with:
           version: latest
 
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
   docker:
     runs-on: ubuntu-latest
     steps:
