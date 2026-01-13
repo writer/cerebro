@@ -92,7 +92,7 @@ type openaiResponse struct {
 
 func (p *OpenAIProvider) Complete(ctx context.Context, messages []agents.Message, tools []agents.Tool) (*agents.Response, error) {
 	// Convert messages
-	var openaiMsgs []openaiMessage
+	openaiMsgs := make([]openaiMessage, 0, len(messages))
 	for _, m := range messages {
 		openaiMsgs = append(openaiMsgs, openaiMessage{
 			Role:    m.Role,
@@ -101,7 +101,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, messages []agents.Message
 	}
 
 	// Convert tools
-	var openaiTools []openaiTool
+	openaiTools := make([]openaiTool, 0, len(tools))
 	for _, t := range tools {
 		openaiTools = append(openaiTools, openaiTool{
 			Type: "function",

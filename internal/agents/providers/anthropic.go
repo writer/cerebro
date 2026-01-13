@@ -99,7 +99,7 @@ func (p *AnthropicProvider) Complete(ctx context.Context, messages []agents.Mess
 	}
 
 	// Convert tools
-	var anthropicTools []anthropicTool
+	anthropicTools := make([]anthropicTool, 0, len(tools))
 	for _, t := range tools {
 		anthropicTools = append(anthropicTools, anthropicTool{
 			Name:        t.Name,
