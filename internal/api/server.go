@@ -120,6 +120,10 @@ func (s *Server) setupRoutes() {
 			r.Get("/reviews/{id}/items", s.listReviewItems)
 			r.Post("/reviews/{id}/items", s.addReviewItem)
 			r.Post("/reviews/{id}/items/{itemId}/decide", s.recordDecision)
+
+			// Stale access detection
+			r.Get("/stale-access", s.detectStaleAccess)
+			r.Get("/report", s.identityReport)
 		})
 
 		// Attack Path endpoints
@@ -867,6 +871,94 @@ func (s *Server) recordDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "decision recorded"})
+}
+
+func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
+	if s.app.Snowflake == nil {
+		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		return
+	}
+
+	detector := identity.NewStaleAccessDetector(identity.DefaultThresholds())
+
+	// Fetch users from Snowflake
+	users, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000})
+	if err != nil {
+		users = []map[string]interface{}{}
+	}
+
+	// Fetch credentials
+	creds, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000})
+	if err != nil {
+		creds = []map[string]interface{}{}
+	}
+
+	// Fetch service accounts
+	sas, err := s.app.Snowflake.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000})
+	if err != nil {
+		sas = []map[string]interface{}{}
+	}
+
+	var allFindings []identity.StaleAccessFinding
+	allFindings = append(allFindings, detector.DetectStaleUsers(r.Context(), users)...)
+	allFindings = append(allFindings, detector.DetectUnusedAccessKeys(r.Context(), creds)...)
+	allFindings = append(allFindings, detector.DetectStaleServiceAccounts(r.Context(), sas)...)
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"findings": allFindings,
+		"count":    len(allFindings),
+		"summary": map[string]int{
+			"inactive_users":     countByType(allFindings, identity.StaleAccessInactiveUser),
+			"unused_keys":        countByType(allFindings, identity.StaleAccessUnusedAccessKey),
+			"stale_service_accts": countByType(allFindings, identity.StaleAccessStaleServiceAccount),
+		},
+	})
+}
+
+func countByType(findings []identity.StaleAccessFinding, t identity.StaleAccessType) int {
+	count := 0
+	for _, f := range findings {
+		if f.Type == t {
+			count++
+		}
+	}
+	return count
+}
+
+func (s *Server) identityReport(w http.ResponseWriter, r *http.Request) {
+	generator := identity.NewReportGenerator()
+
+	data := identity.IdentityData{}
+
+	if s.app.Snowflake != nil {
+		// Load identity data from various tables
+		if users, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+			data.Users = append(data.Users, users...)
+		}
+		if users, err := s.app.Snowflake.GetAssets(r.Context(), "okta_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+			data.Users = append(data.Users, users...)
+		}
+		if users, err := s.app.Snowflake.GetAssets(r.Context(), "azure_ad_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
+			data.Users = append(data.Users, users...)
+		}
+		if sas, err := s.app.Snowflake.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000}); err == nil {
+			data.ServiceAccounts = sas
+		}
+		if creds, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000}); err == nil {
+			data.Credentials = creds
+		}
+		if roles, err := s.app.Snowflake.GetAssets(r.Context(), "aws_iam_roles", snowflake.AssetFilter{Limit: 1000}); err == nil {
+			data.Roles = roles
+		}
+	}
+
+	report, err := generator.GenerateReport(r.Context(), data)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, report)
 }
 
 // Attack Path endpoints
