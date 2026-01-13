@@ -12,10 +12,10 @@ import (
 
 // Scanner performs parallel policy evaluation across assets
 type Scanner struct {
-	engine     *policy.Engine
-	workers    int
-	batchSize  int
-	logger     *slog.Logger
+	engine    *policy.Engine
+	workers   int
+	batchSize int
+	logger    *slog.Logger
 }
 
 type ScanConfig struct {
@@ -39,11 +39,11 @@ func NewScanner(engine *policy.Engine, cfg ScanConfig, logger *slog.Logger) *Sca
 }
 
 type ScanResult struct {
-	Findings    []policy.Finding
-	Scanned     int64
-	Violations  int64
-	Duration    time.Duration
-	Errors      []string
+	Findings   []policy.Finding
+	Scanned    int64
+	Violations int64
+	Duration   time.Duration
+	Errors     []string
 }
 
 // ScanAssets evaluates policies against assets using a worker pool
@@ -59,10 +59,10 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 
 	// Channel for assets to scan
 	assetCh := make(chan map[string]interface{}, s.batchSize)
-	
+
 	// Channel for results
 	resultCh := make(chan []policy.Finding, s.workers)
-	
+
 	// Error channel
 	errCh := make(chan string, s.workers)
 
@@ -73,12 +73,12 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 	var wg sync.WaitGroup
 	for i := 0; i < s.workers; i++ {
 		wg.Add(1)
-		go func(workerID int) {
+		go func() {
 			defer wg.Done()
 			for asset := range assetCh {
 				findings, err := s.engine.EvaluateAsset(ctx, asset)
 				atomic.AddInt64(&scanned, 1)
-				
+
 				if err != nil {
 					select {
 					case errCh <- err.Error():
@@ -86,13 +86,13 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 					}
 					continue
 				}
-				
+
 				if len(findings) > 0 {
 					atomic.AddInt64(&violations, int64(len(findings)))
 					resultCh <- findings
 				}
 			}
-		}(i)
+		}()
 	}
 
 	// Feed assets to workers

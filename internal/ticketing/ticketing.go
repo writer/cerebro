@@ -17,32 +17,32 @@ type Provider interface {
 }
 
 type Ticket struct {
-	ID           string                 `json:"id"`
-	ExternalID   string                 `json:"external_id"` // ID in external system
-	Title        string                 `json:"title"`
-	Description  string                 `json:"description"`
-	Priority     string                 `json:"priority"` // critical, high, medium, low
-	Status       string                 `json:"status"`   // open, in_progress, resolved, closed
-	Type         string                 `json:"type"`     // incident, task, finding
-	Assignee     string                 `json:"assignee,omitempty"`
-	Reporter     string                 `json:"reporter"`
-	Labels       []string               `json:"labels,omitempty"`
-	FindingIDs   []string               `json:"finding_ids,omitempty"`
-	AssetIDs     []string               `json:"asset_ids,omitempty"`
-	ExternalURL  string                 `json:"external_url,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
-	CreatedAt    time.Time              `json:"created_at"`
-	UpdatedAt    time.Time              `json:"updated_at"`
-	ResolvedAt   *time.Time             `json:"resolved_at,omitempty"`
+	ID          string                 `json:"id"`
+	ExternalID  string                 `json:"external_id"` // ID in external system
+	Title       string                 `json:"title"`
+	Description string                 `json:"description"`
+	Priority    string                 `json:"priority"` // critical, high, medium, low
+	Status      string                 `json:"status"`   // open, in_progress, resolved, closed
+	Type        string                 `json:"type"`     // incident, task, finding
+	Assignee    string                 `json:"assignee,omitempty"`
+	Reporter    string                 `json:"reporter"`
+	Labels      []string               `json:"labels,omitempty"`
+	FindingIDs  []string               `json:"finding_ids,omitempty"`
+	AssetIDs    []string               `json:"asset_ids,omitempty"`
+	ExternalURL string                 `json:"external_url,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	ResolvedAt  *time.Time             `json:"resolved_at,omitempty"`
 }
 
 type TicketUpdate struct {
-	Title       *string   `json:"title,omitempty"`
-	Description *string   `json:"description,omitempty"`
-	Priority    *string   `json:"priority,omitempty"`
-	Status      *string   `json:"status,omitempty"`
-	Assignee    *string   `json:"assignee,omitempty"`
-	Labels      []string  `json:"labels,omitempty"`
+	Title       *string  `json:"title,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Priority    *string  `json:"priority,omitempty"`
+	Status      *string  `json:"status,omitempty"`
+	Assignee    *string  `json:"assignee,omitempty"`
+	Labels      []string `json:"labels,omitempty"`
 }
 
 type TicketFilter struct {

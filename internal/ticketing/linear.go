@@ -332,7 +332,7 @@ func (l *LinearProvider) AddComment(ctx context.Context, ticketID string, commen
 func (l *LinearProvider) Close(ctx context.Context, id string, resolution string) error {
 	// First add resolution comment
 	if resolution != "" {
-		l.AddComment(ctx, id, &Comment{Body: "Resolution: " + resolution})
+		_ = l.AddComment(ctx, id, &Comment{Body: "Resolution: " + resolution})
 	}
 
 	// Get completed state ID
@@ -367,8 +367,8 @@ func (l *LinearProvider) Close(ctx context.Context, id string, resolution string
 		} `json:"team"`
 	}
 
-	if err := json.Unmarshal(resp, &states); err != nil {
-		return err
+	if decErr := json.Unmarshal(resp, &states); decErr != nil {
+		return decErr
 	}
 
 	var completedStateID string

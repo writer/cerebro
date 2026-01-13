@@ -40,6 +40,8 @@ linters-settings:
   
   misspell:
     locale: US
+    ignore-words:
+      - mitre  # MITRE ATT&CK framework is correct spelling
   
   prealloc:
     simple: true

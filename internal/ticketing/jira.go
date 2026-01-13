@@ -149,7 +149,7 @@ func (j *JiraProvider) CreateTicket(ctx context.Context, ticket *Ticket) (*Ticke
 
 func (j *JiraProvider) UpdateTicket(ctx context.Context, id string, update *TicketUpdate) (*Ticket, error) {
 	fields := make(map[string]interface{})
-	
+
 	if update.Title != nil {
 		fields["summary"] = *update.Title
 	}
@@ -316,8 +316,8 @@ func (j *JiraProvider) Close(ctx context.Context, id string, resolution string) 
 			Name string `json:"name"`
 		} `json:"transitions"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&transitions); err != nil {
-		return err
+	if decErr := json.NewDecoder(resp.Body).Decode(&transitions); decErr != nil {
+		return decErr
 	}
 
 	// Find "Done" or "Closed" transition

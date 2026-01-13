@@ -30,16 +30,16 @@ type Policy struct {
 }
 
 type EvalRequest struct {
-	Principal  map[string]interface{} `json:"principal"`
-	Action     string                 `json:"action"`
-	Resource   map[string]interface{} `json:"resource"`
-	Context    map[string]interface{} `json:"context"`
+	Principal map[string]interface{} `json:"principal"`
+	Action    string                 `json:"action"`
+	Resource  map[string]interface{} `json:"resource"`
+	Context   map[string]interface{} `json:"context"`
 }
 
 type EvalResponse struct {
-	Decision   string   `json:"decision"` // "allow", "deny"
-	Matched    []string `json:"matched"`  // policy IDs that matched
-	Reasons    []string `json:"reasons"`
+	Decision string   `json:"decision"` // "allow", "deny"
+	Matched  []string `json:"matched"`  // policy IDs that matched
+	Reasons  []string `json:"reasons"`
 }
 
 type Finding struct {
@@ -101,7 +101,7 @@ func (e *Engine) GetPolicy(id string) (*Policy, bool) {
 func (e *Engine) ListPolicies() []*Policy {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	result := make([]*Policy, 0, len(e.policies))
 	for _, p := range e.policies {
 		result = append(result, p)
@@ -137,7 +137,7 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 	defer e.mu.RUnlock()
 
 	var findings []Finding
-	
+
 	for _, p := range e.policies {
 		if violation := e.checkAssetViolation(p, asset); violation != "" {
 			findings = append(findings, Finding{
@@ -179,7 +179,7 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 			return fmt.Sprintf("%v", val) == expected
 		}
 	}
-	
+
 	parts = strings.SplitN(condition, "!=", 2)
 	if len(parts) == 2 {
 		field := strings.TrimSpace(parts[0])
@@ -188,6 +188,6 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 			return fmt.Sprintf("%v", val) != expected
 		}
 	}
-	
+
 	return false
 }
