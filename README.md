@@ -1,45 +1,115 @@
 # Cerebro
 
-Security data platform for cloud and SaaS posture management.
+**Security Data Platform for Cloud and SaaS Posture Management**
+
+Cerebro is a comprehensive security platform that combines cloud asset discovery, policy evaluation, compliance reporting, AI-powered investigation, and automated remediation workflows.
+
+[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/License-Proprietary-blue.svg)](LICENSE)
+
+---
+
+## Features
+
+- **Cloud Asset Discovery** - Ingest configurations from AWS, GCP, Azure, and Kubernetes via CloudQuery
+- **Policy Engine** - Cedar-style policies for security evaluation with custom condition support
+- **Parallel Scanning** - High-performance scanning with configurable worker pools
+- **Compliance Frameworks** - Pre-built mappings for SOC 2, CIS, PCI DSS, HIPAA, NIST 800-53
+- **AI Agents** - LLM-powered security investigation with Anthropic Claude and OpenAI GPT
+- **Identity Governance** - Access reviews, stale access detection, and risk scoring
+- **Attack Path Analysis** - Graph-based visualization of potential attack paths
+- **Integrations** - Jira, Linear, Slack, PagerDuty, and custom webhooks
+- **Scheduled Operations** - Automated scanning with configurable intervals
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────┐     ┌─────────────┐
-│   CloudQuery    │────▶│  Snowflake  │◀────│  Cerebro    │
-│  (ingestion)    │     │  (storage)  │     │  (API/CLI)  │
-└─────────────────┘     └─────────────┘     └─────────────┘
-        │                      │                   │
-   AWS/GCP/Azure          Raw tables         Policy engine
-   SaaS providers         Analytics            REST API
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CEREBRO PLATFORM                                │
+│                                                                              │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐  │
+│  │   CLI    │   │ REST API │   │ Webhooks │   │Scheduler │   │  Agents  │  │
+│  └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘  │
+│       └──────────────┴──────────────┴──────────────┴──────────────┘        │
+│                                     │                                       │
+│                       ┌─────────────▼─────────────┐                        │
+│                       │    Application Container   │                        │
+│                       │  Policy│Scanner│Findings  │                        │
+│                       └─────────────┬─────────────┘                        │
+│                                     │                                       │
+└─────────────────────────────────────┼───────────────────────────────────────┘
+                                      │
+        ┌─────────────────────────────┼─────────────────────────────┐
+        ▼                             ▼                             ▼
+  ┌───────────┐              ┌───────────────┐              ┌───────────┐
+  │ Snowflake │◀─────────────│  CloudQuery   │              │ External  │
+  │ (Storage) │              │ (Ingestion)   │              │   APIs    │
+  └───────────┘              └───────────────┘              └───────────┘
+        │                           │                             │
+  AWS/GCP/Azure              Cloud Providers             Jira/Slack/PD
+  Kubernetes                  SaaS Apps                  Anthropic/OpenAI
 ```
 
-## Stack
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Ingestion | CloudQuery | Sync cloud/SaaS config to Snowflake |
-| Storage | Snowflake | Single source of truth |
-| Policy | Cedar-style JSON | Security rule evaluation |
-| API | Go + Chi | Query interface |
-| CLI | Cobra | Management commands |
+---
 
 ## Quick Start
 
+### Prerequisites
+
+- Go 1.23+
+- Snowflake account
+- CloudQuery (for data ingestion)
+
+### Installation
+
 ```bash
+# Clone repository
+git clone https://github.com/writerinternal/cerebro.git
+cd cerebro
+
 # Install dependencies
 make setup
 
-# Configure credentials
-cp .env.example .env
-# Edit .env with your Snowflake and cloud credentials
+# Build
+make build
+```
 
-# Start the API server
+### Configuration
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Required: Snowflake connection
+export SNOWFLAKE_CONNECTION_STRING="user:pass@account/CEREBRO/CEREBRO"
+
+# Optional: AI agents
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Optional: Notifications
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/..."
+
+# Optional: Ticketing
+export JIRA_BASE_URL="https://company.atlassian.net"
+export JIRA_API_TOKEN="..."
+```
+
+### Running
+
+```bash
+# Start API server
+./bin/cerebro serve
+
+# Or with make
 make serve
 
-# Or run in development mode
+# Development mode
 make dev
 ```
+
+---
 
 ## CLI Commands
 
@@ -47,89 +117,254 @@ make dev
 # Start API server
 cerebro serve
 
-# Sync cloud assets via CloudQuery
+# Sync cloud data via CloudQuery
 cerebro sync
-cerebro sync --source aws  # Sync only AWS
+cerebro sync --source aws
 
 # Policy management
 cerebro policy list
 cerebro policy validate
 cerebro policy test <policy-id> <asset.json>
 
-# Query Snowflake directly
+# Query Snowflake
 cerebro query "SELECT * FROM aws_s3_buckets LIMIT 10"
 cerebro query --format json "SELECT * FROM aws_iam_users"
+
+# Bootstrap database
+cerebro bootstrap
 ```
 
-## API Endpoints
+---
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/ready` | GET | Readiness check (tests Snowflake) |
-| `/api/v1/tables` | GET | List available tables |
-| `/api/v1/query` | POST | Execute SQL query |
-| `/api/v1/assets/{table}` | GET | List assets from table |
-| `/api/v1/assets/{table}/{id}` | GET | Get asset by ID |
-| `/api/v1/policies` | GET | List policies |
-| `/api/v1/policies/{id}` | GET | Get policy |
-| `/api/v1/policies` | POST | Create policy |
-| `/api/v1/policies/evaluate` | POST | Evaluate policy |
-| `/api/v1/findings/scan` | POST | Scan assets for violations |
+## API Overview
 
-## Project Structure
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check |
+| `GET /ready` | Readiness with dependency status |
+| `GET /metrics` | Prometheus metrics |
+| `GET /api/v1/tables` | List Snowflake tables |
+| `POST /api/v1/query` | Execute SQL query |
+| `GET /api/v1/policies` | List loaded policies |
+| `POST /api/v1/policies/evaluate` | Evaluate policy |
+| `GET /api/v1/findings` | List findings |
+| `POST /api/v1/findings/scan` | Trigger policy scan |
+| `GET /api/v1/compliance/frameworks` | List frameworks |
+| `GET /api/v1/compliance/frameworks/{id}/pre-audit` | Pre-audit check |
+| `POST /api/v1/agents/sessions` | Create agent session |
+| `POST /api/v1/agents/sessions/{id}/messages` | Send message to agent |
+| `GET /api/v1/identity/stale-access` | Detect stale access |
+| `POST /api/v1/attack-paths/analyze` | Analyze attack paths |
+| `POST /api/v1/webhooks` | Register webhook |
 
-```
-cerebro/
-├── cmd/cerebro/          # CLI entrypoint
-├── internal/
-│   ├── api/              # REST API server
-│   ├── cli/              # CLI commands
-│   ├── config/           # Configuration
-│   ├── policy/           # Policy engine
-│   └── snowflake/        # Snowflake client
-├── config/
-│   └── cloudquery.yml    # CloudQuery sync config
-├── policies/             # Security policies (JSON)
-├── Dockerfile
-├── docker-compose.yml
-└── Makefile
-```
+See [API Reference](docs/API_REFERENCE.md) for complete documentation.
+
+---
 
 ## Policies
 
-Policies are JSON files in the `policies/` directory:
+Policies are JSON files defining security checks:
 
 ```json
 {
-  "id": "aws-s3-bucket-no-public-access",
-  "name": "S3 Bucket Public Access",
-  "description": "S3 buckets should not allow public access",
-  "effect": "forbid",
-  "conditions": ["block_public_acls != true"],
-  "severity": "critical",
-  "tags": ["cis-aws-2.1.5", "security", "s3"]
+    "id": "aws-s3-bucket-no-public-access",
+    "name": "S3 Bucket Public Access",
+    "description": "S3 buckets should not allow public access",
+    "effect": "forbid",
+    "conditions": ["block_public_acls != true"],
+    "severity": "critical",
+    "tags": ["cis-aws-2.1.5", "security", "s3"]
 }
 ```
+
+### Policy Directory
+
+```
+policies/
+├── aws/           # AWS policies (S3, IAM, EC2, RDS)
+├── gcp/           # GCP policies (Storage, Compute, IAM)
+├── azure/         # Azure policies (Storage, VM)
+└── kubernetes/    # Kubernetes policies (Pods, RBAC)
+```
+
+See [Policy Documentation](docs/POLICIES.md) for writing custom policies.
+
+---
+
+## Compliance
+
+### Supported Frameworks
+
+- **SOC 2 Type II** - Trust Services Criteria
+- **CIS AWS Foundations** - v1.4.0 Benchmark
+- **CIS GCP Foundations** - v1.3.0 Benchmark
+- **PCI DSS** - v4.0
+- **HIPAA** - Security Rule
+- **NIST 800-53** - Rev 5
+
+### Pre-Audit Check
+
+```bash
+curl http://localhost:8080/api/v1/compliance/frameworks/soc2/pre-audit
+```
+
+Returns estimated audit outcome, failing controls, and remediation recommendations.
+
+---
+
+## AI Agents
+
+Cerebro includes AI-powered security investigation agents:
+
+### Available Agents
+
+| Agent | Provider | Purpose |
+|-------|----------|---------|
+| `security-analyst` | Anthropic Claude | Security finding investigation |
+| `incident-responder` | OpenAI GPT | Incident triage and response |
+
+### Usage
+
+```bash
+# Create session
+curl -X POST http://localhost:8080/api/v1/agents/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "security-analyst", "user_id": "analyst@company.com"}'
+
+# Send message
+curl -X POST http://localhost:8080/api/v1/agents/sessions/{id}/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Investigate the public S3 bucket findings"}'
+```
+
+### Agent Tools
+
+- `query_snowflake` - Execute SQL queries
+- `list_findings` - List security findings
+- `get_asset` - Get asset details
+- `evaluate_policy` - Test policy against asset
+- `search_logs` - Search audit logs
+
+---
+
+## Identity & Access Review
+
+### Stale Access Detection
+
+```bash
+curl http://localhost:8080/api/v1/identity/stale-access
+```
+
+Detects:
+- Inactive users (90+ days)
+- Unused access keys
+- Stale service accounts
+
+### Access Reviews
+
+```bash
+# Create review
+curl -X POST http://localhost:8080/api/v1/identity/reviews \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Q1 2024 Access Review",
+    "type": "user_access",
+    "scope": {"providers": ["aws", "gcp"]}
+  }'
+```
+
+---
+
+## Webhooks
+
+Register webhooks for real-time event notifications:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/webhook",
+    "events": ["finding.created", "scan.completed"],
+    "secret": "webhook-secret"
+  }'
+```
+
+### Event Types
+
+- `finding.created` / `finding.resolved` / `finding.suppressed`
+- `scan.completed`
+- `review.started` / `review.completed`
+- `attack_path.found`
+- `ticket.created`
+
+---
 
 ## Development
 
 ```bash
-make dev            # Run API with hot reload
-make test           # Run tests
-make build          # Build binary
-make docker-build   # Build Docker image
-make policy-list    # List all policies
-make policy-validate # Validate policy files
+# Run tests
+make test
+
+# Run with coverage
+go test -v -cover ./...
+
+# Lint
+make lint
+
+# Build Docker image
+make docker-build
 ```
+
+See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | System architecture and design |
+| [API Reference](docs/API_REFERENCE.md) | Complete API documentation |
+| [Packages](docs/PACKAGES.md) | Internal package documentation |
+| [Configuration](docs/CONFIGURATION.md) | Environment variables and setup |
+| [Policies](docs/POLICIES.md) | Policy authoring guide |
+| [Development](docs/DEVELOPMENT.md) | Development guide |
+
+---
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `API_PORT` | API server port | 8080 |
-| `LOG_LEVEL` | Log level | info |
+| `API_PORT` | Server port | `8080` |
+| `LOG_LEVEL` | Log verbosity | `info` |
 | `SNOWFLAKE_CONNECTION_STRING` | Snowflake DSN | - |
-| `SNOWFLAKE_DATABASE` | Database name | CEREBRO |
-| `SNOWFLAKE_SCHEMA` | Schema name | RAW |
-| `CEDAR_POLICIES_PATH` | Policies directory | policies |
+| `POLICIES_PATH` | Policy directory | `policies` |
+| `ANTHROPIC_API_KEY` | Claude API key | - |
+| `OPENAI_API_KEY` | OpenAI API key | - |
+| `JIRA_BASE_URL` | Jira instance | - |
+| `SLACK_WEBHOOK_URL` | Slack webhook | - |
+| `SCAN_INTERVAL` | Scan frequency | - |
+
+See [Configuration](docs/CONFIGURATION.md) for all options.
+
+---
+
+## Stack
+
+| Component | Technology |
+|-----------|------------|
+| Language | Go 1.23+ |
+| API Framework | Chi |
+| Database | Snowflake |
+| Data Ingestion | CloudQuery |
+| Policy Engine | Cedar-style JSON |
+| CLI | Cobra |
+| Metrics | Prometheus |
+| AI | Anthropic, OpenAI |
+
+---
+
+## License
+
+Proprietary - Writer Internal
