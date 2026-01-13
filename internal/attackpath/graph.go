@@ -311,7 +311,7 @@ func (pf *PathFinder) buildAttackPath(entry *Node, nodePath []string) *AttackPat
 	return path
 }
 
-func mapToMITRE(edgeType EdgeType, targetType NodeType) string {
+func mapToMITRE(edgeType EdgeType, _ NodeType) string {
 	// Map edge types to MITRE ATT&CK techniques
 	mapping := map[EdgeType]string{
 		EdgeTypeCanAssume:     "T1078", // Valid Accounts

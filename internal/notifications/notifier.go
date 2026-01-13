@@ -22,12 +22,12 @@ type Event struct {
 type EventType string
 
 const (
-	EventFindingCreated   EventType = "finding.created"
-	EventFindingResolved  EventType = "finding.resolved"
-	EventScanCompleted    EventType = "scan.completed"
-	EventScanFailed       EventType = "scan.failed"
-	EventAttackPathFound  EventType = "attack_path.found"
-	EventReviewRequired   EventType = "review.required"
+	EventFindingCreated  EventType = "finding.created"
+	EventFindingResolved EventType = "finding.resolved"
+	EventScanCompleted   EventType = "scan.completed"
+	EventScanFailed      EventType = "scan.failed"
+	EventAttackPathFound EventType = "attack_path.found"
+	EventReviewRequired  EventType = "review.required"
 )
 
 // Notifier sends notifications

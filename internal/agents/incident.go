@@ -19,26 +19,26 @@ func NewIncidentResponse(registry *AgentRegistry) *IncidentResponse {
 
 // Incident represents a security incident being investigated
 type Incident struct {
-	ID           string                 `json:"id"`
-	Title        string                 `json:"title"`
-	Description  string                 `json:"description"`
-	Severity     string                 `json:"severity"`
-	Status       string                 `json:"status"` // open, investigating, contained, resolved
-	AssetID      string                 `json:"asset_id,omitempty"`
-	AssetType    string                 `json:"asset_type,omitempty"`
-	Findings     []string               `json:"findings"`
-	Timeline     []IncidentEvent        `json:"timeline"`
-	BlastRadius  *BlastRadius           `json:"blast_radius,omitempty"`
-	SessionID    string                 `json:"session_id"`
-	CreatedAt    time.Time              `json:"created_at"`
-	UpdatedAt    time.Time              `json:"updated_at"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	ID          string                 `json:"id"`
+	Title       string                 `json:"title"`
+	Description string                 `json:"description"`
+	Severity    string                 `json:"severity"`
+	Status      string                 `json:"status"` // open, investigating, contained, resolved
+	AssetID     string                 `json:"asset_id,omitempty"`
+	AssetType   string                 `json:"asset_type,omitempty"`
+	Findings    []string               `json:"findings"`
+	Timeline    []IncidentEvent        `json:"timeline"`
+	BlastRadius *BlastRadius           `json:"blast_radius,omitempty"`
+	SessionID   string                 `json:"session_id"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // IncidentEvent represents an event in the incident timeline
 type IncidentEvent struct {
 	Timestamp   time.Time              `json:"timestamp"`
-	Type        string                 `json:"type"` // detection, investigation, action, resolution
+	Type        string                 `json:"type"`  // detection, investigation, action, resolution
 	Actor       string                 `json:"actor"` // system, user, agent
 	Description string                 `json:"description"`
 	Data        map[string]interface{} `json:"data,omitempty"`
@@ -46,11 +46,11 @@ type IncidentEvent struct {
 
 // BlastRadius represents the potential impact of an incident
 type BlastRadius struct {
-	Services       []string `json:"services"`
-	Resources      int      `json:"resources"`
-	Users          int      `json:"users"`
-	DataExposure   string   `json:"data_exposure"` // none, limited, significant, critical
-	RiskScore      int      `json:"risk_score"`
+	Services     []string `json:"services"`
+	Resources    int      `json:"resources"`
+	Users        int      `json:"users"`
+	DataExposure string   `json:"data_exposure"` // none, limited, significant, critical
+	RiskScore    int      `json:"risk_score"`
 }
 
 // CreateIncidentRequest is the request to create a new incident
@@ -127,7 +127,7 @@ func (ir *IncidentResponse) gatherContext(ctx context.Context, incident *Inciden
 }
 
 // calculateBlastRadius determines potential impact
-func (ir *IncidentResponse) calculateBlastRadius(ctx context.Context, incident *Incident) *BlastRadius {
+func (ir *IncidentResponse) calculateBlastRadius(_ context.Context, incident *Incident) *BlastRadius {
 	radius := &BlastRadius{
 		Services:     []string{},
 		Resources:    0,

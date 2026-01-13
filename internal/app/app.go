@@ -342,7 +342,7 @@ func (a *App) initNotifications() {
 	}
 }
 
-func (a *App) initScheduler(ctx context.Context) {
+func (a *App) initScheduler(_ context.Context) {
 	a.Scheduler = scheduler.NewScheduler(a.Logger)
 
 	// Add scan job if interval configured

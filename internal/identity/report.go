@@ -194,7 +194,7 @@ func (g *ReportGenerator) calculateRiskScore(report *AccessReport) int {
 }
 
 func (g *ReportGenerator) identifyPrivilegedUsers(data IdentityData) []PrivilegedUserSummary {
-	var privileged []PrivilegedUserSummary
+	privileged := make([]PrivilegedUserSummary, 0, len(data.Users)/10)
 
 	for _, user := range data.Users {
 		if !isPrivileged(user) {

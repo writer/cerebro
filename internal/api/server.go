@@ -771,7 +771,7 @@ func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
 		Remediation string   `json:"remediation,omitempty"`
 	}
 
-	var checks []ControlCheck
+	checks := make([]ControlCheck, 0, len(framework.Controls))
 	passing, failing, atRisk := 0, 0, 0
 
 	for _, ctrl := range framework.Controls {

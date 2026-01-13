@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	opNewClient   = cerrors.Op("snowflake.NewClient")
-	opPing        = cerrors.Op("snowflake.Ping")
-	opQuery       = cerrors.Op("snowflake.Query")
-	opListTables  = cerrors.Op("snowflake.ListTables")
+	opNewClient  = cerrors.Op("snowflake.NewClient")
+	opPing       = cerrors.Op("snowflake.Ping")
+	opQuery      = cerrors.Op("snowflake.Query")
+	opListTables = cerrors.Op("snowflake.ListTables")
 )
 
 // Client wraps database/sql.DB with Snowflake-specific functionality.
@@ -183,12 +183,12 @@ func (c *Client) ListTables(ctx context.Context) ([]string, error) {
 	for rows.Next() {
 		// SHOW TABLES returns many columns; we only need the name (2nd column)
 		var (
-			createdOn, name, databaseName, schemaName, kind, comment                                  interface{}
-			clusterBy, rowsCount, bytes, owner, retentionTime                                         interface{}
-			automaticClustering, changeTracking, searchOptimization, searchOptimizationProgress       interface{}
+			createdOn, name, databaseName, schemaName, kind, comment                                   interface{}
+			clusterBy, rowsCount, bytes, owner, retentionTime                                          interface{}
+			automaticClustering, changeTracking, searchOptimization, searchOptimizationProgress        interface{}
 			searchOptimizationBytes, isExternal, enableSchemaEvolution, ownerRoleType, isEvent, budget interface{}
 		)
-		
+
 		err := rows.Scan(
 			&createdOn, &name, &databaseName, &schemaName, &kind, &comment,
 			&clusterBy, &rowsCount, &bytes, &owner, &retentionTime,
@@ -202,7 +202,7 @@ func (c *Client) ListTables(ctx context.Context) ([]string, error) {
 			}
 			continue
 		}
-		
+
 		if nameStr, ok := name.(string); ok {
 			tables = append(tables, nameStr)
 		}

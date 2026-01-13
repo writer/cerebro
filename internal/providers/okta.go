@@ -196,10 +196,10 @@ func (o *OktaProvider) syncApplications(ctx context.Context) (*TableResult, erro
 	return result, nil
 }
 
-func (o *OktaProvider) request(ctx context.Context, method, path string, body io.Reader) ([]byte, error) {
+func (o *OktaProvider) request(ctx context.Context, _, path string, body io.Reader) ([]byte, error) {
 	url := fmt.Sprintf("https://%s%s", o.domain, path)
-	
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, body)
 	if err != nil {
 		return nil, err
 	}
