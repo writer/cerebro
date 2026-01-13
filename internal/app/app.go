@@ -14,10 +14,10 @@ import (
 	"github.com/writerinternal/cerebro/internal/cache"
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/identity"
+	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/scanner"
-	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/scheduler"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/ticketing"
@@ -26,8 +26,8 @@ import (
 
 // App is the main application container with all services wired together
 type App struct {
-	Config    *Config
-	Logger    *slog.Logger
+	Config *Config
+	Logger *slog.Logger
 
 	// Core services
 	Snowflake *snowflake.Client
@@ -75,12 +75,12 @@ type Config struct {
 	OpenAIAPIKey    string
 
 	// Ticketing
-	JiraBaseURL    string
-	JiraEmail      string
-	JiraAPIToken   string
-	JiraProject    string
-	LinearAPIKey   string
-	LinearTeamID   string
+	JiraBaseURL  string
+	JiraEmail    string
+	JiraAPIToken string
+	JiraProject  string
+	LinearAPIKey string
+	LinearTeamID string
 
 	// Custom Providers
 	CrowdStrikeClientID     string
@@ -92,12 +92,17 @@ type Config struct {
 	WebhookURLs []string
 
 	// Notifications
-	SlackWebhookURL   string
-	PagerDutyKey      string
+	SlackWebhookURL string
+	PagerDutyKey    string
 
 	// Scheduler
 	ScanInterval string // e.g., "1h", "30m"
 	ScanTables   string // comma-separated list of tables to scan
+
+	// Rate Limiting
+	RateLimitEnabled  bool
+	RateLimitRequests int
+	RateLimitWindow   time.Duration
 }
 
 func LoadConfig() *Config {
@@ -125,6 +130,9 @@ func LoadConfig() *Config {
 		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),
 		ScanInterval:              getEnv("SCAN_INTERVAL", ""),
 		ScanTables:                getEnv("SCAN_TABLES", ""),
+		RateLimitEnabled:          getEnvBool("RATE_LIMIT_ENABLED", false),
+		RateLimitRequests:         getEnvInt("RATE_LIMIT_REQUESTS", 1000),
+		RateLimitWindow:           getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
 	}
 }
 
@@ -290,7 +298,7 @@ func (a *App) initProviders(ctx context.Context) {
 	// Register CrowdStrike if configured
 	if a.Config.CrowdStrikeClientID != "" {
 		cs := providers.NewCrowdStrikeProvider()
-		cs.Configure(ctx, map[string]interface{}{
+		_ = cs.Configure(ctx, map[string]interface{}{
 			"client_id":     a.Config.CrowdStrikeClientID,
 			"client_secret": a.Config.CrowdStrikeClientSecret,
 		})
@@ -300,7 +308,7 @@ func (a *App) initProviders(ctx context.Context) {
 	// Register Okta if configured
 	if a.Config.OktaDomain != "" {
 		okta := providers.NewOktaProvider()
-		okta.Configure(ctx, map[string]interface{}{
+		_ = okta.Configure(ctx, map[string]interface{}{
 			"domain":    a.Config.OktaDomain,
 			"api_token": a.Config.OktaAPIToken,
 		})
@@ -381,7 +389,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 
 			// Send notification for new critical/high findings
 			if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
-				a.Notifications.Send(ctx, notifications.Event{
+				_ = a.Notifications.Send(ctx, notifications.Event{
 					Type:     notifications.EventFindingCreated,
 					Severity: f.Severity,
 					Title:    fmt.Sprintf("New %s Finding: %s", f.Severity, f.PolicyName),
@@ -404,7 +412,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	}
 
 	// Send scan completed notification
-	a.Notifications.Send(ctx, notifications.Event{
+	_ = a.Notifications.Send(ctx, notifications.Event{
 		Type:    notifications.EventScanCompleted,
 		Title:   "Scheduled Scan Completed",
 		Message: fmt.Sprintf("Scanned %d assets, found %d violations", totalScanned, totalViolations),
@@ -467,8 +475,25 @@ func getEnv(key, fallback string) string {
 func getEnvInt(key string, fallback int) int {
 	if v := os.Getenv(key); v != "" {
 		var i int
-		fmt.Sscanf(v, "%d", &i)
-		return i
+		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
+			return i
+		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		return v == "true" || v == "1" || v == "yes"
+	}
+	return fallback
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
 	}
 	return fallback
 }

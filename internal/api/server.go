@@ -49,6 +49,16 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(middleware.Timeout(60 * time.Second))
 	s.router.Use(middleware.Compress(5))
+	s.router.Use(MetricsMiddleware)
+
+	// Add rate limiting if configured
+	if s.app.Config.RateLimitEnabled {
+		s.router.Use(RateLimitMiddleware(RateLimitConfig{
+			RequestsPerWindow: s.app.Config.RateLimitRequests,
+			Window:            s.app.Config.RateLimitWindow,
+			Enabled:           true,
+		}))
+	}
 }
 
 func (s *Server) setupRoutes() {

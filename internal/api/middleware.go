@@ -83,14 +83,18 @@ func validateAPIKey(keys map[string]string, key string) (string, bool) {
 
 func GetUserID(ctx context.Context) string {
 	if v := ctx.Value(contextKeyUserID); v != nil {
-		return v.(string)
+		if s, ok := v.(string); ok {
+			return s
+		}
 	}
 	return ""
 }
 
 func GetAPIKey(ctx context.Context) string {
 	if v := ctx.Value(contextKeyAPIKey); v != nil {
-		return v.(string)
+		if s, ok := v.(string); ok {
+			return s
+		}
 	}
 	return ""
 }
@@ -100,7 +104,7 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			
+
 			allowed := false
 			for _, o := range allowedOrigins {
 				if o == "*" || o == origin {

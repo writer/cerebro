@@ -18,14 +18,14 @@ import (
 type EventType string
 
 const (
-	EventFindingCreated   EventType = "finding.created"
-	EventFindingResolved  EventType = "finding.resolved"
+	EventFindingCreated    EventType = "finding.created"
+	EventFindingResolved   EventType = "finding.resolved"
 	EventFindingSuppressed EventType = "finding.suppressed"
-	EventScanCompleted    EventType = "scan.completed"
-	EventReviewStarted    EventType = "review.started"
-	EventReviewCompleted  EventType = "review.completed"
-	EventAttackPathFound  EventType = "attack_path.found"
-	EventTicketCreated    EventType = "ticket.created"
+	EventScanCompleted     EventType = "scan.completed"
+	EventReviewStarted     EventType = "review.started"
+	EventReviewCompleted   EventType = "review.completed"
+	EventAttackPathFound   EventType = "attack_path.found"
+	EventTicketCreated     EventType = "ticket.created"
 )
 
 // Webhook represents a webhook configuration
@@ -310,7 +310,7 @@ func (s *Service) Handler() http.Handler {
 				wh.Secret = "***"
 			}
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"webhooks": webhooks})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"webhooks": webhooks})
 	})
 
 	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
@@ -325,7 +325,7 @@ func (s *Service) Handler() http.Handler {
 		}
 		webhook := s.RegisterWebhook(req.URL, req.Events, req.Secret)
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(webhook)
+		_ = json.NewEncoder(w).Encode(webhook)
 	})
 
 	mux.HandleFunc("DELETE /{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -340,7 +340,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /{id}/deliveries", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		deliveries := s.GetDeliveries(id, 100)
-		json.NewEncoder(w).Encode(map[string]interface{}{"deliveries": deliveries})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"deliveries": deliveries})
 	})
 
 	mux.HandleFunc("POST /test", func(w http.ResponseWriter, r *http.Request) {
