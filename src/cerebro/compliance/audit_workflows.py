@@ -576,7 +576,7 @@ class AuditWorkflowManager:
 
         return tasks
 
-    def _add_task_comment(self, task_id: str, comment: str, author: str):
+    def _add_task_comment(self, task_id: str, comment: str, author: str) -> None:
         """Add a comment to a task."""
         if task_id in self._tasks:
             task = self._tasks[task_id]
@@ -590,7 +590,7 @@ class AuditWorkflowManager:
                 }
             )
 
-    def _update_request_list_progress(self, request_list_id: str):
+    def _update_request_list_progress(self, request_list_id: str) -> None:
         """Update progress percentage for a request list."""
         if request_list_id not in self._request_lists:
             return

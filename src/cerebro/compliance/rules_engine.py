@@ -677,7 +677,7 @@ class NoCodeRulesEngine:
 
         return current
 
-    def _load_rule_templates(self):
+    def _load_rule_templates(self) -> None:
         """Load predefined rule templates."""
 
         self._rule_templates = {

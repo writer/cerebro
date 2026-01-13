@@ -424,7 +424,7 @@ class RequirementMappingService:
         self._mappings[mapping.id] = mapping
         return mapping
 
-    def _load_framework_requirements(self):
+    def _load_framework_requirements(self) -> None:
         """Load detailed requirement definitions for each framework."""
 
         # SOC 2 Requirements (detailed breakdown)
@@ -547,7 +547,7 @@ class RequirementMappingService:
 
             self._evidence_mappings[key] = evidence_mappings
 
-    def _generate_cross_mappings(self):
+    def _generate_cross_mappings(self) -> None:
         """Generate cross-framework requirement mappings."""
 
         # SOC 2 CC6.1.1 <-> ISO 27001 A.9.2.1.1 (User provisioning)

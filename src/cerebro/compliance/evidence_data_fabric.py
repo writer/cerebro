@@ -378,7 +378,8 @@ class EvidenceDataFabric:
             if query.limit:
                 q = q.limit(query.limit)
 
-            return q.all()
+            results: list[EvidenceRecord] = q.all()
+            return results
 
     def create_derived_evidence(
         self,
@@ -465,7 +466,7 @@ class EvidenceDataFabric:
         fields: dict[str, str],
         required_fields: list[str],
         normalization_rules: dict[str, Any],
-    ):
+    ) -> None:
         """Register a schema for evidence normalization."""
 
         with self.session_factory() as session:
