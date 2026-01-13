@@ -327,8 +327,16 @@ func TestComment_Fields(t *testing.T) {
 		t.Error("ID field incorrect")
 	}
 
+	if comment.Author != "user@example.com" {
+		t.Error("author field incorrect")
+	}
+
 	if comment.Body != "This is a comment" {
 		t.Error("body field incorrect")
+	}
+
+	if comment.CreatedAt.IsZero() {
+		t.Error("created at field incorrect")
 	}
 }
 
