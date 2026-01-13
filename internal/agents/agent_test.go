@@ -411,6 +411,9 @@ func TestMemoryEntry(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
+	if entry.ID != "entry-1" {
+		t.Errorf("expected ID 'entry-1', got '%s'", entry.ID)
+	}
 	if entry.Relevance != 0.95 {
 		t.Errorf("expected relevance 0.95, got %f", entry.Relevance)
 	}
