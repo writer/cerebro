@@ -4,8 +4,10 @@ from .bucket_cleartext_key import AwsBucketCleartextKeyProducer
 from .cloudtrail_not_enabled import CloudTrailNotEnabledProducer
 from .codebuild_public_trigger import AwsCodeBuildPublicTriggerProducer
 from .codebuild_source_credential import AwsCodeBuildSourceCredentialProducer
+from .dynamodb_encryption_default import DynamoDBEncryptionDefaultProducer
 from .ebs_encryption_disabled import EBSEncryptionDisabledProducer
 from .ec2_instance_public_ip import Ec2InstancePublicIpProducer
+from .elasticache_public_subnet import ElastiCachePublicSubnetProducer
 from .ec2_internet_facing_iam import EC2InternetFacingIAMProducer
 from .ecr_public_repository import ECRPublicRepositoryProducer
 from .eks_public_access import EKSPublicAccessProducer
@@ -19,6 +21,7 @@ from .load_balancer_public_http import AwsLoadBalancerPublicHttpProducer
 from .load_balancer_target_exposure import AwsLoadBalancerTargetExposureProducer
 from .load_balancer_weak_tls import AwsLoadBalancerWeakTlsProducer
 from .rds_public_access import RDSPublicAccessProducer
+from .redshift_public_access import RedshiftPublicAccessProducer
 from .s3_bucket_public import AwsS3BucketPublicProducer
 from .s3_bucket_unencrypted import AwsS3BucketUnencryptedProducer
 from .secretsmanager_rotation_disabled import SecretsManagerRotationDisabledProducer
@@ -46,8 +49,10 @@ __all__ = [
     "AwsServiceAccountOpenAssumeProducer",
     "AwsStorageWriteAccessProducer",
     "CloudTrailNotEnabledProducer",
+    "DynamoDBEncryptionDefaultProducer",
     "EBSEncryptionDisabledProducer",
     "EC2InternetFacingIAMProducer",
+    "ElastiCachePublicSubnetProducer",
     "ECRPublicRepositoryProducer",
     "EKSPublicAccessProducer",
     "Ec2InstancePublicIpProducer",
@@ -55,6 +60,7 @@ __all__ = [
     "KMSKeyRotationDisabledProducer",
     "LambdaPublicAccessProducer",
     "RDSPublicAccessProducer",
+    "RedshiftPublicAccessProducer",
     "SNSPublicAccessProducer",
     "SQSPublicAccessProducer",
     "SecretsManagerRotationDisabledProducer",
