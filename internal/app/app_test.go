@@ -327,7 +327,7 @@ func TestSplitTables(t *testing.T) {
 }
 
 func TestConfig_Fields(t *testing.T) {
-	cfg := &Config{
+	cfg := &Config{ //nolint:govet // false positive - all fields are tested below
 		Port:              8080,
 		LogLevel:          "info",
 		SnowflakeDatabase: "CEREBRO",

@@ -249,7 +249,7 @@ func TestSyncOptions_Fields(t *testing.T) {
 func TestSyncResult_Fields(t *testing.T) {
 	now := time.Now()
 	completed := now.Add(5 * time.Second)
-	result := &SyncResult{
+	result := &SyncResult{ //nolint:govet // false positive - all fields are tested below
 		Provider:    "test",
 		StartedAt:   now,
 		CompletedAt: completed,
