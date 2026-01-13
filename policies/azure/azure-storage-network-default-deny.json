@@ -1,0 +1,13 @@
+{
+  "id": "azure-storage-network-default-deny",
+  "name": "Azure Storage Network Default Deny",
+  "description": "Storage accounts should deny access by default",
+  "effect": "forbid",
+  "resource": "azure::storage::account",
+  "conditions": [
+    "network_rule_set.default_action != 'Deny'"
+  ],
+  "severity": "medium",
+  "tags": ["cis-azure-3.8", "storage", "network"],
+  "remediation": "Set default network action to Deny and add specific allow rules."
+}

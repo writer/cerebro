@@ -1,0 +1,14 @@
+{
+  "id": "aws-ec2-sg-no-all-traffic-ingress",
+  "name": "Security Group No All Traffic Ingress",
+  "description": "Security group should not allow all traffic (0.0.0.0/0 on all ports) inbound",
+  "effect": "forbid",
+  "resource": "aws::ec2::security_group",
+  "conditions": [
+    "ip_permissions.ip_protocol == '-1'",
+    "ip_permissions.ip_ranges contains '0.0.0.0/0'"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-5.4", "security-group", "network", "exposure"],
+  "remediation": "Restrict security group rules to specific ports and IP ranges."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "gcp-sql-backup-enabled",
+  "name": "GCP Cloud SQL Backup Enabled",
+  "description": "Cloud SQL instances should have automated backups enabled",
+  "effect": "forbid",
+  "resource": "gcp::sql::database_instance",
+  "conditions": [
+    "settings.backup_configuration.enabled != true"
+  ],
+  "severity": "medium",
+  "tags": ["cis-gcp-6.7", "cloudsql", "database", "backup"],
+  "remediation": "Enable automated backups in the Cloud SQL instance settings."
+}

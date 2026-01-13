@@ -52,11 +52,22 @@ issues:
       linters:
         - gosec
         - unparam
+        - errcheck  # tests often ignore errors intentionally
     
     # Exclude known issues in generated files
     - path: internal/api/server\.go
       linters:
         - funlen  # handlers can be long
+    
+    # Type assertions in cache are safe (controlled internally)
+    - path: internal/cache/cache\.go
+      linters:
+        - errcheck
+    
+    # JSON unmarshal in store is best-effort
+    - path: internal/findings/snowflake_store\.go
+      linters:
+        - errcheck
     
   max-issues-per-linter: 50
   max-same-issues: 3

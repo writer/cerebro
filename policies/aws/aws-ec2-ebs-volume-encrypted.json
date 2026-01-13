@@ -1,0 +1,13 @@
+{
+  "id": "aws-ec2-ebs-volume-encrypted",
+  "name": "EBS Volume Encrypted",
+  "description": "EBS volume should be encrypted at rest",
+  "effect": "forbid",
+  "resource": "aws::ec2::ebs_volume",
+  "conditions": [
+    "encrypted != true"
+  ],
+  "severity": "medium",
+  "tags": ["cis-aws-2.2.1", "ebs", "encryption", "data-protection"],
+  "remediation": "Create encrypted snapshots of unencrypted volumes and restore to new encrypted volumes."
+}

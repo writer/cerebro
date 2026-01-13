@@ -1,0 +1,13 @@
+{
+  "id": "aws-s3-bucket-ssl-only",
+  "name": "S3 Bucket Requires SSL",
+  "description": "S3 bucket policy should enforce SSL/TLS for all requests",
+  "effect": "forbid",
+  "resource": "aws::s3::bucket",
+  "conditions": [
+    "policy_requires_ssl != true"
+  ],
+  "severity": "medium",
+  "tags": ["cis-aws-2.1.2", "s3", "encryption", "transport-security"],
+  "remediation": "Add bucket policy condition to deny requests where aws:SecureTransport is false."
+}

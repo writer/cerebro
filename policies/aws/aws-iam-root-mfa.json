@@ -1,0 +1,13 @@
+{
+  "id": "aws-iam-root-mfa-enabled",
+  "name": "Root Account MFA Enabled",
+  "description": "Root account should have MFA enabled for additional security",
+  "effect": "forbid",
+  "resource": "aws::iam::account_summary",
+  "conditions": [
+    "account_mfa_enabled != 1"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-1.5", "iam", "root", "mfa", "authentication"],
+  "remediation": "Enable MFA for the root account using a hardware MFA device for maximum security."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "aws-rds-deletion-protection",
+  "name": "RDS Deletion Protection",
+  "description": "RDS instances should have deletion protection enabled",
+  "effect": "forbid",
+  "resource": "aws::rds::db_instance",
+  "conditions": [
+    "deletion_protection != true"
+  ],
+  "severity": "medium",
+  "tags": ["rds", "database", "data-protection"],
+  "remediation": "Enable deletion protection to prevent accidental database deletion."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "gcp-gke-private-cluster",
+  "name": "GKE Private Cluster",
+  "description": "GKE clusters should be private with no public endpoint",
+  "effect": "forbid",
+  "resource": "gcp::container::cluster",
+  "conditions": [
+    "private_cluster_config.enable_private_endpoint != true"
+  ],
+  "severity": "high",
+  "tags": ["cis-gke-6.6.2", "gke", "kubernetes", "network"],
+  "remediation": "Enable private endpoint and use Cloud IAP or VPN for cluster access."
+}

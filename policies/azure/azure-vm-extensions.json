@@ -1,0 +1,13 @@
+{
+  "id": "azure-vm-approved-extensions-only",
+  "name": "Azure VM Approved Extensions Only",
+  "description": "Azure VMs should only have approved extensions installed",
+  "effect": "forbid",
+  "resource": "azure::compute::virtual_machine_extension",
+  "conditions": [
+    "type not_in ['MicrosoftMonitoringAgent', 'OmsAgentForLinux', 'DependencyAgentWindows', 'DependencyAgentLinux']"
+  ],
+  "severity": "medium",
+  "tags": ["compute", "extensions", "compliance"],
+  "remediation": "Review and remove unapproved VM extensions."
+}

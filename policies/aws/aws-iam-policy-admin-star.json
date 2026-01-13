@@ -1,0 +1,15 @@
+{
+  "id": "aws-iam-policy-no-admin-star",
+  "name": "IAM Policy No Admin Star",
+  "description": "IAM policy should not grant full administrative privileges (*:*)",
+  "effect": "forbid",
+  "resource": "aws::iam::policy",
+  "conditions": [
+    "policy_document.Statement.Effect == 'Allow'",
+    "policy_document.Statement.Action == '*'",
+    "policy_document.Statement.Resource == '*'"
+  ],
+  "severity": "high",
+  "tags": ["cis-aws-1.16", "iam", "least-privilege", "admin"],
+  "remediation": "Replace wildcard permissions with specific actions and resources following least privilege principle."
+}

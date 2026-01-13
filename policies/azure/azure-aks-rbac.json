@@ -1,0 +1,13 @@
+{
+  "id": "azure-aks-rbac-enabled",
+  "name": "Azure AKS RBAC Enabled",
+  "description": "AKS clusters should have Kubernetes RBAC enabled",
+  "effect": "forbid",
+  "resource": "azure::containerservice::managed_cluster",
+  "conditions": [
+    "enable_rbac != true"
+  ],
+  "severity": "high",
+  "tags": ["cis-aks-5.1.1", "aks", "kubernetes", "rbac"],
+  "remediation": "Enable Kubernetes RBAC when creating the cluster (cannot be changed after)."
+}

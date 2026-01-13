@@ -1,0 +1,13 @@
+{
+  "id": "aws-lambda-in-vpc",
+  "name": "Lambda In VPC",
+  "description": "Lambda functions should be deployed in a VPC for network isolation",
+  "effect": "forbid",
+  "resource": "aws::lambda::function",
+  "conditions": [
+    "vpc_config.subnet_ids == null"
+  ],
+  "severity": "low",
+  "tags": ["lambda", "serverless", "network", "vpc"],
+  "remediation": "Configure Lambda function to run within a VPC with appropriate security groups."
+}

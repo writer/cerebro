@@ -1,0 +1,13 @@
+{
+  "id": "aws-rds-no-public-access",
+  "name": "RDS No Public Access",
+  "description": "RDS instances should not be publicly accessible",
+  "effect": "forbid",
+  "resource": "aws::rds::db_instance",
+  "conditions": [
+    "publicly_accessible == true"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-2.3.3", "rds", "database", "exposure", "public-access"],
+  "remediation": "Modify the RDS instance to disable public accessibility and use VPC endpoints or bastion hosts."
+}

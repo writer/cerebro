@@ -1,0 +1,13 @@
+{
+  "id": "aws-cloudwatch-log-group-encrypted",
+  "name": "CloudWatch Log Group Encrypted",
+  "description": "CloudWatch log groups should be encrypted with KMS",
+  "effect": "forbid",
+  "resource": "aws::logs::log_group",
+  "conditions": [
+    "kms_key_id == null"
+  ],
+  "severity": "medium",
+  "tags": ["cloudwatch", "logging", "encryption"],
+  "remediation": "Associate a KMS key with the CloudWatch log group for encryption at rest."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "aws-iam-user-multiple-access-keys",
+  "name": "IAM User Multiple Access Keys",
+  "description": "IAM user has more than one active access key",
+  "effect": "forbid",
+  "resource": "aws::iam::user",
+  "conditions": [
+    "access_key_1_active == true",
+    "access_key_2_active == true"
+  ],
+  "severity": "low",
+  "tags": ["iam", "hygiene", "access-keys"],
+  "remediation": "Rotate access keys and ensure only one is active at a time."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "aws-iam-role-trust-any-principal",
+  "name": "IAM Role Trusts Any Principal",
+  "description": "IAM role trust policy allows any AWS principal to assume the role",
+  "effect": "forbid",
+  "resource": "aws::iam::role",
+  "conditions": [
+    "assume_role_policy_document.Statement.Principal == '*'"
+  ],
+  "severity": "critical",
+  "tags": ["iam", "lateral-movement", "privilege-escalation", "trust-policy"],
+  "remediation": "Restrict the trust policy to specific AWS accounts, services, or principals."
+}

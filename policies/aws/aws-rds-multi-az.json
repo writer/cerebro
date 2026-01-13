@@ -1,0 +1,14 @@
+{
+  "id": "aws-rds-multi-az-enabled",
+  "name": "RDS Multi-AZ Enabled",
+  "description": "RDS instances should have Multi-AZ enabled for high availability",
+  "effect": "forbid",
+  "resource": "aws::rds::db_instance",
+  "conditions": [
+    "multi_az != true",
+    "engine != 'aurora'"
+  ],
+  "severity": "medium",
+  "tags": ["rds", "database", "availability", "disaster-recovery"],
+  "remediation": "Enable Multi-AZ deployment for the RDS instance."
+}

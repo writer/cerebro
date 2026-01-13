@@ -1,0 +1,13 @@
+{
+  "id": "gcp-sql-ssl-required",
+  "name": "GCP Cloud SQL SSL Required",
+  "description": "Cloud SQL instances should require SSL/TLS for all connections",
+  "effect": "forbid",
+  "resource": "gcp::sql::database_instance",
+  "conditions": [
+    "settings.ip_configuration.require_ssl != true"
+  ],
+  "severity": "high",
+  "tags": ["cis-gcp-6.1", "cloudsql", "database", "encryption"],
+  "remediation": "Enable 'Require SSL' in the Cloud SQL instance settings."
+}

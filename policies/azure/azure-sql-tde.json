@@ -1,0 +1,13 @@
+{
+  "id": "azure-sql-transparent-data-encryption",
+  "name": "Azure SQL Transparent Data Encryption",
+  "description": "Azure SQL databases should have Transparent Data Encryption enabled",
+  "effect": "forbid",
+  "resource": "azure::sql::database",
+  "conditions": [
+    "transparent_data_encryption.status != 'Enabled'"
+  ],
+  "severity": "high",
+  "tags": ["cis-azure-4.1.2", "sql", "database", "encryption"],
+  "remediation": "Enable Transparent Data Encryption on the database."
+}

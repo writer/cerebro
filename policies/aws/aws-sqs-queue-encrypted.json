@@ -1,0 +1,13 @@
+{
+  "id": "aws-sqs-queue-encrypted",
+  "name": "SQS Queue Encrypted",
+  "description": "SQS queues should be encrypted with KMS",
+  "effect": "forbid",
+  "resource": "aws::sqs::queue",
+  "conditions": [
+    "kms_master_key_id == null"
+  ],
+  "severity": "medium",
+  "tags": ["sqs", "encryption", "messaging"],
+  "remediation": "Enable server-side encryption for the SQS queue using a KMS key."
+}

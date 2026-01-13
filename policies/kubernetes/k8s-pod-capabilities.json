@@ -1,0 +1,13 @@
+{
+  "id": "k8s-pod-drop-all-capabilities",
+  "name": "K8s Pod Drop All Capabilities",
+  "description": "Containers should drop all capabilities and add only required ones",
+  "effect": "forbid",
+  "resource": "kubernetes::pod",
+  "conditions": [
+    "spec.containers.security_context.capabilities.drop not_contains 'ALL'"
+  ],
+  "severity": "medium",
+  "tags": ["cis-k8s-5.2.7", "pod-security", "capabilities"],
+  "remediation": "Add capabilities.drop: ['ALL'] and explicitly add only required capabilities."
+}

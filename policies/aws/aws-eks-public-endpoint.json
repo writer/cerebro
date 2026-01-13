@@ -1,0 +1,14 @@
+{
+  "id": "aws-eks-public-endpoint-disabled",
+  "name": "EKS Public Endpoint Disabled",
+  "description": "EKS cluster API server endpoint should not be publicly accessible",
+  "effect": "forbid",
+  "resource": "aws::eks::cluster",
+  "conditions": [
+    "resources_vpc_config.endpoint_public_access == true",
+    "resources_vpc_config.public_access_cidrs contains '0.0.0.0/0'"
+  ],
+  "severity": "high",
+  "tags": ["eks", "kubernetes", "exposure", "api-server"],
+  "remediation": "Disable public endpoint or restrict to specific CIDR blocks. Use VPC endpoints for private access."
+}

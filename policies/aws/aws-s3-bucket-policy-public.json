@@ -1,0 +1,15 @@
+{
+  "id": "aws-s3-bucket-policy-public",
+  "name": "S3 Bucket Policy Allows Public Access",
+  "description": "S3 bucket policy allows public access via Principal: '*' without restrictive conditions",
+  "effect": "forbid",
+  "resource": "aws::s3::bucket",
+  "conditions": [
+    "policy.Statement.Principal == '*'",
+    "policy.Statement.Effect == 'Allow'",
+    "policy.Statement.Condition == null"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-2.1.5", "s3", "data-exposure", "public-access"],
+  "remediation": "Remove public access from bucket policy or add restrictive conditions (e.g., source VPC, IP)."
+}

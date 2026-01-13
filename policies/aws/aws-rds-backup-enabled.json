@@ -1,0 +1,13 @@
+{
+  "id": "aws-rds-backup-enabled",
+  "name": "RDS Backup Enabled",
+  "description": "RDS instances should have automated backups enabled with adequate retention",
+  "effect": "forbid",
+  "resource": "aws::rds::db_instance",
+  "conditions": [
+    "backup_retention_period < 7"
+  ],
+  "severity": "medium",
+  "tags": ["rds", "database", "backup", "disaster-recovery"],
+  "remediation": "Enable automated backups with at least 7 days retention period."
+}

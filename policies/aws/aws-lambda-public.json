@@ -1,0 +1,14 @@
+{
+  "id": "aws-lambda-not-publicly-accessible",
+  "name": "Lambda Not Publicly Accessible",
+  "description": "Lambda functions should not be publicly invocable",
+  "effect": "forbid",
+  "resource": "aws::lambda::function",
+  "conditions": [
+    "policy.Statement.Principal == '*'",
+    "policy.Statement.Effect == 'Allow'"
+  ],
+  "severity": "high",
+  "tags": ["lambda", "serverless", "exposure", "public-access"],
+  "remediation": "Restrict Lambda resource policy to specific principals or use API Gateway with authentication."
+}

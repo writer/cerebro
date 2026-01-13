@@ -1,0 +1,13 @@
+{
+  "id": "aws-sns-topic-encrypted",
+  "name": "SNS Topic Encrypted",
+  "description": "SNS topics should be encrypted with KMS",
+  "effect": "forbid",
+  "resource": "aws::sns::topic",
+  "conditions": [
+    "kms_master_key_id == null"
+  ],
+  "severity": "medium",
+  "tags": ["sns", "encryption", "messaging"],
+  "remediation": "Enable server-side encryption for the SNS topic using a KMS key."
+}

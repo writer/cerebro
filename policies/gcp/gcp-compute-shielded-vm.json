@@ -1,0 +1,14 @@
+{
+  "id": "gcp-compute-shielded-vm",
+  "name": "GCP Compute Shielded VM",
+  "description": "Compute instances should use shielded VM features",
+  "effect": "forbid",
+  "resource": "gcp::compute::instance",
+  "conditions": [
+    "shielded_instance_config.enable_secure_boot != true",
+    "shielded_instance_config.enable_vtpm != true"
+  ],
+  "severity": "medium",
+  "tags": ["cis-gcp-4.8", "compute", "security", "shielded-vm"],
+  "remediation": "Enable Secure Boot, vTPM, and Integrity Monitoring on the instance."
+}

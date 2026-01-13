@@ -1,0 +1,13 @@
+{
+  "id": "gcp-compute-no-default-service-account",
+  "name": "GCP Compute No Default Service Account",
+  "description": "Compute instances should not use the default service account",
+  "effect": "forbid",
+  "resource": "gcp::compute::instance",
+  "conditions": [
+    "service_accounts.email ends_with '-compute@developer.gserviceaccount.com'"
+  ],
+  "severity": "medium",
+  "tags": ["cis-gcp-4.1", "compute", "iam", "service-account"],
+  "remediation": "Create a dedicated service account with minimal permissions for the instance."
+}

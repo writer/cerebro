@@ -1,0 +1,13 @@
+{
+  "id": "aws-ec2-ami-not-public",
+  "name": "EC2 AMI Not Public",
+  "description": "EC2 AMIs should not be publicly accessible",
+  "effect": "forbid",
+  "resource": "aws::ec2::ami",
+  "conditions": [
+    "is_public == true"
+  ],
+  "severity": "critical",
+  "tags": ["ec2", "ami", "data-exposure", "public-access"],
+  "remediation": "Modify AMI permissions to remove public access."
+}

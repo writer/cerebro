@@ -1,0 +1,13 @@
+{
+  "id": "aws-ec2-ebs-snapshot-not-public",
+  "name": "EBS Snapshot Not Public",
+  "description": "EBS snapshots should not be publicly accessible",
+  "effect": "forbid",
+  "resource": "aws::ec2::ebs_snapshot",
+  "conditions": [
+    "create_volume_permissions contains 'all'"
+  ],
+  "severity": "critical",
+  "tags": ["ebs", "data-exposure", "snapshot", "public-access"],
+  "remediation": "Remove public access from the EBS snapshot by modifying createVolumePermission."
+}

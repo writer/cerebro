@@ -1,0 +1,13 @@
+{
+  "id": "gcp-storage-uniform-bucket-access",
+  "name": "GCP Storage Uniform Bucket Access",
+  "description": "Cloud Storage buckets should use uniform bucket-level access",
+  "effect": "forbid",
+  "resource": "gcp::storage::bucket",
+  "conditions": [
+    "iam_configuration.uniform_bucket_level_access.enabled != true"
+  ],
+  "severity": "medium",
+  "tags": ["cis-gcp-5.2", "storage", "access-control"],
+  "remediation": "Enable uniform bucket-level access to use IAM consistently for access control."
+}

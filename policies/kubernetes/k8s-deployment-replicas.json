@@ -1,0 +1,14 @@
+{
+  "id": "k8s-deployment-multiple-replicas",
+  "name": "K8s Deployment Multiple Replicas",
+  "description": "Production deployments should have multiple replicas for availability",
+  "effect": "forbid",
+  "resource": "kubernetes::deployment",
+  "conditions": [
+    "spec.replicas < 2",
+    "metadata.namespace != 'kube-system'"
+  ],
+  "severity": "low",
+  "tags": ["deployment", "availability", "ha"],
+  "remediation": "Increase replica count to at least 2 for high availability."
+}

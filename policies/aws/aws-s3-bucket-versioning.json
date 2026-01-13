@@ -1,0 +1,13 @@
+{
+  "id": "aws-s3-bucket-versioning-enabled",
+  "name": "S3 Bucket Versioning Enabled",
+  "description": "S3 bucket should have versioning enabled for data protection",
+  "effect": "forbid",
+  "resource": "aws::s3::bucket",
+  "conditions": [
+    "versioning.status != 'Enabled'"
+  ],
+  "severity": "medium",
+  "tags": ["s3", "data-protection", "versioning", "backup"],
+  "remediation": "Enable versioning on the S3 bucket to protect against accidental deletion."
+}

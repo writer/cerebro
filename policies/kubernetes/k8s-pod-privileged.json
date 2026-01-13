@@ -1,0 +1,13 @@
+{
+  "id": "k8s-pod-no-privileged",
+  "name": "K8s Pod No Privileged Containers",
+  "description": "Pods should not run privileged containers",
+  "effect": "forbid",
+  "resource": "kubernetes::pod",
+  "conditions": [
+    "spec.containers.security_context.privileged == true"
+  ],
+  "severity": "critical",
+  "tags": ["cis-k8s-5.2.1", "pod-security", "privileged"],
+  "remediation": "Remove privileged: true from container security context."
+}
