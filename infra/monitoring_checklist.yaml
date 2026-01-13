@@ -1,0 +1,72 @@
+checks:
+  ingestion_freshness:
+    metric: ingestion_last_success_timestamp
+    threshold_minutes: 30
+    alert_channel: pagerduty::ingestion-freshness
+    remediation:
+      - "Verify connector pipelines via celery monitor"
+      - "Re-run failing collector jobs with make cli-collect"
+  query_latency:
+    metric: query_engine_latency_p95_ms
+    target_ms: 1200
+    alert_channel: pagerduty::query-latency
+    remediation:
+      - "Inspect recent slow queries using /api/v1/query/diagnostics"
+      - "Scale read replicas or enable query cache warm-up"
+  attack_graph_build:
+    metric: attack_graph_last_success_minutes
+    threshold_minutes: 60
+    alert_channel: pagerduty::graph-health
+    remediation:
+      - "Check celery beat schedule 'monitor-runtime-health'"
+      - "Trigger graph rebuild via cli: cerebro.cli analysis rebuild"
+  collector_backlog:
+    metric: celery_queue_backlog_total
+    threshold: 100
+    alert_channel: slack::ops-alerts
+    remediation:
+      - "Scale worker pool via docker-compose or k8s"
+      - "Review stuck tasks with scripts/check_regression_tournament.py"
+
+dashboards:
+  grafana:
+    - name: ingestion-overview
+      panels:
+        - metric: ingestion_last_success_timestamp
+          display: single_stat
+        - metric: celery_queue_backlog_total
+          display: time_series
+    - name: query-runtime
+      panels:
+        - metric: query_engine_latency_p95_ms
+          display: percentile_trend
+        - metric: query_engine_error_rate
+          display: bar
+    - name: attack-graph
+      panels:
+        - metric: attack_graph_last_success_minutes
+          display: single_stat
+        - metric: attack_graph_build_duration_ms
+          display: histogram
+
+probes:
+  api_ready: python -m cerebro.core.probes api-ready
+  worker_ready: python -m cerebro.core.probes worker-ready
+  beat_ready: python -m cerebro.core.probes beat-ready
+
+runbooks:
+  ingestion:
+    oncall_steps:
+      - "Confirm ingestion freshness metric breach in grafana"
+      - "Check collector backlog metric"
+      - "Dispatch targeted collector rerun if backlog localized"
+  query_api:
+    oncall_steps:
+      - "Inspect p95 latency panel for regression"
+      - "Check database CPU via cloud provider metrics"
+      - "Trigger dev stack smoke tests if anomaly persists"
+  attack_graph:
+    oncall_steps:
+      - "Validate celery beat schedule executed within last hour"
+      - "Review attack graph worker logs"
+      - "Initiate manual rebuild and monitor metric recovery"
