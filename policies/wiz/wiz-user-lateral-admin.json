@@ -1,0 +1,14 @@
+{
+  "id": "wiz-user-lateral-admin",
+  "wiz_control_id": "wc-id-921",
+  "name": "User account with lateral movement to admin in another account",
+  "description": "A user account has an attack path that leads to admin privileges in another cloud account",
+  "effect": "forbid",
+  "resource": "iam::user",
+  "conditions": [
+    "attack_paths ANY (target.is_admin == true AND target.is_cross_account == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Break the attack path by removing trust relationships or reducing privileges. Implement proper IAM boundaries.",
+  "tags": ["wiz", "identity", "lateral-movement", "admin", "cross-account"]
+}

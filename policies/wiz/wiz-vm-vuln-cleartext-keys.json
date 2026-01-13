@@ -1,0 +1,16 @@
+{
+  "id": "wiz-vm-vuln-cleartext-keys",
+  "wiz_control_id": "wc-id-1368",
+  "name": "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys granting high privileges",
+  "description": "An internet-facing resource has vulnerabilities and contains cleartext cloud keys with high privileges",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_internet_facing == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities. Remove cleartext keys and use IAM roles or managed identities. Rotate any potentially exposed keys.",
+  "tags": ["wiz", "compute", "vulnerability", "cleartext-keys", "privileged"]
+}

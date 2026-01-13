@@ -1,0 +1,15 @@
+{
+  "id": "wiz-vm-public-vuln",
+  "wiz_control_id": "wc-id-139",
+  "name": "Publicly exposed VM/serverless with initial access vulnerabilities",
+  "description": "A publicly exposed compute resource has critical or high severity vulnerabilities that could enable initial access",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_public == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities immediately. If patching is not possible, remove public access. Implement WAF or other compensating controls.",
+  "tags": ["wiz", "compute", "vulnerability", "public-exposure", "initial-access"]
+}

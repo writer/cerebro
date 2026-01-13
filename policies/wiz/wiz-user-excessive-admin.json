@@ -1,0 +1,14 @@
+{
+  "id": "wiz-user-excessive-admin",
+  "wiz_control_id": "wc-id-909",
+  "name": "User account with excessive admin privileges",
+  "description": "A user account has more admin privileges than necessary for their role",
+  "effect": "forbid",
+  "resource": "iam::user",
+  "conditions": [
+    "admin_role_count > 3 OR has_wildcard_admin == true"
+  ],
+  "severity": "high",
+  "remediation": "Apply least privilege principle. Remove unnecessary admin roles. Implement break-glass procedures for emergency access.",
+  "tags": ["wiz", "identity", "admin", "excessive-privilege"]
+}

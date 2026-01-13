@@ -1,0 +1,15 @@
+{
+  "id": "wiz-serverless-public-admin",
+  "wiz_control_id": "wc-id-289",
+  "name": "Publicly exposed serverless with admin privileges",
+  "description": "A publicly exposed serverless function has administrative privileges",
+  "effect": "forbid",
+  "resource": "serverless::function",
+  "conditions": [
+    "is_public == true",
+    "execution_role.has_admin_role == true"
+  ],
+  "severity": "critical",
+  "remediation": "Remove admin privileges from the function. Implement least privilege IAM policies. Add authentication to the function endpoint.",
+  "tags": ["wiz", "serverless", "admin", "public-exposure"]
+}

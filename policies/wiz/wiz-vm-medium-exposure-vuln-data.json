@@ -1,0 +1,17 @@
+{
+  "id": "wiz-vm-medium-exposure-vuln-data",
+  "wiz_control_id": "wc-id-2922",
+  "name": "Internet-facing VM/serverless (medium exposure) with initial access vulnerabilities and data access to sensitive data",
+  "description": "A medium-exposure internet-facing resource has vulnerabilities and data access",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "exposure_level == 'medium'",
+    "is_internet_facing == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
+    "service_account.has_sensitive_data_access == true"
+  ],
+  "severity": "high",
+  "remediation": "Patch vulnerabilities. Reduce data access. Strengthen network controls.",
+  "tags": ["wiz", "compute", "vulnerability", "data-access", "medium-exposure"]
+}

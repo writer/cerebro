@@ -1,0 +1,14 @@
+{
+  "id": "wiz-group-excessive-high-priv",
+  "wiz_control_id": "wc-id-2198",
+  "name": "Group with excessive high privileges",
+  "description": "A group has excessive high-level privileges",
+  "effect": "forbid",
+  "resource": "iam::group",
+  "conditions": [
+    "high_privilege_role_count > 5"
+  ],
+  "severity": "high",
+  "remediation": "Review and reduce group privileges. Create more granular groups based on job functions.",
+  "tags": ["wiz", "identity", "group", "excessive-privilege"]
+}

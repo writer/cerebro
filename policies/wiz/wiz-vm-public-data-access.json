@@ -1,0 +1,15 @@
+{
+  "id": "wiz-vm-public-data-access",
+  "wiz_control_id": "wc-id-1194",
+  "name": "Publicly exposed VM/serverless with data access to sensitive data",
+  "description": "A publicly exposed compute resource has access to sensitive data",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_public == true",
+    "service_account.has_sensitive_data_access == true OR attached_role.has_sensitive_data_access == true"
+  ],
+  "severity": "critical",
+  "remediation": "Remove public access or remove data access. Implement network segmentation.",
+  "tags": ["wiz", "compute", "public-exposure", "data-access"]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "wiz-bucket-public-sensitive",
+  "wiz_control_id": "wc-id-1264",
+  "name": "Publicly readable bucket contains sensitive data",
+  "description": "A publicly readable storage bucket contains sensitive data findings, creating a data breach risk",
+  "effect": "forbid",
+  "resource": "storage::bucket|storage::blob_container|storage::account",
+  "conditions": [
+    "is_public == true",
+    "sensitive_data_findings ANY (severity IN ('CRITICAL', 'HIGH'))"
+  ],
+  "severity": "critical",
+  "remediation": "Remove public access immediately. Implement proper access controls. Review and rotate any exposed credentials found in the bucket.",
+  "tags": ["wiz", "storage", "sensitive-data", "public-exposure", "data-breach"]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "wiz-gcp-sa-admin-user-combined",
+  "wiz_control_id": "wc-id-623",
+  "name": "User account with both 'Service Account Admin' and 'Service Account User' roles assigned",
+  "description": "A user can both create and impersonate service accounts, a dangerous privilege combination",
+  "effect": "forbid",
+  "resource": "gcp::iam::member",
+  "conditions": [
+    "roles ANY (name == 'roles/iam.serviceAccountAdmin')",
+    "roles ANY (name == 'roles/iam.serviceAccountUser')"
+  ],
+  "severity": "high",
+  "remediation": "Separate service account administration from usage. Apply separation of duties principle.",
+  "tags": ["wiz", "gcp", "identity", "privilege-escalation"]
+}

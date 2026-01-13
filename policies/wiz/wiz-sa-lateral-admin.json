@@ -1,0 +1,14 @@
+{
+  "id": "wiz-sa-lateral-admin",
+  "wiz_control_id": "wc-id-922",
+  "name": "Service account with lateral movement to admin in another account",
+  "description": "A service account has an attack path that leads to admin privileges in another cloud account",
+  "effect": "forbid",
+  "resource": "iam::service_account",
+  "conditions": [
+    "attack_paths ANY (target.is_admin == true AND target.is_cross_account == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Break the attack path by removing cross-account trust relationships or reducing source privileges.",
+  "tags": ["wiz", "identity", "lateral-movement", "admin", "cross-account", "service-account"]
+}

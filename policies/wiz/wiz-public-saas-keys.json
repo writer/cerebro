@@ -1,0 +1,15 @@
+{
+  "id": "wiz-public-saas-keys",
+  "wiz_control_id": "wc-id-894",
+  "name": "Publicly exposed resource with cleartext SaaS API keys",
+  "description": "A public resource contains cleartext SaaS API keys",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "is_public == true",
+    "secrets ANY (type == 'saas_api_key' AND cleartext == true)"
+  ],
+  "severity": "high",
+  "remediation": "Remove cleartext SaaS keys. Rotate exposed keys. Use secret managers.",
+  "tags": ["wiz", "secrets", "saas", "public-exposure"]
+}

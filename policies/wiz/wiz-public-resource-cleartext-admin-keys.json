@@ -1,0 +1,15 @@
+{
+  "id": "wiz-public-resource-cleartext-admin-keys",
+  "wiz_control_id": "wc-id-270",
+  "name": "Publicly exposed resource with cleartext cloud keys granting admin privileges",
+  "description": "A publicly exposed resource contains cleartext cloud credentials with administrative privileges",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "is_public == true",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_admin == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Assume compromise. Remove public access, rotate all admin credentials, and audit for unauthorized access. Use IAM roles instead of keys.",
+  "tags": ["wiz", "secrets", "cleartext-keys", "public-exposure", "admin"]
+}

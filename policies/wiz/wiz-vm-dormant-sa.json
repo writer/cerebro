@@ -1,0 +1,15 @@
+{
+  "id": "wiz-vm-dormant-sa",
+  "wiz_control_id": "wc-id-345",
+  "name": "VM using a service account with high privileges that is inactive for over 90 days",
+  "description": "A VM is using a highly privileged service account that has been inactive for over 90 days",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "service_account.has_high_privilege == true",
+    "service_account.last_activity_days_ago > 90"
+  ],
+  "severity": "high",
+  "remediation": "Review and disable unused service accounts. Reduce privileges if the account is still needed. Implement regular access reviews.",
+  "tags": ["wiz", "compute", "identity", "dormant", "privileged"]
+}

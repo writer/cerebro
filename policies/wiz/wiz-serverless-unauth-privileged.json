@@ -1,0 +1,16 @@
+{
+  "id": "wiz-serverless-unauth-privileged",
+  "wiz_control_id": "wc-id-851",
+  "name": "Publicly exposed serverless with high privileges can be invoked by unauthenticated users",
+  "description": "A privileged serverless function allows unauthenticated invocations",
+  "effect": "forbid",
+  "resource": "serverless::function",
+  "conditions": [
+    "is_public == true",
+    "allows_unauthenticated_invocation == true",
+    "execution_role.has_high_privilege == true"
+  ],
+  "severity": "critical",
+  "remediation": "Add authentication. Reduce function privileges. Use API Gateway with authorization.",
+  "tags": ["wiz", "serverless", "authentication", "privileged", "public-exposure"]
+}

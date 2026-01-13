@@ -1,0 +1,15 @@
+{
+  "id": "wiz-public-resource-cross-account-keys",
+  "wiz_control_id": "wc-id-392",
+  "name": "Publicly exposed resource with cleartext cloud keys granting permission to access resources in other subscriptions",
+  "description": "A public resource contains cross-account access keys",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "is_public == true",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true)"
+  ],
+  "severity": "high",
+  "remediation": "Remove cleartext cross-account keys. Use IAM roles for cross-account access.",
+  "tags": ["wiz", "secrets", "cross-account", "public-exposure"]
+}

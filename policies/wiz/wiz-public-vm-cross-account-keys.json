@@ -1,0 +1,15 @@
+{
+  "id": "wiz-public-vm-cross-account-keys",
+  "wiz_control_id": "wc-id-406",
+  "name": "Publicly exposed VM with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges",
+  "description": "A publicly exposed VM contains highly privileged cross-account access keys",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_public == true",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true AND grants_high_privilege == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Assume keys are compromised. Rotate all keys. Remove public access. Use IAM roles.",
+  "tags": ["wiz", "compute", "secrets", "cross-account", "privileged", "public-exposure"]
+}

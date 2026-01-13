@@ -1,0 +1,15 @@
+{
+  "id": "wiz-bucket-sensitive-no-lock",
+  "wiz_control_id": "wc-id-2566",
+  "name": "Bucket with sensitive data has object lock disabled",
+  "description": "A bucket containing sensitive data does not have object lock enabled",
+  "effect": "forbid",
+  "resource": "storage::bucket",
+  "conditions": [
+    "has_sensitive_data == true",
+    "object_lock_enabled == false"
+  ],
+  "severity": "medium",
+  "remediation": "Enable S3 Object Lock to prevent deletion or modification of sensitive data.",
+  "tags": ["wiz", "storage", "sensitive-data", "object-lock"]
+}

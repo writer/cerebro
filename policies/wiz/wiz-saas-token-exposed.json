@@ -1,0 +1,14 @@
+{
+  "id": "wiz-saas-token-exposed",
+  "wiz_control_id": "wc-id-2017",
+  "name": "Validated exposure of SaaS API token",
+  "description": "A SaaS API token has been validated as exposed and functional",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "secrets ANY (type == 'saas_api_key' AND validated_exposed == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Rotate the exposed token immediately. Audit for unauthorized access using the token.",
+  "tags": ["wiz", "secrets", "saas", "validated-exposure"]
+}

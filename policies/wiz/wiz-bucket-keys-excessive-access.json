@@ -1,0 +1,15 @@
+{
+  "id": "wiz-bucket-keys-excessive-access",
+  "wiz_control_id": "wc-id-1340",
+  "name": "Bucket with cleartext cloud keys allowing high privileges can be accessed by an account with excessive data access",
+  "description": "A bucket with privileged keys can be accessed by an overly permissive account",
+  "effect": "forbid",
+  "resource": "storage::bucket|storage::blob_container",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)",
+    "iam_policy.principals ANY (has_excessive_data_access == true)"
+  ],
+  "severity": "high",
+  "remediation": "Remove cleartext keys. Restrict bucket access to minimum required principals.",
+  "tags": ["wiz", "storage", "secrets", "excessive-access"]
+}

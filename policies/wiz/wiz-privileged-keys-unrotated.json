@@ -1,0 +1,15 @@
+{
+  "id": "wiz-privileged-keys-unrotated",
+  "wiz_control_id": "wc-id-2222",
+  "name": "User/service account with high privileges and active access keys that were used in the past 90 days but not rotated in the past year",
+  "description": "A privileged account has active access keys that have not been rotated in over a year",
+  "effect": "forbid",
+  "resource": "iam::user|iam::service_account",
+  "conditions": [
+    "has_high_privilege == true",
+    "access_keys ANY (status == 'Active' AND last_used_days_ago < 90 AND created_days_ago > 365)"
+  ],
+  "severity": "high",
+  "remediation": "Rotate access keys immediately. Implement automated key rotation.",
+  "tags": ["wiz", "identity", "access-keys", "privileged", "rotation"]
+}

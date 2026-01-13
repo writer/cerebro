@@ -1,0 +1,15 @@
+{
+  "id": "wiz-gcp-kms-admin-combined",
+  "wiz_control_id": "wc-id-624",
+  "name": "User account with both 'Cloud KMS Admin' and 'Cloud CryptoKey Encrypter/Decrypter' roles assigned",
+  "description": "A user can both manage KMS keys and use them for encryption, bypassing separation of duties",
+  "effect": "forbid",
+  "resource": "gcp::iam::member",
+  "conditions": [
+    "roles ANY (name == 'roles/cloudkms.admin')",
+    "roles ANY (name IN ('roles/cloudkms.cryptoKeyEncrypterDecrypter', 'roles/cloudkms.cryptoKeyEncrypter', 'roles/cloudkms.cryptoKeyDecrypter'))"
+  ],
+  "severity": "high",
+  "remediation": "Separate KMS administration from key usage. Apply separation of duties for cryptographic operations.",
+  "tags": ["wiz", "gcp", "kms", "identity", "separation-of-duties"]
+}

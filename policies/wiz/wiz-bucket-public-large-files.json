@@ -1,0 +1,15 @@
+{
+  "id": "wiz-bucket-public-large-files",
+  "wiz_control_id": "wc-id-2559",
+  "name": "Publicly readable bucket contains large log and data files",
+  "description": "A public bucket contains large files that may contain sensitive information",
+  "effect": "forbid",
+  "resource": "storage::bucket|storage::blob_container",
+  "conditions": [
+    "is_public == true",
+    "objects ANY (size_mb > 100 AND file_type IN ('log', 'csv', 'json', 'parquet'))"
+  ],
+  "severity": "high",
+  "remediation": "Remove public access. Review large files for sensitive content before any exposure.",
+  "tags": ["wiz", "storage", "public-exposure", "data-files"]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "wiz-vm-vuln-keys-data-access",
+  "wiz_control_id": "wc-id-1104",
+  "name": "Internet-facing VM/serverless with initial access vulnerabilities and cleartext cloud keys with data access to sensitive data",
+  "description": "An internet-facing resource has vulnerabilities and contains keys with sensitive data access",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_internet_facing == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_sensitive_data_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities. Remove cleartext keys. Rotate any potentially exposed credentials.",
+  "tags": ["wiz", "compute", "vulnerability", "cleartext-keys", "data-access"]
+}

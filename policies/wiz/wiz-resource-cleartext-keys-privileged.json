@@ -1,0 +1,14 @@
+{
+  "id": "wiz-resource-cleartext-keys-privileged",
+  "wiz_control_id": "wc-id-254",
+  "name": "Resource with cleartext cloud keys granting high privileges",
+  "description": "A resource contains cleartext cloud credentials that grant high privileges",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Remove cleartext keys. Use IAM roles, managed identities, or secret managers. Rotate any potentially exposed credentials.",
+  "tags": ["wiz", "secrets", "cleartext-keys", "privileged"]
+}

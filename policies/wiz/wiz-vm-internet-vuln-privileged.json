@@ -1,0 +1,16 @@
+{
+  "id": "wiz-vm-internet-vuln-privileged",
+  "wiz_control_id": "wc-id-140",
+  "name": "Internet-facing VM with high privileges and initial access vulnerabilities",
+  "description": "An internet-facing VM has both high privileges and vulnerabilities that could enable initial access, creating a critical combined risk",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_internet_facing == true",
+    "service_account.has_high_privilege == true OR attached_role.has_high_privilege == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Immediately patch vulnerabilities and reduce privileges. Consider isolating the VM until both issues are resolved.",
+  "tags": ["wiz", "compute", "vulnerability", "privileged", "internet-facing"]
+}

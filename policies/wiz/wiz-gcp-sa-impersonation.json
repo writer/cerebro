@@ -1,0 +1,14 @@
+{
+  "id": "wiz-gcp-sa-impersonation",
+  "wiz_control_id": "wc-id-972",
+  "name": "GCP user account assigned with the 'Service Account User' or 'Service Account Token Creator' roles",
+  "description": "A GCP user can impersonate service accounts, potentially escalating privileges",
+  "effect": "forbid",
+  "resource": "gcp::iam::member",
+  "conditions": [
+    "roles ANY (name IN ('roles/iam.serviceAccountUser', 'roles/iam.serviceAccountTokenCreator'))"
+  ],
+  "severity": "medium",
+  "remediation": "Review service account impersonation permissions. Remove if not required. Implement proper IAM conditions.",
+  "tags": ["wiz", "gcp", "identity", "impersonation"]
+}

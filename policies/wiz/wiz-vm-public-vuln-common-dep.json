@@ -1,0 +1,15 @@
+{
+  "id": "wiz-vm-public-vuln-common-dep",
+  "wiz_control_id": "wc-id-2448",
+  "name": "Publicly exposed VM/serverless with initial access vulnerabilities affecting a common dependency",
+  "description": "A publicly exposed resource has vulnerabilities in a commonly used dependency",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_public == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true AND is_common_dependency == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch common dependency vulnerabilities immediately. These are high-value targets for attackers.",
+  "tags": ["wiz", "compute", "vulnerability", "dependency", "public-exposure"]
+}

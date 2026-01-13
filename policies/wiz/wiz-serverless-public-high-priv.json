@@ -1,0 +1,15 @@
+{
+  "id": "wiz-serverless-public-high-priv",
+  "wiz_control_id": "wc-id-313",
+  "name": "Publicly exposed serverless with high privileges",
+  "description": "A publicly exposed serverless function has high privileges",
+  "effect": "forbid",
+  "resource": "serverless::function",
+  "conditions": [
+    "is_public == true",
+    "execution_role.has_high_privilege == true"
+  ],
+  "severity": "critical",
+  "remediation": "Reduce function privileges to minimum required. Add authentication. Consider using API Gateway with authorization.",
+  "tags": ["wiz", "serverless", "high-privilege", "public-exposure"]
+}
