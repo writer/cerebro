@@ -1,0 +1,13 @@
+{
+  "id": "aws-opensearch-public",
+  "name": "OpenSearch Domain Publicly Accessible",
+  "description": "OpenSearch domain allows public access without VPC configuration",
+  "effect": "forbid",
+  "resource": "aws::opensearch::domain",
+  "conditions": [
+    "vpc_options == null OR vpc_options.vpc_id == null"
+  ],
+  "severity": "critical",
+  "remediation": "Deploy the OpenSearch domain within a VPC. Configure security groups and access policies to restrict access.",
+  "tags": ["aws", "opensearch", "elasticsearch", "network-exposure", "data-protection"]
+}

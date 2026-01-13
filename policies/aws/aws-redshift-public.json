@@ -1,0 +1,13 @@
+{
+  "id": "aws-redshift-public",
+  "name": "Redshift Cluster Publicly Accessible",
+  "description": "Redshift cluster is configured with public accessibility enabled",
+  "effect": "forbid",
+  "resource": "aws::redshift::cluster",
+  "conditions": [
+    "publicly_accessible == true"
+  ],
+  "severity": "critical",
+  "remediation": "Disable public accessibility on the Redshift cluster. Access should be through VPC, Direct Connect, or VPN only.",
+  "tags": ["aws", "redshift", "network-exposure", "data-protection", "cis-aws-2.3.1"]
+}

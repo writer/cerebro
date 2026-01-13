@@ -1,0 +1,13 @@
+{
+  "id": "gcp-bigquery-public",
+  "name": "BigQuery Dataset Publicly Accessible",
+  "description": "BigQuery dataset grants access to allUsers or allAuthenticatedUsers",
+  "effect": "forbid",
+  "resource": "gcp::bigquery::dataset",
+  "conditions": [
+    "access ANY (special_group IN ('allUsers', 'allAuthenticatedUsers'))"
+  ],
+  "severity": "critical",
+  "remediation": "Remove allUsers and allAuthenticatedUsers from dataset access. Grant access to specific users, groups, or service accounts.",
+  "tags": ["gcp", "bigquery", "data-exposure", "public-access"]
+}

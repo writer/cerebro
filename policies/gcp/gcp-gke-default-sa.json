@@ -1,0 +1,13 @@
+{
+  "id": "gcp-gke-default-sa",
+  "name": "GKE Node Pool Using Default Service Account",
+  "description": "GKE node pool is using the Compute Engine default service account instead of a dedicated service account",
+  "effect": "forbid",
+  "resource": "gcp::container::node_pool",
+  "conditions": [
+    "config.service_account == 'default' OR config.service_account ENDS_WITH '-compute@developer.gserviceaccount.com'"
+  ],
+  "severity": "medium",
+  "remediation": "Create a dedicated service account with minimal permissions for the node pool. Update the node pool configuration.",
+  "tags": ["gcp", "gke", "kubernetes", "least-privilege", "cis-gcp-7.17"]
+}

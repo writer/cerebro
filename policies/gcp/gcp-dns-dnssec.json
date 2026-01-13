@@ -1,0 +1,13 @@
+{
+  "id": "gcp-dns-dnssec",
+  "name": "Cloud DNS DNSSEC Disabled",
+  "description": "Cloud DNS managed zone does not have DNSSEC enabled",
+  "effect": "forbid",
+  "resource": "gcp::dns::managed_zone",
+  "conditions": [
+    "dnssec_config.state != 'on'"
+  ],
+  "severity": "medium",
+  "remediation": "Enable DNSSEC on the managed zone. Ensure DS records are properly configured with the domain registrar.",
+  "tags": ["gcp", "dns", "dnssec", "integrity"]
+}

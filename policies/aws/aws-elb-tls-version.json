@@ -1,0 +1,14 @@
+{
+  "id": "aws-elb-tls-version",
+  "name": "Load Balancer Using Weak TLS Policy",
+  "description": "Load Balancer is using a TLS security policy that allows TLS 1.0 or 1.1",
+  "effect": "forbid",
+  "resource": "aws::elbv2::listener",
+  "conditions": [
+    "protocol == 'HTTPS'",
+    "ssl_policy NOT IN ('ELBSecurityPolicy-TLS13-1-2-2021-06', 'ELBSecurityPolicy-TLS-1-2-2017-01', 'ELBSecurityPolicy-TLS-1-2-Ext-2018-06')"
+  ],
+  "severity": "medium",
+  "remediation": "Update the listener's SSL policy to ELBSecurityPolicy-TLS13-1-2-2021-06 or similar TLS 1.2+ only policy.",
+  "tags": ["aws", "elb", "encryption", "tls", "transport-security"]
+}

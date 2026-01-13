@@ -1,0 +1,13 @@
+{
+  "id": "aws-elb-certificate-expiry",
+  "name": "Load Balancer Certificate Expiring Soon",
+  "description": "SSL/TLS certificate attached to load balancer listener expires within 30 days",
+  "effect": "forbid",
+  "resource": "aws::elbv2::listener",
+  "conditions": [
+    "certificates ANY (not_after_days < 30)"
+  ],
+  "severity": "high",
+  "remediation": "Renew or replace the SSL certificate before expiration. Consider using ACM for automatic certificate renewal.",
+  "tags": ["aws", "elb", "certificates", "operational"]
+}

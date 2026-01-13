@@ -1,0 +1,13 @@
+{
+  "id": "aws-elasticache-public",
+  "name": "ElastiCache Cluster in Public Subnet",
+  "description": "ElastiCache cluster is deployed in a public subnet, potentially exposing it to the internet",
+  "effect": "forbid",
+  "resource": "aws::elasticache::cluster",
+  "conditions": [
+    "subnet_group.subnets ANY (is_public == true)"
+  ],
+  "severity": "high",
+  "remediation": "Move the ElastiCache cluster to private subnets. Ensure security groups restrict access to application servers only.",
+  "tags": ["aws", "elasticache", "network-exposure", "data-protection"]
+}

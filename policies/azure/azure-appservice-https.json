@@ -1,0 +1,13 @@
+{
+  "id": "azure-appservice-https",
+  "name": "App Service HTTPS Only Not Enabled",
+  "description": "Azure App Service does not enforce HTTPS-only connections",
+  "effect": "forbid",
+  "resource": "azure::app_service::web_app",
+  "conditions": [
+    "https_only != true"
+  ],
+  "severity": "medium",
+  "remediation": "Enable 'HTTPS Only' in App Service configuration. This redirects all HTTP traffic to HTTPS.",
+  "tags": ["azure", "app-service", "encryption", "transport-security"]
+}

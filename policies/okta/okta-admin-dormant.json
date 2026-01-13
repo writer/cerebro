@@ -1,0 +1,14 @@
+{
+  "id": "okta-admin-dormant",
+  "name": "Okta Dormant Admin Account",
+  "description": "Okta admin account has not logged in for over 90 days",
+  "effect": "forbid",
+  "resource": "okta::user",
+  "conditions": [
+    "is_admin == true",
+    "last_login_days_ago > 90"
+  ],
+  "severity": "medium",
+  "remediation": "Review the admin account. Remove admin privileges if no longer needed. Deactivate the account if the user has left the organization.",
+  "tags": ["okta", "identity", "privileged-access", "hygiene"]
+}
