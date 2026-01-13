@@ -1,9 +1,11 @@
 module github.com/writerinternal/cerebro
 
-go 1.25.1
+go 1.23.0
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/uuid v1.6.0
+	github.com/prometheus/client_golang v1.23.2
 	github.com/snowflakedb/gosnowflake v1.18.1
 	github.com/spf13/cobra v1.10.2
 )
@@ -47,7 +49,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/asmfmt v1.3.2 // indirect
@@ -59,7 +60,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
