@@ -283,8 +283,14 @@ func TestStreamEvent(t *testing.T) {
 	if event.Type != "delta" {
 		t.Errorf("expected type 'delta', got '%s'", event.Type)
 	}
+	if event.Content != "Hello" {
+		t.Errorf("expected content 'Hello', got '%s'", event.Content)
+	}
 	if event.Done {
 		t.Error("expected Done to be false")
+	}
+	if event.Error != nil {
+		t.Error("expected Error to be nil")
 	}
 }
 
@@ -372,14 +378,26 @@ func TestInvestigation(t *testing.T) {
 	if inv.ID != "inv-123" {
 		t.Errorf("expected ID 'inv-123', got '%s'", inv.ID)
 	}
+	if inv.Title != "Security Incident" {
+		t.Errorf("expected title 'Security Incident', got '%s'", inv.Title)
+	}
 	if inv.Description != "Suspicious activity detected" {
 		t.Errorf("expected description 'Suspicious activity detected', got '%s'", inv.Description)
 	}
 	if inv.Severity != "critical" {
 		t.Errorf("expected severity 'critical', got '%s'", inv.Severity)
 	}
+	if inv.Status != "open" {
+		t.Errorf("expected status 'open', got '%s'", inv.Status)
+	}
+	if len(inv.Findings) != 2 {
+		t.Errorf("expected 2 findings, got %d", len(inv.Findings))
+	}
 	if len(inv.Timeline) != 1 {
 		t.Errorf("expected 1 timeline event, got %d", len(inv.Timeline))
+	}
+	if inv.CreatedAt.IsZero() {
+		t.Error("expected CreatedAt to be set")
 	}
 }
 
@@ -395,6 +413,12 @@ func TestEvent(t *testing.T) {
 
 	if event.Type != "action" {
 		t.Errorf("expected type 'action', got '%s'", event.Type)
+	}
+	if event.Description != "Blocked IP address" {
+		t.Errorf("expected description 'Blocked IP address', got '%s'", event.Description)
+	}
+	if event.Timestamp.IsZero() {
+		t.Error("expected Timestamp to be set")
 	}
 	if event.Data["ip"] != "192.168.1.1" {
 		t.Errorf("expected ip '192.168.1.1', got '%v'", event.Data["ip"])

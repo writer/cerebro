@@ -268,6 +268,18 @@ func TestSyncResult_Fields(t *testing.T) {
 	if result.TotalRows != 1000 {
 		t.Error("TotalRows field incorrect")
 	}
+
+	if result.Duration != 5*time.Second {
+		t.Error("Duration field incorrect")
+	}
+
+	if len(result.Tables) != 2 {
+		t.Error("Tables field incorrect")
+	}
+
+	if result.Errors != nil {
+		t.Error("Errors field should be nil")
+	}
 }
 
 func TestTableSchema_Fields(t *testing.T) {
@@ -285,12 +297,20 @@ func TestTableSchema_Fields(t *testing.T) {
 		t.Error("Name field incorrect")
 	}
 
+	if schema.Description != "A test table" {
+		t.Error("Description field incorrect")
+	}
+
 	if len(schema.Columns) != 2 {
 		t.Error("Columns field incorrect")
 	}
 
 	if !schema.Columns[0].Required {
 		t.Error("Required field incorrect")
+	}
+
+	if len(schema.PrimaryKey) != 1 || schema.PrimaryKey[0] != "id" {
+		t.Error("PrimaryKey field incorrect")
 	}
 }
 

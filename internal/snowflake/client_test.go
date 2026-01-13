@@ -32,6 +32,10 @@ func TestQueryResult_Fields(t *testing.T) {
 	if result.Rows[0]["name"] != "test1" {
 		t.Error("row data incorrect")
 	}
+
+	if result.Count != 2 {
+		t.Errorf("expected count 2, got %d", result.Count)
+	}
 }
 
 // Note: Full integration tests require a real Snowflake connection

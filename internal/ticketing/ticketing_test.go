@@ -194,6 +194,38 @@ func TestTicket_Fields(t *testing.T) {
 		t.Error("ID field incorrect")
 	}
 
+	if ticket.ExternalID != "JIRA-123" {
+		t.Error("external ID field incorrect")
+	}
+
+	if ticket.Title != "Test" {
+		t.Error("title field incorrect")
+	}
+
+	if ticket.Description != "Test description" {
+		t.Error("description field incorrect")
+	}
+
+	if ticket.Priority != "high" {
+		t.Error("priority field incorrect")
+	}
+
+	if ticket.Status != "open" {
+		t.Error("status field incorrect")
+	}
+
+	if ticket.Type != "incident" {
+		t.Error("type field incorrect")
+	}
+
+	if ticket.Assignee != "user@example.com" {
+		t.Error("assignee field incorrect")
+	}
+
+	if ticket.Reporter != "reporter@example.com" {
+		t.Error("reporter field incorrect")
+	}
+
 	if len(ticket.Labels) != 2 {
 		t.Error("labels field incorrect")
 	}
@@ -261,8 +293,24 @@ func TestTicketFilter_Fields(t *testing.T) {
 		t.Error("priority field incorrect")
 	}
 
+	if filter.Assignee != "user@example.com" {
+		t.Error("assignee field incorrect")
+	}
+
+	if filter.Label != "security" {
+		t.Error("label field incorrect")
+	}
+
+	if filter.FindingID != "f1" {
+		t.Error("finding ID field incorrect")
+	}
+
 	if filter.Limit != 10 {
 		t.Error("limit field incorrect")
+	}
+
+	if filter.Offset != 0 {
+		t.Error("offset field incorrect")
 	}
 }
 

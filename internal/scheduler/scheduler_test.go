@@ -190,6 +190,14 @@ func TestJob_Fields(t *testing.T) {
 	if job.Interval != 1*time.Hour {
 		t.Error("interval field incorrect")
 	}
+
+	if !job.Enabled {
+		t.Error("enabled field incorrect")
+	}
+
+	if job.Running {
+		t.Error("running field should be false")
+	}
 }
 
 func TestJobStatus_Fields(t *testing.T) {
@@ -208,6 +216,18 @@ func TestJobStatus_Fields(t *testing.T) {
 
 	if js.Interval != "1h0m0s" {
 		t.Error("interval field incorrect")
+	}
+
+	if js.NextRun.IsZero() {
+		t.Error("next run field incorrect")
+	}
+
+	if js.Running {
+		t.Error("running field should be false")
+	}
+
+	if !js.Enabled {
+		t.Error("enabled field incorrect")
 	}
 }
 
