@@ -76,6 +76,13 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 		go func() {
 			defer wg.Done()
 			for asset := range assetCh {
+				// Check context before processing
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
 				findings, err := s.engine.EvaluateAsset(ctx, asset)
 				atomic.AddInt64(&scanned, 1)
 
@@ -89,7 +96,11 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 
 				if len(findings) > 0 {
 					atomic.AddInt64(&violations, int64(len(findings)))
-					resultCh <- findings
+					select {
+					case resultCh <- findings:
+					case <-ctx.Done():
+						return
+					}
 				}
 			}
 		}()
