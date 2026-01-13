@@ -363,12 +363,12 @@ func (s *Service) Handler() http.Handler {
 		payload, _ := json.Marshal(testEvent)
 		resp, err := s.client.Post(req.URL, "application/json", bytes.NewReader(payload))
 		if err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
 			return
 		}
 		defer resp.Body.Close()
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": resp.StatusCode >= 200 && resp.StatusCode < 300,
 			"status":  resp.StatusCode,
 		})

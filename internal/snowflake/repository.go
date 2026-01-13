@@ -135,6 +135,7 @@ func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*
 }
 
 func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string) error {
+	// nolint:gosec // G201 - schema name is trusted internal value, not user input
 	query := fmt.Sprintf(`
 		UPDATE %s.findings 
 		SET status = ?, _updated_at = CURRENT_TIMESTAMP()
@@ -142,6 +143,7 @@ func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string)
 	`, r.schema)
 
 	if status == "resolved" {
+		// nolint:gosec // G201 - schema name is trusted internal value
 		query = fmt.Sprintf(`
 			UPDATE %s.findings 
 			SET status = ?, resolved_at = CURRENT_TIMESTAMP(), _updated_at = CURRENT_TIMESTAMP()

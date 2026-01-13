@@ -785,7 +785,7 @@ func (s *Server) closeTicket(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Resolution string `json:"resolution"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	err := s.app.Ticketing.Primary().Close(r.Context(), id, req.Resolution)
 	if err != nil {
@@ -1121,7 +1121,7 @@ func (s *Server) testProvider(w http.ResponseWriter, r *http.Request) {
 func (s *Server) json(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func (s *Server) error(w http.ResponseWriter, status int, message string) {

@@ -70,6 +70,12 @@ issues:
     - path: internal/findings/snowflake_store\.go
       linters:
         - errcheck
+        - gosec  # SQL uses internal schema names, not user input
+    
+    # Snowflake repository uses internal schema names for SQL
+    - path: internal/snowflake/.*\.go
+      linters:
+        - gosec  # G201/G202 - schema names are trusted internal values
     
   max-issues-per-linter: 50
   max-same-issues: 3
