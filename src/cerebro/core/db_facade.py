@@ -95,7 +95,7 @@ class OrganizationFacade:
                 )
                 return result.scalar_one_or_none()
 
-    async def create(self, **kwargs) -> Any:
+    async def create(self, **kwargs: Any) -> Any:
         """Create a new organization."""
         if self._backend == DBBackend.DYNAMODB:
             from cerebro.core.dynamodb_models import Organization
@@ -134,30 +134,31 @@ class OrganizationFacade:
     ) -> tuple[list[Any], str | None]:
         """List all organizations."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
-            return await self._get_dynamo_repo().list_all(limit, last_key)
+            result: tuple[list[Any], str | None] = await self._get_dynamo_repo().list_all(limit, last_key)
+            return result
         else:
             from sqlalchemy import select
 
             from cerebro.core.models import Organization
 
             async with self._get_pg_session() as session:
-                result = await session.execute(select(Organization).limit(limit))
-                return list(result.scalars()), None
+                result_q = await session.execute(select(Organization).limit(limit))
+                return list(result_q.scalars()), None
 
 
 class AccountFacade:
     """Unified interface for Account operations."""
 
-    def __init__(self, backend: DBBackend):
+    def __init__(self, backend: DBBackend) -> None:
         self._backend = backend
         self._dynamo_repo: Any | None = None
 
-    def _get_pg_session(self):
+    def _get_pg_session(self) -> Any:
         from cerebro.core.database import async_session_factory
 
         return async_session_factory()
 
-    def _get_dynamo_repo(self):
+    def _get_dynamo_repo(self) -> Any:
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import AccountRepository
 
@@ -193,9 +194,10 @@ class AccountFacade:
             from cerebro.core.dynamodb_models import Provider
 
             provider_enum = Provider(provider) if provider else None
-            return await self._get_dynamo_repo().list_by_org(
+            accounts: list[Any] = await self._get_dynamo_repo().list_by_org(
                 org_id, provider_enum, limit
             )
+            return accounts
         else:
             from sqlalchemy import select
 
@@ -213,16 +215,16 @@ class AccountFacade:
 class FindingFacade:
     """Unified interface for Finding operations."""
 
-    def __init__(self, backend: DBBackend):
+    def __init__(self, backend: DBBackend) -> None:
         self._backend = backend
         self._dynamo_repo: Any | None = None
 
-    def _get_pg_session(self):
+    def _get_pg_session(self) -> Any:
         from cerebro.core.database import async_session_factory
 
         return async_session_factory()
 
-    def _get_dynamo_repo(self):
+    def _get_dynamo_repo(self) -> Any:
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import FindingRepository
 
@@ -260,9 +262,10 @@ class FindingFacade:
 
             status_enum = FindingStatus(status) if status else None
             severity_enum = Severity(severity) if severity else None
-            return await self._get_dynamo_repo().list_by_org(
+            findings: list[Any] = await self._get_dynamo_repo().list_by_org(
                 org_id, status_enum, severity_enum, limit
             )
+            return findings
         else:
             from sqlalchemy import select
 
@@ -278,7 +281,7 @@ class FindingFacade:
                 result = await session.execute(query)
                 return list(result.scalars())
 
-    async def create(self, **kwargs) -> Any:
+    async def create(self, **kwargs: Any) -> Any:
         """Create a new finding."""
         if self._backend == DBBackend.DYNAMODB:
             from cerebro.core.dynamodb_models import Finding
@@ -310,7 +313,7 @@ class FindingFacade:
         self,
         finding_id: UUID,
         org_id: UUID,
-        **updates,
+        **updates: Any,
     ) -> Any | None:
         """Update a finding."""
         if self._backend in (DBBackend.DYNAMODB, DBBackend.DUAL):
@@ -349,16 +352,16 @@ class FindingFacade:
 class RuleFacade:
     """Unified interface for Rule operations."""
 
-    def __init__(self, backend: DBBackend):
+    def __init__(self, backend: DBBackend) -> None:
         self._backend = backend
         self._dynamo_repo: Any | None = None
 
-    def _get_pg_session(self):
+    def _get_pg_session(self) -> Any:
         from cerebro.core.database import async_session_factory
 
         return async_session_factory()
 
-    def _get_dynamo_repo(self):
+    def _get_dynamo_repo(self) -> Any:
         if self._dynamo_repo is None:
             from cerebro.core.dynamodb_repositories import RuleRepository
 
@@ -390,7 +393,8 @@ class RuleFacade:
             from cerebro.core.dynamodb_models import Severity
 
             severity_enum = Severity(severity) if severity else None
-            return await self._get_dynamo_repo().list_active(severity_enum, limit)
+            rules: list[Any] = await self._get_dynamo_repo().list_active(severity_enum, limit)
+            return rules
         else:
             from sqlalchemy import select
 
@@ -408,16 +412,16 @@ class RuleFacade:
 class AgentSessionFacade:
     """Unified interface for AgentSession operations."""
 
-    def __init__(self, backend: DBBackend):
+    def __init__(self, backend: DBBackend) -> None:
         self._backend = backend
         self._dynamo_repo: Any | None = None
 
-    def _get_pg_session(self):
+    def _get_pg_session(self) -> Any:
         from cerebro.core.database import async_session_factory
 
         return async_session_factory()
 
-    def _get_dynamo_repo(self):
+    def _get_dynamo_repo(self) -> Any:
         if self._dynamo_repo is None:
             from cerebro.agents.repositories.dynamodb_session_repository import (
                 DynamoDBAgentSessionRepository,
@@ -457,13 +461,14 @@ class AgentSessionFacade:
             from cerebro.agents.dynamodb_models import AgentType
 
             agent_type_enum = AgentType(agent_type) if agent_type else None
-            return await self._get_dynamo_repo().list_sessions(
+            dynamo_result: tuple[list[Any], int] = await self._get_dynamo_repo().list_sessions(
                 org_id=org_id,
                 agent_type=agent_type_enum,
                 created_by=created_by,
                 limit=limit,
                 offset=offset,
             )
+            return dynamo_result
         else:
             from sqlalchemy import func, select
 
@@ -484,13 +489,13 @@ class AgentSessionFacade:
                     .offset(offset)
                 )
                 result = await session.execute(query)
-                sessions = list(result.scalars())
+                sessions_list = list(result.scalars())
 
                 count_query = select(func.count(AgentSession.id)).where(*filters)
                 count_result = await session.execute(count_query)
                 total = count_result.scalar_one()
 
-                return sessions, total
+                return sessions_list, total
 
 
 class DBFacade:

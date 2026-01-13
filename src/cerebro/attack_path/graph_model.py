@@ -20,6 +20,8 @@ from ..core.database import async_session_factory
 from ..core.models import IamEdge, Principal, Resource
 from .scoring import AttackGraphScoring
 from .service_identity import ServiceIdentityEdge, ServiceIdentityMapper, TrustMechanism
+from .backend import GraphBackend
+from .backends.networkx import NetworkXBackend
 
 logger = structlog.get_logger(__name__)
 
