@@ -19,12 +19,12 @@ type Provider interface {
 type ProviderType string
 
 const (
-	ProviderTypeCloud      ProviderType = "cloud"
-	ProviderTypeSaaS       ProviderType = "saas"
-	ProviderTypeIdentity   ProviderType = "identity"
-	ProviderTypeEndpoint   ProviderType = "endpoint"
-	ProviderTypeNetwork    ProviderType = "network"
-	ProviderTypeCustom     ProviderType = "custom"
+	ProviderTypeCloud    ProviderType = "cloud"
+	ProviderTypeSaaS     ProviderType = "saas"
+	ProviderTypeIdentity ProviderType = "identity"
+	ProviderTypeEndpoint ProviderType = "endpoint"
+	ProviderTypeNetwork  ProviderType = "network"
+	ProviderTypeCustom   ProviderType = "custom"
 )
 
 type SyncOptions struct {
@@ -45,19 +45,19 @@ type SyncResult struct {
 }
 
 type TableResult struct {
-	Name      string `json:"name"`
-	Rows      int64  `json:"rows"`
-	Inserted  int64  `json:"inserted"`
-	Updated   int64  `json:"updated"`
-	Deleted   int64  `json:"deleted"`
-	Error     string `json:"error,omitempty"`
+	Name     string `json:"name"`
+	Rows     int64  `json:"rows"`
+	Inserted int64  `json:"inserted"`
+	Updated  int64  `json:"updated"`
+	Deleted  int64  `json:"deleted"`
+	Error    string `json:"error,omitempty"`
 }
 
 type TableSchema struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
 	Columns     []ColumnSchema `json:"columns"`
-	PrimaryKey  []string      `json:"primary_key"`
+	PrimaryKey  []string       `json:"primary_key"`
 }
 
 type ColumnSchema struct {
@@ -97,7 +97,7 @@ func (r *Registry) Get(name string) (Provider, bool) {
 func (r *Registry) List() []Provider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	providers := make([]Provider, 0, len(r.providers))
 	for _, p := range r.providers {
 		providers = append(providers, p)
@@ -128,7 +128,7 @@ func (r *Registry) SyncAll(ctx context.Context, opts SyncOptions) ([]*SyncResult
 
 	results := make([]*SyncResult, len(providers))
 	var wg sync.WaitGroup
-	
+
 	for i, p := range providers {
 		wg.Add(1)
 		go func(idx int, provider Provider) {

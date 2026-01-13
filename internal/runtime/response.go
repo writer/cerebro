@@ -107,7 +107,7 @@ const (
 	StatusRunning   ExecutionStatus = "running"
 	StatusCompleted ExecutionStatus = "completed"
 	StatusFailed    ExecutionStatus = "failed"
-	StatusCancelled ExecutionStatus = "cancelled"
+	StatusCanceled ExecutionStatus = "canceled"
 )
 
 // Blocklist maintains runtime blocklists
@@ -503,7 +503,7 @@ func (e *ResponseEngine) RejectExecution(executionID, rejecter, reason string) e
 				return fmt.Errorf("execution not awaiting approval")
 			}
 
-			exec.Status = StatusCancelled
+			exec.Status = StatusCanceled
 			exec.Error = fmt.Sprintf("Rejected by %s: %s", rejecter, reason)
 			now := time.Now()
 			exec.EndTime = &now

@@ -43,7 +43,7 @@ func (c *CrowdStrikeProvider) Configure(ctx context.Context, config map[string]i
 
 	c.clientID = c.GetConfigString("client_id")
 	c.clientSecret = c.GetConfigString("client_secret")
-	
+
 	if baseURL := c.GetConfigString("base_url"); baseURL != "" {
 		c.baseURL = baseURL
 	}
@@ -152,7 +152,7 @@ func (c *CrowdStrikeProvider) authenticate(ctx context.Context) (string, error) 
 	data.Set("client_id", c.clientID)
 	data.Set("client_secret", c.clientSecret)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/oauth2/token", 
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/oauth2/token",
 		bytes.NewBufferString(data.Encode()))
 	if err != nil {
 		return "", err

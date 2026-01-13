@@ -88,6 +88,37 @@ type Config struct {
 	OktaDomain              string
 	OktaAPIToken            string
 
+	// Azure Provider
+	AzureTenantID       string
+	AzureClientID       string
+	AzureClientSecret   string
+	AzureSubscriptionID string
+
+	// Snyk Provider
+	SnykAPIToken string
+	SnykOrgID    string
+
+	// Wiz Provider
+	WizClientID     string
+	WizClientSecret string
+
+	// Datadog Provider
+	DatadogAPIKey string
+	DatadogAppKey string
+	DatadogSite   string
+
+	// GitHub Provider
+	GitHubToken string
+	GitHubOrg   string
+
+	// SentinelOne Provider
+	SentinelOneAPIToken string
+	SentinelOneBaseURL  string
+
+	// Tenable Provider
+	TenableAccessKey string
+	TenableSecretKey string
+
 	// Webhooks
 	WebhookURLs []string
 
@@ -127,6 +158,23 @@ func LoadConfig() *Config {
 		CrowdStrikeClientSecret:   getEnv("CROWDSTRIKE_CLIENT_SECRET", ""),
 		OktaDomain:                getEnv("OKTA_DOMAIN", ""),
 		OktaAPIToken:              getEnv("OKTA_API_TOKEN", ""),
+		AzureTenantID:             getEnv("AZURE_TENANT_ID", ""),
+		AzureClientID:             getEnv("AZURE_CLIENT_ID", ""),
+		AzureClientSecret:         getEnv("AZURE_CLIENT_SECRET", ""),
+		AzureSubscriptionID:       getEnv("AZURE_SUBSCRIPTION_ID", ""),
+		SnykAPIToken:              getEnv("SNYK_API_TOKEN", ""),
+		SnykOrgID:                 getEnv("SNYK_ORG_ID", ""),
+		WizClientID:               getEnv("WIZ_CLIENT_ID", ""),
+		WizClientSecret:           getEnv("WIZ_CLIENT_SECRET", ""),
+		DatadogAPIKey:             getEnv("DATADOG_API_KEY", ""),
+		DatadogAppKey:             getEnv("DATADOG_APP_KEY", ""),
+		DatadogSite:               getEnv("DATADOG_SITE", "datadoghq.com"),
+		GitHubToken:               getEnv("GITHUB_TOKEN", ""),
+		GitHubOrg:                 getEnv("GITHUB_ORG", ""),
+		SentinelOneAPIToken:       getEnv("SENTINELONE_API_TOKEN", ""),
+		SentinelOneBaseURL:        getEnv("SENTINELONE_BASE_URL", ""),
+		TenableAccessKey:          getEnv("TENABLE_ACCESS_KEY", ""),
+		TenableSecretKey:          getEnv("TENABLE_SECRET_KEY", ""),
 		SlackWebhookURL:           getEnv("SLACK_WEBHOOK_URL", ""),
 		SlackSigningSecret:       getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),

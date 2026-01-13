@@ -177,7 +177,7 @@ func (a *Agent) sendBatch(events []Event) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", a.config.CerebroURL+"/api/v1/telemetry/ingest", nil)
+	req, err := http.NewRequestWithContext(context.Background(), "POST", a.config.CerebroURL+"/api/v1/telemetry/ingest", nil)
 	if err != nil {
 		return err
 	}
