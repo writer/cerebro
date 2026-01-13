@@ -1,0 +1,13 @@
+{
+  "id": "aws-sqs-public-access",
+  "name": "SQS Queue Allows Public Access",
+  "description": "SQS queue policy allows access from any AWS account or public access",
+  "effect": "forbid",
+  "resource": "aws::sqs::queue",
+  "conditions": [
+    "policy.Statement ANY (Principal == '*' AND Condition == null)"
+  ],
+  "severity": "high",
+  "remediation": "Update SQS queue policy to restrict access to specific AWS accounts or principals. Add conditions to limit access scope.",
+  "tags": ["aws", "sqs", "messaging", "public-access"]
+}

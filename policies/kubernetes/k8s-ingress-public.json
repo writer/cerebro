@@ -1,0 +1,14 @@
+{
+  "id": "k8s-ingress-public",
+  "name": "Kubernetes Ingress Exposes Sensitive Service",
+  "description": "Ingress resource exposes a service to the internet without authentication or with sensitive paths",
+  "effect": "forbid",
+  "resource": "k8s::networking::ingress",
+  "conditions": [
+    "spec.rules ANY (http.paths ANY (path MATCHES '/admin|/api/internal|/debug|/metrics|/health' AND backend.service.name != null))",
+    "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] == null"
+  ],
+  "severity": "high",
+  "remediation": "Add authentication annotations to the Ingress. Use network policies to restrict access. Consider using a service mesh for mTLS.",
+  "tags": ["kubernetes", "ingress", "network-exposure", "authentication"]
+}

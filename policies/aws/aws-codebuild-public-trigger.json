@@ -1,0 +1,14 @@
+{
+  "id": "aws-codebuild-public-trigger",
+  "name": "CodeBuild Project with Public Webhook",
+  "description": "CodeBuild project has a public webhook that can be triggered by external sources",
+  "effect": "forbid",
+  "resource": "aws::codebuild::project",
+  "conditions": [
+    "webhook.filter_groups ANY (filters ANY (type == 'EVENT' AND pattern CONTAINS 'PULL_REQUEST'))",
+    "source.type IN ('GITHUB', 'BITBUCKET', 'GITLAB')"
+  ],
+  "severity": "high",
+  "remediation": "Configure webhook filters to only accept events from trusted sources. Use branch filters and file path filters. Enable build badge but disable webhook for public repos.",
+  "tags": ["aws", "codebuild", "supply-chain", "ci-cd"]
+}

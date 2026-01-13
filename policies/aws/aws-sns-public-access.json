@@ -1,0 +1,13 @@
+{
+  "id": "aws-sns-public-access",
+  "name": "SNS Topic Allows Public Access",
+  "description": "SNS topic policy allows access from any AWS account or public access",
+  "effect": "forbid",
+  "resource": "aws::sns::topic",
+  "conditions": [
+    "policy.Statement ANY (Principal == '*' AND Condition == null)"
+  ],
+  "severity": "high",
+  "remediation": "Update SNS topic policy to restrict access to specific AWS accounts or principals. Add conditions to limit access scope.",
+  "tags": ["aws", "sns", "messaging", "public-access"]
+}

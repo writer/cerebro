@@ -1,0 +1,15 @@
+{
+  "id": "gcp-firewall-admin-port",
+  "name": "GCP Firewall Allows Admin Ports from Internet",
+  "description": "Firewall rule allows SSH (22) or RDP (3389) access from any source (0.0.0.0/0)",
+  "effect": "forbid",
+  "resource": "gcp::compute::firewall",
+  "conditions": [
+    "direction == 'INGRESS'",
+    "source_ranges CONTAINS '0.0.0.0/0'",
+    "allowed ANY (ports CONTAINS '22' OR ports CONTAINS '3389' OR ip_protocol == 'all')"
+  ],
+  "severity": "high",
+  "remediation": "Restrict source ranges to specific IP addresses or CIDR blocks. Use Identity-Aware Proxy (IAP) for SSH/RDP access. Consider using OS Login.",
+  "tags": ["gcp", "firewall", "network", "admin-access", "cis-gcp-3.6"]
+}

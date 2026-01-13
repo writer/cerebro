@@ -1,0 +1,14 @@
+{
+  "id": "azure-function-public",
+  "name": "Azure Function App Publicly Accessible",
+  "description": "Azure Function App allows anonymous access without authentication",
+  "effect": "forbid",
+  "resource": "azure::functionapp::function",
+  "conditions": [
+    "auth_level == 'anonymous'",
+    "site_config.http20_enabled == true OR http_trigger == true"
+  ],
+  "severity": "medium",
+  "remediation": "Configure authentication for the Function App. Use function keys or Azure AD authentication. Restrict network access using Private Endpoints or IP restrictions.",
+  "tags": ["azure", "functions", "serverless", "authentication"]
+}
