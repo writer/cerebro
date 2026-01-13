@@ -1,0 +1,14 @@
+{
+  "id": "aws-rds-encryption-enabled",
+  "name": "RDS Encryption Enabled",
+  "description": "RDS instances should have encryption at rest enabled",
+  "effect": "forbid",
+  "principal": "aws::rds::instance",
+  "action": "data-access",
+  "resource": "*",
+  "conditions": [
+    "storage_encrypted != true"
+  ],
+  "severity": "high",
+  "tags": ["cis-aws-2.3.1", "security", "rds", "encryption"]
+}

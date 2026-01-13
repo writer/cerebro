@@ -1,192 +1,41 @@
 version: '3.8'
 
 services:
-  # DynamoDB Local for development (primary data store)
-  dynamodb-local:
-    image: amazon/dynamodb-local:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      - dynamodb_data:/home/dynamodblocal/data
-    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:8000/shell/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # DynamoDB table setup (runs once on startup)
-  dynamodb-setup:
+  cerebro:
     build: .
-    depends_on:
-      dynamodb-local:
-        condition: service_healthy
-    environment:
-      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
-      AWS_ACCESS_KEY_ID: local
-      AWS_SECRET_ACCESS_KEY: local
-      AWS_DEFAULT_REGION: us-east-1
-    command: python scripts/dynamodb_local_setup.py --endpoint http://dynamodb-local:8000
-    restart: "no"
-
-  # PostgreSQL (deprecated - kept for migration period)
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: cerebro
-      POSTGRES_USER: cerebro
-      POSTGRES_PASSWORD: cerebro
     ports:
-      - "5432:5432"
+      - "8080:8080"
+    environment:
+      API_PORT: 8080
+      LOG_LEVEL: info
+      SNOWFLAKE_CONNECTION_STRING: ${SNOWFLAKE_CONNECTION_STRING:-}
+      SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-CEREBRO}
+      SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA:-RAW}
+      CEDAR_POLICIES_PATH: /app/policies
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./policies:/app/policies:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cerebro"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
+
+  # CloudQuery for syncing cloud assets
+  cloudquery:
+    image: ghcr.io/cloudquery/cloudquery:latest
+    volumes:
+      - ./config:/config:ro
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      GOOGLE_APPLICATION_CREDENTIALS: /config/gcp-credentials.json
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      SNOWFLAKE_CONNECTION_STRING: ${SNOWFLAKE_CONNECTION_STRING:-}
+    command: ["sync", "/config/cloudquery.yml"]
     profiles:
-      - legacy  # Only start with --profile legacy
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  cerebro-api:
-    build: .
-    ports:
-      - "8080:8000"
-    environment:
-      # DynamoDB configuration
-      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
-      DYNAMODB_CORE_TABLE: cerebro-core
-      DYNAMODB_AUDIT_TABLE: cerebro-audit
-      DYNAMODB_AGENTS_TABLE: cerebro-agents
-      DYNAMODB_NOTIFICATIONS_TABLE: cerebro-notifications
-      DYNAMODB_USERS_TABLE: cerebro-users
-      AWS_ACCESS_KEY_ID: local
-      AWS_SECRET_ACCESS_KEY: local
-      AWS_REGION: us-east-1
-      # Legacy PostgreSQL (for migration period)
-      DATABASE_URL: postgresql://cerebro:cerebro@postgres/cerebro
-      # Redis and other config
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key-change-in-production
-      LOG_LEVEL: INFO
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
-    depends_on:
-      dynamodb-local:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./src:/app/src  # For development hot-reload
-    command: uvicorn cerebro.api.main:app --host 0.0.0.0 --port 8000 --reload
-    healthcheck:
-      test: ["CMD", "python", "-m", "cerebro.core.probes", "api-ready"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-
-  cerebro-worker:
-    build: .
-    environment:
-      # DynamoDB configuration
-      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
-      DYNAMODB_CORE_TABLE: cerebro-core
-      DYNAMODB_AUDIT_TABLE: cerebro-audit
-      DYNAMODB_AGENTS_TABLE: cerebro-agents
-      DYNAMODB_NOTIFICATIONS_TABLE: cerebro-notifications
-      DYNAMODB_USERS_TABLE: cerebro-users
-      AWS_ACCESS_KEY_ID: local
-      AWS_SECRET_ACCESS_KEY: local
-      AWS_REGION: us-east-1
-      # Legacy PostgreSQL (for migration period)
-      DATABASE_URL: postgresql://cerebro:cerebro@postgres/cerebro
-      # Redis and other config
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key-change-in-production
-      LOG_LEVEL: INFO
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
-      CELERY_PROCESS_ROLE: worker
-    depends_on:
-      dynamodb-local:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./src:/app/src
-    command: celery -A cerebro.tasks.celery_app worker -l info
-    scale: 2
-    healthcheck:
-      test: ["CMD", "python", "-m", "cerebro.core.probes", "worker-ready"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
-  cerebro-beat:
-    build: .
-    environment:
-      # DynamoDB configuration
-      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
-      DYNAMODB_CORE_TABLE: cerebro-core
-      DYNAMODB_AUDIT_TABLE: cerebro-audit
-      DYNAMODB_AGENTS_TABLE: cerebro-agents
-      DYNAMODB_NOTIFICATIONS_TABLE: cerebro-notifications
-      DYNAMODB_USERS_TABLE: cerebro-users
-      AWS_ACCESS_KEY_ID: local
-      AWS_SECRET_ACCESS_KEY: local
-      AWS_REGION: us-east-1
-      # Legacy PostgreSQL (for migration period)
-      DATABASE_URL: postgresql://cerebro:cerebro@postgres/cerebro
-      # Redis and other config
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key-change-in-production
-      LOG_LEVEL: INFO
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
-      CELERY_PROCESS_ROLE: beat
-    depends_on:
-      dynamodb-local:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./src:/app/src
-    command: celery -A cerebro.tasks.celery_app beat -l info
-    healthcheck:
-      test: ["CMD", "python", "-m", "cerebro.core.probes", "beat-ready"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
-  flower:
-    build: .
-    ports:
-      - "5555:5555"
-    environment:
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
-    command: celery -A cerebro.tasks.celery_app flower --port=5555
-
-volumes:
-  dynamodb_data:
-  postgres_data:
-  redis_data:
+      - sync  # Only run with: docker-compose --profile sync up cloudquery
 
 networks:
   default:

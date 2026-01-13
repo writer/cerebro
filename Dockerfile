@@ -1,68 +1,30 @@
-FROM python:3.11-slim as build
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install UV
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Copy project configuration
-COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies
-RUN uv sync --frozen --no-dev
+RUN apk add --no-cache git ca-certificates
 
-# Copy application code
+# Copy go mod files
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# Copy source
 COPY . .
 
-# Production image
-FROM python:3.11-slim
+# Build
+RUN CGO_ENABLED=0 GOOS=linux go build -o /cerebro ./cmd/cerebro
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Runtime image
+FROM alpine:3.19
 
-# Create non-root user
-RUN groupadd -r cerebro && useradd -r -g cerebro cerebro
+RUN apk add --no-cache ca-certificates wget
+
+COPY --from=builder /cerebro /usr/local/bin/cerebro
+COPY policies /app/policies
 
 WORKDIR /app
 
-# Copy virtual environment and application
-COPY --from=build /app/.venv /app/.venv
-COPY --from=build /app/src /app/src
-COPY --from=build /app/migrations /app/migrations
-COPY --from=build /app/alembic.ini /app/alembic.ini
+EXPOSE 8080
 
-# Copy UV binary
-COPY --from=build /bin/uv /bin/uv
-
-# Set up environment
-ENV PATH="/app/.venv/bin:${PATH}" \
-    PYTHONPATH="/app/src"
-
-# Change ownership
-RUN chown -R cerebro:cerebro /app
-
-USER cerebro
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -m cerebro.core.probes api-ready || exit 1
-
-EXPOSE 8000
-
-# Default command
-CMD ["uvicorn", "cerebro.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/local/bin/cerebro"]

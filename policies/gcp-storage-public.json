@@ -1,0 +1,14 @@
+{
+  "id": "gcp-storage-bucket-no-public",
+  "name": "GCP Storage Bucket Public Access",
+  "description": "GCP Storage buckets should not be publicly accessible",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "storage.objects.get",
+  "resource": "gcp::storage::bucket",
+  "conditions": [
+    "iam_policy_public == true"
+  ],
+  "severity": "critical",
+  "tags": ["cis-gcp-5.1", "security", "storage", "data-exposure"]
+}

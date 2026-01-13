@@ -1,246 +1,135 @@
-# Cerebro (Writer Internal)
+# Cerebro
 
-Cerebro is Writer's internal security data platform. It tracks cloud and SaaS configuration state, exposes a consistent API surface, and supports automated or human-in-the-loop investigations used by Writer engineering and security teams.
+Security data platform for cloud and SaaS posture management.
 
-## Key Capabilities
+## Architecture
 
-- Unified access across CLI, REST, and agent interfaces backed by an append-only store
-- SQL and graph-style analytics without intermediate ETL pipelines
-- Agent runtimes with approval workflows, telemetry, and scoped memory
-- Rule evaluation and findings pipelines driven by CEL policies
-- Integration sync helpers for common SaaS and endpoint providers
+```
+┌─────────────────┐     ┌─────────────┐     ┌─────────────┐
+│   CloudQuery    │────▶│  Snowflake  │◀────│  Cerebro    │
+│  (ingestion)    │     │  (storage)  │     │  (API/CLI)  │
+└─────────────────┘     └─────────────┘     └─────────────┘
+        │                      │                   │
+   AWS/GCP/Azure          Raw tables         Policy engine
+   SaaS providers         Analytics            REST API
+```
 
-## Architecture at a Glance
+## Stack
 
-| Layer | Components |
-| --- | --- |
-| Interfaces | Typer CLI, FastAPI REST service, conversational agents |
-| Core services | Rule engine (CEL), findings pipeline, analytics engine, observability hooks |
-| Data tier | PostgreSQL (immutable audit tables), Redis for coordination, optional Snowflake analytics warehouse |
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Ingestion | CloudQuery | Sync cloud/SaaS config to Snowflake |
+| Storage | Snowflake | Single source of truth |
+| Policy | Cedar-style JSON | Security rule evaluation |
+| API | Go + Chi | Query interface |
+| CLI | Cobra | Management commands |
 
-## Quickstart
-
-### Prerequisites
-
-- Python 3.11+ (repo pins 3.11.8 via `.python-version`)
-- PostgreSQL 14+
-- Redis 6+
-- Optional: Snowflake account / connection string for warehouse-backed analytics
-- Optional: Anthropic and/or OpenAI API keys for agent runtimes
-
-### Local Setup
+## Quick Start
 
 ```bash
-# Install uv package manager (required for all make targets)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install dependencies
+make setup
 
-# (Optional) Align your local interpreter with repo default
-pyenv install --skip-existing 3.11.8
-pyenv local 3.11.8
+# Configure credentials
+cp .env.example .env
+# Edit .env with your Snowflake and cloud credentials
 
-# Bootstrap dependencies, copy .env, run migrations, and seed sample data
+# Start the API server
+make serve
+
+# Or run in development mode
 make dev
-
-# Skip seed data if desired
-LOAD_DEV_DATA=0 make dev
-
-# Start Postgres + Redis locally
-make dev-infra
-
-# Launch API, Celery worker, and beat (backend only; no bundled frontend)
-make dev-stack
-
-# Containerised alternative
-make docker-up
 ```
 
-Access points:
-
-- API docs: `http://localhost:8000/docs`
-- OpenAPI (versioned): `http://localhost:8000/api/v1/openapi.json`
-
-### Minimal Configuration
-
-```env
-DATABASE_URL=postgresql://user:password@localhost/cerebro
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=generate-a-secure-value
-SNOWFLAKE_DATABASE_URL=snowflake://user:password@account/db/schema?warehouse=WH
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-openai-...
-```
-
-Place additional settings in `.env` or export them before launching the API.
-
-### Analytics Warehouse (Optional)
-
-When `SNOWFLAKE_DATABASE_URL` is set, analytics endpoints and services that depend on the analytics DB will route queries to Snowflake; otherwise they fall back to the core DB session (`DATABASE_URL`).
-
-#### Bootstrapping the Snowflake schema
-
-The analytics warehouse schema is managed outside Alembic and can be created/updated idempotently:
+## CLI Commands
 
 ```bash
-uv run python scripts/bootstrap_snowflake_warehouse.py --dry-run
+# Start API server
+cerebro serve
 
-# Execute against your configured Snowflake URL
-uv run python scripts/bootstrap_snowflake_warehouse.py \
-  --url "$SNOWFLAKE_DATABASE_URL" \
-  --best
+# Sync cloud assets via CloudQuery
+cerebro sync
+cerebro sync --source aws  # Sync only AWS
 
-# Optionally override database/schema
-uv run python scripts/bootstrap_snowflake_warehouse.py \
-  --url "$SNOWFLAKE_DATABASE_URL" \
-  --database CEREBRO \
-  --schema ANALYTICS \
-  --best
+# Policy management
+cerebro policy list
+cerebro policy validate
+cerebro policy test <policy-id> <asset.json>
+
+# Query Snowflake directly
+cerebro query "SELECT * FROM aws_s3_buckets LIMIT 10"
+cerebro query --format json "SELECT * FROM aws_iam_users"
 ```
 
-`--best` applies a recommended baseline for production warehouses:
+## API Endpoints
 
-- Creates/updates tables (idempotent)
-- Sets `RELY` constraints + adds `RELY NOT ENFORCED` foreign keys (for join elimination)
-- Applies recommended `CLUSTER BY` keys for large tables
-- Refreshes derived tables (see `rule_controls` below)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/ready` | GET | Readiness check (tests Snowflake) |
+| `/api/v1/tables` | GET | List available tables |
+| `/api/v1/query` | POST | Execute SQL query |
+| `/api/v1/assets/{table}` | GET | List assets from table |
+| `/api/v1/assets/{table}/{id}` | GET | Get asset by ID |
+| `/api/v1/policies` | GET | List policies |
+| `/api/v1/policies/{id}` | GET | Get policy |
+| `/api/v1/policies` | POST | Create policy |
+| `/api/v1/policies/evaluate` | POST | Evaluate policy |
+| `/api/v1/findings/scan` | POST | Scan assets for violations |
 
-Search Optimization Service is intentionally **opt-in** (cost impact):
-
-```bash
-uv run python scripts/bootstrap_snowflake_warehouse.py \
-  --url "$SNOWFLAKE_DATABASE_URL" \
-  --apply-search-optimization
-```
-
-#### Derived table: `rule_controls`
-
-Some compliance endpoints rely on rule-to-control mappings (CIS / NIST). To avoid request-time `FLATTEN`/array expansion on Snowflake, Cerebro maintains a derived mapping table:
-
-- `rule_controls(rule_id, framework, control_id)`
-
-It can be rebuilt via:
-
-```bash
-uv run python scripts/bootstrap_snowflake_warehouse.py \
-  --url "$SNOWFLAKE_DATABASE_URL" \
-  --refresh-rule-controls
-```
-
-In running stacks, Celery beat schedules an hourly refresh:
-
-- Task: `cerebro.tasks.warehouse_tasks.refresh_rule_controls`
-- Beat entry: `refresh-rule-controls-hourly`
-
-The refresh is implemented as a staging rebuild + atomic table swap (so readers should not observe an empty `rule_controls`).
-
-## Interacting with Cerebro
-
-### CLI
-
-```bash
-# List critical findings
-cerebro findings list --severity critical
-
-# Execute ad-hoc SQL
-cerebro query "SELECT * FROM aws_iam_user WHERE mfa_enabled = false"
-
-# Start an agent session
-cerebro agents chat <session-id>
-```
-
-### REST API
-
-```bash
-curl "http://localhost:8000/api/v1/findings?severity=critical" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### Agent Workflows
-
-- Create sessions using the CLI or REST endpoints under `/api/v1/agents`
-- Tool execution is governed by CEL policies and optional approval tasks
-- Review tasks appear in the queue when destructive actions require promotion
-
-### Memory and Observability
-
-- Memory entries support decay, dedupe, and configurable pruning thresholds
-- Telemetry is exported through Prometheus metrics such as `cerebro_agent_memory_events_total`
-- Agent tool execution metrics (`cerebro_agent_tool_*`) track success, failure, and latency
-
-## Internal SDK & Frontend Integration
-
-Writer ships two first-class SDKs in this repo:
-
-- **TypeScript SDK (`sdk/ts`)** – published to internal package feeds, powering frontend integrations and automation services. Run `npm run lint` / `npm run test` inside `sdk/ts` to validate changes. Key modules include HTTP client middleware, streaming helpers, pagination utilities, and Security Center analytics bundled with evidence lifecycle primitives.
-- **Python SDK (`src/cerebro_sdk`)** – the async façade consumed by backend workflows, Lambda-style tasks, and compliance tooling. Validate with `PYTHONPATH=src pytest tests/unit/sdk`. The package exports managers for auth, users, organizations, findings, integrations, agents, telemetry, and now the shared Security Center primitives.
-
-Both SDKs expose identical Security Center evidence APIs (`EntityProfile`, `EvidenceArtifact`, lifecycle policies, summaries) so automation can reason about staleness, refresh windows, and control mappings uniformly across languages. Additional guides live under [`docs/sdk/`](docs/sdk/README.md) and the `sdk/ts/test` / `tests/unit/sdk` suites provide reference scenarios.
-
-```python
-from cerebro.core.database import async_session_factory
-from cerebro_sdk import AuthSession, FindingService
-
-
-async def list_high_risk_findings(org_id: str, username: str, password: str) -> None:
-    async with async_session_factory() as db:
-        tokens = await AuthSession(db).login(username, password)
-        findings = await FindingService(db).list_findings(org_id, severity="critical")
-        for item in findings:
-            print(item.finding_id, item.severity)
-```
-
-Additional modules cover agent tooling analytics, review queue exports, integration sync triggers, and telemetry wiring.
-
-Frontend consumption:
-
-- CI publishes `openapi.json` and a packed TS SDK artifact (`cerebro-ts-sdk.tgz`) via the `openapi-spec` workflow.
-- Live schema: `GET /api/v1/openapi.json` (servers included); use for codegen or client validation.
-- For local snapshots, run `make openapi` to emit `openapi.json`.
-
-## Development Workflow
-
-```bash
-# Linting, typing, and tests
-make lint
-make test
-
-# Database helpers
-make db-migrate
-make db-reset
-
-# Docker helpers
-make docker-up
-make docker-down
-```
-
-## Repository Layout
+## Project Structure
 
 ```
 cerebro/
-├── src/cerebro/
-│   ├── agents/         # Agent runtimes, tooling, review queue, memory
-│   ├── api/            # FastAPI routers and dependencies
-│   ├── cli/            # Typer-based command line interface
-│   ├── collectors/     # Cloud & SaaS ingestion pipelines
-│   ├── core/           # Config, database utilities, shared models
-│   ├── findings/       # Finding normalization and workflows
-│   ├── providers/      # Provider-specific integrations
-│   ├── query/          # SQL + graph query engine
-│   └── rules/          # CEL rule engine and policies
-├── docs/               # Extended documentation
-├── tests/              # Automated test suite
-└── migrations/         # Alembic revisions
+├── cmd/cerebro/          # CLI entrypoint
+├── internal/
+│   ├── api/              # REST API server
+│   ├── cli/              # CLI commands
+│   ├── config/           # Configuration
+│   ├── policy/           # Policy engine
+│   └── snowflake/        # Snowflake client
+├── config/
+│   └── cloudquery.yml    # CloudQuery sync config
+├── policies/             # Security policies (JSON)
+├── Dockerfile
+├── docker-compose.yml
+└── Makefile
 ```
 
-## Documentation
+## Policies
 
-- [Quickstart](docs/getting-started/QUICKSTART.md)
-- [API Reference](docs/user-guide/API.md)
-- [Agents Guide](docs/agents/README.md)
-- [Query Engine](docs/user-guide/QUERY_ENGINE.md)
-- [Database Schema](docs/developer-guide/DATABASE_SCHEMA.md)
-- [Development Guide](docs/developer-guide/DEVELOPMENT.md)
-- [Deployment Guide](docs/developer-guide/DEPLOYMENT.md)
+Policies are JSON files in the `policies/` directory:
 
-## Internal Use Only
+```json
+{
+  "id": "aws-s3-bucket-no-public-access",
+  "name": "S3 Bucket Public Access",
+  "description": "S3 buckets should not allow public access",
+  "effect": "forbid",
+  "conditions": ["block_public_acls != true"],
+  "severity": "critical",
+  "tags": ["cis-aws-2.1.5", "security", "s3"]
+}
+```
 
-This repository and its artifacts are confidential and intended solely for Writer employees and approved contractors. Do not redistribute or share outside the company. Refer to the internal handbook for deployment controls, data handling requirements, and exception processes.
+## Development
+
+```bash
+make dev            # Run API with hot reload
+make test           # Run tests
+make build          # Build binary
+make docker-build   # Build Docker image
+make policy-list    # List all policies
+make policy-validate # Validate policy files
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `API_PORT` | API server port | 8080 |
+| `LOG_LEVEL` | Log level | info |
+| `SNOWFLAKE_CONNECTION_STRING` | Snowflake DSN | - |
+| `SNOWFLAKE_DATABASE` | Database name | CEREBRO |
+| `SNOWFLAKE_SCHEMA` | Schema name | RAW |
+| `CEDAR_POLICIES_PATH` | Policies directory | policies |

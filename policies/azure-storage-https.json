@@ -1,0 +1,14 @@
+{
+  "id": "azure-storage-https-only",
+  "name": "Azure Storage HTTPS Only",
+  "description": "Azure Storage accounts should require HTTPS traffic only",
+  "effect": "forbid",
+  "principal": "azure::storage::account",
+  "action": "data-access",
+  "resource": "*",
+  "conditions": [
+    "enable_https_traffic_only != true"
+  ],
+  "severity": "high",
+  "tags": ["cis-azure-3.1", "security", "storage", "encryption"]
+}

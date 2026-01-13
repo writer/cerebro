@@ -1,0 +1,14 @@
+{
+  "id": "aws-ec2-imdsv2-required",
+  "name": "EC2 IMDSv2 Required",
+  "description": "EC2 instances should require IMDSv2 to prevent SSRF attacks",
+  "effect": "forbid",
+  "principal": "aws::ec2::instance",
+  "action": "metadata-access",
+  "resource": "*",
+  "conditions": [
+    "metadata_options_http_tokens != required"
+  ],
+  "severity": "high",
+  "tags": ["cis-aws-5.6", "security", "ec2", "ssrf"]
+}

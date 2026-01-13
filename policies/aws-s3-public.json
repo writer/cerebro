@@ -1,0 +1,14 @@
+{
+  "id": "aws-s3-bucket-no-public-access",
+  "name": "S3 Bucket Public Access",
+  "description": "S3 buckets should not allow public access",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "s3:GetObject",
+  "resource": "aws::s3::bucket",
+  "conditions": [
+    "block_public_acls != true"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-2.1.5", "security", "s3", "data-exposure"]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "aws-cloudtrail-enabled",
+  "name": "CloudTrail Enabled",
+  "description": "CloudTrail should be enabled in all regions",
+  "effect": "forbid",
+  "principal": "aws::cloudtrail::trail",
+  "action": "audit",
+  "resource": "*",
+  "conditions": [
+    "is_multi_region_trail != true"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-3.1", "security", "cloudtrail", "audit"]
+}

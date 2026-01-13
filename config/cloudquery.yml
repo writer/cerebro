@@ -1,0 +1,57 @@
+# CloudQuery Configuration
+# Docs: https://www.cloudquery.io/docs
+#
+# This config syncs cloud assets to Snowflake for analysis.
+# Run: cloudquery sync config/cloudquery.yml
+
+kind: source
+spec:
+  name: aws
+  path: cloudquery/aws
+  registry: cloudquery
+  version: "v27.0.0"
+  tables: ["*"]
+  destinations: ["snowflake"]
+  spec:
+    # Uses AWS_PROFILE or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY from env
+    regions:
+      - us-east-1
+      - us-west-2
+
+---
+kind: source
+spec:
+  name: gcp
+  path: cloudquery/gcp
+  registry: cloudquery
+  version: "v16.0.0"
+  tables: ["*"]
+  destinations: ["snowflake"]
+  spec:
+    # Uses GOOGLE_APPLICATION_CREDENTIALS from env
+    project_ids: []  # Empty = all projects the service account can access
+
+---
+kind: source
+spec:
+  name: azure
+  path: cloudquery/azure
+  registry: cloudquery
+  version: "v15.0.0"
+  tables: ["*"]
+  destinations: ["snowflake"]
+  spec:
+    # Uses AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET from env
+    subscriptions: []  # Empty = all subscriptions
+
+---
+kind: destination
+spec:
+  name: snowflake
+  path: cloudquery/snowflake
+  registry: cloudquery
+  version: "v7.0.0"
+  spec:
+    connection_string: "${SNOWFLAKE_CONNECTION_STRING}"
+    database: CEREBRO
+    schema: RAW

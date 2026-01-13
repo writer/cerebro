@@ -1,0 +1,14 @@
+{
+  "id": "aws-iam-user-mfa-enabled",
+  "name": "IAM User MFA Enabled",
+  "description": "IAM users should have MFA enabled for console access",
+  "effect": "forbid",
+  "principal": "aws::iam::user",
+  "action": "console-login",
+  "resource": "*",
+  "conditions": [
+    "mfa_active != true"
+  ],
+  "severity": "high",
+  "tags": ["cis-aws-1.4", "security", "iam"]
+}
