@@ -1,8 +1,12 @@
 package remediation
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/writerinternal/cerebro/internal/findings"
@@ -224,15 +228,91 @@ func (ex *Executor) resolveFinding(_ context.Context, _ Action, execution *Execu
 	return nil
 }
 
-func (ex *Executor) runWebhook(_ context.Context, action Action, _ *Execution) error {
-	// Would make HTTP request to configured webhook URL
-	// For now, just validate config exists
-	url := action.Config["url"]
-	if url == "" {
+// WebhookPayload is the payload sent to webhook endpoints
+type WebhookPayload struct {
+	Event     string                 `json:"event"`
+	Timestamp time.Time              `json:"timestamp"`
+	Action    string                 `json:"action"`
+	Finding   map[string]interface{} `json:"finding,omitempty"`
+	Execution map[string]interface{} `json:"execution,omitempty"`
+	RuleID    string                 `json:"rule_id,omitempty"`
+	Metadata  map[string]string      `json:"metadata,omitempty"`
+}
+
+func (ex *Executor) runWebhook(ctx context.Context, action Action, execution *Execution) error {
+	urlStr := action.Config["url"]
+	if urlStr == "" {
 		return fmt.Errorf("webhook url not configured")
 	}
 
-	// TODO: Implement actual webhook call
+	// Build webhook payload
+	payload := WebhookPayload{
+		Event:     "remediation.action",
+		Timestamp: time.Now().UTC(),
+		Action:    string(action.Type),
+		RuleID:    execution.RuleID,
+		Execution: map[string]interface{}{
+			"id":         execution.ID,
+			"rule_id":    execution.RuleID,
+			"rule_name":  execution.RuleName,
+			"status":     string(execution.Status),
+			"started_at": execution.StartedAt,
+		},
+		Metadata: action.Config,
+	}
+
+	// Add finding info from trigger data if available
+	if execution.TriggerData != nil {
+		if findingID, ok := execution.TriggerData["finding_id"].(string); ok {
+			payload.Finding = map[string]interface{}{
+				"id": findingID,
+			}
+			if title, ok := execution.TriggerData["title"].(string); ok {
+				payload.Finding["title"] = title
+			}
+			if severity, ok := execution.TriggerData["severity"].(string); ok {
+				payload.Finding["severity"] = severity
+			}
+		}
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal webhook payload: %w", err)
+	}
+
+	// Determine HTTP method (default POST)
+	method := "POST"
+	if m := action.Config["method"]; m != "" {
+		method = m
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, urlStr, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create webhook request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Cerebro-Event", "remediation.action")
+	req.Header.Set("X-Cerebro-Execution-ID", execution.ID)
+
+	// Add secret header if configured
+	if secret := action.Config["secret"]; secret != "" {
+		req.Header.Set("X-Cerebro-Secret", secret)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("webhook request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("webhook returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
 	return nil
 }
 

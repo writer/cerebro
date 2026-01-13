@@ -44,6 +44,7 @@ type openaiRequest struct {
 	Model    string          `json:"model"`
 	Messages []openaiMessage `json:"messages"`
 	Tools    []openaiTool    `json:"tools,omitempty"`
+	Stream   bool            `json:"stream,omitempty"`
 }
 
 type openaiMessage struct {
@@ -178,21 +179,116 @@ func (p *OpenAIProvider) Complete(ctx context.Context, messages []agents.Message
 }
 
 func (p *OpenAIProvider) Stream(ctx context.Context, messages []agents.Message, tools []agents.Tool) (<-chan agents.StreamEvent, error) {
-	events := make(chan agents.StreamEvent)
+	events := make(chan agents.StreamEvent, 100)
+
+	// Convert messages
+	openaiMsgs := make([]openaiMessage, 0, len(messages))
+	for _, m := range messages {
+		openaiMsgs = append(openaiMsgs, openaiMessage{
+			Role:    m.Role,
+			Content: m.Content,
+		})
+	}
+
+	// Convert tools
+	openaiTools := make([]openaiTool, 0, len(tools))
+	for _, t := range tools {
+		openaiTools = append(openaiTools, openaiTool{
+			Type: "function",
+			Function: openaiFunction{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		})
+	}
+
+	req := openaiRequest{
+		Model:    p.model,
+		Messages: openaiMsgs,
+		Tools:    openaiTools,
+		Stream:   true,
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	httpReq.Header.Set("Accept", "text/event-stream")
 
 	go func() {
 		defer close(events)
 
-		resp, err := p.Complete(ctx, messages, tools)
+		resp, err := p.client.Do(httpReq)
 		if err != nil {
 			events <- agents.StreamEvent{Error: err, Done: true}
 			return
 		}
+		defer resp.Body.Close()
 
-		events <- agents.StreamEvent{
-			Type:    "message",
-			Content: resp.Message.Content,
-			Done:    true,
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			events <- agents.StreamEvent{Error: fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)), Done: true}
+			return
+		}
+
+		// Parse SSE stream
+		reader := newSSEReader(resp.Body)
+		for {
+			select {
+			case <-ctx.Done():
+				events <- agents.StreamEvent{Error: ctx.Err(), Done: true}
+				return
+			default:
+			}
+
+			event, err := reader.Next()
+			if err == io.EOF {
+				events <- agents.StreamEvent{Done: true}
+				return
+			}
+			if err != nil {
+				events <- agents.StreamEvent{Error: err, Done: true}
+				return
+			}
+
+			// OpenAI sends [DONE] to signal completion
+			if event.Data == "[DONE]" {
+				events <- agents.StreamEvent{Done: true}
+				return
+			}
+
+			// Parse OpenAI streaming chunk
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+					FinishReason string `json:"finish_reason"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
+				continue
+			}
+
+			if len(chunk.Choices) > 0 {
+				delta := chunk.Choices[0].Delta
+				if delta.Content != "" {
+					events <- agents.StreamEvent{Type: "delta", Content: delta.Content}
+				}
+				if chunk.Choices[0].FinishReason == "stop" {
+					events <- agents.StreamEvent{Done: true}
+					return
+				}
+			}
 		}
 	}()
 

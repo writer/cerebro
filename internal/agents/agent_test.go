@@ -7,202 +7,40 @@ import (
 	"time"
 )
 
-// MockLLMProvider for testing
-type MockLLMProvider struct {
-	response *Response
-	err      error
-}
-
-func (m *MockLLMProvider) Complete(ctx context.Context, messages []Message, tools []Tool) (*Response, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.response, nil
-}
-
-func (m *MockLLMProvider) Stream(ctx context.Context, messages []Message, tools []Tool) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent)
-	go func() {
-		ch <- StreamEvent{Content: "test", Done: true}
-		close(ch)
-	}()
-	return ch, nil
-}
-
-func TestAgentRegistry_NewAgentRegistry(t *testing.T) {
-	r := NewAgentRegistry()
-	if r == nil {
-		t.Fatal("NewAgentRegistry returned nil")
-	}
-
-	if r.agents == nil {
-		t.Error("agents map should be initialized")
-	}
-
-	if r.sessions == nil {
-		t.Error("sessions map should be initialized")
-	}
-}
-
-func TestAgentRegistry_RegisterAgent(t *testing.T) {
-	r := NewAgentRegistry()
-
-	agent := &Agent{
-		ID:          "test-agent",
-		Name:        "Test Agent",
-		Description: "A test agent",
-		Provider:    &MockLLMProvider{},
-	}
-
-	r.RegisterAgent(agent)
-
-	found, ok := r.GetAgent("test-agent")
-	if !ok {
-		t.Fatal("expected to find registered agent")
-	}
-
-	if found.Name != "Test Agent" {
-		t.Errorf("got name %s, want Test Agent", found.Name)
-	}
-}
-
-func TestAgentRegistry_ListAgents(t *testing.T) {
-	r := NewAgentRegistry()
-
-	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Agent 1"})
-	r.RegisterAgent(&Agent{ID: "agent-2", Name: "Agent 2"})
-	r.RegisterAgent(&Agent{ID: "agent-3", Name: "Agent 3"})
-
-	agents := r.ListAgents()
-	if len(agents) != 3 {
-		t.Errorf("expected 3 agents, got %d", len(agents))
-	}
-}
-
-func TestAgentRegistry_CreateSession(t *testing.T) {
-	r := NewAgentRegistry()
-
-	agent := &Agent{
-		ID:   "test-agent",
-		Name: "Test Agent",
-	}
-	r.RegisterAgent(agent)
-
-	ctx := SessionContext{
-		FindingIDs: []string{"f1", "f2"},
-		AssetIDs:   []string{"a1"},
-	}
-
-	session, err := r.CreateSession("test-agent", "user-123", ctx)
-	if err != nil {
-		t.Fatalf("CreateSession failed: %v", err)
-	}
-
-	if session.ID == "" {
-		t.Error("session ID should be generated")
-	}
-
-	if session.AgentID != "test-agent" {
-		t.Errorf("got agent ID %s, want test-agent", session.AgentID)
-	}
-
-	if session.UserID != "user-123" {
-		t.Errorf("got user ID %s, want user-123", session.UserID)
-	}
-
-	if session.Status != "active" {
-		t.Errorf("got status %s, want active", session.Status)
-	}
-
-	if len(session.Context.FindingIDs) != 2 {
-		t.Error("session context should have finding IDs")
-	}
-}
-
-func TestAgentRegistry_CreateSession_AgentNotFound(t *testing.T) {
-	r := NewAgentRegistry()
-
-	_, err := r.CreateSession("non-existent", "user-123", SessionContext{})
-	if err == nil {
-		t.Error("expected error for non-existent agent")
-	}
-}
-
-func TestAgentRegistry_GetSession(t *testing.T) {
-	r := NewAgentRegistry()
-
-	r.RegisterAgent(&Agent{ID: "test-agent"})
-	session, _ := r.CreateSession("test-agent", "user", SessionContext{})
-
-	found, ok := r.GetSession(session.ID)
-	if !ok {
-		t.Fatal("expected to find session")
-	}
-
-	if found.ID != session.ID {
-		t.Errorf("got ID %s, want %s", found.ID, session.ID)
-	}
-
-	// Non-existent session
-	_, ok = r.GetSession("non-existent")
-	if ok {
-		t.Error("expected not to find non-existent session")
-	}
-}
-
-func TestAgentRegistry_UpdateSession(t *testing.T) {
-	r := NewAgentRegistry()
-
-	r.RegisterAgent(&Agent{ID: "test-agent"})
-	session, _ := r.CreateSession("test-agent", "user", SessionContext{})
-
-	originalTime := session.UpdatedAt
-
-	time.Sleep(10 * time.Millisecond)
-	session.Status = "completed"
-	r.UpdateSession(session)
-
-	updated, _ := r.GetSession(session.ID)
-	if updated.Status != "completed" {
-		t.Error("session should be updated")
-	}
-
-	if !updated.UpdatedAt.After(originalTime) {
-		t.Error("UpdatedAt should be updated")
-	}
-}
-
-func TestMemory_NewMemory(t *testing.T) {
+func TestNewMemory(t *testing.T) {
 	m := NewMemory(100)
 	if m == nil {
-		t.Fatal("NewMemory returned nil")
+		t.Fatal("expected memory to be created")
 	}
-
 	if m.maxSize != 100 {
-		t.Errorf("got maxSize %d, want 100", m.maxSize)
+		t.Errorf("expected maxSize 100, got %d", m.maxSize)
+	}
+	if m.entries == nil {
+		t.Error("expected entries to be initialized")
 	}
 }
 
 func TestMemory_Add(t *testing.T) {
 	m := NewMemory(10)
 
-	m.Add("test content", "fact", 0.8, time.Hour)
+	m.Add("test content", "fact", 0.9, time.Hour)
 
 	entries := m.Search("", 10)
 	if len(entries) != 1 {
-		t.Errorf("expected 1 entry, got %d", len(entries))
+		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
-
 	if entries[0].Content != "test content" {
-		t.Errorf("got content %s, want test content", entries[0].Content)
+		t.Errorf("expected content 'test content', got '%s'", entries[0].Content)
 	}
-
 	if entries[0].Type != "fact" {
-		t.Errorf("got type %s, want fact", entries[0].Type)
+		t.Errorf("expected type 'fact', got '%s'", entries[0].Type)
+	}
+	if entries[0].Relevance != 0.9 {
+		t.Errorf("expected relevance 0.9, got %f", entries[0].Relevance)
 	}
 }
 
-func TestMemory_MaxSize(t *testing.T) {
+func TestMemory_Add_Pruning(t *testing.T) {
 	m := NewMemory(3)
 
 	for i := 0; i < 5; i++ {
@@ -211,161 +49,203 @@ func TestMemory_MaxSize(t *testing.T) {
 
 	entries := m.Search("", 10)
 	if len(entries) != 3 {
-		t.Errorf("expected max 3 entries, got %d", len(entries))
+		t.Errorf("expected 3 entries after pruning, got %d", len(entries))
 	}
 }
 
-func TestMemory_Search_ExpiresEntries(t *testing.T) {
+func TestMemory_Search_ExpiresAt(t *testing.T) {
 	m := NewMemory(10)
 
 	// Add expired entry
 	m.Add("expired", "fact", 0.5, -time.Hour)
-
 	// Add valid entry
 	m.Add("valid", "fact", 0.5, time.Hour)
 
 	entries := m.Search("", 10)
 	if len(entries) != 1 {
-		t.Errorf("expected 1 valid entry, got %d", len(entries))
+		t.Fatalf("expected 1 valid entry, got %d", len(entries))
 	}
-
 	if entries[0].Content != "valid" {
-		t.Error("expected only valid entry")
+		t.Errorf("expected 'valid', got '%s'", entries[0].Content)
 	}
 }
 
-func TestMessage_Fields(t *testing.T) {
+func TestMemory_Search_Limit(t *testing.T) {
+	m := NewMemory(10)
+
+	for i := 0; i < 5; i++ {
+		m.Add("content", "fact", 0.5, time.Hour)
+	}
+
+	entries := m.Search("", 2)
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries with limit, got %d", len(entries))
+	}
+}
+
+func TestNewAgentRegistry(t *testing.T) {
+	r := NewAgentRegistry()
+	if r == nil {
+		t.Fatal("expected registry to be created")
+	}
+	if r.agents == nil {
+		t.Error("expected agents map to be initialized")
+	}
+	if r.sessions == nil {
+		t.Error("expected sessions map to be initialized")
+	}
+}
+
+func TestAgentRegistry_RegisterAgent(t *testing.T) {
+	r := NewAgentRegistry()
+	agent := &Agent{
+		ID:          "agent-1",
+		Name:        "Test Agent",
+		Description: "A test agent",
+	}
+
+	r.RegisterAgent(agent)
+
+	got, ok := r.GetAgent("agent-1")
+	if !ok {
+		t.Fatal("expected agent to be found")
+	}
+	if got.Name != "Test Agent" {
+		t.Errorf("expected name 'Test Agent', got '%s'", got.Name)
+	}
+}
+
+func TestAgentRegistry_GetAgent_NotFound(t *testing.T) {
+	r := NewAgentRegistry()
+	_, ok := r.GetAgent("nonexistent")
+	if ok {
+		t.Error("expected agent not to be found")
+	}
+}
+
+func TestAgentRegistry_ListAgents(t *testing.T) {
+	r := NewAgentRegistry()
+	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Agent 1"})
+	r.RegisterAgent(&Agent{ID: "agent-2", Name: "Agent 2"})
+
+	agents := r.ListAgents()
+	if len(agents) != 2 {
+		t.Errorf("expected 2 agents, got %d", len(agents))
+	}
+}
+
+func TestAgentRegistry_CreateSession(t *testing.T) {
+	r := NewAgentRegistry()
+	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Test Agent"})
+
+	session, err := r.CreateSession("agent-1", "user-123", SessionContext{
+		FindingIDs: []string{"finding-1"},
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if session.ID == "" {
+		t.Error("expected session ID to be set")
+	}
+	if session.AgentID != "agent-1" {
+		t.Errorf("expected AgentID 'agent-1', got '%s'", session.AgentID)
+	}
+	if session.UserID != "user-123" {
+		t.Errorf("expected UserID 'user-123', got '%s'", session.UserID)
+	}
+	if session.Status != "active" {
+		t.Errorf("expected status 'active', got '%s'", session.Status)
+	}
+	if len(session.Context.FindingIDs) != 1 {
+		t.Errorf("expected 1 finding ID, got %d", len(session.Context.FindingIDs))
+	}
+}
+
+func TestAgentRegistry_CreateSession_AgentNotFound(t *testing.T) {
+	r := NewAgentRegistry()
+	_, err := r.CreateSession("nonexistent", "user-123", SessionContext{})
+	if err == nil {
+		t.Error("expected error for nonexistent agent")
+	}
+}
+
+func TestAgentRegistry_GetSession(t *testing.T) {
+	r := NewAgentRegistry()
+	r.RegisterAgent(&Agent{ID: "agent-1"})
+	session, _ := r.CreateSession("agent-1", "user-123", SessionContext{})
+
+	got, ok := r.GetSession(session.ID)
+	if !ok {
+		t.Fatal("expected session to be found")
+	}
+	if got.ID != session.ID {
+		t.Errorf("expected session ID '%s', got '%s'", session.ID, got.ID)
+	}
+}
+
+func TestAgentRegistry_GetSession_NotFound(t *testing.T) {
+	r := NewAgentRegistry()
+	_, ok := r.GetSession("nonexistent")
+	if ok {
+		t.Error("expected session not to be found")
+	}
+}
+
+func TestAgentRegistry_UpdateSession(t *testing.T) {
+	r := NewAgentRegistry()
+	r.RegisterAgent(&Agent{ID: "agent-1"})
+	session, _ := r.CreateSession("agent-1", "user-123", SessionContext{})
+
+	originalUpdated := session.UpdatedAt
+	time.Sleep(time.Millisecond)
+
+	session.Status = "completed"
+	r.UpdateSession(session)
+
+	got, _ := r.GetSession(session.ID)
+	if got.Status != "completed" {
+		t.Errorf("expected status 'completed', got '%s'", got.Status)
+	}
+	if !got.UpdatedAt.After(originalUpdated) {
+		t.Error("expected UpdatedAt to be updated")
+	}
+}
+
+func TestMessage(t *testing.T) {
 	msg := Message{
-		Role:    "user",
-		Content: "Hello",
-		Name:    "test-user",
-		ToolCalls: []ToolCall{
-			{ID: "call-1", Name: "search"},
+		Role:    "assistant",
+		Content: "Hello!",
+		Name:    "Claude",
+		Metadata: map[string]interface{}{
+			"model": "claude-3",
 		},
-		Metadata: map[string]interface{}{"key": "value"},
 	}
 
-	if msg.Role != "user" {
-		t.Error("Role field incorrect")
+	if msg.Role != "assistant" {
+		t.Errorf("expected role 'assistant', got '%s'", msg.Role)
 	}
-
-	if len(msg.ToolCalls) != 1 {
-		t.Error("ToolCalls field incorrect")
+	if msg.Content != "Hello!" {
+		t.Errorf("expected content 'Hello!', got '%s'", msg.Content)
 	}
 }
 
-func TestToolCall_Fields(t *testing.T) {
-	args := json.RawMessage(`{"query": "test"}`)
+func TestToolCall(t *testing.T) {
 	tc := ToolCall{
-		ID:        "call-1",
+		ID:        "call-123",
 		Name:      "search",
-		Arguments: args,
+		Arguments: []byte(`{"query":"test"}`),
 	}
 
-	if tc.ID != "call-1" {
-		t.Error("ID field incorrect")
+	if tc.ID != "call-123" {
+		t.Errorf("expected ID 'call-123', got '%s'", tc.ID)
 	}
-
 	if tc.Name != "search" {
-		t.Error("Name field incorrect")
+		t.Errorf("expected name 'search', got '%s'", tc.Name)
 	}
 }
 
-func TestTool_Fields(t *testing.T) {
-	tool := Tool{
-		Name:        "search_findings",
-		Description: "Search for security findings",
-		Parameters: map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"query": map[string]interface{}{
-					"type": "string",
-				},
-			},
-		},
-		RequiresApproval: true,
-	}
-
-	if tool.Name != "search_findings" {
-		t.Error("Name field incorrect")
-	}
-
-	if !tool.RequiresApproval {
-		t.Error("RequiresApproval field incorrect")
-	}
-}
-
-func TestSession_Fields(t *testing.T) {
-	now := time.Now()
-	session := &Session{
-		ID:      "session-1",
-		AgentID: "agent-1",
-		UserID:  "user-1",
-		Status:  "active",
-		Messages: []Message{
-			{Role: "user", Content: "Hello"},
-		},
-		Context: SessionContext{
-			FindingIDs: []string{"f1"},
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-
-	if session.ID != "session-1" {
-		t.Error("ID field incorrect")
-	}
-
-	if len(session.Messages) != 1 {
-		t.Error("Messages field incorrect")
-	}
-}
-
-func TestSessionContext_Fields(t *testing.T) {
-	ctx := SessionContext{
-		FindingIDs: []string{"f1", "f2"},
-		AssetIDs:   []string{"a1"},
-		Investigation: &Investigation{
-			ID:    "inv-1",
-			Title: "Test Investigation",
-		},
-		Metadata: map[string]interface{}{"key": "value"},
-	}
-
-	if len(ctx.FindingIDs) != 2 {
-		t.Error("FindingIDs field incorrect")
-	}
-
-	if ctx.Investigation.Title != "Test Investigation" {
-		t.Error("Investigation field incorrect")
-	}
-}
-
-func TestInvestigation_Fields(t *testing.T) {
-	now := time.Now()
-	inv := &Investigation{
-		ID:          "inv-1",
-		Title:       "Security Incident",
-		Description: "A critical security incident",
-		Severity:    "critical",
-		Status:      "active",
-		Findings:    []string{"f1", "f2"},
-		Timeline: []Event{
-			{Timestamp: now, Type: "created", Description: "Investigation created"},
-		},
-		CreatedAt: now,
-	}
-
-	if inv.Severity != "critical" {
-		t.Error("Severity field incorrect")
-	}
-
-	if len(inv.Timeline) != 1 {
-		t.Error("Timeline field incorrect")
-	}
-}
-
-func TestUsage_Fields(t *testing.T) {
+func TestUsage(t *testing.T) {
 	usage := Usage{
 		PromptTokens:     100,
 		CompletionTokens: 50,
@@ -373,23 +253,184 @@ func TestUsage_Fields(t *testing.T) {
 	}
 
 	if usage.TotalTokens != 150 {
-		t.Error("TotalTokens field incorrect")
+		t.Errorf("expected total tokens 150, got %d", usage.TotalTokens)
 	}
 }
 
-func TestResponse_Fields(t *testing.T) {
-	resp := &Response{
-		Message: Message{
-			Role:    "assistant",
-			Content: "Hello!",
-		},
-		Usage: Usage{
-			TotalTokens: 100,
-		},
-		FinishReason: "stop",
+func TestStreamEvent(t *testing.T) {
+	event := StreamEvent{
+		Type:    "delta",
+		Content: "Hello",
+		Done:    false,
+		Error:   nil,
 	}
 
-	if resp.FinishReason != "stop" {
-		t.Error("FinishReason field incorrect")
+	if event.Type != "delta" {
+		t.Errorf("expected type 'delta', got '%s'", event.Type)
+	}
+	if event.Done {
+		t.Error("expected Done to be false")
+	}
+}
+
+func TestTool(t *testing.T) {
+	handler := func(ctx context.Context, args json.RawMessage) (string, error) {
+		return "result", nil
+	}
+
+	tool := Tool{
+		Name:             "test_tool",
+		Description:      "A test tool",
+		Parameters:       map[string]interface{}{"type": "object"},
+		Handler:          handler,
+		RequiresApproval: true,
+	}
+
+	if tool.Name != "test_tool" {
+		t.Errorf("expected name 'test_tool', got '%s'", tool.Name)
+	}
+	if !tool.RequiresApproval {
+		t.Error("expected RequiresApproval to be true")
+	}
+
+	result, err := tool.Handler(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "result" {
+		t.Errorf("expected result 'result', got '%s'", result)
+	}
+}
+
+func TestSessionContext(t *testing.T) {
+	ctx := SessionContext{
+		FindingIDs: []string{"f1", "f2"},
+		AssetIDs:   []string{"a1"},
+		Investigation: &Investigation{
+			ID:       "inv-1",
+			Title:    "Test Investigation",
+			Severity: "high",
+		},
+		Metadata: map[string]interface{}{
+			"source": "alert",
+		},
+	}
+
+	if len(ctx.FindingIDs) != 2 {
+		t.Errorf("expected 2 finding IDs, got %d", len(ctx.FindingIDs))
+	}
+	if ctx.Investigation.Severity != "high" {
+		t.Errorf("expected severity 'high', got '%s'", ctx.Investigation.Severity)
+	}
+}
+
+func TestInvestigation(t *testing.T) {
+	inv := Investigation{
+		ID:          "inv-123",
+		Title:       "Security Incident",
+		Description: "Suspicious activity detected",
+		Severity:    "critical",
+		Status:      "open",
+		Findings:    []string{"f1", "f2"},
+		Timeline: []Event{
+			{
+				Timestamp:   time.Now(),
+				Type:        "detection",
+				Description: "Initial alert",
+			},
+		},
+		CreatedAt: time.Now(),
+	}
+
+	if inv.Severity != "critical" {
+		t.Errorf("expected severity 'critical', got '%s'", inv.Severity)
+	}
+	if len(inv.Timeline) != 1 {
+		t.Errorf("expected 1 timeline event, got %d", len(inv.Timeline))
+	}
+}
+
+func TestEvent(t *testing.T) {
+	event := Event{
+		Timestamp:   time.Now(),
+		Type:        "action",
+		Description: "Blocked IP address",
+		Data: map[string]interface{}{
+			"ip": "192.168.1.1",
+		},
+	}
+
+	if event.Type != "action" {
+		t.Errorf("expected type 'action', got '%s'", event.Type)
+	}
+	if event.Data["ip"] != "192.168.1.1" {
+		t.Errorf("expected ip '192.168.1.1', got '%v'", event.Data["ip"])
+	}
+}
+
+func TestMemoryEntry(t *testing.T) {
+	entry := MemoryEntry{
+		ID:        "entry-1",
+		Content:   "Important fact",
+		Type:      "fact",
+		Relevance: 0.95,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+
+	if entry.Relevance != 0.95 {
+		t.Errorf("expected relevance 0.95, got %f", entry.Relevance)
+	}
+}
+
+// Concurrent access test
+func TestAgentRegistry_ConcurrentAccess(t *testing.T) {
+	r := NewAgentRegistry()
+	r.RegisterAgent(&Agent{ID: "agent-1"})
+
+	done := make(chan bool)
+
+	// Concurrent reads
+	for i := 0; i < 10; i++ {
+		go func() {
+			r.GetAgent("agent-1")
+			r.ListAgents()
+			done <- true
+		}()
+	}
+
+	// Concurrent writes
+	for i := 0; i < 5; i++ {
+		go func(id int) {
+			r.CreateSession("agent-1", "user", SessionContext{})
+			done <- true
+		}(i)
+	}
+
+	for i := 0; i < 15; i++ {
+		<-done
+	}
+}
+
+func TestMemory_ConcurrentAccess(t *testing.T) {
+	m := NewMemory(100)
+	done := make(chan bool)
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			m.Add("content", "fact", 0.5, time.Hour)
+			done <- true
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			m.Search("", 5)
+			done <- true
+		}()
+	}
+
+	for i := 0; i < 20; i++ {
+		<-done
 	}
 }
