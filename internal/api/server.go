@@ -781,18 +781,19 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 	}
 
 	passing := 0
+	totalFindings := 0
 	for i, ctrl := range framework.Controls {
-		// Check if any policies for this control have findings
-		hasFailing := false
+		// Count findings for this control
+		failCount := 0
 		for _, policyID := range ctrl.PolicyIDs {
-			if count, ok := findingsStats.ByPolicy[policyID]; ok && count > 0 {
-				hasFailing = true
-				break
+			if count, ok := findingsStats.ByPolicy[policyID]; ok {
+				failCount += count
 			}
 		}
+		totalFindings += failCount
 
 		status := "passing"
-		if hasFailing {
+		if failCount > 0 {
 			status = "failing"
 		} else {
 			passing++
@@ -801,6 +802,7 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		report.Controls[i] = compliance.ControlStatus{
 			ControlID: ctrl.ID,
 			Status:    status,
+			FailCount: failCount,
 		}
 	}
 
@@ -810,7 +812,25 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		report.Summary.ComplianceScore = float64(passing) / float64(len(framework.Controls)) * 100
 	}
 
-	s.json(w, http.StatusOK, report)
+	// Include data freshness warning if available
+	var dataWarning string
+	if s.app.CloudQuery != nil {
+		freshness, err := s.app.CloudQuery.CheckDataFreshness(r.Context(), "aws_s3_buckets")
+		if err == nil && freshness.IsStale {
+			dataWarning = fmt.Sprintf("Warning: CloudQuery data is %.1f hours old", freshness.HoursSinceSync)
+		}
+	}
+
+	// Return enhanced response
+	response := map[string]interface{}{
+		"report":         report,
+		"total_findings": totalFindings,
+	}
+	if dataWarning != "" {
+		response["data_warning"] = dataWarning
+	}
+
+	s.json(w, http.StatusOK, response)
 }
 
 // Pre-audit health check - predicts audit outcome

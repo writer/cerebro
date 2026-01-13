@@ -591,7 +591,7 @@ func (a *App) initScheduler(_ context.Context) {
 			return
 		}
 
-		tables := []string{"aws_s3_buckets", "aws_ec2_instances", "aws_iam_users"}
+		tables := defaultScanTables()
 		if a.Config.ScanTables != "" {
 			tables = splitTables(a.Config.ScanTables)
 		}
@@ -607,6 +607,24 @@ func (a *App) initScheduler(_ context.Context) {
 func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	if a.Snowflake == nil {
 		return fmt.Errorf("snowflake not configured")
+	}
+
+	// Check data freshness before scan (spot check first few tables)
+	if a.CloudQuery != nil {
+		checkCount := 3
+		if len(tables) < checkCount {
+			checkCount = len(tables)
+		}
+		for i := 0; i < checkCount; i++ {
+			freshness, err := a.CloudQuery.CheckDataFreshness(ctx, tables[i])
+			if err == nil && freshness.IsStale {
+				a.Logger.Warn("cloudquery data is stale",
+					"table", tables[i],
+					"hours_old", freshness.HoursSinceSync,
+					"last_sync", freshness.LastSyncTime,
+				)
+			}
+		}
 	}
 
 	totalScanned := 0
@@ -772,6 +790,74 @@ func splitTables(s string) []string {
 		}
 	}
 	return result
+}
+
+// defaultScanTables returns the comprehensive list of CloudQuery tables to scan
+func defaultScanTables() []string {
+	return []string{
+		// IAM
+		"aws_iam_users",
+		"aws_iam_roles",
+		"aws_iam_policies",
+		"aws_iam_groups",
+		// S3
+		"aws_s3_buckets",
+		// EC2
+		"aws_ec2_instances",
+		"aws_ec2_security_groups",
+		"aws_ec2_vpcs",
+		"aws_ec2_subnets",
+		"aws_ec2_ebs_volumes",
+		"aws_ec2_ebs_snapshots",
+		"aws_ec2_amis",
+		// RDS
+		"aws_rds_db_instances",
+		"aws_rds_db_clusters",
+		// Lambda
+		"aws_lambda_functions",
+		// ELB/ALB
+		"aws_elbv2_load_balancers",
+		"aws_elbv2_target_groups",
+		// KMS
+		"aws_kms_keys",
+		// CloudTrail
+		"aws_cloudtrail_trails",
+		// CloudWatch
+		"aws_cloudwatch_alarms",
+		"aws_cloudwatch_log_groups",
+		// Config
+		"aws_config_configuration_recorders",
+		// GuardDuty
+		"aws_guardduty_detectors",
+		// EKS
+		"aws_eks_clusters",
+		// ECR
+		"aws_ecr_repositories",
+		// Secrets Manager
+		"aws_secretsmanager_secrets",
+		// SNS/SQS
+		"aws_sns_topics",
+		"aws_sqs_queues",
+		// VPC Flow Logs
+		"aws_ec2_flow_logs",
+		// DynamoDB
+		"aws_dynamodb_tables",
+		// Redshift
+		"aws_redshift_clusters",
+		// ElastiCache
+		"aws_elasticache_clusters",
+		// OpenSearch
+		"aws_opensearch_domains",
+		// API Gateway
+		"aws_apigateway_rest_apis",
+		// CloudFront
+		"aws_cloudfront_distributions",
+		// CodeBuild
+		"aws_codebuild_projects",
+		// ECS
+		"aws_ecs_clusters",
+		"aws_ecs_task_definitions",
+	}
 }
 
 // New service initialization functions
