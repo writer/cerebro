@@ -1,9 +1,11 @@
 """Main FastAPI application."""
 
 import asyncio
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC
 from time import perf_counter
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
@@ -74,7 +76,7 @@ logger = structlog.get_logger(__name__)
 
 # Create FastAPI app
 @asynccontextmanager
-async def _app_lifespan(_: FastAPI):
+async def _app_lifespan(_: FastAPI) -> AsyncIterator[None]:
     global _rotation_task
     interval = max(settings.jwt_rotation_check_interval_seconds, 0)
     if interval > 0 and (_rotation_task is None or _rotation_task.done()):
@@ -305,26 +307,29 @@ app.openapi = custom_openapi  # type: ignore
 configure_service_observability(service_name="cerebro-api")
 
 # Configure rate limiter
-default_limits = [limit for limit in settings.get_default_rate_limits() if limit]
+default_limits: Sequence[str | Callable[..., str]] = [
+    limit for limit in settings.get_default_rate_limits() if limit
+]
 if default_limits:
-    limiter = Limiter(key_func=get_remote_address, default_limits=default_limits)
+    limiter = Limiter(key_func=get_remote_address, default_limits=list(default_limits))
 else:
     limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
 
-async def _handle_rate_limit(
+def _handle_rate_limit(
     request: StarletteRequest, exc: RateLimitExceeded
 ) -> StarletteResponse:
     """Type-safe rate limit handler wrapper."""
-    return await rate_limit_handler(request, exc)
+    result: StarletteResponse = rate_limit_handler(request, exc)
+    return result
 
 
-app.add_exception_handler(RateLimitExceeded, _handle_rate_limit)
+app.add_exception_handler(RateLimitExceeded, _handle_rate_limit)  # type: ignore[arg-type]
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+async def http_exception_handler(request: Request, exc: HTTPException) -> Response:
     """Handle HTTP exceptions with consistent error response format."""
     from fastapi.responses import JSONResponse
 
@@ -341,7 +346,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 @app.exception_handler(Exception)
-async def generic_exception_handler(request: Request, exc: Exception):
+async def generic_exception_handler(request: Request, exc: Exception) -> Response:
     """Handle unexpected exceptions with consistent error response format."""
     from fastapi.responses import JSONResponse
 
@@ -391,11 +396,11 @@ async def get_versioned_openapi() -> dict:
 
 
 @app.middleware("http")
-async def record_request_metrics(request: Request, call_next):
+async def record_request_metrics(request: Request, call_next: Callable[[Request], Any]) -> Response:
     start = perf_counter()
     status_code = 500
     try:
-        response = await call_next(request)
+        response: Response = await call_next(request)
         status_code = response.status_code
         return response
     finally:
@@ -652,7 +657,7 @@ async def _jwt_rotation_worker(interval: int) -> None:
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     """Root endpoint."""
     return {
         "message": "Cerebro Security System of Record API",
@@ -662,7 +667,7 @@ async def root():
 
 
 @app.get("/ready", include_in_schema=False)
-async def readiness():
+async def readiness() -> dict[str, Any]:
     """Readiness probe aggregating core dependencies."""
     from cerebro.core import probes
 
@@ -686,13 +691,13 @@ async def readiness():
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy"}
 
 
 @app.get("/health/db")
-async def health_db():
+async def health_db() -> dict[str, str]:
     """Database health check endpoint."""
     from sqlalchemy import text
 
@@ -710,7 +715,7 @@ async def health_db():
 
 
 @app.get("/health/celery")
-async def health_celery():
+async def health_celery() -> dict[str, Any]:
     """Celery health check endpoint with worker status and queue depths."""
     import asyncio
     from datetime import datetime
@@ -719,7 +724,7 @@ async def health_celery():
 
     try:
 
-        def get_celery_status():
+        def get_celery_status() -> dict[str, Any]:
             inspect = celery_app.control.inspect(timeout=5.0)
             if inspect is None:
                 raise RuntimeError("No Celery workers responded to inspect")
@@ -771,7 +776,7 @@ async def health_celery():
             }
 
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, get_celery_status)
+        result: dict[str, Any] = await loop.run_in_executor(None, get_celery_status)
 
         if result["status"] == "degraded":
             raise HTTPException(status_code=503, detail="No Celery workers available")
@@ -789,7 +794,7 @@ async def health_celery():
 
 
 @app.get("/health/encryption")
-async def health_encryption():
+async def health_encryption() -> dict[str, Any]:
     """Encryption service health check endpoint with cache stats."""
     from cerebro.core.encryption import get_encryption_service
 
@@ -821,7 +826,7 @@ async def health_encryption():
 
 
 @app.get("/health/dynamodb")
-async def health_dynamodb():
+async def health_dynamodb() -> dict[str, Any]:
     """DynamoDB health check endpoint."""
     from cerebro.core.dynamodb_client import health_check
 
