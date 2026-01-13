@@ -8,6 +8,7 @@ from .ebs_encryption_disabled import EBSEncryptionDisabledProducer
 from .ec2_instance_public_ip import Ec2InstancePublicIpProducer
 from .ec2_internet_facing_iam import EC2InternetFacingIAMProducer
 from .ecr_public_repository import ECRPublicRepositoryProducer
+from .eks_public_access import EKSPublicAccessProducer
 from .iam_root_account_usage import IAMRootAccountUsageProducer
 from .iam_user_without_mfa import AwsIamUserWithoutMfaProducer
 from .kms_key_rotation_disabled import KMSKeyRotationDisabledProducer
@@ -20,9 +21,12 @@ from .load_balancer_weak_tls import AwsLoadBalancerWeakTlsProducer
 from .rds_public_access import RDSPublicAccessProducer
 from .s3_bucket_public import AwsS3BucketPublicProducer
 from .s3_bucket_unencrypted import AwsS3BucketUnencryptedProducer
+from .secretsmanager_rotation_disabled import SecretsManagerRotationDisabledProducer
 from .security_group_admin_port import AwsSecurityGroupAdminPortProducer
 from .security_group_public_ingress import AwsSecurityGroupPublicIngressProducer
 from .service_account_open_assume import AwsServiceAccountOpenAssumeProducer
+from .sns_public_access import SNSPublicAccessProducer
+from .sqs_public_access import SQSPublicAccessProducer
 from .storage_write_access import AwsStorageWriteAccessProducer
 
 __all__ = [
@@ -45,9 +49,13 @@ __all__ = [
     "EBSEncryptionDisabledProducer",
     "EC2InternetFacingIAMProducer",
     "ECRPublicRepositoryProducer",
+    "EKSPublicAccessProducer",
     "Ec2InstancePublicIpProducer",
     "IAMRootAccountUsageProducer",
     "KMSKeyRotationDisabledProducer",
     "LambdaPublicAccessProducer",
     "RDSPublicAccessProducer",
+    "SNSPublicAccessProducer",
+    "SQSPublicAccessProducer",
+    "SecretsManagerRotationDisabledProducer",
 ]
