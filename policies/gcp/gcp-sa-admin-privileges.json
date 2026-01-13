@@ -1,0 +1,13 @@
+{
+  "id": "gcp-sa-admin-privileges",
+  "name": "GCP Service Account with Admin Privileges",
+  "description": "Service account has been granted organization or project admin roles",
+  "effect": "forbid",
+  "resource": "gcp::iam::service_account",
+  "conditions": [
+    "iam_bindings ANY (role IN ('roles/owner', 'roles/editor', 'roles/resourcemanager.organizationAdmin', 'roles/resourcemanager.projectIamAdmin'))"
+  ],
+  "severity": "high",
+  "remediation": "Remove admin roles from service accounts. Create custom roles with minimal required permissions. Use Workload Identity Federation where possible.",
+  "tags": ["gcp", "iam", "service-account", "least-privilege", "cis-gcp-1.5"]
+}
