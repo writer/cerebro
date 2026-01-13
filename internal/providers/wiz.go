@@ -310,8 +310,9 @@ func (w *WizProvider) authenticate(ctx context.Context) (string, error) {
 		return "", err
 	}
 
+	w.token = result.AccessToken
 	w.tokenExpiry = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
-	return result.AccessToken, nil
+	return w.token, nil
 }
 
 func (w *WizProvider) graphQLQuery(ctx context.Context, query string, variables map[string]interface{}) ([]byte, error) {
