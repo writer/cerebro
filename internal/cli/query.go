@@ -32,7 +32,7 @@ func init() {
 
 func runQuery(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
-	
+
 	if cfg.SnowflakeConnection == "" {
 		return fmt.Errorf("SNOWFLAKE_CONNECTION_STRING not set")
 	}

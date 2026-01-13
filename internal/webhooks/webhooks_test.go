@@ -95,26 +95,26 @@ func TestServiceDeleteWebhook(t *testing.T) {
 
 func TestServiceEmit(t *testing.T) {
 	var received int32
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&received, 1)
-		
+
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Error("expected Content-Type application/json")
 		}
 		if r.Header.Get("X-Cerebro-Event") != string(EventFindingCreated) {
 			t.Error("expected X-Cerebro-Event header")
 		}
-		
+
 		var event Event
 		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 			t.Errorf("failed to decode event: %v", err)
 		}
-		
+
 		if event.Type != EventFindingCreated {
 			t.Errorf("expected event type %s, got %s", EventFindingCreated, event.Type)
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -139,7 +139,7 @@ func TestServiceEmit(t *testing.T) {
 
 func TestServiceEmitWithSignature(t *testing.T) {
 	var signature string
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		signature = r.Header.Get("X-Cerebro-Signature")
 		w.WriteHeader(http.StatusOK)
@@ -164,7 +164,7 @@ func TestServiceEmitWithSignature(t *testing.T) {
 
 func TestServiceEmitFiltersByEventType(t *testing.T) {
 	var calls int32
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&calls, 1)
 		w.WriteHeader(http.StatusOK)
@@ -244,14 +244,14 @@ func TestVerifySignature(t *testing.T) {
 
 func TestNoopEmitter(t *testing.T) {
 	emitter := NewNoopEmitter()
-	
+
 	// Should not panic
 	emitter.Emit(context.Background(), EventFindingCreated, map[string]interface{}{"test": true})
 }
 
 func TestMustEmitter(t *testing.T) {
 	svc := NewService()
-	
+
 	emitter := MustEmitter(svc)
 	if _, ok := emitter.(*Service); !ok {
 		t.Error("expected MustEmitter to return service when not nil")

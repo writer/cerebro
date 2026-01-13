@@ -228,6 +228,12 @@ func TestMessage(t *testing.T) {
 	if msg.Content != "Hello!" {
 		t.Errorf("expected content 'Hello!', got '%s'", msg.Content)
 	}
+	if msg.Name != "Claude" {
+		t.Errorf("expected name 'Claude', got '%s'", msg.Name)
+	}
+	if msg.Metadata["model"] != "claude-3" {
+		t.Error("expected metadata model 'claude-3'")
+	}
 }
 
 func TestToolCall(t *testing.T) {
@@ -243,6 +249,9 @@ func TestToolCall(t *testing.T) {
 	if tc.Name != "search" {
 		t.Errorf("expected name 'search', got '%s'", tc.Name)
 	}
+	if string(tc.Arguments) != `{"query":"test"}` {
+		t.Error("expected arguments to match")
+	}
 }
 
 func TestUsage(t *testing.T) {
@@ -254,6 +263,12 @@ func TestUsage(t *testing.T) {
 
 	if usage.TotalTokens != 150 {
 		t.Errorf("expected total tokens 150, got %d", usage.TotalTokens)
+	}
+	if usage.PromptTokens != 100 {
+		t.Errorf("expected prompt tokens 100, got %d", usage.PromptTokens)
+	}
+	if usage.CompletionTokens != 50 {
+		t.Errorf("expected completion tokens 50, got %d", usage.CompletionTokens)
 	}
 }
 

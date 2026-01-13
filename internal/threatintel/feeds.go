@@ -40,11 +40,11 @@ import (
 //
 // The service is thread-safe and supports concurrent lookups during feed syncs.
 type ThreatIntelService struct {
-	feeds       map[string]Feed    // Registered threat feeds by ID
-	indicators  *IndicatorStore    // In-memory indicator store
-	client      *http.Client       // HTTP client for feed fetching
-	lastUpdated time.Time          // Timestamp of last successful sync
-	mu          sync.RWMutex       // Protects feeds map and lastUpdated
+	feeds       map[string]Feed // Registered threat feeds by ID
+	indicators  *IndicatorStore // In-memory indicator store
+	client      *http.Client    // HTTP client for feed fetching
+	lastUpdated time.Time       // Timestamp of last successful sync
+	mu          sync.RWMutex    // Protects feeds map and lastUpdated
 }
 
 // Feed represents a threat intelligence feed
@@ -275,15 +275,15 @@ func (s *ThreatIntelService) parseFeed(feed Feed, data []byte) int {
 func (s *ThreatIntelService) parseCISAKEV(data []byte) int {
 	var kev struct {
 		Vulnerabilities []struct {
-			CveID              string `json:"cveID"`
-			VendorProject      string `json:"vendorProject"`
-			Product            string `json:"product"`
-			VulnerabilityName  string `json:"vulnerabilityName"`
-			DateAdded          string `json:"dateAdded"`
-			ShortDescription   string `json:"shortDescription"`
-			RequiredAction     string `json:"requiredAction"`
-			DueDate            string `json:"dueDate"`
-			KnownRansomware    string `json:"knownRansomwareCampaignUse"`
+			CveID             string `json:"cveID"`
+			VendorProject     string `json:"vendorProject"`
+			Product           string `json:"product"`
+			VulnerabilityName string `json:"vulnerabilityName"`
+			DateAdded         string `json:"dateAdded"`
+			ShortDescription  string `json:"shortDescription"`
+			RequiredAction    string `json:"requiredAction"`
+			DueDate           string `json:"dueDate"`
+			KnownRansomware   string `json:"knownRansomwareCampaignUse"`
 		} `json:"vulnerabilities"`
 	}
 
@@ -302,11 +302,11 @@ func (s *ThreatIntelService) parseCISAKEV(data []byte) int {
 			Description: v.ShortDescription,
 			Tags:        []string{"kev", "actively-exploited"},
 			Metadata: map[string]string{
-				"vendor":           v.VendorProject,
-				"product":          v.Product,
-				"due_date":         v.DueDate,
-				"ransomware":       v.KnownRansomware,
-				"required_action":  v.RequiredAction,
+				"vendor":          v.VendorProject,
+				"product":         v.Product,
+				"due_date":        v.DueDate,
+				"ransomware":      v.KnownRansomware,
+				"required_action": v.RequiredAction,
 			},
 		}
 		if v.DateAdded != "" {
@@ -321,16 +321,16 @@ func (s *ThreatIntelService) parseCISAKEV(data []byte) int {
 func (s *ThreatIntelService) parseAbuseChIP(data []byte) int {
 	var feodo struct {
 		IPAddresses []struct {
-			IP          string `json:"ip_address"`
-			Port        int    `json:"port"`
-			Status      string `json:"status"`
-			Hostname    string `json:"hostname"`
-			ASNumber    int    `json:"as_number"`
-			ASName      string `json:"as_name"`
-			Country     string `json:"country"`
-			FirstSeen   string `json:"first_seen"`
-			LastOnline  string `json:"last_online"`
-			Malware     string `json:"malware"`
+			IP         string `json:"ip_address"`
+			Port       int    `json:"port"`
+			Status     string `json:"status"`
+			Hostname   string `json:"hostname"`
+			ASNumber   int    `json:"as_number"`
+			ASName     string `json:"as_name"`
+			Country    string `json:"country"`
+			FirstSeen  string `json:"first_seen"`
+			LastOnline string `json:"last_online"`
+			Malware    string `json:"malware"`
 		} `json:"ip_addresses"`
 	}
 

@@ -126,18 +126,18 @@ func TestLineageMapper_DetectDrift(t *testing.T) {
 	mapper.assets[assetID] = &AssetLineage{AssetID: assetID}
 
 	currentState := map[string]interface{}{
-		"replicas":       3,
-		"image":          "app:v2",
-		"memory_limit":   "512Mi",
-		"cpu_limit":      "500m",
+		"replicas":     3,
+		"image":        "app:v2",
+		"memory_limit": "512Mi",
+		"cpu_limit":    "500m",
 	}
 
 	iacState := map[string]interface{}{
-		"replicas":       2,                // Different
-		"image":          "app:v1",         // Different
-		"memory_limit":   "512Mi",          // Same
-		"cpu_limit":      "500m",           // Same
-		"extra_config":   "value",          // Extra in IaC
+		"replicas":     2,        // Different
+		"image":        "app:v1", // Different
+		"memory_limit": "512Mi",  // Same
+		"cpu_limit":    "500m",   // Same
+		"extra_config": "value",  // Extra in IaC
 	}
 
 	drifts := mapper.DetectDrift(context.Background(), assetID, currentState, iacState)
@@ -186,12 +186,12 @@ func TestParseGitHubActionsContext(t *testing.T) {
 
 func TestParseGitLabCIContext(t *testing.T) {
 	env := map[string]string{
-		"CI_PROJECT_PATH":   "group/project",
+		"CI_PROJECT_PATH":    "group/project",
 		"CI_COMMIT_REF_NAME": "main",
-		"CI_COMMIT_SHA":     "abc123",
-		"GITLAB_USER_LOGIN": "user",
-		"CI_PIPELINE_ID":    "789",
-		"CI_PIPELINE_URL":   "https://gitlab.com/group/project/-/pipelines/789",
+		"CI_COMMIT_SHA":      "abc123",
+		"GITLAB_USER_LOGIN":  "user",
+		"CI_PIPELINE_ID":     "789",
+		"CI_PIPELINE_URL":    "https://gitlab.com/group/project/-/pipelines/789",
 	}
 
 	build := ParseGitLabCIContext(env)

@@ -8,14 +8,14 @@ import (
 
 // AccessReport summarizes identity and access posture
 type AccessReport struct {
-	GeneratedAt     time.Time                `json:"generated_at"`
-	Period          ReportPeriod             `json:"period"`
-	Summary         ReportSummary            `json:"summary"`
-	ByProvider      map[string]ProviderStats `json:"by_provider"`
-	StaleAccess     StaleAccessSummary       `json:"stale_access"`
-	PrivilegedUsers []PrivilegedUserSummary  `json:"privileged_users"`
-	RiskDistribution map[string]int          `json:"risk_distribution"`
-	Recommendations []string                 `json:"recommendations"`
+	GeneratedAt      time.Time                `json:"generated_at"`
+	Period           ReportPeriod             `json:"period"`
+	Summary          ReportSummary            `json:"summary"`
+	ByProvider       map[string]ProviderStats `json:"by_provider"`
+	StaleAccess      StaleAccessSummary       `json:"stale_access"`
+	PrivilegedUsers  []PrivilegedUserSummary  `json:"privileged_users"`
+	RiskDistribution map[string]int           `json:"risk_distribution"`
+	Recommendations  []string                 `json:"recommendations"`
 }
 
 type ReportPeriod struct {
@@ -35,28 +35,28 @@ type ReportSummary struct {
 }
 
 type ProviderStats struct {
-	Provider         string `json:"provider"`
-	Users            int    `json:"users"`
-	ServiceAccounts  int    `json:"service_accounts"`
-	Roles            int    `json:"roles"`
-	StaleUsers       int    `json:"stale_users"`
-	UnusedKeys       int    `json:"unused_keys"`
+	Provider        string `json:"provider"`
+	Users           int    `json:"users"`
+	ServiceAccounts int    `json:"service_accounts"`
+	Roles           int    `json:"roles"`
+	StaleUsers      int    `json:"stale_users"`
+	UnusedKeys      int    `json:"unused_keys"`
 }
 
 type StaleAccessSummary struct {
-	InactiveUsers    int `json:"inactive_users"`
-	UnusedAccessKeys int `json:"unused_access_keys"`
-	OrphanedAccounts int `json:"orphaned_accounts"`
+	InactiveUsers     int `json:"inactive_users"`
+	UnusedAccessKeys  int `json:"unused_access_keys"`
+	OrphanedAccounts  int `json:"orphaned_accounts"`
 	StaleServiceAccts int `json:"stale_service_accounts"`
-	TotalFindings    int `json:"total_findings"`
+	TotalFindings     int `json:"total_findings"`
 }
 
 type PrivilegedUserSummary struct {
-	Principal    Principal `json:"principal"`
-	Provider     string    `json:"provider"`
-	Roles        []string  `json:"roles"`
+	Principal    Principal  `json:"principal"`
+	Provider     string     `json:"provider"`
+	Roles        []string   `json:"roles"`
 	LastActivity *time.Time `json:"last_activity,omitempty"`
-	RiskScore    int       `json:"risk_score"`
+	RiskScore    int        `json:"risk_score"`
 }
 
 // ReportGenerator creates access reports

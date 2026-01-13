@@ -49,46 +49,46 @@ type LineageMapper struct {
 
 // AssetLineage represents the full lineage of a deployed asset
 type AssetLineage struct {
-	AssetID       string                 `json:"asset_id"`
-	AssetType     string                 `json:"asset_type"`     // pod, ec2, lambda, vm
-	AssetName     string                 `json:"asset_name"`
-	Provider      string                 `json:"provider"`       // aws, gcp, azure, k8s
-	Region        string                 `json:"region"`
-	AccountID     string                 `json:"account_id"`
+	AssetID   string `json:"asset_id"`
+	AssetType string `json:"asset_type"` // pod, ec2, lambda, vm
+	AssetName string `json:"asset_name"`
+	Provider  string `json:"provider"` // aws, gcp, azure, k8s
+	Region    string `json:"region"`
+	AccountID string `json:"account_id"`
 
 	// Source Code Lineage
-	Repository    string                 `json:"repository,omitempty"`
-	Branch        string                 `json:"branch,omitempty"`
-	CommitSHA     string                 `json:"commit_sha,omitempty"`
-	CommitMessage string                 `json:"commit_message,omitempty"`
-	CommitAuthor  string                 `json:"commit_author,omitempty"`
-	CommitTime    *time.Time             `json:"commit_time,omitempty"`
+	Repository    string     `json:"repository,omitempty"`
+	Branch        string     `json:"branch,omitempty"`
+	CommitSHA     string     `json:"commit_sha,omitempty"`
+	CommitMessage string     `json:"commit_message,omitempty"`
+	CommitAuthor  string     `json:"commit_author,omitempty"`
+	CommitTime    *time.Time `json:"commit_time,omitempty"`
 
 	// Container Image Lineage
-	ImageURI      string                 `json:"image_uri,omitempty"`
-	ImageDigest   string                 `json:"image_digest,omitempty"`
-	ImageTag      string                 `json:"image_tag,omitempty"`
-	BaseImage     string                 `json:"base_image,omitempty"`
+	ImageURI    string `json:"image_uri,omitempty"`
+	ImageDigest string `json:"image_digest,omitempty"`
+	ImageTag    string `json:"image_tag,omitempty"`
+	BaseImage   string `json:"base_image,omitempty"`
 
 	// IaC Lineage
-	IaCType       string                 `json:"iac_type,omitempty"`       // terraform, cloudformation, pulumi
-	IaCFile       string                 `json:"iac_file,omitempty"`
-	IaCModule     string                 `json:"iac_module,omitempty"`
-	IaCStateID    string                 `json:"iac_state_id,omitempty"`
+	IaCType    string `json:"iac_type,omitempty"` // terraform, cloudformation, pulumi
+	IaCFile    string `json:"iac_file,omitempty"`
+	IaCModule  string `json:"iac_module,omitempty"`
+	IaCStateID string `json:"iac_state_id,omitempty"`
 
 	// Build/Pipeline Lineage
-	PipelineID    string                 `json:"pipeline_id,omitempty"`
-	PipelineURL   string                 `json:"pipeline_url,omitempty"`
-	BuildID       string                 `json:"build_id,omitempty"`
-	BuildTime     *time.Time             `json:"build_time,omitempty"`
-	BuildActor    string                 `json:"build_actor,omitempty"`
+	PipelineID  string     `json:"pipeline_id,omitempty"`
+	PipelineURL string     `json:"pipeline_url,omitempty"`
+	BuildID     string     `json:"build_id,omitempty"`
+	BuildTime   *time.Time `json:"build_time,omitempty"`
+	BuildActor  string     `json:"build_actor,omitempty"`
 
 	// Drift Detection
-	DriftDetected bool                   `json:"drift_detected"`
-	DriftDetails  []DriftDetail          `json:"drift_details,omitempty"`
-	LastSynced    time.Time              `json:"last_synced"`
-	
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	DriftDetected bool          `json:"drift_detected"`
+	DriftDetails  []DriftDetail `json:"drift_details,omitempty"`
+	LastSynced    time.Time     `json:"last_synced"`
+
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // DriftDetail describes a specific configuration drift
@@ -112,17 +112,17 @@ type CommitInfo struct {
 
 // BuildInfo stores CI/CD build metadata
 type BuildInfo struct {
-	ID          string    `json:"id"`
-	Provider    string    `json:"provider"` // github-actions, gitlab-ci, jenkins
-	Repository  string    `json:"repository"`
-	Branch      string    `json:"branch"`
-	CommitSHA   string    `json:"commit_sha"`
-	Status      string    `json:"status"`
-	StartTime   time.Time `json:"start_time"`
-	EndTime     time.Time `json:"end_time"`
-	Actor       string    `json:"actor"`
-	URL         string    `json:"url"`
-	Artifacts   []string  `json:"artifacts"`
+	ID         string    `json:"id"`
+	Provider   string    `json:"provider"` // github-actions, gitlab-ci, jenkins
+	Repository string    `json:"repository"`
+	Branch     string    `json:"branch"`
+	CommitSHA  string    `json:"commit_sha"`
+	Status     string    `json:"status"`
+	StartTime  time.Time `json:"start_time"`
+	EndTime    time.Time `json:"end_time"`
+	Actor      string    `json:"actor"`
+	URL        string    `json:"url"`
+	Artifacts  []string  `json:"artifacts"`
 }
 
 func NewLineageMapper() *LineageMapper {
@@ -191,22 +191,22 @@ func (m *LineageMapper) extractAnnotations(lineage *AssetLineage, annotations ma
 		"app.kubernetes.io/git-commit":     &lineage.CommitSHA,
 		"app.kubernetes.io/git-repository": &lineage.Repository,
 		"app.kubernetes.io/git-branch":     &lineage.Branch,
-		
+
 		// ArgoCD annotations
-		"argocd.argoproj.io/tracking-id":   &lineage.IaCStateID,
-		
+		"argocd.argoproj.io/tracking-id": &lineage.IaCStateID,
+
 		// Flux annotations
-		"fluxcd.io/git-commit":             &lineage.CommitSHA,
-		"fluxcd.io/git-repository":         &lineage.Repository,
-		
+		"fluxcd.io/git-commit":     &lineage.CommitSHA,
+		"fluxcd.io/git-repository": &lineage.Repository,
+
 		// Custom annotations we support
-		"cerebro.io/commit-sha":            &lineage.CommitSHA,
-		"cerebro.io/repository":            &lineage.Repository,
-		"cerebro.io/branch":                &lineage.Branch,
-		"cerebro.io/pipeline-id":           &lineage.PipelineID,
-		"cerebro.io/pipeline-url":          &lineage.PipelineURL,
-		"cerebro.io/build-id":              &lineage.BuildID,
-		"cerebro.io/iac-file":              &lineage.IaCFile,
+		"cerebro.io/commit-sha":   &lineage.CommitSHA,
+		"cerebro.io/repository":   &lineage.Repository,
+		"cerebro.io/branch":       &lineage.Branch,
+		"cerebro.io/pipeline-id":  &lineage.PipelineID,
+		"cerebro.io/pipeline-url": &lineage.PipelineURL,
+		"cerebro.io/build-id":     &lineage.BuildID,
+		"cerebro.io/iac-file":     &lineage.IaCFile,
 	}
 
 	for annotation, target := range annotationMappings {
@@ -330,11 +330,11 @@ func (m *LineageMapper) MapLambdaFunction(ctx context.Context, fn map[string]int
 	if env, ok := fn["environment"].(map[string]interface{}); ok {
 		if vars, ok := env["variables"].(map[string]interface{}); ok {
 			envMappings := map[string]*string{
-				"GIT_COMMIT":    &lineage.CommitSHA,
-				"GIT_BRANCH":    &lineage.Branch,
-				"GIT_REPO":      &lineage.Repository,
-				"BUILD_ID":      &lineage.BuildID,
-				"PIPELINE_URL":  &lineage.PipelineURL,
+				"GIT_COMMIT":   &lineage.CommitSHA,
+				"GIT_BRANCH":   &lineage.Branch,
+				"GIT_REPO":     &lineage.Repository,
+				"BUILD_ID":     &lineage.BuildID,
+				"PIPELINE_URL": &lineage.PipelineURL,
 			}
 			for envVar, target := range envMappings {
 				if val, ok := vars[envVar].(string); ok && val != "" {

@@ -190,17 +190,17 @@ func (s *Scheduler) GetJob(name string) (*Job, bool) {
 
 // Status returns scheduler status
 type Status struct {
-	Running bool       `json:"running"`
+	Running bool        `json:"running"`
 	Jobs    []JobStatus `json:"jobs"`
 }
 
 type JobStatus struct {
-	Name     string        `json:"name"`
-	Interval string        `json:"interval"`
-	LastRun  *time.Time    `json:"last_run,omitempty"`
-	NextRun  time.Time     `json:"next_run"`
-	Running  bool          `json:"running"`
-	Enabled  bool          `json:"enabled"`
+	Name     string     `json:"name"`
+	Interval string     `json:"interval"`
+	LastRun  *time.Time `json:"last_run,omitempty"`
+	NextRun  time.Time  `json:"next_run"`
+	Running  bool       `json:"running"`
+	Enabled  bool       `json:"enabled"`
 }
 
 func (s *Scheduler) Status() Status {

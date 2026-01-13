@@ -8,11 +8,11 @@
 //   - Snowflake persistence for durable storage
 //
 // Findings have a lifecycle:
-//   1. Created as "open" when first detected
-//   2. LastSeen updated on subsequent detections
-//   3. Manually marked as "resolved" when fixed
-//   4. Marked as "suppressed" for accepted risks
-//   5. Re-opened if violation recurs after resolution
+//  1. Created as "open" when first detected
+//  2. LastSeen updated on subsequent detections
+//  3. Manually marked as "resolved" when fixed
+//  4. Marked as "suppressed" for accepted risks
+//  5. Re-opened if violation recurs after resolution
 //
 // Example usage:
 //
@@ -46,18 +46,18 @@ type FindingStore interface {
 }
 
 type Finding struct {
-	ID          string                 `json:"id"`
-	PolicyID    string                 `json:"policy_id"`
-	PolicyName  string                 `json:"policy_name"`
-	Severity    string                 `json:"severity"`
-	Status      string                 `json:"status"` // open, resolved, suppressed
-	ResourceID  string                 `json:"resource_id"`
-	ResourceType string                `json:"resource_type"`
-	Resource    map[string]interface{} `json:"resource"`
-	Description string                 `json:"description"`
-	FirstSeen   time.Time              `json:"first_seen"`
-	LastSeen    time.Time              `json:"last_seen"`
-	ResolvedAt  *time.Time             `json:"resolved_at,omitempty"`
+	ID           string                 `json:"id"`
+	PolicyID     string                 `json:"policy_id"`
+	PolicyName   string                 `json:"policy_name"`
+	Severity     string                 `json:"severity"`
+	Status       string                 `json:"status"` // open, resolved, suppressed
+	ResourceID   string                 `json:"resource_id"`
+	ResourceType string                 `json:"resource_type"`
+	Resource     map[string]interface{} `json:"resource"`
+	Description  string                 `json:"description"`
+	FirstSeen    time.Time              `json:"first_seen"`
+	LastSeen     time.Time              `json:"last_seen"`
+	ResolvedAt   *time.Time             `json:"resolved_at,omitempty"`
 }
 
 type Store struct {
@@ -76,7 +76,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	
+
 	if existing, ok := s.findings[pf.ID]; ok {
 		existing.LastSeen = now
 		existing.Resource = pf.Resource

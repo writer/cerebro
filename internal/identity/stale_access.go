@@ -12,10 +12,10 @@ type StaleAccessDetector struct {
 
 // StaleThresholds configures detection parameters
 type StaleThresholds struct {
-	InactiveDays       int // Days since last login to consider stale
-	UnusedKeyDays      int // Days since access key last used
-	OrphanedCheckDays  int // Days to check for orphaned accounts
-	PrivilegedDays     int // Stricter threshold for privileged accounts
+	InactiveDays      int // Days since last login to consider stale
+	UnusedKeyDays     int // Days since access key last used
+	OrphanedCheckDays int // Days to check for orphaned accounts
+	PrivilegedDays    int // Stricter threshold for privileged accounts
 }
 
 // DefaultThresholds returns sensible defaults
@@ -50,12 +50,12 @@ type StaleAccessFinding struct {
 type StaleAccessType string
 
 const (
-	StaleAccessInactiveUser       StaleAccessType = "inactive_user"
-	StaleAccessUnusedAccessKey    StaleAccessType = "unused_access_key"
-	StaleAccessOrphanedAccount    StaleAccessType = "orphaned_account"
+	StaleAccessInactiveUser        StaleAccessType = "inactive_user"
+	StaleAccessUnusedAccessKey     StaleAccessType = "unused_access_key"
+	StaleAccessOrphanedAccount     StaleAccessType = "orphaned_account"
 	StaleAccessStaleServiceAccount StaleAccessType = "stale_service_account"
-	StaleAccessUnusedRole         StaleAccessType = "unused_role"
-	StaleAccessExcessivePrivilege StaleAccessType = "excessive_privilege"
+	StaleAccessUnusedRole          StaleAccessType = "unused_role"
+	StaleAccessExcessivePrivilege  StaleAccessType = "excessive_privilege"
 )
 
 // DetectStaleUsers finds users with no recent login activity
@@ -247,11 +247,11 @@ func (d *StaleAccessDetector) DetectExcessivePrivileges(ctx context.Context, bin
 	var findings []StaleAccessFinding
 
 	adminRoles := map[string]bool{
-		"roles/owner":                       true,
-		"roles/editor":                      true,
+		"roles/owner":  true,
+		"roles/editor": true,
 		"arn:aws:iam::aws:policy/AdministratorAccess": true,
-		"Owner":                             true,
-		"Contributor":                       true,
+		"Owner":       true,
+		"Contributor": true,
 	}
 
 	for _, binding := range bindings {

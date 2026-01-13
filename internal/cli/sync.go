@@ -35,7 +35,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Running: cloudquery %v\n", cqArgs)
-	
+
 	cqCmd := exec.Command("cloudquery", cqArgs...)
 	cqCmd.Stdout = os.Stdout
 	cqCmd.Stderr = os.Stderr

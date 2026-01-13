@@ -139,10 +139,10 @@ func TestPingCheck(t *testing.T) {
 
 func TestThresholdCheck(t *testing.T) {
 	tests := []struct {
-		name   string
-		value  float64
-		err    error
-		want   Status
+		name  string
+		value float64
+		err   error
+		want  Status
 	}{
 		{"healthy", 50, nil, StatusHealthy},
 		{"degraded", 80, nil, StatusDegraded},

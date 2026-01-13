@@ -34,8 +34,6 @@ func TestQueryResult_Fields(t *testing.T) {
 	}
 }
 
-
-
 // Note: Full integration tests require a real Snowflake connection
 // These are unit tests for data structures and basic validation
 

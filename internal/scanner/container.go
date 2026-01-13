@@ -38,21 +38,21 @@ type Repository struct {
 
 // ImageTag represents a container image tag
 type ImageTag struct {
-	Name        string    `json:"name"`
-	Digest      string    `json:"digest"`
-	PushedAt    time.Time `json:"pushed_at"`
-	SizeBytes   int64     `json:"size_bytes"`
-	ScanStatus  string    `json:"scan_status"`
+	Name       string    `json:"name"`
+	Digest     string    `json:"digest"`
+	PushedAt   time.Time `json:"pushed_at"`
+	SizeBytes  int64     `json:"size_bytes"`
+	ScanStatus string    `json:"scan_status"`
 }
 
 // ImageManifest represents container image metadata
 type ImageManifest struct {
-	Digest       string            `json:"digest"`
-	MediaType    string            `json:"media_type"`
-	Config       ImageConfig       `json:"config"`
-	Layers       []Layer           `json:"layers"`
-	Labels       map[string]string `json:"labels"`
-	Created      time.Time         `json:"created"`
+	Digest    string            `json:"digest"`
+	MediaType string            `json:"media_type"`
+	Config    ImageConfig       `json:"config"`
+	Layers    []Layer           `json:"layers"`
+	Labels    map[string]string `json:"labels"`
+	Created   time.Time         `json:"created"`
 }
 
 type ImageConfig struct {
@@ -74,18 +74,18 @@ type Layer struct {
 
 // ImageVulnerability represents a vulnerability in a container image
 type ImageVulnerability struct {
-	ID              string   `json:"id"`
-	CVE             string   `json:"cve"`
-	Severity        string   `json:"severity"`
-	Package         string   `json:"package"`
-	InstalledVersion string  `json:"installed_version"`
-	FixedVersion    string   `json:"fixed_version,omitempty"`
-	Description     string   `json:"description"`
-	CVSS            float64  `json:"cvss"`
-	Published       time.Time `json:"published"`
-	Exploitable     bool     `json:"exploitable"`
-	InKEV           bool     `json:"in_kev"`
-	References      []string `json:"references"`
+	ID               string    `json:"id"`
+	CVE              string    `json:"cve"`
+	Severity         string    `json:"severity"`
+	Package          string    `json:"package"`
+	InstalledVersion string    `json:"installed_version"`
+	FixedVersion     string    `json:"fixed_version,omitempty"`
+	Description      string    `json:"description"`
+	CVSS             float64   `json:"cvss"`
+	Published        time.Time `json:"published"`
+	Exploitable      bool      `json:"exploitable"`
+	InKEV            bool      `json:"in_kev"`
+	References       []string  `json:"references"`
 }
 
 // ContainerScanResult represents scan results for an image
@@ -441,13 +441,13 @@ func ParseTrivyOutput(data []byte) (*ContainerScanResult, error) {
 		Results []struct {
 			Target          string `json:"Target"`
 			Vulnerabilities []struct {
-				VulnerabilityID  string  `json:"VulnerabilityID"`
-				PkgName          string  `json:"PkgName"`
-				InstalledVersion string  `json:"InstalledVersion"`
-				FixedVersion     string  `json:"FixedVersion"`
-				Severity         string  `json:"Severity"`
-				Title            string  `json:"Title"`
-				Description      string  `json:"Description"`
+				VulnerabilityID  string `json:"VulnerabilityID"`
+				PkgName          string `json:"PkgName"`
+				InstalledVersion string `json:"InstalledVersion"`
+				FixedVersion     string `json:"FixedVersion"`
+				Severity         string `json:"Severity"`
+				Title            string `json:"Title"`
+				Description      string `json:"Description"`
 				CVSS             map[string]struct {
 					V3Score float64 `json:"V3Score"`
 				} `json:"CVSS"`

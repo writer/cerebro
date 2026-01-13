@@ -43,10 +43,10 @@ import (
 // The engine supports approval workflows for sensitive actions and maintains
 // a complete audit trail of all executions.
 type Engine struct {
-	rules      []Rule                 // Active remediation rules
-	executions map[string]*Execution  // Execution history indexed by ID
-	logger     *slog.Logger           // Structured logger
-	mu         sync.RWMutex           // Protects rules and executions
+	rules      []Rule                // Active remediation rules
+	executions map[string]*Execution // Execution history indexed by ID
+	logger     *slog.Logger          // Structured logger
+	mu         sync.RWMutex          // Protects rules and executions
 }
 
 // Rule defines when and how to auto-remediate
@@ -99,27 +99,27 @@ const (
 
 // Execution tracks a rule execution
 type Execution struct {
-	ID           string           `json:"id"`
-	RuleID       string           `json:"rule_id"`
-	RuleName     string           `json:"rule_name"`
-	Status       ExecutionStatus  `json:"status"`
-	TriggerData  map[string]any   `json:"trigger_data"`
-	Actions      []ActionResult   `json:"actions"`
-	StartedAt    time.Time        `json:"started_at"`
-	CompletedAt  *time.Time       `json:"completed_at,omitempty"`
-	Error        string           `json:"error,omitempty"`
-	ApprovalID   string           `json:"approval_id,omitempty"`
+	ID          string          `json:"id"`
+	RuleID      string          `json:"rule_id"`
+	RuleName    string          `json:"rule_name"`
+	Status      ExecutionStatus `json:"status"`
+	TriggerData map[string]any  `json:"trigger_data"`
+	Actions     []ActionResult  `json:"actions"`
+	StartedAt   time.Time       `json:"started_at"`
+	CompletedAt *time.Time      `json:"completed_at,omitempty"`
+	Error       string          `json:"error,omitempty"`
+	ApprovalID  string          `json:"approval_id,omitempty"`
 }
 
 type ExecutionStatus string
 
 const (
-	ExecutionPending    ExecutionStatus = "pending"
-	ExecutionRunning    ExecutionStatus = "running"
-	ExecutionApproval   ExecutionStatus = "awaiting_approval"
-	ExecutionCompleted  ExecutionStatus = "completed"
-	ExecutionFailed     ExecutionStatus = "failed"
-	ExecutionCancelled  ExecutionStatus = "canceled"
+	ExecutionPending   ExecutionStatus = "pending"
+	ExecutionRunning   ExecutionStatus = "running"
+	ExecutionApproval  ExecutionStatus = "awaiting_approval"
+	ExecutionCompleted ExecutionStatus = "completed"
+	ExecutionFailed    ExecutionStatus = "failed"
+	ExecutionCancelled ExecutionStatus = "canceled"
 )
 
 type ActionResult struct {
@@ -386,10 +386,10 @@ func (e *Engine) createExecution(rule Rule, event Event) *Execution {
 		RuleName: rule.Name,
 		Status:   ExecutionPending,
 		TriggerData: map[string]any{
-			"event_type":  event.Type,
-			"finding_id":  event.FindingID,
-			"severity":    event.Severity,
-			"policy_id":   event.PolicyID,
+			"event_type": event.Type,
+			"finding_id": event.FindingID,
+			"severity":   event.Severity,
+			"policy_id":  event.PolicyID,
 		},
 		Actions:   make([]ActionResult, 0),
 		StartedAt: time.Now().UTC(),

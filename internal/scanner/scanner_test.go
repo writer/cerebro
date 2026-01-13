@@ -11,7 +11,7 @@ import (
 
 func TestScanAssets(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	
+
 	engine := policy.NewEngine()
 	engine.AddPolicy(&policy.Policy{
 		ID:          "test-public-check",
@@ -82,7 +82,7 @@ func TestScanAssetsContextCancellation(t *testing.T) {
 
 func BenchmarkScanAssets(b *testing.B) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	
+
 	engine := policy.NewEngine()
 	engine.AddPolicy(&policy.Policy{
 		ID:         "bench-policy",

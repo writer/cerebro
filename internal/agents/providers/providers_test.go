@@ -297,7 +297,7 @@ func TestOpenAIProvider_Complete(t *testing.T) {
 func TestOpenAIProvider_Complete_NoChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := openaiResponse{
-			ID:      "chatcmpl-123",
+			ID: "chatcmpl-123",
 			Choices: []struct {
 				Index        int           `json:"index"`
 				Message      openaiMessage `json:"message"`

@@ -13,21 +13,21 @@ import (
 	"github.com/writerinternal/cerebro/internal/agents"
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/attackpath"
+	"github.com/writerinternal/cerebro/internal/auth"
 	"github.com/writerinternal/cerebro/internal/compliance"
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/identity"
+	"github.com/writerinternal/cerebro/internal/lineage"
+	"github.com/writerinternal/cerebro/internal/metrics"
+	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/providers"
-	"github.com/writerinternal/cerebro/internal/notifications"
+	"github.com/writerinternal/cerebro/internal/remediation"
+	"github.com/writerinternal/cerebro/internal/runtime"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
-	"github.com/writerinternal/cerebro/internal/metrics"
-	"github.com/writerinternal/cerebro/internal/remediation"
-	"github.com/writerinternal/cerebro/internal/auth"
-	"github.com/writerinternal/cerebro/internal/lineage"
-	"github.com/writerinternal/cerebro/internal/runtime"
-	"github.com/writerinternal/cerebro/internal/threatintel"
 )
 
 // Server is the fully wired API server
@@ -759,7 +759,7 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 
 	// Generate report based on current findings
 	findingsStats := s.app.Findings.Stats()
-	
+
 	report := compliance.ComplianceReport{
 		FrameworkID:   framework.ID,
 		FrameworkName: framework.Name,
@@ -880,7 +880,7 @@ func (s *Server) preAuditCheck(w http.ResponseWriter, r *http.Request) {
 			"at_risk":          atRisk,
 			"compliance_score": fmt.Sprintf("%.1f%%", score),
 		},
-		"controls": checks,
+		"controls":        checks,
 		"recommendations": s.generateAuditRecommendations(failing, atRisk, len(framework.Controls)),
 	})
 }
@@ -1396,8 +1396,8 @@ func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
 		"findings": allFindings,
 		"count":    len(allFindings),
 		"summary": map[string]int{
-			"inactive_users":     countByType(allFindings, identity.StaleAccessInactiveUser),
-			"unused_keys":        countByType(allFindings, identity.StaleAccessUnusedAccessKey),
+			"inactive_users":      countByType(allFindings, identity.StaleAccessInactiveUser),
+			"unused_keys":         countByType(allFindings, identity.StaleAccessUnusedAccessKey),
 			"stale_service_accts": countByType(allFindings, identity.StaleAccessStaleServiceAccount),
 		},
 	})
@@ -1476,8 +1476,8 @@ func (s *Server) analyzeAttackPaths(w http.ResponseWriter, r *http.Request) {
 	paths := finder.FindPaths(r.Context())
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"paths": paths,
-		"count": len(paths),
+		"paths":       paths,
+		"count":       len(paths),
 		"analyzed_at": time.Now().UTC(),
 	})
 }
@@ -1632,9 +1632,9 @@ func (s *Server) listWebhooks(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		URL    string              `json:"url"`
+		URL    string               `json:"url"`
 		Events []webhooks.EventType `json:"events"`
-		Secret string              `json:"secret"`
+		Secret string               `json:"secret"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request")
@@ -1903,7 +1903,7 @@ func (s *Server) getRemediationExecution(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) approveExecution(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	
+
 	var req struct {
 		ApproverID string `json:"approver_id"`
 	}
@@ -1922,7 +1922,7 @@ func (s *Server) approveExecution(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) rejectExecution(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	
+
 	var req struct {
 		RejecterID string `json:"rejecter_id"`
 		Reason     string `json:"reason"`
@@ -2041,7 +2041,7 @@ func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	findings := s.app.RuntimeDetect.ProcessEvent(r.Context(), &event)
-	
+
 	// Process findings through response engine
 	if s.app.RuntimeRespond != nil {
 		for _, f := range findings {
@@ -2148,9 +2148,9 @@ func (s *Server) detectDrift(w http.ResponseWriter, r *http.Request) {
 
 	drifts := s.app.Lineage.DetectDrift(r.Context(), assetID, req.CurrentState, req.IaCState)
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"asset_id":      assetID,
+		"asset_id":       assetID,
 		"drift_detected": len(drifts) > 0,
-		"drifts":        drifts,
+		"drifts":         drifts,
 	})
 }
 
@@ -2263,10 +2263,10 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Events      []runtime.RuntimeEvent `json:"events"`
-		Node        string                 `json:"node"`
-		Cluster     string                 `json:"cluster"`
-		AgentVersion string                `json:"agent_version"`
+		Events       []runtime.RuntimeEvent `json:"events"`
+		Node         string                 `json:"node"`
+		Cluster      string                 `json:"cluster"`
+		AgentVersion string                 `json:"agent_version"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {

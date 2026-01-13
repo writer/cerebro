@@ -22,11 +22,11 @@ type ServiceIdentityAdapter interface {
 
 // ServiceIdentity represents a CI/CD service identity
 type ServiceIdentity struct {
-	Provider    string            `json:"provider"`    // github, gitlab, circleci, etc.
-	Repository  string            `json:"repository"`  // org/repo
+	Provider    string            `json:"provider"`   // github, gitlab, circleci, etc.
+	Repository  string            `json:"repository"` // org/repo
 	Branch      string            `json:"branch"`
 	Workflow    string            `json:"workflow"`
-	Actor       string            `json:"actor"`       // user who triggered
+	Actor       string            `json:"actor"` // user who triggered
 	RunID       string            `json:"run_id"`
 	Environment string            `json:"environment"` // production, staging, etc.
 	Claims      map[string]string `json:"claims"`      // OIDC claims
@@ -34,25 +34,25 @@ type ServiceIdentity struct {
 
 // CloudIdentityMapping represents the mapped cloud identity
 type CloudIdentityMapping struct {
-	Provider      string    `json:"provider"`       // aws, gcp, azure
-	RoleARN       string    `json:"role_arn"`       // AWS role ARN, GCP SA, Azure SP
-	AccountID     string    `json:"account_id"`
-	TrustPolicy   string    `json:"trust_policy"`
-	Permissions   []string  `json:"permissions"`
-	RiskScore     int       `json:"risk_score"`     // 0-100
-	TrustLevel    string    `json:"trust_level"`    // high, medium, low
-	LastUsed      time.Time `json:"last_used"`
-	Vulnerabilities []string `json:"vulnerabilities"`
+	Provider        string    `json:"provider"` // aws, gcp, azure
+	RoleARN         string    `json:"role_arn"` // AWS role ARN, GCP SA, Azure SP
+	AccountID       string    `json:"account_id"`
+	TrustPolicy     string    `json:"trust_policy"`
+	Permissions     []string  `json:"permissions"`
+	RiskScore       int       `json:"risk_score"`  // 0-100
+	TrustLevel      string    `json:"trust_level"` // high, medium, low
+	LastUsed        time.Time `json:"last_used"`
+	Vulnerabilities []string  `json:"vulnerabilities"`
 }
 
 // TrustEdge represents a trust relationship in the identity graph
 type TrustEdge struct {
-	Source      string            `json:"source"`
-	Target      string            `json:"target"`
-	TrustType   string            `json:"trust_type"`   // oidc, assume_role, workload_identity
-	Conditions  map[string]string `json:"conditions"`
-	RiskScore   int               `json:"risk_score"`
-	CreatedAt   time.Time         `json:"created_at"`
+	Source     string            `json:"source"`
+	Target     string            `json:"target"`
+	TrustType  string            `json:"trust_type"` // oidc, assume_role, workload_identity
+	Conditions map[string]string `json:"conditions"`
+	RiskScore  int               `json:"risk_score"`
+	CreatedAt  time.Time         `json:"created_at"`
 }
 
 func NewServiceIdentityMapper() *ServiceIdentityMapper {
@@ -141,9 +141,9 @@ type GitHubToGCPAdapter struct{}
 func (a *GitHubToGCPAdapter) Name() string { return "github-to-gcp" }
 
 func (a *GitHubToGCPAdapter) Match(identity ServiceIdentity) bool {
-	return identity.Provider == "github" && 
+	return identity.Provider == "github" &&
 		(strings.Contains(identity.Claims["aud"], "iam.googleapis.com") ||
-		 identity.Claims["aud"] == "https://iam.googleapis.com")
+			identity.Claims["aud"] == "https://iam.googleapis.com")
 }
 
 func (a *GitHubToGCPAdapter) MapToCloud(ctx context.Context, identity ServiceIdentity) (*CloudIdentityMapping, error) {
@@ -174,7 +174,7 @@ type GitHubToAzureAdapter struct{}
 func (a *GitHubToAzureAdapter) Name() string { return "github-to-azure" }
 
 func (a *GitHubToAzureAdapter) Match(identity ServiceIdentity) bool {
-	return identity.Provider == "github" && 
+	return identity.Provider == "github" &&
 		strings.Contains(identity.Claims["iss"], "token.actions.githubusercontent.com")
 }
 

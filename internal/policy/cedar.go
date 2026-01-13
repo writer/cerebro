@@ -57,16 +57,16 @@ type Engine struct {
 // or generate violations ("forbid"). Conditions are evaluated against resource
 // attributes to determine if the policy matches.
 type Policy struct {
-	ID          string   `json:"id"`          // Unique policy identifier
-	Name        string   `json:"name"`        // Human-readable policy name
-	Description string   `json:"description"` // Detailed description of policy intent
-	Effect      string   `json:"effect"`      // "permit" or "forbid"
-	Principal   string   `json:"principal"`   // Who the policy applies to (optional)
-	Action      string   `json:"action"`      // What action is being evaluated
-	Resource    string   `json:"resource"`    // Resource type pattern (e.g., "aws::s3::bucket")
-	Conditions  []string `json:"conditions"`  // Conditions that must be true for policy to match
-	Severity    string   `json:"severity"`    // critical, high, medium, low
-	Tags        []string `json:"tags"`        // Tags for categorization
+	ID          string   `json:"id"`            // Unique policy identifier
+	Name        string   `json:"name"`          // Human-readable policy name
+	Description string   `json:"description"`   // Detailed description of policy intent
+	Effect      string   `json:"effect"`        // "permit" or "forbid"
+	Principal   string   `json:"principal"`     // Who the policy applies to (optional)
+	Action      string   `json:"action"`        // What action is being evaluated
+	Resource    string   `json:"resource"`      // Resource type pattern (e.g., "aws::s3::bucket")
+	Conditions  []string `json:"conditions"`    // Conditions that must be true for policy to match
+	Severity    string   `json:"severity"`      // critical, high, medium, low
+	Tags        []string `json:"tags"`          // Tags for categorization
 	Raw         string   `json:"raw,omitempty"` // Raw Cedar policy text (optional)
 }
 

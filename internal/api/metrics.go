@@ -168,7 +168,7 @@ func MetricsHandler() http.Handler {
 func RecordScan(table string, assetsScanned int64, findingsBySeverity map[string]int64, duration time.Duration) {
 	scanAssetsTotal.WithLabelValues(table).Add(float64(assetsScanned))
 	scanDuration.WithLabelValues(table).Observe(duration.Seconds())
-	
+
 	for severity, count := range findingsBySeverity {
 		scanFindingsTotal.WithLabelValues(severity, "").Add(float64(count))
 	}

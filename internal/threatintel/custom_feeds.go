@@ -20,18 +20,18 @@ type CustomFeedManager struct {
 }
 
 type CustomFeed struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Type        IndicatorType  `json:"type"`
-	Format      string         `json:"format"`
-	Source      FeedSource     `json:"source"`
-	Enabled     bool           `json:"enabled"`
-	LastSync    time.Time      `json:"last_sync"`
-	Indicators  int            `json:"indicator_count"`
-	Tags        []string       `json:"tags"`
-	CreatedBy   string         `json:"created_by"`
-	CreatedAt   time.Time      `json:"created_at"`
+	ID          string        `json:"id"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Type        IndicatorType `json:"type"`
+	Format      string        `json:"format"`
+	Source      FeedSource    `json:"source"`
+	Enabled     bool          `json:"enabled"`
+	LastSync    time.Time     `json:"last_sync"`
+	Indicators  int           `json:"indicator_count"`
+	Tags        []string      `json:"tags"`
+	CreatedBy   string        `json:"created_by"`
+	CreatedAt   time.Time     `json:"created_at"`
 }
 
 type FeedSource struct {
@@ -48,11 +48,11 @@ type IOCEntry struct {
 }
 
 type FeedParseResult struct {
-	TotalLines    int          `json:"total_lines"`
-	ValidEntries  int          `json:"valid_entries"`
-	InvalidEntries int         `json:"invalid_entries"`
-	Errors        []string     `json:"errors,omitempty"`
-	Indicators    []*Indicator `json:"-"`
+	TotalLines     int          `json:"total_lines"`
+	ValidEntries   int          `json:"valid_entries"`
+	InvalidEntries int          `json:"invalid_entries"`
+	Errors         []string     `json:"errors,omitempty"`
+	Indicators     []*Indicator `json:"-"`
 }
 
 func NewCustomFeedManager(store *IndicatorStore) *CustomFeedManager {

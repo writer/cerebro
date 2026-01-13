@@ -18,22 +18,22 @@ type ResponseEngine struct {
 
 // ResponsePolicy defines automated response rules
 type ResponsePolicy struct {
-	ID             string          `json:"id"`
-	Name           string          `json:"name"`
-	Description    string          `json:"description"`
-	Enabled        bool            `json:"enabled"`
-	Priority       int             `json:"priority"`
-	Triggers       []PolicyTrigger `json:"triggers"`
-	Actions        []PolicyAction  `json:"actions"`
-	RequireApproval bool           `json:"require_approval"`
-	Scope          PolicyScope     `json:"scope"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	Enabled         bool            `json:"enabled"`
+	Priority        int             `json:"priority"`
+	Triggers        []PolicyTrigger `json:"triggers"`
+	Actions         []PolicyAction  `json:"actions"`
+	RequireApproval bool            `json:"require_approval"`
+	Scope           PolicyScope     `json:"scope"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // PolicyTrigger defines when a policy should activate
 type PolicyTrigger struct {
-	Type       string            `json:"type"`       // finding, detection, threshold
+	Type       string            `json:"type"` // finding, detection, threshold
 	Category   DetectionCategory `json:"category,omitempty"`
 	Severity   string            `json:"severity,omitempty"`
 	RuleID     string            `json:"rule_id,omitempty"`
@@ -51,43 +51,43 @@ type PolicyAction struct {
 type ResponseActionType string
 
 const (
-	ActionKillProcess      ResponseActionType = "kill_process"
-	ActionIsolateContainer ResponseActionType = "isolate_container"
-	ActionIsolateHost      ResponseActionType = "isolate_host"
-	ActionQuarantineFile   ResponseActionType = "quarantine_file"
-	ActionBlockIP          ResponseActionType = "block_ip"
-	ActionBlockDomain      ResponseActionType = "block_domain"
+	ActionKillProcess       ResponseActionType = "kill_process"
+	ActionIsolateContainer  ResponseActionType = "isolate_container"
+	ActionIsolateHost       ResponseActionType = "isolate_host"
+	ActionQuarantineFile    ResponseActionType = "quarantine_file"
+	ActionBlockIP           ResponseActionType = "block_ip"
+	ActionBlockDomain       ResponseActionType = "block_domain"
 	ActionRevokeCredentials ResponseActionType = "revoke_credentials" //nolint:gosec // G101 false positive - this is an action type name, not a credential
-	ActionScaleDown        ResponseActionType = "scale_down"
-	ActionAlert            ResponseActionType = "alert"
-	ActionCreateTicket     ResponseActionType = "create_ticket"
-	ActionWebhook          ResponseActionType = "webhook"
+	ActionScaleDown         ResponseActionType = "scale_down"
+	ActionAlert             ResponseActionType = "alert"
+	ActionCreateTicket      ResponseActionType = "create_ticket"
+	ActionWebhook           ResponseActionType = "webhook"
 )
 
 // PolicyScope limits where policy applies
 type PolicyScope struct {
-	Clusters    []string `json:"clusters,omitempty"`
-	Namespaces  []string `json:"namespaces,omitempty"`
-	Accounts    []string `json:"accounts,omitempty"`
-	Regions     []string `json:"regions,omitempty"`
-	Tags        map[string]string `json:"tags,omitempty"`
+	Clusters   []string          `json:"clusters,omitempty"`
+	Namespaces []string          `json:"namespaces,omitempty"`
+	Accounts   []string          `json:"accounts,omitempty"`
+	Regions    []string          `json:"regions,omitempty"`
+	Tags       map[string]string `json:"tags,omitempty"`
 }
 
 // ResponseExecution tracks a response action execution
 type ResponseExecution struct {
-	ID           string             `json:"id"`
-	PolicyID     string             `json:"policy_id"`
-	PolicyName   string             `json:"policy_name"`
-	TriggerEvent string             `json:"trigger_event"`
-	Actions      []ActionExecution  `json:"actions"`
-	Status       ExecutionStatus    `json:"status"`
-	ResourceID   string             `json:"resource_id"`
-	ResourceType string             `json:"resource_type"`
-	ApprovedBy   string             `json:"approved_by,omitempty"`
-	ApprovedAt   *time.Time         `json:"approved_at,omitempty"`
-	StartTime    time.Time          `json:"start_time"`
-	EndTime      *time.Time         `json:"end_time,omitempty"`
-	Error        string             `json:"error,omitempty"`
+	ID           string            `json:"id"`
+	PolicyID     string            `json:"policy_id"`
+	PolicyName   string            `json:"policy_name"`
+	TriggerEvent string            `json:"trigger_event"`
+	Actions      []ActionExecution `json:"actions"`
+	Status       ExecutionStatus   `json:"status"`
+	ResourceID   string            `json:"resource_id"`
+	ResourceType string            `json:"resource_type"`
+	ApprovedBy   string            `json:"approved_by,omitempty"`
+	ApprovedAt   *time.Time        `json:"approved_at,omitempty"`
+	StartTime    time.Time         `json:"start_time"`
+	EndTime      *time.Time        `json:"end_time,omitempty"`
+	Error        string            `json:"error,omitempty"`
 }
 
 type ActionExecution struct {
@@ -107,26 +107,26 @@ const (
 	StatusRunning   ExecutionStatus = "running"
 	StatusCompleted ExecutionStatus = "completed"
 	StatusFailed    ExecutionStatus = "failed"
-	StatusCanceled ExecutionStatus = "canceled"
+	StatusCanceled  ExecutionStatus = "canceled"
 )
 
 // Blocklist maintains runtime blocklists
 type Blocklist struct {
-	IPs      map[string]*BlockEntry `json:"ips"`
-	Domains  map[string]*BlockEntry `json:"domains"`
-	Hashes   map[string]*BlockEntry `json:"hashes"`
+	IPs       map[string]*BlockEntry `json:"ips"`
+	Domains   map[string]*BlockEntry `json:"domains"`
+	Hashes    map[string]*BlockEntry `json:"hashes"`
 	Processes map[string]*BlockEntry `json:"processes"`
-	mu       sync.RWMutex
+	mu        sync.RWMutex
 }
 
 type BlockEntry struct {
-	Value     string    `json:"value"`
-	Type      string    `json:"type"`
-	Reason    string    `json:"reason"`
-	Source    string    `json:"source"` // manual, policy, threat_intel
-	AddedAt   time.Time `json:"added_at"`
+	Value     string     `json:"value"`
+	Type      string     `json:"type"`
+	Reason    string     `json:"reason"`
+	Source    string     `json:"source"` // manual, policy, threat_intel
+	AddedAt   time.Time  `json:"added_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	AddedBy   string    `json:"added_by"`
+	AddedBy   string     `json:"added_by"`
 }
 
 // ActionHandler interface for executing response actions

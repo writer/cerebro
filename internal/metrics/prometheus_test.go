@@ -11,7 +11,7 @@ import (
 func TestRegister(t *testing.T) {
 	// Should not panic
 	Register()
-	
+
 	// Can be called multiple times safely
 	Register()
 }

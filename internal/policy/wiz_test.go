@@ -90,8 +90,8 @@ func TestWizSecretsDetection(t *testing.T) {
 		{
 			name: "cleartext keys with high privilege - violation",
 			asset: map[string]interface{}{
-				"_cq_id":               "secret-123",
-				"has_cleartext_keys":   "true",
+				"_cq_id":                "secret-123",
+				"has_cleartext_keys":    "true",
 				"grants_high_privilege": "true",
 			},
 			wantFindings: 1,
@@ -99,8 +99,8 @@ func TestWizSecretsDetection(t *testing.T) {
 		{
 			name: "no cleartext keys - no violation",
 			asset: map[string]interface{}{
-				"_cq_id":               "secret-456",
-				"has_cleartext_keys":   "false",
+				"_cq_id":                "secret-456",
+				"has_cleartext_keys":    "false",
 				"grants_high_privilege": "true",
 			},
 			wantFindings: 0,
@@ -376,7 +376,7 @@ func TestWizKubernetesPolicies(t *testing.T) {
 
 func TestLoadWizPoliciesFromDisk(t *testing.T) {
 	engine := NewEngine()
-	
+
 	// Load wiz policies from disk
 	if err := engine.LoadPolicies("../../policies/wiz"); err != nil {
 		t.Fatalf("LoadPolicies failed: %v", err)

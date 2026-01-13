@@ -43,24 +43,24 @@ import (
 	"github.com/writerinternal/cerebro/internal/agents"
 	agentproviders "github.com/writerinternal/cerebro/internal/agents/providers"
 	"github.com/writerinternal/cerebro/internal/attackpath"
+	"github.com/writerinternal/cerebro/internal/auth"
 	"github.com/writerinternal/cerebro/internal/cache"
+	"github.com/writerinternal/cerebro/internal/compliance"
 	"github.com/writerinternal/cerebro/internal/findings"
+	"github.com/writerinternal/cerebro/internal/health"
 	"github.com/writerinternal/cerebro/internal/identity"
+	"github.com/writerinternal/cerebro/internal/lineage"
 	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/providers"
+	"github.com/writerinternal/cerebro/internal/remediation"
+	"github.com/writerinternal/cerebro/internal/runtime"
 	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/scheduler"
 	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
-	"github.com/writerinternal/cerebro/internal/auth"
-	"github.com/writerinternal/cerebro/internal/compliance"
-	"github.com/writerinternal/cerebro/internal/health"
-	"github.com/writerinternal/cerebro/internal/lineage"
-	"github.com/writerinternal/cerebro/internal/remediation"
-	"github.com/writerinternal/cerebro/internal/runtime"
-	"github.com/writerinternal/cerebro/internal/threatintel"
 )
 
 // App is the main application container that holds references to all initialized
@@ -270,7 +270,7 @@ func LoadConfig() *Config {
 		Auth0ClientSecret:         getEnv("AUTH0_CLIENT_SECRET", ""),
 		CloudflareAPIToken:        getEnv("CLOUDFLARE_API_TOKEN", ""),
 		SlackWebhookURL:           getEnv("SLACK_WEBHOOK_URL", ""),
-		SlackSigningSecret:       getEnv("SLACK_SIGNING_SECRET", ""),
+		SlackSigningSecret:        getEnv("SLACK_SIGNING_SECRET", ""),
 		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),
 		ScanInterval:              getEnv("SCAN_INTERVAL", ""),
 		ScanTables:                getEnv("SCAN_TABLES", ""),
@@ -770,7 +770,7 @@ func (a *App) initRBAC() {
 
 func (a *App) initThreatIntel(ctx context.Context) {
 	a.ThreatIntel = threatintel.NewThreatIntelService()
-	
+
 	// Sync feeds in background
 	go func() {
 		if err := a.ThreatIntel.SyncAll(ctx); err != nil {
@@ -789,7 +789,7 @@ func (a *App) initCompliance() {
 
 func (a *App) initHealth() {
 	a.Health = health.NewRegistry()
-	
+
 	// Register health checks for all services
 	a.Health.Register("snowflake", health.PingCheck("snowflake", func(ctx context.Context) error {
 		if a.Snowflake == nil {
@@ -797,7 +797,7 @@ func (a *App) initHealth() {
 		}
 		return a.Snowflake.Ping(ctx)
 	}))
-	
+
 	a.Health.Register("policy_engine", health.PingCheck("policy_engine", func(ctx context.Context) error {
 		if a.Policy == nil {
 			return fmt.Errorf("not initialized")
@@ -807,14 +807,14 @@ func (a *App) initHealth() {
 		}
 		return nil
 	}))
-	
+
 	a.Health.Register("findings_store", health.PingCheck("findings_store", func(ctx context.Context) error {
 		if a.Findings == nil {
 			return fmt.Errorf("not initialized")
 		}
 		return nil
 	}))
-	
+
 	a.Logger.Info("health service initialized")
 }
 

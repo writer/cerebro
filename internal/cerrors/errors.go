@@ -22,24 +22,24 @@ var (
 	ErrInvalidFormat   = errors.New("invalid format")
 
 	// Policy errors
-	ErrPolicyNotFound    = errors.New("policy not found")
-	ErrPolicyInvalid     = errors.New("policy is invalid")
-	ErrPolicyEvaluation  = errors.New("policy evaluation failed")
+	ErrPolicyNotFound   = errors.New("policy not found")
+	ErrPolicyInvalid    = errors.New("policy is invalid")
+	ErrPolicyEvaluation = errors.New("policy evaluation failed")
 
 	// Finding errors
 	ErrFindingNotFound = errors.New("finding not found")
 
 	// Authentication/Authorization errors
-	ErrUnauthorized   = errors.New("unauthorized")
-	ErrForbidden      = errors.New("forbidden")
-	ErrInvalidAPIKey  = errors.New("invalid API key")
-	ErrRateLimited    = errors.New("rate limit exceeded")
+	ErrUnauthorized  = errors.New("unauthorized")
+	ErrForbidden     = errors.New("forbidden")
+	ErrInvalidAPIKey = errors.New("invalid API key")
+	ErrRateLimited   = errors.New("rate limit exceeded")
 
 	// Provider errors
-	ErrProviderNotFound     = errors.New("provider not found")
-	ErrProviderConfig       = errors.New("provider configuration error")
-	ErrProviderAuth         = errors.New("provider authentication failed")
-	ErrProviderSync         = errors.New("provider sync failed")
+	ErrProviderNotFound = errors.New("provider not found")
+	ErrProviderConfig   = errors.New("provider configuration error")
+	ErrProviderAuth     = errors.New("provider authentication failed")
+	ErrProviderSync     = errors.New("provider sync failed")
 
 	// Agent errors
 	ErrAgentNotFound   = errors.New("agent not found")

@@ -95,7 +95,7 @@ func TestServer_Handler(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
-	
+
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "ok" {
 		t.Errorf("expected body 'ok', got %s", string(body))
@@ -114,7 +114,7 @@ func TestRunWithCleanup_CallsCleanups(t *testing.T) {
 
 	cleanup1Called := false
 	cleanup2Called := false
-	
+
 	cleanup1 := func() error {
 		cleanup1Called = true
 		return nil
@@ -139,7 +139,7 @@ func TestRunWithCleanup_CallsCleanups(t *testing.T) {
 
 func TestConfig_ZeroValues(t *testing.T) {
 	cfg := Config{}
-	
+
 	if cfg.Port != 0 {
 		t.Errorf("expected zero port, got %d", cfg.Port)
 	}

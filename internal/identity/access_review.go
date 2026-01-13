@@ -10,21 +10,21 @@ import (
 
 // AccessReview represents a periodic review of user access
 type AccessReview struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Type        ReviewType          `json:"type"`
-	Status      ReviewStatus        `json:"status"`
-	Scope       ReviewScope         `json:"scope"`
-	Schedule    *ReviewSchedule     `json:"schedule,omitempty"`
-	Reviewers   []string            `json:"reviewers"`
-	Items       []ReviewItem        `json:"items"`
-	Stats       ReviewStats         `json:"stats"`
-	CreatedBy   string              `json:"created_by"`
-	CreatedAt   time.Time           `json:"created_at"`
-	StartedAt   *time.Time          `json:"started_at,omitempty"`
-	DueAt       *time.Time          `json:"due_at,omitempty"`
-	CompletedAt *time.Time          `json:"completed_at,omitempty"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Type        ReviewType      `json:"type"`
+	Status      ReviewStatus    `json:"status"`
+	Scope       ReviewScope     `json:"scope"`
+	Schedule    *ReviewSchedule `json:"schedule,omitempty"`
+	Reviewers   []string        `json:"reviewers"`
+	Items       []ReviewItem    `json:"items"`
+	Stats       ReviewStats     `json:"stats"`
+	CreatedBy   string          `json:"created_by"`
+	CreatedAt   time.Time       `json:"created_at"`
+	StartedAt   *time.Time      `json:"started_at,omitempty"`
+	DueAt       *time.Time      `json:"due_at,omitempty"`
+	CompletedAt *time.Time      `json:"completed_at,omitempty"`
 }
 
 type ReviewType string
@@ -56,43 +56,43 @@ type ReviewScope struct {
 }
 
 type ReviewSchedule struct {
-	Frequency   string    `json:"frequency"` // daily, weekly, monthly, quarterly
-	NextRun     time.Time `json:"next_run"`
-	LastRun     *time.Time `json:"last_run,omitempty"`
+	Frequency string     `json:"frequency"` // daily, weekly, monthly, quarterly
+	NextRun   time.Time  `json:"next_run"`
+	LastRun   *time.Time `json:"last_run,omitempty"`
 }
 
 type ReviewItem struct {
-	ID           string                 `json:"id"`
-	ReviewID     string                 `json:"review_id"`
-	Type         string                 `json:"type"` // user, service_account, role_binding
-	Principal    Principal              `json:"principal"`
-	Access       []AccessGrant          `json:"access"`
-	RiskScore    int                    `json:"risk_score"`
-	RiskFactors  []string               `json:"risk_factors,omitempty"`
-	Decision     *ReviewDecision        `json:"decision,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	ID          string                 `json:"id"`
+	ReviewID    string                 `json:"review_id"`
+	Type        string                 `json:"type"` // user, service_account, role_binding
+	Principal   Principal              `json:"principal"`
+	Access      []AccessGrant          `json:"access"`
+	RiskScore   int                    `json:"risk_score"`
+	RiskFactors []string               `json:"risk_factors,omitempty"`
+	Decision    *ReviewDecision        `json:"decision,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type Principal struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"` // user, service_account, group
-	Name        string `json:"name"`
-	Email       string `json:"email,omitempty"`
-	Provider    string `json:"provider"`
-	Account     string `json:"account"`
-	LastLogin   *time.Time `json:"last_login,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID        string     `json:"id"`
+	Type      string     `json:"type"` // user, service_account, group
+	Name      string     `json:"name"`
+	Email     string     `json:"email,omitempty"`
+	Provider  string     `json:"provider"`
+	Account   string     `json:"account"`
+	LastLogin *time.Time `json:"last_login,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 type AccessGrant struct {
-	ID          string     `json:"id"`
-	Resource    string     `json:"resource"`
-	ResourceType string    `json:"resource_type"`
-	Permission  string     `json:"permission"`
-	Role        string     `json:"role,omitempty"`
-	GrantedAt   time.Time  `json:"granted_at"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-	GrantedBy   string     `json:"granted_by,omitempty"`
+	ID           string     `json:"id"`
+	Resource     string     `json:"resource"`
+	ResourceType string     `json:"resource_type"`
+	Permission   string     `json:"permission"`
+	Role         string     `json:"role,omitempty"`
+	GrantedAt    time.Time  `json:"granted_at"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	GrantedBy    string     `json:"granted_by,omitempty"`
 }
 
 type ReviewDecision struct {
@@ -106,11 +106,11 @@ type ReviewDecision struct {
 type DecisionAction string
 
 const (
-	DecisionApprove   DecisionAction = "approve"
-	DecisionRevoke    DecisionAction = "revoke"
-	DecisionModify    DecisionAction = "modify"
-	DecisionEscalate  DecisionAction = "escalate"
-	DecisionDefer     DecisionAction = "defer"
+	DecisionApprove  DecisionAction = "approve"
+	DecisionRevoke   DecisionAction = "revoke"
+	DecisionModify   DecisionAction = "modify"
+	DecisionEscalate DecisionAction = "escalate"
+	DecisionDefer    DecisionAction = "defer"
 )
 
 type ReviewStats struct {
@@ -268,14 +268,14 @@ type RiskCalculator struct {
 func NewRiskCalculator() *RiskCalculator {
 	return &RiskCalculator{
 		weights: map[string]int{
-			"admin_access":        30,
-			"no_mfa":              20,
-			"no_recent_login":     15,
-			"service_account":     10,
-			"cross_account":       10,
-			"sensitive_resource":  15,
-			"long_standing":       10,
-			"no_justification":    10,
+			"admin_access":       30,
+			"no_mfa":             20,
+			"no_recent_login":    15,
+			"service_account":    10,
+			"cross_account":      10,
+			"sensitive_resource": 15,
+			"long_standing":      10,
+			"no_justification":   10,
 		},
 	}
 }

@@ -206,7 +206,7 @@ func TestTicket_Fields(t *testing.T) {
 func TestTicketUpdate_Fields(t *testing.T) {
 	status := "in_progress"
 	priority := "critical"
-	
+
 	update := &TicketUpdate{
 		Status:   &status,
 		Priority: &priority,

@@ -9,7 +9,7 @@ import (
 
 func TestEngineLoadPolicies(t *testing.T) {
 	dir := t.TempDir()
-	
+
 	policyJSON := `{
 		"id": "test-policy",
 		"name": "Test Policy",
@@ -19,7 +19,7 @@ func TestEngineLoadPolicies(t *testing.T) {
 		"severity": "high",
 		"tags": ["test"]
 	}`
-	
+
 	if err := os.WriteFile(filepath.Join(dir, "test.json"), []byte(policyJSON), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -58,9 +58,9 @@ func TestEngineEvaluateAsset(t *testing.T) {
 	})
 
 	tests := []struct {
-		name          string
-		asset         map[string]interface{}
-		wantFindings  int
+		name         string
+		asset        map[string]interface{}
+		wantFindings int
 	}{
 		{
 			name:         "public bucket - violation",
@@ -98,7 +98,7 @@ func TestEngineEvaluate(t *testing.T) {
 	})
 
 	resp, err := engine.Evaluate(context.Background(), &EvalRequest{
-		Action: "delete",
+		Action:   "delete",
 		Resource: map[string]interface{}{"type": "bucket"},
 	})
 	if err != nil {

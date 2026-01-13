@@ -43,14 +43,14 @@ func init() {
 func runPolicyList(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 	engine := policy.NewEngine()
-	
+
 	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
 		return fmt.Errorf("load policies: %w", err)
 	}
 
 	policies := engine.ListPolicies()
 	fmt.Printf("Found %d policies:\n\n", len(policies))
-	
+
 	for _, p := range policies {
 		fmt.Printf("  %s\n", p.ID)
 		fmt.Printf("    Name:     %s\n", p.Name)
@@ -58,14 +58,14 @@ func runPolicyList(cmd *cobra.Command, args []string) error {
 		fmt.Printf("    Tags:     %v\n", p.Tags)
 		fmt.Println()
 	}
-	
+
 	return nil
 }
 
 func runPolicyValidate(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 	engine := policy.NewEngine()
-	
+
 	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
 		fmt.Printf("Validation FAILED: %v\n", err)
 		os.Exit(1)
@@ -82,7 +82,7 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 
 	cfg := config.Load()
 	engine := policy.NewEngine()
-	
+
 	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
 		return fmt.Errorf("load policies: %w", err)
 	}

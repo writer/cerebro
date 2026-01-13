@@ -328,15 +328,15 @@ func TestSplitTables(t *testing.T) {
 
 func TestConfig_Fields(t *testing.T) {
 	cfg := &Config{
-		Port:                      8080,
-		LogLevel:                  "info",
-		SnowflakeDatabase:         "CEREBRO",
-		SnowflakeSchema:           "CEREBRO",
-		PoliciesPath:              "policies",
-		ScanInterval:              "1h",
-		RateLimitEnabled:          true,
-		RateLimitRequests:         1000,
-		RateLimitWindow:           time.Hour,
+		Port:              8080,
+		LogLevel:          "info",
+		SnowflakeDatabase: "CEREBRO",
+		SnowflakeSchema:   "CEREBRO",
+		PoliciesPath:      "policies",
+		ScanInterval:      "1h",
+		RateLimitEnabled:  true,
+		RateLimitRequests: 1000,
+		RateLimitWindow:   time.Hour,
 	}
 
 	if cfg.Port != 8080 {

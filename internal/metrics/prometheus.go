@@ -270,7 +270,7 @@ func RecordSnowflakeQuery(duration time.Duration, success bool) {
 func UpdateFindingsMetrics(bySeverity, byStatus map[string]int) {
 	// Reset all values
 	FindingsTotal.Reset()
-	
+
 	for severity, count := range bySeverity {
 		for status, statusCount := range byStatus {
 			// This is a simplification - ideally we'd have the cross-product

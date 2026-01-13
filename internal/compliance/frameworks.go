@@ -1,11 +1,11 @@
 package compliance
 
 type Framework struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Version     string     `json:"version"`
-	Description string     `json:"description"`
-	Controls    []Control  `json:"controls"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Version     string    `json:"version"`
+	Description string    `json:"description"`
+	Controls    []Control `json:"controls"`
 }
 
 type Control struct {
@@ -24,11 +24,11 @@ type ControlStatus struct {
 }
 
 type ComplianceReport struct {
-	FrameworkID   string                   `json:"framework_id"`
-	FrameworkName string                   `json:"framework_name"`
-	GeneratedAt   string                   `json:"generated_at"`
-	Summary       ComplianceSummary        `json:"summary"`
-	Controls      []ControlStatus          `json:"controls"`
+	FrameworkID   string            `json:"framework_id"`
+	FrameworkName string            `json:"framework_name"`
+	GeneratedAt   string            `json:"generated_at"`
+	Summary       ComplianceSummary `json:"summary"`
+	Controls      []ControlStatus   `json:"controls"`
 }
 
 type ComplianceSummary struct {

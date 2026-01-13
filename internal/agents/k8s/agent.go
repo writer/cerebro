@@ -22,31 +22,31 @@ type Agent struct {
 
 // AgentConfig configures the agent
 type AgentConfig struct {
-	NodeName       string        `json:"node_name"`
-	ClusterName    string        `json:"cluster_name"`
-	Namespace      string        `json:"namespace"`
-	CerebroURL     string        `json:"cerebro_url"`
-	APIToken       string        `json:"api_token"`
+	NodeName        string        `json:"node_name"`
+	ClusterName     string        `json:"cluster_name"`
+	Namespace       string        `json:"namespace"`
+	CerebroURL      string        `json:"cerebro_url"`
+	APIToken        string        `json:"api_token"`
 	CollectInterval time.Duration `json:"collect_interval"`
-	BatchSize      int           `json:"batch_size"`
-	EnableEBPF     bool          `json:"enable_ebpf"`
-	EnableAudit    bool          `json:"enable_audit"`
+	BatchSize       int           `json:"batch_size"`
+	EnableEBPF      bool          `json:"enable_ebpf"`
+	EnableAudit     bool          `json:"enable_audit"`
 }
 
 // Event represents a telemetry event
 type Event struct {
-	ID           string                 `json:"id"`
-	Type         string                 `json:"type"`
-	Timestamp    time.Time              `json:"timestamp"`
-	NodeName     string                 `json:"node_name"`
-	ClusterName  string                 `json:"cluster_name"`
-	Namespace    string                 `json:"namespace,omitempty"`
-	PodName      string                 `json:"pod_name,omitempty"`
-	ContainerID  string                 `json:"container_id,omitempty"`
-	ProcessInfo  *ProcessInfo           `json:"process,omitempty"`
-	NetworkInfo  *NetworkInfo           `json:"network,omitempty"`
-	FileInfo     *FileInfo              `json:"file,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	ID          string                 `json:"id"`
+	Type        string                 `json:"type"`
+	Timestamp   time.Time              `json:"timestamp"`
+	NodeName    string                 `json:"node_name"`
+	ClusterName string                 `json:"cluster_name"`
+	Namespace   string                 `json:"namespace,omitempty"`
+	PodName     string                 `json:"pod_name,omitempty"`
+	ContainerID string                 `json:"container_id,omitempty"`
+	ProcessInfo *ProcessInfo           `json:"process,omitempty"`
+	NetworkInfo *NetworkInfo           `json:"network,omitempty"`
+	FileInfo    *FileInfo              `json:"file,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type ProcessInfo struct {

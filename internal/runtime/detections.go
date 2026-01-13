@@ -37,8 +37,8 @@ import (
 //
 // Thread-safe for concurrent event processing.
 type DetectionEngine struct {
-	rules        []DetectionRule      // Active detection rules
-	suppressions map[string]bool      // Rule IDs that are suppressed
+	rules        []DetectionRule // Active detection rules
+	suppressions map[string]bool // Rule IDs that are suppressed
 }
 
 // DetectionRule defines a runtime threat detection rule with conditions,
@@ -48,15 +48,15 @@ type DetectionEngine struct {
 // Each rule includes MITRE ATT&CK technique IDs for threat intelligence
 // correlation and incident response prioritization.
 type DetectionRule struct {
-	ID          string            `json:"id"`          // Unique rule identifier
-	Name        string            `json:"name"`        // Human-readable rule name
-	Description string            `json:"description"` // Detailed description of what the rule detects
-	Category    DetectionCategory `json:"category"`    // Threat category for grouping/filtering
-	Severity    string            `json:"severity"`    // critical, high, medium, low
-	Enabled     bool              `json:"enabled"`     // Whether rule is active
-	Conditions  []Condition       `json:"conditions"`  // Conditions that must match
+	ID          string            `json:"id"`           // Unique rule identifier
+	Name        string            `json:"name"`         // Human-readable rule name
+	Description string            `json:"description"`  // Detailed description of what the rule detects
+	Category    DetectionCategory `json:"category"`     // Threat category for grouping/filtering
+	Severity    string            `json:"severity"`     // critical, high, medium, low
+	Enabled     bool              `json:"enabled"`      // Whether rule is active
+	Conditions  []Condition       `json:"conditions"`   // Conditions that must match
 	MITRE       []string          `json:"mitre_attack"` // MITRE ATT&CK technique IDs (e.g., T1496)
-	Response    ResponseAction    `json:"response"`    // Automated response configuration
+	Response    ResponseAction    `json:"response"`     // Automated response configuration
 }
 
 // DetectionCategory classifies the type of threat being detected.
@@ -86,8 +86,8 @@ type Condition struct {
 }
 
 type ResponseAction struct {
-	Type       string `json:"type"` // alert, isolate, kill, quarantine
-	AutoExecute bool  `json:"auto_execute"`
+	Type        string `json:"type"` // alert, isolate, kill, quarantine
+	AutoExecute bool   `json:"auto_execute"`
 }
 
 // RuntimeEvent represents a telemetry event from agents
@@ -119,15 +119,15 @@ type ProcessEvent struct {
 }
 
 type NetworkEvent struct {
-	Direction   string `json:"direction"` // inbound, outbound
-	Protocol    string `json:"protocol"`
-	SrcIP       string `json:"src_ip"`
-	SrcPort     int    `json:"src_port"`
-	DstIP       string `json:"dst_ip"`
-	DstPort     int    `json:"dst_port"`
-	Domain      string `json:"domain,omitempty"`
-	BytesSent   int64  `json:"bytes_sent"`
-	BytesRecv   int64  `json:"bytes_recv"`
+	Direction string `json:"direction"` // inbound, outbound
+	Protocol  string `json:"protocol"`
+	SrcIP     string `json:"src_ip"`
+	SrcPort   int    `json:"src_port"`
+	DstIP     string `json:"dst_ip"`
+	DstPort   int    `json:"dst_port"`
+	Domain    string `json:"domain,omitempty"`
+	BytesSent int64  `json:"bytes_sent"`
+	BytesRecv int64  `json:"bytes_recv"`
 }
 
 type FileEvent struct {
@@ -151,24 +151,24 @@ type ContainerEvent struct {
 
 // RuntimeFinding represents a detected threat
 type RuntimeFinding struct {
-	ID          string            `json:"id"`
-	RuleID      string            `json:"rule_id"`
-	RuleName    string            `json:"rule_name"`
-	Category    DetectionCategory `json:"category"`
-	Severity    string            `json:"severity"`
-	ResourceID  string            `json:"resource_id"`
-	ResourceType string           `json:"resource_type"`
-	Description string            `json:"description"`
-	Event       *RuntimeEvent     `json:"event"`
-	MITRE       []string          `json:"mitre_attack"`
-	Remediation string            `json:"remediation"`
-	Suppressed  bool              `json:"suppressed"`
-	Timestamp   time.Time         `json:"timestamp"`
+	ID           string            `json:"id"`
+	RuleID       string            `json:"rule_id"`
+	RuleName     string            `json:"rule_name"`
+	Category     DetectionCategory `json:"category"`
+	Severity     string            `json:"severity"`
+	ResourceID   string            `json:"resource_id"`
+	ResourceType string            `json:"resource_type"`
+	Description  string            `json:"description"`
+	Event        *RuntimeEvent     `json:"event"`
+	MITRE        []string          `json:"mitre_attack"`
+	Remediation  string            `json:"remediation"`
+	Suppressed   bool              `json:"suppressed"`
+	Timestamp    time.Time         `json:"timestamp"`
 }
 
 func NewDetectionEngine() *DetectionEngine {
 	engine := &DetectionEngine{
-		rules:       make([]DetectionRule, 0),
+		rules:        make([]DetectionRule, 0),
 		suppressions: make(map[string]bool),
 	}
 	engine.loadDefaultRules()

@@ -49,7 +49,7 @@ func (q *QualysProvider) Configure(ctx context.Context, config map[string]interf
 	if platform := q.GetConfigString("platform"); platform != "" {
 		q.platform = platform
 	}
-	
+
 	if url, ok := qualysPlatformURLs[q.platform]; ok {
 		q.baseURL = url
 	} else {
