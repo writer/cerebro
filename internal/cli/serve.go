@@ -23,6 +23,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	defer application.Close()
 
+	// Start scheduler in background if configured
+	if application.Config.ScanInterval != "" {
+		go application.Scheduler.Start(ctx)
+		defer application.Scheduler.Stop()
+	}
+
 	server := api.NewServer(application)
 	return server.Run()
 }

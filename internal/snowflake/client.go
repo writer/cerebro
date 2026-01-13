@@ -54,6 +54,11 @@ func (c *Client) Close() error {
 	return c.db.Close()
 }
 
+// DB returns the underlying database connection
+func (c *Client) DB() *sql.DB {
+	return c.db
+}
+
 func (c *Client) Ping(ctx context.Context) error {
 	return c.db.PingContext(ctx)
 }

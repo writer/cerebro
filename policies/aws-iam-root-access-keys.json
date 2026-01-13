@@ -1,0 +1,16 @@
+{
+  "id": "aws-iam-root-no-access-keys",
+  "name": "Root Account Access Keys",
+  "description": "The root account should not have active access keys",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "iam:GetAccessKey",
+  "resource": "aws::iam::credential_report",
+  "conditions": [
+    "user == '<root_account>'",
+    "access_key_1_active == true"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-1.4", "iam", "root-account", "access-keys"],
+  "remediation": "Delete all access keys associated with the root account. Use IAM users or roles for programmatic access."
+}

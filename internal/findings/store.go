@@ -8,6 +8,17 @@ import (
 	"github.com/writerinternal/cerebro/internal/policy"
 )
 
+// FindingStore interface for findings persistence
+type FindingStore interface {
+	Upsert(ctx context.Context, pf policy.Finding) *Finding
+	Get(id string) (*Finding, bool)
+	List(filter FindingFilter) []*Finding
+	Resolve(id string) bool
+	Suppress(id string) bool
+	Stats() Stats
+	Sync(ctx context.Context) error // Sync to persistent storage
+}
+
 type Finding struct {
 	ID          string                 `json:"id"`
 	PolicyID    string                 `json:"policy_id"`
@@ -161,3 +172,11 @@ type Stats struct {
 	ByStatus   map[string]int `json:"by_status"`
 	ByPolicy   map[string]int `json:"by_policy"`
 }
+
+// Sync is a no-op for in-memory store
+func (s *Store) Sync(ctx context.Context) error {
+	return nil
+}
+
+// Ensure Store implements FindingStore
+var _ FindingStore = (*Store)(nil)

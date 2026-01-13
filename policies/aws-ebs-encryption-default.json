@@ -1,0 +1,15 @@
+{
+  "id": "aws-ebs-encryption-default",
+  "name": "EBS Encryption by Default",
+  "description": "EBS encryption should be enabled by default in each region",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "ec2:EnableEbsEncryptionByDefault",
+  "resource": "aws::ec2::ebs_encryption_by_default",
+  "conditions": [
+    "ebs_encryption_enabled != true"
+  ],
+  "severity": "medium",
+  "tags": ["cis-aws-2.2.1", "ebs", "encryption", "data-protection"],
+  "remediation": "Enable EBS encryption by default in each region using the EC2 console or EnableEbsEncryptionByDefault API."
+}

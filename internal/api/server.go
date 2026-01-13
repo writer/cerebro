@@ -18,6 +18,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/identity"
 	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/providers"
+	"github.com/writerinternal/cerebro/internal/notifications"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
@@ -154,6 +155,21 @@ func (s *Server) setupRoutes() {
 		// Audit log endpoints
 		r.Route("/audit", func(r chi.Router) {
 			r.Get("/", s.listAuditLogs)
+		})
+
+		// Scheduler endpoints
+		r.Route("/scheduler", func(r chi.Router) {
+			r.Get("/status", s.schedulerStatus)
+			r.Get("/jobs", s.listJobs)
+			r.Post("/jobs/{name}/run", s.runJob)
+			r.Post("/jobs/{name}/enable", s.enableJob)
+			r.Post("/jobs/{name}/disable", s.disableJob)
+		})
+
+		// Notification endpoints
+		r.Route("/notifications", func(r chi.Router) {
+			r.Get("/", s.listNotifiers)
+			r.Post("/test", s.testNotifications)
 		})
 	})
 }
@@ -1123,4 +1139,80 @@ func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.json(w, http.StatusOK, map[string]interface{}{"logs": logs, "count": len(logs)})
+}
+
+// Scheduler endpoints
+
+func (s *Server) schedulerStatus(w http.ResponseWriter, r *http.Request) {
+	status := s.app.Scheduler.Status()
+	s.json(w, http.StatusOK, status)
+}
+
+func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
+	jobs := s.app.Scheduler.ListJobs()
+	result := make([]map[string]interface{}, len(jobs))
+	for i, j := range jobs {
+		result[i] = map[string]interface{}{
+			"name":     j.Name,
+			"interval": j.Interval.String(),
+			"enabled":  j.Enabled,
+			"running":  j.Running,
+			"next_run": j.NextRun,
+		}
+		if !j.LastRun.IsZero() {
+			result[i]["last_run"] = j.LastRun
+		}
+	}
+	s.json(w, http.StatusOK, map[string]interface{}{"jobs": result, "count": len(result)})
+}
+
+func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := s.app.Scheduler.RunNow(name); err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.json(w, http.StatusAccepted, map[string]string{"status": "job triggered"})
+}
+
+func (s *Server) enableJob(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	s.app.Scheduler.EnableJob(name)
+	s.json(w, http.StatusOK, map[string]string{"status": "job enabled"})
+}
+
+func (s *Server) disableJob(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	s.app.Scheduler.DisableJob(name)
+	s.json(w, http.StatusOK, map[string]string{"status": "job disabled"})
+}
+
+// Notification endpoints
+
+func (s *Server) listNotifiers(w http.ResponseWriter, r *http.Request) {
+	notifiers := s.app.Notifications.ListNotifiers()
+	s.json(w, http.StatusOK, map[string]interface{}{"notifiers": notifiers, "count": len(notifiers)})
+}
+
+func (s *Server) testNotifications(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Message  string `json:"message"`
+		Severity string `json:"severity"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		req.Message = "Test notification from Cerebro"
+		req.Severity = "info"
+	}
+
+	err := s.app.Notifications.Send(r.Context(), notifications.Event{
+		Type:     "test",
+		Title:    "Test Notification",
+		Message:  req.Message,
+		Severity: req.Severity,
+	})
+	if err != nil {
+		s.json(w, http.StatusOK, map[string]interface{}{"status": "partial", "error": err.Error()})
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "sent"})
 }

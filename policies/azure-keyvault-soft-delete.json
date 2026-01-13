@@ -1,0 +1,15 @@
+{
+  "id": "azure-keyvault-soft-delete-enabled",
+  "name": "Key Vault Soft Delete",
+  "description": "Azure Key Vault should have soft delete enabled to protect against accidental deletion",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "Microsoft.KeyVault/vaults/write",
+  "resource": "azure::keyvault::vault",
+  "conditions": [
+    "properties.enable_soft_delete != true"
+  ],
+  "severity": "medium",
+  "tags": ["cis-azure-8.4", "keyvault", "secrets", "data-protection"],
+  "remediation": "Enable soft delete on Key Vault to allow recovery of deleted secrets, keys, and certificates."
+}

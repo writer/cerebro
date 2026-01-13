@@ -1,0 +1,311 @@
+package notifications
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+// Event represents a notification event
+type Event struct {
+	Type      EventType              `json:"type"`
+	Timestamp time.Time              `json:"timestamp"`
+	Severity  string                 `json:"severity,omitempty"`
+	Title     string                 `json:"title"`
+	Message   string                 `json:"message"`
+	Data      map[string]interface{} `json:"data,omitempty"`
+}
+
+type EventType string
+
+const (
+	EventFindingCreated   EventType = "finding.created"
+	EventFindingResolved  EventType = "finding.resolved"
+	EventScanCompleted    EventType = "scan.completed"
+	EventScanFailed       EventType = "scan.failed"
+	EventAttackPathFound  EventType = "attack_path.found"
+	EventReviewRequired   EventType = "review.required"
+)
+
+// Notifier sends notifications
+type Notifier interface {
+	Send(ctx context.Context, event Event) error
+	Name() string
+	Test(ctx context.Context) error
+}
+
+// Manager coordinates multiple notifiers
+type Manager struct {
+	notifiers []Notifier
+	client    *http.Client
+}
+
+func NewManager() *Manager {
+	return &Manager{
+		notifiers: make([]Notifier, 0),
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+func (m *Manager) AddNotifier(n Notifier) {
+	m.notifiers = append(m.notifiers, n)
+}
+
+func (m *Manager) Send(ctx context.Context, event Event) error {
+	if event.Timestamp.IsZero() {
+		event.Timestamp = time.Now().UTC()
+	}
+
+	var lastErr error
+	for _, n := range m.notifiers {
+		if err := n.Send(ctx, event); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func (m *Manager) ListNotifiers() []string {
+	names := make([]string, len(m.notifiers))
+	for i, n := range m.notifiers {
+		names[i] = n.Name()
+	}
+	return names
+}
+
+// SlackNotifier sends notifications to Slack
+type SlackNotifier struct {
+	webhookURL string
+	channel    string
+	client     *http.Client
+}
+
+type SlackConfig struct {
+	WebhookURL string
+	Channel    string
+}
+
+func NewSlackNotifier(cfg SlackConfig) *SlackNotifier {
+	return &SlackNotifier{
+		webhookURL: cfg.WebhookURL,
+		channel:    cfg.Channel,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+}
+
+func (s *SlackNotifier) Name() string { return "slack" }
+
+func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
+	color := s.severityColor(event.Severity)
+
+	payload := map[string]interface{}{
+		"attachments": []map[string]interface{}{
+			{
+				"color":  color,
+				"title":  event.Title,
+				"text":   event.Message,
+				"footer": "Cerebro Security",
+				"ts":     event.Timestamp.Unix(),
+				"fields": []map[string]interface{}{
+					{"title": "Type", "value": string(event.Type), "short": true},
+					{"title": "Severity", "value": event.Severity, "short": true},
+				},
+			},
+		},
+	}
+
+	if s.channel != "" {
+		payload["channel"] = s.channel
+	}
+
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, "POST", s.webhookURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("slack returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (s *SlackNotifier) Test(ctx context.Context) error {
+	return s.Send(ctx, Event{
+		Type:     "test",
+		Title:    "Cerebro Test Notification",
+		Message:  "This is a test notification from Cerebro.",
+		Severity: "info",
+	})
+}
+
+func (s *SlackNotifier) severityColor(severity string) string {
+	switch severity {
+	case "critical":
+		return "#FF0000"
+	case "high":
+		return "#FF6600"
+	case "medium":
+		return "#FFCC00"
+	case "low":
+		return "#0066FF"
+	default:
+		return "#808080"
+	}
+}
+
+// PagerDutyNotifier sends alerts to PagerDuty
+type PagerDutyNotifier struct {
+	routingKey string
+	client     *http.Client
+}
+
+type PagerDutyConfig struct {
+	RoutingKey string // Integration key from PagerDuty
+}
+
+func NewPagerDutyNotifier(cfg PagerDutyConfig) *PagerDutyNotifier {
+	return &PagerDutyNotifier{
+		routingKey: cfg.RoutingKey,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+}
+
+func (p *PagerDutyNotifier) Name() string { return "pagerduty" }
+
+func (p *PagerDutyNotifier) Send(ctx context.Context, event Event) error {
+	// Only send to PagerDuty for high/critical severity
+	if event.Severity != "critical" && event.Severity != "high" {
+		return nil
+	}
+
+	severity := "warning"
+	if event.Severity == "critical" {
+		severity = "critical"
+	}
+
+	payload := map[string]interface{}{
+		"routing_key":  p.routingKey,
+		"event_action": "trigger",
+		"dedup_key":    fmt.Sprintf("cerebro-%s-%v", event.Type, event.Data["finding_id"]),
+		"payload": map[string]interface{}{
+			"summary":   event.Title,
+			"severity":  severity,
+			"source":    "cerebro",
+			"timestamp": event.Timestamp.Format(time.RFC3339),
+			"custom_details": map[string]interface{}{
+				"type":    event.Type,
+				"message": event.Message,
+				"data":    event.Data,
+			},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://events.pagerduty.com/v2/enqueue", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("pagerduty returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (p *PagerDutyNotifier) Test(ctx context.Context) error {
+	return p.Send(ctx, Event{
+		Type:     "test",
+		Title:    "Cerebro Test Alert",
+		Message:  "This is a test alert from Cerebro.",
+		Severity: "high",
+		Data:     map[string]interface{}{"finding_id": "test-123"},
+	})
+}
+
+// WebhookNotifier sends to a generic webhook URL
+type WebhookNotifier struct {
+	url    string
+	secret string
+	client *http.Client
+}
+
+type WebhookConfig struct {
+	URL    string
+	Secret string
+}
+
+func NewWebhookNotifier(cfg WebhookConfig) *WebhookNotifier {
+	return &WebhookNotifier{
+		url:    cfg.URL,
+		secret: cfg.Secret,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+}
+
+func (w *WebhookNotifier) Name() string { return "webhook" }
+
+func (w *WebhookNotifier) Send(ctx context.Context, event Event) error {
+	body, _ := json.Marshal(event)
+	req, err := http.NewRequestWithContext(ctx, "POST", w.url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Cerebro-Event", string(event.Type))
+
+	if w.secret != "" {
+		// HMAC signature would go here
+		req.Header.Set("X-Cerebro-Secret", w.secret)
+	}
+
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (w *WebhookNotifier) Test(ctx context.Context) error {
+	return w.Send(ctx, Event{
+		Type:     "test",
+		Title:    "Cerebro Test Webhook",
+		Message:  "This is a test webhook from Cerebro.",
+		Severity: "info",
+	})
+}
+
+// Ensure implementations satisfy interface
+var _ Notifier = (*SlackNotifier)(nil)
+var _ Notifier = (*PagerDutyNotifier)(nil)
+var _ Notifier = (*WebhookNotifier)(nil)

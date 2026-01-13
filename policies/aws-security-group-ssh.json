@@ -1,0 +1,17 @@
+{
+  "id": "aws-security-group-restrict-ssh",
+  "name": "Security Group SSH Restriction",
+  "description": "Security groups should not allow unrestricted SSH access (0.0.0.0/0 on port 22)",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "ec2:AuthorizeSecurityGroupIngress",
+  "resource": "aws::ec2::security_group",
+  "conditions": [
+    "ip_permissions.from_port <= 22",
+    "ip_permissions.to_port >= 22",
+    "ip_permissions.ip_ranges contains '0.0.0.0/0'"
+  ],
+  "severity": "high",
+  "tags": ["cis-aws-5.2", "security-group", "network", "ssh", "remote-access"],
+  "remediation": "Restrict SSH access to specific IP ranges or use AWS Systems Manager Session Manager for remote access."
+}

@@ -1,0 +1,17 @@
+{
+  "id": "aws-security-group-restrict-rdp",
+  "name": "Security Group RDP Restriction",
+  "description": "Security groups should not allow unrestricted RDP access (0.0.0.0/0 on port 3389)",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "ec2:AuthorizeSecurityGroupIngress",
+  "resource": "aws::ec2::security_group",
+  "conditions": [
+    "ip_permissions.from_port <= 3389",
+    "ip_permissions.to_port >= 3389",
+    "ip_permissions.ip_ranges contains '0.0.0.0/0'"
+  ],
+  "severity": "high",
+  "tags": ["cis-aws-5.3", "security-group", "network", "rdp", "remote-access"],
+  "remediation": "Restrict RDP access to specific IP ranges or use AWS Systems Manager Session Manager for remote access."
+}

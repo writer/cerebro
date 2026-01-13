@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/writerinternal/cerebro/internal/agents"
 	agentproviders "github.com/writerinternal/cerebro/internal/agents/providers"
@@ -15,6 +17,8 @@ import (
 	"github.com/writerinternal/cerebro/internal/policy"
 	"github.com/writerinternal/cerebro/internal/providers"
 	"github.com/writerinternal/cerebro/internal/scanner"
+	"github.com/writerinternal/cerebro/internal/notifications"
+	"github.com/writerinternal/cerebro/internal/scheduler"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
@@ -33,17 +37,22 @@ type App struct {
 	Cache     *cache.PolicyCache
 
 	// Feature services
-	Agents     *agents.AgentRegistry
-	Ticketing  *ticketing.Service
-	Identity   *identity.Service
-	AttackPath *attackpath.Graph
-	Providers  *providers.Registry
-	Webhooks   *webhooks.Service
+	Agents        *agents.AgentRegistry
+	Ticketing     *ticketing.Service
+	Identity      *identity.Service
+	AttackPath    *attackpath.Graph
+	Providers     *providers.Registry
+	Webhooks      *webhooks.Service
+	Notifications *notifications.Manager
+	Scheduler     *scheduler.Scheduler
 
 	// Repositories (for Snowflake persistence)
 	FindingsRepo *snowflake.FindingRepository
 	TicketsRepo  *snowflake.TicketRepository
 	AuditRepo    *snowflake.AuditRepository
+
+	// Snowflake-backed stores (when available)
+	SnowflakeFindings *findings.SnowflakeStore
 }
 
 // Config holds all application configuration
@@ -81,6 +90,14 @@ type Config struct {
 
 	// Webhooks
 	WebhookURLs []string
+
+	// Notifications
+	SlackWebhookURL   string
+	PagerDutyKey      string
+
+	// Scheduler
+	ScanInterval string // e.g., "1h", "30m"
+	ScanTables   string // comma-separated list of tables to scan
 }
 
 func LoadConfig() *Config {
@@ -104,6 +121,10 @@ func LoadConfig() *Config {
 		CrowdStrikeClientSecret:   getEnv("CROWDSTRIKE_CLIENT_SECRET", ""),
 		OktaDomain:                getEnv("OKTA_DOMAIN", ""),
 		OktaAPIToken:              getEnv("OKTA_API_TOKEN", ""),
+		SlackWebhookURL:           getEnv("SLACK_WEBHOOK_URL", ""),
+		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),
+		ScanInterval:              getEnv("SCAN_INTERVAL", ""),
+		ScanTables:                getEnv("SCAN_TABLES", ""),
 	}
 }
 
@@ -137,7 +158,10 @@ func New(ctx context.Context) (*App, error) {
 	app.initAttackPath()
 	app.initProviders(ctx)
 	app.initWebhooks()
+	app.initNotifications()
+	app.initScheduler(ctx)
 	app.initRepositories()
+	app.initSnowflakeFindings(ctx)
 
 	logger.Info("application initialized",
 		"snowflake", app.Snowflake != nil,
@@ -288,6 +312,115 @@ func (a *App) initWebhooks() {
 	a.Webhooks = webhooks.NewService()
 }
 
+func (a *App) initNotifications() {
+	a.Notifications = notifications.NewManager()
+
+	if a.Config.SlackWebhookURL != "" {
+		slack := notifications.NewSlackNotifier(notifications.SlackConfig{
+			WebhookURL: a.Config.SlackWebhookURL,
+		})
+		a.Notifications.AddNotifier(slack)
+		a.Logger.Info("slack notifications enabled")
+	}
+
+	if a.Config.PagerDutyKey != "" {
+		pd := notifications.NewPagerDutyNotifier(notifications.PagerDutyConfig{
+			RoutingKey: a.Config.PagerDutyKey,
+		})
+		a.Notifications.AddNotifier(pd)
+		a.Logger.Info("pagerduty notifications enabled")
+	}
+}
+
+func (a *App) initScheduler(ctx context.Context) {
+	a.Scheduler = scheduler.NewScheduler(a.Logger)
+
+	// Add scan job if interval configured
+	if a.Config.ScanInterval != "" {
+		interval, err := parseDuration(a.Config.ScanInterval)
+		if err != nil {
+			a.Logger.Warn("invalid scan interval", "value", a.Config.ScanInterval, "error", err)
+			return
+		}
+
+		tables := []string{"aws_s3_buckets", "aws_ec2_instances", "aws_iam_users"}
+		if a.Config.ScanTables != "" {
+			tables = splitTables(a.Config.ScanTables)
+		}
+
+		a.Scheduler.AddJob("policy-scan", interval, func(ctx context.Context) error {
+			return a.runScheduledScan(ctx, tables)
+		})
+
+		a.Logger.Info("scheduled scanning enabled", "interval", interval, "tables", tables)
+	}
+}
+
+func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
+	if a.Snowflake == nil {
+		return fmt.Errorf("snowflake not configured")
+	}
+
+	totalScanned := 0
+	totalViolations := 0
+
+	for _, table := range tables {
+		assets, err := a.Snowflake.GetAssets(ctx, table, snowflake.AssetFilter{Limit: 1000})
+		if err != nil {
+			a.Logger.Warn("failed to fetch assets", "table", table, "error", err)
+			continue
+		}
+
+		result := a.Scanner.ScanAssets(ctx, assets)
+		totalScanned += int(result.Scanned)
+		totalViolations += int(result.Violations)
+
+		// Persist findings
+		for _, f := range result.Findings {
+			finding := a.Findings.Upsert(ctx, f)
+
+			// Send notification for new critical/high findings
+			if finding.FirstSeen.Equal(finding.LastSeen) && (f.Severity == "critical" || f.Severity == "high") {
+				a.Notifications.Send(ctx, notifications.Event{
+					Type:     notifications.EventFindingCreated,
+					Severity: f.Severity,
+					Title:    fmt.Sprintf("New %s Finding: %s", f.Severity, f.PolicyName),
+					Message:  f.Description,
+					Data: map[string]interface{}{
+						"finding_id": f.ID,
+						"policy_id":  f.PolicyID,
+						"resource":   f.Resource,
+					},
+				})
+			}
+		}
+	}
+
+	// Sync to Snowflake if available
+	if a.SnowflakeFindings != nil {
+		if err := a.SnowflakeFindings.Sync(ctx); err != nil {
+			a.Logger.Warn("failed to sync findings to snowflake", "error", err)
+		}
+	}
+
+	// Send scan completed notification
+	a.Notifications.Send(ctx, notifications.Event{
+		Type:    notifications.EventScanCompleted,
+		Title:   "Scheduled Scan Completed",
+		Message: fmt.Sprintf("Scanned %d assets, found %d violations", totalScanned, totalViolations),
+		Data: map[string]interface{}{
+			"scanned":    totalScanned,
+			"violations": totalViolations,
+			"tables":     tables,
+		},
+	})
+
+	// Emit webhook
+	a.Webhooks.EmitScanCompleted(ctx, int64(totalScanned), int64(totalViolations), 0)
+
+	return nil
+}
+
 func (a *App) initRepositories() {
 	if a.Snowflake == nil {
 		return
@@ -295,6 +428,25 @@ func (a *App) initRepositories() {
 	a.FindingsRepo = snowflake.NewFindingRepository(a.Snowflake)
 	a.TicketsRepo = snowflake.NewTicketRepository(a.Snowflake)
 	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
+}
+
+func (a *App) initSnowflakeFindings(ctx context.Context) {
+	if a.Snowflake == nil {
+		return
+	}
+
+	a.SnowflakeFindings = findings.NewSnowflakeStore(
+		a.Snowflake.DB(),
+		a.Config.SnowflakeDatabase,
+		a.Config.SnowflakeSchema,
+	)
+
+	// Load existing findings from Snowflake
+	if err := a.SnowflakeFindings.Load(ctx); err != nil {
+		a.Logger.Warn("failed to load findings from snowflake", "error", err)
+	} else {
+		a.Logger.Info("loaded findings from snowflake", "count", a.SnowflakeFindings.Stats().Total)
+	}
 }
 
 // Close cleanly shuts down all services
@@ -332,4 +484,19 @@ func parseLogLevel(level string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func parseDuration(s string) (time.Duration, error) {
+	return time.ParseDuration(s)
+}
+
+func splitTables(s string) []string {
+	var result []string
+	for _, t := range strings.Split(s, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }
