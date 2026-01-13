@@ -780,14 +780,45 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		Controls: make([]compliance.ControlStatus, len(framework.Controls)),
 	}
 
+	// Build evidence map for failing controls
+	type Evidence struct {
+		Resource   string `json:"resource"`
+		FindingID  string `json:"finding_id"`
+		Severity   string `json:"severity"`
+		DetectedAt string `json:"detected_at"`
+	}
+	controlEvidence := make(map[string][]Evidence)
+
 	passing := 0
 	totalFindings := 0
 	for i, ctrl := range framework.Controls {
-		// Count findings for this control
+		// Count findings for this control and gather evidence
 		failCount := 0
+		var evidence []Evidence
 		for _, policyID := range ctrl.PolicyIDs {
 			if count, ok := findingsStats.ByPolicy[policyID]; ok {
 				failCount += count
+			}
+			// Get sample findings for evidence (limit to 5 per policy)
+			policyFindings := s.app.Findings.List(findings.FindingFilter{PolicyID: policyID, Status: "open"})
+			for j, f := range policyFindings {
+				if j >= 5 {
+					break
+				}
+				resourceName := f.ResourceID
+				if resourceName == "" {
+					if arn, ok := f.Resource["arn"].(string); ok {
+						resourceName = arn
+					} else if name, ok := f.Resource["name"].(string); ok {
+						resourceName = name
+					}
+				}
+				evidence = append(evidence, Evidence{
+					Resource:   resourceName,
+					FindingID:  f.ID,
+					Severity:   f.Severity,
+					DetectedAt: f.FirstSeen.Format(time.RFC3339),
+				})
 			}
 		}
 		totalFindings += failCount
@@ -795,6 +826,10 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		status := "passing"
 		if failCount > 0 {
 			status = "failing"
+			if len(evidence) > 10 {
+				evidence = evidence[:10] // Limit evidence per control
+			}
+			controlEvidence[ctrl.ID] = evidence
 		} else {
 			passing++
 		}
@@ -821,10 +856,11 @@ func (s *Server) generateComplianceReport(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Return enhanced response
+	// Return enhanced response with evidence
 	response := map[string]interface{}{
 		"report":         report,
 		"total_findings": totalFindings,
+		"evidence":       controlEvidence,
 	}
 	if dataWarning != "" {
 		response["data_warning"] = dataWarning
