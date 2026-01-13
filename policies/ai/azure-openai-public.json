@@ -1,0 +1,14 @@
+{
+  "id": "azure-openai-public-network",
+  "name": "Azure OpenAI Public Network Access",
+  "description": "Azure OpenAI service allows public network access",
+  "effect": "forbid",
+  "resource": "azure::cognitive_services::account",
+  "conditions": [
+    "kind == 'OpenAI'",
+    "public_network_access == 'Enabled'"
+  ],
+  "severity": "high",
+  "tags": ["ai", "azure-openai", "azure", "public-access", "network"],
+  "remediation": "Disable public network access and use private endpoints."
+}

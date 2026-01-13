@@ -1,0 +1,13 @@
+{
+  "id": "aws-bedrock-custom-model-public",
+  "name": "AWS Bedrock Custom Model Public Access",
+  "description": "Bedrock custom model training data stored in publicly accessible S3 bucket",
+  "effect": "forbid",
+  "resource": "aws::bedrock::custom_model",
+  "conditions": [
+    "training_data_config.s3_uri references bucket with public access"
+  ],
+  "severity": "critical",
+  "tags": ["ai", "bedrock", "training-data", "data-exposure", "model-security"],
+  "remediation": "Ensure training data S3 bucket has public access blocked."
+}

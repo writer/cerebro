@@ -1,0 +1,14 @@
+{
+  "id": "ml-model-untrusted-source",
+  "name": "ML Model from Untrusted Source",
+  "description": "ML model loaded from external source without security scanning",
+  "effect": "forbid",
+  "resource": "ml::model_artifact",
+  "conditions": [
+    "source_type == 'external'",
+    "security_scan_status != 'passed'"
+  ],
+  "severity": "high",
+  "tags": ["ai", "model-security", "supply-chain", "malicious-model"],
+  "remediation": "Scan external models for malicious payloads before deployment."
+}

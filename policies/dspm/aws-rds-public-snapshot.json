@@ -1,0 +1,13 @@
+{
+  "id": "aws-rds-public-snapshot",
+  "name": "AWS RDS Public Snapshot",
+  "description": "RDS database snapshot is publicly accessible",
+  "effect": "forbid",
+  "resource": "aws::rds::db_snapshot",
+  "conditions": [
+    "attributes.restore contains 'all'"
+  ],
+  "severity": "critical",
+  "tags": ["dspm", "rds", "database", "data-exposure", "snapshot"],
+  "remediation": "Modify snapshot permissions to remove public access."
+}

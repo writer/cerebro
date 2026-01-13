@@ -1,0 +1,13 @@
+{
+  "id": "aws-guardduty-c2-traffic",
+  "name": "AWS GuardDuty Command and Control Traffic",
+  "description": "GuardDuty detected communication with known C&C servers",
+  "effect": "forbid",
+  "resource": "aws::guardduty::finding",
+  "conditions": [
+    "type contains 'Trojan' || type contains 'Backdoor' || type contains 'C&CActivity'"
+  ],
+  "severity": "critical",
+  "tags": ["runtime", "c2", "botnet", "guardduty", "incident-response"],
+  "remediation": "Immediately isolate the instance, block C2 IP at the firewall, and initiate incident response."
+}

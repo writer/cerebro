@@ -1,0 +1,13 @@
+{
+  "id": "aws-sagemaker-notebook-internet-access",
+  "name": "SageMaker Notebook Direct Internet Access",
+  "description": "SageMaker notebook instance has direct internet access enabled",
+  "effect": "forbid",
+  "resource": "aws::sagemaker::notebook_instance",
+  "conditions": [
+    "direct_internet_access == 'Enabled'"
+  ],
+  "severity": "high",
+  "tags": ["ai", "sagemaker", "network", "data-exfiltration"],
+  "remediation": "Disable direct internet access and use VPC endpoints for required services."
+}

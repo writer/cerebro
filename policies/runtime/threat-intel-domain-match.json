@@ -1,0 +1,13 @@
+{
+  "id": "threat-intel-malicious-domain-resolution",
+  "name": "DNS Resolution of Threat Intelligence Domain",
+  "description": "DNS query detected for domain in threat intelligence feeds",
+  "effect": "forbid",
+  "resource": "network::dns_query",
+  "conditions": [
+    "domain in threat_intel.malicious_domains"
+  ],
+  "severity": "high",
+  "tags": ["runtime", "threat-intel", "dns", "malware", "dga"],
+  "remediation": "Block the domain in DNS firewall and investigate the querying instance."
+}

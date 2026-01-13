@@ -1,0 +1,13 @@
+{
+  "id": "azure-cosmosdb-public-access",
+  "name": "Azure Cosmos DB Public Access",
+  "description": "Azure Cosmos DB allows public network access",
+  "effect": "forbid",
+  "resource": "azure::cosmosdb::database_account",
+  "conditions": [
+    "public_network_access == 'Enabled'"
+  ],
+  "severity": "high",
+  "tags": ["dspm", "cosmosdb", "azure", "database", "public-access"],
+  "remediation": "Disable public network access and use private endpoints."
+}

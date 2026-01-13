@@ -1,0 +1,15 @@
+{
+  "id": "github-dependabot-high-alert",
+  "name": "GitHub High Dependabot Alert",
+  "description": "Repository has high severity Dependabot security alert open for more than 14 days",
+  "effect": "forbid",
+  "resource": "github::repository_dependabot_alert",
+  "conditions": [
+    "severity == 'high'",
+    "state == 'open'",
+    "created_at_days > 14"
+  ],
+  "severity": "high",
+  "tags": ["devsecops", "dependencies", "supply-chain", "dependabot"],
+  "remediation": "Update the vulnerable dependency to a patched version."
+}

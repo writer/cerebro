@@ -1,0 +1,14 @@
+{
+  "id": "ml-model-registry-no-versioning",
+  "name": "ML Model Registry No Versioning",
+  "description": "ML model registry does not enforce version control and audit trail",
+  "effect": "forbid",
+  "resource": "aws::sagemaker::model_package_group",
+  "conditions": [
+    "model_package_group_status != 'Pending' || model_package_group_status != 'Completed'",
+    "model_approval_status == 'PendingManualApproval'"
+  ],
+  "severity": "medium",
+  "tags": ["ai", "model-registry", "governance", "audit-trail"],
+  "remediation": "Implement model approval workflow and version control."
+}

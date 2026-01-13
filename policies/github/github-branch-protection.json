@@ -1,0 +1,13 @@
+{
+  "id": "github-repo-branch-protection",
+  "name": "GitHub Repository Branch Protection",
+  "description": "GitHub repository default branch lacks branch protection rules",
+  "effect": "forbid",
+  "resource": "github::repository",
+  "conditions": [
+    "default_branch_protection.enabled != true"
+  ],
+  "severity": "high",
+  "tags": ["devsecops", "github", "branch-protection", "cis-github-1.1.3"],
+  "remediation": "Enable branch protection rules for the default branch requiring reviews and status checks."
+}

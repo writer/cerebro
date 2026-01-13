@@ -1,0 +1,13 @@
+{
+  "id": "threat-intel-malicious-ip-connection",
+  "name": "Connection to Threat Intelligence IP",
+  "description": "Network connection detected to IP address in threat intelligence feeds",
+  "effect": "forbid",
+  "resource": "network::connection",
+  "conditions": [
+    "destination_ip in threat_intel.malicious_ips"
+  ],
+  "severity": "critical",
+  "tags": ["runtime", "threat-intel", "network", "c2", "incident-response"],
+  "remediation": "Block the IP at security groups/firewall and investigate the source instance."
+}

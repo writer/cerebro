@@ -1,0 +1,13 @@
+{
+  "id": "aws-ecr-scan-on-push-disabled",
+  "name": "AWS ECR Scan On Push Disabled",
+  "description": "ECR repository does not have scan on push enabled",
+  "effect": "forbid",
+  "resource": "aws::ecr::repository",
+  "conditions": [
+    "image_scanning_configuration.scan_on_push != true"
+  ],
+  "severity": "medium",
+  "tags": ["cicd", "ecr", "container-security", "vulnerability-scanning"],
+  "remediation": "Enable scan on push for the ECR repository."
+}

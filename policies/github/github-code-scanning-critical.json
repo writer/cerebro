@@ -1,0 +1,14 @@
+{
+  "id": "github-code-scanning-critical",
+  "name": "GitHub Code Scanning Critical Alert",
+  "description": "Repository has critical code scanning alert from CodeQL or third-party scanner",
+  "effect": "forbid",
+  "resource": "github::code_scanning_alert",
+  "conditions": [
+    "rule.severity == 'critical' || rule.security_severity_level == 'critical'",
+    "state == 'open'"
+  ],
+  "severity": "critical",
+  "tags": ["devsecops", "sast", "code-scanning", "codeql"],
+  "remediation": "Fix the vulnerability identified by the code scanner."
+}

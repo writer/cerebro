@@ -1,0 +1,14 @@
+{
+  "id": "github-actions-self-hosted-public",
+  "name": "GitHub Actions Self-Hosted Runner on Public Repo",
+  "description": "Self-hosted runner used on public repository poses security risk",
+  "effect": "forbid",
+  "resource": "github::repository",
+  "conditions": [
+    "visibility == 'public'",
+    "has_self_hosted_runners == true"
+  ],
+  "severity": "critical",
+  "tags": ["devsecops", "github-actions", "runners", "cicd-security"],
+  "remediation": "Do not use self-hosted runners on public repositories. Use GitHub-hosted runners instead."
+}

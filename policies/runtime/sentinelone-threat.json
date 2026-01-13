@@ -1,0 +1,14 @@
+{
+  "id": "sentinelone-threat-detected",
+  "name": "SentinelOne Threat Detected",
+  "description": "SentinelOne EDR detected threat on endpoint",
+  "effect": "forbid",
+  "resource": "sentinelone::threat",
+  "conditions": [
+    "threat_info.incident_status != 'resolved'",
+    "threat_info.confidence_level in ['malicious', 'suspicious']"
+  ],
+  "severity": "critical",
+  "tags": ["runtime", "edr", "sentinelone", "malware", "incident-response"],
+  "remediation": "Review threat in SentinelOne console and follow incident response playbook."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "aws-sagemaker-training-no-vpc",
+  "name": "SageMaker Training Job Without VPC",
+  "description": "SageMaker training job runs without VPC isolation",
+  "effect": "forbid",
+  "resource": "aws::sagemaker::training_job",
+  "conditions": [
+    "vpc_config == null"
+  ],
+  "severity": "medium",
+  "tags": ["ai", "sagemaker", "network", "isolation"],
+  "remediation": "Configure VPC for the training job to ensure network isolation."
+}

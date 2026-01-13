@@ -1,0 +1,13 @@
+{
+  "id": "azure-ml-workspace-public-network",
+  "name": "Azure ML Workspace Public Network Access",
+  "description": "Azure Machine Learning workspace allows public network access",
+  "effect": "forbid",
+  "resource": "azure::machine_learning::workspace",
+  "conditions": [
+    "public_network_access == 'Enabled'"
+  ],
+  "severity": "high",
+  "tags": ["ai", "azure-ml", "azure", "public-access", "network"],
+  "remediation": "Disable public network access and use private endpoints."
+}

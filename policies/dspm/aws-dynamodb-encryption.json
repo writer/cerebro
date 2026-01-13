@@ -1,0 +1,13 @@
+{
+  "id": "aws-dynamodb-no-encryption",
+  "name": "AWS DynamoDB Not Encrypted",
+  "description": "DynamoDB table does not use customer-managed KMS encryption",
+  "effect": "forbid",
+  "resource": "aws::dynamodb::table",
+  "conditions": [
+    "sse_description.sse_type != 'KMS'"
+  ],
+  "severity": "medium",
+  "tags": ["dspm", "dynamodb", "encryption", "data-protection"],
+  "remediation": "Enable KMS encryption for the DynamoDB table."
+}

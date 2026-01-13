@@ -1,0 +1,14 @@
+{
+  "id": "aws-codebuild-public-logs",
+  "name": "AWS CodeBuild Public Build Logs",
+  "description": "CodeBuild project has publicly accessible build logs",
+  "effect": "forbid",
+  "resource": "aws::codebuild::project",
+  "conditions": [
+    "logs_config.cloud_watch_logs.status == 'ENABLED'",
+    "logs_config.s3_logs.encryption_disabled == true"
+  ],
+  "severity": "medium",
+  "tags": ["cicd", "codebuild", "logging", "data-exposure"],
+  "remediation": "Enable encryption for CodeBuild logs and restrict S3 bucket access."
+}

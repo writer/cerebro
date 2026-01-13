@@ -1,0 +1,15 @@
+{
+  "id": "container-runtime-exec-detected",
+  "name": "Container Runtime Exec Detected",
+  "description": "kubectl exec or docker exec detected in production container",
+  "effect": "forbid",
+  "resource": "kubernetes::audit_event",
+  "conditions": [
+    "verb == 'create'",
+    "resource == 'pods/exec'",
+    "namespace not in ['kube-system']"
+  ],
+  "severity": "high",
+  "tags": ["runtime", "kubernetes", "container", "exec", "suspicious-activity"],
+  "remediation": "Review exec session for unauthorized access. Implement admission policies to restrict exec."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "gcp-vertex-ai-dataset-public",
+  "name": "GCP Vertex AI Dataset Public Access",
+  "description": "Vertex AI dataset is accessible by allUsers or allAuthenticatedUsers",
+  "effect": "forbid",
+  "resource": "gcp::aiplatform::dataset",
+  "conditions": [
+    "iam_policy contains 'allUsers' || iam_policy contains 'allAuthenticatedUsers'"
+  ],
+  "severity": "critical",
+  "tags": ["ai", "vertex-ai", "gcp", "training-data", "data-exposure"],
+  "remediation": "Remove public IAM bindings from the Vertex AI dataset."
+}

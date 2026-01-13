@@ -1,0 +1,13 @@
+{
+  "id": "aws-redshift-publicly-accessible",
+  "name": "AWS Redshift Publicly Accessible",
+  "description": "Redshift cluster is publicly accessible",
+  "effect": "forbid",
+  "resource": "aws::redshift::cluster",
+  "conditions": [
+    "publicly_accessible == true"
+  ],
+  "severity": "critical",
+  "tags": ["dspm", "redshift", "database", "data-exposure", "public-access"],
+  "remediation": "Disable public accessibility and access via VPC only."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "aws-redshift-no-encryption",
+  "name": "AWS Redshift Not Encrypted",
+  "description": "Redshift cluster is not encrypted at rest",
+  "effect": "forbid",
+  "resource": "aws::redshift::cluster",
+  "conditions": [
+    "encrypted != true"
+  ],
+  "severity": "high",
+  "tags": ["dspm", "redshift", "encryption", "data-protection", "cis-aws-2.3.2"],
+  "remediation": "Enable encryption for the Redshift cluster using KMS."
+}

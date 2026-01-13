@@ -1,0 +1,13 @@
+{
+  "id": "gcp-bigquery-public-dataset",
+  "name": "GCP BigQuery Public Dataset",
+  "description": "BigQuery dataset is accessible by allUsers or allAuthenticatedUsers",
+  "effect": "forbid",
+  "resource": "gcp::bigquery::dataset",
+  "conditions": [
+    "access contains 'allUsers' || access contains 'allAuthenticatedUsers'"
+  ],
+  "severity": "critical",
+  "tags": ["dspm", "bigquery", "gcp", "data-exposure", "public-access"],
+  "remediation": "Remove allUsers and allAuthenticatedUsers from dataset IAM bindings."
+}

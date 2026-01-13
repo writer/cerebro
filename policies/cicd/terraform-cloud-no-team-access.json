@@ -1,0 +1,13 @@
+{
+  "id": "terraform-cloud-no-team-access-control",
+  "name": "Terraform Cloud Workspace Without Team Access Control",
+  "description": "Terraform Cloud workspace lacks team-based access control",
+  "effect": "forbid",
+  "resource": "terraform::workspace",
+  "conditions": [
+    "team_access == null || team_access.length == 0"
+  ],
+  "severity": "medium",
+  "tags": ["cicd", "terraform", "iac", "access-control"],
+  "remediation": "Configure team access permissions for the Terraform Cloud workspace."
+}

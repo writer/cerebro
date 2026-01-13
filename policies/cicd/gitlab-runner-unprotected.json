@@ -1,0 +1,14 @@
+{
+  "id": "gitlab-runner-unprotected-tags",
+  "name": "GitLab Runner Without Protected Tags",
+  "description": "GitLab runner accepts jobs without requiring protected tags",
+  "effect": "forbid",
+  "resource": "gitlab::runner",
+  "conditions": [
+    "run_untagged == true",
+    "is_shared == true"
+  ],
+  "severity": "high",
+  "tags": ["cicd", "gitlab", "runners", "supply-chain"],
+  "remediation": "Configure runner to only accept jobs with protected tags."
+}

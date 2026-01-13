@@ -1,0 +1,14 @@
+{
+  "id": "github-oidc-overly-permissive",
+  "name": "GitHub Actions OIDC Overly Permissive",
+  "description": "AWS IAM role trust policy for GitHub OIDC allows any repository or branch",
+  "effect": "forbid",
+  "resource": "aws::iam::role",
+  "conditions": [
+    "assume_role_policy contains 'token.actions.githubusercontent.com'",
+    "assume_role_policy contains 'sub' == '*' || assume_role_policy not contains 'repo:'"
+  ],
+  "severity": "critical",
+  "tags": ["cicd", "github-actions", "oidc", "iam", "supply-chain"],
+  "remediation": "Restrict the OIDC trust policy to specific repositories and branches using the sub condition."
+}

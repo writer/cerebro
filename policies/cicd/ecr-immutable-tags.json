@@ -1,0 +1,13 @@
+{
+  "id": "aws-ecr-mutable-tags",
+  "name": "AWS ECR Mutable Image Tags",
+  "description": "ECR repository allows mutable image tags which can be overwritten",
+  "effect": "forbid",
+  "resource": "aws::ecr::repository",
+  "conditions": [
+    "image_tag_mutability != 'IMMUTABLE'"
+  ],
+  "severity": "medium",
+  "tags": ["cicd", "ecr", "container-security", "supply-chain", "image-integrity"],
+  "remediation": "Enable immutable image tags to prevent tag overwrites."
+}

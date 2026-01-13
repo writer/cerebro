@@ -1,0 +1,13 @@
+{
+  "id": "aws-sagemaker-model-artifact-public",
+  "name": "AWS SageMaker Model Artifact Public",
+  "description": "SageMaker model artifact stored in publicly accessible S3 bucket",
+  "effect": "forbid",
+  "resource": "aws::sagemaker::model",
+  "conditions": [
+    "primary_container.model_data_url references bucket with public access"
+  ],
+  "severity": "critical",
+  "tags": ["ai", "sagemaker", "model-artifact", "ip-theft", "data-exposure"],
+  "remediation": "Move model artifacts to private S3 bucket with encryption."
+}

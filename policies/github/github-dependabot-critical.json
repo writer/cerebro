@@ -1,0 +1,15 @@
+{
+  "id": "github-dependabot-critical-alert",
+  "name": "GitHub Critical Dependabot Alert",
+  "description": "Repository has critical Dependabot security alert open for more than 7 days",
+  "effect": "forbid",
+  "resource": "github::repository_dependabot_alert",
+  "conditions": [
+    "severity == 'critical'",
+    "state == 'open'",
+    "created_at_days > 7"
+  ],
+  "severity": "critical",
+  "tags": ["devsecops", "dependencies", "supply-chain", "dependabot"],
+  "remediation": "Update the vulnerable dependency or apply the security patch provided by Dependabot."
+}

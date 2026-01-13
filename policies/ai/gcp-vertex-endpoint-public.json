@@ -1,0 +1,14 @@
+{
+  "id": "gcp-vertex-ai-public-endpoint",
+  "name": "GCP Vertex AI Public Endpoint",
+  "description": "Vertex AI endpoint is publicly accessible without VPC restrictions",
+  "effect": "forbid",
+  "resource": "gcp::aiplatform::endpoint",
+  "conditions": [
+    "network == null",
+    "private_service_connect_config == null"
+  ],
+  "severity": "high",
+  "tags": ["ai", "vertex-ai", "gcp", "public-access", "network"],
+  "remediation": "Configure VPC peering or Private Service Connect for the Vertex AI endpoint."
+}

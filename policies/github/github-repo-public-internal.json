@@ -1,0 +1,14 @@
+{
+  "id": "github-repo-internal-exposed",
+  "name": "GitHub Internal Repository Made Public",
+  "description": "Repository appears to contain internal code but is publicly visible",
+  "effect": "forbid",
+  "resource": "github::repository",
+  "conditions": [
+    "visibility == 'public'",
+    "name matches '(?i)(internal|private|confidential|secret)'"
+  ],
+  "severity": "critical",
+  "tags": ["devsecops", "github", "data-exposure", "misconfiguration"],
+  "remediation": "Change repository visibility to private or internal."
+}
