@@ -1,19 +1,38 @@
-"""Azure provider for storage resources."""
+"""Azure provider for cloud resources.
+
+Collects Azure resources including:
+- Storage accounts and containers
+- Virtual machines and VM scale sets
+- Network security groups (NSGs)
+- IAM role assignments and principals
+- Key vaults
+- SQL databases
+"""
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
 from azure.core.exceptions import AzureError, HttpResponseError
 from azure.identity import DefaultAzureCredential
+from azure.mgmt.authorization import AuthorizationManagementClient
+from azure.mgmt.compute import ComputeManagementClient
+from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.storage import StorageManagementClient
-from azure.mgmt.storage.v2023_01_01.models import StorageAccount
 from azure.storage.blob import BlobServiceClient
 
-from ..base import BaseProvider, ConfigurationSnapshot, ProviderError, ResourceInfo
+from ..base import (
+    BaseProvider,
+    ConfigurationSnapshot,
+    IamPermission,
+    PrincipalInfo,
+    ProviderError,
+    ResourceInfo,
+)
 from ..utils.connector import call_sync_with_retries
 
 logger = structlog.get_logger(__name__)
@@ -31,7 +50,7 @@ def _extract_resource_group(resource_id: str | None) -> str | None:
 
 
 class AzureProvider(BaseProvider):
-    """Collect Azure Storage accounts and containers."""
+    """Collect Azure cloud resources, principals, and IAM edges."""
 
     def __init__(
         self,
@@ -46,16 +65,43 @@ class AzureProvider(BaseProvider):
         self.subscription_id = subscription_id
         self._credential = kwargs.get("credential") or DefaultAzureCredential()
         self._storage_client: StorageManagementClient | None = None
+        self._compute_client: ComputeManagementClient | None = None
+        self._network_client: NetworkManagementClient | None = None
+        self._auth_client: AuthorizationManagementClient | None = None
+
+    @property
+    def name(self) -> str:
+        """Get provider name."""
+        return "azure"
 
     async def authenticate(self) -> bool:
         try:
+            # Initialize all management clients
             if self._storage_client is None:
                 self._storage_client = StorageManagementClient(
                     credential=self._credential,
                     subscription_id=self.subscription_id,
                 )
 
-            # Ensure we can enumerate storage accounts (no-op if subscription empty)
+            if self._compute_client is None:
+                self._compute_client = ComputeManagementClient(
+                    credential=self._credential,
+                    subscription_id=self.subscription_id,
+                )
+
+            if self._network_client is None:
+                self._network_client = NetworkManagementClient(
+                    credential=self._credential,
+                    subscription_id=self.subscription_id,
+                )
+
+            if self._auth_client is None:
+                self._auth_client = AuthorizationManagementClient(
+                    credential=self._credential,
+                    subscription_id=self.subscription_id,
+                )
+
+            # Verify authentication by listing storage accounts
             await call_sync_with_retries(
                 lambda: list(self._storage_client.storage_accounts.list()) or True,  # type: ignore[union-attr]
                 exceptions=(AzureError, HttpResponseError),
@@ -178,6 +224,327 @@ class AzureProvider(BaseProvider):
                     resource_type="azure.storage.container",
                     metadata=metadata,
                 )
+
+        # Virtual Machines
+        if not resource_types or "azure.compute.vm" in resource_types:
+            async for vm in self._discover_virtual_machines():
+                yield vm
+
+        # Network Security Groups
+        if not resource_types or "azure.network.nsg" in resource_types:
+            async for nsg in self._discover_network_security_groups():
+                yield nsg
+
+        # Virtual Networks
+        if not resource_types or "azure.network.vnet" in resource_types:
+            async for vnet in self._discover_virtual_networks():
+                yield vnet
+
+    async def _discover_virtual_machines(self) -> AsyncGenerator[ResourceInfo, None]:
+        """Discover Azure Virtual Machines."""
+        assert self._compute_client is not None
+
+        vms = await call_sync_with_retries(
+            lambda: list(self._compute_client.virtual_machines.list_all()),  # type: ignore[union-attr]
+            exceptions=(AzureError, HttpResponseError),
+            logger=logger,
+        )
+
+        for vm in vms:
+            resource_group = _extract_resource_group(vm.id)
+
+            # Get instance view for power state
+            instance_view = None
+            if resource_group and vm.name:
+                try:
+                    instance_view = await call_sync_with_retries(
+                        lambda rg=resource_group, name=vm.name: (
+                            self._compute_client.virtual_machines.instance_view(rg, name)  # type: ignore[union-attr]
+                        ),
+                        exceptions=(AzureError, HttpResponseError),
+                        logger=logger,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to get instance view for {vm.name}: {e}")
+
+            # Extract power state
+            power_state = None
+            if instance_view and hasattr(instance_view, "statuses"):
+                for status in instance_view.statuses or []:
+                    if status.code and status.code.startswith("PowerState/"):
+                        power_state = status.code.replace("PowerState/", "")
+                        break
+
+            # Extract network interfaces
+            network_interfaces = []
+            if vm.network_profile and vm.network_profile.network_interfaces:
+                for nic_ref in vm.network_profile.network_interfaces:
+                    network_interfaces.append(nic_ref.id)
+
+            metadata: dict[str, Any] = {
+                "resource_group": resource_group,
+                "location": vm.location,
+                "vm_size": vm.hardware_profile.vm_size if vm.hardware_profile else None,
+                "power_state": power_state,
+                "os_type": (
+                    vm.storage_profile.os_disk.os_type
+                    if vm.storage_profile and vm.storage_profile.os_disk
+                    else None
+                ),
+                "os_disk_size_gb": (
+                    vm.storage_profile.os_disk.disk_size_gb
+                    if vm.storage_profile and vm.storage_profile.os_disk
+                    else None
+                ),
+                "image_reference": self._serialize_image_reference(
+                    vm.storage_profile.image_reference
+                    if vm.storage_profile
+                    else None
+                ),
+                "network_interfaces": network_interfaces,
+                "availability_set": (
+                    vm.availability_set.id if vm.availability_set else None
+                ),
+                "zones": vm.zones or [],
+                "tags": vm.tags or {},
+                "identity_type": vm.identity.type if vm.identity else None,
+                "identity_principal_id": (
+                    vm.identity.principal_id if vm.identity else None
+                ),
+                "provisioning_state": vm.provisioning_state,
+                "account_id": str(self.account_id),
+            }
+
+            yield ResourceInfo(
+                external_id=vm.id,
+                name=vm.name,
+                resource_type="azure.compute.vm",
+                metadata=metadata,
+            )
+
+    async def _discover_network_security_groups(
+        self,
+    ) -> AsyncGenerator[ResourceInfo, None]:
+        """Discover Azure Network Security Groups."""
+        assert self._network_client is not None
+
+        nsgs = await call_sync_with_retries(
+            lambda: list(self._network_client.network_security_groups.list_all()),  # type: ignore[union-attr]
+            exceptions=(AzureError, HttpResponseError),
+            logger=logger,
+        )
+
+        for nsg in nsgs:
+            resource_group = _extract_resource_group(nsg.id)
+
+            # Process security rules
+            inbound_rules = []
+            outbound_rules = []
+
+            for rule in nsg.security_rules or []:
+                rule_data = {
+                    "name": rule.name,
+                    "priority": rule.priority,
+                    "direction": rule.direction,
+                    "access": rule.access,
+                    "protocol": rule.protocol,
+                    "source_port_range": rule.source_port_range,
+                    "destination_port_range": rule.destination_port_range,
+                    "source_address_prefix": rule.source_address_prefix,
+                    "destination_address_prefix": rule.destination_address_prefix,
+                    "source_address_prefixes": rule.source_address_prefixes,
+                    "destination_address_prefixes": rule.destination_address_prefixes,
+                }
+                if rule.direction == "Inbound":
+                    inbound_rules.append(rule_data)
+                else:
+                    outbound_rules.append(rule_data)
+
+            # Check for risky rules (0.0.0.0/0 or * with Allow)
+            has_public_inbound = any(
+                r.get("access") == "Allow"
+                and (
+                    r.get("source_address_prefix") in ("*", "0.0.0.0/0", "Internet")
+                    or "0.0.0.0/0" in (r.get("source_address_prefixes") or [])
+                )
+                for r in inbound_rules
+            )
+
+            # Get associated NICs and subnets
+            associated_nics = [
+                nic.id for nic in (nsg.network_interfaces or [])
+            ]
+            associated_subnets = [
+                subnet.id for subnet in (nsg.subnets or [])
+            ]
+
+            metadata: dict[str, Any] = {
+                "resource_group": resource_group,
+                "location": nsg.location,
+                "inbound_rules": inbound_rules,
+                "outbound_rules": outbound_rules,
+                "inbound_rule_count": len(inbound_rules),
+                "outbound_rule_count": len(outbound_rules),
+                "has_public_inbound": has_public_inbound,
+                "associated_nics": associated_nics,
+                "associated_subnets": associated_subnets,
+                "tags": nsg.tags or {},
+                "provisioning_state": nsg.provisioning_state,
+                "account_id": str(self.account_id),
+            }
+
+            yield ResourceInfo(
+                external_id=nsg.id,
+                name=nsg.name,
+                resource_type="azure.network.nsg",
+                metadata=metadata,
+            )
+
+    async def _discover_virtual_networks(
+        self,
+    ) -> AsyncGenerator[ResourceInfo, None]:
+        """Discover Azure Virtual Networks."""
+        assert self._network_client is not None
+
+        vnets = await call_sync_with_retries(
+            lambda: list(self._network_client.virtual_networks.list_all()),  # type: ignore[union-attr]
+            exceptions=(AzureError, HttpResponseError),
+            logger=logger,
+        )
+
+        for vnet in vnets:
+            resource_group = _extract_resource_group(vnet.id)
+
+            # Extract subnets
+            subnets = []
+            for subnet in vnet.subnets or []:
+                subnets.append({
+                    "name": subnet.name,
+                    "address_prefix": subnet.address_prefix,
+                    "nsg_id": subnet.network_security_group.id if subnet.network_security_group else None,
+                })
+
+            metadata: dict[str, Any] = {
+                "resource_group": resource_group,
+                "location": vnet.location,
+                "address_space": (
+                    vnet.address_space.address_prefixes
+                    if vnet.address_space
+                    else []
+                ),
+                "subnets": subnets,
+                "subnet_count": len(subnets),
+                "dns_servers": (
+                    vnet.dhcp_options.dns_servers
+                    if vnet.dhcp_options
+                    else []
+                ),
+                "enable_ddos_protection": vnet.enable_ddos_protection,
+                "tags": vnet.tags or {},
+                "provisioning_state": vnet.provisioning_state,
+                "account_id": str(self.account_id),
+            }
+
+            yield ResourceInfo(
+                external_id=vnet.id,
+                name=vnet.name,
+                resource_type="azure.network.vnet",
+                metadata=metadata,
+            )
+
+    @staticmethod
+    def _serialize_image_reference(image_ref) -> dict[str, Any] | None:
+        """Serialize VM image reference."""
+        if not image_ref:
+            return None
+        return {
+            "publisher": getattr(image_ref, "publisher", None),
+            "offer": getattr(image_ref, "offer", None),
+            "sku": getattr(image_ref, "sku", None),
+            "version": getattr(image_ref, "version", None),
+            "id": getattr(image_ref, "id", None),
+        }
+
+    async def discover_principals(self) -> AsyncGenerator[PrincipalInfo, None]:
+        """Discover Azure service principals and managed identities."""
+        await self.authenticate()
+        assert self._compute_client is not None
+
+        # Discover managed identities from VMs
+        vms = await call_sync_with_retries(
+            lambda: list(self._compute_client.virtual_machines.list_all()),  # type: ignore[union-attr]
+            exceptions=(AzureError, HttpResponseError),
+            logger=logger,
+        )
+
+        seen_principals: set[str] = set()
+
+        for vm in vms:
+            if vm.identity and vm.identity.principal_id:
+                if vm.identity.principal_id in seen_principals:
+                    continue
+                seen_principals.add(vm.identity.principal_id)
+
+                yield PrincipalInfo(
+                    external_id=vm.identity.principal_id,
+                    principal_type="managed_identity",
+                    display_name=f"{vm.name} (Managed Identity)",
+                    is_human=False,
+                    metadata={
+                        "identity_type": vm.identity.type,
+                        "vm_id": vm.id,
+                        "vm_name": vm.name,
+                        "tenant_id": vm.identity.tenant_id,
+                    },
+                )
+
+    async def discover_iam_edges(self) -> AsyncGenerator[IamPermission, None]:
+        """Discover Azure IAM role assignments."""
+        await self.authenticate()
+        assert self._auth_client is not None
+
+        # Get all role assignments for the subscription
+        assignments = await call_sync_with_retries(
+            lambda: list(
+                self._auth_client.role_assignments.list_for_subscription()  # type: ignore[union-attr]
+            ),
+            exceptions=(AzureError, HttpResponseError),
+            logger=logger,
+        )
+
+        # Cache role definitions
+        role_definitions: dict[str, str] = {}
+
+        for assignment in assignments:
+            # Get role definition name if not cached
+            role_def_id = assignment.role_definition_id
+            if role_def_id and role_def_id not in role_definitions:
+                try:
+                    role_def = await call_sync_with_retries(
+                        lambda rid=role_def_id: self._auth_client.role_definitions.get_by_id(rid),  # type: ignore[union-attr]
+                        exceptions=(AzureError, HttpResponseError),
+                        logger=logger,
+                    )
+                    role_definitions[role_def_id] = role_def.role_name or role_def_id
+                except Exception:
+                    role_definitions[role_def_id] = role_def_id.split("/")[-1]
+
+            role_name = role_definitions.get(role_def_id, "Unknown")
+
+            # Determine if this is an admin role
+            is_admin = role_name.lower() in (
+                "owner",
+                "contributor",
+                "user access administrator",
+            )
+
+            yield IamPermission(
+                principal_external_id=assignment.principal_id or "",
+                resource_external_id=assignment.scope,
+                permission=role_name,
+                via=f"Role Assignment: {assignment.name}",
+                is_admin=is_admin,
+            )
 
     async def get_resource_configuration(
         self,
