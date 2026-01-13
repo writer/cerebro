@@ -24,6 +24,10 @@ import (
 	"github.com/writerinternal/cerebro/internal/webhooks"
 	"github.com/writerinternal/cerebro/internal/metrics"
 	"github.com/writerinternal/cerebro/internal/remediation"
+	"github.com/writerinternal/cerebro/internal/auth"
+	"github.com/writerinternal/cerebro/internal/lineage"
+	"github.com/writerinternal/cerebro/internal/runtime"
+	"github.com/writerinternal/cerebro/internal/threatintel"
 )
 
 // Server is the fully wired API server
@@ -220,6 +224,50 @@ func (s *Server) setupRoutes() {
 		r.Route("/admin", func(r chi.Router) {
 			r.Get("/health", s.adminHealth)
 			r.Get("/sync/status", s.syncStatus)
+		})
+
+		// Threat Intelligence endpoints
+		r.Route("/threatintel", func(r chi.Router) {
+			r.Get("/feeds", s.listThreatFeeds)
+			r.Post("/feeds/{id}/sync", s.syncThreatFeed)
+			r.Get("/stats", s.threatIntelStats)
+			r.Get("/lookup/ip/{ip}", s.lookupIP)
+			r.Get("/lookup/domain/{domain}", s.lookupDomain)
+			r.Get("/lookup/cve/{cve}", s.lookupCVE)
+		})
+
+		// Runtime Detection endpoints
+		r.Route("/runtime", func(r chi.Router) {
+			r.Get("/detections", s.listDetectionRules)
+			r.Post("/events", s.ingestRuntimeEvent)
+			r.Get("/findings", s.listRuntimeFindings)
+			r.Get("/responses", s.listResponsePolicies)
+			r.Post("/responses/{id}/enable", s.enableResponsePolicy)
+			r.Post("/responses/{id}/disable", s.disableResponsePolicy)
+		})
+
+		// Lineage endpoints
+		r.Route("/lineage", func(r chi.Router) {
+			r.Get("/{assetId}", s.getAssetLineage)
+			r.Get("/by-commit/{sha}", s.getLineageByCommit)
+			r.Get("/by-image/{digest}", s.getLineageByImage)
+			r.Post("/drift/{assetId}", s.detectDrift)
+		})
+
+		// RBAC endpoints
+		r.Route("/rbac", func(r chi.Router) {
+			r.Get("/roles", s.listRoles)
+			r.Get("/permissions", s.listPermissions)
+			r.Post("/users", s.createUser)
+			r.Get("/users/{id}", s.getUser)
+			r.Post("/users/{id}/roles", s.assignRole)
+			r.Get("/tenants", s.listTenants)
+			r.Post("/tenants", s.createTenant)
+		})
+
+		// Telemetry ingestion (for agents)
+		r.Route("/telemetry", func(r chi.Router) {
+			r.Post("/ingest", s.ingestTelemetry)
 		})
 	})
 }
@@ -1890,3 +1938,363 @@ func (s *Server) rejectExecution(w http.ResponseWriter, r *http.Request) {
 
 	s.json(w, http.StatusOK, map[string]string{"status": "rejected"})
 }
+
+// Threat Intelligence handlers
+
+func (s *Server) listThreatFeeds(w http.ResponseWriter, r *http.Request) {
+	if s.app.ThreatIntel == nil {
+		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+		return
+	}
+	s.json(w, http.StatusOK, s.app.ThreatIntel.ListFeeds())
+}
+
+func (s *Server) syncThreatFeed(w http.ResponseWriter, r *http.Request) {
+	if s.app.ThreatIntel == nil {
+		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := s.app.ThreatIntel.SyncFeed(r.Context(), id); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "synced"})
+}
+
+func (s *Server) threatIntelStats(w http.ResponseWriter, r *http.Request) {
+	if s.app.ThreatIntel == nil {
+		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+		return
+	}
+	s.json(w, http.StatusOK, s.app.ThreatIntel.Stats())
+}
+
+func (s *Server) lookupIP(w http.ResponseWriter, r *http.Request) {
+	if s.app.ThreatIntel == nil {
+		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+		return
+	}
+	ip := chi.URLParam(r, "ip")
+	ind, found := s.app.ThreatIntel.LookupIP(ip)
+	if !found {
+		s.json(w, http.StatusOK, map[string]interface{}{"found": false, "ip": ip})
+		return
+	}
+	s.json(w, http.StatusOK, map[string]interface{}{"found": true, "indicator": ind})
+}
+
+func (s *Server) lookupDomain(w http.ResponseWriter, r *http.Request) {
+	if s.app.ThreatIntel == nil {
+		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+		return
+	}
+	domain := chi.URLParam(r, "domain")
+	ind, found := s.app.ThreatIntel.LookupDomain(domain)
+	if !found {
+		s.json(w, http.StatusOK, map[string]interface{}{"found": false, "domain": domain})
+		return
+	}
+	s.json(w, http.StatusOK, map[string]interface{}{"found": true, "indicator": ind})
+}
+
+func (s *Server) lookupCVE(w http.ResponseWriter, r *http.Request) {
+	if s.app.ThreatIntel == nil {
+		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+		return
+	}
+	cve := chi.URLParam(r, "cve")
+	ind, found := s.app.ThreatIntel.LookupCVE(cve)
+	isKEV := s.app.ThreatIntel.IsKEV(cve)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"found":     found,
+		"cve":       cve,
+		"is_kev":    isKEV,
+		"indicator": ind,
+	})
+}
+
+// Runtime Detection handlers
+
+func (s *Server) listDetectionRules(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeDetect == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime detection not initialized")
+		return
+	}
+	s.json(w, http.StatusOK, s.app.RuntimeDetect.ListRules())
+}
+
+func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeDetect == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime detection not initialized")
+		return
+	}
+
+	var event runtime.RuntimeEvent
+	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid event")
+		return
+	}
+
+	findings := s.app.RuntimeDetect.ProcessEvent(r.Context(), &event)
+	
+	// Process findings through response engine
+	if s.app.RuntimeRespond != nil {
+		for _, f := range findings {
+			s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
+		}
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"processed": true,
+		"findings":  len(findings),
+	})
+}
+
+func (s *Server) listRuntimeFindings(w http.ResponseWriter, r *http.Request) {
+	// Would return recent runtime findings from store
+	s.json(w, http.StatusOK, []interface{}{})
+}
+
+func (s *Server) listResponsePolicies(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeRespond == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
+		return
+	}
+	s.json(w, http.StatusOK, s.app.RuntimeRespond.ListPolicies())
+}
+
+func (s *Server) enableResponsePolicy(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeRespond == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := s.app.RuntimeRespond.EnablePolicy(id); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "enabled"})
+}
+
+func (s *Server) disableResponsePolicy(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeRespond == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := s.app.RuntimeRespond.DisablePolicy(id); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "disabled"})
+}
+
+// Lineage handlers
+
+func (s *Server) getAssetLineage(w http.ResponseWriter, r *http.Request) {
+	if s.app.Lineage == nil {
+		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+		return
+	}
+	assetID := chi.URLParam(r, "assetId")
+	lineage, found := s.app.Lineage.GetLineage(assetID)
+	if !found {
+		s.error(w, http.StatusNotFound, "lineage not found")
+		return
+	}
+	s.json(w, http.StatusOK, lineage)
+}
+
+func (s *Server) getLineageByCommit(w http.ResponseWriter, r *http.Request) {
+	if s.app.Lineage == nil {
+		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+		return
+	}
+	sha := chi.URLParam(r, "sha")
+	assets := s.app.Lineage.GetLineageByCommit(sha)
+	s.json(w, http.StatusOK, assets)
+}
+
+func (s *Server) getLineageByImage(w http.ResponseWriter, r *http.Request) {
+	if s.app.Lineage == nil {
+		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+		return
+	}
+	digest := chi.URLParam(r, "digest")
+	assets := s.app.Lineage.GetLineageByImage(digest)
+	s.json(w, http.StatusOK, assets)
+}
+
+func (s *Server) detectDrift(w http.ResponseWriter, r *http.Request) {
+	if s.app.Lineage == nil {
+		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+		return
+	}
+	assetID := chi.URLParam(r, "assetId")
+
+	var req struct {
+		CurrentState map[string]interface{} `json:"current_state"`
+		IaCState     map[string]interface{} `json:"iac_state"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	drifts := s.app.Lineage.DetectDrift(r.Context(), assetID, req.CurrentState, req.IaCState)
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"asset_id":      assetID,
+		"drift_detected": len(drifts) > 0,
+		"drifts":        drifts,
+	})
+}
+
+// RBAC handlers
+
+func (s *Server) listRoles(w http.ResponseWriter, r *http.Request) {
+	if s.app.RBAC == nil {
+		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+		return
+	}
+	s.json(w, http.StatusOK, s.app.RBAC.ListRoles())
+}
+
+func (s *Server) listPermissions(w http.ResponseWriter, r *http.Request) {
+	// Return default permissions
+	s.json(w, http.StatusOK, []string{
+		"findings:read", "findings:write",
+		"policies:read", "policies:write",
+		"assets:read", "compliance:read", "compliance:export",
+		"admin:users", "admin:roles",
+	})
+}
+
+func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
+	if s.app.RBAC == nil {
+		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+		return
+	}
+
+	var user auth.User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid user")
+		return
+	}
+
+	if err := s.app.RBAC.CreateUser(&user); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusCreated, user)
+}
+
+func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
+	if s.app.RBAC == nil {
+		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	user, found := s.app.RBAC.GetUser(id)
+	if !found {
+		s.error(w, http.StatusNotFound, "user not found")
+		return
+	}
+	s.json(w, http.StatusOK, user)
+}
+
+func (s *Server) assignRole(w http.ResponseWriter, r *http.Request) {
+	if s.app.RBAC == nil {
+		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+		return
+	}
+	userID := chi.URLParam(r, "id")
+
+	var req struct {
+		RoleID string `json:"role_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if err := s.app.RBAC.AssignRole(userID, req.RoleID); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusOK, map[string]string{"status": "assigned"})
+}
+
+func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
+	if s.app.RBAC == nil {
+		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+		return
+	}
+	s.json(w, http.StatusOK, s.app.RBAC.ListTenants())
+}
+
+func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
+	if s.app.RBAC == nil {
+		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+		return
+	}
+
+	var tenant auth.Tenant
+	if err := json.NewDecoder(r.Body).Decode(&tenant); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid tenant")
+		return
+	}
+
+	if err := s.app.RBAC.CreateTenant(&tenant); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.json(w, http.StatusCreated, tenant)
+}
+
+// Telemetry ingestion handler
+
+func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Events      []runtime.RuntimeEvent `json:"events"`
+		Node        string                 `json:"node"`
+		Cluster     string                 `json:"cluster"`
+		AgentVersion string                `json:"agent_version"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid payload")
+		return
+	}
+
+	totalFindings := 0
+	if s.app.RuntimeDetect != nil {
+		for _, event := range payload.Events {
+			findings := s.app.RuntimeDetect.ProcessEvent(r.Context(), &event)
+			totalFindings += len(findings)
+
+			// Process through response engine
+			if s.app.RuntimeRespond != nil {
+				for _, f := range findings {
+					s.app.RuntimeRespond.ProcessFinding(r.Context(), &f)
+				}
+			}
+		}
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"processed": len(payload.Events),
+		"findings":  totalFindings,
+	})
+}
+
+// Ensure imports are used
+var (
+	_ = auth.User{}
+	_ = lineage.AssetLineage{}
+	_ = runtime.RuntimeEvent{}
+	_ = threatintel.Feed{}
+)

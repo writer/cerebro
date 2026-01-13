@@ -22,6 +22,13 @@ import (
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/ticketing"
 	"github.com/writerinternal/cerebro/internal/webhooks"
+	"github.com/writerinternal/cerebro/internal/auth"
+	"github.com/writerinternal/cerebro/internal/compliance"
+	"github.com/writerinternal/cerebro/internal/health"
+	"github.com/writerinternal/cerebro/internal/lineage"
+	"github.com/writerinternal/cerebro/internal/remediation"
+	"github.com/writerinternal/cerebro/internal/runtime"
+	"github.com/writerinternal/cerebro/internal/threatintel"
 )
 
 // App is the main application container with all services wired together
@@ -53,6 +60,16 @@ type App struct {
 
 	// Snowflake-backed stores (when available)
 	SnowflakeFindings *findings.SnowflakeStore
+
+	// New services
+	RBAC           *auth.RBAC
+	ThreatIntel    *threatintel.ThreatIntelService
+	Compliance     *compliance.ComplianceReport
+	Health         *health.Registry
+	Lineage        *lineage.LineageMapper
+	Remediation    *remediation.Engine
+	RuntimeDetect  *runtime.DetectionEngine
+	RuntimeRespond *runtime.ResponseEngine
 }
 
 // Config holds all application configuration
@@ -260,6 +277,15 @@ func New(ctx context.Context) (*App, error) {
 	app.initScheduler(ctx)
 	app.initRepositories()
 	app.initSnowflakeFindings(ctx)
+
+	// Initialize new services
+	app.initRBAC()
+	app.initThreatIntel(ctx)
+	app.initCompliance()
+	app.initHealth()
+	app.initLineage()
+	app.initRemediation()
+	app.initRuntime()
 
 	logger.Info("application initialized",
 		"snowflake", app.Snowflake != nil,
@@ -696,4 +722,78 @@ func splitTables(s string) []string {
 		}
 	}
 	return result
+}
+
+// New service initialization functions
+
+func (a *App) initRBAC() {
+	a.RBAC = auth.NewRBAC()
+	a.Logger.Info("rbac service initialized")
+}
+
+func (a *App) initThreatIntel(ctx context.Context) {
+	a.ThreatIntel = threatintel.NewThreatIntelService()
+	
+	// Sync feeds in background
+	go func() {
+		if err := a.ThreatIntel.SyncAll(ctx); err != nil {
+			a.Logger.Warn("failed to sync threat intel feeds", "error", err)
+		} else {
+			stats := a.ThreatIntel.Stats()
+			a.Logger.Info("threat intel feeds synced", "indicators", stats["total_indicators"])
+		}
+	}()
+}
+
+func (a *App) initCompliance() {
+	// Compliance reports are generated on-demand, not stored
+	a.Logger.Info("compliance service ready")
+}
+
+func (a *App) initHealth() {
+	a.Health = health.NewRegistry()
+	
+	// Register health checks for all services
+	a.Health.Register("snowflake", health.PingCheck("snowflake", func(ctx context.Context) error {
+		if a.Snowflake == nil {
+			return fmt.Errorf("not configured")
+		}
+		return a.Snowflake.Ping(ctx)
+	}))
+	
+	a.Health.Register("policy_engine", health.PingCheck("policy_engine", func(ctx context.Context) error {
+		if a.Policy == nil {
+			return fmt.Errorf("not initialized")
+		}
+		if len(a.Policy.ListPolicies()) == 0 {
+			return fmt.Errorf("no policies loaded")
+		}
+		return nil
+	}))
+	
+	a.Health.Register("findings_store", health.PingCheck("findings_store", func(ctx context.Context) error {
+		if a.Findings == nil {
+			return fmt.Errorf("not initialized")
+		}
+		return nil
+	}))
+	
+	a.Logger.Info("health service initialized")
+}
+
+func (a *App) initLineage() {
+	a.Lineage = lineage.NewLineageMapper()
+	a.Logger.Info("lineage mapper initialized")
+}
+
+func (a *App) initRemediation() {
+	a.Remediation = remediation.NewEngine(a.Logger)
+	a.Logger.Info("remediation engine initialized", "rules", len(a.Remediation.ListRules()))
+}
+
+func (a *App) initRuntime() {
+	a.RuntimeDetect = runtime.NewDetectionEngine()
+	a.RuntimeRespond = runtime.NewResponseEngine()
+	a.Logger.Info("runtime detection initialized", "rules", len(a.RuntimeDetect.ListRules()))
+	a.Logger.Info("runtime response initialized", "policies", len(a.RuntimeRespond.ListPolicies()))
 }
