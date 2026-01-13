@@ -18,7 +18,6 @@ type Agent struct {
 	Provider    LLMProvider
 	Tools       []Tool
 	Memory      *Memory
-	mu          sync.RWMutex
 }
 
 // LLMProvider interface for different AI backends
@@ -36,14 +35,14 @@ type Message struct {
 }
 
 type ToolCall struct {
-	ID       string          `json:"id"`
-	Name     string          `json:"name"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
 }
 
 type Response struct {
-	Message   Message
-	Usage     Usage
+	Message      Message
+	Usage        Usage
 	FinishReason string
 }
 
@@ -62,32 +61,32 @@ type StreamEvent struct {
 
 // Tool represents a capability the agent can use
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
-	Handler     ToolHandler            `json:"-"`
-	RequiresApproval bool              `json:"requires_approval"`
+	Name             string                 `json:"name"`
+	Description      string                 `json:"description"`
+	Parameters       map[string]interface{} `json:"parameters"`
+	Handler          ToolHandler            `json:"-"`
+	RequiresApproval bool                   `json:"requires_approval"`
 }
 
 type ToolHandler func(ctx context.Context, args json.RawMessage) (string, error)
 
 // Session represents an investigation session
 type Session struct {
-	ID        string    `json:"id"`
-	AgentID   string    `json:"agent_id"`
-	UserID    string    `json:"user_id"`
-	Status    string    `json:"status"` // active, completed, pending_approval
-	Messages  []Message `json:"messages"`
+	ID        string         `json:"id"`
+	AgentID   string         `json:"agent_id"`
+	UserID    string         `json:"user_id"`
+	Status    string         `json:"status"` // active, completed, pending_approval
+	Messages  []Message      `json:"messages"`
 	Context   SessionContext `json:"context"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 type SessionContext struct {
-	FindingIDs   []string               `json:"finding_ids,omitempty"`
-	AssetIDs     []string               `json:"asset_ids,omitempty"`
-	Investigation *Investigation        `json:"investigation,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	FindingIDs    []string               `json:"finding_ids,omitempty"`
+	AssetIDs      []string               `json:"asset_ids,omitempty"`
+	Investigation *Investigation         `json:"investigation,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type Investigation struct {
@@ -158,7 +157,7 @@ func (m *Memory) Search(query string, limit int) []MemoryEntry {
 
 	now := time.Now()
 	var valid []MemoryEntry
-	
+
 	for _, e := range m.entries {
 		if e.ExpiresAt.After(now) {
 			valid = append(valid, e)
@@ -201,7 +200,7 @@ func (r *AgentRegistry) GetAgent(id string) (*Agent, bool) {
 func (r *AgentRegistry) ListAgents() []*Agent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	agents := make([]*Agent, 0, len(r.agents))
 	for _, a := range r.agents {
 		agents = append(agents, a)

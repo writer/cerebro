@@ -361,7 +361,9 @@ func (s *Service) Handler() http.Handler {
 		}
 
 		payload, _ := json.Marshal(testEvent)
-		resp, err := s.client.Post(req.URL, "application/json", bytes.NewReader(payload))
+		httpReq, _ := http.NewRequestWithContext(r.Context(), "POST", req.URL, bytes.NewReader(payload))
+		httpReq.Header.Set("Content-Type", "application/json")
+		resp, err := s.client.Do(httpReq)
 		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
 			return

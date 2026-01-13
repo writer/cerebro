@@ -60,13 +60,13 @@ type anthropicTool struct {
 }
 
 type anthropicResponse struct {
-	ID           string `json:"id"`
-	Type         string `json:"type"`
-	Role         string `json:"role"`
-	Content      []anthropicContent `json:"content"`
-	Model        string `json:"model"`
-	StopReason   string `json:"stop_reason"`
-	Usage        anthropicUsage `json:"usage"`
+	ID         string             `json:"id"`
+	Type       string             `json:"type"`
+	Role       string             `json:"role"`
+	Content    []anthropicContent `json:"content"`
+	Model      string             `json:"model"`
+	StopReason string             `json:"stop_reason"`
+	Usage      anthropicUsage     `json:"usage"`
 }
 
 type anthropicContent struct {
@@ -84,7 +84,7 @@ type anthropicUsage struct {
 
 func (p *AnthropicProvider) Complete(ctx context.Context, messages []agents.Message, tools []agents.Tool) (*agents.Response, error) {
 	// Convert messages
-	var anthropicMsgs []anthropicMessage
+	anthropicMsgs := make([]anthropicMessage, 0, len(messages))
 	var systemPrompt string
 
 	for _, m := range messages {
@@ -177,23 +177,23 @@ func (p *AnthropicProvider) Complete(ctx context.Context, messages []agents.Mess
 
 func (p *AnthropicProvider) Stream(ctx context.Context, messages []agents.Message, tools []agents.Tool) (<-chan agents.StreamEvent, error) {
 	events := make(chan agents.StreamEvent)
-	
+
 	go func() {
 		defer close(events)
-		
+
 		// For now, use non-streaming and emit as single event
 		resp, err := p.Complete(ctx, messages, tools)
 		if err != nil {
 			events <- agents.StreamEvent{Error: err, Done: true}
 			return
 		}
-		
+
 		events <- agents.StreamEvent{
 			Type:    "message",
 			Content: resp.Message.Content,
 			Done:    true,
 		}
 	}()
-	
+
 	return events, nil
 }

@@ -98,8 +98,8 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 	}
 
 	var asset map[string]interface{}
-	if err := json.Unmarshal(data, &asset); err != nil {
-		return fmt.Errorf("parse asset: %w", err)
+	if parseErr := json.Unmarshal(data, &asset); parseErr != nil {
+		return fmt.Errorf("parse asset: %w", parseErr)
 	}
 
 	findings, err := engine.EvaluateAsset(cmd.Context(), asset)

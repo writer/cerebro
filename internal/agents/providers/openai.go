@@ -47,10 +47,10 @@ type openaiRequest struct {
 }
 
 type openaiMessage struct {
-	Role       string         `json:"role"`
-	Content    string         `json:"content,omitempty"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
 	ToolCalls  []openaiToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string         `json:"tool_call_id,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
 type openaiTool struct {
@@ -179,22 +179,22 @@ func (p *OpenAIProvider) Complete(ctx context.Context, messages []agents.Message
 
 func (p *OpenAIProvider) Stream(ctx context.Context, messages []agents.Message, tools []agents.Tool) (<-chan agents.StreamEvent, error) {
 	events := make(chan agents.StreamEvent)
-	
+
 	go func() {
 		defer close(events)
-		
+
 		resp, err := p.Complete(ctx, messages, tools)
 		if err != nil {
 			events <- agents.StreamEvent{Error: err, Done: true}
 			return
 		}
-		
+
 		events <- agents.StreamEvent{
 			Type:    "message",
 			Content: resp.Message.Content,
 			Done:    true,
 		}
 	}()
-	
+
 	return events, nil
 }

@@ -204,7 +204,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Run() error {
 	addr := fmt.Sprintf(":%d", s.app.Config.Port)
 	s.app.Logger.Info("starting server", "addr", addr)
-	return http.ListenAndServe(addr, s.router)
+
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      s.router,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 // Health endpoints

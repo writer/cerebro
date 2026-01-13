@@ -130,7 +130,7 @@ func RateLimitMiddleware(cfg RateLimitConfig) func(http.Handler) http.Handler {
 			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset.Unix(), 10))
 
 			if !allowed {
-				w.Header().Set("Retry-After", strconv.FormatInt(int64(reset.Sub(time.Now()).Seconds()), 10))
+				w.Header().Set("Retry-After", strconv.FormatInt(int64(time.Until(reset).Seconds()), 10))
 				http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
 				return
 			}

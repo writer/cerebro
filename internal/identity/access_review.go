@@ -44,7 +44,7 @@ const (
 	ReviewStatusScheduled  ReviewStatus = "scheduled"
 	ReviewStatusInProgress ReviewStatus = "in_progress"
 	ReviewStatusCompleted  ReviewStatus = "completed"
-	ReviewStatusCancelled  ReviewStatus = "cancelled"
+	ReviewStatusCanceled   ReviewStatus = "canceled"
 )
 
 type ReviewScope struct {
