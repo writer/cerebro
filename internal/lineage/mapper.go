@@ -1,3 +1,29 @@
+// Package lineage provides deployment lineage tracking to connect runtime
+// cloud assets back to their source code, container images, and IaC definitions.
+//
+// The package enables:
+//   - Mapping Kubernetes deployments to git commits and container images
+//   - Tracking EC2/Lambda instances back to Terraform/CloudFormation
+//   - Detecting configuration drift between IaC definitions and runtime state
+//   - Building supply chain visibility for security analysis
+//
+// Lineage information is extracted from:
+//   - Kubernetes labels and annotations (commit SHA, repository, pipeline)
+//   - AWS/GCP/Azure resource tags
+//   - Terraform state files
+//   - CI/CD pipeline metadata (GitHub Actions, GitLab CI, etc.)
+//
+// This enables powerful queries like:
+//   - "What deployments are running code from this commit?"
+//   - "Which pods use images with this CVE?"
+//   - "What resources drifted from their Terraform definition?"
+//
+// Example usage:
+//
+//	mapper := lineage.NewLineageMapper()
+//	lineage, _ := mapper.MapKubernetesResource(ctx, podSpec)
+//	fmt.Printf("Pod running commit %s from %s", lineage.CommitSHA, lineage.Repository)
+//	drifts := mapper.DetectDrift(ctx, assetID, currentState, iacState)
 package lineage
 
 import (
@@ -10,11 +36,15 @@ import (
 	"time"
 )
 
-// LineageMapper tracks the relationship between runtime assets and their sources
+// LineageMapper tracks relationships between runtime assets and their source
+// artifacts (git commits, container images, IaC definitions, CI/CD pipelines).
+//
+// The mapper maintains an in-memory index of asset lineage that can be queried
+// by asset ID, commit SHA, or container image digest.
 type LineageMapper struct {
-	assets   map[string]*AssetLineage
-	commits  map[string]*CommitInfo
-	builds   map[string]*BuildInfo
+	assets  map[string]*AssetLineage // Lineage indexed by asset ID
+	commits map[string]*CommitInfo   // Commit metadata indexed by SHA
+	builds  map[string]*BuildInfo    // Build metadata indexed by build ID
 }
 
 // AssetLineage represents the full lineage of a deployed asset

@@ -1,3 +1,28 @@
+// Package findings provides storage and management for security findings.
+// Findings are created when policy violations are detected during asset scans.
+//
+// The package provides:
+//   - In-memory finding store with deduplication by finding ID
+//   - Finding lifecycle management (open, resolved, suppressed)
+//   - Statistics and filtering for dashboards and reporting
+//   - Snowflake persistence for durable storage
+//
+// Findings have a lifecycle:
+//   1. Created as "open" when first detected
+//   2. LastSeen updated on subsequent detections
+//   3. Manually marked as "resolved" when fixed
+//   4. Marked as "suppressed" for accepted risks
+//   5. Re-opened if violation recurs after resolution
+//
+// Example usage:
+//
+//	store := findings.NewStore()
+//	finding := store.Upsert(ctx, policyFinding)
+//	if finding.FirstSeen.Equal(finding.LastSeen) {
+//	    // This is a new finding, send notification
+//	}
+//	stats := store.Stats()
+//	fmt.Printf("Open findings: %d critical, %d high", stats.Critical, stats.High)
 package findings
 
 import (
@@ -8,7 +33,8 @@ import (
 	"github.com/writerinternal/cerebro/internal/policy"
 )
 
-// FindingStore interface for findings persistence
+// FindingStore defines the interface for findings persistence backends.
+// Implementations include in-memory Store and SnowflakeStore.
 type FindingStore interface {
 	Upsert(ctx context.Context, pf policy.Finding) *Finding
 	Get(id string) (*Finding, bool)

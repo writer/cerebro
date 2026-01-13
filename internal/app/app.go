@@ -1,3 +1,35 @@
+// Package app provides the main application container that wires together all
+// Cerebro services and manages their lifecycle. This is the central dependency
+// injection point for the application.
+//
+// The App struct holds references to all services organized into categories:
+//
+// Core Services:
+//   - Snowflake: Data warehouse client for asset and findings storage
+//   - Policy: Security policy engine for evaluating cloud resources
+//   - Findings: In-memory findings store with deduplication
+//   - Scanner: Asset scanner that applies policies to cloud resources
+//   - Cache: Policy evaluation cache for performance
+//
+// Feature Services:
+//   - Agents: AI-powered security investigation agents (Anthropic/OpenAI)
+//   - Ticketing: Integration with Jira, Linear for finding tracking
+//   - Identity: Stale access detection and identity analytics
+//   - AttackPath: Attack path analysis and graph queries
+//   - Providers: Custom data source integrations (CrowdStrike, Snyk, etc.)
+//   - Notifications: Slack, PagerDuty, webhook notifications
+//   - Scheduler: Periodic job scheduling for scans and syncs
+//
+// Security Services:
+//   - RBAC: Role-based access control and multi-tenancy
+//   - ThreatIntel: Threat intelligence feed management
+//   - RuntimeDetect: Real-time threat detection engine
+//   - RuntimeRespond: Automated response and containment
+//   - Lineage: Deployment lineage tracking
+//   - Remediation: Auto-remediation playbooks
+//
+// The New() function initializes all services based on environment configuration.
+// Services gracefully handle missing configuration (e.g., no Snowflake connection).
 package app
 
 import (
@@ -31,7 +63,12 @@ import (
 	"github.com/writerinternal/cerebro/internal/threatintel"
 )
 
-// App is the main application container with all services wired together
+// App is the main application container that holds references to all initialized
+// services. Create a new App using the New() function which handles all service
+// initialization and wiring based on environment configuration.
+//
+// Use the Close() method to gracefully shutdown all services when the application
+// is terminating.
 type App struct {
 	Config *Config
 	Logger *slog.Logger

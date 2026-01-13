@@ -1,3 +1,27 @@
+// Package auth provides role-based access control (RBAC) and multi-tenant
+// authentication capabilities for the Cerebro platform.
+//
+// The package implements:
+//   - Role-based access control with fine-grained permissions
+//   - Multi-tenant isolation for enterprise deployments
+//   - SAML SSO integration for identity providers
+//   - MFA enforcement policies per tenant
+//
+// Default roles include:
+//   - admin: Full system access including user/role management
+//   - analyst: Read/write findings and policies, read assets
+//   - viewer: Read-only access to all security data
+//
+// Permissions follow a resource:action format (e.g., "findings:read",
+// "policies:write", "admin:users") and can be combined into custom roles.
+//
+// Example usage:
+//
+//	rbac := auth.NewRBAC()
+//	rbac.CreateUser(&User{Email: "analyst@company.com", RoleIDs: []string{"analyst"}})
+//	if rbac.HasPermission(ctx, userID, "findings:write") {
+//	    // User can modify findings
+//	}
 package auth
 
 import (
@@ -9,12 +33,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// RBAC is the role-based access control service. It manages users, roles,
+// permissions, and tenants for multi-tenant enterprise deployments.
+//
+// The service is thread-safe and supports concurrent access checks.
 type RBAC struct {
-	roles       map[string]*Role
-	permissions map[string]*Permission
-	users       map[string]*User
-	tenants     map[string]*Tenant
-	mu          sync.RWMutex
+	roles       map[string]*Role       // Roles indexed by ID
+	permissions map[string]*Permission // Permissions indexed by ID
+	users       map[string]*User       // Users indexed by ID
+	tenants     map[string]*Tenant     // Tenants indexed by ID
+	mu          sync.RWMutex           // Protects all maps
 }
 
 type Role struct {

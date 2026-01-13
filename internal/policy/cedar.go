@@ -1,3 +1,33 @@
+// Package policy implements a policy engine for evaluating cloud security policies
+// against cloud resources. Policies define security requirements using a declarative
+// format inspired by AWS Cedar policy language.
+//
+// The engine supports:
+//   - Loading policies from JSON files organized by category (aws, gcp, azure, etc.)
+//   - Real-time evaluation of policies against cloud asset data
+//   - Generation of security findings with severity ratings
+//   - Condition-based matching for flexible policy definitions
+//
+// Policies use permit/forbid effects to define what configurations are allowed
+// or prohibited. When a resource violates a "forbid" policy, a finding is generated.
+//
+// Example policy structure:
+//
+//	{
+//	  "id": "s3-public-access",
+//	  "name": "S3 Bucket Public Access",
+//	  "description": "S3 buckets should not allow public access",
+//	  "effect": "forbid",
+//	  "resource": "aws::s3::bucket",
+//	  "conditions": ["public_access_block_enabled == false"],
+//	  "severity": "critical"
+//	}
+//
+// Example usage:
+//
+//	engine := policy.NewEngine()
+//	engine.LoadPolicies("policies/")
+//	findings, _ := engine.EvaluateAsset(ctx, s3BucketData)
 package policy
 
 import (
@@ -10,23 +40,34 @@ import (
 	"sync"
 )
 
+// Engine is the core policy evaluation engine. It maintains an in-memory cache
+// of policies and provides methods for evaluating cloud resources against
+// those policies to identify security violations.
+//
+// The engine is thread-safe and supports concurrent policy evaluation.
 type Engine struct {
-	policies map[string]*Policy
-	mu       sync.RWMutex
+	policies map[string]*Policy // Policies indexed by ID
+	mu       sync.RWMutex       // Protects policies map
 }
 
+// Policy defines a security policy rule. Policies specify what configurations
+// are permitted or forbidden for cloud resources.
+//
+// The Effect field determines whether matching resources are allowed ("permit")
+// or generate violations ("forbid"). Conditions are evaluated against resource
+// attributes to determine if the policy matches.
 type Policy struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Effect      string   `json:"effect"` // "permit" or "forbid"
-	Principal   string   `json:"principal"`
-	Action      string   `json:"action"`
-	Resource    string   `json:"resource"`
-	Conditions  []string `json:"conditions"`
-	Severity    string   `json:"severity"`
-	Tags        []string `json:"tags"`
-	Raw         string   `json:"raw,omitempty"`
+	ID          string   `json:"id"`          // Unique policy identifier
+	Name        string   `json:"name"`        // Human-readable policy name
+	Description string   `json:"description"` // Detailed description of policy intent
+	Effect      string   `json:"effect"`      // "permit" or "forbid"
+	Principal   string   `json:"principal"`   // Who the policy applies to (optional)
+	Action      string   `json:"action"`      // What action is being evaluated
+	Resource    string   `json:"resource"`    // Resource type pattern (e.g., "aws::s3::bucket")
+	Conditions  []string `json:"conditions"`  // Conditions that must be true for policy to match
+	Severity    string   `json:"severity"`    // critical, high, medium, low
+	Tags        []string `json:"tags"`        // Tags for categorization
+	Raw         string   `json:"raw,omitempty"` // Raw Cedar policy text (optional)
 }
 
 type EvalRequest struct {

@@ -1,4 +1,33 @@
-// Package health provides health check functionality for the application.
+// Package health provides health check functionality for monitoring application
+// component status. It supports concurrent health check execution, status
+// aggregation, and common check patterns (ping, threshold, timeout).
+//
+// The package provides:
+//   - Registry for managing multiple health checks
+//   - Concurrent execution of all registered checks
+//   - Overall status calculation (unhealthy > degraded > healthy)
+//   - Built-in check constructors for common patterns
+//
+// Status hierarchy:
+//   - healthy: Component is operating normally
+//   - degraded: Component is operational but experiencing issues
+//   - unhealthy: Component is not operational
+//   - unknown: Unable to determine component status
+//
+// Built-in check types:
+//   - PingCheck: Calls a function and reports healthy/unhealthy
+//   - ThresholdCheck: Monitors a value against warning/critical thresholds
+//   - TimeoutCheck: Wraps a checker with a timeout
+//
+// Example usage:
+//
+//	registry := health.NewRegistry()
+//	registry.Register("database", health.PingCheck("db", db.Ping))
+//	registry.Register("cpu", health.ThresholdCheck("cpu", getCPU, 70, 90))
+//	results := registry.RunAll(ctx)
+//	if registry.OverallStatus(ctx) != health.StatusHealthy {
+//	    log.Warn("service degraded", "results", results)
+//	}
 package health
 
 import (

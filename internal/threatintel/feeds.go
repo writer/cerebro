@@ -1,3 +1,26 @@
+// Package threatintel provides threat intelligence feed management and indicator
+// enrichment capabilities. It aggregates data from multiple threat feeds including
+// CISA KEV (Known Exploited Vulnerabilities), NVD CVE, and Abuse.ch malware feeds.
+//
+// The package enables:
+//   - Automated synchronization of threat intelligence feeds
+//   - Fast indicator lookup by type (IP, domain, hash, CVE, URL)
+//   - KEV (Known Exploited Vulnerabilities) prioritization for patching
+//   - Integration with runtime detection for threat correlation
+//
+// Default feeds include:
+//   - CISA KEV: Known exploited vulnerabilities requiring urgent patching
+//   - NVD CVE: National Vulnerability Database CVE entries
+//   - Abuse.ch Feodo: Botnet C2 server IP addresses
+//   - Abuse.ch URLhaus: Malware distribution URLs
+//
+// Example usage:
+//
+//	svc := threatintel.NewThreatIntelService()
+//	svc.SyncAll(ctx) // Fetch latest indicators
+//	if ind, found := svc.LookupIP("192.168.1.100"); found {
+//	    log.Printf("Malicious IP detected: %s (source: %s)", ind.Value, ind.Source)
+//	}
 package threatintel
 
 import (
@@ -11,13 +34,17 @@ import (
 	"time"
 )
 
-// ThreatIntelService manages threat intelligence feeds
+// ThreatIntelService is the central service for managing threat intelligence
+// feeds and indicators. It maintains an in-memory indicator store with fast
+// lookup capabilities and supports automatic synchronization of external feeds.
+//
+// The service is thread-safe and supports concurrent lookups during feed syncs.
 type ThreatIntelService struct {
-	feeds       map[string]Feed
-	indicators  *IndicatorStore
-	client      *http.Client
-	lastUpdated time.Time
-	mu          sync.RWMutex
+	feeds       map[string]Feed    // Registered threat feeds by ID
+	indicators  *IndicatorStore    // In-memory indicator store
+	client      *http.Client       // HTTP client for feed fetching
+	lastUpdated time.Time          // Timestamp of last successful sync
+	mu          sync.RWMutex       // Protects feeds map and lastUpdated
 }
 
 // Feed represents a threat intelligence feed

@@ -1,3 +1,28 @@
+// Package remediation provides automated response and remediation capabilities
+// for security findings. It implements a rule-based engine that triggers actions
+// based on finding severity, policy violations, or scheduled events.
+//
+// The package supports:
+//   - Event-driven triggers (finding created, finding open, scheduled, manual)
+//   - Multiple action types (create ticket, notify Slack/PagerDuty, webhooks)
+//   - Approval workflows for sensitive actions
+//   - Execution tracking and audit logging
+//
+// Default rules include:
+//   - Auto-create Jira tickets for critical findings
+//   - Page on-call via PagerDuty for critical security events
+//   - Create tickets for high-severity findings
+//   - Notify on S3 public access violations
+//
+// Example usage:
+//
+//	engine := remediation.NewEngine(logger)
+//	executions, _ := engine.Evaluate(ctx, Event{
+//	    Type:     TriggerFindingCreated,
+//	    Severity: "critical",
+//	    FindingID: "finding-123",
+//	})
+//	// Executions are created for each matching rule
 package remediation
 
 import (
@@ -10,12 +35,18 @@ import (
 	"github.com/google/uuid"
 )
 
-// Engine orchestrates auto-remediation playbooks
+// Engine is the auto-remediation orchestrator. It maintains a set of rules
+// that define when and how to respond to security events. When an event
+// matches a rule's trigger conditions, the engine creates an execution
+// and runs the configured actions.
+//
+// The engine supports approval workflows for sensitive actions and maintains
+// a complete audit trail of all executions.
 type Engine struct {
-	rules      []Rule
-	executions map[string]*Execution
-	logger     *slog.Logger
-	mu         sync.RWMutex
+	rules      []Rule                 // Active remediation rules
+	executions map[string]*Execution  // Execution history indexed by ID
+	logger     *slog.Logger           // Structured logger
+	mu         sync.RWMutex           // Protects rules and executions
 }
 
 // Rule defines when and how to auto-remediate

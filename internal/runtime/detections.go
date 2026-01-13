@@ -1,3 +1,24 @@
+// Package runtime provides real-time threat detection and response capabilities
+// for cloud-native workloads. It processes telemetry events from deployed agents
+// and applies detection rules to identify security threats.
+//
+// The package implements a detection engine that:
+//   - Processes events from Kubernetes pods, EC2 instances, and Lambda functions
+//   - Applies configurable detection rules with MITRE ATT&CK mapping
+//   - Generates security findings with severity ratings
+//   - Supports automated response actions (alert, isolate, kill, quarantine)
+//
+// Detection categories include crypto mining, container escape, privilege escalation,
+// lateral movement, data exfiltration, reverse shells, malware, persistence mechanisms,
+// credential access, and container drift.
+//
+// Example usage:
+//
+//	engine := runtime.NewDetectionEngine()
+//	findings := engine.ProcessEvent(ctx, event)
+//	for _, f := range findings {
+//	    log.Printf("Detection: %s (severity: %s)", f.RuleName, f.Severity)
+//	}
 package runtime
 
 import (
@@ -7,38 +28,55 @@ import (
 	"time"
 )
 
-// DetectionEngine processes runtime events and generates findings
+// DetectionEngine is the core runtime threat detection component. It maintains
+// a set of detection rules and processes incoming telemetry events to identify
+// security threats in real-time.
+//
+// The engine supports rule suppression to reduce alert fatigue for known-good
+// behaviors and provides MITRE ATT&CK technique mapping for all detections.
+//
+// Thread-safe for concurrent event processing.
 type DetectionEngine struct {
-	rules       []DetectionRule
-	suppressions map[string]bool
+	rules        []DetectionRule      // Active detection rules
+	suppressions map[string]bool      // Rule IDs that are suppressed
 }
 
-// DetectionRule defines a runtime threat detection
+// DetectionRule defines a runtime threat detection rule with conditions,
+// severity rating, and response configuration. Rules are evaluated against
+// incoming telemetry events to identify potential security threats.
+//
+// Each rule includes MITRE ATT&CK technique IDs for threat intelligence
+// correlation and incident response prioritization.
 type DetectionRule struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Category    DetectionCategory `json:"category"`
-	Severity    string            `json:"severity"`
-	Enabled     bool              `json:"enabled"`
-	Conditions  []Condition       `json:"conditions"`
-	MITRE       []string          `json:"mitre_attack"` // MITRE ATT&CK IDs
-	Response    ResponseAction    `json:"response"`
+	ID          string            `json:"id"`          // Unique rule identifier
+	Name        string            `json:"name"`        // Human-readable rule name
+	Description string            `json:"description"` // Detailed description of what the rule detects
+	Category    DetectionCategory `json:"category"`    // Threat category for grouping/filtering
+	Severity    string            `json:"severity"`    // critical, high, medium, low
+	Enabled     bool              `json:"enabled"`     // Whether rule is active
+	Conditions  []Condition       `json:"conditions"`  // Conditions that must match
+	MITRE       []string          `json:"mitre_attack"` // MITRE ATT&CK technique IDs (e.g., T1496)
+	Response    ResponseAction    `json:"response"`    // Automated response configuration
 }
 
+// DetectionCategory classifies the type of threat being detected.
+// Categories align with common security frameworks and help with
+// alert triage and incident response workflows.
 type DetectionCategory string
 
+// Detection categories covering the major classes of runtime threats.
+// These map to common attack patterns observed in cloud-native environments.
 const (
-	CategoryCryptoMining        DetectionCategory = "crypto_mining"
-	CategoryContainerEscape     DetectionCategory = "container_escape"
-	CategoryPrivilegeEscalation DetectionCategory = "privilege_escalation"
-	CategoryLateralMovement     DetectionCategory = "lateral_movement"
-	CategoryDataExfiltration    DetectionCategory = "data_exfiltration"
-	CategoryReverseShell        DetectionCategory = "reverse_shell"
-	CategoryMalware             DetectionCategory = "malware"
-	CategoryPersistence         DetectionCategory = "persistence"
-	CategoryCredentialAccess    DetectionCategory = "credential_access" //nolint:gosec // G101 false positive - category name, not a credential
-	CategoryContainerDrift      DetectionCategory = "container_drift"
+	CategoryCryptoMining        DetectionCategory = "crypto_mining"        // Unauthorized cryptocurrency mining
+	CategoryContainerEscape     DetectionCategory = "container_escape"     // Attempts to break out of container isolation
+	CategoryPrivilegeEscalation DetectionCategory = "privilege_escalation" // Elevation of privileges beyond authorized level
+	CategoryLateralMovement     DetectionCategory = "lateral_movement"     // Movement between systems/resources
+	CategoryDataExfiltration    DetectionCategory = "data_exfiltration"    // Unauthorized data transfer out of environment
+	CategoryReverseShell        DetectionCategory = "reverse_shell"        // Outbound shell connections for remote access
+	CategoryMalware             DetectionCategory = "malware"              // Known malicious software patterns
+	CategoryPersistence         DetectionCategory = "persistence"          // Mechanisms for maintaining access
+	CategoryCredentialAccess    DetectionCategory = "credential_access"    //nolint:gosec // Attempts to steal credentials
+	CategoryContainerDrift      DetectionCategory = "container_drift"      // Unexpected changes to container filesystem
 )
 
 type Condition struct {
