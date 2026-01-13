@@ -7,6 +7,7 @@ responses with tool execution capabilities.
 """
 
 import json
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -397,7 +398,7 @@ def _policy_suggestion_to_response(data: dict[str, Any]) -> PolicySuggestionResp
 async def create_agent_session(
     request: CreateSessionRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> SessionResponse:
     """
     Create a new agent session.
 
@@ -452,7 +453,7 @@ async def list_agent_sessions(
     ),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     current_user: User = Depends(get_current_user),
-):
+) -> SessionListResponse:
     """
     List agent sessions for the current user's organization.
 
@@ -503,7 +504,7 @@ async def get_agent_session(
         50, ge=1, le=200, description="Maximum number of messages to return"
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> SessionWithMessagesResponse:
     """
     Get an agent session with its message history.
 
@@ -586,7 +587,7 @@ async def send_message_to_agent(
     request: SendMessageRequest,
     req: Request,
     current_user: User = Depends(get_current_user),
-):
+) -> EventSourceResponse | dict[str, Any]:
     """
     Send a message to an agent session.
 
@@ -643,7 +644,7 @@ async def send_message_to_agent(
 
     else:
         # Streaming response using SSE
-        async def event_generator():
+        async def event_generator() -> AsyncGenerator[dict[str, str], None]:
             """Generate SSE events from agent responses."""
             try:
                 async for event in service.send_message(
@@ -702,7 +703,7 @@ async def get_session_messages(
     ),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     current_user: User = Depends(get_current_user),
-):
+) -> list[MessageResponse]:
     """
     Get message history for an agent session.
 
@@ -747,7 +748,7 @@ async def get_session_memory_entries(
         False, description="Include full memory content in response"
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> list[MemoryEntryResponse]:
     """List memory entries associated with an agent session."""
 
     service = AgentSessionService()
@@ -801,7 +802,7 @@ async def get_session_memory_entries(
 async def get_session_memory_stats(
     session_id: UUID,
     current_user: User = Depends(get_current_user),
-):
+) -> MemoryStatsResponse:
     service = AgentSessionService()
     stats = await service.get_session_memory_stats(
         session_id=session_id,
@@ -821,7 +822,7 @@ async def list_review_tasks(
         50, ge=1, le=200, description="Maximum number of tasks to return"
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> list[ReviewTaskResponse]:
     """Return review tasks awaiting human decisions."""
 
     service = AgentSessionService()
@@ -841,7 +842,7 @@ async def list_review_tasks_page(
     ),
     cursor: str | None = Query(None, description="Opaque cursor for pagination"),
     current_user: User = Depends(get_current_user),
-):
+) -> ReviewTaskPageResponse:
     """Return review tasks using cursor-based pagination."""
 
     service = AgentSessionService()
@@ -862,7 +863,7 @@ async def list_review_tasks_page(
 async def get_review_queue_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> ReviewQueueSummary:
     """Return aggregated review queue backlog metrics for dashboards."""
 
     from cerebro.agents.review_service import AgentReviewService
@@ -892,7 +893,7 @@ async def resolve_review_task(
     task_id: UUID,
     request: ResolveReviewTaskRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> ReviewTaskResponse:
     """Resolve a review task by approving, rejecting, or promoting it."""
 
     service = AgentSessionService()
@@ -912,7 +913,7 @@ async def resolve_review_task(
 async def bulk_update_review_tasks(
     request: BulkReviewUpdateRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> list[ReviewTaskResponse]:
     """Apply bulk status updates, escalations, or ticket actions to review tasks."""
 
     if current_user.org_id is None:
@@ -941,7 +942,7 @@ async def assign_review_task(
     task_id: UUID,
     request: AssignReviewTaskRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> ReviewTaskResponse:
     """Assign a review task to a user."""
     from cerebro.agents.review_service import AgentReviewService
 
@@ -960,7 +961,7 @@ async def add_task_comment(
     task_id: UUID,
     request: AddReviewCommentRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Add a comment to a review task."""
     from cerebro.agents.review_service import AgentReviewService
 
@@ -989,7 +990,7 @@ async def get_task_comments(
     task_id: UUID,
     limit: int = Query(100, ge=1, le=500, description="Maximum comments to return"),
     current_user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     """Get all comments for a review task."""
     from cerebro.agents.review_service import AgentReviewService
 
@@ -1021,7 +1022,7 @@ async def get_task_history(
         100, ge=1, le=500, description="Maximum history records to return"
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     """Get change history for a review task."""
     from cerebro.agents.review_service import AgentReviewService
 
@@ -1049,7 +1050,7 @@ async def get_task_history(
 @router.get("/review-tasks/sla/summary", response_model=dict[str, Any])
 async def get_sla_summary(
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Get SLA compliance summary for all pending tasks."""
     from cerebro.agents.sla_service import SLAService
 
@@ -1062,7 +1063,7 @@ async def get_sla_summary(
 @router.get("/review-tasks/sla/breached", response_model=list[dict[str, Any]])
 async def get_breached_tasks(
     current_user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     """Get all tasks that have breached their SLA."""
     from cerebro.agents.sla_service import SLAService
 
@@ -1075,7 +1076,7 @@ async def get_breached_tasks(
 @router.get("/review-tasks/sla/at-risk", response_model=list[dict[str, Any]])
 async def get_at_risk_tasks(
     current_user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     """Get all tasks at risk of breaching SLA."""
     from cerebro.agents.sla_service import SLAService
 
@@ -1094,7 +1095,7 @@ async def list_review_notifications(
         100, ge=1, le=500, description="Maximum notification records to return"
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> list[ReviewNotificationResponse]:
     service = AgentSessionService()
     notifications = await service.list_review_notifications(
         org_id=current_user.org_id,
@@ -1121,7 +1122,7 @@ async def get_session_analytics(
         description="Unique identifier of the last event seen (paired with cursor)",
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> list[RuntimeEventResponse]:
     service = AgentSessionService()
     before_dt: datetime | None = None
     if cursor:
@@ -1163,7 +1164,7 @@ async def get_session_analytics_summary(
         None, description="Filter summaries to a specific event type"
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> list[RuntimeEventSummaryResponse]:
     service = AgentSessionService()
     summaries = await service.get_session_analytics_summary(
         session_id=session_id,
@@ -1185,7 +1186,7 @@ async def get_session_analytics_summary(
 async def list_workflow_templates(
     trigger: str | None = Query(None, description="Filter by trigger type"),
     current_user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     """List all available workflow templates."""
     from cerebro.agents.workflow_templates import (
         WorkflowEngine,
@@ -1204,7 +1205,7 @@ async def list_workflow_templates(
 async def get_workflow_template(
     template_id: str,
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Get a specific workflow template by ID."""
     from cerebro.agents.workflow_templates import (
         WorkflowEngine,
@@ -1222,7 +1223,7 @@ async def get_workflow_template(
 async def evaluate_workflows(
     request: WorkflowEvaluationRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     """Evaluate which workflows match given trigger and context."""
     from cerebro.agents.workflow_templates import WorkflowEngine
 
@@ -1238,7 +1239,7 @@ async def list_policy_suggestions(
         50, ge=1, le=200, description="Maximum policy suggestions to return"
     ),
     current_user: User = Depends(get_current_user),
-):
+) -> list[PolicySuggestionResponse]:
     service = AgentSessionService()
     suggestions = await service.list_policy_suggestions(
         org_id=current_user.org_id,
@@ -1251,7 +1252,7 @@ async def list_policy_suggestions(
 async def simulate_policy_expression(
     request: PolicySimulationRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> PolicySimulationResponse:
     service = AgentSessionService()
     try:
         result = await service.simulate_policy_expression(
@@ -1267,7 +1268,7 @@ async def simulate_policy_expression(
 
 # Health check for agent system
 @router.get("/health")
-async def agent_health():
+async def agent_health() -> dict[str, str]:
     """
     Health check for agent system.
 
