@@ -1,0 +1,13 @@
+{
+  "id": "gcp-sa-no-full-project-access",
+  "name": "GCP Service Account No Full Access Scopes",
+  "description": "Service account should not have cloud-platform (full access) scope on compute instances",
+  "effect": "forbid",
+  "resource": "gcp::compute::instance",
+  "conditions": [
+    "service_accounts.scopes contains 'https://www.googleapis.com/auth/cloud-platform'"
+  ],
+  "severity": "high",
+  "tags": ["cis-gcp-4.2", "iam", "service-account", "least-privilege"],
+  "remediation": "Replace cloud-platform scope with specific, minimal scopes required by the workload."
+}

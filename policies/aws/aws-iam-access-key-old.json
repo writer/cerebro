@@ -1,0 +1,13 @@
+{
+  "id": "aws-iam-access-key-rotation",
+  "name": "IAM Access Key Rotation",
+  "description": "IAM access keys should be rotated within 90 days",
+  "effect": "forbid",
+  "resource": "aws::iam::access_key",
+  "conditions": [
+    "create_date_days > 90"
+  ],
+  "severity": "medium",
+  "tags": ["cis-aws-1.14", "iam", "access-key", "rotation", "credentials"],
+  "remediation": "Rotate access keys by creating a new key, updating applications, and deleting the old key."
+}

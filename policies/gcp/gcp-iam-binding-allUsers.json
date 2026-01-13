@@ -1,0 +1,13 @@
+{
+  "id": "gcp-iam-binding-no-allUsers",
+  "name": "GCP IAM Binding No allUsers",
+  "description": "IAM bindings should not grant roles to allUsers (public access)",
+  "effect": "forbid",
+  "resource": "gcp::iam::policy",
+  "conditions": [
+    "bindings.members contains 'allUsers'"
+  ],
+  "severity": "critical",
+  "tags": ["cis-gcp-1.1", "iam", "public-access", "least-privilege"],
+  "remediation": "Remove allUsers from IAM bindings and grant access to specific identities."
+}

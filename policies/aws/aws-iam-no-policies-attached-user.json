@@ -1,0 +1,14 @@
+{
+  "id": "aws-iam-no-policies-attached-user",
+  "name": "IAM Policies Attached to Groups Not Users",
+  "description": "IAM policies should be attached to groups or roles, not directly to users",
+  "effect": "forbid",
+  "resource": "aws::iam::user",
+  "conditions": [
+    "attached_policies != null",
+    "attached_policies.length > 0"
+  ],
+  "severity": "low",
+  "tags": ["cis-aws-1.15", "iam", "best-practice", "least-privilege"],
+  "remediation": "Detach policies from user and attach to a group. Add user to the group."
+}

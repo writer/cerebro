@@ -1,0 +1,14 @@
+{
+  "id": "aws-iam-user-console-inactive",
+  "name": "IAM User Console Inactive",
+  "description": "IAM user with console access has not logged in for 90+ days",
+  "effect": "forbid",
+  "resource": "aws::iam::credential_report",
+  "conditions": [
+    "password_enabled == true",
+    "password_last_used_days > 90"
+  ],
+  "severity": "medium",
+  "tags": ["cis-aws-1.12", "iam", "hygiene", "inactive"],
+  "remediation": "Disable console access for inactive users or delete the user if no longer needed."
+}

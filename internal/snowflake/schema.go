@@ -227,7 +227,7 @@ func (c *Client) CreateTables(ctx context.Context) error {
 
 	for name, ddl := range TableDDLs {
 		// Handle tables with multiple schema references
-		formattedDDL := ddl
+		var formattedDDL string
 		if strings.Count(ddl, "%s") == 1 {
 			formattedDDL = fmt.Sprintf(ddl, schema)
 		} else {

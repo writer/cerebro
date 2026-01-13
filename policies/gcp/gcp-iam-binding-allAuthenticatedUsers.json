@@ -1,0 +1,13 @@
+{
+  "id": "gcp-iam-binding-no-allAuthenticatedUsers",
+  "name": "GCP IAM Binding No allAuthenticatedUsers",
+  "description": "IAM bindings should not grant roles to allAuthenticatedUsers",
+  "effect": "forbid",
+  "resource": "gcp::iam::policy",
+  "conditions": [
+    "bindings.members contains 'allAuthenticatedUsers'"
+  ],
+  "severity": "high",
+  "tags": ["cis-gcp-1.2", "iam", "overly-permissive", "least-privilege"],
+  "remediation": "Remove allAuthenticatedUsers and grant access to specific identities or groups."
+}

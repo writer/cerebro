@@ -1,0 +1,14 @@
+{
+  "id": "aws-iam-role-confused-deputy-prevention",
+  "name": "IAM Role Confused Deputy Prevention",
+  "description": "IAM role trusted by AWS service should have ExternalId or SourceAccount condition",
+  "effect": "forbid",
+  "resource": "aws::iam::role",
+  "conditions": [
+    "assume_role_policy_document.Statement.Principal.Service != null",
+    "assume_role_policy_document.Statement.Condition == null"
+  ],
+  "severity": "medium",
+  "tags": ["iam", "trust-policy", "confused-deputy", "security"],
+  "remediation": "Add aws:SourceAccount or aws:SourceArn conditions to prevent confused deputy attacks."
+}
