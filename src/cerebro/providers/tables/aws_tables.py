@@ -22,10 +22,10 @@ from botocore.exceptions import NoCredentialsError
 
 
 class AWSClient:
-    def __init__(self):
-        self._clients = {}
+    def __init__(self) -> None:
+        self._clients: dict[str, Any] = {}
 
-    async def get_client(self, service: str, region: str = "us-east-1"):
+    async def get_client(self, service: str, region: str = "us-east-1") -> Any:
         """Get AWS service client with proper error handling."""
         try:
             if service not in self._clients:
@@ -43,7 +43,8 @@ class AWSClient:
         try:
             sts = await self.get_client("sts")
             response = sts.get_caller_identity()
-            return response["Account"]
+            account: str = response["Account"]
+            return account
         except Exception as e:
             logger.error(f"Failed to get AWS account ID: {e}")
             return "unknown"
@@ -52,7 +53,7 @@ class AWSClient:
 class AWSEc2InstanceTable(ProviderSecurityTable):
     """AWS EC2 instances as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Define EC2-specific columns
         ec2_columns = [
             SecurityColumn(
@@ -167,7 +168,7 @@ class AWSEc2InstanceTable(ProviderSecurityTable):
 class AWSIAMUserTable(ProviderSecurityTable):
     """AWS IAM users as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Use identity schema with AWS-specific additions
         iam_columns = [
             SecurityColumn(
@@ -286,7 +287,7 @@ class AWSIAMUserTable(ProviderSecurityTable):
 class AWSSecurityGroupTable(ProviderSecurityTable):
     """AWS Security Groups as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         sg_columns = [
             SecurityColumn(
                 "group_id",

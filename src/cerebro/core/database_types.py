@@ -1,10 +1,12 @@
 """Database type compatibility layer for cross-database support."""
 
 import json
+from typing import Any
 
 from sqlalchemy import JSON, String, TypeDecorator
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.engine import Dialect
+from sqlalchemy.sql.type_api import TypeEngine
 
 
 class JSONType(TypeDecorator):
@@ -22,7 +24,7 @@ class JSONType(TypeDecorator):
     impl = JSON
     cache_ok = True
 
-    def load_dialect_impl(self, dialect: Dialect):
+    def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[Any]:
         """Load the appropriate type for the dialect."""
         if dialect.name == "postgresql":
             return dialect.type_descriptor(JSONB())
@@ -34,7 +36,7 @@ class JSONType(TypeDecorator):
 
         return dialect.type_descriptor(JSON())
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(self, value: Any, dialect: Dialect) -> Any:
         """Process values being returned from the database."""
         if value is None:
             return None
@@ -65,11 +67,11 @@ class ArrayType(TypeDecorator):
     impl = JSON
     cache_ok = True
 
-    def __init__(self, item_type=String, **kwargs):
+    def __init__(self, item_type: type[TypeEngine[Any]] = String, **kwargs: Any) -> None:
         self.item_type = item_type
         super().__init__(**kwargs)
 
-    def load_dialect_impl(self, dialect: Dialect):
+    def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[Any]:
         """Load the appropriate type for the dialect."""
         if dialect.name == "postgresql":
             return dialect.type_descriptor(ARRAY(self.item_type))
@@ -83,7 +85,7 @@ class ArrayType(TypeDecorator):
 
         return dialect.type_descriptor(JSON())
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: Any, dialect: Dialect) -> Any:
         """Process values being sent to the database."""
         if value is None:
             return None
@@ -93,7 +95,7 @@ class ArrayType(TypeDecorator):
         # For non-PostgreSQL, store as JSON
         return json.dumps(value)
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(self, value: Any, dialect: Dialect) -> Any:
         """Process values being returned from the database."""
         if value is None:
             return None

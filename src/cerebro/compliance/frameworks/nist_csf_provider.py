@@ -740,7 +740,7 @@ class NISTCSFFrameworkProvider(FrameworkProvider):
 
             # Check for asset data
             assets = evidence_data.get("assets", evidence_data.get("resources", []))
-            return len(assets) > 0
+            return len(assets) > 0 if assets else False
         except Exception:
             return False
 
