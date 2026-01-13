@@ -2,7 +2,7 @@
 
 from .bigquery_public_dataset import GCPBigQueryPublicDatasetProducer
 from .bucket_public_write import GCPBucketPublicWriteProducer
-from .bucket_secret_artifacts import GCPBucketSecretArtifactsProducer
+from .bucket_secret_artifacts import GCPBucketSecretArtifactProducer
 from .cloudsql_public_access import CloudSQLPublicAccessProducer
 from .compute_instance_public_ip import GCPComputeInstancePublicIPProducer
 from .dns_dnssec_disabled import GCPDNSDNSSECDisabledProducer
@@ -17,7 +17,7 @@ __all__ = [
     "CloudSQLPublicAccessProducer",
     "GCPBigQueryPublicDatasetProducer",
     "GCPBucketPublicWriteProducer",
-    "GCPBucketSecretArtifactsProducer",
+    "GCPBucketSecretArtifactProducer",
     "GCPComputeInstancePublicIPProducer",
     "GCPDNSDNSSECDisabledProducer",
     "GCPFirewallAdminPortExposureProducer",
