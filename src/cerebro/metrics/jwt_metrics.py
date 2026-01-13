@@ -1,6 +1,7 @@
 """Metrics for JWT operations."""
 
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from prometheus_client import Counter, Gauge, Histogram
@@ -92,13 +93,13 @@ class JwtMetrics:
     """Helper class for JWT metrics."""
 
     @staticmethod
-    def record_token_issued(algorithm: str, key_id: str):
+    def record_token_issued(algorithm: str, key_id: str) -> None:
         """Record JWT token issuance."""
         jwt_tokens_issued.labels(algorithm=algorithm, key_id=key_id).inc()
 
     @staticmethod
     @contextmanager
-    def time_token_verification(algorithm: str = "unknown", key_id: str = "unknown"):
+    def time_token_verification(algorithm: str = "unknown", key_id: str = "unknown") -> Generator[None, None, None]:
         """Context manager to time token verification."""
         start_time = time.time()
         result = "unknown"
@@ -124,48 +125,48 @@ class JwtMetrics:
             jwt_verification_duration.labels(result=result).observe(duration)
 
     @staticmethod
-    def record_token_verified(result: str, algorithm: str, key_id: str):
+    def record_token_verified(result: str, algorithm: str, key_id: str) -> None:
         """Record token verification result."""
         jwt_tokens_verified.labels(
             result=result, algorithm=algorithm, key_id=key_id
         ).inc()
 
     @staticmethod
-    def record_key_rotation(success: bool):
+    def record_key_rotation(success: bool) -> None:
         """Record key rotation attempt."""
         status = "success" if success else "failed"
         jwt_key_rotations.labels(status=status).inc()
 
     @staticmethod
-    def set_active_keys(count: int):
+    def set_active_keys(count: int) -> None:
         """Set number of active signing keys."""
         jwt_active_keys.set(count)
 
     @staticmethod
-    def record_jwks_cache(hit: bool):
+    def record_jwks_cache(hit: bool) -> None:
         """Record JWKS cache hit or miss."""
         result = "hit" if hit else "miss"
         jwks_cache_hits.labels(result=result).inc()
 
     @staticmethod
-    def record_token_revoked(reason: str):
+    def record_token_revoked(reason: str) -> None:
         """Record token revocation."""
         jwt_tokens_revoked.labels(reason=reason).inc()
         jwt_revocation_list_size.inc()
 
     @staticmethod
-    def record_revocation_cleanup(removed_count: int):
+    def record_revocation_cleanup(removed_count: int) -> None:
         """Record cleanup of expired revoked tokens."""
         jwt_revocation_list_size.dec(removed_count)
 
     @staticmethod
-    def record_public_key_cache(result: str):
+    def record_public_key_cache(result: str) -> None:
         """Record public key cache usage result (hit/miss/expired)."""
         jwt_public_key_cache_hits.labels(result=result).inc()
 
     @staticmethod
     @contextmanager
-    def time_jwks_request():
+    def time_jwks_request() -> Generator[None, None, None]:
         """Context manager to time JWKS endpoint requests."""
         start_time = time.time()
         status_code = "unknown"

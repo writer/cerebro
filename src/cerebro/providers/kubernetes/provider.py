@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import structlog
 
@@ -28,10 +29,10 @@ try:  # pragma: no cover - optional dependency
 
     _K8S_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
-    client = None  # type: ignore[assignment]
-    config = None  # type: ignore[assignment]
-    ApiException = Exception  # type: ignore[assignment, misc]
-    ConfigException = Exception  # type: ignore[assignment, misc]
+    client = None
+    config = None
+    ApiException = Exception
+    ConfigException = Exception
     _K8S_AVAILABLE = False
 
 
@@ -40,7 +41,7 @@ class KubernetesProvider(BaseProvider):
 
     def __init__(
         self,
-        account_id: str,
+        account_id: UUID,
         cluster_name: str,
         kubeconfig_path: str | None = None,
         kube_context: str | None = None,
