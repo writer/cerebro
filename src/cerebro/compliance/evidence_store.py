@@ -111,7 +111,7 @@ class EvidenceStore:
         self.bundles_path.mkdir(exist_ok=True)
 
         # Initialize signing key
-        self.signing_key = None
+        self.signing_key: rsa.RSAPrivateKey | None = None
         if signing_key_path:
             self.signing_key = self._load_signing_key(signing_key_path)
 
@@ -477,7 +477,7 @@ class EvidenceStore:
         except Exception:
             return False
 
-    def _load_signing_key(self, key_path: str) -> None:
+    def _load_signing_key(self, key_path: str) -> rsa.RSAPrivateKey:
         """Load RSA signing key."""
         key_file = Path(key_path)
         if not key_file.exists():
@@ -492,7 +492,10 @@ class EvidenceStore:
             return key
         else:
             pem_data = key_file.read_bytes()
-            return serialization.load_pem_private_key(pem_data, password=None)
+            loaded_key = serialization.load_pem_private_key(pem_data, password=None)
+            if not isinstance(loaded_key, rsa.RSAPrivateKey):
+                raise TypeError("Expected RSA private key")
+            return loaded_key
 
     def _get_file_extension(self, content_type: str) -> str:
         """Get file extension for content type."""

@@ -10,7 +10,8 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
-from .evidence_store import EvidenceCategory, EvidenceMetadata, EvidenceStore
+from .evidence_store import EvidenceMetadata, EvidenceStore
+from .models import EvidenceCategory
 
 
 class PolicyStatus(Enum):

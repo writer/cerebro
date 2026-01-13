@@ -168,7 +168,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
             logger.error(f"Failed to get metadata for {evidence_id}: {e}")
             return None
 
-    async def search_evidence(self, **filters) -> list[BaseEvidenceMetadata]:
+    async def search_evidence(self, **filters: Any) -> list[BaseEvidenceMetadata]:
         """Search evidence by filters."""
         try:
             results = []
@@ -540,7 +540,7 @@ class FileBasedEvidenceRepository(EvidenceRepository):
 class InMemoryEvidenceRepository(EvidenceRepository):
     """In-memory evidence repository for testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._evidence: dict[str, tuple[bytes, BaseEvidenceMetadata]] = {}
         self._bundles: dict[str, EvidenceBundle] = {}
 
@@ -563,7 +563,7 @@ class InMemoryEvidenceRepository(EvidenceRepository):
         evidence = self._evidence.get(evidence_id)
         return evidence[1] if evidence else None
 
-    async def search_evidence(self, **filters) -> list[BaseEvidenceMetadata]:
+    async def search_evidence(self, **filters: Any) -> list[BaseEvidenceMetadata]:
         results = []
         for _content, metadata in self._evidence.values():
             # Simple filter matching - would be more sophisticated in production

@@ -198,12 +198,12 @@ class FrameworkProvider(ABC):
 class FrameworkRegistry:
     """Registry for compliance framework providers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._providers: dict[str, FrameworkProvider] = {}
         self._framework_cache: dict[str, FrameworkDefinition] = {}
-        self._custom_query_handlers: dict[str, Callable] = {}
+        self._custom_query_handlers: dict[str, Callable[..., Any]] = {}
 
-    def register_provider(self, provider: FrameworkProvider):
+    def register_provider(self, provider: FrameworkProvider) -> None:
         """Register a framework provider."""
         framework_id = provider.framework_id
         if framework_id in self._providers:
@@ -212,7 +212,7 @@ class FrameworkRegistry:
         self._providers[framework_id] = provider
         logger.info(f"Registered framework provider: {framework_id}")
 
-    def register_query_handler(self, control_id: str, handler: Callable):
+    def register_query_handler(self, control_id: str, handler: Callable[..., Any]) -> None:
         """Register custom query handler for a control."""
         self._custom_query_handlers[control_id] = handler
         logger.info(f"Registered custom query handler for control: {control_id}")
@@ -274,11 +274,12 @@ class FrameworkRegistry:
             except Exception as e:
                 logger.error(f"Custom query handler failed for {control_id}: {e}")
 
-        return provider.get_evidence_queries(control_id)
+        queries = provider.get_evidence_queries(control_id)
+        return list(queries) if queries else []
 
     def auto_discover_providers(
         self, package_name: str = "cerebro.compliance.frameworks"
-    ):
+    ) -> None:
         """Auto-discover and register framework providers."""
         try:
             # Import the package
@@ -389,12 +390,14 @@ class FrameworkRegistry:
         if format == "json":
             import json
 
-            return json.dumps(framework, default=lambda x: x.__dict__, indent=2)
+            result: str = json.dumps(framework, default=lambda x: x.__dict__, indent=2)
+            return result
         elif format == "yaml":
             try:
                 import yaml
 
-                return yaml.dump(framework, default_flow_style=False)
+                yaml_result: str = yaml.dump(framework, default_flow_style=False)
+                return yaml_result
             except ImportError:
                 logger.error("PyYAML not available for YAML export")
                 return ""
@@ -411,7 +414,7 @@ def get_framework_registry() -> FrameworkRegistry:
     return _registry
 
 
-def register_framework_provider(provider: FrameworkProvider):
+def register_framework_provider(provider: FrameworkProvider) -> None:
     """Register a framework provider with the global registry."""
     _registry.register_provider(provider)
 
@@ -429,7 +432,7 @@ def list_frameworks() -> list[str]:
 
 
 # Auto-discovery helper
-def discover_framework_providers(package_name: str = "cerebro.compliance.frameworks"):
+def discover_framework_providers(package_name: str = "cerebro.compliance.frameworks") -> None:
     """Discover and register framework providers."""
     _registry.auto_discover_providers(package_name)
 

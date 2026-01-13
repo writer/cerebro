@@ -607,4 +607,5 @@ def metadata_to_dict(metadata: BaseEvidenceMetadata) -> dict[str, Any]:
     raw = asdict(metadata)
     result = _convert(raw)
     # asdict always returns a dict, so _convert will return a dict
-    return result  # type: ignore[return-value]
+    assert isinstance(result, dict)
+    return result

@@ -47,7 +47,8 @@ class AWSKMS(BaseKMS):
         def _encrypt() -> bytes:
             try:
                 response = self._client.encrypt(KeyId=self.key_id, Plaintext=plaintext)
-                return response["CiphertextBlob"]
+                ciphertext: bytes = response["CiphertextBlob"]
+                return ciphertext
             except ClientError as e:
                 logger.error("AWS KMS encryption failed", error=str(e))
                 raise
@@ -60,7 +61,8 @@ class AWSKMS(BaseKMS):
         def _decrypt() -> bytes:
             try:
                 response = self._client.decrypt(CiphertextBlob=ciphertext)
-                return response["Plaintext"]
+                plaintext_result: bytes = response["Plaintext"]
+                return plaintext_result
             except ClientError as e:
                 logger.error("AWS KMS decryption failed", error=str(e))
                 raise
