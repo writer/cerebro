@@ -358,6 +358,7 @@ func TestSessionContext(t *testing.T) {
 }
 
 func TestInvestigation(t *testing.T) {
+	now := time.Now()
 	inv := Investigation{
 		ID:          "inv-123",
 		Title:       "Security Incident",
@@ -367,12 +368,12 @@ func TestInvestigation(t *testing.T) {
 		Findings:    []string{"f1", "f2"},
 		Timeline: []Event{
 			{
-				Timestamp:   time.Now(),
+				Timestamp:   now,
 				Type:        "detection",
 				Description: "Initial alert",
 			},
 		},
-		CreatedAt: time.Now(),
+		CreatedAt: now,
 	}
 
 	if inv.ID != "inv-123" {
@@ -396,14 +397,15 @@ func TestInvestigation(t *testing.T) {
 	if len(inv.Timeline) != 1 {
 		t.Errorf("expected 1 timeline event, got %d", len(inv.Timeline))
 	}
-	if inv.CreatedAt.IsZero() {
-		t.Error("expected CreatedAt to be set")
+	if inv.CreatedAt != now {
+		t.Error("expected CreatedAt to match")
 	}
 }
 
 func TestEvent(t *testing.T) {
+	now := time.Now()
 	event := Event{
-		Timestamp:   time.Now(),
+		Timestamp:   now,
 		Type:        "action",
 		Description: "Blocked IP address",
 		Data: map[string]interface{}{
@@ -411,14 +413,14 @@ func TestEvent(t *testing.T) {
 		},
 	}
 
+	if event.Timestamp != now {
+		t.Error("expected Timestamp to match")
+	}
 	if event.Type != "action" {
 		t.Errorf("expected type 'action', got '%s'", event.Type)
 	}
 	if event.Description != "Blocked IP address" {
 		t.Errorf("expected description 'Blocked IP address', got '%s'", event.Description)
-	}
-	if event.Timestamp.IsZero() {
-		t.Error("expected Timestamp to be set")
 	}
 	if event.Data["ip"] != "192.168.1.1" {
 		t.Errorf("expected ip '192.168.1.1', got '%v'", event.Data["ip"])
@@ -426,20 +428,34 @@ func TestEvent(t *testing.T) {
 }
 
 func TestMemoryEntry(t *testing.T) {
+	now := time.Now()
+	expires := now.Add(time.Hour)
 	entry := MemoryEntry{
 		ID:        "entry-1",
 		Content:   "Important fact",
 		Type:      "fact",
 		Relevance: 0.95,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: now,
+		ExpiresAt: expires,
 	}
 
 	if entry.ID != "entry-1" {
 		t.Errorf("expected ID 'entry-1', got '%s'", entry.ID)
 	}
+	if entry.Content != "Important fact" {
+		t.Errorf("expected content 'Important fact', got '%s'", entry.Content)
+	}
+	if entry.Type != "fact" {
+		t.Errorf("expected type 'fact', got '%s'", entry.Type)
+	}
 	if entry.Relevance != 0.95 {
 		t.Errorf("expected relevance 0.95, got %f", entry.Relevance)
+	}
+	if entry.CreatedAt != now {
+		t.Error("expected CreatedAt to match")
+	}
+	if entry.ExpiresAt != expires {
+		t.Error("expected ExpiresAt to match")
 	}
 }
 
