@@ -1,0 +1,14 @@
+{
+  "id": "m365-file-shared-externally",
+  "name": "Microsoft 365 File Shared Externally",
+  "description": "SharePoint site or OneDrive file is shared with external users outside the organization",
+  "effect": "forbid",
+  "resource": "m365::sharepoint::site",
+  "conditions": [
+    "external_sharing_enabled == true",
+    "external_user_count > 0"
+  ],
+  "severity": "medium",
+  "remediation": "Review external sharing permissions. Remove unauthorized external access. Use expiring sharing links. Configure tenant-level sharing restrictions.",
+  "tags": ["m365", "sharepoint", "data-exposure", "external-sharing", "nist-ac-3"]
+}

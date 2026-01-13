@@ -1,0 +1,14 @@
+{
+  "id": "azure-user-mfa-disabled",
+  "name": "Azure AD User Without MFA",
+  "description": "Azure AD user does not have multi-factor authentication methods registered",
+  "effect": "forbid",
+  "resource": "azure::ad::user",
+  "conditions": [
+    "account_enabled == true",
+    "authentication_methods_count == 0 OR strong_authentication_methods_count == 0"
+  ],
+  "severity": "high",
+  "remediation": "Enable MFA for the user via Conditional Access policies. Use Security Defaults for baseline MFA. Enroll users in self-service MFA registration.",
+  "tags": ["azure", "identity", "mfa", "authentication", "cis-azure-1.1.1"]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "sentinelone-command-control",
+  "name": "SentinelOne Command and Control Activity",
+  "description": "SentinelOne detected command and control (C2) communication from an endpoint",
+  "effect": "forbid",
+  "resource": "sentinelone::threat",
+  "conditions": [
+    "indicators.mitre_tactics CONTAINS 'TA0011'",
+    "threat_info.analyst_verdict != 'false_positive'"
+  ],
+  "severity": "critical",
+  "remediation": "Immediately isolate endpoint from network. Block C2 domains/IPs at perimeter. Conduct forensic investigation. Engage incident response procedures. Hunt for lateral movement.",
+  "tags": ["sentinelone", "edr", "c2", "threat-detection", "mitre-ta0011"]
+}

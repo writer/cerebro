@@ -1,0 +1,14 @@
+{
+  "id": "k8s-cluster-admin-wildcard",
+  "name": "Kubernetes ClusterRole with Wildcard Permissions",
+  "description": "ClusterRole grants wildcard (*) permissions on resources, verbs, or API groups",
+  "effect": "forbid",
+  "resource": "k8s::rbac::cluster_role",
+  "conditions": [
+    "metadata.name NOT IN ('cluster-admin', 'system:*')",
+    "rules ANY (resources CONTAINS '*' OR verbs CONTAINS '*' OR api_groups CONTAINS '*')"
+  ],
+  "severity": "high",
+  "remediation": "Replace wildcard permissions with specific resources and verbs. Create separate roles for different access patterns. Follow principle of least privilege.",
+  "tags": ["kubernetes", "rbac", "least-privilege", "cis-k8s-5.1.3"]
+}

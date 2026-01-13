@@ -1,0 +1,14 @@
+{
+  "id": "aws-s3-public-write",
+  "name": "S3 Bucket Allows Public Write Access",
+  "description": "S3 bucket policy or ACL grants write permissions to anonymous users or all authenticated AWS users",
+  "effect": "forbid",
+  "resource": "aws::s3::bucket",
+  "conditions": [
+    "policy.Statement ANY (Effect == 'Allow' AND Principal == '*' AND Action MATCHES 's3:(Put|Delete).*')",
+    "acl.grants ANY (grantee.uri CONTAINS 'AllUsers' AND permission IN ('WRITE', 'FULL_CONTROL'))"
+  ],
+  "severity": "critical",
+  "remediation": "Remove public write permissions immediately. Enable Block Public Access settings. Review and restrict bucket policy. Enable versioning for recovery from malicious writes.",
+  "tags": ["aws", "s3", "public-access", "data-integrity", "cwe-732"]
+}
