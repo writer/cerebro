@@ -2,6 +2,8 @@
 
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
+from uuid import UUID
 
 import structlog
 
@@ -19,9 +21,9 @@ logger = structlog.get_logger(__name__)
 class GCPProvider(BaseProvider):
     """GCP provider for collecting resources, users, and permissions."""
 
-    def __init__(self, account_id, project_id: str, **kwargs):
+    def __init__(self, account_id: str | UUID, project_id: str, **kwargs: Any) -> None:
         """Initialize GCP provider."""
-        super().__init__(account_id, **kwargs)
+        super().__init__(account_id, **kwargs)  # type: ignore[arg-type]
         self.project_id = project_id
 
     @property

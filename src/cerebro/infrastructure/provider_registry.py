@@ -183,11 +183,11 @@ def create_aws_provider(
 
 
 # Enhanced provider factories
-def create_enhanced_gcp_provider(account_id: str, project_id: str, **kwargs):
+def create_enhanced_gcp_provider(account_id: str, project_id: str, **kwargs: Any) -> Any:
     """Factory for enhanced GCP provider."""
-    from cerebro.providers.gcp.enhanced_provider import EnhancedGCPProvider
+    from cerebro.providers.gcp.provider import GCPProvider
 
-    return EnhancedGCPProvider(account_id=account_id, project_id=project_id, **kwargs)
+    return GCPProvider(account_id=account_id, project_id=project_id, **kwargs)
 
 
 def create_google_workspace_provider(
