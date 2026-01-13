@@ -1,0 +1,3 @@
+venv/
+Pulumi.*.yaml
+!Pulumi.yaml

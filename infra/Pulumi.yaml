@@ -54,48 +54,8 @@ config:
     default: 10
     description: Maximum API instances
 
-  # Optional integrations
-  cerebro:anthropicApiKey:
-    type: string
-    secret: true
-    description: Anthropic API key for AI agents
-
-  cerebro:openaiApiKey:
-    type: string
-    secret: true
-    description: OpenAI API key for AI agents
-
-  cerebro:slackWebhookUrl:
-    type: string
-    secret: true
-    description: Slack webhook URL for notifications
-
-  cerebro:jiraBaseUrl:
-    type: string
-    description: Jira base URL
-
-  cerebro:jiraEmail:
-    type: string
-    description: Jira email
-
-  cerebro:jiraApiToken:
-    type: string
-    secret: true
-    description: Jira API token
-
-  cerebro:jiraProject:
-    type: string
-    default: SEC
-    description: Default Jira project key
-
-  cerebro:linearApiKey:
-    type: string
-    secret: true
-    description: Linear API key
-
-  cerebro:linearTeamId:
-    type: string
-    description: Linear team ID
+  # Optional integrations - set via: pulumi config set --secret cerebro:anthropicApiKey "..."
+  # These are NOT defined in schema so they're truly optional
 
   # Feature flags
   cerebro:enableWaf:

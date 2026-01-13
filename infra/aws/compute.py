@@ -23,6 +23,7 @@ def create_ecs_cluster(
     api_max_instances: int = 10,
     log_retention_days: int = 30,
     environment: dict = None,
+    secret_keys: list[str] = None,
 ) -> dict:
     """
     Create ECS cluster with Fargate service for Go API.
@@ -63,6 +64,7 @@ def create_ecs_cluster(
         log_group_name=log_group.name,
         secrets_arn=secrets_arn,
         environment=environment or {},
+        secret_keys=secret_keys or ["SNOWFLAKE_CONNECTION_STRING"],
     )
 
     # ECS Service
@@ -237,9 +239,16 @@ def _create_task_definition(
     log_group_name: pulumi.Output[str],
     secrets_arn: pulumi.Output[str],
     environment: dict,
+    secret_keys: list[str],
 ) -> aws.ecs.TaskDefinition:
     """Create ECS task definition."""
     region = aws.get_region().name
+
+    # Build secrets list dynamically based on what's configured
+    secrets_list = [
+        {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
+        for key in secret_keys
+    ]
 
     container_def = {
         "name": "cerebro",
@@ -256,14 +265,7 @@ def _create_task_definition(
             },
         },
         "environment": [{"name": k, "value": str(v)} for k, v in environment.items()],
-        "secrets": [
-            {"name": "SNOWFLAKE_CONNECTION_STRING", "valueFrom": pulumi.Output.concat(secrets_arn, ":SNOWFLAKE_CONNECTION_STRING::")},
-            {"name": "ANTHROPIC_API_KEY", "valueFrom": pulumi.Output.concat(secrets_arn, ":ANTHROPIC_API_KEY::")},
-            {"name": "OPENAI_API_KEY", "valueFrom": pulumi.Output.concat(secrets_arn, ":OPENAI_API_KEY::")},
-            {"name": "SLACK_WEBHOOK_URL", "valueFrom": pulumi.Output.concat(secrets_arn, ":SLACK_WEBHOOK_URL::")},
-            {"name": "JIRA_API_TOKEN", "valueFrom": pulumi.Output.concat(secrets_arn, ":JIRA_API_TOKEN::")},
-            {"name": "LINEAR_API_KEY", "valueFrom": pulumi.Output.concat(secrets_arn, ":LINEAR_API_KEY::")},
-        ],
+        "secrets": secrets_list,
         "healthCheck": {
             "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"],
             "interval": 30,

@@ -72,26 +72,32 @@ kms_key = kms.create_kms_key(
 # SECRETS
 # =============================================================================
 
-# Build secrets dict from config
+# Build secrets dict from config - only include configured secrets
 secrets_dict = {
     "SNOWFLAKE_CONNECTION_STRING": config.require_secret("snowflakeConnectionString"),
 }
+secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
 
-# Optional secrets
+# Optional secrets - only add if configured
 if config.get_secret("anthropicApiKey"):
     secrets_dict["ANTHROPIC_API_KEY"] = config.get_secret("anthropicApiKey")
+    secret_keys.append("ANTHROPIC_API_KEY")
 
 if config.get_secret("openaiApiKey"):
     secrets_dict["OPENAI_API_KEY"] = config.get_secret("openaiApiKey")
+    secret_keys.append("OPENAI_API_KEY")
 
 if config.get_secret("slackWebhookUrl"):
     secrets_dict["SLACK_WEBHOOK_URL"] = config.get_secret("slackWebhookUrl")
+    secret_keys.append("SLACK_WEBHOOK_URL")
 
 if config.get_secret("jiraApiToken"):
     secrets_dict["JIRA_API_TOKEN"] = config.get_secret("jiraApiToken")
+    secret_keys.append("JIRA_API_TOKEN")
 
 if config.get_secret("linearApiKey"):
     secrets_dict["LINEAR_API_KEY"] = config.get_secret("linearApiKey")
+    secret_keys.append("LINEAR_API_KEY")
 
 cerebro_secrets = secrets.create_secrets(
     name=f"cerebro-{environment}",
@@ -156,6 +162,7 @@ ecs_stack = compute.create_ecs_cluster(
     api_max_instances=api_max_instances,
     log_retention_days=log_retention_days,
     environment=app_environment,
+    secret_keys=secret_keys,
 )
 
 # =============================================================================
