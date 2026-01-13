@@ -2,7 +2,9 @@ package findings
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/writerinternal/cerebro/internal/policy"
 )
@@ -141,5 +143,223 @@ func TestStoreStats(t *testing.T) {
 	}
 	if stats.ByStatus["resolved"] != 1 {
 		t.Errorf("expected 1 resolved, got %d", stats.ByStatus["resolved"])
+	}
+}
+
+func TestStoreGet_NotFound(t *testing.T) {
+	store := NewStore()
+
+	_, ok := store.Get("nonexistent")
+	if ok {
+		t.Error("expected Get to return false for nonexistent finding")
+	}
+}
+
+func TestStoreResolve_NotFound(t *testing.T) {
+	store := NewStore()
+
+	if store.Resolve("nonexistent") {
+		t.Error("expected Resolve to return false for nonexistent finding")
+	}
+}
+
+func TestStoreSuppress_NotFound(t *testing.T) {
+	store := NewStore()
+
+	if store.Suppress("nonexistent") {
+		t.Error("expected Suppress to return false for nonexistent finding")
+	}
+}
+
+func TestStoreUpsert_ReopenResolved(t *testing.T) {
+	store := NewStore()
+
+	pf := policy.Finding{
+		ID:       "test-finding",
+		PolicyID: "test-policy",
+		Severity: "high",
+		Resource: map[string]interface{}{"name": "test"},
+	}
+
+	// Create and resolve
+	store.Upsert(context.Background(), pf)
+	store.Resolve("test-finding")
+
+	f, _ := store.Get("test-finding")
+	if f.Status != "resolved" {
+		t.Error("finding should be resolved")
+	}
+
+	// Upsert again should reopen
+	store.Upsert(context.Background(), pf)
+
+	f, _ = store.Get("test-finding")
+	if f.Status != "open" {
+		t.Errorf("expected status 'open' after reopening, got '%s'", f.Status)
+	}
+	if f.ResolvedAt != nil {
+		t.Error("ResolvedAt should be nil after reopening")
+	}
+}
+
+func TestStoreList_FilterByStatus(t *testing.T) {
+	store := NewStore()
+
+	store.Upsert(context.Background(), policy.Finding{ID: "f1", PolicyID: "p1", Severity: "high"})
+	store.Upsert(context.Background(), policy.Finding{ID: "f2", PolicyID: "p1", Severity: "high"})
+	store.Resolve("f1")
+
+	open := store.List(FindingFilter{Status: "open"})
+	if len(open) != 1 {
+		t.Errorf("expected 1 open finding, got %d", len(open))
+	}
+
+	resolved := store.List(FindingFilter{Status: "resolved"})
+	if len(resolved) != 1 {
+		t.Errorf("expected 1 resolved finding, got %d", len(resolved))
+	}
+}
+
+func TestStoreSync(t *testing.T) {
+	store := NewStore()
+
+	// Sync should be a no-op for in-memory store
+	err := store.Sync(context.Background())
+	if err != nil {
+		t.Errorf("Sync should not return error: %v", err)
+	}
+}
+
+func TestFinding_Fields(t *testing.T) {
+	now := time.Now()
+	resolvedAt := now.Add(time.Hour)
+	resource := map[string]interface{}{"name": "test"}
+	f := &Finding{
+		ID:           "finding-1",
+		PolicyID:     "policy-1",
+		PolicyName:   "Test Policy",
+		Severity:     "critical",
+		Status:       "resolved",
+		ResourceID:   "resource-1",
+		ResourceType: "aws_s3_bucket",
+		Resource:     resource,
+		Description:  "Test description",
+		FirstSeen:    now,
+		LastSeen:     now,
+		ResolvedAt:   &resolvedAt,
+	}
+
+	if f.ID != "finding-1" {
+		t.Error("ID field incorrect")
+	}
+	if f.PolicyID != "policy-1" {
+		t.Error("PolicyID field incorrect")
+	}
+	if f.PolicyName != "Test Policy" {
+		t.Error("PolicyName field incorrect")
+	}
+	if f.Severity != "critical" {
+		t.Error("Severity field incorrect")
+	}
+	if f.Status != "resolved" {
+		t.Error("Status field incorrect")
+	}
+	if f.ResourceID != "resource-1" {
+		t.Error("ResourceID field incorrect")
+	}
+	if f.ResourceType != "aws_s3_bucket" {
+		t.Error("ResourceType field incorrect")
+	}
+	if f.Resource["name"] != "test" {
+		t.Error("Resource field incorrect")
+	}
+	if f.Description != "Test description" {
+		t.Error("Description field incorrect")
+	}
+	if f.FirstSeen.IsZero() {
+		t.Error("FirstSeen field incorrect")
+	}
+	if f.LastSeen.IsZero() {
+		t.Error("LastSeen field incorrect")
+	}
+	if f.ResolvedAt == nil {
+		t.Error("ResolvedAt field incorrect")
+	}
+}
+
+func TestFindingFilter_Fields(t *testing.T) {
+	filter := FindingFilter{
+		Severity: "high",
+		Status:   "open",
+		PolicyID: "policy-1",
+	}
+
+	if filter.Severity != "high" {
+		t.Error("Severity field incorrect")
+	}
+	if filter.Status != "open" {
+		t.Error("Status field incorrect")
+	}
+	if filter.PolicyID != "policy-1" {
+		t.Error("PolicyID field incorrect")
+	}
+}
+
+func TestStats_Fields(t *testing.T) {
+	stats := Stats{
+		Total:      10,
+		BySeverity: map[string]int{"critical": 2, "high": 5, "medium": 3},
+		ByStatus:   map[string]int{"open": 8, "resolved": 2},
+		ByPolicy:   map[string]int{"p1": 6, "p2": 4},
+	}
+
+	if stats.Total != 10 {
+		t.Error("Total field incorrect")
+	}
+	if stats.BySeverity["critical"] != 2 {
+		t.Error("BySeverity field incorrect")
+	}
+	if stats.ByStatus["open"] != 8 {
+		t.Error("ByStatus field incorrect")
+	}
+	if stats.ByPolicy["p1"] != 6 {
+		t.Error("ByPolicy field incorrect")
+	}
+}
+
+func TestStore_ConcurrentAccess(t *testing.T) {
+	store := NewStore()
+	var wg sync.WaitGroup
+
+	// Concurrent writes
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			pf := policy.Finding{
+				ID:       "finding-" + string(rune('a'+id%26)),
+				PolicyID: "policy-1",
+				Severity: "high",
+			}
+			store.Upsert(context.Background(), pf)
+		}(i)
+	}
+
+	// Concurrent reads
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			store.List(FindingFilter{})
+			store.Stats()
+		}()
+	}
+
+	wg.Wait()
+
+	// Should complete without race condition
+	stats := store.Stats()
+	if stats.Total == 0 {
+		t.Error("expected some findings to be stored")
 	}
 }
