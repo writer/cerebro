@@ -1,6 +1,8 @@
 """AWS finding producers."""
 
+from .apigateway_public import APIGatewayPublicProducer
 from .bucket_cleartext_key import AwsBucketCleartextKeyProducer
+from .cloudfront_http_allowed import CloudFrontHTTPAllowedProducer
 from .cloudtrail_not_enabled import CloudTrailNotEnabledProducer
 from .codebuild_public_trigger import AwsCodeBuildPublicTriggerProducer
 from .codebuild_source_credential import AwsCodeBuildSourceCredentialProducer
@@ -20,6 +22,7 @@ from .load_balancer_missing_https import AwsLoadBalancerMissingHttpsProducer
 from .load_balancer_public_http import AwsLoadBalancerPublicHttpProducer
 from .load_balancer_target_exposure import AwsLoadBalancerTargetExposureProducer
 from .load_balancer_weak_tls import AwsLoadBalancerWeakTlsProducer
+from .opensearch_public_access import OpenSearchPublicAccessProducer
 from .rds_public_access import RDSPublicAccessProducer
 from .redshift_public_access import RedshiftPublicAccessProducer
 from .s3_bucket_public import AwsS3BucketPublicProducer
@@ -33,7 +36,9 @@ from .sqs_public_access import SQSPublicAccessProducer
 from .storage_write_access import AwsStorageWriteAccessProducer
 
 __all__ = [
+    "APIGatewayPublicProducer",
     "AwsBucketCleartextKeyProducer",
+    "CloudFrontHTTPAllowedProducer",
     "AwsCodeBuildPublicTriggerProducer",
     "AwsCodeBuildSourceCredentialProducer",
     "AwsIamUserWithoutMfaProducer",
@@ -59,6 +64,7 @@ __all__ = [
     "IAMRootAccountUsageProducer",
     "KMSKeyRotationDisabledProducer",
     "LambdaPublicAccessProducer",
+    "OpenSearchPublicAccessProducer",
     "RDSPublicAccessProducer",
     "RedshiftPublicAccessProducer",
     "SNSPublicAccessProducer",
