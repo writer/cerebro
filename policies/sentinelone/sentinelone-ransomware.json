@@ -1,0 +1,13 @@
+{
+  "id": "sentinelone-ransomware",
+  "name": "SentinelOne Ransomware Activity Detected",
+  "description": "SentinelOne detected ransomware behavior or file encryption activity on endpoint",
+  "effect": "forbid",
+  "resource": "sentinelone::threat",
+  "conditions": [
+    "threat_info.classification MATCHES '(?i)ransom' OR indicators.categories CONTAINS 'Ransomware'"
+  ],
+  "severity": "critical",
+  "remediation": "Immediately isolate endpoint. Do NOT pay ransom. Engage incident response and legal. Restore from clean backups. Report to law enforcement if required. Conduct root cause analysis.",
+  "tags": ["sentinelone", "edr", "ransomware", "threat-detection", "mitre-ta0040"]
+}

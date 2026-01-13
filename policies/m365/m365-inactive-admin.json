@@ -1,0 +1,14 @@
+{
+  "id": "m365-inactive-admin",
+  "name": "Microsoft 365 Inactive Admin Account",
+  "description": "User with administrative role has not signed in for over 90 days",
+  "effect": "forbid",
+  "resource": "m365::directory::user",
+  "conditions": [
+    "directory_roles ANY (is_privileged == true)",
+    "sign_in_activity.last_sign_in_days_ago > 90"
+  ],
+  "severity": "medium",
+  "remediation": "Review dormant admin accounts. Remove admin privileges if no longer needed. Disable accounts for departed users. Implement regular access certification.",
+  "tags": ["m365", "identity", "privileged-access", "hygiene", "access-review"]
+}

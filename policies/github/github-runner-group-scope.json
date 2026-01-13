@@ -1,0 +1,13 @@
+{
+  "id": "github-runner-group-scope",
+  "name": "GitHub Runner Group with Broad Repository Access",
+  "description": "Self-hosted runner group is accessible to all repositories or allows public repositories",
+  "effect": "forbid",
+  "resource": "github::runner_group",
+  "conditions": [
+    "visibility == 'all' OR allows_public_repositories == true OR selected_repositories_count == 0"
+  ],
+  "severity": "high",
+  "remediation": "Restrict runner groups to specific repositories. Disable public repository access for self-hosted runners. Create separate runner groups for different security boundaries.",
+  "tags": ["github", "runners", "supply-chain", "ci-cd", "least-privilege"]
+}

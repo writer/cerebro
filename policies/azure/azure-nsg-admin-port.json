@@ -1,0 +1,13 @@
+{
+  "id": "azure-nsg-admin-port",
+  "name": "NSG Allows Admin Ports from Internet",
+  "description": "Network Security Group allows SSH (22) or RDP (3389) access from any source (Internet)",
+  "effect": "forbid",
+  "resource": "azure::network::security_group",
+  "conditions": [
+    "security_rules ANY (direction == 'Inbound' AND access == 'Allow' AND source_address_prefix IN ('*', 'Internet', '0.0.0.0/0') AND destination_port_range IN ('22', '3389', '*'))"
+  ],
+  "severity": "high",
+  "remediation": "Restrict source addresses to specific IPs or ranges. Use Azure Bastion for secure RDP/SSH access. Implement Just-in-Time VM access.",
+  "tags": ["azure", "nsg", "network", "admin-access", "cis-azure-6.1"]
+}

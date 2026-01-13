@@ -1,0 +1,13 @@
+{
+  "id": "azure-storage-network-allow",
+  "name": "Azure Storage Network Default Allow",
+  "description": "Storage account network rules default to allowing access from all networks",
+  "effect": "forbid",
+  "resource": "azure::storage::account",
+  "conditions": [
+    "network_rule_set.default_action == 'Allow'"
+  ],
+  "severity": "medium",
+  "remediation": "Set network default action to Deny. Add specific virtual network rules or IP rules for required access. Use Private Endpoints for secure access from VNets.",
+  "tags": ["azure", "storage", "network", "zero-trust", "cis-azure-3.7"]
+}

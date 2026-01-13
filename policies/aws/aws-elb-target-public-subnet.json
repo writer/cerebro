@@ -1,0 +1,14 @@
+{
+  "id": "aws-elb-target-public-subnet",
+  "name": "Load Balancer Targets in Public Subnet",
+  "description": "Load balancer target group contains instances or IPs in public subnets, potentially exposing backend services",
+  "effect": "forbid",
+  "resource": "aws::elbv2::target_group",
+  "conditions": [
+    "target_type IN ('instance', 'ip')",
+    "targets ANY (subnet.map_public_ip_on_launch == true OR subnet.is_public == true)"
+  ],
+  "severity": "medium",
+  "remediation": "Move targets to private subnets. Use load balancer in public subnet with targets in private subnets. Ensure security groups restrict direct access to targets.",
+  "tags": ["aws", "elb", "network", "architecture", "defense-in-depth"]
+}

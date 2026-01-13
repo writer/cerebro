@@ -1,0 +1,14 @@
+{
+  "id": "k8s-network-policy-default-deny",
+  "name": "Kubernetes Namespace Without Default Deny NetworkPolicy",
+  "description": "Namespace does not have a default-deny NetworkPolicy, allowing unrestricted pod-to-pod traffic",
+  "effect": "forbid",
+  "resource": "k8s::core::namespace",
+  "conditions": [
+    "metadata.name NOT IN ('kube-system', 'kube-public', 'kube-node-lease', 'gatekeeper-system')",
+    "network_policies NOT ANY (spec.pod_selector == {} AND spec.policy_types CONTAINS 'Ingress' AND spec.ingress == null)"
+  ],
+  "severity": "medium",
+  "remediation": "Create a default-deny NetworkPolicy for ingress traffic. Add specific allow policies for required communication paths. Consider using a service mesh for mTLS.",
+  "tags": ["kubernetes", "network", "segmentation", "zero-trust", "cis-k8s-5.3.2"]
+}
