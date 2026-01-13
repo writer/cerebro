@@ -23,4 +23,5 @@ func init() {
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(policyCmd)
 	rootCmd.AddCommand(queryCmd)
+	rootCmd.AddCommand(bootstrapCmd)
 }

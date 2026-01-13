@@ -1,14 +1,11 @@
 package cli
 
 import (
-	"log/slog"
-	"os"
+	"context"
 
 	"github.com/spf13/cobra"
 	"github.com/writerinternal/cerebro/internal/api"
-	"github.com/writerinternal/cerebro/internal/config"
-	"github.com/writerinternal/cerebro/internal/policy"
-	"github.com/writerinternal/cerebro/internal/snowflake"
+	"github.com/writerinternal/cerebro/internal/app"
 )
 
 var serveCmd = &cobra.Command{
@@ -18,31 +15,14 @@ var serveCmd = &cobra.Command{
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	ctx := context.Background()
 
-	cfg := config.Load()
-
-	policyEngine := policy.NewEngine()
-	if err := policyEngine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
-		logger.Warn("failed to load policies", "error", err)
-	} else {
-		logger.Info("loaded policies", "count", len(policyEngine.ListPolicies()))
+	application, err := app.New(ctx)
+	if err != nil {
+		return err
 	}
+	defer application.Close()
 
-	var sfClient *snowflake.Client
-	if cfg.SnowflakeConnection != "" {
-		var err error
-		sfClient, err = snowflake.NewClient(cfg.SnowflakeConnection, cfg.SnowflakeDatabase, cfg.SnowflakeSchema)
-		if err != nil {
-			logger.Warn("failed to connect to snowflake", "error", err)
-		} else {
-			logger.Info("connected to snowflake")
-			defer sfClient.Close()
-		}
-	}
-
-	server := api.NewServer(cfg, sfClient, policyEngine, logger)
+	server := api.NewServer(application)
 	return server.Run()
 }
