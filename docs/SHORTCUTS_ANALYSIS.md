@@ -40,11 +40,11 @@ Added freshness check to `runScheduledScan()` - warns if CloudQuery data is >24h
 
 ---
 
-### 5. Missing Multi-Cloud Policy Coverage
+### 5. ~~Missing Multi-Cloud Policy Coverage~~ (FIXED)
 
-**Issue:** Compliance frameworks reference GCP/Azure policies that map to the correct IDs, but:
-- GCP/Azure tables may not be populated
-- No scan schedule for GCP/Azure tables
+Added GCP and Azure tables to `defaultScanTables()`:
+- GCP: compute_instances, firewalls, iam_service_accounts, storage_buckets, sql_instances, container_clusters
+- Azure: virtual_machines, storage_accounts, sql_servers, network_security_groups, ad_users, ad_service_principals
 
 ---
 
@@ -94,6 +94,8 @@ Added freshness check to `runScheduledScan()` - warns if CloudQuery data is >24h
 - [x] Limited scan tables - expanded to 40+ tables covering all AWS services
 - [x] Data freshness check - added to runScheduledScan()
 - [x] Compliance report asset counts - now includes fail counts per control and data warning
+- [x] Multi-cloud scan tables - added GCP and Azure to default scan
+- [x] CloudQuery health check - validates tables exist in Snowflake
 
 ---
 
