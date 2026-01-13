@@ -107,12 +107,14 @@ class BenchmarkRunner:
         value = assertion.value
 
         if assertion_type == "turn_count_max":
-            limit = int(value)  # type: ignore[call-overload]
-            return metrics.turn_count <= limit
+            limit = int(value)  # type: ignore[arg-type]
+            result: bool = metrics.turn_count <= limit
+            return result
 
         if assertion_type == "max_tool_calls":
-            limit = int(value)  # type: ignore[call-overload]
-            return metrics.tool_call_count <= limit
+            limit = int(value)  # type: ignore[arg-type]
+            result = metrics.tool_call_count <= limit
+            return result
 
         if assertion_type == "requires_outcome":
             if metrics.outcome is None:

@@ -36,7 +36,7 @@ class OCSFExporter:
     - CSV: Flattened format for spreadsheet analysis
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.exported_count = 0
 
     def export_to_file(
@@ -190,8 +190,8 @@ class OCSFExporter:
 
         try:
             import pandas as pd
-            import pyarrow as pa  # type: ignore[import-not-found]
-            import pyarrow.parquet as pq  # type: ignore[import-not-found]
+            import pyarrow as pa
+            import pyarrow.parquet as pq
         except ImportError:
             raise ImportError(
                 "Parquet export requires pandas and pyarrow: "
@@ -331,10 +331,10 @@ class OCSFBatchExporter:
         self.buffer.clear()
         return count
 
-    def __enter__(self):
+    def __enter__(self) -> "OCSFBatchExporter":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, _exc_val, _exc_tb):
+    def __exit__(self, exc_type: type[BaseException] | None, _exc_val: BaseException | None, _exc_tb: Any) -> None:
         """Context manager exit - flush remaining."""
         self.flush()

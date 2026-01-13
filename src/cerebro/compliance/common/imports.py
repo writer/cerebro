@@ -23,4 +23,4 @@ from .descriptions import *
 
 # Re-export schema factories
 from .schemas import *
-from .utils import *  # type: ignore[import-untyped]
+from .utils import *

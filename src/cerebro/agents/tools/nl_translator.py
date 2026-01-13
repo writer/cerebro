@@ -7,6 +7,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from re import Pattern
+from typing import Any
 
 import structlog
 
@@ -48,7 +49,7 @@ class AnthropicSQLTranslator(SQLTranslator):
         temperature: float,
     ) -> None:
         try:
-            from anthropic import Anthropic  # type: ignore
+            from anthropic import Anthropic
         except ImportError as exc:  # pragma: no cover - optional dependency
             raise TranslationUnavailableError(
                 "anthropic package is not installed"
@@ -219,7 +220,7 @@ class CompositeTranslator(SQLTranslator):
         )
 
 
-def build_translator(settings) -> SQLTranslator:
+def build_translator(settings: Any) -> SQLTranslator:
     """Factory for SQL translators honoring feature flags."""
 
     fallback = StaticFallbackTranslator()

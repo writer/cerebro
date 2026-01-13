@@ -84,7 +84,7 @@ class GoogleWorkspaceProvider(BaseProvider):
         domain: str,
         service_account_file: str,
         delegate_user: str,
-        **kwargs,
+        **kwargs: Any,
     ):
         """
         Initialize Google Workspace provider.
@@ -800,9 +800,10 @@ class GoogleWorkspaceProvider(BaseProvider):
                     group_settings: dict[str, Any] = {}
                     try:
                         if self._groups_settings_service:
+                            email_str = group_email
                             settings_result = await loop.run_in_executor(
                                 None,
-                                lambda email=group_email: self._groups_settings_service.groups()  # type: ignore[misc]
+                                lambda email=email_str: self._groups_settings_service.groups()  # type: ignore[union-attr]
                                 .get(groupUniqueId=email)
                                 .execute(),
                             )
