@@ -1,0 +1,16 @@
+{
+  "id": "wiz-aws-user-inactive-data-no-mfa",
+  "wiz_control_id": "wc-id-2213",
+  "name": "Inactive AWS user account with data access to sensitive data and MFA disabled",
+  "description": "An inactive AWS user with access to sensitive data does not have MFA enabled",
+  "effect": "forbid",
+  "resource": "aws::iam::user",
+  "conditions": [
+    "has_sensitive_data_access == true",
+    "mfa_enabled == false",
+    "last_activity_days_ago > 90"
+  ],
+  "severity": "critical",
+  "remediation": "Disable or delete inactive accounts with data access. Enable MFA if account must be retained.",
+  "tags": ["wiz", "aws", "identity", "mfa", "data-access", "dormant"]
+}

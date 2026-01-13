@@ -1,0 +1,14 @@
+{
+  "id": "wiz-gcr-excessive-privileges",
+  "wiz_control_id": "wc-id-453",
+  "name": "Google Container Registry allows excessive high privileges to user/service accounts",
+  "description": "GCR grants excessive privileges that could allow supply chain attacks",
+  "effect": "forbid",
+  "resource": "gcp::artifact_registry::repository|gcp::container_registry::registry",
+  "conditions": [
+    "iam_policy.bindings ANY (role IN ('roles/artifactregistry.admin', 'roles/artifactregistry.writer') AND members_count > 10)"
+  ],
+  "severity": "high",
+  "remediation": "Restrict registry write access. Implement CI/CD-only push policies.",
+  "tags": ["wiz", "gcp", "container-registry", "excessive-privileges"]
+}

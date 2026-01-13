@@ -1,0 +1,16 @@
+{
+  "id": "wiz-vm-public-vuln-cross-account-keys",
+  "wiz_control_id": "wc-id-1370",
+  "name": "Publicly exposed VM/serverless with initial access vulnerabilities and cleartext cloud keys granting permissions in another subscription",
+  "description": "A public vulnerable resource contains cross-account access keys",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_public == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities. Remove cleartext cross-account keys. Use IAM roles instead.",
+  "tags": ["wiz", "compute", "vulnerability", "cleartext-keys", "cross-account"]
+}

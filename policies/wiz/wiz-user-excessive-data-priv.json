@@ -1,0 +1,14 @@
+{
+  "id": "wiz-user-excessive-data-priv",
+  "wiz_control_id": "wc-id-2200",
+  "name": "User account with excessive data privileges",
+  "description": "A user account has excessive data access privileges",
+  "effect": "forbid",
+  "resource": "iam::user",
+  "conditions": [
+    "data_access_scope == 'all' OR data_access_resource_count > 100"
+  ],
+  "severity": "high",
+  "remediation": "Reduce data access to minimum required. Implement data classification and least privilege access.",
+  "tags": ["wiz", "identity", "user", "data-access", "excessive-privilege"]
+}

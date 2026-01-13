@@ -1,0 +1,15 @@
+{
+  "id": "wiz-public-resource-keys-data-access",
+  "wiz_control_id": "wc-id-1337",
+  "name": "Publicly exposed resource with cleartext cloud keys allowing access to sensitive data",
+  "description": "A public resource contains keys that grant access to sensitive data",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "is_public == true",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_sensitive_data_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Remove public access. Remove cleartext keys. Rotate all potentially exposed credentials.",
+  "tags": ["wiz", "secrets", "data-access", "public-exposure"]
+}

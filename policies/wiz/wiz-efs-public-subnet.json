@@ -1,0 +1,14 @@
+{
+  "id": "wiz-efs-public-subnet",
+  "wiz_control_id": "wc-id-2142",
+  "name": "AWS EFS mount target associated with a public subnet",
+  "description": "An EFS mount target is in a public subnet, potentially exposing file data",
+  "effect": "forbid",
+  "resource": "aws::efs::mount_target",
+  "conditions": [
+    "subnet.is_public == true"
+  ],
+  "severity": "high",
+  "remediation": "Move EFS mount targets to private subnets. Use VPC endpoints for access.",
+  "tags": ["wiz", "aws", "storage", "efs", "public-subnet"]
+}

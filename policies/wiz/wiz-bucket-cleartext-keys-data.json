@@ -1,0 +1,14 @@
+{
+  "id": "wiz-bucket-cleartext-keys-data",
+  "wiz_control_id": "wc-id-2419",
+  "name": "Bucket with cleartext cloud keys granting data access to sensitive data",
+  "description": "A bucket contains cleartext cloud keys that grant access to sensitive data",
+  "effect": "forbid",
+  "resource": "storage::bucket|storage::blob_container",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_sensitive_data_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Remove cleartext keys. Use IAM roles. Rotate any exposed credentials immediately.",
+  "tags": ["wiz", "storage", "secrets", "cleartext-keys", "data-access"]
+}

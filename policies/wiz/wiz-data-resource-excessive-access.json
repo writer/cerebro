@@ -1,0 +1,15 @@
+{
+  "id": "wiz-data-resource-excessive-access",
+  "wiz_control_id": "wc-id-2565",
+  "name": "Data resource with sensitive data has excessive access permissions",
+  "description": "A data resource with sensitive data has overly broad access permissions",
+  "effect": "forbid",
+  "resource": "storage::bucket|database::instance|storage::blob_container",
+  "conditions": [
+    "has_sensitive_data == true",
+    "iam_policy.principals_count > 20 OR iam_policy.allows_any_authenticated_user == true"
+  ],
+  "severity": "high",
+  "remediation": "Reduce access to minimum required. Implement need-to-know access controls for sensitive data.",
+  "tags": ["wiz", "data", "excessive-access", "sensitive-data"]
+}

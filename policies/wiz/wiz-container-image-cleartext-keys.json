@@ -1,0 +1,14 @@
+{
+  "id": "wiz-container-image-cleartext-keys",
+  "wiz_control_id": "wc-id-1026",
+  "name": "Container image with cleartext cloud keys granting high privileges",
+  "description": "A container image contains cleartext cloud keys with high privileges",
+  "effect": "forbid",
+  "resource": "container::image",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Rebuild image without embedded keys. Use secret injection at runtime. Rotate exposed keys.",
+  "tags": ["wiz", "container", "secrets", "cleartext-keys", "privileged"]
+}

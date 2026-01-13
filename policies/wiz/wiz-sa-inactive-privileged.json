@@ -1,0 +1,15 @@
+{
+  "id": "wiz-sa-inactive-privileged",
+  "wiz_control_id": "wc-id-806",
+  "name": "Service account with high privileges is inactive for over 90 days",
+  "description": "A service account with high privileges has been inactive for over 90 days",
+  "effect": "forbid",
+  "resource": "iam::service_account",
+  "conditions": [
+    "has_high_privilege == true",
+    "last_activity_days_ago > 90"
+  ],
+  "severity": "high",
+  "remediation": "Review and disable or delete unused service accounts. If still needed, reduce privileges to minimum required.",
+  "tags": ["wiz", "identity", "dormant", "privileged", "service-account"]
+}

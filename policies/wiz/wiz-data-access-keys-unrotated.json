@@ -1,0 +1,15 @@
+{
+  "id": "wiz-data-access-keys-unrotated",
+  "wiz_control_id": "wc-id-2225",
+  "name": "User/service account with access to sensitive data and active access keys unrotated in the past year",
+  "description": "An account with access to sensitive data has access keys that have not been rotated in over a year",
+  "effect": "forbid",
+  "resource": "iam::user|iam::service_account",
+  "conditions": [
+    "has_sensitive_data_access == true",
+    "access_keys ANY (status == 'Active' AND created_days_ago > 365)"
+  ],
+  "severity": "high",
+  "remediation": "Rotate access keys. Implement key rotation policy for accounts with data access.",
+  "tags": ["wiz", "identity", "access-keys", "data-access", "rotation"]
+}

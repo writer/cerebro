@@ -1,0 +1,15 @@
+{
+  "id": "wiz-vm-public-eol-targeted",
+  "wiz_control_id": "wc-id-2436",
+  "name": "Publicly exposed VM with end-of-life targeted technology",
+  "description": "A publicly exposed VM has EOL software that is commonly targeted by attackers",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_public == true",
+    "installed_packages ANY (end_of_life == true AND is_commonly_targeted == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Update or remove targeted EOL software immediately. This is an actively exploited attack surface.",
+  "tags": ["wiz", "compute", "eol", "targeted", "public-exposure"]
+}

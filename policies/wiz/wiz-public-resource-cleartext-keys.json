@@ -1,0 +1,15 @@
+{
+  "id": "wiz-public-resource-cleartext-keys",
+  "wiz_control_id": "wc-id-269",
+  "name": "Publicly exposed resource with cleartext cloud keys granting high privileges",
+  "description": "A publicly exposed resource contains cleartext cloud credentials with high privileges",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "is_public == true",
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Remove public access immediately. Remove cleartext keys and rotate all credentials. Use IAM roles instead.",
+  "tags": ["wiz", "secrets", "cleartext-keys", "public-exposure", "privileged"]
+}

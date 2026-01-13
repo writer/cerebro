@@ -1,0 +1,14 @@
+{
+  "id": "wiz-group-excessive-data-priv",
+  "wiz_control_id": "wc-id-2203",
+  "name": "Group with excessive data privileges",
+  "description": "A group has excessive data access privileges",
+  "effect": "forbid",
+  "resource": "iam::group",
+  "conditions": [
+    "data_access_scope == 'all' OR data_access_resource_count > 100"
+  ],
+  "severity": "high",
+  "remediation": "Reduce group data access scope. Implement data classification and need-to-know access controls.",
+  "tags": ["wiz", "identity", "group", "data-access", "excessive-privilege"]
+}

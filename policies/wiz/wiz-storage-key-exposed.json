@@ -1,0 +1,14 @@
+{
+  "id": "wiz-storage-key-exposed",
+  "wiz_control_id": "wc-id-2031",
+  "name": "Validated exposure of storage account key/SAS token",
+  "description": "A storage account key or SAS token has been validated as exposed",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "secrets ANY (type IN ('storage_account_key', 'sas_token') AND validated_exposed == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Rotate the exposed keys immediately. Check for unauthorized data access. Regenerate SAS tokens.",
+  "tags": ["wiz", "secrets", "storage", "validated-exposure"]
+}

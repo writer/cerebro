@@ -1,0 +1,15 @@
+{
+  "id": "wiz-ray-ai-public",
+  "wiz_control_id": "wc-id-2033",
+  "name": "Publicly exposed VM vulnerable with Ray AI installed (authentication not supported)",
+  "description": "A VM with Ray AI framework is publicly exposed without authentication",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_public == true",
+    "installed_packages ANY (name == 'ray')"
+  ],
+  "severity": "critical",
+  "remediation": "Remove public access. Ray does not support authentication by default. Use network-level controls.",
+  "tags": ["wiz", "compute", "ray", "ai", "public-exposure"]
+}

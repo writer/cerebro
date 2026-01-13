@@ -1,0 +1,16 @@
+{
+  "id": "wiz-mlops-public-vuln",
+  "wiz_control_id": "wc-id-2275",
+  "name": "Publicly exposed VM/serverless with MLOps with initial access vulnerabilities",
+  "description": "A publicly exposed MLOps resource has vulnerabilities that could enable initial access",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_public == true",
+    "has_mlops_installed == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities. Remove public access from MLOps infrastructure.",
+  "tags": ["wiz", "compute", "mlops", "vulnerability", "public-exposure"]
+}

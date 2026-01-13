@@ -1,0 +1,15 @@
+{
+  "id": "wiz-sa-external-web-identity",
+  "wiz_control_id": "wc-id-123",
+  "name": "Service account with high privileges can be assumed by an external web identity",
+  "description": "A highly privileged service account can be assumed by an external web identity provider",
+  "effect": "forbid",
+  "resource": "iam::service_account|iam::role",
+  "conditions": [
+    "has_high_privilege == true",
+    "trust_policy.allows_external_web_identity == true"
+  ],
+  "severity": "high",
+  "remediation": "Restrict web identity federation to specific issuers and subjects. Reduce privileges or add conditions to the trust policy.",
+  "tags": ["wiz", "identity", "web-identity", "federation", "privileged"]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "wiz-admin-keys-unrotated",
+  "wiz_control_id": "wc-id-2219",
+  "name": "Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year",
+  "description": "An active admin access key has not been rotated in over a year",
+  "effect": "forbid",
+  "resource": "iam::user|iam::service_account",
+  "conditions": [
+    "has_admin_role == true",
+    "access_keys ANY (status == 'Active' AND last_used_days_ago < 90 AND created_days_ago > 365)"
+  ],
+  "severity": "high",
+  "remediation": "Rotate admin access keys immediately. Implement automated key rotation policy.",
+  "tags": ["wiz", "identity", "access-keys", "admin", "rotation"]
+}

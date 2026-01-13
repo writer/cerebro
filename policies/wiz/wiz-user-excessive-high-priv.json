@@ -1,0 +1,14 @@
+{
+  "id": "wiz-user-excessive-high-priv",
+  "wiz_control_id": "wc-id-2195",
+  "name": "User account with excessive high privileges",
+  "description": "A user account has excessive high-level privileges",
+  "effect": "forbid",
+  "resource": "iam::user",
+  "conditions": [
+    "high_privilege_role_count > 5"
+  ],
+  "severity": "high",
+  "remediation": "Apply least privilege principle. Remove unnecessary roles. Use just-in-time access for elevated privileges.",
+  "tags": ["wiz", "identity", "user", "excessive-privilege"]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "wiz-vm-vuln-lateral-admin",
+  "wiz_control_id": "wc-id-857",
+  "name": "Internet-facing VM/serverless with initial access vulnerabilities and a lateral movement finding to admin privileges",
+  "description": "An internet-facing resource has vulnerabilities that could enable initial access and an attack path to admin privileges",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "is_internet_facing == true",
+    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
+    "attack_paths ANY (target.is_admin == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Patch vulnerabilities immediately. Break the attack path by removing excessive permissions or trust relationships. Consider isolating the resource.",
+  "tags": ["wiz", "compute", "vulnerability", "lateral-movement", "admin"]
+}

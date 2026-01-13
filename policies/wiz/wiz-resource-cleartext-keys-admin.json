@@ -1,0 +1,14 @@
+{
+  "id": "wiz-resource-cleartext-keys-admin",
+  "wiz_control_id": "wc-id-256",
+  "name": "Resource with cleartext cloud keys granting admin privileges",
+  "description": "A resource contains cleartext cloud credentials that grant administrative privileges",
+  "effect": "forbid",
+  "resource": "*",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_admin == true)"
+  ],
+  "severity": "critical",
+  "remediation": "Immediately remove cleartext admin keys. Use IAM roles with least privilege. Rotate all potentially exposed admin credentials.",
+  "tags": ["wiz", "secrets", "cleartext-keys", "admin"]
+}

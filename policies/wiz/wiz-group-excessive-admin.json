@@ -1,0 +1,14 @@
+{
+  "id": "wiz-group-excessive-admin",
+  "wiz_control_id": "wc-id-2132",
+  "name": "Group with excessive admin privileges",
+  "description": "A group has excessive administrative privileges, affecting all members",
+  "effect": "forbid",
+  "resource": "iam::group",
+  "conditions": [
+    "admin_role_count > 3 OR has_wildcard_admin == true"
+  ],
+  "severity": "high",
+  "remediation": "Reduce group privileges. Create more specific groups with targeted permissions. Implement role-based access control.",
+  "tags": ["wiz", "identity", "group", "admin", "excessive-privilege"]
+}

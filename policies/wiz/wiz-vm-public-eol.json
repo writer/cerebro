@@ -1,0 +1,15 @@
+{
+  "id": "wiz-vm-public-eol",
+  "wiz_control_id": "wc-id-169",
+  "name": "Publicly exposed VM with end-of-life software",
+  "description": "A publicly exposed VM is running end-of-life software that no longer receives security updates",
+  "effect": "forbid",
+  "resource": "compute::instance",
+  "conditions": [
+    "is_public == true",
+    "installed_packages ANY (end_of_life == true)"
+  ],
+  "severity": "high",
+  "remediation": "Update to supported software versions. If not possible, remove public access and implement compensating controls.",
+  "tags": ["wiz", "compute", "eol", "public-exposure"]
+}

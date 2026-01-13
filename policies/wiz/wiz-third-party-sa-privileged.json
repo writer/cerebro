@@ -1,0 +1,15 @@
+{
+  "id": "wiz-third-party-sa-privileged",
+  "wiz_control_id": "wc-id-971",
+  "name": "Third party service account with high privileges",
+  "description": "A service account owned by a third party has high privileges in the environment",
+  "effect": "forbid",
+  "resource": "iam::service_account|iam::role",
+  "conditions": [
+    "is_third_party == true",
+    "has_high_privilege == true"
+  ],
+  "severity": "high",
+  "remediation": "Review third-party access requirements. Reduce to minimum necessary privileges. Implement logging and monitoring.",
+  "tags": ["wiz", "identity", "third-party", "privileged"]
+}

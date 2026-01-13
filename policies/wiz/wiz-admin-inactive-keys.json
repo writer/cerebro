@@ -1,0 +1,15 @@
+{
+  "id": "wiz-admin-inactive-keys",
+  "wiz_control_id": "wc-id-2178",
+  "name": "Admin user/service account with active access keys that are inactive for over 90 days",
+  "description": "An admin account has access keys that have been inactive for over 90 days",
+  "effect": "forbid",
+  "resource": "iam::user|iam::service_account",
+  "conditions": [
+    "has_admin_role == true",
+    "access_keys ANY (status == 'Active' AND last_used_days_ago > 90)"
+  ],
+  "severity": "high",
+  "remediation": "Disable or delete unused access keys. Rotate any keys that are still needed.",
+  "tags": ["wiz", "identity", "access-keys", "admin", "dormant"]
+}

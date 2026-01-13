@@ -1,0 +1,15 @@
+{
+  "id": "wiz-privileged-inactive-keys",
+  "wiz_control_id": "wc-id-2182",
+  "name": "User/service account with high privileges and active access key that are inactive for over 90 days",
+  "description": "A privileged account has access keys that have been inactive for over 90 days",
+  "effect": "forbid",
+  "resource": "iam::user|iam::service_account",
+  "conditions": [
+    "has_high_privilege == true",
+    "access_keys ANY (status == 'Active' AND last_used_days_ago > 90)"
+  ],
+  "severity": "high",
+  "remediation": "Disable or delete unused access keys. Review and reduce account privileges.",
+  "tags": ["wiz", "identity", "access-keys", "privileged", "dormant"]
+}

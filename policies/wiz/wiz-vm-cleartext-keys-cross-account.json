@@ -1,0 +1,14 @@
+{
+  "id": "wiz-vm-cleartext-keys-cross-account",
+  "wiz_control_id": "wc-id-259",
+  "name": "VM/serverless with cleartext cloud keys granting permission to access resources in external subscriptions",
+  "description": "A compute resource contains cleartext cloud keys that grant access to resources in other cloud accounts or subscriptions",
+  "effect": "forbid",
+  "resource": "compute::instance|serverless::function",
+  "conditions": [
+    "secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true)"
+  ],
+  "severity": "high",
+  "remediation": "Remove cleartext keys. Use cross-account IAM roles with proper trust relationships. Implement proper secrets management.",
+  "tags": ["wiz", "secrets", "cleartext-keys", "cross-account"]
+}
