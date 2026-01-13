@@ -1,289 +1,449 @@
 # Cerebro Platform Development Plan
 
-## Executive Summary
+This document is the **engineering roadmap** for improving Cerebro’s codebase quality, reliability, and delivery velocity while continuing to expand provider/compliance coverage and agent capabilities.
 
-Cerebro is Writer's internal security data platform with **~80,000 lines of Python** across **460 modules**. It provides unified security posture management, compliance automation, and AI-powered investigation capabilities. This document outlines the roadmap for building out Cerebro as a comprehensive enterprise security platform.
+It replaces “aspirational” bullets with a **prioritized, testable execution plan**: each workstream has concrete deliverables, acceptance criteria, owners, and validation gates.
 
----
+## 0) Scope, Principles, and Definitions
 
-## Current State Assessment
+### Scope
 
-### Core Capabilities (Implemented)
+In scope:
 
-| Domain | Status | Components |
-|--------|--------|------------|
-| **Data Ingestion** | ✅ Mature | AWS, GCP, Azure, GitHub, Okta, M365, Workspace, Kubernetes providers |
-| **Identity & Access** | ✅ Mature | IAM edge analysis, identity stitching, privilege detection |
-| **Compliance** | ✅ Mature | SOC2, ISO27001 frameworks, evidence collection, policy management |
-| **Findings Pipeline** | ✅ Mature | CEL rule engine, severity scoring, remediation tracking |
-| **Agent Runtime** | ✅ Mature | Tool execution, approval workflows, memory, telemetry |
-| **API Layer** | ✅ Mature | FastAPI REST, versioned OpenAPI, rate limiting |
-| **Analytics** | ✅ Functional | Snowflake warehouse, SQL/graph queries, dashboards |
-| **Vendor/Customer Management** | ✅ Functional | Risk scoring, lifecycle tracking, evidence metadata |
+* Repo-level quality improvements (tooling, CI, tests, typing, architecture, reliability, security posture, observability)
+* Platform roadmap items that require codebase changes (providers, compliance frameworks, agents)
+* Developer experience (local reproducibility, deterministic tests, faster feedback)
 
-### Architecture Strengths
+Out of scope (unless explicitly requested later):
 
-1. **Append-only audit trail** - Immutable data model for compliance
-2. **CEL-based policy engine** - Flexible, portable rule definitions
-3. **Multi-provider abstraction** - Consistent interface across cloud/SaaS
-4. **Agent autonomy controls** - Graduated approval workflows with telemetry
-5. **Dual SDK support** - TypeScript + Python with shared primitives
+* New end-user documentation (beyond updating this `PLAN.md`)
+* UI/frontend work not represented in this repo
 
-### Technical Debt & Gaps
+### Guiding principles
 
-| Area | Issue | Priority |
-|------|-------|----------|
-| Type Coverage | ~800+ mypy warnings (mostly missing annotations in older modules) | Medium |
-| Test Coverage | Unit tests solid; integration/E2E coverage sparse | High |
-| Documentation | API docs good; architecture/runbook docs need updates | Medium |
-| Observability | Prometheus metrics exist; distributed tracing incomplete | Medium |
-| Error Handling | Inconsistent exception hierarchy across providers | Low |
+1. **Reproducible locally = trustworthy in CI** (no “CI-only magic”).
+2. **Make failures loud** (flake, security scan, tests, type check) and prevent silent regressions.
+3. **Incremental hardening**: tighten gates by package/subsystem; don’t block the whole org on legacy debt.
+4. **Idempotent initialization**: importing modules must not cause duplicated registrations, external calls, or noisy logs.
+5. **Contract-first** for SDK/API: OpenAPI + SDK generation must be deterministic and versioned.
 
----
+### Definition of done (DoD) for roadmap items
 
-## Phase 1: Foundation Hardening (Current → Q1)
+Every roadmap item should include:
 
-### 1.1 Code Quality & Reliability
+* Tests added/updated (unit/integration/e2e as appropriate)
+* Type safety impact (mypy/typing plan)
+* Operational readiness (logging/metrics/tracing)
+* Rollout plan (feature flag, migration, backfill, or safe default)
+* Validation commands that pass in CI
 
-- [ ] **Complete type annotations** - Target 100% coverage for public APIs
-- [ ] **Standardize exception hierarchy** - `CerebroError` base with provider-specific subclasses
-- [ ] **Add integration test suite** - Provider mocks, E2E workflows, contract tests
-- [ ] **Implement structured logging** - JSON logs with correlation IDs across services
-- [ ] **Add OpenTelemetry tracing** - Distributed traces for API → Worker → Provider flows
+## 1) Repository Map (What’s Here)
 
-### 1.2 Security Hardening
+Key top-level areas (as of 2026-01):
 
-- [ ] **API key rotation mechanism** - Automated rotation with zero-downtime
-- [ ] **Secrets scanning** - Pre-commit hooks, CI pipeline integration
-- [ ] **RBAC enhancements** - Fine-grained scopes beyond current admin/read levels
-- [ ] **Audit log immutability** - Cryptographic chaining for tamper evidence
-- [ ] **Rate limiting per scope** - Separate limits for read vs. write operations
+* `src/cerebro/`: main backend application (FastAPI, Celery tasks, providers, compliance, findings, agents)
+* `src/cerebro_sdk/`: Python SDK façade used by internal workflows and services
+* `sdk/ts/`: TypeScript SDK (OpenAPI-generated types + client tooling)
+* `desktop-agent/`: Go-based desktop agent
+* `infra/`: infrastructure code (Pulumi modules + validation)
+* `scripts/`: dev tooling, smoke tests, OpenAPI export, benchmarking
+* `tests/`: main pytest suite (unit + integration + e2e markers)
+* `tests_unit/`: legacy/auxiliary tests (not part of default `pytest` discovery per `pyproject.toml`)
 
-### 1.3 Operational Excellence
+## 2) Current State (Measured + Observed)
 
-- [ ] **Health check endpoints** - Deep checks for DB, Redis, providers
-- [ ] **Graceful degradation** - Circuit breakers for external dependencies
-- [ ] **Runbook automation** - Self-healing for common failure modes
-- [ ] **Capacity planning** - Load testing, resource projections
+### Code size (approximate)
 
----
+* `src/cerebro`: **509 Python files**, **~142k LOC**
+* `src/cerebro_sdk`: **34 Python files**, **~7.3k LOC**
+* `scripts`: **28 Python files**, **~6.2k LOC**
+* `tests`: **157 Python files**, **~29k LOC**
+* `infra`: **26 Python files**, **~6.6k LOC**
 
-## Phase 2: Platform Expansion (Q1-Q2)
+### Tooling and CI reality
 
-### 2.1 Provider Ecosystem
+* Python version pinned: `.python-version` = **3.11.8**; `pyproject.toml` requires **>=3.11**.
+* Package manager: **uv** (`make install-dev`, `uv sync --extra dev`).
+* Lint/format/type:
+  * Repo config contains **Black + isort + flake8 + mypy + Ruff**.
+  * Pre-commit currently runs **ruff** + **ruff-format** + **mypy**.
+* GitHub Actions:
+  * `tests.yml` runs ruff + mypy + pytest + e2e + TS SDK + Go agent + infra validation.
+  * `lint.yml` runs Ruff/mypy, but only over **selected producer paths**, plus a small docstring check set.
+  * `security-health.yml` runs pip-audit, Bandit, Trivy, Gitleaks, npm audit (mostly non-blocking).
 
-| Provider | Status | Priority | Notes |
-|----------|--------|----------|-------|
-| AWS | ✅ Complete | - | EC2, S3, IAM, CloudTrail, GuardDuty |
-| GCP | ✅ Complete | - | Compute, IAM, Cloud Audit Logs |
-| Azure | ⚠️ Partial | High | Expand beyond current scope |
-| GitHub | ✅ Complete | - | Repos, Actions, GHAS findings |
-| Okta | ✅ Complete | - | Users, groups, apps, policies |
-| M365 | ⚠️ Partial | High | Expand Entra ID, Defender coverage |
-| **Slack Enterprise** | ❌ Missing | High | Audit logs, DLP events |
-| **Salesforce** | ❌ Missing | Medium | User access, data exposure |
-| **Datadog** | ❌ Missing | Medium | Security signals integration |
-| **CrowdStrike** | ❌ Missing | High | EDR findings, threat intel |
-| **SentinelOne** | ⚠️ Partial | Medium | Expand beyond current scope |
-| **Snyk** | ❌ Missing | Medium | Vulnerability findings |
-| **Wiz** | ❌ Missing | High | Cloud security posture |
+### Architecture strengths (keep)
 
-### 2.2 Compliance Frameworks
+* Append-only audit model for compliance history
+* CEL-based policy/rule approach
+* Provider abstraction across cloud + SaaS
+* Agent runtime with approvals + telemetry
+* Dual SDK support (TypeScript + Python)
 
-| Framework | Status | Priority |
-|-----------|--------|----------|
-| SOC 2 | ✅ Complete | - |
-| ISO 27001 | ✅ Complete | - |
-| **NIST CSF 2.0** | ❌ Missing | High |
-| **CIS Controls v8** | ❌ Missing | High |
-| **PCI DSS 4.0** | ❌ Missing | Medium |
-| **HIPAA** | ❌ Missing | Medium |
-| **FedRAMP** | ❌ Missing | Low |
-| **GDPR** | ⚠️ Partial | Medium |
+## 3) Shortcomings (Codebase Risks to Address)
 
-### 2.3 Analytics & Reporting
+This section is intentionally concrete and repo-specific.
 
-- [ ] **Executive dashboards** - Board-ready compliance scorecards
-- [ ] **Trend analysis** - Risk posture over time, drift detection
-- [ ] **Custom report builder** - Drag-and-drop widget configuration
-- [ ] **Scheduled exports** - PDF/Excel reports on cadence
-- [ ] **Benchmark comparisons** - Industry/peer group positioning
+### 3.1 Tooling inconsistencies (high impact)
 
----
+**Symptom:** Pre-commit uses Ruff + Ruff formatter, while `Makefile` uses Black/isort/flake8; line-length settings differ (`black=88`, `ruff=140`).
 
-## Phase 3: AI-Powered Security (Q2-Q3)
+**Impact:** format churn, inconsistent local vs CI output, time lost resolving style diffs.
 
-### 3.1 Agent Capabilities
+**Evidence:**
 
-| Capability | Status | Priority | Description |
-|------------|--------|----------|-------------|
-| Investigation assist | ✅ Functional | - | Query execution, context retrieval |
-| Remediation suggestions | ⚠️ Basic | High | Expand playbook coverage |
-| **Auto-triage** | ❌ Missing | High | ML-based severity/priority scoring |
-| **Root cause analysis** | ❌ Missing | High | Graph traversal for blast radius |
-| **Threat hunting** | ❌ Missing | Medium | Proactive anomaly detection |
-| **Incident response** | ⚠️ Basic | High | Containment action execution |
-| **Policy generation** | ❌ Missing | Medium | CEL rules from natural language |
+* `pyproject.toml`: `[tool.black] line-length = 88`, `[tool.ruff] line-length = 140`
+* `.pre-commit-config.yaml`: `ruff` + `ruff-format` hooks
+* `Makefile`: `make format` runs `black` + `isort`, `make lint` runs `flake8` + `mypy`
 
-### 3.2 Training & Evaluation (from TODO.md)
+### 3.2 CI test sharding appears misconfigured (high risk)
 
-- [ ] **Benchmark suites** - Convert playbooks to reproducible tests
-- [ ] **Evaluation pipelines** - CI scoring for agent changes
-- [ ] **Training data capture** - Investigation transcripts, tool telemetry
-- [ ] **Fine-tuning corpora** - Cerebro-specific model adaptation
-- [ ] **Security gym** - Containerized attack/defense scenarios
+**Symptom:** `.github/workflows/tests.yml` runs pytest with `--shard=${{ matrix.shard }}/4`, but local pytest does not recognize `--shard`.
 
-### 3.3 Autonomy Controls
+**Impact:** CI may be brittle/unreproducible; local reproduction of failures becomes harder; potential silent CI break if plugin availability changes.
 
-- [ ] **Confidence scoring** - Per-action confidence with thresholds
-- [ ] **Graduated autonomy** - Levels: suggest → execute-with-approval → auto-execute
-- [ ] **Blast radius limits** - Prevent actions affecting >N resources
-- [ ] **Rollback capabilities** - Undo remediation actions
-- [ ] **Audit trails** - Complete lineage for autonomous actions
+**Action:** Standardize on an explicit, pinned sharding approach (e.g., `pytest-xdist`, `pytest-split`, or a small in-repo plugin) and ensure it’s installed via `dev` extras.
 
----
+### 3.3 Import-time side effects + noisy initialization (medium/high)
 
-## Phase 4: Enterprise Features (Q3-Q4)
+**Symptom:** Importing certain modules triggers registrations and logs (providers/producers, Celery app config, rate limiting).
 
-### 4.1 Multi-Tenancy
+**Impact:** slower test collection, hard-to-control startup behavior, duplicated registrations, noisy logs.
 
-- [ ] **Organization hierarchy** - Parent/child org relationships
-- [ ] **Data isolation** - Schema-level or row-level security
-- [ ] **Cross-org analytics** - Aggregate views for MSPs
-- [ ] **White-labeling** - Custom branding per tenant
+**Evidence:**
 
-### 4.2 Integrations
+* `cerebro.infrastructure.provider_registry` registers providers at import time.
+* `cerebro.findings.producers.registry` auto-discovers producers by importing submodules.
 
-- [ ] **SIEM integration** - Splunk, Elastic, Chronicle export
-- [ ] **SOAR integration** - Cortex XSOAR, Tines playbooks
-- [ ] **Ticketing** - Jira, ServiceNow, PagerDuty bi-directional sync
-- [ ] **Chat** - Slack/Teams bot for alerts and queries
-- [ ] **Webhook framework** - Generic outbound events
+### 3.4 Registry idempotency bugs (high)
 
-### 4.3 Workflow Automation
+**Symptom:** Producer registry warns about overrides, but still appends producers into per-provider/per-resource lists.
 
-- [ ] **Custom playbooks** - Visual workflow builder
-- [ ] **Scheduled scans** - Configurable collection cadence
-- [ ] **Alert rules** - Condition-based notifications
-- [ ] **Approval chains** - Multi-level review workflows
-- [ ] **SLA tracking** - Response time metrics and escalation
+**Impact:** duplicate evaluations, duplicated findings, performance regressions, nondeterministic behavior.
 
----
+**Evidence:** `ProducerRegistry.register()` in `src/cerebro/findings/producers/base.py` appends to index lists even when overriding.
 
-## Phase 5: Scale & Performance (Ongoing)
+### 3.5 Type checking strategy is not yet coherent (medium)
 
-### 5.1 Data Layer
+**Symptom:** Mypy is configured for strictness, but CI runs mypy with `--ignore-missing-imports` and/or on subsets; older modules likely lag.
 
-- [ ] **Partitioning strategy** - Time-based partitions for findings/configs
-- [ ] **Archive policies** - Cold storage for historical data
-- [ ] **Query optimization** - Materialized views, query caching
-- [ ] **Read replicas** - Geographic distribution
+**Impact:** type safety benefits are uneven; contributors don’t know what standards apply where.
 
-### 5.2 Compute Layer
+### 3.6 Testing taxonomy and ownership unclear (medium)
 
-- [ ] **Horizontal scaling** - Stateless workers with queue-based distribution
-- [ ] **Provider parallelization** - Concurrent collection across accounts
-- [ ] **Rate limit management** - Per-provider adaptive throttling
-- [ ] **Resource pooling** - Connection/session reuse
+**Symptom:** Multiple test directories (`tests/`, `tests/unit`, `tests_unit/`), plus CI selectively ignores some markers.
 
-### 5.3 Observability
+**Impact:** contributors can easily write tests that don’t run in CI, or rely on fixtures that make tests slow/flaky.
 
-- [ ] **SLI/SLO framework** - Defined targets with burn-rate alerts
-- [ ] **Cost attribution** - Per-org resource usage tracking
-- [ ] **Anomaly detection** - Automatic baseline deviation alerts
-- [ ] **Capacity forecasting** - Growth projections from usage trends
+### 3.7 Security scanning mostly informational (medium)
 
----
+**Symptom:** security workflows often use `|| true` / non-failing exit codes.
 
-## Immediate Action Items (Next 2 Weeks)
+**Impact:** vulnerabilities can persist without forcing remediation decisions.
 
-### Priority 1: Critical Path
+### 3.8 Operational readiness gaps (medium)
 
-1. **Add integration tests for providers** - Mock-based tests for AWS, GCP, Okta
-2. **Implement CrowdStrike provider** - EDR findings integration
-3. **Add NIST CSF 2.0 framework** - Control mappings and evidence collection
-4. **Enhance agent remediation** - Expand action catalog with rollback
+**Symptom:** Observability exists (Prometheus + some OTEL deps), but tracing and correlation is incomplete and not consistently enforced.
 
-### Priority 2: Quick Wins
+**Impact:** on-call/debug time increases as system grows.
 
-1. **API key usage tracking** - CloudWatch/Redis metrics integration
-2. **Executive dashboard endpoint** - Aggregate compliance scores
-3. **Slack Enterprise provider** - Audit log ingestion
-4. **Health check improvements** - Deep dependency checks
+## 4) Roadmap Overview (Phased Execution)
 
-### Priority 3: Technical Debt
+This roadmap is organized into **workstreams** that can run in parallel, with a recommended “stability-first” ordering.
 
-1. **Type annotation pass** - Focus on core/ and api/ modules
-2. **Exception standardization** - Define hierarchy, update providers
-3. **Logging consistency** - Structured JSON with trace IDs
-4. **Documentation refresh** - Architecture diagrams, runbooks
+### Phase A (0–2 weeks): Fix the foundations that block velocity
+
+1. Toolchain alignment and CI reproducibility
+2. Fix registry idempotency + import-time side effects
+3. Test suite determinism and performance quick wins
+
+### Phase B (2–6 weeks): Expand quality gates and reliability
+
+1. Testing strategy: integration coverage for providers + contract tests
+2. Type coverage expansion for public APIs and core domain
+3. Standardized error model + consistent retries/backoff
+
+### Phase C (6–12 weeks): Operational excellence + scale readiness
+
+1. Structured logging + correlation IDs everywhere
+2. OpenTelemetry tracing across API → tasks → providers
+3. SLOs, burn-rate alerts, and load testing
+
+### Phase D (ongoing): Product/platform expansion
+
+Providers, frameworks, AI capabilities, and enterprise features continue, but must not regress quality gates.
+
+## 5) Workstreams (Detailed Plan)
+
+### Workstream 1: Tooling & CI Reliability
+
+#### Goal
+
+One canonical workflow for formatting/lint/type/test that is identical locally and in CI.
+
+#### Deliverables
+
+1. A single “golden” command set:
+   * `make format` (or `uv run ...`) produces the final formatting state
+   * `make lint` is the lint baseline used by CI
+   * `make test` matches CI selection (markers + ignores)
+2. CI that runs the same commands (no divergent flags).
+
+#### Actions (prioritized)
+
+1. **Choose the formatter and align line-length** (recommended: Ruff formatter everywhere).
+   * Update `Makefile` to use `ruff format` and `ruff check`.
+   * Remove or freeze Black/isort usage to avoid conflicts.
+2. **Rationalize lint rules**:
+   * Make CI run `ruff check` across `src/`, `tests/`, `scripts/` (not only selected producers).
+   * Keep per-file ignores in `pyproject.toml` as needed.
+3. **Fix test sharding**:
+   * Option A: adopt `pytest-xdist` and shard via `-n` + `--dist=loadscope`.
+   * Option B: adopt `pytest-split` (duration-based sharding) with explicit installation.
+   * Remove `--shard` until it is supported and pinned.
+
+#### Acceptance criteria
+
+* A contributor can run the exact CI steps locally without custom plugins.
+* No formatting ping-pong between tools.
+* CI failures are actionable and reproducible.
 
 ---
 
-## Success Metrics
+### Workstream 2: Deterministic Initialization (No Side Effects)
 
-| Metric | Current | Q2 Target | Q4 Target |
-|--------|---------|-----------|-----------|
-| Provider count | 10 | 15 | 20 |
-| Framework coverage | 2 | 5 | 8 |
-| Test coverage (unit) | ~60% | 80% | 90% |
-| Test coverage (E2E) | ~10% | 40% | 60% |
-| Agent action catalog | ~20 | 40 | 80 |
-| P95 API latency | TBD | <500ms | <200ms |
-| Collection freshness | 24h | 6h | 1h |
+#### Goal
+
+Importing modules should not:
+
+* register global state repeatedly
+* emit info logs
+* perform network calls
+* trigger expensive autodiscovery
+
+#### Actions
+
+1. **Make registries idempotent**
+   * Fix `ProducerRegistry.register()` to avoid duplicate entries when overriding.
+   * Add regression tests ensuring repeated init does not duplicate producers.
+2. **Move registration out of import time**
+   * Providers: stop calling `provider_registry.register(...)` at module import; do it in an explicit `init_providers()`.
+   * Producers: ensure autodiscovery is only run from a controlled entrypoint (API startup / worker startup / CLI command) and is cached.
+3. **Reduce pytest startup cost**
+   * Avoid importing `cerebro.api.main:app` in global `tests/conftest.py` if possible; use an app factory fixture.
+
+#### Acceptance criteria
+
+* `pytest --help` does not perform producer autodiscovery.
+* Repeated initialization does not change registry contents (idempotent).
+* Test collection time reduces measurably.
 
 ---
 
-## Resource Requirements
+### Workstream 3: Testing Strategy & Coverage (Provider + API + Tasks)
 
-### Engineering
+#### Goal
 
-- **Backend** - 2-3 engineers for provider expansion, compliance frameworks
-- **Platform** - 1 engineer for infrastructure, scaling, observability
-- **ML/AI** - 1 engineer for agent capabilities, training pipelines
+Add confidence without slowing developers down.
 
-### Infrastructure
+#### Test taxonomy (enforce)
 
-- **Compute** - Additional worker capacity for parallel collection
-- **Storage** - Snowflake warehouse expansion for analytics
-- **External APIs** - Provider API quotas and rate limits
+* **Unit**: pure logic, no DB/network; fast; default PR gate
+* **Integration**: DB + internal services; deterministic; runs on PRs when relevant
+* **E2E**: in-process ASGI, higher-level workflows; runs on main and targeted PRs
+* **Contract**: OpenAPI/SDK generation, provider schema contracts
+
+#### Actions
+
+1. **Make the default unit suite fast**
+   * Ensure unit tests don’t require provider autodiscovery.
+   * Use `fakeredis` and in-memory SQLite where appropriate.
+2. **Provider integration tests**
+   * For AWS/GCP/GitHub/Okta/M365/Azure providers: add mock-based tests (moto/httpx mocking) for:
+     * auth failures
+     * pagination
+     * rate limiting
+     * partial failures
+     * schema mapping correctness
+3. **Contract tests**
+   * Validate OpenAPI is stable and TS SDK types match.
+   * Add snapshot-style checks for critical endpoints.
+
+#### Acceptance criteria
+
+* PRs run a fast suite (<10 minutes) that catches most regressions.
+* Provider changes require tests in the matching provider package.
+* OpenAPI/SDK drift is caught automatically.
 
 ---
 
-## Risk Register
+### Workstream 4: Type Safety (Incremental, Enforced)
+
+#### Goal
+
+Strict typing for public APIs and high-risk modules, gradually expanding without blocking legacy code.
+
+#### Strategy
+
+1. Define “typed boundaries”:
+   * `src/cerebro/core/`, `src/cerebro/api/`, `src/cerebro_sdk/` should be strict first.
+2. Use mypy overrides to progressively tighten.
+3. Add “new code must be typed” rule for touched modules.
+
+#### Actions
+
+* Create a mypy plan by package (baseline errors, target dates).
+* Add type-focused unit tests where runtime types matter (Pydantic schemas, API responses).
+
+#### Acceptance criteria
+
+* Mypy passes on prioritized packages with strict settings.
+* Type regressions are prevented by CI.
+
+---
+
+### Workstream 5: Security Hardening (Practical Gates)
+
+#### Goal
+
+Make security checks meaningful and prevent introducing new risks.
+
+#### Actions
+
+1. **Make “new vulnerabilities” fail CI**
+   * Keep legacy findings visible, but block net-new criticals.
+2. **Secrets handling**
+   * Ensure `.env` patterns and fixture JSON exemptions remain safe.
+   * Tighten Gitleaks configuration if necessary.
+3. **Audit integrity**
+   * Plan cryptographic chaining for append-only audit logs (design + threat model).
+
+#### Acceptance criteria
+
+* CI blocks introducing new CRITICAL vulnerabilities in container/deps.
+* Secret leaks are prevented pre-merge.
+
+---
+
+### Workstream 6: Observability & Ops Readiness
+
+#### Goal
+
+Reduce time-to-debug and support scaling.
+
+#### Actions
+
+1. Structured logging conventions:
+   * request IDs / trace IDs, org/account context, action IDs
+2. OpenTelemetry:
+   * traces across API requests and Celery tasks; exporter configuration for dev/prod
+3. Health checks:
+   * deep health endpoints (DB/Redis/Snowflake connectivity) with timeouts
+4. SLOs:
+   * define core SLIs (API latency, task backlog, provider collection freshness)
+
+#### Acceptance criteria
+
+* For any request, operators can find correlated logs/metrics/traces.
+* Core services expose actionable health endpoints.
+
+## 6) Platform Expansion Backlog (Keep Shipping, Without Regressions)
+
+These are the high-level product expansions, but they must respect Workstreams 1–6 gates.
+
+### 6.1 Provider ecosystem
+
+Current providers appear present in `src/cerebro/providers/`: `aws`, `gcp`, `azure`, `github`, `kubernetes`, `m365`, `okta`, `workspace`.
+
+Priority additions (suggested):
+
+* Slack Enterprise (audit logs)
+* CrowdStrike (EDR findings)
+* Wiz (CSPM ingestion)
+* Snyk (vuln findings)
+
+For each provider:
+
+* Define data model (tables/entities)
+* Implement ingestion with retries/backoff
+* Add producer mappings (findings)
+* Add integration tests + contract tests
+* Add rate-limit handling + observability
+
+### 6.2 Compliance frameworks
+
+Existing: SOC2, ISO27001, NIST CSF.
+
+Next:
+
+* NIST CSF 2.0 (if current is 1.x mapping)
+* CIS Controls v8
+* PCI DSS 4.0
+
+For each framework:
+
+* Control catalog
+* Evidence mapping strategy
+* Automated evidence collection coverage targets
+* Reporting + export requirements
+
+### 6.3 AI-powered security autonomy
+
+The detailed autonomy roadmap lives in `docs/TODO.md`. The codebase plan here focuses on:
+
+* Evaluation harnesses integrated into CI
+* Telemetry schemas and storage
+* Safe action adapters + rollback
+
+## 7) Immediate Execution Plan (Next 14 Days)
+
+### Week 1: Stop the bleeding
+
+1. Decide formatter/linter single source of truth and align configs.
+2. Fix producer registry idempotency and add regression tests.
+3. Remove or implement pytest sharding so CI and local match.
+
+### Week 2: Make it stick
+
+1. Expand CI lint coverage beyond selected producers.
+2. Add 2–3 provider integration test modules (start with AWS/GitHub) as templates.
+3. Add a “quality gates” section to CI summaries (what ran, what was skipped).
+
+## 8) Success Metrics (Engineering)
+
+| Metric | Baseline | 30d Target | 90d Target |
+| --- | ---:| ---:| ---: |
+| Time to reproduce CI failure locally | High | Low | Very low |
+| Median PR feedback loop (lint+unit) | TBD | <10 min | <7 min |
+| Flaky test rate | TBD | <1% | <0.5% |
+| Typed coverage of core/api/sdk | TBD | +20% | +50% |
+| Duplicate producer registrations | Observed | 0 | 0 |
+
+## 9) Owners and Operating Rhythm
+
+Suggested ownership model:
+
+* **Backend**: providers, compliance, findings, API correctness
+* **Platform**: CI/tooling, deploy workflows, observability, performance
+* **Security**: threat models, scanners, audit integrity, RBAC
+* **AI/Agents**: evaluation harnesses, tool safety, autonomy controls
+
+Operating rhythm:
+
+* Weekly: reliability review (CI stability, flaky tests, perf regressions)
+* Biweekly: roadmap checkpoint (workstream progress, scope adjustments)
+
+## 10) Risk Register (Engineering)
 
 | Risk | Impact | Likelihood | Mitigation |
-|------|--------|------------|------------|
-| Provider API changes | High | Medium | Version pinning, change detection |
-| Data volume growth | Medium | High | Archival policies, partitioning |
-| Agent hallucinations | High | Medium | Confidence thresholds, human review |
-| Compliance drift | Medium | Medium | Automated evidence collection |
-| Key personnel dependency | High | Medium | Documentation, knowledge sharing |
+| --- | --- | --- | --- |
+| Toolchain conflicts cause constant formatting churn | High | High | Single formatter + aligned line-length |
+| CI sharding mismatch blocks contributions | High | Medium | Pin plugin or remove flag |
+| Import-time side effects create nondeterminism | High | Medium | App factories + explicit init |
+| Provider API changes break ingestion | High | Medium | Contract tests + version pinning |
+| Security scans become noise | Medium | High | Gate net-new criticals |
 
 ---
 
-## Appendix: Module Inventory
-
-### Core Modules (~15k LOC)
-- `core/` - Database, config, models, repositories
-- `api/` - FastAPI routers, auth, schemas
-
-### Domain Modules (~25k LOC)
-- `agents/` - Runtime, tools, memory, review queue
-- `compliance/` - Frameworks, evidence, policies
-- `findings/` - Evaluator, producers, pipelines
-
-### Integration Modules (~30k LOC)
-- `providers/` - Cloud and SaaS adapters
-- `integrations/` - External service connectors
-- `telemetry/` - Ingestion pipelines
-
-### Supporting Modules (~10k LOC)
-- `analytics/` - Dashboard, SQL dialect
-- `query/` - Table definitions, graph queries
-- `tasks/` - Celery workers, scheduled jobs
-
----
-
-*Last updated: January 2026*
-*Owner: Security Platform Team*
+Last updated: 2026-01
+Owner: Security Platform Team

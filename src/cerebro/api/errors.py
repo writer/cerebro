@@ -6,6 +6,7 @@ https://tools.ietf.org/html/rfc7807
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
 from typing import Any
 
@@ -71,45 +72,45 @@ class ProblemDetail(BaseModel):
     """
 
     type: str = Field(
-        ...,
+        default=...,
         description="A URI reference identifying the problem type",
-        example="https://api.cerebro.io/errors/RESOURCE_NOT_FOUND",
+        json_schema_extra={"example": "https://api.cerebro.io/errors/RESOURCE_NOT_FOUND"},
     )
     title: str = Field(
-        ...,
+        default=...,
         description="A short, human-readable summary of the problem",
-        example="Resource Not Found",
+        json_schema_extra={"example": "Resource Not Found"},
     )
     status: int = Field(
-        ...,
+        default=...,
         description="The HTTP status code",
-        example=404,
+        json_schema_extra={"example": 404},
     )
     detail: str = Field(
-        ...,
+        default=...,
         description="A human-readable explanation specific to this occurrence",
-        example="The finding with ID '123' was not found",
+        json_schema_extra={"example": "The finding with ID '123' was not found"},
     )
     instance: str | None = Field(
-        None,
+        default=None,
         description="A URI reference identifying the specific occurrence",
-        example="/api/v1/findings/123",
+        json_schema_extra={"example": "/api/v1/findings/123"},
     )
     code: str = Field(
-        ...,
+        default=...,
         description="Machine-readable error code",
-        example="FINDING_NOT_FOUND",
+        json_schema_extra={"example": "FINDING_NOT_FOUND"},
     )
     request_id: str | None = Field(
-        None,
+        default=None,
         description="Unique request identifier for support/debugging",
     )
     errors: list[dict[str, Any]] | None = Field(
-        None,
+        default=None,
         description="Detailed validation errors (for 422 responses)",
     )
     documentation_url: str | None = Field(
-        None,
+        default=None,
         description="URL to documentation about this error",
     )
 
@@ -237,7 +238,7 @@ def problem_detail_response(
     detail: str,
     request: Request | None = None,
     errors: list[dict[str, Any]] | None = None,
-    headers: dict[str, str] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """Create a JSONResponse with Problem Details."""
     problem = create_problem_detail(code, detail, request, errors)

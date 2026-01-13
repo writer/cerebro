@@ -4,7 +4,7 @@ GitHub provider table implementations.
 Exposes GitHub security resources as SQL tables.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import datetime
 from typing import Any
 
@@ -24,7 +24,7 @@ class GitHubClient:
         self._github = None
         self._org = None
 
-    async def authenticate(self):
+    async def authenticate(self) -> bool:
         """Authenticate with GitHub API."""
         try:
             import asyncio
@@ -44,18 +44,19 @@ class GitHubClient:
             # Run sync GitHub operations in executor
             loop = asyncio.get_event_loop()
 
-            def _auth():
+            def _auth() -> bool:
                 self._github = Github(token)  # type: ignore[assignment]
                 # Test authentication by getting user info
-                user = self._github.get_user()  # type: ignore[union-attr, attr-defined]
+                user = self._github.get_user()  # type: ignore[attr-defined]
                 _ = user.name  # This will raise if token is invalid
 
                 # Get organization
-                self._org = self._github.get_organization(org_name)  # type: ignore[union-attr, attr-defined]
-                _ = self._org.name  # type: ignore[union-attr, attr-defined]  # Test org access
+                self._org = self._github.get_organization(org_name)  # type: ignore[attr-defined]
+                _ = self._org.name  # type: ignore[attr-defined] # Test org access
                 return True
 
-            return await loop.run_in_executor(None, _auth)
+            result: bool = await loop.run_in_executor(None, _auth)
+            return result
 
         except ImportError:
             logger.error("PyGithub not installed. Run: pip install PyGithub")
@@ -64,7 +65,7 @@ class GitHubClient:
             logger.error(f"GitHub authentication failed: {e}")
             return False
 
-    async def list_repositories(self):
+    async def list_repositories(self) -> AsyncIterator[dict[str, Any]]:
         """List all repositories from GitHub API."""
         try:
             if not self._org:
@@ -73,8 +74,8 @@ class GitHubClient:
 
             import asyncio
 
-            def _get_repos():
-                return list(self._org.get_repos())  # type: ignore[union-attr, attr-defined]
+            def _get_repos() -> list[Any]:
+                return list(self._org.get_repos())  # type: ignore[attr-defined]
 
             loop = asyncio.get_event_loop()
             repos = await loop.run_in_executor(None, _get_repos)
@@ -117,7 +118,7 @@ class GitHubClient:
             logger.error(f"Error listing GitHub repositories: {e}")
             return
 
-    async def list_vulnerability_alerts(self):
+    async def list_vulnerability_alerts(self) -> AsyncIterator[dict[str, Any]]:
         """List vulnerability alerts from GitHub API."""
         try:
             if not self._org:
@@ -126,9 +127,9 @@ class GitHubClient:
 
             import asyncio
 
-            def _get_vulns():
-                alerts = []
-                for repo in self._org.get_repos():  # type: ignore[union-attr, attr-defined]
+            def _get_vulns() -> list[dict[str, Any]]:
+                alerts: list[dict[str, Any]] = []
+                for repo in self._org.get_repos():  # type: ignore[attr-defined]
                     try:
                         # Note: This requires special permissions and may not work for all repos
                         for alert in repo.get_vulnerability_alerts():
@@ -178,7 +179,7 @@ class GitHubClient:
             logger.error(f"Error listing GitHub vulnerability alerts: {e}")
             return
 
-    async def list_secret_scanning_alerts(self):
+    async def list_secret_scanning_alerts(self) -> AsyncIterator[dict[str, Any]]:
         """List secret scanning alerts from GitHub API."""
         try:
             if not self._org:
@@ -187,9 +188,9 @@ class GitHubClient:
 
             import asyncio
 
-            def _get_secrets():
-                alerts = []
-                for repo in self._org.get_repos():  # type: ignore[union-attr, attr-defined]
+            def _get_secrets() -> list[dict[str, Any]]:
+                alerts: list[dict[str, Any]] = []
+                for repo in self._org.get_repos():  # type: ignore[attr-defined]
                     try:
                         # Note: This requires special permissions and may not work for all repos
                         for alert in repo.get_secret_scanning_alerts():
@@ -241,7 +242,7 @@ logger = structlog.get_logger(__name__)
 class GitHubRepositoryTable(ProviderSecurityTable):
     """GitHub repositories as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         repo_columns = [
             SecurityColumn(
                 "repo_id",
@@ -405,7 +406,7 @@ class GitHubRepositoryTable(ProviderSecurityTable):
 class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
     """GitHub Dependabot vulnerability alerts as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         alert_columns = [
             SecurityColumn(
                 "alert_id",
@@ -529,7 +530,8 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
     def get_repo_name(self, alert_data: dict[str, Any]) -> str:
         """Extract repository name from alert data."""
         repo = alert_data.get("repository", {})
-        return repo.get("full_name", "")
+        full_name: str = repo.get("full_name", "")
+        return full_name
 
     def _parse_github_timestamp(
         self, timestamp_str: str | None
@@ -546,7 +548,7 @@ class GitHubVulnerabilityAlertTable(ProviderSecurityTable):
 class GitHubSecretScanningAlertTable(ProviderSecurityTable):
     """GitHub secret scanning alerts as a security table."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         alert_columns = [
             SecurityColumn(
                 "alert_id",
@@ -670,7 +672,8 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
     def get_repo_name(self, alert_data: dict[str, Any]) -> str:
         """Extract repository name from alert data."""
         repo = alert_data.get("repository", {})
-        return repo.get("full_name", "")
+        full_name: str = repo.get("full_name", "")
+        return full_name
 
     def _parse_github_timestamp(
         self, timestamp_str: str | None
@@ -684,7 +687,7 @@ class GitHubSecretScanningAlertTable(ProviderSecurityTable):
             return None
 
 
-def register_github_tables():
+def register_github_tables() -> None:
     """Register all GitHub tables with the query engine."""
     register_table(GitHubRepositoryTable(), aliases=["github_repos", "repositories"])
     register_table(
