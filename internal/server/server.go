@@ -87,11 +87,17 @@ func (s *Server) Run(ctx context.Context) error {
 	return s.Shutdown()
 }
 
-// Shutdown gracefully shuts down the server.
+// Shutdown gracefully shuts down the server with the configured timeout.
 func (s *Server) Shutdown() error {
+	return s.ShutdownWithContext(context.Background())
+}
+
+// ShutdownWithContext gracefully shuts down the server with a parent context.
+// The shutdown timeout is applied on top of any deadline from the parent context.
+func (s *Server) ShutdownWithContext(parent context.Context) error {
 	s.logger.Info("initiating graceful shutdown", "timeout", s.config.ShutdownTimeout)
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
+	ctx, cancel := context.WithTimeout(parent, s.config.ShutdownTimeout)
 	defer cancel()
 
 	if err := s.httpServer.Shutdown(ctx); err != nil {

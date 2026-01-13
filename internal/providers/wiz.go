@@ -319,27 +319,64 @@ func (w *WizProvider) graphQLQuery(ctx context.Context, query string, variables 
 		"query":     query,
 		"variables": variables,
 	}
-	jsonBody, _ := json.Marshal(body)
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", w.apiURL, bytes.NewReader(jsonBody))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+w.token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := w.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("wiz API error %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	return io.ReadAll(resp.Body)
+	return respBody, nil
+}
+
+// paginatedQuery executes a GraphQL query with pagination support
+func (w *WizProvider) paginatedQuery(ctx context.Context, query string, pageSize int, extractNodes func([]byte) ([]map[string]interface{}, string, bool, error)) ([]map[string]interface{}, error) {
+	var allNodes []map[string]interface{}
+	var cursor string
+	hasNextPage := true
+
+	for hasNextPage {
+		variables := map[string]interface{}{"first": pageSize}
+		if cursor != "" {
+			variables["after"] = cursor
+		}
+
+		body, err := w.graphQLQuery(ctx, query, variables)
+		if err != nil {
+			return allNodes, err
+		}
+
+		nodes, nextCursor, more, err := extractNodes(body)
+		if err != nil {
+			return allNodes, fmt.Errorf("extract nodes: %w", err)
+		}
+
+		allNodes = append(allNodes, nodes...)
+		cursor = nextCursor
+		hasNextPage = more
+	}
+
+	return allNodes, nil
 }
 
 func (w *WizProvider) syncCloudResources(ctx context.Context) (*TableResult, error) {
