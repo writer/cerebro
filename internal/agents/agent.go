@@ -1,0 +1,247 @@
+package agents
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Agent represents an AI-powered security investigation agent
+type Agent struct {
+	ID          string
+	Name        string
+	Description string
+	Provider    LLMProvider
+	Tools       []Tool
+	Memory      *Memory
+	mu          sync.RWMutex
+}
+
+// LLMProvider interface for different AI backends
+type LLMProvider interface {
+	Complete(ctx context.Context, messages []Message, tools []Tool) (*Response, error)
+	Stream(ctx context.Context, messages []Message, tools []Tool) (<-chan StreamEvent, error)
+}
+
+type Message struct {
+	Role      string                 `json:"role"` // system, user, assistant, tool
+	Content   string                 `json:"content"`
+	Name      string                 `json:"name,omitempty"`
+	ToolCalls []ToolCall             `json:"tool_calls,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type ToolCall struct {
+	ID       string          `json:"id"`
+	Name     string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+type Response struct {
+	Message   Message
+	Usage     Usage
+	FinishReason string
+}
+
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+type StreamEvent struct {
+	Type    string
+	Content string
+	Done    bool
+	Error   error
+}
+
+// Tool represents a capability the agent can use
+type Tool struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  map[string]interface{} `json:"parameters"`
+	Handler     ToolHandler            `json:"-"`
+	RequiresApproval bool              `json:"requires_approval"`
+}
+
+type ToolHandler func(ctx context.Context, args json.RawMessage) (string, error)
+
+// Session represents an investigation session
+type Session struct {
+	ID        string    `json:"id"`
+	AgentID   string    `json:"agent_id"`
+	UserID    string    `json:"user_id"`
+	Status    string    `json:"status"` // active, completed, pending_approval
+	Messages  []Message `json:"messages"`
+	Context   SessionContext `json:"context"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type SessionContext struct {
+	FindingIDs   []string               `json:"finding_ids,omitempty"`
+	AssetIDs     []string               `json:"asset_ids,omitempty"`
+	Investigation *Investigation        `json:"investigation,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type Investigation struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Severity    string    `json:"severity"`
+	Status      string    `json:"status"`
+	Findings    []string  `json:"findings"`
+	Timeline    []Event   `json:"timeline"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type Event struct {
+	Timestamp   time.Time              `json:"timestamp"`
+	Type        string                 `json:"type"`
+	Description string                 `json:"description"`
+	Data        map[string]interface{} `json:"data,omitempty"`
+}
+
+// Memory provides context storage for agents
+type Memory struct {
+	entries []MemoryEntry
+	maxSize int
+	mu      sync.RWMutex
+}
+
+type MemoryEntry struct {
+	ID        string
+	Content   string
+	Type      string // fact, observation, decision
+	Relevance float64
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func NewMemory(maxSize int) *Memory {
+	return &Memory{
+		entries: make([]MemoryEntry, 0),
+		maxSize: maxSize,
+	}
+}
+
+func (m *Memory) Add(content, entryType string, relevance float64, ttl time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	entry := MemoryEntry{
+		ID:        uuid.New().String(),
+		Content:   content,
+		Type:      entryType,
+		Relevance: relevance,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(ttl),
+	}
+
+	m.entries = append(m.entries, entry)
+
+	// Prune if over capacity
+	if len(m.entries) > m.maxSize {
+		m.entries = m.entries[len(m.entries)-m.maxSize:]
+	}
+}
+
+func (m *Memory) Search(query string, limit int) []MemoryEntry {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	now := time.Now()
+	var valid []MemoryEntry
+	
+	for _, e := range m.entries {
+		if e.ExpiresAt.After(now) {
+			valid = append(valid, e)
+		}
+	}
+
+	if len(valid) > limit {
+		valid = valid[len(valid)-limit:]
+	}
+	return valid
+}
+
+// AgentRegistry manages available agents
+type AgentRegistry struct {
+	agents   map[string]*Agent
+	sessions map[string]*Session
+	mu       sync.RWMutex
+}
+
+func NewAgentRegistry() *AgentRegistry {
+	return &AgentRegistry{
+		agents:   make(map[string]*Agent),
+		sessions: make(map[string]*Session),
+	}
+}
+
+func (r *AgentRegistry) RegisterAgent(agent *Agent) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.agents[agent.ID] = agent
+}
+
+func (r *AgentRegistry) GetAgent(id string) (*Agent, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	a, ok := r.agents[id]
+	return a, ok
+}
+
+func (r *AgentRegistry) ListAgents() []*Agent {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	
+	agents := make([]*Agent, 0, len(r.agents))
+	for _, a := range r.agents {
+		agents = append(agents, a)
+	}
+	return agents
+}
+
+func (r *AgentRegistry) CreateSession(agentID, userID string, ctx SessionContext) (*Session, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.agents[agentID]; !ok {
+		return nil, fmt.Errorf("agent not found: %s", agentID)
+	}
+
+	session := &Session{
+		ID:        uuid.New().String(),
+		AgentID:   agentID,
+		UserID:    userID,
+		Status:    "active",
+		Messages:  make([]Message, 0),
+		Context:   ctx,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	r.sessions[session.ID] = session
+	return session, nil
+}
+
+func (r *AgentRegistry) GetSession(id string) (*Session, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	s, ok := r.sessions[id]
+	return s, ok
+}
+
+func (r *AgentRegistry) UpdateSession(session *Session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	session.UpdatedAt = time.Now()
+	r.sessions[session.ID] = session
+}

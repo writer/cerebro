@@ -78,6 +78,45 @@ func (s *Server) setupRoutes() {
 			r.Get("/frameworks", s.handleListFrameworks)
 			r.Get("/frameworks/{id}", s.handleGetFramework)
 		})
+
+		// Agent endpoints (investigation workflows)
+		r.Route("/agents", func(r chi.Router) {
+			r.Get("/", s.handleListAgents)
+			r.Post("/sessions", s.handleCreateSession)
+			r.Get("/sessions/{id}", s.handleGetSession)
+			r.Post("/sessions/{id}/messages", s.handleSendMessage)
+		})
+
+		// Ticketing endpoints
+		r.Route("/tickets", func(r chi.Router) {
+			r.Get("/", s.handleListTickets)
+			r.Post("/", s.handleCreateTicket)
+			r.Get("/{id}", s.handleGetTicket)
+			r.Post("/{id}/comment", s.handleAddComment)
+		})
+
+		// Identity/Access Review endpoints
+		r.Route("/identity", func(r chi.Router) {
+			r.Get("/reviews", s.handleListReviews)
+			r.Post("/reviews", s.handleCreateReview)
+			r.Get("/reviews/{id}", s.handleGetReview)
+			r.Post("/reviews/{id}/start", s.handleStartReview)
+			r.Post("/reviews/{id}/items/{itemId}/decide", s.handleRecordDecision)
+		})
+
+		// Attack Path endpoints
+		r.Route("/attack-paths", func(r chi.Router) {
+			r.Get("/", s.handleListAttackPaths)
+			r.Post("/analyze", s.handleAnalyzeAttackPaths)
+			r.Get("/{id}", s.handleGetAttackPath)
+		})
+
+		// Provider endpoints
+		r.Route("/providers", func(r chi.Router) {
+			r.Get("/", s.handleListProviders)
+			r.Post("/{name}/sync", s.handleSyncProvider)
+			r.Get("/{name}/schema", s.handleProviderSchema)
+		})
 	})
 }
 
@@ -332,4 +371,150 @@ func (s *Server) Run() error {
 	addr := fmt.Sprintf(":%d", s.config.Port)
 	s.logger.Info("starting server", "addr", addr)
 	return http.ListenAndServe(addr, s.router)
+}
+
+// Agent handlers
+
+func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"agents": []map[string]interface{}{
+			{"id": "security-analyst", "name": "Security Analyst", "description": "Investigates security findings and incidents"},
+			{"id": "incident-responder", "name": "Incident Responder", "description": "Handles security incident triage and response"},
+		},
+	})
+}
+
+func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AgentID    string   `json:"agent_id"`
+		FindingIDs []string `json:"finding_ids,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	s.json(w, http.StatusCreated, map[string]interface{}{"session_id": "session-" + req.AgentID + "-001", "agent_id": req.AgentID, "status": "active"})
+}
+
+func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.json(w, http.StatusOK, map[string]interface{}{"id": id, "status": "active", "messages": []interface{}{}})
+}
+
+func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	s.json(w, http.StatusOK, map[string]interface{}{"role": "assistant", "content": "I'll help you investigate. Let me analyze the findings..."})
+}
+
+// Ticketing handlers
+
+func (s *Server) handleListTickets(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]interface{}{"tickets": []interface{}{}, "count": 0})
+}
+
+func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Priority    string   `json:"priority"`
+		FindingIDs  []string `json:"finding_ids,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	s.json(w, http.StatusCreated, map[string]interface{}{"id": "ticket-001", "title": req.Title, "status": "open", "priority": req.Priority})
+}
+
+func (s *Server) handleGetTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.json(w, http.StatusOK, map[string]interface{}{"id": id, "status": "open"})
+}
+
+func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusCreated, map[string]string{"status": "comment added"})
+}
+
+// Identity/Access Review handlers
+
+func (s *Server) handleListReviews(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]interface{}{"reviews": []interface{}{}, "count": 0})
+}
+
+func (s *Server) handleCreateReview(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name      string   `json:"name"`
+		Type      string   `json:"type"`
+		Reviewers []string `json:"reviewers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	s.json(w, http.StatusCreated, map[string]interface{}{"id": "review-001", "name": req.Name, "status": "draft"})
+}
+
+func (s *Server) handleGetReview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.json(w, http.StatusOK, map[string]interface{}{"id": id, "status": "draft", "items": []interface{}{}})
+}
+
+func (s *Server) handleStartReview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.json(w, http.StatusOK, map[string]interface{}{"id": id, "status": "in_progress"})
+}
+
+func (s *Server) handleRecordDecision(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Action  string `json:"action"`
+		Comment string `json:"comment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "decision recorded"})
+}
+
+// Attack Path handlers
+
+func (s *Server) handleListAttackPaths(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]interface{}{"paths": []interface{}{}, "count": 0})
+}
+
+func (s *Server) handleAnalyzeAttackPaths(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusAccepted, map[string]interface{}{"job_id": "analysis-001", "status": "running"})
+}
+
+func (s *Server) handleGetAttackPath(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.json(w, http.StatusOK, map[string]interface{}{"id": id, "severity": "high", "steps": []interface{}{}})
+}
+
+// Provider handlers
+
+func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"providers": []map[string]interface{}{
+			{"name": "cloudquery", "type": "cloud", "status": "configured"},
+			{"name": "crowdstrike", "type": "endpoint", "status": "not_configured"},
+			{"name": "okta", "type": "identity", "status": "not_configured"},
+		},
+	})
+}
+
+func (s *Server) handleSyncProvider(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	s.json(w, http.StatusAccepted, map[string]interface{}{"provider": name, "job_id": "sync-" + name + "-001", "status": "running"})
+}
+
+func (s *Server) handleProviderSchema(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	s.json(w, http.StatusOK, map[string]interface{}{"provider": name, "tables": []interface{}{}})
 }
