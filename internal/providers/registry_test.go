@@ -236,6 +236,14 @@ func TestSyncOptions_Fields(t *testing.T) {
 	if len(opts.Tables) != 2 {
 		t.Error("Tables field incorrect")
 	}
+
+	if opts.Concurrency != 4 {
+		t.Error("Concurrency field incorrect")
+	}
+
+	if opts.Since == nil || !opts.Since.Equal(now) {
+		t.Error("Since field incorrect")
+	}
 }
 
 func TestSyncResult_Fields(t *testing.T) {

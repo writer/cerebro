@@ -248,6 +248,24 @@ func (w *WizProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, 
 		result.TotalRows += vulns.Rows
 	}
 
+	// Sync secrets
+	secrets, err := w.syncSecrets(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "secrets: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *secrets)
+		result.TotalRows += secrets.Rows
+	}
+
+	// Sync identities
+	identities, err := w.syncIdentities(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "identities: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *identities)
+		result.TotalRows += identities.Rows
+	}
+
 	result.CompletedAt = time.Now()
 	result.Duration = result.CompletedAt.Sub(start)
 

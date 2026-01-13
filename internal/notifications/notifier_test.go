@@ -71,6 +71,18 @@ func TestEvent_Fields(t *testing.T) {
 	if event.Title != "Test Finding" {
 		t.Error("title field incorrect")
 	}
+
+	if event.Message != "A critical finding was detected" {
+		t.Error("message field incorrect")
+	}
+
+	if !event.Timestamp.Equal(now) {
+		t.Error("timestamp field incorrect")
+	}
+
+	if event.Data["finding_id"] != "123" {
+		t.Error("data field incorrect")
+	}
 }
 
 func TestEventType_Constants(t *testing.T) {
