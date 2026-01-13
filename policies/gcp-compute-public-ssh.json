@@ -1,0 +1,17 @@
+{
+  "id": "gcp-compute-public-ssh",
+  "name": "GCP Instance Public IP with SSH Exposed",
+  "description": "GCP Compute instance has external IP with firewall allowing SSH from 0.0.0.0/0",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "compute.instances.create",
+  "resource": "gcp::compute::instance",
+  "conditions": [
+    "network_interfaces.access_configs != null",
+    "firewall_rules.allowed.ports contains '22'",
+    "firewall_rules.source_ranges contains '0.0.0.0/0'"
+  ],
+  "severity": "critical",
+  "tags": ["cis-gcp-3.6", "exposure", "compute", "network", "ssh"],
+  "remediation": "Remove external IP or restrict firewall rules. Use IAP for TCP forwarding for secure access."
+}

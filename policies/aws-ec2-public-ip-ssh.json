@@ -1,0 +1,18 @@
+{
+  "id": "aws-ec2-public-ip-ssh",
+  "name": "EC2 Public IP with SSH Exposed",
+  "description": "EC2 instance has public IP with SSH port 22 open to the internet (0.0.0.0/0)",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "ec2:RunInstances",
+  "resource": "aws::ec2::instance",
+  "conditions": [
+    "public_ip_address != null",
+    "security_groups.ingress.from_port <= 22",
+    "security_groups.ingress.to_port >= 22",
+    "security_groups.ingress.cidr_blocks contains '0.0.0.0/0'"
+  ],
+  "severity": "critical",
+  "tags": ["cis-aws-5.2", "exposure", "ec2", "network", "ssh"],
+  "remediation": "Remove public IP or restrict security group to specific IP ranges. Use AWS Systems Manager Session Manager for secure access."
+}

@@ -1,0 +1,17 @@
+{
+  "id": "aws-elb-internet-facing-no-waf",
+  "name": "Internet-Facing ALB Without WAF",
+  "description": "Application Load Balancer is internet-facing without AWS WAF protection",
+  "effect": "forbid",
+  "principal": "*",
+  "action": "elasticloadbalancing:CreateLoadBalancer",
+  "resource": "aws::elbv2::load_balancer",
+  "conditions": [
+    "scheme == 'internet-facing'",
+    "type == 'application'",
+    "waf_web_acl_arn == null"
+  ],
+  "severity": "high",
+  "tags": ["alb", "waf", "exposure", "network"],
+  "remediation": "Associate an AWS WAF WebACL with the Application Load Balancer to protect against common web exploits."
+}
