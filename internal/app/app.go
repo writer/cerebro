@@ -339,6 +339,9 @@ func New(ctx context.Context) (*App, error) {
 	app.initRuntime()
 	app.initSecurityGraph(ctx)
 
+	// Validate policy coverage against available tables
+	app.validatePolicyCoverage(ctx)
+
 	logger.Info("application initialized",
 		"snowflake", app.Snowflake != nil,
 		"policies", len(app.Policy.ListPolicies()),
@@ -780,6 +783,45 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 	}
 	_ = db // unused but shows pattern
 	a.Logger.Info("scan watermarks initialized")
+}
+
+// validatePolicyCoverage checks that required CloudQuery tables exist for loaded policies
+func (a *App) validatePolicyCoverage(ctx context.Context) {
+	if a.CloudQuery == nil {
+		a.Logger.Warn("skipping policy coverage validation - CloudQuery not configured")
+		return
+	}
+
+	availableTables, err := a.CloudQuery.ListAvailableTables(ctx)
+	if err != nil {
+		a.Logger.Warn("failed to list available tables for policy validation", "error", err)
+		return
+	}
+
+	gaps := a.Policy.ValidateTableCoverage(availableTables)
+	if len(gaps) == 0 {
+		a.Logger.Info("all policies have required tables available")
+		return
+	}
+
+	// Log warnings for each policy that can't be fully evaluated
+	for _, gap := range gaps {
+		a.Logger.Warn("policy missing required tables - will silently skip",
+			"policy_id", gap.PolicyID,
+			"policy_name", gap.PolicyName,
+			"resource", gap.Resource,
+			"missing_tables", gap.MissingTables,
+		)
+	}
+
+	totalPolicies := len(a.Policy.ListPolicies())
+	coveredPolicies := totalPolicies - len(gaps)
+	a.Logger.Warn("policy coverage incomplete",
+		"total_policies", totalPolicies,
+		"covered_policies", coveredPolicies,
+		"uncovered_policies", len(gaps),
+		"coverage_percent", fmt.Sprintf("%.1f%%", float64(coveredPolicies)/float64(totalPolicies)*100),
+	)
 }
 
 // Close cleanly shuts down all services

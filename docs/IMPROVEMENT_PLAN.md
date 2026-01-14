@@ -26,9 +26,24 @@
 - **Integration Tests**: Lack of comprehensive integration tests for the full scan->policy->finding flow.
 - **Mocking**: More extensive mocking needed for CloudQuery and Snowflake dependencies to enable better unit testing.
 
+## 4. Integrations & Providers
+
+### High Priority
+- **Resilient Syncing**: Provider `Sync` methods (e.g., in `internal/providers/wiz.go`) are monolithic. Failure in one table sync shouldn't fail the entire provider sync.
+- **Notification Reliability**: `internal/notifications` lacks retry logic and rate limiting. A flood of findings could hit Slack/PagerDuty API limits.
+- **Anthropic Streaming**: The `AnthropicProvider` in `internal/agents/providers/anthropic.go` lacks true streaming support (waits for full response).
+
+### Medium Priority
+- **Config Validation**: Integration configuration relies on loose `map[string]interface{}`. Needs strict schema validation to prevent runtime errors.
+- **Error Types**: Differentiate between transient (network) and terminal (auth/config) errors to implement smart retries.
+
 ## Action Plan
 
 1.  **Persistence Layer**: Implement a file-based or SQLite backend for `findings/store.go` to support restart persistence.
 2.  **Validation**: Create a mapping registry for Policy -> Required Tables and validate on startup.
 3.  **Graph Enhancement**: complete the effective permissions model to include deny rules and SCPs.
 4.  **Refactoring**: Address high-priority TODOs in `internal/graph` and `internal/scanner`.
+5.  **Integration Hardening**: 
+    - Implement granular partial syncs for providers.
+    - Add rate limiter and exponential backoff to `notifications`.
+    - Implement true streaming for Anthropic agent.
