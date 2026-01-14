@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/config"
 	"github.com/writerinternal/cerebro/internal/policy"
 )
+
+var policyOutput string
 
 var policyCmd = &cobra.Command{
 	Use:   "policy",
@@ -39,6 +42,8 @@ func init() {
 	policyCmd.AddCommand(policyListCmd)
 	policyCmd.AddCommand(policyValidateCmd)
 	policyCmd.AddCommand(policyTestCmd)
+
+	policyListCmd.Flags().StringVarP(&policyOutput, "output", "o", "table", "Output format (table,json,wide)")
 }
 
 func runPolicyList(cmd *cobra.Command, args []string) error {
@@ -50,16 +55,39 @@ func runPolicyList(cmd *cobra.Command, args []string) error {
 	}
 
 	policies := engine.ListPolicies()
-	fmt.Printf("Found %d policies:\n\n", len(policies))
 
-	for _, p := range policies {
-		fmt.Printf("  %s\n", p.ID)
-		fmt.Printf("    Name:     %s\n", p.Name)
-		fmt.Printf("    Severity: %s\n", p.Severity)
-		fmt.Printf("    Tags:     %v\n", p.Tags)
-		fmt.Println()
+	switch policyOutput {
+	case FormatJSON:
+		return JSONOutput(map[string]interface{}{
+			"policies": policies,
+			"count":    len(policies),
+		})
+	case FormatWide:
+		tw := NewTableWriter(os.Stdout, "ID", "Name", "Severity", "Resource", "Tags")
+		for _, p := range policies {
+			tw.AddRow(
+				p.ID,
+				truncateStr(p.Name, 35),
+				severityColor(p.Severity),
+				p.Resource,
+				strings.Join(p.Tags, ", "),
+			)
+		}
+		tw.Render()
+	default:
+		tw := NewTableWriter(os.Stdout, "ID", "Name", "Severity", "Tags")
+		for _, p := range policies {
+			tw.AddRow(
+				p.ID,
+				truncateStr(p.Name, 40),
+				severityColor(p.Severity),
+				strings.Join(p.Tags, ", "),
+			)
+		}
+		tw.Render()
 	}
 
+	fmt.Printf("\n%d policies loaded\n", len(policies))
 	return nil
 }
 
