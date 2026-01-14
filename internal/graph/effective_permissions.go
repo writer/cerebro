@@ -1,0 +1,669 @@
+package graph
+
+import (
+	"sort"
+	"strings"
+	"sync"
+)
+
+// EffectivePermissions represents the actual permissions an identity has
+type EffectivePermissions struct {
+	PrincipalID      string                     `json:"principal_id"`
+	PrincipalName    string                     `json:"principal_name"`
+	Resources        map[string]*ResourceAccess `json:"resources"`
+	Summary          *PermissionSummary         `json:"summary"`
+	RiskAssessment   *PermissionRiskAssessment  `json:"risk_assessment"`
+	InheritanceChain []*PermissionSource        `json:"inheritance_chain"`
+}
+
+// ResourceAccess describes what actions are allowed on a resource
+type ResourceAccess struct {
+	ResourceID   string     `json:"resource_id"`
+	ResourceName string     `json:"resource_name"`
+	ResourceType NodeKind   `json:"resource_type"`
+	Actions      []string   `json:"actions"`
+	Effect       EdgeEffect `json:"effect"`  // allow or deny
+	Sources      []string   `json:"sources"` // which policies grant this
+	Path         []string   `json:"path"`    // how access is achieved
+	IsDirect     bool       `json:"is_direct"`
+	IsInherited  bool       `json:"is_inherited"`
+	Conditions   []string   `json:"conditions,omitempty"`
+}
+
+// PermissionSummary provides high-level stats
+type PermissionSummary struct {
+	TotalResources     int            `json:"total_resources"`
+	TotalActions       int            `json:"total_actions"`
+	AdminAccess        int            `json:"admin_access"`
+	WriteAccess        int            `json:"write_access"`
+	ReadAccess         int            `json:"read_access"`
+	DeleteAccess       int            `json:"delete_access"`
+	CrossAccountAccess int            `json:"cross_account_access"`
+	WildcardActions    int            `json:"wildcard_actions"`
+	ResourcesByType    map[string]int `json:"resources_by_type"`
+}
+
+// PermissionRiskAssessment evaluates the risk of the permissions
+type PermissionRiskAssessment struct {
+	OverallRisk       RiskLevel            `json:"overall_risk"`
+	RiskScore         float64              `json:"risk_score"` // 0-100
+	Findings          []*PermissionFinding `json:"findings"`
+	OverprivilegedBy  float64              `json:"overprivileged_by"` // percentage above baseline
+	UnusedPermissions int                  `json:"unused_permissions,omitempty"`
+}
+
+// PermissionFinding is a specific risk finding about permissions
+type PermissionFinding struct {
+	Type           string   `json:"type"`
+	Severity       Severity `json:"severity"`
+	Description    string   `json:"description"`
+	Resource       string   `json:"resource,omitempty"`
+	Action         string   `json:"action,omitempty"`
+	Recommendation string   `json:"recommendation"`
+}
+
+// PermissionSource tracks where a permission comes from
+type PermissionSource struct {
+	Type       string `json:"type"` // direct, group, role, resource_policy, scp
+	SourceID   string `json:"source_id"`
+	SourceName string `json:"source_name"`
+	Effect     string `json:"effect"`
+}
+
+// EffectivePermissionsCalculator computes real permissions
+type EffectivePermissionsCalculator struct {
+	graph *Graph
+	cache sync.Map // principalID -> *EffectivePermissions
+}
+
+// NewEffectivePermissionsCalculator creates a new calculator
+func NewEffectivePermissionsCalculator(g *Graph) *EffectivePermissionsCalculator {
+	return &EffectivePermissionsCalculator{graph: g}
+}
+
+// Calculate computes effective permissions for a principal
+func (c *EffectivePermissionsCalculator) Calculate(principalID string) *EffectivePermissions {
+	// Check cache
+	if cached, ok := c.cache.Load(principalID); ok {
+		if ep, ok := cached.(*EffectivePermissions); ok {
+			return ep
+		}
+	}
+
+	principal, ok := c.graph.GetNode(principalID)
+	if !ok {
+		return nil
+	}
+
+	ep := &EffectivePermissions{
+		PrincipalID:   principalID,
+		PrincipalName: principal.Name,
+		Resources:     make(map[string]*ResourceAccess),
+	}
+
+	// Collect permissions from all sources
+	c.collectDirectPermissions(ep, principalID)
+	c.collectGroupPermissions(ep, principalID)
+	c.collectRolePermissions(ep, principalID)
+	c.applyDenyRules(ep, principalID)
+
+	// Generate summary
+	ep.Summary = c.generateSummary(ep)
+
+	// Assess risk
+	ep.RiskAssessment = c.assessRisk(ep)
+
+	// Cache result
+	c.cache.Store(principalID, ep)
+
+	return ep
+}
+
+func (c *EffectivePermissionsCalculator) collectDirectPermissions(ep *EffectivePermissions, principalID string) {
+	for _, edge := range c.graph.GetOutEdges(principalID) {
+		if edge.IsDeny() {
+			continue
+		}
+
+		targetNode, ok := c.graph.GetNode(edge.Target)
+		if !ok || !targetNode.IsResource() {
+			continue
+		}
+
+		actions := edgeKindToActions(edge.Kind)
+		if existingActions, ok := edge.Properties["actions"].([]string); ok {
+			actions = existingActions
+		}
+
+		ep.Resources[edge.Target] = &ResourceAccess{
+			ResourceID:   edge.Target,
+			ResourceName: targetNode.Name,
+			ResourceType: targetNode.Kind,
+			Actions:      actions,
+			Effect:       EdgeEffectAllow,
+			Sources:      []string{principalID},
+			Path:         []string{principalID, edge.Target},
+			IsDirect:     true,
+		}
+
+		ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+			Type:       "direct",
+			SourceID:   principalID,
+			SourceName: ep.PrincipalName,
+			Effect:     "allow",
+		})
+	}
+}
+
+func (c *EffectivePermissionsCalculator) collectGroupPermissions(ep *EffectivePermissions, principalID string) {
+	// Find groups this principal is a member of
+	for _, edge := range c.graph.GetOutEdges(principalID) {
+		if edge.Kind != EdgeKindMemberOf {
+			continue
+		}
+
+		groupNode, ok := c.graph.GetNode(edge.Target)
+		if !ok || groupNode.Kind != NodeKindGroup {
+			continue
+		}
+
+		// Get group's permissions
+		for _, groupEdge := range c.graph.GetOutEdges(edge.Target) {
+			if groupEdge.IsDeny() {
+				continue
+			}
+
+			targetNode, ok := c.graph.GetNode(groupEdge.Target)
+			if !ok || !targetNode.IsResource() {
+				continue
+			}
+
+			actions := edgeKindToActions(groupEdge.Kind)
+
+			// Merge with existing or create new
+			if existing, ok := ep.Resources[groupEdge.Target]; ok {
+				existing.Actions = mergeActions(existing.Actions, actions)
+				existing.Sources = append(existing.Sources, groupNode.ID)
+			} else {
+				ep.Resources[groupEdge.Target] = &ResourceAccess{
+					ResourceID:   groupEdge.Target,
+					ResourceName: targetNode.Name,
+					ResourceType: targetNode.Kind,
+					Actions:      actions,
+					Effect:       EdgeEffectAllow,
+					Sources:      []string{groupNode.ID},
+					Path:         []string{principalID, groupNode.ID, groupEdge.Target},
+					IsInherited:  true,
+				}
+			}
+
+			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+				Type:       "group",
+				SourceID:   groupNode.ID,
+				SourceName: groupNode.Name,
+				Effect:     "allow",
+			})
+		}
+	}
+}
+
+func (c *EffectivePermissionsCalculator) collectRolePermissions(ep *EffectivePermissions, principalID string) {
+	// Find roles this principal can assume
+	visited := make(map[string]bool)
+	c.collectRolePermissionsRecursive(ep, principalID, principalID, visited, []string{principalID})
+}
+
+func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
+	ep *EffectivePermissions,
+	_ string, // principalID - kept for potential future use
+	currentID string,
+	visited map[string]bool,
+	path []string,
+) {
+	if visited[currentID] {
+		return
+	}
+	visited[currentID] = true
+
+	for _, edge := range c.graph.GetOutEdges(currentID) {
+		if edge.Kind != EdgeKindCanAssume {
+			continue
+		}
+
+		roleNode, ok := c.graph.GetNode(edge.Target)
+		if !ok || roleNode.Kind != NodeKindRole {
+			continue
+		}
+
+		newPath := append([]string{}, path...)
+		newPath = append(newPath, roleNode.ID)
+
+		// Get role's permissions
+		for _, roleEdge := range c.graph.GetOutEdges(roleNode.ID) {
+			if roleEdge.IsDeny() {
+				continue
+			}
+
+			if roleEdge.Kind == EdgeKindCanAssume {
+				// Role can assume another role - recurse
+				c.collectRolePermissionsRecursive(ep, "", roleNode.ID, visited, newPath)
+				continue
+			}
+
+			targetNode, ok := c.graph.GetNode(roleEdge.Target)
+			if !ok || !targetNode.IsResource() {
+				continue
+			}
+
+			actions := edgeKindToActions(roleEdge.Kind)
+			resourcePath := append([]string{}, newPath...)
+			resourcePath = append(resourcePath, roleEdge.Target)
+
+			if existing, ok := ep.Resources[roleEdge.Target]; ok {
+				existing.Actions = mergeActions(existing.Actions, actions)
+				existing.Sources = append(existing.Sources, roleNode.ID)
+			} else {
+				ep.Resources[roleEdge.Target] = &ResourceAccess{
+					ResourceID:   roleEdge.Target,
+					ResourceName: targetNode.Name,
+					ResourceType: targetNode.Kind,
+					Actions:      actions,
+					Effect:       EdgeEffectAllow,
+					Sources:      []string{roleNode.ID},
+					Path:         resourcePath,
+					IsInherited:  true,
+				}
+			}
+
+			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+				Type:       "role",
+				SourceID:   roleNode.ID,
+				SourceName: roleNode.Name,
+				Effect:     "allow",
+			})
+		}
+	}
+}
+
+func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions, principalID string) {
+	// Collect all deny edges
+	denies := make(map[string][]string) // resourceID -> denied actions
+
+	// Direct denies
+	for _, edge := range c.graph.GetOutEdges(principalID) {
+		if !edge.IsDeny() {
+			continue
+		}
+		targetNode, ok := c.graph.GetNode(edge.Target)
+		if !ok || !targetNode.IsResource() {
+			continue
+		}
+		actions := edgeKindToActions(edge.Kind)
+		denies[edge.Target] = append(denies[edge.Target], actions...)
+	}
+
+	// TODO: Add group and role denies, SCPs
+
+	// Apply denies
+	for resourceID, deniedActions := range denies {
+		if access, ok := ep.Resources[resourceID]; ok {
+			access.Actions = removeActions(access.Actions, deniedActions)
+			if len(access.Actions) == 0 {
+				delete(ep.Resources, resourceID)
+			}
+		}
+	}
+}
+
+func (c *EffectivePermissionsCalculator) generateSummary(ep *EffectivePermissions) *PermissionSummary {
+	summary := &PermissionSummary{
+		TotalResources:  len(ep.Resources),
+		ResourcesByType: make(map[string]int),
+	}
+
+	actionSet := make(map[string]bool)
+	principal, _ := c.graph.GetNode(ep.PrincipalID)
+	principalAccount := ""
+	if principal != nil {
+		principalAccount = principal.Account
+	}
+
+	for _, access := range ep.Resources {
+		summary.ResourcesByType[string(access.ResourceType)]++
+
+		for _, action := range access.Actions {
+			actionSet[action] = true
+
+			if strings.Contains(action, "*") {
+				summary.WildcardActions++
+			}
+
+			// Categorize action
+			actionLower := strings.ToLower(action)
+			if strings.Contains(actionLower, "admin") || strings.Contains(actionLower, "fullcontrol") || action == "*" {
+				summary.AdminAccess++
+			} else if strings.Contains(actionLower, "write") || strings.Contains(actionLower, "put") || strings.Contains(actionLower, "create") {
+				summary.WriteAccess++
+			} else if strings.Contains(actionLower, "delete") || strings.Contains(actionLower, "remove") {
+				summary.DeleteAccess++
+			} else {
+				summary.ReadAccess++
+			}
+		}
+
+		// Check cross-account
+		resourceNode, ok := c.graph.GetNode(access.ResourceID)
+		if ok && resourceNode.Account != "" && resourceNode.Account != principalAccount {
+			summary.CrossAccountAccess++
+		}
+	}
+
+	summary.TotalActions = len(actionSet)
+	return summary
+}
+
+func (c *EffectivePermissionsCalculator) assessRisk(ep *EffectivePermissions) *PermissionRiskAssessment {
+	assessment := &PermissionRiskAssessment{
+		OverallRisk: RiskLow,
+		Findings:    make([]*PermissionFinding, 0),
+	}
+
+	score := 0.0
+
+	// Check for wildcard permissions
+	if ep.Summary.WildcardActions > 0 {
+		score += float64(ep.Summary.WildcardActions) * 15
+		assessment.Findings = append(assessment.Findings, &PermissionFinding{
+			Type:           "wildcard_permissions",
+			Severity:       SeverityHigh,
+			Description:    "Has wildcard (*) permissions",
+			Recommendation: "Replace wildcard with specific actions",
+		})
+	}
+
+	// Check for admin access to sensitive resources
+	if ep.Summary.AdminAccess > 5 {
+		score += float64(ep.Summary.AdminAccess) * 10
+		assessment.Findings = append(assessment.Findings, &PermissionFinding{
+			Type:           "excessive_admin",
+			Severity:       SeverityHigh,
+			Description:    "Has admin access to many resources",
+			Recommendation: "Apply least privilege principle",
+		})
+	}
+
+	// Check for cross-account access
+	if ep.Summary.CrossAccountAccess > 0 {
+		score += float64(ep.Summary.CrossAccountAccess) * 8
+		assessment.Findings = append(assessment.Findings, &PermissionFinding{
+			Type:           "cross_account",
+			Severity:       SeverityMedium,
+			Description:    "Has cross-account access",
+			Recommendation: "Review cross-account trust relationships",
+		})
+	}
+
+	// Check for delete permissions on critical resources
+	for _, access := range ep.Resources {
+		resourceNode, ok := c.graph.GetNode(access.ResourceID)
+		if !ok {
+			continue
+		}
+
+		for _, action := range access.Actions {
+			if strings.Contains(strings.ToLower(action), "delete") {
+				if resourceNode.Risk == RiskCritical || resourceNode.Risk == RiskHigh {
+					score += 20
+					assessment.Findings = append(assessment.Findings, &PermissionFinding{
+						Type:           "delete_critical",
+						Severity:       SeverityCritical,
+						Description:    "Can delete critical resource",
+						Resource:       access.ResourceID,
+						Action:         action,
+						Recommendation: "Remove delete permission or add approval workflow",
+					})
+				}
+			}
+		}
+	}
+
+	// Check for secrets access
+	for _, access := range ep.Resources {
+		if access.ResourceType == NodeKindSecret {
+			score += 15
+			assessment.Findings = append(assessment.Findings, &PermissionFinding{
+				Type:           "secrets_access",
+				Severity:       SeverityMedium,
+				Description:    "Has access to secrets",
+				Resource:       access.ResourceID,
+				Recommendation: "Ensure secrets access is necessary and audited",
+			})
+		}
+	}
+
+	// Calculate overprivileged percentage (compared to peer average)
+	// This would ideally use peer group analysis
+	if ep.Summary.TotalActions > 50 {
+		assessment.OverprivilegedBy = float64(ep.Summary.TotalActions-50) / 50.0 * 100
+		if assessment.OverprivilegedBy > 50 {
+			assessment.Findings = append(assessment.Findings, &PermissionFinding{
+				Type:           "overprivileged",
+				Severity:       SeverityMedium,
+				Description:    "Significantly more permissions than typical",
+				Recommendation: "Review and reduce permissions",
+			})
+		}
+	}
+
+	// Normalize score
+	if score > 100 {
+		score = 100
+	}
+	assessment.RiskScore = score
+
+	// Determine overall risk level
+	if score >= 70 {
+		assessment.OverallRisk = RiskCritical
+	} else if score >= 50 {
+		assessment.OverallRisk = RiskHigh
+	} else if score >= 25 {
+		assessment.OverallRisk = RiskMedium
+	} else {
+		assessment.OverallRisk = RiskLow
+	}
+
+	return assessment
+}
+
+// ClearCache clears the permissions cache
+func (c *EffectivePermissionsCalculator) ClearCache() {
+	c.cache = sync.Map{}
+}
+
+// ComparePermissions shows the difference between two principals' permissions
+func (c *EffectivePermissionsCalculator) ComparePermissions(principalA, principalB string) *PermissionComparison {
+	epA := c.Calculate(principalA)
+	epB := c.Calculate(principalB)
+
+	if epA == nil || epB == nil {
+		return nil
+	}
+
+	comparison := &PermissionComparison{
+		PrincipalA: principalA,
+		PrincipalB: principalB,
+		OnlyA:      make(map[string]*ResourceAccess),
+		OnlyB:      make(map[string]*ResourceAccess),
+		Common:     make(map[string]*ResourceAccessDiff),
+	}
+
+	// Find resources only in A
+	for resourceID, accessA := range epA.Resources {
+		if accessB, ok := epB.Resources[resourceID]; ok {
+			// In both - compare actions
+			comparison.Common[resourceID] = &ResourceAccessDiff{
+				ResourceID: resourceID,
+				ActionsA:   accessA.Actions,
+				ActionsB:   accessB.Actions,
+				OnlyInA:    subtractActions(accessA.Actions, accessB.Actions),
+				OnlyInB:    subtractActions(accessB.Actions, accessA.Actions),
+			}
+		} else {
+			comparison.OnlyA[resourceID] = accessA
+		}
+	}
+
+	// Find resources only in B
+	for resourceID, accessB := range epB.Resources {
+		if _, ok := epA.Resources[resourceID]; !ok {
+			comparison.OnlyB[resourceID] = accessB
+		}
+	}
+
+	comparison.OnlyACount = len(comparison.OnlyA)
+	comparison.OnlyBCount = len(comparison.OnlyB)
+	comparison.CommonCount = len(comparison.Common)
+
+	return comparison
+}
+
+// PermissionComparison shows differences between two principals
+type PermissionComparison struct {
+	PrincipalA  string                         `json:"principal_a"`
+	PrincipalB  string                         `json:"principal_b"`
+	OnlyA       map[string]*ResourceAccess     `json:"only_a"`
+	OnlyB       map[string]*ResourceAccess     `json:"only_b"`
+	Common      map[string]*ResourceAccessDiff `json:"common"`
+	OnlyACount  int                            `json:"only_a_count"`
+	OnlyBCount  int                            `json:"only_b_count"`
+	CommonCount int                            `json:"common_count"`
+}
+
+// ResourceAccessDiff shows action differences on a common resource
+type ResourceAccessDiff struct {
+	ResourceID string   `json:"resource_id"`
+	ActionsA   []string `json:"actions_a"`
+	ActionsB   []string `json:"actions_b"`
+	OnlyInA    []string `json:"only_in_a"`
+	OnlyInB    []string `json:"only_in_b"`
+}
+
+// Helper functions
+
+func edgeKindToActions(kind EdgeKind) []string {
+	switch kind {
+	case EdgeKindCanRead:
+		return []string{"read", "get", "list", "describe"}
+	case EdgeKindCanWrite:
+		return []string{"write", "put", "create", "update"}
+	case EdgeKindCanDelete:
+		return []string{"delete", "remove"}
+	case EdgeKindCanAdmin:
+		return []string{"*"}
+	default:
+		return []string{string(kind)}
+	}
+}
+
+func mergeActions(a, b []string) []string {
+	actionSet := make(map[string]bool)
+	for _, action := range a {
+		actionSet[action] = true
+	}
+	for _, action := range b {
+		actionSet[action] = true
+	}
+
+	result := make([]string, 0, len(actionSet))
+	for action := range actionSet {
+		result = append(result, action)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func removeActions(actions, toRemove []string) []string {
+	removeSet := make(map[string]bool)
+	for _, a := range toRemove {
+		removeSet[a] = true
+	}
+
+	var result []string
+	for _, a := range actions {
+		if !removeSet[a] {
+			result = append(result, a)
+		}
+	}
+	return result
+}
+
+func subtractActions(a, b []string) []string {
+	bSet := make(map[string]bool)
+	for _, action := range b {
+		bSet[action] = true
+	}
+
+	var result []string
+	for _, action := range a {
+		if !bSet[action] {
+			result = append(result, action)
+		}
+	}
+	return result
+}
+
+// GenerateLeastPrivilegePolicy generates a minimal policy for the actual usage
+func (c *EffectivePermissionsCalculator) GenerateLeastPrivilegePolicy(
+	principalID string,
+	usedActions map[string][]string, // resourceID -> actions actually used
+) *LeastPrivilegePolicy {
+	ep := c.Calculate(principalID)
+	if ep == nil {
+		return nil
+	}
+
+	policy := &LeastPrivilegePolicy{
+		PrincipalID:        principalID,
+		RecommendedActions: make(map[string][]string),
+		RemovedActions:     make(map[string][]string),
+	}
+
+	for resourceID, access := range ep.Resources {
+		used := usedActions[resourceID]
+		if len(used) == 0 {
+			// No usage - recommend removing all access
+			policy.RemovedActions[resourceID] = access.Actions
+			policy.TotalRemoved += len(access.Actions)
+			continue
+		}
+
+		// Keep only used actions
+		policy.RecommendedActions[resourceID] = used
+		removed := subtractActions(access.Actions, used)
+		if len(removed) > 0 {
+			policy.RemovedActions[resourceID] = removed
+			policy.TotalRemoved += len(removed)
+		}
+	}
+
+	policy.TotalKept = 0
+	for _, actions := range policy.RecommendedActions {
+		policy.TotalKept += len(actions)
+	}
+
+	if ep.Summary.TotalActions > 0 {
+		policy.ReductionPercent = float64(policy.TotalRemoved) / float64(ep.Summary.TotalActions) * 100
+	}
+
+	return policy
+}
+
+// LeastPrivilegePolicy is a recommended minimal policy
+type LeastPrivilegePolicy struct {
+	PrincipalID        string              `json:"principal_id"`
+	RecommendedActions map[string][]string `json:"recommended_actions"`
+	RemovedActions     map[string][]string `json:"removed_actions"`
+	TotalKept          int                 `json:"total_kept"`
+	TotalRemoved       int                 `json:"total_removed"`
+	ReductionPercent   float64             `json:"reduction_percent"`
+}

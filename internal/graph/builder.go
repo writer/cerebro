@@ -46,11 +46,17 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	b.logger.Info("building security graph")
 
-	// Build nodes first
+	// Build AWS nodes and edges
 	b.buildAWSNodes(ctx)
-
-	// Build edges
 	b.buildAWSEdges(ctx)
+
+	// Build GCP nodes and edges
+	b.buildGCPNodes(ctx)
+	b.buildGCPEdges(ctx)
+
+	// Build Azure nodes and edges
+	b.buildAzureNodes(ctx)
+	b.buildAzureEdges(ctx)
 
 	// Add internet entry point
 	b.addInternetNode()
@@ -710,4 +716,533 @@ func (b *Builder) buildLambdaRoleEdges(ctx context.Context) error {
 
 	b.logger.Debug("added lambda execution role edges", "count", count)
 	return nil
+}
+
+// GCP Builder Methods
+
+func (b *Builder) buildGCPNodes(ctx context.Context) {
+	// GCP Service Accounts
+	serviceAccounts, err := b.source.Query(ctx, `
+		SELECT unique_id, email, project_id, display_name
+		FROM gcp_iam_service_accounts
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP service accounts", "error", err)
+	} else {
+		for _, sa := range serviceAccounts.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(sa["unique_id"]),
+				Kind:     NodeKindServiceAccount,
+				Name:     toString(sa["email"]),
+				Provider: "gcp",
+				Account:  toString(sa["project_id"]),
+				Properties: map[string]any{
+					"email":        sa["email"],
+					"display_name": sa["display_name"],
+				},
+			})
+		}
+		b.logger.Debug("added GCP service accounts", "count", len(serviceAccounts.Rows))
+	}
+
+	// GCP Compute Instances
+	instances, err := b.source.Query(ctx, `
+		SELECT id, name, project_id, zone, status, service_accounts
+		FROM gcp_compute_instances
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP compute instances", "error", err)
+	} else {
+		for _, inst := range instances.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(inst["id"]),
+				Kind:     NodeKindInstance,
+				Name:     toString(inst["name"]),
+				Provider: "gcp",
+				Account:  toString(inst["project_id"]),
+				Region:   toString(inst["zone"]),
+				Properties: map[string]any{
+					"status":           inst["status"],
+					"service_accounts": inst["service_accounts"],
+				},
+			})
+		}
+		b.logger.Debug("added GCP compute instances", "count", len(instances.Rows))
+	}
+
+	// GCP Storage Buckets
+	buckets, err := b.source.Query(ctx, `
+		SELECT id, name, project_id, location, iam_policy
+		FROM gcp_storage_buckets
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP storage buckets", "error", err)
+	} else {
+		for _, bucket := range buckets.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(bucket["id"]),
+				Kind:     NodeKindBucket,
+				Name:     toString(bucket["name"]),
+				Provider: "gcp",
+				Account:  toString(bucket["project_id"]),
+				Region:   toString(bucket["location"]),
+				Properties: map[string]any{
+					"iam_policy": bucket["iam_policy"],
+				},
+			})
+		}
+		b.logger.Debug("added GCP storage buckets", "count", len(buckets.Rows))
+	}
+
+	// GCP Cloud SQL Instances
+	sqlInstances, err := b.source.Query(ctx, `
+		SELECT name, project, region, database_version, ip_addresses
+		FROM gcp_sql_instances
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP SQL instances", "error", err)
+	} else {
+		for _, db := range sqlInstances.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(db["name"]),
+				Kind:     NodeKindDatabase,
+				Name:     toString(db["name"]),
+				Provider: "gcp",
+				Account:  toString(db["project"]),
+				Region:   toString(db["region"]),
+				Properties: map[string]any{
+					"database_version": db["database_version"],
+					"ip_addresses":     db["ip_addresses"],
+				},
+			})
+		}
+		b.logger.Debug("added GCP SQL instances", "count", len(sqlInstances.Rows))
+	}
+
+	// GCP Cloud Functions
+	functions, err := b.source.Query(ctx, `
+		SELECT name, project_id, region, service_account_email, runtime
+		FROM gcp_cloudfunctions_functions
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP Cloud Functions", "error", err)
+	} else {
+		for _, fn := range functions.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(fn["name"]),
+				Kind:     NodeKindFunction,
+				Name:     toString(fn["name"]),
+				Provider: "gcp",
+				Account:  toString(fn["project_id"]),
+				Region:   toString(fn["region"]),
+				Properties: map[string]any{
+					"service_account": fn["service_account_email"],
+					"runtime":         fn["runtime"],
+				},
+			})
+		}
+		b.logger.Debug("added GCP Cloud Functions", "count", len(functions.Rows))
+	}
+}
+
+func (b *Builder) buildGCPEdges(ctx context.Context) {
+	// GCP IAM Bindings (project-level)
+	bindings, err := b.source.Query(ctx, `
+		SELECT project_id, role, members
+		FROM gcp_iam_policy_bindings
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query GCP IAM bindings", "error", err)
+		return
+	}
+
+	for _, binding := range bindings.Rows {
+		role := toString(binding["role"])
+		members := binding["members"]
+
+		memberList, ok := members.([]any)
+		if !ok {
+			continue
+		}
+
+		edgeKind := gcpRoleToEdgeKind(role)
+
+		for _, m := range memberList {
+			member := toString(m)
+			// Create edges for each resource the role grants access to
+			// GCP bindings are at project level, so we create edges to project resources
+			projectID := toString(binding["project_id"])
+
+			// Find all resources in this project
+			for _, node := range b.graph.GetNodesByAccount(projectID) {
+				if node.Provider != "gcp" || !node.IsResource() {
+					continue
+				}
+
+				b.graph.AddEdge(&Edge{
+					ID:     member + "->" + node.ID + ":" + role,
+					Source: member,
+					Target: node.ID,
+					Kind:   edgeKind,
+					Effect: EdgeEffectAllow,
+					Properties: map[string]any{
+						"role":    role,
+						"binding": "project",
+					},
+				})
+			}
+		}
+	}
+	b.logger.Debug("processed GCP IAM bindings", "count", len(bindings.Rows))
+
+	// Build service account edges for compute instances
+	b.buildGCPServiceAccountEdges(ctx)
+}
+
+func (b *Builder) buildGCPServiceAccountEdges(_ context.Context) {
+	// Link compute instances to their service accounts
+	for _, node := range b.graph.GetAllNodes() {
+		if node.Provider != "gcp" || node.Kind != NodeKindInstance {
+			continue
+		}
+
+		saList, ok := node.Properties["service_accounts"].([]any)
+		if !ok {
+			continue
+		}
+
+		for _, sa := range saList {
+			saMap, ok := sa.(map[string]any)
+			if !ok {
+				continue
+			}
+			saEmail := toString(saMap["email"])
+			if saEmail != "" {
+				b.graph.AddEdge(&Edge{
+					ID:     node.ID + "->runs_as->" + saEmail,
+					Source: node.ID,
+					Target: saEmail,
+					Kind:   EdgeKindCanAssume,
+					Effect: EdgeEffectAllow,
+					Properties: map[string]any{
+						"mechanism": "instance_service_account",
+					},
+				})
+			}
+		}
+	}
+}
+
+func gcpRoleToEdgeKind(role string) EdgeKind {
+	switch {
+	case contains(role, "admin"), contains(role, "owner"):
+		return EdgeKindCanAdmin
+	case contains(role, "editor"), contains(role, "writer"):
+		return EdgeKindCanWrite
+	case contains(role, "deleter"):
+		return EdgeKindCanDelete
+	default:
+		return EdgeKindCanRead
+	}
+}
+
+// Azure Builder Methods
+
+func (b *Builder) buildAzureNodes(ctx context.Context) {
+	// Azure Service Principals
+	servicePrincipals, err := b.source.Query(ctx, `
+		SELECT id, display_name, app_id, service_principal_type
+		FROM azure_ad_service_principals
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure service principals", "error", err)
+	} else {
+		for _, sp := range servicePrincipals.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(sp["id"]),
+				Kind:     NodeKindServiceAccount,
+				Name:     toString(sp["display_name"]),
+				Provider: "azure",
+				Properties: map[string]any{
+					"app_id": sp["app_id"],
+					"type":   sp["service_principal_type"],
+				},
+			})
+		}
+		b.logger.Debug("added Azure service principals", "count", len(servicePrincipals.Rows))
+	}
+
+	// Azure Users
+	users, err := b.source.Query(ctx, `
+		SELECT id, user_principal_name, display_name, mail
+		FROM azure_ad_users
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure AD users", "error", err)
+	} else {
+		for _, u := range users.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(u["id"]),
+				Kind:     NodeKindUser,
+				Name:     toString(u["display_name"]),
+				Provider: "azure",
+				Properties: map[string]any{
+					"upn":  u["user_principal_name"],
+					"mail": u["mail"],
+				},
+			})
+		}
+		b.logger.Debug("added Azure AD users", "count", len(users.Rows))
+	}
+
+	// Azure Virtual Machines
+	vms, err := b.source.Query(ctx, `
+		SELECT id, name, subscription_id, resource_group, location, identity
+		FROM azure_compute_virtual_machines
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure VMs", "error", err)
+	} else {
+		for _, vm := range vms.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(vm["id"]),
+				Kind:     NodeKindInstance,
+				Name:     toString(vm["name"]),
+				Provider: "azure",
+				Account:  toString(vm["subscription_id"]),
+				Region:   toString(vm["location"]),
+				Properties: map[string]any{
+					"resource_group": vm["resource_group"],
+					"identity":       vm["identity"],
+				},
+			})
+		}
+		b.logger.Debug("added Azure VMs", "count", len(vms.Rows))
+	}
+
+	// Azure Storage Accounts
+	storageAccounts, err := b.source.Query(ctx, `
+		SELECT id, name, subscription_id, resource_group, location, allow_blob_public_access
+		FROM azure_storage_accounts
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure storage accounts", "error", err)
+	} else {
+		for _, sa := range storageAccounts.Rows {
+			isPublic := toBool(sa["allow_blob_public_access"])
+			risk := RiskNone
+			if isPublic {
+				risk = RiskHigh
+			}
+			b.graph.AddNode(&Node{
+				ID:       toString(sa["id"]),
+				Kind:     NodeKindBucket,
+				Name:     toString(sa["name"]),
+				Provider: "azure",
+				Account:  toString(sa["subscription_id"]),
+				Region:   toString(sa["location"]),
+				Risk:     risk,
+				Properties: map[string]any{
+					"resource_group": sa["resource_group"],
+					"public":         isPublic,
+				},
+			})
+		}
+		b.logger.Debug("added Azure storage accounts", "count", len(storageAccounts.Rows))
+	}
+
+	// Azure SQL Databases
+	sqlDatabases, err := b.source.Query(ctx, `
+		SELECT id, name, subscription_id, resource_group, location, server_name
+		FROM azure_sql_databases
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure SQL databases", "error", err)
+	} else {
+		for _, db := range sqlDatabases.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(db["id"]),
+				Kind:     NodeKindDatabase,
+				Name:     toString(db["name"]),
+				Provider: "azure",
+				Account:  toString(db["subscription_id"]),
+				Region:   toString(db["location"]),
+				Properties: map[string]any{
+					"resource_group": db["resource_group"],
+					"server":         db["server_name"],
+				},
+			})
+		}
+		b.logger.Debug("added Azure SQL databases", "count", len(sqlDatabases.Rows))
+	}
+
+	// Azure Key Vaults (secrets)
+	keyVaults, err := b.source.Query(ctx, `
+		SELECT id, name, subscription_id, resource_group, location
+		FROM azure_keyvault_vaults
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure Key Vaults", "error", err)
+	} else {
+		for _, kv := range keyVaults.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(kv["id"]),
+				Kind:     NodeKindSecret,
+				Name:     toString(kv["name"]),
+				Provider: "azure",
+				Account:  toString(kv["subscription_id"]),
+				Region:   toString(kv["location"]),
+				Risk:     RiskHigh,
+				Properties: map[string]any{
+					"resource_group": kv["resource_group"],
+				},
+			})
+		}
+		b.logger.Debug("added Azure Key Vaults", "count", len(keyVaults.Rows))
+	}
+
+	// Azure Functions
+	functions, err := b.source.Query(ctx, `
+		SELECT id, name, subscription_id, resource_group, location, identity
+		FROM azure_functions_apps
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure Functions", "error", err)
+	} else {
+		for _, fn := range functions.Rows {
+			b.graph.AddNode(&Node{
+				ID:       toString(fn["id"]),
+				Kind:     NodeKindFunction,
+				Name:     toString(fn["name"]),
+				Provider: "azure",
+				Account:  toString(fn["subscription_id"]),
+				Region:   toString(fn["location"]),
+				Properties: map[string]any{
+					"resource_group": fn["resource_group"],
+					"identity":       fn["identity"],
+				},
+			})
+		}
+		b.logger.Debug("added Azure Functions", "count", len(functions.Rows))
+	}
+}
+
+func (b *Builder) buildAzureEdges(ctx context.Context) {
+	// Azure Role Assignments
+	roleAssignments, err := b.source.Query(ctx, `
+		SELECT id, principal_id, role_definition_name, scope
+		FROM azure_authorization_role_assignments
+	`)
+	if err != nil {
+		b.logger.Debug("failed to query Azure role assignments", "error", err)
+		return
+	}
+
+	for _, ra := range roleAssignments.Rows {
+		principalID := toString(ra["principal_id"])
+		roleName := toString(ra["role_definition_name"])
+		scope := toString(ra["scope"])
+
+		edgeKind := azureRoleToEdgeKind(roleName)
+
+		// Find resources that match this scope
+		for _, node := range b.graph.GetAllNodes() {
+			if node.Provider != "azure" || !node.IsResource() {
+				continue
+			}
+
+			// Check if node ID starts with scope (Azure scopes are hierarchical)
+			if contains(node.ID, scope) || scope == "/" {
+				b.graph.AddEdge(&Edge{
+					ID:     principalID + "->" + node.ID + ":" + roleName,
+					Source: principalID,
+					Target: node.ID,
+					Kind:   edgeKind,
+					Effect: EdgeEffectAllow,
+					Properties: map[string]any{
+						"role":  roleName,
+						"scope": scope,
+					},
+				})
+			}
+		}
+	}
+	b.logger.Debug("processed Azure role assignments", "count", len(roleAssignments.Rows))
+
+	// Build managed identity edges
+	b.buildAzureManagedIdentityEdges(ctx)
+}
+
+func (b *Builder) buildAzureManagedIdentityEdges(_ context.Context) {
+	// Link VMs and Functions to their managed identities
+	for _, node := range b.graph.GetAllNodes() {
+		if node.Provider != "azure" {
+			continue
+		}
+		if node.Kind != NodeKindInstance && node.Kind != NodeKindFunction {
+			continue
+		}
+
+		identity, ok := node.Properties["identity"].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		// System-assigned managed identity
+		if principalID, ok := identity["principal_id"].(string); ok && principalID != "" {
+			b.graph.AddEdge(&Edge{
+				ID:     node.ID + "->identity->" + principalID,
+				Source: node.ID,
+				Target: principalID,
+				Kind:   EdgeKindCanAssume,
+				Effect: EdgeEffectAllow,
+				Properties: map[string]any{
+					"mechanism": "system_assigned_identity",
+				},
+			})
+		}
+
+		// User-assigned managed identities
+		if userIdentities, ok := identity["user_assigned_identities"].(map[string]any); ok {
+			for identityID := range userIdentities {
+				b.graph.AddEdge(&Edge{
+					ID:     node.ID + "->identity->" + identityID,
+					Source: node.ID,
+					Target: identityID,
+					Kind:   EdgeKindCanAssume,
+					Effect: EdgeEffectAllow,
+					Properties: map[string]any{
+						"mechanism": "user_assigned_identity",
+					},
+				})
+			}
+		}
+	}
+}
+
+func azureRoleToEdgeKind(role string) EdgeKind {
+	switch {
+	case contains(role, "Owner"), contains(role, "Contributor"):
+		return EdgeKindCanAdmin
+	case contains(role, "Writer"):
+		return EdgeKindCanWrite
+	case contains(role, "Delete"):
+		return EdgeKindCanDelete
+	default:
+		return EdgeKindCanRead
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

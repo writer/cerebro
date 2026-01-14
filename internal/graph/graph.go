@@ -126,6 +126,17 @@ func (g *Graph) GetCrossAccountEdges() []*Edge {
 	return edges
 }
 
+// GetAllEdges returns all edges grouped by source node
+func (g *Graph) GetAllEdges() map[string][]*Edge {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	result := make(map[string][]*Edge)
+	for source, edges := range g.outEdges {
+		result[source] = append([]*Edge{}, edges...)
+	}
+	return result
+}
+
 // NodeCount returns the number of nodes
 func (g *Graph) NodeCount() int {
 	g.mu.RLock()

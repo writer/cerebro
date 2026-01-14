@@ -616,6 +616,22 @@ func (a *App) initScheduler(_ context.Context) {
 
 		a.Logger.Info("scheduled scanning enabled", "interval", interval, "tables", tables)
 	}
+
+	// Add graph rebuild job - rebuild hourly by default
+	graphInterval := time.Hour
+	if envInterval := getEnv("GRAPH_REBUILD_INTERVAL", ""); envInterval != "" {
+		if parsed, err := parseDuration(envInterval); err == nil {
+			graphInterval = parsed
+		}
+	}
+
+	a.Scheduler.AddJob("graph-rebuild", graphInterval, func(ctx context.Context) error {
+		if a.SecurityGraphBuilder == nil {
+			return nil
+		}
+		return a.RebuildSecurityGraph(ctx)
+	})
+	a.Logger.Info("scheduled graph rebuild enabled", "interval", graphInterval)
 }
 
 func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
