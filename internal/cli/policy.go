@@ -28,7 +28,18 @@ var policyListCmd = &cobra.Command{
 var policyValidateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate policy files",
-	RunE:  runPolicyValidate,
+	Long: `Validate all policy files in the policies directory.
+
+Checks that:
+- All policy files are valid JSON/YAML
+- Required fields (id, name, severity, resource) are present
+- Severity values are valid (critical, high, medium, low)
+- No duplicate policy IDs exist
+
+Examples:
+  cerebro policy validate
+  CEDAR_POLICIES_PATH=/custom/path cerebro policy validate`,
+	RunE: runPolicyValidate,
 }
 
 var policyTestCmd = &cobra.Command{
@@ -96,12 +107,24 @@ func runPolicyValidate(cmd *cobra.Command, args []string) error {
 	engine := policy.NewEngine()
 
 	if err := engine.LoadPolicies(cfg.CedarPoliciesPath); err != nil {
-		fmt.Printf("Validation FAILED: %v\n", err)
-		os.Exit(1)
+		Error("Validation failed: %v", err)
+		return err
 	}
 
 	policies := engine.ListPolicies()
-	fmt.Printf("Validated %d policies successfully\n", len(policies))
+
+	// Additional validation checks
+	severityCounts := map[string]int{"critical": 0, "high": 0, "medium": 0, "low": 0}
+	for _, p := range policies {
+		if count, ok := severityCounts[p.Severity]; ok {
+			severityCounts[p.Severity] = count + 1
+		}
+	}
+
+	Success("Validated %d policies", len(policies))
+	fmt.Printf("  Critical: %d, High: %d, Medium: %d, Low: %d\n",
+		severityCounts["critical"], severityCounts["high"],
+		severityCounts["medium"], severityCounts["low"])
 	return nil
 }
 

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -17,8 +16,18 @@ import (
 var queryCmd = &cobra.Command{
 	Use:   "query [sql]",
 	Short: "Execute SQL query against Snowflake",
-	Args:  cobra.MinimumNArgs(1),
-	RunE:  runQuery,
+	Long: `Execute a SQL query against the Snowflake data warehouse.
+
+The query results are displayed in table format by default, with support
+for JSON and CSV output. A LIMIT clause is automatically appended if not present.
+
+Examples:
+  cerebro query "SELECT * FROM aws_s3_buckets"
+  cerebro query "SELECT name, region FROM aws_ec2_instances" --limit 50
+  cerebro query "SELECT * FROM aws_iam_users" --format json
+  cerebro query "SELECT COUNT(*) FROM aws_s3_buckets"`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: runQuery,
 }
 
 var (
@@ -59,69 +68,37 @@ func runQuery(cmd *cobra.Command, args []string) error {
 
 	switch queryFormat {
 	case "json":
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(result)
+		return JSONOutput(map[string]interface{}{
+			"columns": result.Columns,
+			"rows":    result.Rows,
+			"count":   result.Count,
+		})
 	case "csv":
-		fmt.Println(strings.Join(result.Columns, ","))
+		rows := make([][]string, len(result.Rows))
+		for i, row := range result.Rows {
+			vals := make([]string, len(result.Columns))
+			for j, col := range result.Columns {
+				vals[j] = fmt.Sprintf("%v", row[col])
+			}
+			rows[i] = vals
+		}
+		return CSVOutput(result.Columns, rows)
+	default:
+		if len(result.Rows) == 0 {
+			Info("No results")
+			return nil
+		}
+		tw := NewTableWriter(os.Stdout, result.Columns...)
 		for _, row := range result.Rows {
 			vals := make([]string, len(result.Columns))
 			for i, col := range result.Columns {
 				vals[i] = fmt.Sprintf("%v", row[col])
 			}
-			fmt.Println(strings.Join(vals, ","))
+			tw.AddRow(vals...)
 		}
-	default:
-		printTable(result)
+		tw.Render()
 	}
 
 	fmt.Printf("\n%d rows returned\n", result.Count)
 	return nil
-}
-
-func printTable(result *snowflake.QueryResult) {
-	if len(result.Rows) == 0 {
-		fmt.Println("No results")
-		return
-	}
-
-	widths := make([]int, len(result.Columns))
-	for i, col := range result.Columns {
-		widths[i] = len(col)
-	}
-	for _, row := range result.Rows {
-		for i, col := range result.Columns {
-			val := fmt.Sprintf("%v", row[col])
-			if len(val) > widths[i] {
-				widths[i] = len(val)
-			}
-			if widths[i] > 50 {
-				widths[i] = 50
-			}
-		}
-	}
-
-	// Header
-	for i, col := range result.Columns {
-		fmt.Printf("%-*s  ", widths[i], col)
-	}
-	fmt.Println()
-
-	// Separator
-	for i := range result.Columns {
-		fmt.Print(strings.Repeat("-", widths[i]) + "  ")
-	}
-	fmt.Println()
-
-	// Rows
-	for _, row := range result.Rows {
-		for i, col := range result.Columns {
-			val := fmt.Sprintf("%v", row[col])
-			if len(val) > 50 {
-				val = val[:47] + "..."
-			}
-			fmt.Printf("%-*s  ", widths[i], val)
-		}
-		fmt.Println()
-	}
 }

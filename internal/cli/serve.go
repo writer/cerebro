@@ -13,13 +13,19 @@ import (
 	"github.com/writerinternal/cerebro/internal/server"
 )
 
+var servePort int
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the API server",
 	Long: `Start the Cerebro API server with graceful shutdown support.
 
 The server will handle SIGINT and SIGTERM signals gracefully, allowing
-in-flight requests to complete before shutting down.`,
+in-flight requests to complete before shutting down.
+
+Examples:
+  cerebro serve                 # Start on default port (API_PORT env or 8080)
+  cerebro serve --port 9090     # Start on port 9090`,
 	RunE: runServe,
 }
 
@@ -32,6 +38,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	application, err := app.New(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Override port if specified via flag
+	if servePort > 0 {
+		application.Config.Port = servePort
 	}
 
 	// Start scheduler in background if configured
@@ -71,6 +82,5 @@ func runServe(cmd *cobra.Command, args []string) error {
 }
 
 func init() {
-	// Add flags if needed
-	serveCmd.Flags().IntP("port", "p", 0, "Override the API port (default from API_PORT env)")
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", 0, "Override the API port (default from API_PORT env or 8080)")
 }

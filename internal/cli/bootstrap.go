@@ -15,7 +15,17 @@ var bootstrapCmd = &cobra.Command{
 	Long: `Bootstrap creates the Cerebro schema and all required tables in Snowflake.
 
 This command should be run once when setting up a new Cerebro installation.
-It is safe to run multiple times as it uses CREATE IF NOT EXISTS.`,
+It is safe to run multiple times as it uses CREATE IF NOT EXISTS.
+
+Tables created:
+- findings, tickets, access_reviews, review_items
+- attack_path_nodes, attack_path_edges, attack_paths
+- agent_sessions, agent_messages, provider_syncs
+- audit_log, webhooks, webhook_deliveries
+
+Examples:
+  cerebro bootstrap                    # Create schema and tables
+  cerebro bootstrap --drop             # Drop and recreate (WARNING: data loss)`,
 	RunE: runBootstrap,
 }
 
@@ -37,36 +47,38 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	defer application.Close()
 
 	if application.Snowflake == nil {
-		return fmt.Errorf("snowflake not configured - set SNOWFLAKE_CONNECTION_STRING")
+		Error("Snowflake not configured")
+		fmt.Println("  Set SNOWFLAKE_CONNECTION_STRING environment variable")
+		return fmt.Errorf("snowflake not configured")
 	}
 
 	if bootstrapDrop {
-		fmt.Println("Dropping existing schema...")
+		Warning("Dropping existing schema (all data will be lost)...")
 		if err := application.Snowflake.DropSchema(ctx); err != nil {
-			return fmt.Errorf("failed to drop schema: %w", err)
+			Error("Failed to drop schema: %v", err)
+			return err
 		}
-		fmt.Println("Schema dropped")
+		Success("Schema dropped")
 	}
 
-	fmt.Println("Creating schema and tables...")
+	Info("Creating schema and tables...")
 	if err := application.Snowflake.Bootstrap(ctx); err != nil {
-		return fmt.Errorf("failed to bootstrap: %w", err)
+		Error("Failed to bootstrap: %v", err)
+		return err
 	}
 
-	fmt.Println("Bootstrap complete. Created tables:")
-	fmt.Println("  - findings")
-	fmt.Println("  - tickets")
-	fmt.Println("  - access_reviews")
-	fmt.Println("  - review_items")
-	fmt.Println("  - attack_path_nodes")
-	fmt.Println("  - attack_path_edges")
-	fmt.Println("  - attack_paths")
-	fmt.Println("  - agent_sessions")
-	fmt.Println("  - agent_messages")
-	fmt.Println("  - provider_syncs")
-	fmt.Println("  - audit_log")
-	fmt.Println("  - webhooks")
-	fmt.Println("  - webhook_deliveries")
+	Success("Bootstrap complete")
+	fmt.Println()
+	fmt.Println("Tables created:")
+	tables := []string{
+		"findings", "tickets", "access_reviews", "review_items",
+		"attack_path_nodes", "attack_path_edges", "attack_paths",
+		"agent_sessions", "agent_messages", "provider_syncs",
+		"audit_log", "webhooks", "webhook_deliveries",
+	}
+	for _, t := range tables {
+		fmt.Printf("  %s %s\n", color(colorGreen, "✓"), t)
+	}
 
 	return nil
 }

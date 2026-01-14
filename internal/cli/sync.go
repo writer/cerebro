@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,7 +21,13 @@ var syncCmd = &cobra.Command{
 This command wraps the CloudQuery CLI and optionally:
 - Ensures Snowflake tables exist before sync (--ensure-tables)
 - Validates sync completed successfully (--validate)
-- Triggers a policy scan after sync (--scan-after)`,
+- Triggers a policy scan after sync (--scan-after)
+
+Examples:
+  cerebro sync                                    # Sync all sources
+  cerebro sync --source aws                       # Sync only AWS
+  cerebro sync --config config/cloudquery.yml    # Use custom config
+  cerebro sync --validate --scan-after           # Validate and scan after`,
 	RunE: runSync,
 }
 
@@ -46,23 +53,26 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	// Check CloudQuery CLI is available
 	if _, err := exec.LookPath("cloudquery"); err != nil {
-		return fmt.Errorf("cloudquery CLI not found. Install: brew install cloudquery/tap/cloudquery")
+		Error("CloudQuery CLI not found")
+		fmt.Println("  Install: brew install cloudquery/tap/cloudquery")
+		fmt.Println("  Or visit: https://www.cloudquery.io/docs/quickstart")
+		return err
 	}
 
 	// Optionally ensure tables exist
 	if syncEnsureTables {
-		fmt.Println("Ensuring Snowflake tables exist...")
+		Info("Ensuring Snowflake tables exist...")
 		if err := ensureCloudQueryTables(ctx); err != nil {
-			fmt.Printf("Warning: Could not ensure tables: %v\n", err)
+			Warning("Could not ensure tables: %v", err)
 		} else {
-			fmt.Println("Tables ready.")
+			Success("Tables ready")
 		}
 	}
 
 	// Get row counts before sync for validation
 	var beforeCounts map[string]int64
 	if syncValidate {
-		fmt.Println("Capturing pre-sync row counts...")
+		Info("Capturing pre-sync row counts...")
 		beforeCounts = getTableRowCounts(ctx)
 	}
 
@@ -72,7 +82,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		cqArgs = append(cqArgs, "--source", syncSource)
 	}
 
-	fmt.Printf("Running: cloudquery %v\n", cqArgs)
+	Info("Running: cloudquery %s", strings.Join(cqArgs, " "))
+	fmt.Println()
 
 	cqCmd := exec.Command("cloudquery", cqArgs...)
 	cqCmd.Stdout = os.Stdout
@@ -80,24 +91,26 @@ func runSync(cmd *cobra.Command, args []string) error {
 	cqCmd.Env = os.Environ()
 
 	if err := cqCmd.Run(); err != nil {
-		return fmt.Errorf("cloudquery sync failed: %w", err)
+		Error("CloudQuery sync failed: %v", err)
+		return err
 	}
 
 	syncDuration := time.Since(start)
-	fmt.Printf("\nSync completed in %s\n", syncDuration.Round(time.Second))
+	fmt.Println()
+	Success("Sync completed in %s", syncDuration.Round(time.Second))
 
 	// Validate sync results
 	if syncValidate && beforeCounts != nil {
-		fmt.Println("\nValidating sync results...")
+		Info("Validating sync results...")
 		afterCounts := getTableRowCounts(ctx)
 		validateSyncResults(beforeCounts, afterCounts)
 	}
 
 	// Optionally run policy scan
 	if syncScanAfter {
-		fmt.Println("\nTriggering policy scan...")
+		Info("Triggering policy scan...")
 		if err := runPostSyncScan(ctx); err != nil {
-			fmt.Printf("Warning: Post-sync scan failed: %v\n", err)
+			Warning("Post-sync scan failed: %v", err)
 		}
 	}
 
@@ -154,18 +167,20 @@ func getTableRowCounts(ctx context.Context) map[string]int64 {
 }
 
 func validateSyncResults(before, after map[string]int64) {
-	fmt.Println("\nSync validation:")
+	fmt.Println()
+	tw := NewTableWriter(os.Stdout, "Table", "Before", "After", "Change")
 	for table, beforeCount := range before {
 		afterCount := after[table]
 		diff := afterCount - beforeCount
-		status := "OK"
-		if afterCount < beforeCount {
-			status = "WARNING: rows decreased"
-		} else if diff > 0 {
-			status = fmt.Sprintf("+%d rows", diff)
+		change := "no change"
+		if diff > 0 {
+			change = statusColor(fmt.Sprintf("+%d", diff))
+		} else if diff < 0 {
+			change = color(colorRed, fmt.Sprintf("%d", diff))
 		}
-		fmt.Printf("  %s: %d -> %d (%s)\n", table, beforeCount, afterCount, status)
+		tw.AddRow(table, fmt.Sprintf("%d", beforeCount), fmt.Sprintf("%d", afterCount), change)
 	}
+	tw.Render()
 }
 
 func runPostSyncScan(ctx context.Context) error {
