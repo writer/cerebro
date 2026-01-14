@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -303,6 +304,18 @@ func (s *Server) setupRoutes() {
 			r.Get("/attack-paths/{id}/simulate-fix", s.simulateAttackPathFix)
 			r.Get("/chokepoints", s.listChokepoints)
 			r.Get("/privilege-escalation/{principalId}", s.detectPrivilegeEscalation)
+
+			// Peer Groups and Access Analysis endpoints
+			r.Get("/peer-groups", s.analyzePeerGroups)
+			r.Get("/effective-permissions/{principalId}", s.getEffectivePermissions)
+			r.Get("/compare-permissions", s.comparePermissions)
+
+			// Graph-based Access Review endpoints
+			r.Post("/access-reviews", s.createGraphAccessReview)
+			r.Get("/access-reviews", s.listGraphAccessReviews)
+			r.Get("/access-reviews/{id}", s.getGraphAccessReview)
+			r.Post("/access-reviews/{id}/start", s.startGraphAccessReview)
+			r.Post("/access-reviews/{id}/items/{itemId}/decide", s.decideGraphAccessReviewItem)
 
 			// Visualization endpoints
 			r.Get("/visualize/attack-path/{id}", s.visualizeAttackPath)
@@ -2891,6 +2904,187 @@ func (s *Server) detectPrivilegeEscalation(w http.ResponseWriter, r *http.Reques
 		"risk_count":   len(risks),
 		"risks":        risks,
 	})
+}
+
+// Peer Groups and Access Analysis endpoints
+
+func (s *Server) analyzePeerGroups(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	minSimilarity := 0.7
+	if simStr := r.URL.Query().Get("min_similarity"); simStr != "" {
+		if sim, err := strconv.ParseFloat(simStr, 64); err == nil && sim > 0 && sim <= 1 {
+			minSimilarity = sim
+		}
+	}
+
+	minGroupSize := 2
+	if sizeStr := r.URL.Query().Get("min_group_size"); sizeStr != "" {
+		if size, err := strconv.Atoi(sizeStr); err == nil && size > 1 {
+			minGroupSize = size
+		}
+	}
+
+	analysis := graph.AnalyzePeerGroups(s.app.SecurityGraph, minSimilarity, minGroupSize)
+	privilegeCreep := graph.FindPrivilegeCreep(s.app.SecurityGraph, 1.5)
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"total_principals": analysis.TotalPrincipals,
+		"groups":           analysis.Groups,
+		"ungrouped":        analysis.Ungrouped,
+		"outliers":         analysis.Outliers,
+		"privilege_creep":  privilegeCreep,
+	})
+}
+
+func (s *Server) getEffectivePermissions(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	principalID := chi.URLParam(r, "principalId")
+	if principalID == "" {
+		s.error(w, http.StatusBadRequest, "principal ID required")
+		return
+	}
+
+	calc := graph.NewEffectivePermissionsCalculator(s.app.SecurityGraph)
+	perms := calc.Calculate(principalID)
+
+	s.json(w, http.StatusOK, perms)
+}
+
+func (s *Server) comparePermissions(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	principal1 := r.URL.Query().Get("principal1")
+	principal2 := r.URL.Query().Get("principal2")
+	if principal1 == "" || principal2 == "" {
+		s.error(w, http.StatusBadRequest, "principal1 and principal2 query params required")
+		return
+	}
+
+	comparison := graph.CompareAccess(s.app.SecurityGraph, principal1, principal2)
+
+	s.json(w, http.StatusOK, comparison)
+}
+
+// Graph-based Access Review endpoints
+
+var graphAccessReviews = make(map[string]*graph.AccessReview)
+var graphAccessReviewsMu sync.RWMutex
+
+func (s *Server) createGraphAccessReview(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	var req struct {
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		Scope       graph.ReviewScope `json:"scope"`
+		CreatedBy   string            `json:"created_by"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	review := graph.CreateAccessReview(s.app.SecurityGraph, req.Name, req.Scope, req.CreatedBy)
+	review.Description = req.Description
+
+	graphAccessReviewsMu.Lock()
+	graphAccessReviews[review.ID] = review
+	graphAccessReviewsMu.Unlock()
+
+	s.json(w, http.StatusCreated, review)
+}
+
+func (s *Server) listGraphAccessReviews(w http.ResponseWriter, r *http.Request) {
+	graphAccessReviewsMu.RLock()
+	reviews := make([]*graph.AccessReview, 0, len(graphAccessReviews))
+	for _, review := range graphAccessReviews {
+		reviews = append(reviews, review)
+	}
+	graphAccessReviewsMu.RUnlock()
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"reviews": reviews,
+		"count":   len(reviews),
+	})
+}
+
+func (s *Server) getGraphAccessReview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	graphAccessReviewsMu.RLock()
+	review, ok := graphAccessReviews[id]
+	graphAccessReviewsMu.RUnlock()
+
+	if !ok {
+		s.error(w, http.StatusNotFound, "access review not found")
+		return
+	}
+
+	s.json(w, http.StatusOK, review)
+}
+
+func (s *Server) startGraphAccessReview(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+
+	graphAccessReviewsMu.Lock()
+	review, ok := graphAccessReviews[id]
+	if !ok {
+		graphAccessReviewsMu.Unlock()
+		s.error(w, http.StatusNotFound, "access review not found")
+		return
+	}
+
+	review.Start()
+	graphAccessReviewsMu.Unlock()
+
+	s.json(w, http.StatusOK, review)
+}
+
+func (s *Server) decideGraphAccessReviewItem(w http.ResponseWriter, r *http.Request) {
+	reviewID := chi.URLParam(r, "id")
+	itemID := chi.URLParam(r, "itemId")
+
+	var decision graph.ReviewDecision
+	if err := json.NewDecoder(r.Body).Decode(&decision); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	graphAccessReviewsMu.Lock()
+	review, ok := graphAccessReviews[reviewID]
+	if !ok {
+		graphAccessReviewsMu.Unlock()
+		s.error(w, http.StatusNotFound, "access review not found")
+		return
+	}
+
+	if !review.RecordDecision(itemID, decision) {
+		graphAccessReviewsMu.Unlock()
+		s.error(w, http.StatusNotFound, "review item not found")
+		return
+	}
+	graphAccessReviewsMu.Unlock()
+
+	s.json(w, http.StatusOK, map[string]string{"status": "decision recorded"})
 }
 
 // Visualization endpoints (Mermaid)
