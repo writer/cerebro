@@ -3,9 +3,26 @@ package api
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"strings"
 )
+
+// APIError represents a structured API error response
+type APIError struct {
+	Error   string `json:"error"`
+	Code    string `json:"code,omitempty"`
+	Details string `json:"details,omitempty"`
+}
+
+func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(APIError{
+		Error: message,
+		Code:  code,
+	})
+}
 
 type contextKey string
 
@@ -35,13 +52,13 @@ func APIKeyAuth(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			apiKey := extractAPIKey(r)
 			if apiKey == "" {
-				http.Error(w, `{"error":"missing api key"}`, http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "missing_api_key", "API key is required")
 				return
 			}
 
 			userID, valid := validateAPIKey(cfg.APIKeys, apiKey)
 			if !valid {
-				http.Error(w, `{"error":"invalid api key"}`, http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "invalid_api_key", "API key is invalid or expired")
 				return
 			}
 
