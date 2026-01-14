@@ -1,19 +1,20 @@
-FROM golang:1.23-alpine AS builder
+# Build stage - use buildx cross-compilation (no QEMU needed)
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 
-# Install dependencies
 RUN apk add --no-cache git ca-certificates
 
-# Copy go mod files
 COPY go.mod go.sum* ./
 RUN go mod download
 
-# Copy source
 COPY . .
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o /cerebro ./cmd/cerebro
+# Cross-compile for target platform (fast, no emulation)
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /cerebro ./cmd/cerebro
 
 # Runtime image
 FROM alpine:3.19
