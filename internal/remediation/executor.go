@@ -19,14 +19,14 @@ type Executor struct {
 	engine        *Engine
 	ticketing     *ticketing.Service
 	notifications *notifications.Manager
-	findings      *findings.Store
+	findings      findings.FindingStore
 }
 
 func NewExecutor(
 	engine *Engine,
 	ticketing *ticketing.Service,
 	notifications *notifications.Manager,
-	findings *findings.Store,
+	findings findings.FindingStore,
 ) *Executor {
 	return &Executor{
 		engine:        engine,

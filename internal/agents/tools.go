@@ -13,11 +13,11 @@ import (
 // SecurityTools provides investigation tools for agents
 type SecurityTools struct {
 	snowflake *snowflake.Client
-	findings  *findings.Store
+	findings  findings.FindingStore
 	policies  *policy.Engine
 }
 
-func NewSecurityTools(sf *snowflake.Client, fs *findings.Store, pe *policy.Engine) *SecurityTools {
+func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe *policy.Engine) *SecurityTools {
 	return &SecurityTools{
 		snowflake: sf,
 		findings:  fs,

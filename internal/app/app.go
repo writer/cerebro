@@ -78,7 +78,7 @@ type App struct {
 	// Core services
 	Snowflake *snowflake.Client
 	Policy    *policy.Engine
-	Findings  *findings.Store
+	Findings  findings.FindingStore
 	Scanner   *scanner.Scanner
 	Cache     *cache.PolicyCache
 
@@ -105,9 +105,6 @@ type App struct {
 
 	// Incremental scanning
 	ScanWatermarks *scanner.WatermarkStore
-
-	// File-based findings (for dev mode)
-	FileFindings *findings.FileStore
 
 	// New services
 	RBAC           *auth.RBAC
@@ -331,7 +328,6 @@ func New(ctx context.Context) (*App, error) {
 	app.initSnowflakeFindings(ctx)
 	app.initCloudQuery()
 	app.initScanWatermarks(ctx)
-	app.initFileFindings()
 
 	// Initialize new services
 	app.initRBAC()
@@ -381,6 +377,24 @@ func (a *App) initPolicy() {
 }
 
 func (a *App) initFindings() {
+	// Use file-based persistence when Snowflake is not available
+	// This prevents data loss on restart in dev/test environments
+	if a.Snowflake == nil {
+		filePath := findings.DefaultFilePath()
+		if path := os.Getenv("CEREBRO_FINDINGS_FILE"); path != "" {
+			filePath = path
+		}
+		store, err := findings.NewFileStore(filePath)
+		if err != nil {
+			a.Logger.Warn("failed to initialize file findings store, falling back to in-memory", "error", err)
+			a.Findings = findings.NewStore()
+			return
+		}
+		a.Findings = store
+		a.Logger.Info("using file-based findings store", "path", filePath)
+		return
+	}
+	// When Snowflake is available, use in-memory store with Snowflake sync
 	a.Findings = findings.NewStore()
 }
 
@@ -766,27 +780,6 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 	}
 	_ = db // unused but shows pattern
 	a.Logger.Info("scan watermarks initialized")
-}
-
-func (a *App) initFileFindings() {
-	// Only enable file-based findings in dev mode when Snowflake is not available
-	if a.Snowflake != nil {
-		return
-	}
-
-	filePath := findings.DefaultFilePath()
-	if path := os.Getenv("CEREBRO_FINDINGS_FILE"); path != "" {
-		filePath = path
-	}
-
-	store, err := findings.NewFileStore(filePath)
-	if err != nil {
-		a.Logger.Warn("failed to initialize file findings store", "error", err)
-		return
-	}
-
-	a.FileFindings = store
-	a.Logger.Info("file-based findings store initialized", "path", filePath)
 }
 
 // Close cleanly shuts down all services

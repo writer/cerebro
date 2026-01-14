@@ -12,14 +12,14 @@ import (
 // SlackCommandHandler handles Slack slash commands
 type SlackCommandHandler struct {
 	signingSecret string
-	findings      *findings.Store
+	findings      findings.FindingStore
 }
 
 type SlackCommandConfig struct {
 	SigningSecret string
 }
 
-func NewSlackCommandHandler(cfg SlackCommandConfig, fs *findings.Store) *SlackCommandHandler {
+func NewSlackCommandHandler(cfg SlackCommandConfig, fs findings.FindingStore) *SlackCommandHandler {
 	return &SlackCommandHandler{
 		signingSecret: cfg.SigningSecret,
 		findings:      fs,
