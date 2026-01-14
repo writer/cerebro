@@ -17,6 +17,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/auth"
 	"github.com/writerinternal/cerebro/internal/compliance"
 	"github.com/writerinternal/cerebro/internal/findings"
+	"github.com/writerinternal/cerebro/internal/graph"
 	"github.com/writerinternal/cerebro/internal/identity"
 	"github.com/writerinternal/cerebro/internal/lineage"
 	"github.com/writerinternal/cerebro/internal/metrics"
@@ -182,6 +183,8 @@ func (s *Server) setupRoutes() {
 			r.Delete("/{id}", s.deleteWebhook)
 			r.Get("/{id}/deliveries", s.getWebhookDeliveries)
 			r.Post("/test", s.testWebhook)
+			// CloudQuery sync webhook - trigger graph rebuild
+			r.Post("/cloudquery/sync", s.cloudQuerySyncWebhook)
 		})
 
 		// Audit log endpoints
@@ -284,6 +287,14 @@ func (s *Server) setupRoutes() {
 		// Telemetry ingestion (for agents)
 		r.Route("/telemetry", func(r chi.Router) {
 			r.Post("/ingest", s.ingestTelemetry)
+		})
+
+		// Security Graph endpoints
+		r.Route("/graph", func(r chi.Router) {
+			r.Get("/stats", s.graphStats)
+			r.Get("/blast-radius/{principalId}", s.blastRadius)
+			r.Get("/reverse-access/{resourceId}", s.reverseAccess)
+			r.Post("/rebuild", s.rebuildGraph)
 		})
 	})
 }
@@ -2553,6 +2564,150 @@ func (s *Server) getPolicyCoverage(w http.ResponseWriter, r *http.Request) {
 		"coverage_percent": coveragePercent,
 		"available_tables": len(availableTables),
 		"gaps":             gaps,
+	})
+}
+
+// Security Graph handlers
+
+func (s *Server) graphStats(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	meta := s.app.SecurityGraph.Metadata()
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"built_at":       meta.BuiltAt,
+		"node_count":     meta.NodeCount,
+		"edge_count":     meta.EdgeCount,
+		"providers":      meta.Providers,
+		"accounts":       meta.Accounts,
+		"build_duration": meta.BuildDuration.String(),
+	})
+}
+
+func (s *Server) blastRadius(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	principalID := chi.URLParam(r, "principalId")
+	if principalID == "" {
+		s.error(w, http.StatusBadRequest, "principal ID required")
+		return
+	}
+
+	maxDepth := 3
+	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 10 {
+			maxDepth = d
+		}
+	}
+
+	result := graph.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
+	s.json(w, http.StatusOK, result)
+}
+
+func (s *Server) reverseAccess(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	resourceID := chi.URLParam(r, "resourceId")
+	if resourceID == "" {
+		s.error(w, http.StatusBadRequest, "resource ID required")
+		return
+	}
+
+	maxDepth := 3
+	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 10 {
+			maxDepth = d
+		}
+	}
+
+	result := graph.ReverseAccess(s.app.SecurityGraph, resourceID, maxDepth)
+	s.json(w, http.StatusOK, result)
+}
+
+func (s *Server) rebuildGraph(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraphBuilder == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	if err := s.app.RebuildSecurityGraph(r.Context()); err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	meta := s.app.SecurityGraph.Metadata()
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"success":        true,
+		"built_at":       meta.BuiltAt,
+		"node_count":     meta.NodeCount,
+		"edge_count":     meta.EdgeCount,
+		"build_duration": meta.BuildDuration.String(),
+	})
+}
+
+// CloudQuery sync webhook handler - triggers graph rebuild when IAM data is synced
+func (s *Server) cloudQuerySyncWebhook(w http.ResponseWriter, r *http.Request) {
+	// Parse the webhook payload
+	var payload struct {
+		Tables []string `json:"tables"`
+		Status string   `json:"status"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid payload")
+		return
+	}
+
+	// Emit cloudquery synced event
+	s.app.Webhooks.Emit(r.Context(), webhooks.EventCloudQuerySynced, map[string]interface{}{
+		"tables": payload.Tables,
+		"status": payload.Status,
+	})
+
+	// Check if any IAM tables were synced - if so, rebuild the graph
+	iamTables := []string{
+		"aws_iam_users", "aws_iam_roles", "aws_iam_groups",
+		"aws_iam_policies", "aws_iam_user_attached_policies",
+		"aws_iam_role_attached_policies", "aws_iam_user_policies",
+		"aws_iam_role_policies", "aws_iam_group_policies",
+		"aws_iam_user_groups",
+	}
+
+	shouldRebuild := false
+	for _, table := range payload.Tables {
+		for _, iamTable := range iamTables {
+			if table == iamTable {
+				shouldRebuild = true
+				break
+			}
+		}
+		if shouldRebuild {
+			break
+		}
+	}
+
+	if shouldRebuild && s.app.SecurityGraphBuilder != nil {
+		// Rebuild graph asynchronously
+		go func() {
+			ctx := context.Background()
+			if err := s.app.RebuildSecurityGraph(ctx); err != nil {
+				s.app.Logger.Error("failed to rebuild graph after cloudquery sync", "error", err)
+			}
+		}()
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"received":       true,
+		"tables":         payload.Tables,
+		"rebuild_queued": shouldRebuild,
 	})
 }
 

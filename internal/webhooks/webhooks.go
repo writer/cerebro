@@ -26,6 +26,8 @@ const (
 	EventReviewCompleted   EventType = "review.completed"
 	EventAttackPathFound   EventType = "attack_path.found"
 	EventTicketCreated     EventType = "ticket.created"
+	EventCloudQuerySynced  EventType = "cloudquery.synced"
+	EventGraphRebuilt      EventType = "graph.rebuilt"
 )
 
 // Webhook represents a webhook configuration

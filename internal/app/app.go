@@ -48,6 +48,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/cloudquery"
 	"github.com/writerinternal/cerebro/internal/compliance"
 	"github.com/writerinternal/cerebro/internal/findings"
+	"github.com/writerinternal/cerebro/internal/graph"
 	"github.com/writerinternal/cerebro/internal/health"
 	"github.com/writerinternal/cerebro/internal/identity"
 	"github.com/writerinternal/cerebro/internal/lineage"
@@ -117,6 +118,10 @@ type App struct {
 	Remediation    *remediation.Engine
 	RuntimeDetect  *runtime.DetectionEngine
 	RuntimeRespond *runtime.ResponseEngine
+
+	// Security Graph
+	SecurityGraph        *graph.Graph
+	SecurityGraphBuilder *graph.Builder
 }
 
 // Config holds all application configuration
@@ -336,6 +341,7 @@ func New(ctx context.Context) (*App, error) {
 	app.initLineage()
 	app.initRemediation()
 	app.initRuntime()
+	app.initSecurityGraph(ctx)
 
 	logger.Info("application initialized",
 		"snowflake", app.Snowflake != nil,
@@ -1016,4 +1022,64 @@ func (a *App) initRuntime() {
 	a.RuntimeRespond = runtime.NewResponseEngine()
 	a.Logger.Info("runtime detection initialized", "rules", len(a.RuntimeDetect.ListRules()))
 	a.Logger.Info("runtime response initialized", "policies", len(a.RuntimeRespond.ListPolicies()))
+}
+
+func (a *App) initSecurityGraph(ctx context.Context) {
+	if a.Snowflake == nil {
+		a.Logger.Warn("security graph disabled - snowflake not configured")
+		return
+	}
+
+	source := graph.NewSnowflakeSource(a.Snowflake)
+	a.SecurityGraphBuilder = graph.NewBuilder(source, a.Logger)
+	a.SecurityGraph = a.SecurityGraphBuilder.Graph()
+
+	// Build initial graph in background
+	go func() {
+		if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+			a.Logger.Error("failed to build security graph", "error", err)
+			return
+		}
+		meta := a.SecurityGraph.Metadata()
+		a.Logger.Info("security graph built",
+			"nodes", meta.NodeCount,
+			"edges", meta.EdgeCount,
+			"duration", meta.BuildDuration,
+		)
+
+		// Emit webhook event
+		a.Webhooks.Emit(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
+			"nodes":          meta.NodeCount,
+			"edges":          meta.EdgeCount,
+			"build_duration": meta.BuildDuration.String(),
+		})
+	}()
+}
+
+// RebuildSecurityGraph triggers a rebuild of the security graph
+func (a *App) RebuildSecurityGraph(ctx context.Context) error {
+	if a.SecurityGraphBuilder == nil {
+		return fmt.Errorf("security graph not initialized")
+	}
+
+	start := time.Now()
+	if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+		return err
+	}
+
+	meta := a.SecurityGraph.Metadata()
+	a.Logger.Info("security graph rebuilt",
+		"nodes", meta.NodeCount,
+		"edges", meta.EdgeCount,
+		"duration", time.Since(start),
+	)
+
+	// Emit webhook event
+	a.Webhooks.Emit(ctx, webhooks.EventGraphRebuilt, map[string]interface{}{
+		"nodes":          meta.NodeCount,
+		"edges":          meta.EdgeCount,
+		"build_duration": time.Since(start).String(),
+	})
+
+	return nil
 }

@@ -1,0 +1,66 @@
+package graph
+
+// NodeKind represents the type of node in the security graph
+type NodeKind string
+
+const (
+	// Identity nodes
+	NodeKindUser           NodeKind = "user"
+	NodeKindRole           NodeKind = "role"
+	NodeKindGroup          NodeKind = "group"
+	NodeKindServiceAccount NodeKind = "service_account"
+
+	// Resource nodes
+	NodeKindBucket   NodeKind = "bucket"
+	NodeKindInstance NodeKind = "instance"
+	NodeKindDatabase NodeKind = "database"
+	NodeKindSecret   NodeKind = "secret"
+	NodeKindFunction NodeKind = "function"
+	NodeKindNetwork  NodeKind = "network"
+
+	// Abstract nodes
+	NodeKindInternet NodeKind = "internet"
+)
+
+// RiskLevel represents the risk level of a node or edge
+type RiskLevel string
+
+const (
+	RiskCritical RiskLevel = "critical"
+	RiskHigh     RiskLevel = "high"
+	RiskMedium   RiskLevel = "medium"
+	RiskLow      RiskLevel = "low"
+	RiskNone     RiskLevel = "none"
+)
+
+// Node represents an entity in the security graph
+type Node struct {
+	ID         string            `json:"id"`
+	Kind       NodeKind          `json:"kind"`
+	Name       string            `json:"name"`
+	Provider   string            `json:"provider"`
+	Account    string            `json:"account"`
+	Region     string            `json:"region,omitempty"`
+	Properties map[string]any    `json:"properties,omitempty"`
+	Tags       map[string]string `json:"tags,omitempty"`
+	Risk       RiskLevel         `json:"risk"`
+	Findings   []string          `json:"findings,omitempty"`
+}
+
+// IsIdentity returns true if the node is an identity type
+func (n *Node) IsIdentity() bool {
+	switch n.Kind {
+	case NodeKindUser, NodeKindRole, NodeKindGroup, NodeKindServiceAccount:
+		return true
+	}
+	return false
+}
+
+// IsResource returns true if the node is a resource type
+func (n *Node) IsResource() bool {
+	switch n.Kind {
+	case NodeKindBucket, NodeKindInstance, NodeKindDatabase, NodeKindSecret, NodeKindFunction, NodeKindNetwork:
+		return true
+	}
+	return false
+}
