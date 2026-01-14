@@ -46,6 +46,7 @@ type anthropicRequest struct {
 	Messages  []anthropicMessage `json:"messages"`
 	Tools     []anthropicTool    `json:"tools,omitempty"`
 	System    string             `json:"system,omitempty"`
+	Stream    bool               `json:"stream,omitempty"`
 }
 
 type anthropicMessage struct {
@@ -176,22 +177,129 @@ func (p *AnthropicProvider) Complete(ctx context.Context, messages []agents.Mess
 }
 
 func (p *AnthropicProvider) Stream(ctx context.Context, messages []agents.Message, tools []agents.Tool) (<-chan agents.StreamEvent, error) {
-	events := make(chan agents.StreamEvent)
+	events := make(chan agents.StreamEvent, 100)
+
+	// Convert messages
+	anthropicMsgs := make([]anthropicMessage, 0, len(messages))
+	var systemPrompt string
+
+	for _, m := range messages {
+		if m.Role == "system" {
+			systemPrompt = m.Content
+			continue
+		}
+		anthropicMsgs = append(anthropicMsgs, anthropicMessage{
+			Role:    m.Role,
+			Content: m.Content,
+		})
+	}
+
+	// Convert tools
+	anthropicTools := make([]anthropicTool, 0, len(tools))
+	for _, t := range tools {
+		anthropicTools = append(anthropicTools, anthropicTool{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: t.Parameters,
+		})
+	}
+
+	req := anthropicRequest{
+		Model:     p.model,
+		MaxTokens: 4096,
+		Messages:  anthropicMsgs,
+		Tools:     anthropicTools,
+		System:    systemPrompt,
+		Stream:    true,
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", p.apiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	httpReq.Header.Set("Accept", "text/event-stream")
 
 	go func() {
 		defer close(events)
 
-		// For now, use non-streaming and emit as single event
-		resp, err := p.Complete(ctx, messages, tools)
+		resp, err := p.client.Do(httpReq)
 		if err != nil {
 			events <- agents.StreamEvent{Error: err, Done: true}
 			return
 		}
+		defer resp.Body.Close()
 
-		events <- agents.StreamEvent{
-			Type:    "message",
-			Content: resp.Message.Content,
-			Done:    true,
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			events <- agents.StreamEvent{Error: fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)), Done: true}
+			return
+		}
+
+		// Parse SSE stream
+		reader := newSSEReader(resp.Body)
+		for {
+			select {
+			case <-ctx.Done():
+				events <- agents.StreamEvent{Error: ctx.Err(), Done: true}
+				return
+			default:
+			}
+
+			event, err := reader.Next()
+			if err == io.EOF {
+				events <- agents.StreamEvent{Done: true}
+				return
+			}
+			if err != nil {
+				events <- agents.StreamEvent{Error: err, Done: true}
+				return
+			}
+
+			// Handle Anthropic streaming events
+			switch event.Event {
+			case "content_block_delta":
+				var data struct {
+					Delta struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					} `json:"delta"`
+				}
+				if err := json.Unmarshal([]byte(event.Data), &data); err != nil {
+					continue
+				}
+				if data.Delta.Type == "text_delta" {
+					events <- agents.StreamEvent{
+						Type:    "delta",
+						Content: data.Delta.Text,
+					}
+				}
+			case "message_stop":
+				events <- agents.StreamEvent{Done: true}
+				return
+			case "error":
+				var data struct {
+					Error struct {
+						Type    string `json:"type"`
+						Message string `json:"message"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal([]byte(event.Data), &data); err == nil {
+					events <- agents.StreamEvent{
+						Error: fmt.Errorf("anthropic error: %s", data.Error.Message),
+						Done:  true,
+					}
+					return
+				}
+			}
 		}
 	}()
 

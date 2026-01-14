@@ -100,20 +100,41 @@ func runScan(cmd *cobra.Command, args []string) error {
 	for _, table := range tables {
 		fmt.Printf("\n%s Scanning %s...\n", color(colorCyan, "→"), table)
 
-		assets, err := application.Snowflake.GetAssets(ctx, table, snowflake.AssetFilter{Limit: scanLimit})
+		filter := snowflake.AssetFilter{Limit: scanLimit}
+		
+		// Use incremental scanning if available and not dry run
+		// Note: scanWatermarks is available in application but not currently exposed in CLI
+		// We'll check the watermark store directly
+		if application.ScanWatermarks != nil {
+			if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
+				// Check if full scan is forced or needed (e.g. schema change, very old watermark)
+				// For now, simple logic: if watermark exists and we aren't forcing full scan
+				filter.Since = wm.LastScanTime
+				fmt.Printf("  Incremental scan (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
+			}
+		}
+
+		assets, err := application.Snowflake.GetAssets(ctx, table, filter)
 		if err != nil {
 			Warning("Failed to fetch %s: %v", table, err)
 			continue
 		}
 
 		if len(assets) == 0 {
-			fmt.Printf("  No assets found\n")
+			fmt.Printf("  No new assets found\n")
 			continue
 		}
 
 		result := application.Scanner.ScanAssets(ctx, assets)
 		totalScanned += result.Scanned
 		totalViolations += result.Violations
+
+		// Update watermark
+		if application.ScanWatermarks != nil {
+			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), result.Scanned)
+			// Persist watermarks (best effort)
+			go application.ScanWatermarks.PersistWatermarks(ctx)
+		}
 
 		// Persist findings
 		for _, f := range result.Findings {

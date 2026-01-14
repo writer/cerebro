@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -183,14 +184,15 @@ func TestAnthropicProvider_Complete_APIError(t *testing.T) {
 
 func TestAnthropicProvider_Stream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := anthropicResponse{
-			ID:      "msg_123",
-			Type:    "message",
-			Role:    "assistant",
-			Content: []anthropicContent{{Type: "text", Text: "Streamed response"}},
-			Usage:   anthropicUsage{InputTokens: 5, OutputTokens: 10},
-		}
-		json.NewEncoder(w).Encode(resp)
+		// Proper SSE format response for testing
+		w.Header().Set("Content-Type", "text/event-stream")
+		
+		// 1. Send content delta
+		data := `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Streamed response"}}`
+		fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", data)
+		
+		// 2. Send message stop
+		fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
 	}))
 	defer server.Close()
 
@@ -204,16 +206,20 @@ func TestAnthropicProvider_Stream(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	var fullContent string
 	var lastEvent agents.StreamEvent
 	for event := range events {
 		lastEvent = event
+		if event.Type == "delta" {
+			fullContent += event.Content
+		}
 	}
 
 	if !lastEvent.Done {
 		t.Error("expected Done to be true")
 	}
-	if lastEvent.Content != "Streamed response" {
-		t.Errorf("expected content 'Streamed response', got '%s'", lastEvent.Content)
+	if fullContent != "Streamed response" {
+		t.Errorf("expected content 'Streamed response', got '%s'", fullContent)
 	}
 }
 

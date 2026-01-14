@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 func TestManager_NewManager(t *testing.T) {
@@ -199,9 +201,11 @@ func TestPagerDutyNotifier_Send(t *testing.T) {
 	defer server.Close()
 
 	// Override the PagerDuty URL for testing
+	limiter := rate.NewLimiter(rate.Limit(2), 10)
 	n := &PagerDutyNotifier{
 		routingKey: "test-key",
 		client:     &http.Client{Timeout: 10 * time.Second},
+		limiter:    limiter,
 	}
 
 	event := Event{

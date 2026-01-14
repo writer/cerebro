@@ -80,7 +80,17 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 
 	if existing, ok := s.findings[pf.ID]; ok {
 		existing.LastSeen = now
-		existing.Resource = pf.Resource
+		// Only update fields that might change
+		if pf.Description != "" {
+			existing.Description = pf.Description
+		}
+		if pf.Severity != "" {
+			existing.Severity = pf.Severity
+		}
+		if len(pf.Resource) > 0 {
+			existing.Resource = pf.Resource
+		}
+		
 		if existing.Status == "resolved" {
 			existing.Status = "open"
 			existing.ResolvedAt = nil

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 // Event represents a notification event
@@ -83,6 +85,7 @@ type SlackNotifier struct {
 	webhookURL string
 	channel    string
 	client     *http.Client
+	limiter    *rate.Limiter
 }
 
 type SlackConfig struct {
@@ -97,12 +100,18 @@ func NewSlackNotifier(cfg SlackConfig) *SlackNotifier {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		// Limit to 1 request per second with burst of 5
+		limiter: rate.NewLimiter(rate.Limit(1), 5),
 	}
 }
 
 func (s *SlackNotifier) Name() string { return "slack" }
 
 func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
+	if err := s.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("rate limit: %w", err)
+	}
+
 	color := s.severityColor(event.Severity)
 
 	payload := map[string]interface{}{
@@ -138,6 +147,10 @@ func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return fmt.Errorf("slack rate limited: %d", resp.StatusCode)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("slack returned status %d", resp.StatusCode)
 	}
@@ -172,6 +185,7 @@ func (s *SlackNotifier) severityColor(severity string) string {
 type PagerDutyNotifier struct {
 	routingKey string
 	client     *http.Client
+	limiter    *rate.Limiter
 }
 
 type PagerDutyConfig struct {
@@ -179,11 +193,15 @@ type PagerDutyConfig struct {
 }
 
 func NewPagerDutyNotifier(cfg PagerDutyConfig) *PagerDutyNotifier {
+	// Default limiter if none provided, though usually initialized in struct
+	limiter := rate.NewLimiter(rate.Limit(2), 10)
+	
 	return &PagerDutyNotifier{
 		routingKey: cfg.RoutingKey,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		limiter: limiter,
 	}
 }
 
@@ -193,6 +211,10 @@ func (p *PagerDutyNotifier) Send(ctx context.Context, event Event) error {
 	// Only send to PagerDuty for high/critical severity
 	if event.Severity != "critical" && event.Severity != "high" {
 		return nil
+	}
+
+	if err := p.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("rate limit: %w", err)
 	}
 
 	severity := "warning"
@@ -229,6 +251,10 @@ func (p *PagerDutyNotifier) Send(ctx context.Context, event Event) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return fmt.Errorf("pagerduty rate limited: %d", resp.StatusCode)
+	}
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("pagerduty returned status %d", resp.StatusCode)

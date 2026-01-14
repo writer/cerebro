@@ -135,9 +135,15 @@ func (r *Registry) SyncAll(ctx context.Context, opts SyncOptions) ([]*SyncResult
 			defer wg.Done()
 			result, err := provider.Sync(ctx, opts)
 			if err != nil {
-				results[idx] = &SyncResult{
-					Provider: provider.Name(),
-					Errors:   []string{err.Error()},
+				// Capture partial result if available, otherwise create error result
+				if result != nil {
+					result.Errors = append(result.Errors, err.Error())
+					results[idx] = result
+				} else {
+					results[idx] = &SyncResult{
+						Provider: provider.Name(),
+						Errors:   []string{err.Error()},
+					}
 				}
 			} else {
 				results[idx] = result

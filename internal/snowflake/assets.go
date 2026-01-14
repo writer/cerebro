@@ -3,6 +3,7 @@ package snowflake
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type Asset struct {
@@ -22,6 +23,7 @@ type AssetFilter struct {
 	Region   string
 	Limit    int
 	Offset   int
+	Since    time.Time
 }
 
 func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
@@ -46,6 +48,10 @@ func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter
 	if filter.Region != "" {
 		conditions = append(conditions, "region = ?")
 		args = append(args, filter.Region)
+	}
+	if !filter.Since.IsZero() {
+		conditions = append(conditions, "_cq_sync_time > ?")
+		args = append(args, filter.Since)
 	}
 
 	if len(conditions) > 0 {

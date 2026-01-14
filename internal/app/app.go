@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -380,21 +381,22 @@ func (a *App) initPolicy() {
 }
 
 func (a *App) initFindings() {
-	// Use file-based persistence when Snowflake is not available
+	// Use SQLite persistence when Snowflake is not available
 	// This prevents data loss on restart in dev/test environments
 	if a.Snowflake == nil {
-		filePath := findings.DefaultFilePath()
-		if path := os.Getenv("CEREBRO_FINDINGS_FILE"); path != "" {
-			filePath = path
+		dbPath := filepath.Join(findings.DefaultFilePath(), "cerebro.db")
+		if path := os.Getenv("CEREBRO_DB_PATH"); path != "" {
+			dbPath = path
 		}
-		store, err := findings.NewFileStore(filePath)
+		
+		store, err := findings.NewSQLiteStore(dbPath)
 		if err != nil {
-			a.Logger.Warn("failed to initialize file findings store, falling back to in-memory", "error", err)
+			a.Logger.Warn("failed to initialize sqlite findings store, falling back to in-memory", "error", err)
 			a.Findings = findings.NewStore()
 			return
 		}
 		a.Findings = store
-		a.Logger.Info("using file-based findings store", "path", filePath)
+		a.Logger.Info("using sqlite findings store", "path", dbPath)
 		return
 	}
 	// When Snowflake is available, use in-memory store with Snowflake sync
