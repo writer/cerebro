@@ -151,13 +151,24 @@ jobs:
             --force-new-deployment
 
       - name: Wait for deployment
+        timeout-minutes: 15
         run: |
           echo "Waiting for ECS deployment to stabilize..."
-          aws ecs wait services-stable \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }}
-          echo "Deployment complete!"
-
-      - name: Verify deployment
-        run: |
-          echo "Deployment successful - service is stable"
+          # Poll until new deployment is primary with desired count
+          for i in {1..60}; do
+            STATUS=$(aws ecs describe-services \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services ${{ env.ECS_SERVICE }} \
+              --query 'services[0].deployments[?status==`PRIMARY`] | [0].{running:runningCount,desired:desiredCount}' \
+              --output json)
+            RUNNING=$(echo $STATUS | jq -r '.running')
+            DESIRED=$(echo $STATUS | jq -r '.desired')
+            echo "Attempt $i: $RUNNING/$DESIRED tasks running"
+            if [ "$RUNNING" = "$DESIRED" ] && [ "$RUNNING" != "0" ]; then
+              echo "Deployment complete!"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Deployment did not stabilize in time"
+          exit 1

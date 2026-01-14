@@ -319,3 +319,11 @@ github_actions_role = github_actions.create_github_actions_role(
 )
 
 pulumi.export("github_actions_role_arn", github_actions_role.arn)
+
+# Infrastructure deployment role (for Pulumi)
+github_actions_infra_role = github_actions.create_github_actions_infra_role(
+    name="cerebro",
+    github_org="WriterInternal",
+    github_repo="cerebro",
+)
+pulumi.export("github_actions_infra_role_arn", github_actions_infra_role.arn)

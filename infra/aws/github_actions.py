@@ -149,3 +149,56 @@ def create_github_actions_role(
     )
 
     return role
+
+
+def create_github_actions_infra_role(
+    name: str,
+    github_org: str,
+    github_repo: str,
+) -> aws.iam.Role:
+    """Create IAM role for GitHub Actions Pulumi infrastructure deployments."""
+
+    oidc_provider = aws.iam.get_open_id_connect_provider(
+        url="https://token.actions.githubusercontent.com"
+    )
+
+    assume_role_policy = json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+                "Federated": oidc_provider.arn
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+                "StringEquals": {
+                    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+                },
+                "StringLike": {
+                    "token.actions.githubusercontent.com:sub": f"repo:{github_org}/{github_repo}:*"
+                }
+            }
+        }]
+    })
+
+    role = aws.iam.Role(
+        f"{name}-github-actions-infra-role",
+        name=f"github-actions-{name}-infra",
+        assume_role_policy=assume_role_policy,
+        description=f"GitHub Actions infra role for {github_org}/{github_repo}",
+        tags={
+            "Name": f"github-actions-{name}-infra",
+            "Repository": f"{github_org}/{github_repo}",
+            "Purpose": "Infrastructure deployment",
+        },
+    )
+
+    # Attach AdministratorAccess for Pulumi (scoped to this account)
+    # In production, you'd want to scope this down further
+    aws.iam.RolePolicyAttachment(
+        f"{name}-github-actions-infra-admin",
+        role=role.name,
+        policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
+    )
+
+    return role
