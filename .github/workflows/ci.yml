@@ -84,7 +84,7 @@ jobs:
 
   build-and-push:
     name: Build & Push Docker Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm64
     needs: [test, lint, policy-validate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
@@ -121,7 +121,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
