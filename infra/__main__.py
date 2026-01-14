@@ -13,8 +13,9 @@ Deploys:
 
 import pulumi
 import pulumi_aws as aws
+import pulumi_tailscale as tailscale
 
-from aws import compute, infisical, kms, load_balancer, monitoring, networking, secrets, waf
+from aws import compute, infisical, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
 
 # Configuration
 config = pulumi.Config()
@@ -55,6 +56,10 @@ infisical_external_id = config.get("infisicalExternalId")
 # AWS Secrets Manager instead of Pulumi config
 use_external_secrets = _config_bool("useExternalSecrets", False)
 external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{environment}"
+
+# Tailscale subnet router for internal access
+enable_tailscale = _config_bool("enableTailscale", False)
+tailscale_hostname = config.get("tailscaleHostname") or f"cerebro-{environment}"
 
 # =============================================================================
 # NETWORKING
@@ -226,6 +231,33 @@ if enable_waf:
     )
 
 # =============================================================================
+# TAILSCALE SUBNET ROUTER (optional)
+# =============================================================================
+
+tailscale_stack = None
+if enable_tailscale:
+    # Create a reusable, ephemeral auth key
+    ts_auth_key = tailscale.TailnetKey(
+        f"cerebro-{environment}-tailscale-key",
+        reusable=True,
+        ephemeral=True,
+        preauthorized=True,
+        expiry=7776000,  # 90 days
+        tags=["tag:exitnode"],
+    )
+    
+    # Advertise only the private subnets (where ALB/ECS live)
+    # Routes are auto-approved via ACL for tag:exitnode
+    tailscale_stack = ts.create_tailscale_subnet_router(
+        name=f"cerebro-{environment}",
+        vpc_id=vpc_stack["vpc_id"],
+        subnet_id=vpc_stack["private_subnet_ids"][0],
+        advertise_routes=["10.0.10.0/24", "10.0.11.0/24"],  # private subnets only
+        tailscale_auth_key=ts_auth_key.key,
+        tailscale_hostname=tailscale_hostname,
+    )
+
+# =============================================================================
 # OUTPUTS
 # =============================================================================
 
@@ -233,7 +265,8 @@ pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
-pulumi.export("secrets_arn", cerebro_secrets.arn)
+if cerebro_secrets:
+    pulumi.export("secrets_arn", cerebro_secrets.arn)
 pulumi.export("kms_key_id", kms_key.id)
 
 pulumi.export(
@@ -261,3 +294,7 @@ if enable_infisical and infisical_principal_arn:
         kms_key_arn=kms_key.arn,
     )
     pulumi.export("infisical_role_arn", infisical_stack["role_arn"])
+
+if tailscale_stack:
+    pulumi.export("tailscale_instance_id", tailscale_stack["instance_id"])
+    pulumi.export("tailscale_private_ip", tailscale_stack["private_ip"])
