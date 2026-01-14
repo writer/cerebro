@@ -216,23 +216,155 @@ func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) st
 }
 
 func evaluateCondition(condition string, asset map[string]interface{}) bool {
-	parts := strings.SplitN(condition, "==", 2)
-	if len(parts) == 2 {
+	condition = strings.TrimSpace(condition)
+
+	// Handle equality (==)
+	if parts := strings.SplitN(condition, "==", 2); len(parts) == 2 {
 		field := strings.TrimSpace(parts[0])
 		expected := strings.TrimSpace(parts[1])
-		if val, ok := asset[field]; ok {
-			return fmt.Sprintf("%v", val) == expected
+		val := getNestedValue(asset, field)
+		return compareValues(val, expected, "==")
+	}
+
+	// Handle inequality (!=)
+	if parts := strings.SplitN(condition, "!=", 2); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		expected := strings.TrimSpace(parts[1])
+		val := getNestedValue(asset, field)
+		return compareValues(val, expected, "!=")
+	}
+
+	// Handle greater than (>)
+	if parts := strings.SplitN(condition, ">", 2); len(parts) == 2 && !strings.Contains(parts[0], "<") {
+		field := strings.TrimSpace(parts[0])
+		expected := strings.TrimSpace(parts[1])
+		val := getNestedValue(asset, field)
+		return compareValues(val, expected, ">")
+	}
+
+	// Handle less than (<)
+	if parts := strings.SplitN(condition, "<", 2); len(parts) == 2 && !strings.Contains(parts[0], ">") {
+		field := strings.TrimSpace(parts[0])
+		expected := strings.TrimSpace(parts[1])
+		val := getNestedValue(asset, field)
+		return compareValues(val, expected, "<")
+	}
+
+	// Handle contains
+	if strings.Contains(condition, " contains ") {
+		parts := strings.SplitN(condition, " contains ", 2)
+		if len(parts) == 2 {
+			field := strings.TrimSpace(parts[0])
+			substring := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+			val := getNestedValue(asset, field)
+			if s, ok := val.(string); ok {
+				return strings.Contains(s, substring)
+			}
 		}
 	}
 
-	parts = strings.SplitN(condition, "!=", 2)
-	if len(parts) == 2 {
-		field := strings.TrimSpace(parts[0])
-		expected := strings.TrimSpace(parts[1])
-		if val, ok := asset[field]; ok {
-			return fmt.Sprintf("%v", val) != expected
-		}
+	// Handle exists check
+	if strings.HasSuffix(condition, " exists") {
+		field := strings.TrimSpace(strings.TrimSuffix(condition, " exists"))
+		val := getNestedValue(asset, field)
+		return val != nil
+	}
+
+	// Handle not exists check
+	if strings.HasSuffix(condition, " not exists") {
+		field := strings.TrimSpace(strings.TrimSuffix(condition, " not exists"))
+		val := getNestedValue(asset, field)
+		return val == nil
 	}
 
 	return false
+}
+
+// getNestedValue retrieves a value from nested maps using dot notation
+// e.g., "config.public_access.enabled" -> asset["config"]["public_access"]["enabled"]
+func getNestedValue(asset map[string]interface{}, path string) interface{} {
+	parts := strings.Split(path, ".")
+	var current interface{} = asset
+
+	for _, part := range parts {
+		if m, ok := current.(map[string]interface{}); ok {
+			current = m[part]
+		} else {
+			return nil
+		}
+	}
+
+	return current
+}
+
+// compareValues compares an asset value against an expected value
+func compareValues(val interface{}, expected string, operator string) bool {
+	if val == nil {
+		// nil handling: nil == "nil" or nil == "null" is true
+		if operator == "==" {
+			return expected == "nil" || expected == "null" || expected == ""
+		}
+		return operator == "!="
+	}
+
+	// Handle boolean comparison
+	if b, ok := val.(bool); ok {
+		expectedBool := expected == "true" || expected == "1"
+		switch operator {
+		case "==":
+			return b == expectedBool
+		case "!=":
+			return b != expectedBool
+		}
+	}
+
+	// Handle numeric comparison
+	if f, ok := toFloat64(val); ok {
+		if ef, err := parseFloat64(expected); err == nil {
+			switch operator {
+			case "==":
+				return f == ef
+			case "!=":
+				return f != ef
+			case ">":
+				return f > ef
+			case "<":
+				return f < ef
+			}
+		}
+	}
+
+	// Default string comparison
+	strVal := fmt.Sprintf("%v", val)
+	expected = strings.Trim(expected, "\"'") // Remove quotes from expected
+
+	switch operator {
+	case "==":
+		return strVal == expected
+	case "!=":
+		return strVal != expected
+	}
+
+	return false
+}
+
+func toFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case float32:
+		return float64(n), true
+	case float64:
+		return n, true
+	}
+	return 0, false
+}
+
+func parseFloat64(s string) (float64, error) {
+	s = strings.TrimSpace(s)
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	return f, err
 }
