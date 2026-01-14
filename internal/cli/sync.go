@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"github.com/writerinternal/cerebro/internal/app"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
@@ -32,11 +33,11 @@ Examples:
 }
 
 var (
-	syncConfigPath  string
-	syncSource      string
+	syncConfigPath   string
+	syncSource       string
 	syncEnsureTables bool
-	syncValidate    bool
-	syncScanAfter   bool
+	syncValidate     bool
+	syncScanAfter    bool
 )
 
 func init() {

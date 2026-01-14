@@ -170,17 +170,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 func resourceToTable(resource string) string {
 	// Map resource patterns to CloudQuery table names
 	mapping := map[string]string{
-		"aws::s3::bucket":           "aws_s3_buckets",
-		"aws::ec2::instance":        "aws_ec2_instances",
-		"aws::iam::user":            "aws_iam_users",
-		"aws::iam::role":            "aws_iam_roles",
-		"aws::rds::instance":        "aws_rds_instances",
-		"aws::lambda::function":     "aws_lambda_functions",
-		"aws::ec2::security_group":  "aws_ec2_security_groups",
-		"gcp::storage::bucket":      "gcp_storage_buckets",
-		"gcp::compute::instance":    "gcp_compute_instances",
-		"azure::storage::account":   "azure_storage_accounts",
-		"azure::compute::vm":        "azure_compute_virtual_machines",
+		"aws::s3::bucket":          "aws_s3_buckets",
+		"aws::ec2::instance":       "aws_ec2_instances",
+		"aws::iam::user":           "aws_iam_users",
+		"aws::iam::role":           "aws_iam_roles",
+		"aws::rds::instance":       "aws_rds_instances",
+		"aws::lambda::function":    "aws_lambda_functions",
+		"aws::ec2::security_group": "aws_ec2_security_groups",
+		"gcp::storage::bucket":     "gcp_storage_buckets",
+		"gcp::compute::instance":   "gcp_compute_instances",
+		"azure::storage::account":  "azure_storage_accounts",
+		"azure::compute::vm":       "azure_compute_virtual_machines",
 	}
 
 	if table, ok := mapping[resource]; ok {
@@ -196,5 +196,3 @@ func resourceToTable(resource string) string {
 
 	return ""
 }
-
-

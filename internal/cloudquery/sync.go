@@ -145,7 +145,7 @@ func (m *TableManager) ListAvailableTables(ctx context.Context) ([]string, error
 	}
 	defer rows.Close()
 
-	var tables []string
+	tables := make([]string, 0)
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
@@ -200,10 +200,10 @@ func (m *TableManager) GetAssetInventory(ctx context.Context) (*AssetInventory, 
 
 // DataFreshness holds information about data freshness
 type DataFreshness struct {
-	Table         string     `json:"table"`
-	LastSyncTime  *time.Time `json:"last_sync_time"`
-	HoursSinceSync float64   `json:"hours_since_sync"`
-	IsStale       bool       `json:"is_stale"` // True if > 24 hours old
+	Table          string     `json:"table"`
+	LastSyncTime   *time.Time `json:"last_sync_time"`
+	HoursSinceSync float64    `json:"hours_since_sync"`
+	IsStale        bool       `json:"is_stale"` // True if > 24 hours old
 }
 
 // CheckDataFreshness checks how fresh the CloudQuery data is

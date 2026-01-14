@@ -99,7 +99,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Snowflake
 	fmt.Println(bold("Snowflake"))
 	if sf, ok := status["snowflake"].(map[string]interface{}); ok {
-		if sf["configured"].(bool) {
+		configured, _ := sf["configured"].(bool)
+		if configured {
 			if sf["status"] == "healthy" {
 				fmt.Printf("  Status:   %s\n", statusColor("healthy"))
 				fmt.Printf("  Latency:  %dms\n", sf["latency_ms"])
@@ -126,8 +127,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if f, ok := status["findings"].(map[string]interface{}); ok {
 		fmt.Printf("  Total:    %d\n", f["total"])
 		fmt.Printf("  Open:     %d\n", f["open"])
-		critical := f["critical"].(int)
-		high := f["high"].(int)
+		critical, _ := f["critical"].(int)
+		high, _ := f["high"].(int)
 		if critical > 0 {
 			fmt.Printf("  Critical: %s\n", color(colorRed, fmt.Sprintf("%d", critical)))
 		} else {

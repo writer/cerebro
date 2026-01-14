@@ -169,10 +169,10 @@ func (s *WatermarkStore) LoadWatermarks(ctx context.Context) error {
 
 // IncrementalStats returns statistics about incremental scanning
 type IncrementalStats struct {
-	TablesWithWatermarks int            `json:"tables_with_watermarks"`
-	TotalRowsScanned     int64          `json:"total_rows_scanned"`
-	OldestWatermark      *time.Time     `json:"oldest_watermark,omitempty"`
-	NewestWatermark      *time.Time     `json:"newest_watermark,omitempty"`
+	TablesWithWatermarks int              `json:"tables_with_watermarks"`
+	TotalRowsScanned     int64            `json:"total_rows_scanned"`
+	OldestWatermark      *time.Time       `json:"oldest_watermark,omitempty"`
+	NewestWatermark      *time.Time       `json:"newest_watermark,omitempty"`
 	TableStats           map[string]int64 `json:"table_stats"`
 }
 

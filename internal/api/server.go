@@ -2548,11 +2548,11 @@ func (s *Server) getPolicyCoverage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.json(w, http.StatusOK, map[string]interface{}{
-		"total_policies":    totalPolicies,
-		"covered_policies":  coveredPolicies,
-		"coverage_percent":  coveragePercent,
-		"available_tables":  len(availableTables),
-		"gaps":              gaps,
+		"total_policies":   totalPolicies,
+		"covered_policies": coveredPolicies,
+		"coverage_percent": coveragePercent,
+		"available_tables": len(availableTables),
+		"gaps":             gaps,
 	})
 }
 

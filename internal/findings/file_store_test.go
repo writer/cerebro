@@ -42,12 +42,12 @@ func TestFileStore(t *testing.T) {
 	}
 
 	// Force save
-	if err := store.Sync(context.Background()); err != nil {
-		t.Errorf("sync failed: %v", err)
+	if syncErr := store.Sync(context.Background()); syncErr != nil {
+		t.Errorf("sync failed: %v", syncErr)
 	}
 
 	// Verify file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(filePath); os.IsNotExist(statErr) {
 		t.Error("file should exist after sync")
 	}
 

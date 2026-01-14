@@ -96,6 +96,15 @@ func TestDataFreshness_Stale(t *testing.T) {
 	if !freshness.IsStale {
 		t.Error("IsStale should be true for data > 24 hours old")
 	}
+	if freshness.Table != "aws_rds_instances" {
+		t.Error("Table field incorrect")
+	}
+	if freshness.HoursSinceSync != 48 {
+		t.Error("HoursSinceSync field incorrect")
+	}
+	if freshness.LastSyncTime == nil || !freshness.LastSyncTime.Equal(staleTime) {
+		t.Error("LastSyncTime field incorrect")
+	}
 }
 
 func TestTableManager_NewTableManager(t *testing.T) {
@@ -107,5 +116,8 @@ func TestTableManager_NewTableManager(t *testing.T) {
 
 	if manager.schema != "CEREBRO" {
 		t.Error("schema field incorrect")
+	}
+	if manager.snowflake != nil {
+		t.Error("snowflake should be nil")
 	}
 }

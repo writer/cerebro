@@ -16,11 +16,11 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::ec2::flow_log":       {"aws_ec2_flow_logs"},
 
 	// IAM
-	"aws::iam::user":           {"aws_iam_users", "aws_iam_credential_reports"},
-	"aws::iam::role":           {"aws_iam_roles"},
-	"aws::iam::policy":         {"aws_iam_policies"},
-	"aws::iam::group":          {"aws_iam_groups"},
-	"aws::iam::account":        {"aws_iam_accounts"},
+	"aws::iam::user":            {"aws_iam_users", "aws_iam_credential_reports"},
+	"aws::iam::role":            {"aws_iam_roles"},
+	"aws::iam::policy":          {"aws_iam_policies"},
+	"aws::iam::group":           {"aws_iam_groups"},
+	"aws::iam::account":         {"aws_iam_accounts"},
 	"aws::iam::password_policy": {"aws_iam_password_policies"},
 
 	// RDS
@@ -89,21 +89,21 @@ var ResourceToTableMapping = map[string][]string{
 	"aws::ecs::task_definition": {"aws_ecs_task_definitions"},
 
 	// GCP
-	"gcp::compute::instance":       {"gcp_compute_instances"},
-	"gcp::compute::firewall":       {"gcp_compute_firewalls"},
-	"gcp::iam::service_account":    {"gcp_iam_service_accounts"},
-	"gcp::storage::bucket":         {"gcp_storage_buckets"},
-	"gcp::sql::instance":           {"gcp_sql_instances"},
-	"gcp::container::cluster":      {"gcp_container_clusters"},
+	"gcp::compute::instance":    {"gcp_compute_instances"},
+	"gcp::compute::firewall":    {"gcp_compute_firewalls"},
+	"gcp::iam::service_account": {"gcp_iam_service_accounts"},
+	"gcp::storage::bucket":      {"gcp_storage_buckets"},
+	"gcp::sql::instance":        {"gcp_sql_instances"},
+	"gcp::container::cluster":   {"gcp_container_clusters"},
 
 	// Azure
-	"azure::compute::virtual_machine":    {"azure_compute_virtual_machines"},
-	"azure::storage::account":            {"azure_storage_accounts"},
-	"azure::storage::container":          {"azure_storage_containers"},
-	"azure::sql::server":                 {"azure_sql_servers"},
-	"azure::network::security_group":     {"azure_network_security_groups"},
-	"azure::ad::user":                    {"azure_ad_users"},
-	"azure::ad::service_principal":       {"azure_ad_service_principals"},
+	"azure::compute::virtual_machine": {"azure_compute_virtual_machines"},
+	"azure::storage::account":         {"azure_storage_accounts"},
+	"azure::storage::container":       {"azure_storage_containers"},
+	"azure::sql::server":              {"azure_sql_servers"},
+	"azure::network::security_group":  {"azure_network_security_groups"},
+	"azure::ad::user":                 {"azure_ad_users"},
+	"azure::ad::service_principal":    {"azure_ad_service_principals"},
 }
 
 // GetRequiredTables returns the CloudQuery tables needed to evaluate a policy
