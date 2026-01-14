@@ -295,6 +295,20 @@ func (s *Server) setupRoutes() {
 			r.Get("/blast-radius/{principalId}", s.blastRadius)
 			r.Get("/reverse-access/{resourceId}", s.reverseAccess)
 			r.Post("/rebuild", s.rebuildGraph)
+
+			// Risk Intelligence endpoints
+			r.Get("/risk-report", s.riskReport)
+			r.Get("/toxic-combinations", s.listToxicCombinations)
+			r.Get("/attack-paths", s.listGraphAttackPaths)
+			r.Get("/attack-paths/{id}/simulate-fix", s.simulateAttackPathFix)
+			r.Get("/chokepoints", s.listChokepoints)
+			r.Get("/privilege-escalation/{principalId}", s.detectPrivilegeEscalation)
+
+			// Visualization endpoints
+			r.Get("/visualize/attack-path/{id}", s.visualizeAttackPath)
+			r.Get("/visualize/toxic-combination/{id}", s.visualizeToxicCombination)
+			r.Get("/visualize/blast-radius/{principalId}", s.visualizeBlastRadius)
+			r.Get("/visualize/report", s.visualizeReport)
 		})
 	})
 }
@@ -2709,6 +2723,287 @@ func (s *Server) cloudQuerySyncWebhook(w http.ResponseWriter, r *http.Request) {
 		"tables":         payload.Tables,
 		"rebuild_queued": shouldRebuild,
 	})
+}
+
+// Risk Intelligence endpoints
+
+func (s *Server) riskReport(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	engine := graph.NewRiskEngine(s.app.SecurityGraph)
+	report := engine.Analyze()
+	s.json(w, http.StatusOK, report)
+}
+
+func (s *Server) listToxicCombinations(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	engine := graph.NewToxicCombinationEngine()
+	engine.RegisterMultiCloudRules()
+	results := engine.Analyze(s.app.SecurityGraph)
+
+	// Filter by severity if requested
+	severityFilter := r.URL.Query().Get("severity")
+	if severityFilter != "" {
+		filtered := make([]*graph.ToxicCombination, 0)
+		for _, tc := range results {
+			if string(tc.Severity) == severityFilter {
+				filtered = append(filtered, tc)
+			}
+		}
+		results = filtered
+	}
+
+	// Limit results
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 200 {
+			limit = l
+		}
+	}
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"total":   len(results),
+		"results": results,
+	})
+}
+
+func (s *Server) listGraphAttackPaths(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+
+	maxDepth := 6
+	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 10 {
+			maxDepth = d
+		}
+	}
+
+	result := simulator.Simulate(maxDepth)
+
+	// Filter by score threshold
+	threshold := 0.0
+	if threshStr := r.URL.Query().Get("threshold"); threshStr != "" {
+		if t, err := strconv.ParseFloat(threshStr, 64); err == nil {
+			threshold = t
+		}
+	}
+
+	if threshold > 0 {
+		filtered := make([]*graph.ScoredAttackPath, 0)
+		for _, path := range result.Paths {
+			if path.TotalScore >= threshold {
+				filtered = append(filtered, path)
+			}
+		}
+		result.Paths = filtered
+	}
+
+	// Limit results
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 200 {
+			limit = l
+		}
+	}
+	if len(result.Paths) > limit {
+		result.Paths = result.Paths[:limit]
+	}
+
+	s.json(w, http.StatusOK, result)
+}
+
+func (s *Server) simulateAttackPathFix(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	nodeID := chi.URLParam(r, "id")
+	if nodeID == "" {
+		s.error(w, http.StatusBadRequest, "node ID required")
+		return
+	}
+
+	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	result := simulator.Simulate(6)
+	fixSim := simulator.SimulateFix(result, nodeID)
+
+	s.json(w, http.StatusOK, fixSim)
+}
+
+func (s *Server) listChokepoints(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	result := simulator.Simulate(6)
+
+	limit := 20
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	chokepoints := result.Chokepoints
+	if len(chokepoints) > limit {
+		chokepoints = chokepoints[:limit]
+	}
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"total":       len(result.Chokepoints),
+		"chokepoints": chokepoints,
+	})
+}
+
+func (s *Server) detectPrivilegeEscalation(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	principalID := chi.URLParam(r, "principalId")
+	if principalID == "" {
+		s.error(w, http.StatusBadRequest, "principal ID required")
+		return
+	}
+
+	risks := graph.DetectPrivilegeEscalationRisks(s.app.SecurityGraph, principalID)
+
+	s.json(w, http.StatusOK, map[string]interface{}{
+		"principal_id": principalID,
+		"risk_count":   len(risks),
+		"risks":        risks,
+	})
+}
+
+// Visualization endpoints (Mermaid)
+
+func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	pathIndex := chi.URLParam(r, "id")
+	idx, err := strconv.Atoi(pathIndex)
+	if err != nil || idx < 0 {
+		s.error(w, http.StatusBadRequest, "valid path index required")
+		return
+	}
+
+	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	result := simulator.Simulate(6)
+
+	if idx >= len(result.Paths) {
+		s.error(w, http.StatusNotFound, "attack path not found")
+		return
+	}
+
+	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	mermaid := exporter.ExportAttackPath(result.Paths[idx])
+
+	w.Header().Set("Content-Type", "text/markdown")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(mermaid))
+}
+
+func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	tcID := chi.URLParam(r, "id")
+	if tcID == "" {
+		s.error(w, http.StatusBadRequest, "toxic combination ID required")
+		return
+	}
+
+	engine := graph.NewToxicCombinationEngine()
+	engine.RegisterMultiCloudRules()
+	results := engine.Analyze(s.app.SecurityGraph)
+
+	var targetTC *graph.ToxicCombination
+	for _, tc := range results {
+		if tc.ID == tcID {
+			targetTC = tc
+			break
+		}
+	}
+
+	if targetTC == nil {
+		s.error(w, http.StatusNotFound, "toxic combination not found")
+		return
+	}
+
+	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	mermaid := exporter.ExportToxicCombination(targetTC)
+
+	w.Header().Set("Content-Type", "text/markdown")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(mermaid))
+}
+
+func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	principalID := chi.URLParam(r, "principalId")
+	if principalID == "" {
+		s.error(w, http.StatusBadRequest, "principal ID required")
+		return
+	}
+
+	maxDepth := 3
+	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 10 {
+			maxDepth = d
+		}
+	}
+
+	result := graph.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
+	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	mermaid := exporter.ExportBlastRadius(result)
+
+	w.Header().Set("Content-Type", "text/markdown")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(mermaid))
+}
+
+func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {
+	if s.app.SecurityGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "security graph not initialized")
+		return
+	}
+
+	engine := graph.NewRiskEngine(s.app.SecurityGraph)
+	report := engine.Analyze()
+
+	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	mermaid := exporter.ExportSecurityReport(report)
+
+	w.Header().Set("Content-Type", "text/markdown")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(mermaid))
 }
 
 // Ensure imports are used
