@@ -20,6 +20,10 @@ const (
 
 	// Abstract nodes
 	NodeKindInternet NodeKind = "internet"
+
+	// Policy nodes
+	NodeKindSCP                NodeKind = "scp"                 // Service Control Policy
+	NodeKindPermissionBoundary NodeKind = "permission_boundary" // AWS Permission Boundary
 )
 
 // RiskLevel represents the risk level of a node or edge

@@ -286,10 +286,11 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 }
 
 func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions, principalID string) {
-	// Collect all deny edges
+	// Collect all deny edges from various sources
+	// Priority order: SCPs > Resource Policies > Identity Policies
 	denies := make(map[string][]string) // resourceID -> denied actions
 
-	// Direct denies
+	// 1. Direct denies from principal
 	for _, edge := range c.graph.GetOutEdges(principalID) {
 		if !edge.IsDeny() {
 			continue
@@ -300,11 +301,60 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions
 		}
 		actions := edgeKindToActions(edge.Kind)
 		denies[edge.Target] = append(denies[edge.Target], actions...)
+
+		ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+			Type:       "direct_deny",
+			SourceID:   principalID,
+			SourceName: ep.PrincipalName,
+			Effect:     "deny",
+		})
 	}
 
-	// TODO: Add group and role denies, SCPs
+	// 2. Group denies - check all groups the principal is a member of
+	for _, edge := range c.graph.GetOutEdges(principalID) {
+		if edge.Kind != EdgeKindMemberOf {
+			continue
+		}
 
-	// Apply denies
+		groupNode, ok := c.graph.GetNode(edge.Target)
+		if !ok || groupNode.Kind != NodeKindGroup {
+			continue
+		}
+
+		for _, groupEdge := range c.graph.GetOutEdges(edge.Target) {
+			if !groupEdge.IsDeny() {
+				continue
+			}
+
+			targetNode, ok := c.graph.GetNode(groupEdge.Target)
+			if !ok || !targetNode.IsResource() {
+				continue
+			}
+
+			actions := edgeKindToActions(groupEdge.Kind)
+			denies[groupEdge.Target] = append(denies[groupEdge.Target], actions...)
+
+			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+				Type:       "group_deny",
+				SourceID:   groupNode.ID,
+				SourceName: groupNode.Name,
+				Effect:     "deny",
+			})
+		}
+	}
+
+	// 3. Role denies - check all roles the principal can assume
+	visited := make(map[string]bool)
+	c.collectRoleDenies(ep, principalID, denies, visited)
+
+	// 4. Service Control Policies (SCPs) - apply organization-level restrictions
+	// SCPs are stored as special nodes with EdgeKindSCP edges
+	c.applyServiceControlPolicies(ep, principalID, denies)
+
+	// 5. Permission Boundaries - AWS specific, limits max permissions
+	c.applyPermissionBoundaries(ep, principalID, denies)
+
+	// Apply all collected denies
 	for resourceID, deniedActions := range denies {
 		if access, ok := ep.Resources[resourceID]; ok {
 			access.Actions = removeActions(access.Actions, deniedActions)
@@ -313,6 +363,218 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions
 			}
 		}
 	}
+}
+
+// collectRoleDenies recursively collects deny rules from assumable roles
+func (c *EffectivePermissionsCalculator) collectRoleDenies(
+	ep *EffectivePermissions,
+	currentID string,
+	denies map[string][]string,
+	visited map[string]bool,
+) {
+	if visited[currentID] {
+		return
+	}
+	visited[currentID] = true
+
+	for _, edge := range c.graph.GetOutEdges(currentID) {
+		if edge.Kind != EdgeKindCanAssume {
+			continue
+		}
+
+		roleNode, ok := c.graph.GetNode(edge.Target)
+		if !ok || roleNode.Kind != NodeKindRole {
+			continue
+		}
+
+		// Check role's deny edges
+		for _, roleEdge := range c.graph.GetOutEdges(roleNode.ID) {
+			if !roleEdge.IsDeny() {
+				if roleEdge.Kind == EdgeKindCanAssume {
+					// Role can assume another role - recurse
+					c.collectRoleDenies(ep, roleNode.ID, denies, visited)
+				}
+				continue
+			}
+
+			targetNode, ok := c.graph.GetNode(roleEdge.Target)
+			if !ok || !targetNode.IsResource() {
+				continue
+			}
+
+			actions := edgeKindToActions(roleEdge.Kind)
+			denies[roleEdge.Target] = append(denies[roleEdge.Target], actions...)
+
+			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+				Type:       "role_deny",
+				SourceID:   roleNode.ID,
+				SourceName: roleNode.Name,
+				Effect:     "deny",
+			})
+		}
+	}
+}
+
+// applyServiceControlPolicies applies organization-level SCPs
+func (c *EffectivePermissionsCalculator) applyServiceControlPolicies(
+	ep *EffectivePermissions,
+	principalID string,
+	denies map[string][]string,
+) {
+	principal, ok := c.graph.GetNode(principalID)
+	if !ok {
+		return
+	}
+
+	// SCPs are attached to accounts/OUs and inherited down
+	// Look for SCP nodes that apply to this principal's account
+	accountID := principal.Account
+
+	// Find all SCP nodes
+	for _, node := range c.graph.GetNodesByKind(NodeKindSCP) {
+		// Check if this SCP applies to the principal's account
+		if targets, ok := node.Properties["target_accounts"].([]string); ok {
+			applies := false
+			for _, target := range targets {
+				if target == accountID || target == "*" {
+					applies = true
+					break
+				}
+			}
+			if !applies {
+				continue
+			}
+		}
+
+		// Get denied actions from SCP
+		for _, edge := range c.graph.GetOutEdges(node.ID) {
+			if !edge.IsDeny() {
+				continue
+			}
+
+			// SCPs can deny access to services/actions globally
+			// Apply to all matching resources
+			actions := edgeKindToActions(edge.Kind)
+			if edge.Target == "*" {
+				// Deny applies to all resources
+				for resourceID := range ep.Resources {
+					denies[resourceID] = append(denies[resourceID], actions...)
+				}
+			} else {
+				denies[edge.Target] = append(denies[edge.Target], actions...)
+			}
+
+			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+				Type:       "scp",
+				SourceID:   node.ID,
+				SourceName: node.Name,
+				Effect:     "deny",
+			})
+		}
+
+		// SCPs can also work as allow-lists (implicit deny everything not allowed)
+		if allowList, ok := node.Properties["allow_list"].(bool); ok && allowList {
+			allowedActions := make(map[string]map[string]bool)
+
+			for _, edge := range c.graph.GetOutEdges(node.ID) {
+				if edge.IsDeny() {
+					continue
+				}
+				actions := edgeKindToActions(edge.Kind)
+				if allowedActions[edge.Target] == nil {
+					allowedActions[edge.Target] = make(map[string]bool)
+				}
+				for _, a := range actions {
+					allowedActions[edge.Target][a] = true
+				}
+			}
+
+			// Everything not explicitly allowed is denied
+			for resourceID, access := range ep.Resources {
+				allowed := allowedActions[resourceID]
+				if allowed == nil {
+					allowed = allowedActions["*"]
+				}
+				if allowed == nil {
+					// Nothing allowed - deny all
+					denies[resourceID] = append(denies[resourceID], access.Actions...)
+				} else {
+					// Only keep allowed actions
+					for _, action := range access.Actions {
+						if !allowed[action] && !allowed["*"] {
+							denies[resourceID] = append(denies[resourceID], action)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// applyPermissionBoundaries applies AWS permission boundaries
+func (c *EffectivePermissionsCalculator) applyPermissionBoundaries(
+	ep *EffectivePermissions,
+	principalID string,
+	denies map[string][]string,
+) {
+	principal, ok := c.graph.GetNode(principalID)
+	if !ok {
+		return
+	}
+
+	// Check if principal has a permission boundary attached
+	boundaryID, ok := principal.Properties["permission_boundary"].(string)
+	if !ok || boundaryID == "" {
+		return
+	}
+
+	boundary, ok := c.graph.GetNode(boundaryID)
+	if !ok {
+		return
+	}
+
+	// Permission boundary works as an allow-list
+	// Only actions allowed by the boundary are effective
+	allowedActions := make(map[string]map[string]bool)
+
+	for _, edge := range c.graph.GetOutEdges(boundaryID) {
+		if edge.IsDeny() {
+			continue
+		}
+		actions := edgeKindToActions(edge.Kind)
+		if allowedActions[edge.Target] == nil {
+			allowedActions[edge.Target] = make(map[string]bool)
+		}
+		for _, a := range actions {
+			allowedActions[edge.Target][a] = true
+		}
+	}
+
+	// If boundary exists, everything not in the boundary is implicitly denied
+	for resourceID, access := range ep.Resources {
+		allowed := allowedActions[resourceID]
+		if allowed == nil {
+			allowed = allowedActions["*"]
+		}
+		if allowed == nil {
+			// Nothing in boundary for this resource - deny all
+			denies[resourceID] = append(denies[resourceID], access.Actions...)
+		} else {
+			// Only keep actions that are both granted AND in the boundary
+			for _, action := range access.Actions {
+				if !allowed[action] && !allowed["*"] {
+					denies[resourceID] = append(denies[resourceID], action)
+				}
+			}
+		}
+	}
+
+	ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+		Type:       "permission_boundary",
+		SourceID:   boundaryID,
+		SourceName: boundary.Name,
+		Effect:     "limit",
+	})
 }
 
 func (c *EffectivePermissionsCalculator) generateSummary(ep *EffectivePermissions) *PermissionSummary {
