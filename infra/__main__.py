@@ -298,3 +298,24 @@ if enable_infisical and infisical_principal_arn:
 if tailscale_stack:
     pulumi.export("tailscale_instance_id", tailscale_stack["instance_id"])
     pulumi.export("tailscale_private_ip", tailscale_stack["private_ip"])
+
+# =============================================================================
+# GITHUB ACTIONS (CI/CD)
+# =============================================================================
+
+from aws import github_actions
+
+# ECR repository is managed outside Pulumi
+ecr_repository_arn = f"arn:aws:ecr:us-east-1:073877318660:repository/{ecs_stack['cluster'].name.apply(lambda n: 'cerebro')}"
+
+github_actions_role = github_actions.create_github_actions_role(
+    name="cerebro",
+    github_org="WriterInternal",
+    github_repo="cerebro",
+    ecr_repository_arn="arn:aws:ecr:us-east-1:073877318660:repository/cerebro",
+    ecs_cluster_arn=ecs_stack["cluster"].arn,
+    ecs_service_arn=ecs_stack["api_service"].id,
+    log_group_arns=[ecs_stack["log_group"].arn],
+)
+
+pulumi.export("github_actions_role_arn", github_actions_role.arn)
