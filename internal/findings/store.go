@@ -27,6 +27,7 @@ package findings
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -87,14 +88,8 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		return existing
 	}
 
-	resourceID := ""
-	if id, ok := pf.Resource["_cq_id"].(string); ok {
-		resourceID = id
-	}
-	resourceType := ""
-	if rt, ok := pf.Resource["_cq_table"].(string); ok {
-		resourceType = rt
-	}
+	resourceID := extractResourceID(pf.Resource)
+	resourceType := extractResourceType(pf.Resource)
 
 	f := &Finding{
 		ID:           pf.ID,
@@ -111,6 +106,58 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	}
 	s.findings[pf.ID] = f
 	return f
+}
+
+// extractResourceID tries multiple fields to find a suitable resource identifier
+func extractResourceID(resource map[string]interface{}) string {
+	// Priority order for resource ID extraction
+	idFields := []string{
+		"_cq_id",      // CloudQuery internal ID
+		"arn",         // AWS ARN
+		"id",          // Generic ID
+		"name",        // Resource name
+		"self_link",   // GCP self link
+		"resource_id", // Azure resource ID
+	}
+
+	for _, field := range idFields {
+		if val, ok := resource[field]; ok && val != nil {
+			if s, ok := val.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// extractResourceType determines the resource type from the resource data
+func extractResourceType(resource map[string]interface{}) string {
+	// Try CloudQuery table name first
+	if rt, ok := resource["_cq_table"].(string); ok && rt != "" {
+		return rt
+	}
+
+	// Try to infer from ARN
+	if arn, ok := resource["arn"].(string); ok && arn != "" {
+		// AWS ARN format: arn:aws:service:region:account:resource-type/resource-id
+		parts := strings.Split(arn, ":")
+		if len(parts) >= 6 {
+			return parts[2] // Service name (e.g., s3, ec2, iam)
+		}
+	}
+
+	// Try GCP self_link
+	if link, ok := resource["self_link"].(string); ok && link != "" {
+		// GCP format: https://compute.googleapis.com/compute/v1/projects/.../zones/.../instances/...
+		if strings.Contains(link, "compute.googleapis.com") {
+			return "gcp_compute"
+		}
+		if strings.Contains(link, "storage.googleapis.com") {
+			return "gcp_storage"
+		}
+	}
+
+	return ""
 }
 
 func (s *Store) Get(id string) (*Finding, bool) {
