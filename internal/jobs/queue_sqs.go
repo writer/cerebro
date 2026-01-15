@@ -55,13 +55,26 @@ func (q *SQSQueue) Receive(ctx context.Context, maxMessages int, waitTime time.D
 		maxMessages = 10
 	}
 
+	// Bound values to safe ranges before int32 conversion
+	waitSec := int(waitTime.Seconds())
+	if waitSec > 20 {
+		waitSec = 20
+	}
+	if waitSec < 0 {
+		waitSec = 0
+	}
+
 	input := &sqs.ReceiveMessageInput{
 		QueueUrl:            aws.String(q.queueURL),
-		MaxNumberOfMessages: min(int32(min(maxMessages, 10)), 10), // SQS max is 10, #nosec G115
-		WaitTimeSeconds:     int32(min(int(waitTime.Seconds()), 20)), // SQS max is 20
+		MaxNumberOfMessages: int32(maxMessages), // Already bounded to 1-10 above
+		WaitTimeSeconds:     int32(waitSec),     // Bounded to 0-20
 	}
 	if visibilityTimeout > 0 {
-		input.VisibilityTimeout = int32(min(int(visibilityTimeout.Seconds()), 43200)) // SQS max is 12h
+		visSec := int(visibilityTimeout.Seconds())
+		if visSec > 43200 {
+			visSec = 43200 // SQS max is 12h
+		}
+		input.VisibilityTimeout = int32(visSec)
 	}
 
 	out, err := q.client.ReceiveMessage(ctx, input)
