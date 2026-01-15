@@ -411,9 +411,31 @@ To enable the agent's cloud context capabilities in local development:
     make run
     ```
 
+### GCP SSO Setup
+
+To enable the agent's GCP cloud context capabilities:
+
+1.  **Authenticate**:
+    ```bash
+    # Update gcloud CLI credentials
+    gcloud auth login
+    
+    # Update Application Default Credentials (ADC) for libraries
+    gcloud auth application-default login
+    ```
+
+2.  **Verify Access**:
+    ```bash
+    # Check active project
+    gcloud config list project
+    
+    # Verify storage access (example)
+    gcloud storage buckets list --limit=1
+    ```
+
 ### Verification
 
-Run the verification script to ensure both Code and Cloud access are configured:
+Run the verification script to ensure Code, AWS, and GCP access are configured:
 
 ```bash
 # Verify GitHub access
@@ -421,6 +443,9 @@ gh repo view WriterInternal/cerebro >/dev/null && echo "GitHub OK"
 
 # Verify AWS access
 aws sts get-caller-identity --profile cerebro-prod >/dev/null && echo "AWS OK"
+
+# Verify GCP access (if using GCP features)
+gcloud storage buckets list --limit=1 >/dev/null && echo "GCP OK"
 ```
 
 ---
