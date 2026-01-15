@@ -65,6 +65,86 @@ func (st *SecurityTools) handleS3(ctx context.Context, cfg aws.Config, action st
 			return "", err
 		}
 		return toJSON(result.Contents)
+	case "get-bucket-acl":
+		var input s3.GetBucketAclInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetBucketAcl(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-bucket-policy":
+		var input s3.GetBucketPolicyInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetBucketPolicy(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-public-access-block":
+		var input s3.GetPublicAccessBlockInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetPublicAccessBlock(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-bucket-encryption":
+		var input s3.GetBucketEncryptionInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetBucketEncryption(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-bucket-location":
+		var input s3.GetBucketLocationInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetBucketLocation(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-bucket-versioning":
+		var input s3.GetBucketVersioningInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetBucketVersioning(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-bucket-logging":
+		var input s3.GetBucketLoggingInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetBucketLogging(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-bucket-policy-status":
+		var input s3.GetBucketPolicyStatusInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetBucketPolicyStatus(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
 	default:
 		return "", fmt.Errorf("unsupported s3 action: %s", action)
 	}
@@ -86,6 +166,26 @@ func (st *SecurityTools) handleLambda(ctx context.Context, cfg aws.Config, actio
 			return "", err
 		}
 		result, err := client.GetFunction(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-function-configuration":
+		var input lambda.GetFunctionConfigurationInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetFunctionConfiguration(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result)
+	case "get-policy":
+		var input lambda.GetPolicyInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetPolicy(ctx, &input)
 		if err != nil {
 			return "", err
 		}
@@ -115,6 +215,36 @@ func (st *SecurityTools) handleECS(ctx context.Context, cfg aws.Config, action s
 			return "", err
 		}
 		return toJSON(result.ServiceArns)
+	case "describe-clusters":
+		var input ecs.DescribeClustersInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.DescribeClusters(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result.Clusters)
+	case "describe-services":
+		var input ecs.DescribeServicesInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.DescribeServices(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result.Services)
+	case "describe-task-definition":
+		var input ecs.DescribeTaskDefinitionInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.DescribeTaskDefinition(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result.TaskDefinition)
 	default:
 		return "", fmt.Errorf("unsupported ecs action: %s", action)
 	}
@@ -130,6 +260,46 @@ func (st *SecurityTools) handleIAM(ctx context.Context, cfg aws.Config, action s
 			return "", err
 		}
 		return toJSON(result.Roles)
+	case "get-role":
+		var input iam.GetRoleInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetRole(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result.Role)
+	case "list-attached-role-policies":
+		var input iam.ListAttachedRolePoliciesInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.ListAttachedRolePolicies(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result.AttachedPolicies)
+	case "list-role-policies":
+		var input iam.ListRolePoliciesInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.ListRolePolicies(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result.PolicyNames)
+	case "get-policy":
+		var input iam.GetPolicyInput
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		result, err := client.GetPolicy(ctx, &input)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(result.Policy)
 	default:
 		return "", fmt.Errorf("unsupported iam action: %s", action)
 	}

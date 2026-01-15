@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -136,6 +137,16 @@ func (o *OktaProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 		result.TotalRows += apps.Rows
 	}
 
+	if opts.FullSync || opts.Since != nil {
+		logs, err := o.syncSystemLogs(ctx, opts)
+		if err != nil {
+			result.Errors = append(result.Errors, "system_logs: "+err.Error())
+		} else {
+			result.Tables = append(result.Tables, *logs)
+			result.TotalRows += logs.Rows
+		}
+	}
+
 	result.CompletedAt = time.Now()
 	result.Duration = result.CompletedAt.Sub(start)
 
@@ -145,13 +156,8 @@ func (o *OktaProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult,
 func (o *OktaProvider) syncUsers(ctx context.Context) (*TableResult, error) {
 	result := &TableResult{Name: "okta_users"}
 
-	body, err := o.request(ctx, "/api/v1/users")
+	users, err := o.requestAll(ctx, "/api/v1/users?limit=200")
 	if err != nil {
-		return result, err
-	}
-
-	var users []map[string]interface{}
-	if err := json.Unmarshal(body, &users); err != nil {
 		return result, err
 	}
 
@@ -163,13 +169,8 @@ func (o *OktaProvider) syncUsers(ctx context.Context) (*TableResult, error) {
 func (o *OktaProvider) syncGroups(ctx context.Context) (*TableResult, error) {
 	result := &TableResult{Name: "okta_groups"}
 
-	body, err := o.request(ctx, "/api/v1/groups")
+	groups, err := o.requestAll(ctx, "/api/v1/groups?limit=200")
 	if err != nil {
-		return result, err
-	}
-
-	var groups []map[string]interface{}
-	if err := json.Unmarshal(body, &groups); err != nil {
 		return result, err
 	}
 
@@ -181,13 +182,8 @@ func (o *OktaProvider) syncGroups(ctx context.Context) (*TableResult, error) {
 func (o *OktaProvider) syncApplications(ctx context.Context) (*TableResult, error) {
 	result := &TableResult{Name: "okta_applications"}
 
-	body, err := o.request(ctx, "/api/v1/apps")
+	apps, err := o.requestAll(ctx, "/api/v1/apps?limit=200")
 	if err != nil {
-		return result, err
-	}
-
-	var apps []map[string]interface{}
-	if err := json.Unmarshal(body, &apps); err != nil {
 		return result, err
 	}
 
@@ -196,12 +192,56 @@ func (o *OktaProvider) syncApplications(ctx context.Context) (*TableResult, erro
 	return result, nil
 }
 
+func (o *OktaProvider) syncSystemLogs(ctx context.Context, opts SyncOptions) (*TableResult, error) {
+	result := &TableResult{Name: "okta_system_logs"}
+
+	path := "/api/v1/logs?limit=200"
+	if opts.Since != nil {
+		path = fmt.Sprintf("%s&since=%s", path, opts.Since.UTC().Format(time.RFC3339))
+	}
+
+	logs, err := o.requestAll(ctx, path)
+	if err != nil {
+		return result, err
+	}
+
+	result.Rows = int64(len(logs))
+	result.Inserted = result.Rows
+	return result, nil
+}
+
 func (o *OktaProvider) request(ctx context.Context, path string) ([]byte, error) {
 	url := fmt.Sprintf("https://%s%s", o.domain, path)
+	body, _, err := o.requestWithResponse(ctx, url)
+	return body, err
+}
 
+func (o *OktaProvider) requestAll(ctx context.Context, path string) ([]map[string]interface{}, error) {
+	nextURL := fmt.Sprintf("https://%s%s", o.domain, path)
+	items := make([]map[string]interface{}, 0)
+
+	for nextURL != "" {
+		body, headers, err := o.requestWithResponse(ctx, nextURL)
+		if err != nil {
+			return nil, err
+		}
+
+		var page []map[string]interface{}
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, err
+		}
+
+		items = append(items, page...)
+		nextURL = parseNextLink(headers.Get("Link"))
+	}
+
+	return items, nil
+}
+
+func (o *OktaProvider) requestWithResponse(ctx context.Context, url string) ([]byte, http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	req.Header.Set("Authorization", "SSWS "+o.apiToken)
@@ -210,14 +250,41 @@ func (o *OktaProvider) request(ctx context.Context, path string) ([]byte, error)
 
 	resp, err := o.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("okta API error %d: %s", resp.StatusCode, string(body))
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, nil, fmt.Errorf("okta API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return body, resp.Header, nil
+}
+
+func parseNextLink(linkHeader string) string {
+	if linkHeader == "" {
+		return ""
+	}
+
+	links := strings.Split(linkHeader, ",")
+	for _, link := range links {
+		parts := strings.Split(strings.TrimSpace(link), ";")
+		if len(parts) < 2 {
+			continue
+		}
+		if !strings.Contains(parts[1], "rel=\"next\"") {
+			continue
+		}
+		url := strings.TrimSpace(parts[0])
+		url = strings.TrimPrefix(url, "<")
+		url = strings.TrimSuffix(url, ">")
+		return url
+	}
+
+	return ""
 }

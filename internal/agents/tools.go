@@ -103,6 +103,58 @@ func (st *SecurityTools) GetTools() []Tool {
 			Handler: st.gcpInspect,
 		},
 		{
+			Name:        "inspect_cloud_resource",
+			Description: "Inspect a specific cloud resource by identifier (auto-detects AWS or GCP)",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"resource": map[string]interface{}{
+						"type":        "string",
+						"description": "Resource identifier (ARN, s3://bucket, gs://bucket, etc.)",
+					},
+					"provider": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional override for provider (aws or gcp)",
+						"enum":        []string{"aws", "gcp"},
+					},
+					"service": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional override for service (s3, lambda, ecs, iam, storage, compute, resourcemanager)",
+					},
+					"identifier": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional override for resource identifier",
+					},
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "GCP project ID (required for GCP inspection unless encoded in resource)",
+					},
+					"region": map[string]interface{}{
+						"type":        "string",
+						"description": "AWS region override",
+					},
+					"cluster": map[string]interface{}{
+						"type":        "string",
+						"description": "ECS cluster name for service inspection",
+					},
+					"zone": map[string]interface{}{
+						"type":        "string",
+						"description": "GCP zone for compute instance inspection",
+					},
+					"action": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional action override (runs single action instead of full inspection)",
+					},
+					"params": map[string]interface{}{
+						"type":        "object",
+						"description": "Parameters for action override",
+					},
+				},
+				"required": []string{"resource"},
+			},
+			Handler: st.inspectCloudResource,
+		},
+		{
 			Name:        "query_assets",
 			Description: "Query cloud assets from the security data lake using SQL",
 			Parameters: map[string]interface{}{
@@ -406,5 +458,11 @@ func (st *SecurityTools) analyzeRepo(ctx context.Context, args json.RawMessage) 
 		return fmt.Sprintf("File content for %s:\n%s", params.FilePath, content), nil
 	}
 
-	return fmt.Sprintf("Repository %s is accessible. Use file_path to read specific files.", params.RepoURL), nil
+	analysis, err := scanRepositoryForResources(tempDir, params.RepoURL)
+	if err != nil {
+		return "", err
+	}
+
+	output, _ := json.MarshalIndent(analysis, "", "  ")
+	return string(output), nil
 }
