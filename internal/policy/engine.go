@@ -229,19 +229,19 @@ func mapResourceToTable(resourceType string) string {
 		return "aws_lambda_functions"
 	case "aws::kms::key":
 		return "aws_kms_keys"
-	
+
 	// GCP
 	case "gcp::storage::bucket":
 		return "gcp_storage_buckets"
 	case "gcp::compute::instance":
 		return "gcp_compute_instances"
-	
+
 	// Azure
 	case "azure::compute::virtualmachine":
 		return "azure_compute_virtual_machines"
 	case "azure::storage::account":
 		return "azure_storage_accounts"
-	
+
 	default:
 		return ""
 	}
