@@ -5,6 +5,11 @@ bin/
 *.so
 *.dylib
 
+# Allow gosnowflake minicore stubs (empty files for go:embed)
+!vendor/github.com/snowflakedb/gosnowflake/*.so
+!vendor/github.com/snowflakedb/gosnowflake/*.dll
+!vendor/github.com/snowflakedb/gosnowflake/*.dylib
+
 # Go
 *.test
 go.work

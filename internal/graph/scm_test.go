@@ -1,17 +1,8 @@
 package graph
 
 import (
-	"context"
 	"testing"
 )
-
-type mockDataSource struct {
-	nodes []Node
-}
-
-func (m *mockDataSource) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
-	return &QueryResult{}, nil
-}
 
 func TestSCMInference(t *testing.T) {
 	// Setup graph with nodes containing tags

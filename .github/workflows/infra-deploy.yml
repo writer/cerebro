@@ -43,6 +43,12 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
 
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
       - name: Pulumi Preview
         uses: pulumi/actions@v5
         with:
