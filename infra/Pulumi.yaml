@@ -1,5 +1,9 @@
 name: cerebro
-runtime: python
+runtime:
+  name: python
+  options:
+    toolchain: uv
+    virtualenv: .venv
 description: Infrastructure for Cerebro Security Platform (Go)
 
 config:

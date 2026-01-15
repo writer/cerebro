@@ -42,9 +42,7 @@ Pulumi infrastructure for deploying Cerebro on AWS.
 ```bash
 # Install dependencies
 cd infra
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+uv sync
 
 # Create stack
 pulumi stack init production

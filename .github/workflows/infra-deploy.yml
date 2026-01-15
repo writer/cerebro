@@ -28,15 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          cd infra
-          pip install -r requirements.txt
+        run: uv sync --directory infra
 
       - name: Configure AWS credentials
         uses: writerInternal/aws-git-roles@v2
@@ -68,15 +70,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          cd infra
-          pip install -r requirements.txt
+        run: uv sync --directory infra
 
       - name: Configure AWS credentials
         uses: writerInternal/aws-git-roles@v2
