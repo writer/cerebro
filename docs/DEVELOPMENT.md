@@ -406,6 +406,10 @@ To enable the agent's cloud context capabilities in local development:
 
 3.  **Run Agent**:
     Ensure your local environment uses this profile when running the agent.
+    ```bash
+    export AWS_PROFILE=cerebro-prod
+    make run
+    ```
 
 ### Verification
 

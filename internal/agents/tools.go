@@ -51,6 +51,30 @@ func (st *SecurityTools) GetTools() []Tool {
 			Handler: st.analyzeRepo,
 		},
 		{
+			Name:        "aws_inspect",
+			Description: "Inspect AWS resources using live API calls (read-only)",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"service": map[string]interface{}{
+						"type":        "string",
+						"description": "AWS Service (s3, lambda, ecs, iam)",
+						"enum":        []string{"s3", "lambda", "ecs", "iam"},
+					},
+					"action": map[string]interface{}{
+						"type":        "string",
+						"description": "Action to perform (e.g., list-buckets, get-function)",
+					},
+					"params": map[string]interface{}{
+						"type":        "object",
+						"description": "Parameters for the action (e.g., Bucket for s3:list-objects)",
+					},
+				},
+				"required": []string{"service", "action"},
+			},
+			Handler: st.awsInspect,
+		},
+		{
 			Name:        "query_assets",
 			Description: "Query cloud assets from the security data lake using SQL",
 			Parameters: map[string]interface{}{
