@@ -15,9 +15,6 @@ on:
         options:
           - go-prod
 
-env:
-  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-  AWS_REGION: us-east-1
 
 jobs:
   preview:
@@ -42,10 +39,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::073877318660:role/github-actions-cerebro-infra
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
 
       - name: Pulumi Preview
         uses: pulumi/actions@v5
@@ -77,10 +73,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::073877318660:role/github-actions-cerebro-infra
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
 
       - name: Pulumi Up
         uses: pulumi/actions@v5
