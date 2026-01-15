@@ -19,13 +19,14 @@ config:
 
   cerebro:containerImage:
     type: string
-    description: Container image URI (ECR)
+    default: "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+    description: Container image URI (ECR), defaults to latest in ECR
 
-  # Snowflake connection (required)
+  # Snowflake connection (optional - app falls back to SQLite)
   cerebro:snowflakeConnectionString:
     type: string
     secret: true
-    description: Snowflake connection string
+    description: Snowflake connection string (optional, uses SQLite if not set)
 
   cerebro:snowflakeDatabase:
     type: string

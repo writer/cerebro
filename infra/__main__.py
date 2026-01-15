@@ -21,7 +21,10 @@ from aws import compute, infisical, kms, load_balancer, monitoring, networking, 
 config = pulumi.Config()
 environment = config.get("environment") or "production"
 domain = config.get("domain") or ""
-container_image = config.require("containerImage")
+
+# Container image - default to ECR latest if not provided
+container_image = config.get("containerImage") or "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+
 alb_internal = config.get_bool("albInternal")
 if alb_internal is None:
     alb_internal = True
@@ -112,10 +115,14 @@ if use_external_secrets:
             secret_keys.append(key)
 else:
     # Pulumi-managed secrets mode
-    secrets_dict = {
-        "SNOWFLAKE_CONNECTION_STRING": config.require_secret("snowflakeConnectionString"),
-    }
-    secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
+    # Snowflake is optional - Go app falls back to SQLite when not provided
+    secrets_dict = {}
+    secret_keys = []
+
+    snowflake_conn = config.get_secret("snowflakeConnectionString")
+    if snowflake_conn:
+        secrets_dict["SNOWFLAKE_CONNECTION_STRING"] = snowflake_conn
+        secret_keys.append("SNOWFLAKE_CONNECTION_STRING")
 
     # Optional secrets - only add if configured
     if config.get_secret("anthropicApiKey"):
@@ -138,11 +145,15 @@ else:
         secrets_dict["LINEAR_API_KEY"] = config.get_secret("linearApiKey")
         secret_keys.append("LINEAR_API_KEY")
 
-    cerebro_secrets = secrets.create_secrets(
-        name=f"cerebro-{environment}",
-        secrets=secrets_dict,
-        kms_key_arn=kms_key.arn,
-    )
+    # Only create secrets resource if we have secrets to store
+    if secrets_dict:
+        cerebro_secrets = secrets.create_secrets(
+            name=f"cerebro-{environment}",
+            secrets=secrets_dict,
+            kms_key_arn=kms_key.arn,
+        )
+    else:
+        cerebro_secrets = None
 
 # =============================================================================
 # LOAD BALANCER

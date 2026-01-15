@@ -141,18 +141,18 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		resolvedAtVal = sql.NullTime{Valid: false}
 	}
 
-	_, err = tx.ExecContext(ctx, `
+	_, updateErr := tx.ExecContext(ctx, `
 		UPDATE findings 
 		SET last_seen = ?, resource_data = ?, status = ?, resolved_at = ?
 		WHERE id = ?
 	`, now, resourceData, status, resolvedAtVal, pf.ID)
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to update finding: %v\n", err)
+	if updateErr != nil {
+		fmt.Fprintf(os.Stderr, "failed to update finding: %v\n", updateErr)
 		return nil
 	}
-	if err := tx.Commit(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to commit update: %v\n", err)
+	if commitErr := tx.Commit(); commitErr != nil {
+		fmt.Fprintf(os.Stderr, "failed to commit update: %v\n", commitErr)
 		return nil
 	}
 

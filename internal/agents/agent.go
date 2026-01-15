@@ -248,20 +248,20 @@ func (r *AgentRegistry) UpdateSession(session *Session) {
 
 // GetSystemPrompt generates the system prompt for the session
 func (s *Session) GetSystemPrompt() string {
-	basePrompt := `You are a specialized security investigation agent. Your goal is to analyze security findings, 
+	basePrompt := `You are a specialized security investigation agent. Your goal is to analyze security findings,
 assess their impact, and recommend or take remediation actions.
 Use the available tools to gather information. Be thorough and evidence-based.`
 
 	if s.Context.Playbook != nil {
 		playbook := s.Context.Playbook
-		sop := fmt.Sprintf("\n\nFOLLOW THIS STANDARD OPERATING PROCEDURE (SOP): %s\n%s\n\nSteps:", 
+		sop := fmt.Sprintf("\n\nFOLLOW THIS STANDARD OPERATING PROCEDURE (SOP): %s\n%s\n\nSteps:",
 			playbook.Name, playbook.Description)
-		
+
 		for _, step := range playbook.Steps {
-			sop += fmt.Sprintf("\n%d. %s: %s (Action: %s)", 
+			sop += fmt.Sprintf("\n%d. %s: %s (Action: %s)",
 				step.Order, step.Name, step.Description, step.Action)
 		}
-		
+
 		sop += "\n\nYou MUST follow these steps in order. Do not skip steps unless they are clearly irrelevant based on evidence."
 		return basePrompt + sop
 	}

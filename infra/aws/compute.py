@@ -260,22 +260,25 @@ def _create_task_definition(
     caller = aws.get_caller_identity()
 
     # Build secrets list dynamically based on what's configured
-    if external_secrets_prefix:
-        # External secrets mode: each secret is a separate Secrets Manager secret
-        # synced by Infisical to {prefix}/{KEY}
-        secrets_list = [
-            {
-                "name": key,
-                "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}"
-            }
-            for key in secret_keys
-        ]
-    else:
-        # Pulumi-managed single secret with multiple keys
-        secrets_list = [
-            {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
-            for key in secret_keys
-        ]
+    # Only include secrets if we have keys to inject
+    secrets_list = []
+    if secret_keys:
+        if external_secrets_prefix:
+            # External secrets mode: each secret is a separate Secrets Manager secret
+            # synced by Infisical to {prefix}/{KEY}
+            secrets_list = [
+                {
+                    "name": key,
+                    "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}"
+                }
+                for key in secret_keys
+            ]
+        elif secrets_arn:
+            # Pulumi-managed single secret with multiple keys
+            secrets_list = [
+                {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
+                for key in secret_keys
+            ]
 
     container_def = {
         "name": "cerebro",
@@ -291,7 +294,6 @@ def _create_task_definition(
             },
         },
         "environment": [{"name": k, "value": str(v)} for k, v in environment.items()],
-        "secrets": secrets_list,
         "healthCheck": {
             "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"],
             "interval": 30,
@@ -300,6 +302,10 @@ def _create_task_definition(
             "startPeriod": 60,
         },
     }
+
+    # Only add secrets to container def if we have any
+    if secrets_list:
+        container_def["secrets"] = secrets_list
 
     return aws.ecs.TaskDefinition(
         f"{name}-task",
