@@ -98,7 +98,22 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-cerebro
+          role-to-assume: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume deployment role via broker
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume target account role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
+          role-chaining: true
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -143,7 +158,22 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-cerebro
+          role-to-assume: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume deployment role via broker
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume target account role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
+          role-chaining: true
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Force new deployment

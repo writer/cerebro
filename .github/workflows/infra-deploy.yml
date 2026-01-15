@@ -41,10 +41,25 @@ jobs:
           cd infra
           pip install -r requirements.txt
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::073877318660:role/github-actions-cerebro-infra
+          role-to-assume: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume infra role via broker
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume target account infra role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::073877318660:role/writer-aws-infra-deployment-role
+          role-chaining: true
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Pulumi Preview
@@ -76,10 +91,25 @@ jobs:
           cd infra
           pip install -r requirements.txt
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::073877318660:role/github-actions-cerebro-infra
+          role-to-assume: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume infra role via broker
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume target account infra role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::073877318660:role/writer-aws-infra-deployment-role
+          role-chaining: true
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Pulumi Up
