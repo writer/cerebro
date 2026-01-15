@@ -433,18 +433,6 @@ func (st *SecurityTools) analyzeRepo(ctx context.Context, args json.RawMessage) 
 		return "", fmt.Errorf("SCM integration not configured")
 	}
 
-	// Temporary workspace for cloning
-	tempDir, err := os.MkdirTemp("", "cerebro-repo-*")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Clone the repo (or simulate cloning)
-	if err := st.scm.Clone(ctx, params.RepoURL, tempDir); err != nil {
-		return "", fmt.Errorf("failed to clone repo: %w", err)
-	}
-
 	// If specific file requested, return content
 	if params.FilePath != "" {
 		content, err := st.scm.GetFileContent(ctx, params.RepoURL, params.FilePath)
@@ -458,11 +446,35 @@ func (st *SecurityTools) analyzeRepo(ctx context.Context, args json.RawMessage) 
 		return fmt.Sprintf("File content for %s:\n%s", params.FilePath, content), nil
 	}
 
-	analysis, err := scanRepositoryForResources(tempDir, params.RepoURL)
+	analysis, err := st.analyzeRepository(ctx, params.RepoURL)
 	if err != nil {
 		return "", err
 	}
 
 	output, _ := json.MarshalIndent(analysis, "", "  ")
 	return string(output), nil
+}
+
+func (st *SecurityTools) analyzeRepository(ctx context.Context, repoURL string) (*RepoAnalysis, error) {
+	if st.scm == nil {
+		return nil, fmt.Errorf("SCM integration not configured")
+	}
+
+	// Temporary workspace for cloning
+	tempDir, err := os.MkdirTemp("", "cerebro-repo-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	if err := st.scm.Clone(ctx, repoURL, tempDir); err != nil {
+		return nil, fmt.Errorf("failed to clone repo: %w", err)
+	}
+
+	analysis, err := scanRepositoryForResources(tempDir, repoURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return analysis, nil
 }
