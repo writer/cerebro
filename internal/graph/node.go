@@ -18,6 +18,10 @@ const (
 	NodeKindFunction NodeKind = "function"
 	NodeKindNetwork  NodeKind = "network"
 
+	// SCM nodes
+	NodeKindRepository NodeKind = "repository"
+	NodeKindCIWorkflow NodeKind = "ci_workflow"
+
 	// Abstract nodes
 	NodeKindInternet NodeKind = "internet"
 

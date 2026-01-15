@@ -377,6 +377,50 @@ func (p *NewDataProvider) Test(ctx context.Context) error {
 
 ---
 
+## Deep Research Agent (Code-to-Cloud)
+
+The Deep Research Agent bridges the gap between Cloud Security Context and Source Code Analysis. To use this feature effectively in development, you need access to both:
+
+1.  **Source Code**: Authenticated via `GITHUB_TOKEN` or local `gh` CLI.
+2.  **Cloud Context**: Authenticated via AWS SSO.
+
+### AWS SSO Setup
+
+To enable the agent's cloud context capabilities in local development:
+
+1.  **Configure AWS SSO Profile**:
+    ```bash
+    aws configure sso
+    # Session name: writer
+    # Start URL: https://d-9067fc8d21.awsapps.com/start/
+    # Region: us-east-1
+    # Registration scopes: sso:account:access
+    # Profile name: cerebro-prod
+    ```
+
+2.  **Verify Access**:
+    ```bash
+    aws sso login --profile cerebro-prod
+    aws sts get-caller-identity --profile cerebro-prod
+    ```
+
+3.  **Run Agent**:
+    Ensure your local environment uses this profile when running the agent.
+
+### Verification
+
+Run the verification script to ensure both Code and Cloud access are configured:
+
+```bash
+# Verify GitHub access
+gh repo view WriterInternal/cerebro >/dev/null && echo "GitHub OK"
+
+# Verify AWS access
+aws sts get-caller-identity --profile cerebro-prod >/dev/null && echo "AWS OK"
+```
+
+---
+
 ## Testing
 
 ### Unit Tests

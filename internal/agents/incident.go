@@ -87,6 +87,10 @@ func (ir *IncidentResponse) CreateIncident(ctx context.Context, req CreateIncide
 		Description: "Incident created",
 	})
 
+	// Determine incident type and get playbook
+	incidentType := ir.determineIncidentType(req)
+	playbook := ir.GetPlaybook(incidentType)
+
 	// Create investigation session
 	session, err := ir.registry.CreateSession("security-investigator", "system", SessionContext{
 		FindingIDs: req.FindingIDs,
@@ -97,6 +101,7 @@ func (ir *IncidentResponse) CreateIncident(ctx context.Context, req CreateIncide
 			Severity: req.Severity,
 			Status:   "open",
 		},
+		Playbook: playbook,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
@@ -107,6 +112,22 @@ func (ir *IncidentResponse) CreateIncident(ctx context.Context, req CreateIncide
 	ir.gatherContext(ctx, incident)
 
 	return incident, nil
+}
+
+func (ir *IncidentResponse) determineIncidentType(req CreateIncidentRequest) string {
+	if contains(req.AssetType, "s3") && contains(req.Title, "Public") {
+		return "s3-exposure"
+	}
+	if contains(req.AssetType, "iam") && (contains(req.Title, "Key") || contains(req.Title, "Credential")) {
+		return "iam-compromise"
+	}
+	if contains(req.AssetType, "ec2") && contains(req.Title, "Public") {
+		return "ec2-exposure"
+	}
+	if contains(req.AssetType, "lambda") || contains(req.AssetType, "function") || contains(req.Title, "Code") {
+		return "code-to-cloud"
+	}
+	return "default"
 }
 
 // gatherContext collects initial investigation context
@@ -223,6 +244,18 @@ func (ir *IncidentResponse) GetPlaybook(incidentType string) *Playbook {
 				{Order: 3, Name: "Restrict Access", Action: "remediate", RequiresApproval: true, Description: "Update security group rules"},
 				{Order: 4, Name: "Check for Compromise", Action: "query_assets", Description: "Review VPC flow logs and CloudTrail"},
 				{Order: 5, Name: "Create Ticket", Action: "create_ticket", Description: "Document remediation"},
+			},
+		},
+		"code-to-cloud": {
+			ID:          "code-to-cloud",
+			Name:        "Code-to-Cloud Deep Research",
+			Description: "Investigate code repositories linked to vulnerable cloud assets",
+			Steps: []PlaybookStep{
+				{Order: 1, Name: "Map Asset to Code", Action: "query_assets", Description: "Identify the Git repository linked to the asset via tags"},
+				{Order: 2, Name: "Analyze Codebase", Action: "analyze_repo", Description: "Clone and scan the repository for vulnerabilities matching the cloud finding"},
+				{Order: 3, Name: "Contextualize Risk", Action: "evaluate_policy", Description: "Determine if the code vulnerability is reachable based on cloud configuration"},
+				{Order: 4, Name: "Verify Exploitability", Action: "generate_safe_poc", Description: "Create a safe proof-of-concept to verify the risk"},
+				{Order: 5, Name: "Report Findings", Action: "create_ticket", Description: "Create a ticket with linked code and cloud context"},
 			},
 		},
 		"default": {

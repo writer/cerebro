@@ -64,6 +64,9 @@ func (b *Builder) Build(ctx context.Context) error {
 	// Build exposure edges
 	b.buildExposureEdges()
 
+	// Build Code-to-Cloud edges (inferred from tags)
+	b.buildSCMInference()
+
 	// Update metadata
 	b.graph.SetMetadata(Metadata{
 		BuiltAt:       time.Now(),
@@ -1245,4 +1248,57 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func (b *Builder) buildSCMInference() {
+	// Infer repository nodes from "git_repo" or "repo" tags on assets
+	for _, node := range b.graph.GetAllNodes() {
+		if !node.IsResource() {
+			continue
+		}
+
+		var repoURL string
+		if url, ok := node.Tags["git_repo"]; ok {
+			repoURL = url
+		} else if url, ok := node.Tags["repo"]; ok {
+			repoURL = url
+		} else if url, ok := node.Tags["repository"]; ok {
+			repoURL = url
+		} else if project, ok := node.Tags["project"]; ok {
+			// heuristic: if project tag exists, assume it's a repo in default org
+			// In real world, this would be configured via config
+			if strings.Contains(project, "/") {
+				repoURL = "https://github.com/" + project
+			}
+		}
+
+		if repoURL != "" {
+			b.ensureRepoNode(repoURL)
+			
+			b.graph.AddEdge(&Edge{
+				ID:     node.ID + "->deployed_from->" + repoURL,
+				Source: node.ID,
+				Target: repoURL,
+				Kind:   EdgeKindDeployedFrom,
+				Effect: EdgeEffectAllow,
+				Properties: map[string]any{
+					"mechanism": "tag_inference",
+				},
+			})
+		}
+	}
+}
+
+func (b *Builder) ensureRepoNode(repoURL string) {
+	if _, exists := b.graph.GetNode(repoURL); !exists {
+		b.graph.AddNode(&Node{
+			ID:       repoURL,
+			Kind:     NodeKindRepository,
+			Name:     repoURL,
+			Provider: "scm",
+			Properties: map[string]any{
+				"url": repoURL,
+			},
+		})
+	}
 }

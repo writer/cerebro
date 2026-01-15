@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/writerinternal/cerebro/internal/findings"
 	"github.com/writerinternal/cerebro/internal/policy"
+	"github.com/writerinternal/cerebro/internal/scm"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 )
 
@@ -15,18 +17,39 @@ type SecurityTools struct {
 	snowflake *snowflake.Client
 	findings  findings.FindingStore
 	policies  *policy.Engine
+	scm       scm.Client
 }
 
-func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe *policy.Engine) *SecurityTools {
+func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe *policy.Engine, sc scm.Client) *SecurityTools {
 	return &SecurityTools{
 		snowflake: sf,
 		findings:  fs,
 		policies:  pe,
+		scm:       sc,
 	}
 }
 
 func (st *SecurityTools) GetTools() []Tool {
 	return []Tool{
+		{
+			Name:        "analyze_repo",
+			Description: "Clone and analyze a source code repository for security vulnerabilities",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"repo_url": map[string]interface{}{
+						"type":        "string",
+						"description": "URL of the repository to analyze",
+					},
+					"file_path": map[string]interface{}{
+						"type":        "string",
+						"description": "Specific file path to read (optional)",
+					},
+				},
+				"required": []string{"repo_url"},
+			},
+			Handler: st.analyzeRepo,
+		},
 		{
 			Name:        "query_assets",
 			Description: "Query cloud assets from the security data lake using SQL",
@@ -291,4 +314,45 @@ func (st *SecurityTools) resolveFinding(ctx context.Context, args json.RawMessag
 func (st *SecurityTools) createTicket(ctx context.Context, args json.RawMessage) (string, error) {
 	// This will be implemented with ticketing integration
 	return "Ticket creation requires ticketing integration to be configured", nil
+}
+
+func (st *SecurityTools) analyzeRepo(ctx context.Context, args json.RawMessage) (string, error) {
+	var params struct {
+		RepoURL  string `json:"repo_url"`
+		FilePath string `json:"file_path"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return "", err
+	}
+
+	if st.scm == nil {
+		return "", fmt.Errorf("SCM integration not configured")
+	}
+
+	// Temporary workspace for cloning
+	tempDir, err := os.MkdirTemp("", "cerebro-repo-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Clone the repo (or simulate cloning)
+	if err := st.scm.Clone(ctx, params.RepoURL, tempDir); err != nil {
+		return "", fmt.Errorf("failed to clone repo: %w", err)
+	}
+
+	// If specific file requested, return content
+	if params.FilePath != "" {
+		content, err := st.scm.GetFileContent(ctx, params.RepoURL, params.FilePath)
+		if err != nil {
+			return "", err
+		}
+		// Truncate if too long
+		if len(content) > 10000 {
+			content = content[:10000] + "...(truncated)"
+		}
+		return fmt.Sprintf("File content for %s:\n%s", params.FilePath, content), nil
+	}
+
+	return fmt.Sprintf("Repository %s is accessible. Use file_path to read specific files.", params.RepoURL), nil
 }

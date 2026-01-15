@@ -19,6 +19,9 @@ const (
 
 	// Internet -> Resource
 	EdgeKindExposedTo EdgeKind = "exposed_to"
+
+	// Asset -> Code
+	EdgeKindDeployedFrom EdgeKind = "deployed_from"
 )
 
 // EdgeEffect represents whether an edge allows or denies access
