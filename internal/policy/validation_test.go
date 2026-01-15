@@ -42,7 +42,7 @@ func TestValidateTableCoverage_Validation(t *testing.T) {
 	// custom_table_name is treated as direct table mapping so it requires 'custom_table_name' to be present
 	availableMissing := []string{"aws_s3_buckets"}
 	gapsMissing := engine.ValidateTableCoverage(availableMissing)
-	
+
 	// Expect gaps for:
 	// 1. iam-policy (missing aws_iam_users AND aws_iam_credential_reports)
 	// 2. direct-table-policy (missing custom_table_name)
