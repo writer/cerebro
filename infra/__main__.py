@@ -15,7 +15,7 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_tailscale as tailscale
 
-from aws import compute, infisical, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
+from aws import compute, ecr, infisical, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
 
 # Configuration
 config = pulumi.Config()
@@ -300,19 +300,31 @@ if tailscale_stack:
     pulumi.export("tailscale_private_ip", tailscale_stack["private_ip"])
 
 # =============================================================================
+# ECR REPOSITORY
+# =============================================================================
+
+ecr_repository = ecr.create_ecr_repository(
+    name="cerebro",
+    image_tag_mutability="MUTABLE",
+    scan_on_push=True,
+    lifecycle_policy_days=30,
+    kms_key_arn="arn:aws:kms:us-east-1:073877318660:key/454a4c79-083a-4bb3-af2a-09539082d416",
+)
+
+pulumi.export("ecr_repository_url", ecr_repository.repository_url)
+pulumi.export("ecr_repository_arn", ecr_repository.arn)
+
+# =============================================================================
 # GITHUB ACTIONS (CI/CD)
 # =============================================================================
 
 from aws import github_actions
 
-# ECR repository is managed outside Pulumi
-ecr_repository_arn = f"arn:aws:ecr:us-east-1:073877318660:repository/{ecs_stack['cluster'].name.apply(lambda n: 'cerebro')}"
-
 github_actions_role = github_actions.create_github_actions_role(
     name="cerebro",
     github_org="WriterInternal",
     github_repo="cerebro",
-    ecr_repository_arn="arn:aws:ecr:us-east-1:073877318660:repository/cerebro",
+    ecr_repository_arn=ecr_repository.arn,
     ecs_cluster_arn=ecs_stack["cluster"].arn,
     ecs_service_arn=ecs_stack["api_service"].id,
     log_group_arns=[ecs_stack["log_group"].arn],

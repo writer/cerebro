@@ -19,7 +19,7 @@ def create_github_actions_role(
     name: str,
     github_org: str,
     github_repo: str,
-    ecr_repository_arn: str,
+    ecr_repository_arn: Union[str, Output[str]],
     ecs_cluster_arn: Union[str, Output[str]],
     ecs_service_arn: Union[str, Output[str]],
     log_group_arns: Optional[List[Union[str, Output[str]]]] = None,
@@ -64,7 +64,7 @@ def create_github_actions_role(
     )
 
     # Build policy document using Output.all to handle dynamic values
-    def build_policy(service_arn: str, log_arns: Optional[List[str]]) -> str:
+    def build_policy(ecr_arn: str, service_arn: str, log_arns: Optional[List[str]]) -> str:
         statements = [
             {
                 "Sid": "ECRAuth",
@@ -86,7 +86,7 @@ def create_github_actions_role(
                     "ecr:DescribeRepositories",
                     "ecr:ListImages",
                 ],
-                "Resource": ecr_repository_arn
+                "Resource": ecr_arn
             },
             {
                 "Sid": "ECSDescribe",
@@ -123,12 +123,12 @@ def create_github_actions_role(
 
     # Handle Output types for dynamic values
     if log_group_arns:
-        policy_document = Output.all(ecs_service_arn, *log_group_arns).apply(
-            lambda args: build_policy(args[0], list(args[1:]))
+        policy_document = Output.all(ecr_repository_arn, ecs_service_arn, *log_group_arns).apply(
+            lambda args: build_policy(args[0], args[1], list(args[2:]))
         )
     else:
-        policy_document = Output.from_input(ecs_service_arn).apply(
-            lambda arn: build_policy(arn, None)
+        policy_document = Output.all(ecr_repository_arn, ecs_service_arn).apply(
+            lambda args: build_policy(args[0], args[1], None)
         )
 
     policy = aws.iam.Policy(
