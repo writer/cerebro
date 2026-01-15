@@ -60,6 +60,7 @@ import (
 	"github.com/writerinternal/cerebro/internal/runtime"
 	"github.com/writerinternal/cerebro/internal/scanner"
 	"github.com/writerinternal/cerebro/internal/scheduler"
+	"github.com/writerinternal/cerebro/internal/scm"
 	"github.com/writerinternal/cerebro/internal/snowflake"
 	"github.com/writerinternal/cerebro/internal/threatintel"
 	"github.com/writerinternal/cerebro/internal/ticketing"
@@ -417,8 +418,14 @@ func (a *App) initCache() {
 func (a *App) initAgents() {
 	a.Agents = agents.NewAgentRegistry()
 
+	// Initialize SCM client
+	var scmClient scm.Client
+	if a.Config.GitHubToken != "" {
+		scmClient = scm.NewGitHubClient(a.Config.GitHubToken)
+	}
+
 	// Create security tools for agents
-	tools := agents.NewSecurityTools(a.Snowflake, a.Findings, a.Policy)
+	tools := agents.NewSecurityTools(a.Snowflake, a.Findings, a.Policy, scmClient)
 
 	// Register Anthropic-based agent if configured
 	if a.Config.AnthropicAPIKey != "" {

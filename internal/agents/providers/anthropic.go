@@ -93,6 +93,53 @@ func (p *AnthropicProvider) Complete(ctx context.Context, messages []agents.Mess
 			systemPrompt = m.Content
 			continue
 		}
+
+		// Handle tool results specially for Anthropic
+		if m.Role == "tool" {
+			anthropicMsgs = append(anthropicMsgs, anthropicMessage{
+				Role: "user", // Anthropic uses 'user' role for tool results
+				Content: []map[string]interface{}{
+					{
+						"type":        "tool_result",
+						"tool_use_id": m.Name, // We store tool_use_id in Message.Name
+						"content":     m.Content,
+					},
+				},
+			})
+			continue
+		}
+
+		// Handle assistant messages with tool calls
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			var content []interface{}
+			if m.Content != "" {
+				content = append(content, map[string]interface{}{
+					"type": "text",
+					"text": m.Content,
+				})
+			}
+			for _, tc := range m.ToolCalls {
+				// Parse arguments if they are json.RawMessage
+				var input interface{}
+				if err := json.Unmarshal(tc.Arguments, &input); err != nil {
+					// Fallback if not valid JSON, though it should be
+					input = map[string]interface{}{}
+				}
+
+				content = append(content, map[string]interface{}{
+					"type": "tool_use",
+					"id":   tc.ID,
+					"name": tc.Name,
+					"input": input,
+				})
+			}
+			anthropicMsgs = append(anthropicMsgs, anthropicMessage{
+				Role:    "assistant",
+				Content: content,
+			})
+			continue
+		}
+
 		anthropicMsgs = append(anthropicMsgs, anthropicMessage{
 			Role:    m.Role,
 			Content: m.Content,
@@ -188,6 +235,53 @@ func (p *AnthropicProvider) Stream(ctx context.Context, messages []agents.Messag
 			systemPrompt = m.Content
 			continue
 		}
+
+		// Handle tool results specially for Anthropic
+		if m.Role == "tool" {
+			anthropicMsgs = append(anthropicMsgs, anthropicMessage{
+				Role: "user", // Anthropic uses 'user' role for tool results
+				Content: []map[string]interface{}{
+					{
+						"type":        "tool_result",
+						"tool_use_id": m.Name, // We store tool_use_id in Message.Name
+						"content":     m.Content,
+					},
+				},
+			})
+			continue
+		}
+
+		// Handle assistant messages with tool calls
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			var content []interface{}
+			if m.Content != "" {
+				content = append(content, map[string]interface{}{
+					"type": "text",
+					"text": m.Content,
+				})
+			}
+			for _, tc := range m.ToolCalls {
+				// Parse arguments if they are json.RawMessage
+				var input interface{}
+				if err := json.Unmarshal(tc.Arguments, &input); err != nil {
+					// Fallback if not valid JSON, though it should be
+					input = map[string]interface{}{}
+				}
+
+				content = append(content, map[string]interface{}{
+					"type": "tool_use",
+					"id":   tc.ID,
+					"name": tc.Name,
+					"input": input,
+				})
+			}
+			anthropicMsgs = append(anthropicMsgs, anthropicMessage{
+				Role:    "assistant",
+				Content: content,
+			})
+			continue
+		}
+
 		anthropicMsgs = append(anthropicMsgs, anthropicMessage{
 			Role:    m.Role,
 			Content: m.Content,

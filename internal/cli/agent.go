@@ -1,0 +1,184 @@
+package cli
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/writerinternal/cerebro/internal/agents"
+	"github.com/writerinternal/cerebro/internal/agents/providers"
+	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/scm"
+)
+
+var agentCmd = &cobra.Command{
+	Use:   "agent",
+	Short: "Start the Deep Research Agent",
+	Long:  `Start an interactive session with the Deep Research Agent to investigate findings.
+Requires ANTHROPIC_API_KEY environment variable.`,
+	RunE:  runAgent,
+}
+
+func init() {
+	rootCmd.AddCommand(agentCmd)
+}
+
+func runAgent(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	// 1. Initialize App (to get DB, Config, etc.)
+	application, err := app.New(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize app: %w", err)
+	}
+	defer application.Close()
+
+	// 2. Initialize Provider (Anthropic)
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("ANTHROPIC_API_KEY is required")
+	}
+
+	provider := providers.NewAnthropicProvider(providers.AnthropicConfig{
+		APIKey: apiKey,
+		Model:  "claude-3-5-sonnet-20241022",
+	})
+
+	// 3. Initialize SCM (GitHub)
+	scmClient := scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN"))
+
+	// 4. Initialize Tools
+	tools := agents.NewSecurityTools(
+		application.Snowflake,
+		application.Findings, 
+		application.Policy,
+		scmClient,
+	)
+	
+	// 4. Initialize Agent
+	agent := agents.NewDeepResearchAgent(provider, tools)
+	
+	registry := agents.NewAgentRegistry()
+	registry.RegisterAgent(agent)
+
+	// 5. Create Session
+	session, err := registry.CreateSession(agent.ID, "cli-user", agents.SessionContext{
+		Playbook: agents.GetDeepResearchPlaybook(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+
+	fmt.Printf("\n🤖 Deep Research Agent Active (%s)\n", agent.ID)
+	fmt.Println("Type 'exit' or 'quit' to stop.")
+	fmt.Println("------------------------------------------------")
+
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Print("\n> ")
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		input = strings.TrimSpace(input)
+
+		if input == "exit" || input == "quit" {
+			break
+		}
+		if input == "" {
+			continue
+		}
+
+		// Add user message
+		session.Messages = append(session.Messages, agents.Message{
+			Role:    "user",
+			Content: input,
+		})
+
+		fmt.Println("Agent is thinking...")
+		err = runAgentLoop(ctx, provider, session, agent.Tools)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *agents.Session, tools []agents.Tool) error {
+	maxTurns := 15 // Limit recursion depth
+	
+	for i := 0; i < maxTurns; i++ {
+		// Prepare messages including System prompt
+		messages := append([]agents.Message{{Role: "system", Content: session.GetSystemPrompt()}}, session.Messages...)
+		
+		resp, err := provider.Complete(ctx, messages, tools)
+		if err != nil {
+			return err
+		}
+
+		// Append assistant message
+		session.Messages = append(session.Messages, resp.Message)
+		
+		// Print content if any
+		if resp.Message.Content != "" {
+			fmt.Printf("\n%s\n", resp.Message.Content)
+		}
+
+		// Handle tool calls
+		if len(resp.Message.ToolCalls) > 0 {
+			for _, tc := range resp.Message.ToolCalls {
+				fmt.Printf("\n[Tool Call] %s\n", tc.Name)
+				
+				// Find tool
+				var tool *agents.Tool
+				for _, t := range tools {
+					if t.Name == tc.Name {
+						tool = &t
+						break
+					}
+				}
+				
+				if tool == nil {
+					result := fmt.Sprintf("Error: Tool %s not found", tc.Name)
+					session.Messages = append(session.Messages, agents.Message{
+						Role:    "tool",
+						Content: result,
+						Name:    tc.ID, // Used as tool_use_id
+					})
+					continue
+				}
+
+				// Execute tool
+				output, err := tool.Handler(ctx, tc.Arguments)
+				if err != nil {
+					output = fmt.Sprintf("Error executing tool: %v", err)
+				}
+				
+				// Truncate output if too long for display, but keep full for context
+				displayOutput := output
+				if len(displayOutput) > 500 {
+					displayOutput = displayOutput[:500] + "... (truncated)"
+				}
+				fmt.Printf("[Tool Output] %s\n", displayOutput)
+
+				// Append tool result
+				session.Messages = append(session.Messages, agents.Message{
+					Role:    "tool",
+					Content: output,
+					Name:    tc.ID, // Used as tool_use_id
+				})
+			}
+			// Continue loop to let LLM process tool results
+			continue
+		}
+
+		// No tool calls, interaction turn complete
+		break
+	}
+	return nil
+}
