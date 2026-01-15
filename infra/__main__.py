@@ -378,29 +378,26 @@ if tailscale_stack:
 
 from aws import github_actions
 
-# ECR repository is managed outside Pulumi
-ecr_repository_arn = f"arn:aws:ecr:us-east-1:073877318660:repository/{ecs_stack['cluster'].name.apply(lambda n: 'cerebro')}"
+# Deployment role - assumed via centralized broker from aws-git-roles
+# OIDC role: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
+# Broker role: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
 
 ecs_service_arns = [ecs_stack["api_service"].id]
 if worker_stack:
     ecs_service_arns.append(worker_stack["service"].id)
 
-github_actions_role = github_actions.create_github_actions_role(
+deployment_role = github_actions.create_deployment_role(
     name="cerebro",
-    github_org="WriterInternal",
-    github_repo="cerebro",
     ecr_repository_arn="arn:aws:ecr:us-east-1:073877318660:repository/cerebro",
     ecs_cluster_arn=ecs_stack["cluster"].arn,
     ecs_service_arns=ecs_service_arns,
     log_group_arns=[ecs_stack["log_group"].arn],
+    sqs_queue_arns=[job_queue_stack["queue_arn"]],
+    dynamodb_table_arns=[job_store_stack["table_arn"]],
 )
 
-pulumi.export("github_actions_role_arn", github_actions_role.arn)
+pulumi.export("deployment_role_arn", deployment_role.arn)
 
-# Infrastructure deployment role (for Pulumi)
-github_actions_infra_role = github_actions.create_github_actions_infra_role(
-    name="cerebro",
-    github_org="WriterInternal",
-    github_repo="cerebro",
-)
-pulumi.export("github_actions_infra_role_arn", github_actions_infra_role.arn)
+# Infrastructure deployment role (for Pulumi) - assumed via broker
+infra_deployment_role = github_actions.create_infra_deployment_role(name="cerebro")
+pulumi.export("infra_deployment_role_arn", infra_deployment_role.arn)
