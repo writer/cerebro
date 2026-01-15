@@ -133,7 +133,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		if application.ScanWatermarks != nil {
 			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), result.Scanned)
 			// Persist watermarks (best effort)
-			go application.ScanWatermarks.PersistWatermarks(ctx)
+			go func() {
+				_ = application.ScanWatermarks.PersistWatermarks(ctx)
+			}()
 		}
 
 		// Persist findings

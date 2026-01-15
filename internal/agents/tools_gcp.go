@@ -135,7 +135,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 			Zone string `json:"zone"`
 		}
 		// If zone not provided, we might need to use AggregatedList
-		json.Unmarshal(args, &input) // Optional
+		_ = json.Unmarshal(args, &input) // Optional
 
 		if input.Zone != "" {
 			req := &computepb.ListInstancesRequest{

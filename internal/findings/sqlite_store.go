@@ -86,7 +86,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		fmt.Fprintf(os.Stderr, "failed to begin transaction: %v\n", err)
 		return nil
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Check if exists
 	var existing Finding
@@ -287,7 +287,7 @@ func (s *SQLiteStore) Stats() Stats {
 	}
 
 	// Total
-	s.db.QueryRow("SELECT COUNT(*) FROM findings").Scan(&stats.Total)
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM findings").Scan(&stats.Total)
 
 	// By Severity
 	rows, _ := s.db.Query("SELECT severity, COUNT(*) FROM findings GROUP BY severity")
@@ -295,7 +295,7 @@ func (s *SQLiteStore) Stats() Stats {
 		for rows.Next() {
 			var k string
 			var v int
-			rows.Scan(&k, &v)
+			_ = rows.Scan(&k, &v)
 			stats.BySeverity[k] = v
 		}
 		rows.Close()
@@ -307,7 +307,7 @@ func (s *SQLiteStore) Stats() Stats {
 		for rows.Next() {
 			var k string
 			var v int
-			rows.Scan(&k, &v)
+			_ = rows.Scan(&k, &v)
 			stats.ByStatus[k] = v
 		}
 		rows.Close()
@@ -319,7 +319,7 @@ func (s *SQLiteStore) Stats() Stats {
 		for rows.Next() {
 			var k string
 			var v int
-			rows.Scan(&k, &v)
+			_ = rows.Scan(&k, &v)
 			stats.ByPolicy[k] = v
 		}
 		rows.Close()
