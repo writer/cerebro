@@ -15,7 +15,7 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_tailscale as tailscale
 
-from aws import compute, infisical, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
+from aws import compute, infisical, jobs, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
 
 # Configuration
 config = pulumi.Config()
@@ -60,6 +60,14 @@ external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{envi
 # Tailscale subnet router for internal access
 enable_tailscale = _config_bool("enableTailscale", False)
 tailscale_hostname = config.get("tailscaleHostname") or f"cerebro-{environment}"
+
+# Distributed job workers
+enable_workers = _config_bool("enableWorkers", True)
+worker_cpu = _config_int("workerCpu", 512)
+worker_memory = _config_int("workerMemory", 1024)
+worker_min_instances = _config_int("workerMinInstances", 1)
+worker_max_instances = _config_int("workerMaxInstances", 10)
+worker_concurrency = _config_int("workerConcurrency", 4)
 
 # =============================================================================
 # NETWORKING
@@ -164,6 +172,22 @@ alb_stack = load_balancer.create_alb(
 )
 
 # =============================================================================
+# DISTRIBUTED JOB QUEUE
+# =============================================================================
+
+job_queue_stack = jobs.create_job_queue(
+    name=f"cerebro-{environment}",
+    kms_key_arn=kms_key.arn,
+    visibility_timeout=60,
+    message_retention=1209600,  # 14 days
+)
+
+job_store_stack = jobs.create_job_store(
+    name=f"cerebro-{environment}",
+    kms_key_arn=kms_key.arn,
+)
+
+# =============================================================================
 # ECS COMPUTE
 # =============================================================================
 
@@ -174,6 +198,7 @@ app_environment = {
     "CEDAR_POLICIES_PATH": "/app/policies",
     "SNOWFLAKE_DATABASE": config.get("snowflakeDatabase") or "CEREBRO",
     "SNOWFLAKE_SCHEMA": config.get("snowflakeSchema") or "RAW",
+    "JOB_REGION": aws.get_region().name,
 }
 
 # Optional non-secret config
@@ -185,6 +210,9 @@ if config.get("jiraProject"):
     app_environment["JIRA_PROJECT"] = config.get("jiraProject")
 if config.get("linearTeamId"):
     app_environment["LINEAR_TEAM_ID"] = config.get("linearTeamId")
+
+# Job queue config added to environment via Pulumi outputs
+# Note: These are Output objects, handled by compute module
 
 ecs_stack = compute.create_ecs_cluster(
     name=f"cerebro-{environment}",
@@ -203,6 +231,41 @@ ecs_stack = compute.create_ecs_cluster(
     environment=app_environment,
     secret_keys=secret_keys,
     external_secrets_prefix=external_secrets_prefix if use_external_secrets else None,
+    job_queue_url=job_queue_stack["queue_url"],
+    job_table_name=job_store_stack["table_name"],
+)
+
+# Worker service
+worker_stack = None
+if enable_workers:
+    worker_stack = jobs.create_worker_service(
+        name=f"cerebro-{environment}",
+        cluster_arn=ecs_stack["cluster"].arn,
+        subnet_ids=vpc_stack["private_subnet_ids"],
+        security_group_id=vpc_stack["app_security_group_id"],
+        container_image=container_image,
+        queue_url=job_queue_stack["queue_url"],
+        table_name=job_store_stack["table_name"],
+        secrets_arn=cerebro_secrets.arn if cerebro_secrets else None,
+        kms_key_id=kms_key.id,
+        log_group_name=ecs_stack["log_group"].name,
+        queue_arn=job_queue_stack["queue_arn"],
+        table_arn=job_store_stack["table_arn"],
+        worker_cpu=worker_cpu,
+        worker_memory=worker_memory,
+        worker_min_instances=worker_min_instances,
+        worker_max_instances=worker_max_instances,
+        worker_concurrency=worker_concurrency,
+        environment=app_environment,
+        secret_keys=secret_keys,
+        external_secrets_prefix=external_secrets_prefix if use_external_secrets else None,
+    )
+
+# Job queue alarms
+job_alarms = jobs.create_job_alarms(
+    name=f"cerebro-{environment}",
+    queue_name=f"cerebro-{environment}-jobs",
+    dlq_name=f"cerebro-{environment}-jobs-dlq",
 )
 
 # =============================================================================
@@ -281,6 +344,16 @@ pulumi.export(
 if waf_stack:
     pulumi.export("waf_web_acl_arn", waf_stack["web_acl"].arn)
 
+# Job queue outputs
+pulumi.export("job_queue_url", job_queue_stack["queue_url"])
+pulumi.export("job_queue_arn", job_queue_stack["queue_arn"])
+pulumi.export("job_dlq_url", job_queue_stack["dlq_url"])
+pulumi.export("job_table_name", job_store_stack["table_name"])
+pulumi.export("job_table_arn", job_store_stack["table_arn"])
+
+if worker_stack:
+    pulumi.export("worker_service_name", worker_stack["service"].name)
+
 # =============================================================================
 # INFISICAL (optional)
 # =============================================================================
@@ -308,13 +381,17 @@ from aws import github_actions
 # ECR repository is managed outside Pulumi
 ecr_repository_arn = f"arn:aws:ecr:us-east-1:073877318660:repository/{ecs_stack['cluster'].name.apply(lambda n: 'cerebro')}"
 
+ecs_service_arns = [ecs_stack["api_service"].id]
+if worker_stack:
+    ecs_service_arns.append(worker_stack["service"].id)
+
 github_actions_role = github_actions.create_github_actions_role(
     name="cerebro",
     github_org="WriterInternal",
     github_repo="cerebro",
     ecr_repository_arn="arn:aws:ecr:us-east-1:073877318660:repository/cerebro",
     ecs_cluster_arn=ecs_stack["cluster"].arn,
-    ecs_service_arn=ecs_stack["api_service"].id,
+    ecs_service_arns=ecs_service_arns,
     log_group_arns=[ecs_stack["log_group"].arn],
 )
 
