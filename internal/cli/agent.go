@@ -17,9 +17,9 @@ import (
 var agentCmd = &cobra.Command{
 	Use:   "agent",
 	Short: "Start the Deep Research Agent",
-	Long:  `Start an interactive session with the Deep Research Agent to investigate findings.
+	Long: `Start an interactive session with the Deep Research Agent to investigate findings.
 Requires ANTHROPIC_API_KEY environment variable.`,
-	RunE:  runAgent,
+	RunE: runAgent,
 }
 
 func init() {
@@ -53,14 +53,14 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// 4. Initialize Tools
 	tools := agents.NewSecurityTools(
 		application.Snowflake,
-		application.Findings, 
+		application.Findings,
 		application.Policy,
 		scmClient,
 	)
-	
+
 	// 4. Initialize Agent
 	agent := agents.NewDeepResearchAgent(provider, tools)
-	
+
 	registry := agents.NewAgentRegistry()
 	registry.RegisterAgent(agent)
 
@@ -111,11 +111,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *agents.Session, tools []agents.Tool) error {
 	maxTurns := 15 // Limit recursion depth
-	
+
 	for i := 0; i < maxTurns; i++ {
 		// Prepare messages including System prompt
 		messages := append([]agents.Message{{Role: "system", Content: session.GetSystemPrompt()}}, session.Messages...)
-		
+
 		resp, err := provider.Complete(ctx, messages, tools)
 		if err != nil {
 			return err
@@ -123,7 +123,7 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 
 		// Append assistant message
 		session.Messages = append(session.Messages, resp.Message)
-		
+
 		// Print content if any
 		if resp.Message.Content != "" {
 			fmt.Printf("\n%s\n", resp.Message.Content)
@@ -133,7 +133,7 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 		if len(resp.Message.ToolCalls) > 0 {
 			for _, tc := range resp.Message.ToolCalls {
 				fmt.Printf("\n[Tool Call] %s\n", tc.Name)
-				
+
 				// Find tool
 				var tool *agents.Tool
 				for _, t := range tools {
@@ -142,7 +142,7 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 						break
 					}
 				}
-				
+
 				if tool == nil {
 					result := fmt.Sprintf("Error: Tool %s not found", tc.Name)
 					session.Messages = append(session.Messages, agents.Message{
@@ -158,7 +158,7 @@ func runAgentLoop(ctx context.Context, provider agents.LLMProvider, session *age
 				if err != nil {
 					output = fmt.Sprintf("Error executing tool: %v", err)
 				}
-				
+
 				// Truncate output if too long for display, but keep full for context
 				displayOutput := output
 				if len(displayOutput) > 500 {

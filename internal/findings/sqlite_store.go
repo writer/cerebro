@@ -121,8 +121,8 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			fmt.Fprintf(os.Stderr, "failed to insert finding: %v\n", err)
 			return nil
 		}
-		if err := tx.Commit(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to commit insert: %v\n", err)
+		if commitErr := tx.Commit(); commitErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to commit insert: %v\n", commitErr)
 			return nil
 		}
 		return f
@@ -228,7 +228,7 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 	}
 	defer rows.Close()
 
-	var result []*Finding
+	result := make([]*Finding, 0, 100) // Pre-allocate for common case
 	for rows.Next() {
 		var f Finding
 		var resourceData []byte

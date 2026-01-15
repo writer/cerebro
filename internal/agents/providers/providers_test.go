@@ -186,11 +186,11 @@ func TestAnthropicProvider_Stream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Proper SSE format response for testing
 		w.Header().Set("Content-Type", "text/event-stream")
-		
+
 		// 1. Send content delta
 		data := `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Streamed response"}}`
 		fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", data)
-		
+
 		// 2. Send message stop
 		fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
 	}))

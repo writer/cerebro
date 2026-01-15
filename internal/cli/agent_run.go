@@ -178,9 +178,9 @@ func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *a
 
 	if agentRunOutput == FormatJSON {
 		if agentRunWait {
-			jobsResult, err := waitForJobs(ctx, manager, batch.JobIDs)
-			if err != nil {
-				return err
+			jobsResult, waitErr := waitForJobs(ctx, manager, batch.JobIDs)
+			if waitErr != nil {
+				return waitErr
 			}
 			return JSONOutput(map[string]interface{}{"batch": batch, "analysis": analysis, "jobs": jobsResult})
 		}

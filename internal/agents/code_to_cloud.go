@@ -122,17 +122,17 @@ func RunCodeToCloudFlow(ctx context.Context, tools *SecurityTools, opts CodeToCl
 		}
 
 		if desc.Provider == "gcp" && desc.Project == "" {
-			err := fmt.Errorf("gcp project is required for %s", desc.Identifier)
-			inspection.Error = err.Error()
-			report.Errors = append(report.Errors, err.Error())
+			gcpErr := fmt.Errorf("gcp project is required for %s", desc.Identifier)
+			inspection.Error = gcpErr.Error()
+			report.Errors = append(report.Errors, gcpErr.Error())
 			report.Failed++
 			report.Inspections = append(report.Inspections, inspection)
 			continue
 		}
 		if desc.Provider == "gcp" && desc.Service == "compute" && desc.Zone == "" {
-			err := fmt.Errorf("gcp zone is required for compute instance %s", desc.Identifier)
-			inspection.Error = err.Error()
-			report.Errors = append(report.Errors, err.Error())
+			zoneErr := fmt.Errorf("gcp zone is required for compute instance %s", desc.Identifier)
+			inspection.Error = zoneErr.Error()
+			report.Errors = append(report.Errors, zoneErr.Error())
 			report.Failed++
 			report.Inspections = append(report.Inspections, inspection)
 			continue

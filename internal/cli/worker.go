@@ -75,20 +75,20 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	visibilityTimeout := application.Config.JobVisibilityTimeout
 	if workerVisibilityTimeout != "" {
-		parsed, err := time.ParseDuration(workerVisibilityTimeout)
-		if err != nil {
-			return err
+		visParsed, viErr := time.ParseDuration(workerVisibilityTimeout)
+		if viErr != nil {
+			return viErr
 		}
-		visibilityTimeout = parsed
+		visibilityTimeout = visParsed
 	}
 
 	pollWait := application.Config.JobPollWait
 	if workerPollWait != "" {
-		parsed, err := time.ParseDuration(workerPollWait)
-		if err != nil {
-			return err
+		pollParsed, pollErr := time.ParseDuration(workerPollWait)
+		if pollErr != nil {
+			return pollErr
 		}
-		pollWait = parsed
+		pollWait = pollParsed
 	}
 
 	concurrency := workerConcurrency

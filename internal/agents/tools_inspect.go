@@ -49,18 +49,7 @@ type InspectCloudResourceParams struct {
 }
 
 func (st *SecurityTools) InspectCloudResource(ctx context.Context, params InspectCloudResourceParams) (string, error) {
-	payload := inspectParams{
-		Resource:   params.Resource,
-		Provider:   params.Provider,
-		Service:    params.Service,
-		Identifier: params.Identifier,
-		Project:    params.Project,
-		Region:     params.Region,
-		Cluster:    params.Cluster,
-		Zone:       params.Zone,
-		Action:     params.Action,
-		Params:     params.Params,
-	}
+	payload := inspectParams(params)
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
