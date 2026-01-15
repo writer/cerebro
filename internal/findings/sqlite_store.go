@@ -86,7 +86,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		fmt.Fprintf(os.Stderr, "failed to begin transaction: %v\n", err)
 		return nil
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Check if exists
 	var existing Finding
@@ -112,22 +112,23 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			LastSeen:     now,
 		}
 
-		_, err = tx.ExecContext(ctx, `
+		_, execErr := tx.ExecContext(ctx, `
 			INSERT INTO findings (id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status, f.ResourceID, f.ResourceType, resourceData, f.Description, f.FirstSeen, f.LastSeen)
 
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to insert finding: %v\n", err)
+		if execErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to insert finding: %v\n", execErr)
 			return nil
 		}
-		if err := tx.Commit(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to commit insert: %v\n", err)
+		if commitErr := tx.Commit(); commitErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to commit insert: %v\n", commitErr)
 			return nil
 		}
 		return f
+	}
 
-	} else if err != nil {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to query finding: %v\n", err)
 		return nil
 	}
@@ -228,7 +229,7 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 	}
 	defer rows.Close()
 
-	var result []*Finding
+	result := make([]*Finding, 0)
 	for rows.Next() {
 		var f Finding
 		var resourceData []byte
@@ -287,7 +288,7 @@ func (s *SQLiteStore) Stats() Stats {
 	}
 
 	// Total
-	s.db.QueryRow("SELECT COUNT(*) FROM findings").Scan(&stats.Total)
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM findings").Scan(&stats.Total)
 
 	// By Severity
 	rows, _ := s.db.Query("SELECT severity, COUNT(*) FROM findings GROUP BY severity")
@@ -295,7 +296,7 @@ func (s *SQLiteStore) Stats() Stats {
 		for rows.Next() {
 			var k string
 			var v int
-			rows.Scan(&k, &v)
+			_ = rows.Scan(&k, &v)
 			stats.BySeverity[k] = v
 		}
 		rows.Close()
@@ -307,7 +308,7 @@ func (s *SQLiteStore) Stats() Stats {
 		for rows.Next() {
 			var k string
 			var v int
-			rows.Scan(&k, &v)
+			_ = rows.Scan(&k, &v)
 			stats.ByStatus[k] = v
 		}
 		rows.Close()
@@ -319,7 +320,7 @@ func (s *SQLiteStore) Stats() Stats {
 		for rows.Next() {
 			var k string
 			var v int
-			rows.Scan(&k, &v)
+			_ = rows.Scan(&k, &v)
 			stats.ByPolicy[k] = v
 		}
 		rows.Close()

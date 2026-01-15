@@ -120,7 +120,7 @@ func (st *SecurityTools) handleECS(ctx context.Context, cfg aws.Config, action s
 	}
 }
 
-func (st *SecurityTools) handleIAM(ctx context.Context, cfg aws.Config, action string, args json.RawMessage) (string, error) {
+func (st *SecurityTools) handleIAM(ctx context.Context, cfg aws.Config, action string, _ json.RawMessage) (string, error) {
 	client := iam.NewFromConfig(cfg)
 
 	switch action {

@@ -109,9 +109,9 @@ func (c *LocalClient) GetFileContent(ctx context.Context, repoURL, path string) 
 
 // AnalysisResult represents findings from code analysis
 type AnalysisResult struct {
-	RepoURL     string   `json:"repo_url"`
-	FilesScanned int      `json:"files_scanned"`
-	Findings    []Finding `json:"findings"`
+	RepoURL      string    `json:"repo_url"`
+	FilesScanned int       `json:"files_scanned"`
+	Findings     []Finding `json:"findings"`
 }
 
 type Finding struct {

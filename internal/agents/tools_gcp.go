@@ -8,7 +8,7 @@ import (
 	compute "cloud.google.com/go/compute/apiv1"
 	"cloud.google.com/go/compute/apiv1/computepb"
 	iam "cloud.google.com/go/iam/admin/apiv1"
-	iampb "google.golang.org/genproto/googleapis/iam/admin/v1"
+	"cloud.google.com/go/iam/admin/apiv1/adminpb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"cloud.google.com/go/storage"
@@ -108,7 +108,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 			Zone string `json:"zone"`
 		}
 		// If zone not provided, we might need to use AggregatedList
-		json.Unmarshal(args, &input) // Optional
+		_ = json.Unmarshal(args, &input) // Optional
 
 		if input.Zone != "" {
 			req := &computepb.ListInstancesRequest{
@@ -155,7 +155,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 	}
 }
 
-func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action string, args json.RawMessage) (string, error) {
+func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action string, _ json.RawMessage) (string, error) {
 	client, err := iam.NewIamClient(ctx)
 	if err != nil {
 		return "", err
@@ -164,7 +164,7 @@ func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action str
 
 	switch action {
 	case "list-service-accounts":
-		req := &iampb.ListServiceAccountsRequest{
+		req := &adminpb.ListServiceAccountsRequest{
 			Name: fmt.Sprintf("projects/%s", projectID),
 		}
 		it := client.ListServiceAccounts(ctx, req)
@@ -185,7 +185,7 @@ func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action str
 	}
 }
 
-func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action string, args json.RawMessage) (string, error) {
+func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action string, _ json.RawMessage) (string, error) {
 	client, err := resourcemanager.NewProjectsClient(ctx)
 	if err != nil {
 		return "", err
