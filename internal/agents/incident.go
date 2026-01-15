@@ -253,7 +253,7 @@ func (ir *IncidentResponse) GetPlaybook(incidentType string) *Playbook {
 			Steps: []PlaybookStep{
 				{Order: 1, Name: "Map Asset to Code", Action: "query_assets", Description: "Identify the Git repository linked to the asset via tags"},
 				{Order: 2, Name: "Analyze Codebase", Action: "analyze_repo", Description: "Clone and scan the repository for vulnerabilities matching the cloud finding"},
-				{Order: 3, Name: "Verify Cloud State", Action: "aws_inspect", Description: "Use live AWS API calls to verify the current configuration of the deployed resource"},
+				{Order: 3, Name: "Verify Cloud State", Action: "inspect_cloud_resource", Description: "Use live API calls (aws_inspect or gcp_inspect) to verify the current configuration of the deployed resource"},
 				{Order: 4, Name: "Contextualize Risk", Action: "evaluate_policy", Description: "Determine if the code vulnerability is reachable based on verified cloud configuration"},
 				{Order: 5, Name: "Report Findings", Action: "create_ticket", Description: "Create a ticket with linked code and cloud context"},
 			},

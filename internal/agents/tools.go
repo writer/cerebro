@@ -75,6 +75,34 @@ func (st *SecurityTools) GetTools() []Tool {
 			Handler: st.awsInspect,
 		},
 		{
+			Name:        "gcp_inspect",
+			Description: "Inspect GCP resources using live API calls (read-only)",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"service": map[string]interface{}{
+						"type":        "string",
+						"description": "GCP Service (storage, compute, iam, resourcemanager)",
+						"enum":        []string{"storage", "compute", "iam", "resourcemanager"},
+					},
+					"action": map[string]interface{}{
+						"type":        "string",
+						"description": "Action to perform (e.g., list-buckets, list-instances)",
+					},
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "GCP Project ID",
+					},
+					"params": map[string]interface{}{
+						"type":        "object",
+						"description": "Parameters for the action (e.g., zone for compute)",
+					},
+				},
+				"required": []string{"service", "action", "project"},
+			},
+			Handler: st.gcpInspect,
+		},
+		{
 			Name:        "query_assets",
 			Description: "Query cloud assets from the security data lake using SQL",
 			Parameters: map[string]interface{}{
