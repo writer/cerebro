@@ -378,15 +378,18 @@ if tailscale_stack:
 
 from aws import github_actions
 
-# Deployment role - assumed via centralized broker from aws-git-roles
-# OIDC role: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
-# Broker role: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
+# Deployment policies for the existing writer-aws-deployment-role
+# The role itself is managed by aws-account-automation CloudFormation stackset
+# We only attach cerebro-specific permissions here
+#
+# OIDC flow:
+#   GitHub Actions -> OIDC Role (533267360238) -> Broker Role -> writer-aws-deployment-role (this account)
 
 ecs_service_arns = [ecs_stack["api_service"].id]
 if worker_stack:
     ecs_service_arns.append(worker_stack["service"].id)
 
-deployment_role = github_actions.create_deployment_role(
+deployment_policy = github_actions.attach_deployment_policies(
     name="cerebro",
     ecr_repository_arn="arn:aws:ecr:us-east-1:073877318660:repository/cerebro",
     ecs_cluster_arn=ecs_stack["cluster"].arn,
@@ -396,8 +399,4 @@ deployment_role = github_actions.create_deployment_role(
     dynamodb_table_arns=[job_store_stack["table_arn"]],
 )
 
-pulumi.export("deployment_role_arn", deployment_role.arn)
-
-# Infrastructure deployment role (for Pulumi) - assumed via broker
-infra_deployment_role = github_actions.create_infra_deployment_role(name="cerebro")
-pulumi.export("infra_deployment_role_arn", infra_deployment_role.arn)
+pulumi.export("deployment_policy_arn", deployment_policy.arn)

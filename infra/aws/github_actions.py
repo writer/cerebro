@@ -1,10 +1,11 @@
 """
-GitHub Actions deployment role for CI/CD.
+GitHub Actions deployment policies for CI/CD.
 
 Uses the centralized OIDC federation from aws-git-roles:
 - OIDC provider and per-repo roles live in management account (533267360238)
 - Broker role handles cross-account assume with session tag enforcement
-- This module creates only the deployment role in the target account
+- writer-aws-deployment-role is created by aws-account-automation (CloudFormation)
+- This module only attaches policies for cerebro-specific permissions
 
 Architecture:
     GitHub Actions -> OIDC Role (mgmt) -> Broker Role (mgmt) -> Deployment Role (this account)
@@ -23,10 +24,9 @@ import pulumi_aws as aws
 
 MANAGEMENT_ACCOUNT_ID = "533267360238"
 BROKER_ROLE_NAME = "writer-aws-deployment-broker-role"
-BROKER_ROLE_ARN = f"arn:aws:iam::{MANAGEMENT_ACCOUNT_ID}:role/{BROKER_ROLE_NAME}"
 
 
-def create_deployment_role(
+def attach_deployment_policies(
     name: str,
     ecr_repository_arn: str,
     ecs_cluster_arn: Union[str, Output[str]],
@@ -34,34 +34,12 @@ def create_deployment_role(
     log_group_arns: Optional[List[Union[str, Output[str]]]] = None,
     sqs_queue_arns: Optional[List[Union[str, Output[str]]]] = None,
     dynamodb_table_arns: Optional[List[Union[str, Output[str]]]] = None,
-) -> aws.iam.Role:
-    """Create deployment role that can be assumed via the centralized broker.
+) -> aws.iam.Policy:
+    """Attach deployment policies to the existing writer-aws-deployment-role.
     
-    This role trusts the broker role in the management account. The broker
-    enforces session tags to prevent cross-repo impersonation.
+    The role is created by aws-account-automation CloudFormation stackset.
+    We just add cerebro-specific permissions for ECR, ECS, SQS, DynamoDB.
     """
-    assume_role_policy = json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {
-                "AWS": BROKER_ROLE_ARN
-            },
-            "Action": ["sts:AssumeRole", "sts:TagSession"],
-        }]
-    })
-
-    role = aws.iam.Role(
-        f"{name}-deployment-role",
-        name="writer-aws-deployment-role",
-        assume_role_policy=assume_role_policy,
-        description=f"Deployment role for {name} (assumed via broker)",
-        max_session_duration=3600,
-        tags={
-            "Name": "writer-aws-deployment-role",
-            "Purpose": "CI/CD deployment",
-        },
-    )
 
     def build_policy(
         service_arns: List[str],
@@ -197,49 +175,11 @@ def create_deployment_role(
         },
     )
 
+    # Attach to the existing role managed by aws-account-automation
     aws.iam.RolePolicyAttachment(
         f"{name}-deployment-policy-attachment",
-        role=role.name,
+        role="writer-aws-deployment-role",
         policy_arn=policy.arn,
     )
 
-    return role
-
-
-def create_infra_deployment_role(name: str) -> aws.iam.Role:
-    """Create infrastructure deployment role for Pulumi.
-    
-    This role is assumed via the broker for infrastructure changes.
-    Has AdministratorAccess scoped to this account.
-    """
-    assume_role_policy = json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {
-                "AWS": BROKER_ROLE_ARN
-            },
-            "Action": ["sts:AssumeRole", "sts:TagSession"],
-        }]
-    })
-
-    role = aws.iam.Role(
-        f"{name}-infra-deployment-role",
-        name="writer-aws-infra-deployment-role",
-        assume_role_policy=assume_role_policy,
-        description=f"Infrastructure deployment role for {name} (assumed via broker)",
-        max_session_duration=3600,
-        tags={
-            "Name": "writer-aws-infra-deployment-role",
-            "Purpose": "Infrastructure deployment",
-        },
-    )
-
-    # AdministratorAccess for Pulumi - scoped to this account only
-    aws.iam.RolePolicyAttachment(
-        f"{name}-infra-admin",
-        role=role.name,
-        policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
-    )
-
-    return role
+    return policy
