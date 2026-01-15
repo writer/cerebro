@@ -35,6 +35,41 @@ type inspectParams struct {
 	Params     map[string]interface{} `json:"params"`
 }
 
+type InspectCloudResourceParams struct {
+	Resource   string                 `json:"resource"`
+	Provider   string                 `json:"provider"`
+	Service    string                 `json:"service"`
+	Identifier string                 `json:"identifier"`
+	Project    string                 `json:"project"`
+	Region     string                 `json:"region"`
+	Cluster    string                 `json:"cluster"`
+	Zone       string                 `json:"zone"`
+	Action     string                 `json:"action"`
+	Params     map[string]interface{} `json:"params"`
+}
+
+func (st *SecurityTools) InspectCloudResource(ctx context.Context, params InspectCloudResourceParams) (string, error) {
+	payload := inspectParams{
+		Resource:   params.Resource,
+		Provider:   params.Provider,
+		Service:    params.Service,
+		Identifier: params.Identifier,
+		Project:    params.Project,
+		Region:     params.Region,
+		Cluster:    params.Cluster,
+		Zone:       params.Zone,
+		Action:     params.Action,
+		Params:     params.Params,
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	return st.inspectCloudResource(ctx, raw)
+}
+
 func (st *SecurityTools) inspectCloudResource(ctx context.Context, args json.RawMessage) (string, error) {
 	var params inspectParams
 	if err := json.Unmarshal(args, &params); err != nil {

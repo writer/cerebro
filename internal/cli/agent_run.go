@@ -2,13 +2,16 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/writerinternal/cerebro/internal/agents"
 	"github.com/writerinternal/cerebro/internal/app"
+	"github.com/writerinternal/cerebro/internal/jobs"
 	"github.com/writerinternal/cerebro/internal/scm"
 )
 
@@ -33,6 +36,11 @@ var (
 	agentRunGCPProject   string
 	agentRunGCPZone      string
 	agentRunOutput       string
+	agentRunDistributed  bool
+	agentRunWait         bool
+	agentRunPollInterval time.Duration
+	agentRunTimeout      time.Duration
+	agentRunMaxAttempts  int
 )
 
 func init() {
@@ -45,6 +53,11 @@ func init() {
 	agentRunCmd.Flags().StringVar(&agentRunGCPProject, "gcp-project", "", "GCP project ID for inspections")
 	agentRunCmd.Flags().StringVar(&agentRunGCPZone, "gcp-zone", "", "GCP zone for compute instance inspections")
 	agentRunCmd.Flags().StringVarP(&agentRunOutput, "output", "o", "table", "Output format (table,json)")
+	agentRunCmd.Flags().BoolVar(&agentRunDistributed, "distributed", false, "Use distributed job execution when configured")
+	agentRunCmd.Flags().BoolVar(&agentRunWait, "wait", false, "Wait for distributed jobs to complete")
+	agentRunCmd.Flags().DurationVar(&agentRunPollInterval, "poll-interval", 5*time.Second, "Polling interval for distributed jobs")
+	agentRunCmd.Flags().DurationVar(&agentRunTimeout, "timeout", 0, "Maximum time to wait for jobs (0 for no limit)")
+	agentRunCmd.Flags().IntVar(&agentRunMaxAttempts, "max-attempts", 0, "Maximum attempts per distributed job")
 }
 
 func runAgentFlow(cmd *cobra.Command, args []string) error {
@@ -61,6 +74,10 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 
 	scmClient := scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN"))
 	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scmClient)
+	useDistributed := agentRunDistributed || (application.Config.JobQueueURL != "" && application.Config.JobTableName != "")
+	if useDistributed {
+		return runDistributedAgentFlow(ctx, application, tools)
+	}
 
 	report, err := agents.RunCodeToCloudFlow(ctx, tools, agents.CodeToCloudOptions{
 		RepoURL:      agentRunRepoURL,
@@ -112,4 +129,169 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *agents.SecurityTools) error {
+	if application.Config.JobQueueURL == "" || application.Config.JobTableName == "" {
+		return fmt.Errorf("JOB_QUEUE_URL and JOB_TABLE_NAME are required for distributed execution")
+	}
+
+	resources, analysis, err := buildDistributedResources(ctx, tools)
+	if err != nil {
+		return err
+	}
+	if len(resources) == 0 {
+		return fmt.Errorf("no resources to enqueue")
+	}
+
+	awsCfg, err := jobs.LoadAWSConfig(ctx, application.Config.JobRegion)
+	if err != nil {
+		return err
+	}
+
+	queue := jobs.NewSQSQueue(awsCfg, application.Config.JobQueueURL)
+	store := jobs.NewDynamoStore(awsCfg, application.Config.JobTableName)
+	manager := jobs.NewManager(queue, store, application.Logger)
+
+	maxAttempts := agentRunMaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = application.Config.JobMaxAttempts
+	}
+
+	filesScanned := 0
+	truncated := false
+	if analysis != nil {
+		filesScanned = analysis.FilesScanned
+		truncated = analysis.Truncated
+	}
+
+	batch, err := manager.EnqueueInspectResources(ctx, resources, jobs.EnqueueOptions{
+		MaxAttempts:  maxAttempts,
+		Overrides:    jobs.InspectOverrides{AWSRegion: agentRunAWSRegion, GCPProject: agentRunGCPProject, GCPZone: agentRunGCPZone},
+		RepoURL:      agentRunRepoURL,
+		FilesScanned: filesScanned,
+		Truncated:    truncated,
+	})
+	if err != nil {
+		return err
+	}
+
+	if agentRunOutput == FormatJSON {
+		if agentRunWait {
+			jobsResult, err := waitForJobs(ctx, manager, batch.JobIDs)
+			if err != nil {
+				return err
+			}
+			return JSONOutput(map[string]interface{}{"batch": batch, "analysis": analysis, "jobs": jobsResult})
+		}
+		return JSONOutput(map[string]interface{}{"batch": batch, "analysis": analysis})
+	}
+
+	Info("Enqueued %d jobs", len(batch.JobIDs))
+	Info("Job group: %s", batch.GroupID)
+	if analysis != nil {
+		Info("Files scanned: %d", analysis.FilesScanned)
+		Info("Resources found: %d", analysis.TotalResources)
+	}
+	if batch.Truncated {
+		Warning("Results truncated; adjust --max-resources or use --output json for full details")
+	}
+	if !agentRunWait {
+		return nil
+	}
+
+	jobsResult, err := waitForJobs(ctx, manager, batch.JobIDs)
+	if err != nil {
+		return err
+	}
+
+	printJobResults(jobsResult)
+	return nil
+}
+
+func buildDistributedResources(ctx context.Context, tools *agents.SecurityTools) ([]jobs.ResourceRef, *agents.RepoAnalysis, error) {
+	if agentRunRepoURL == "" && agentRunResource == "" {
+		return nil, nil, fmt.Errorf("repo-url or resource is required")
+	}
+
+	var analysis *agents.RepoAnalysis
+	resources := make([]jobs.ResourceRef, 0)
+
+	if agentRunRepoURL != "" {
+		repoAnalysis, err := tools.AnalyzeRepository(ctx, agentRunRepoURL)
+		if err != nil {
+			return nil, nil, err
+		}
+		analysis = repoAnalysis
+		for _, res := range repoAnalysis.Resources {
+			resources = append(resources, jobs.ResourceRef{
+				Provider:     res.Provider,
+				Service:      res.Service,
+				ResourceType: res.ResourceType,
+				Identifier:   res.Identifier,
+				Resource:     res.Resource,
+				File:         res.File,
+				Line:         res.Line,
+				Snippet:      res.Snippet,
+				Confidence:   res.Confidence,
+			})
+		}
+	}
+
+	if agentRunResource != "" {
+		resources = []jobs.ResourceRef{{Resource: agentRunResource, Identifier: agentRunResource}}
+	}
+
+	if agentRunMaxResources > 0 && len(resources) > agentRunMaxResources {
+		resources = resources[:agentRunMaxResources]
+		if analysis != nil {
+			analysis.Truncated = true
+		}
+	}
+
+	return resources, analysis, nil
+}
+
+func waitForJobs(ctx context.Context, manager *jobs.Manager, jobIDs []string) ([]*jobs.Job, error) {
+	waitCtx := ctx
+	if agentRunTimeout > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, agentRunTimeout)
+		defer cancel()
+	}
+	return manager.WaitForJobs(waitCtx, jobIDs, agentRunPollInterval)
+}
+
+func printJobResults(results []*jobs.Job) {
+	if len(results) == 0 {
+		Warning("No jobs completed")
+		return
+	}
+
+	fmt.Println()
+	tw := NewTableWriter(os.Stdout, "Resource", "Status", "Error")
+	failed := 0
+	for _, job := range results {
+		resource := job.ID
+		var payload jobs.InspectResourcePayload
+		if err := json.Unmarshal([]byte(job.Payload), &payload); err == nil {
+			resource = payload.Resource.Resource
+			if resource == "" {
+				resource = payload.Resource.Identifier
+			}
+		}
+		statusLabel := string(job.Status)
+		if job.Status == jobs.StatusSucceeded {
+			statusLabel = statusColor("passed")
+		} else if job.Status == jobs.StatusFailed {
+			statusLabel = statusColor("failed")
+			failed++
+		}
+		tw.AddRow(resource, statusLabel, job.Error)
+	}
+	tw.Render()
+	if failed > 0 {
+		fmt.Println()
+		Warning("%d jobs failed; use --output json for details", failed)
+	}
 }

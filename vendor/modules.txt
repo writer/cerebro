@@ -213,6 +213,9 @@ github.com/aws/aws-sdk-go-v2/credentials/endpointcreds/internal/client
 github.com/aws/aws-sdk-go-v2/credentials/processcreds
 github.com/aws/aws-sdk-go-v2/credentials/ssocreds
 github.com/aws/aws-sdk-go-v2/credentials/stscreds
+# github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.17
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue
 # github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.1
 ## explicit; go 1.20
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds
@@ -239,6 +242,15 @@ github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
 github.com/aws/aws-sdk-go-v2/service/cloudtrail
 github.com/aws/aws-sdk-go-v2/service/cloudtrail/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/cloudtrail/types
+# github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.3
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/dynamodb
+github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/customizations
+github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/dynamodb/types
+# github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.31.2
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types
 # github.com/aws/aws-sdk-go-v2/service/ecs v1.70.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/ecs
@@ -257,6 +269,9 @@ github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
 # github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.8
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/checksum
+# github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.12
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery
 # github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
@@ -277,6 +292,11 @@ github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/s3/types
+# github.com/aws/aws-sdk-go-v2/service/sqs v1.42.17
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/sqs
+github.com/aws/aws-sdk-go-v2/service/sqs/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/sqs/types
 # github.com/aws/aws-sdk-go-v2/service/sso v1.20.5
 ## explicit; go 1.20
 github.com/aws/aws-sdk-go-v2/service/sso
@@ -595,8 +615,6 @@ github.com/spiffe/go-spiffe/v2/internal/jwtutil
 github.com/spiffe/go-spiffe/v2/internal/pemutil
 github.com/spiffe/go-spiffe/v2/internal/x509util
 github.com/spiffe/go-spiffe/v2/spiffeid
-# github.com/zeebo/errs v1.4.0
-## explicit; go 1.12
 # github.com/zeebo/xxh3 v1.0.2
 ## explicit; go 1.17
 github.com/zeebo/xxh3

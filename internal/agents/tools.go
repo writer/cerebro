@@ -478,3 +478,7 @@ func (st *SecurityTools) analyzeRepository(ctx context.Context, repoURL string) 
 
 	return analysis, nil
 }
+
+func (st *SecurityTools) AnalyzeRepository(ctx context.Context, repoURL string) (*RepoAnalysis, error) {
+	return st.analyzeRepository(ctx, repoURL)
+}

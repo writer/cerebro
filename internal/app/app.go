@@ -226,6 +226,15 @@ type Config struct {
 	ScanInterval string // e.g., "1h", "30m"
 	ScanTables   string // comma-separated list of tables to scan
 
+	// Distributed jobs
+	JobQueueURL          string
+	JobTableName         string
+	JobRegion            string
+	JobWorkerConcurrency int
+	JobVisibilityTimeout time.Duration
+	JobPollWait          time.Duration
+	JobMaxAttempts       int
+
 	// Rate Limiting
 	RateLimitEnabled  bool
 	RateLimitRequests int
@@ -288,6 +297,13 @@ func LoadConfig() *Config {
 		PagerDutyKey:              getEnv("PAGERDUTY_ROUTING_KEY", ""),
 		ScanInterval:              getEnv("SCAN_INTERVAL", ""),
 		ScanTables:                getEnv("SCAN_TABLES", ""),
+		JobQueueURL:               getEnv("JOB_QUEUE_URL", ""),
+		JobTableName:              getEnv("JOB_TABLE_NAME", ""),
+		JobRegion:                 getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
+		JobWorkerConcurrency:      getEnvInt("JOB_WORKER_CONCURRENCY", 4),
+		JobVisibilityTimeout:      getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
+		JobPollWait:               getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
+		JobMaxAttempts:            getEnvInt("JOB_MAX_ATTEMPTS", 3),
 		RateLimitEnabled:          getEnvBool("RATE_LIMIT_ENABLED", false),
 		RateLimitRequests:         getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 		RateLimitWindow:           getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
@@ -389,7 +405,7 @@ func (a *App) initFindings() {
 		if path := os.Getenv("CEREBRO_DB_PATH"); path != "" {
 			dbPath = path
 		}
-		
+
 		store, err := findings.NewSQLiteStore(dbPath)
 		if err != nil {
 			a.Logger.Warn("failed to initialize sqlite findings store, falling back to in-memory", "error", err)
