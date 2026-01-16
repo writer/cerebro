@@ -19,9 +19,27 @@ from aws import compute, infisical, jobs, kms, load_balancer, monitoring, networ
 
 # Configuration
 config = pulumi.Config()
-environment = config.get("environment") or "production"
+
+# Derive environment from stack name to maintain stable resource names
+# Stack "go-prod" -> environment "go-production"
+# Stack "go-dev" -> environment "go-dev"
+# Falls back to config or "production" if not matching pattern
+def _get_environment() -> str:
+    if config.get("environment"):
+        return config.get("environment")
+    stack = pulumi.get_stack()
+    if stack == "go-prod":
+        return "go-production"
+    elif stack.startswith("go-"):
+        return stack.replace("-prod", "-production")
+    return "production"
+
+environment = _get_environment()
 domain = config.get("domain") or ""
-container_image = config.require("containerImage")
+
+# Container image - default to ECR latest if not provided
+container_image = config.get("containerImage") or "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+
 alb_internal = config.get_bool("albInternal")
 if alb_internal is None:
     alb_internal = True
@@ -120,10 +138,14 @@ if use_external_secrets:
             secret_keys.append(key)
 else:
     # Pulumi-managed secrets mode
-    secrets_dict = {
-        "SNOWFLAKE_CONNECTION_STRING": config.require_secret("snowflakeConnectionString"),
-    }
-    secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
+    # Snowflake is optional - Go app falls back to SQLite when not provided
+    secrets_dict = {}
+    secret_keys = []
+
+    snowflake_conn = config.get_secret("snowflakeConnectionString")
+    if snowflake_conn:
+        secrets_dict["SNOWFLAKE_CONNECTION_STRING"] = snowflake_conn
+        secret_keys.append("SNOWFLAKE_CONNECTION_STRING")
 
     # Optional secrets - only add if configured
     if config.get_secret("anthropicApiKey"):
@@ -146,11 +168,15 @@ else:
         secrets_dict["LINEAR_API_KEY"] = config.get_secret("linearApiKey")
         secret_keys.append("LINEAR_API_KEY")
 
-    cerebro_secrets = secrets.create_secrets(
-        name=f"cerebro-{environment}",
-        secrets=secrets_dict,
-        kms_key_arn=kms_key.arn,
-    )
+    # Only create secrets resource if we have secrets to store
+    if secrets_dict:
+        cerebro_secrets = secrets.create_secrets(
+            name=f"cerebro-{environment}",
+            secrets=secrets_dict,
+            kms_key_arn=kms_key.arn,
+        )
+    else:
+        cerebro_secrets = None
 
 # =============================================================================
 # LOAD BALANCER
@@ -198,7 +224,7 @@ app_environment = {
     "CEDAR_POLICIES_PATH": "/app/policies",
     "SNOWFLAKE_DATABASE": config.get("snowflakeDatabase") or "CEREBRO",
     "SNOWFLAKE_SCHEMA": config.get("snowflakeSchema") or "RAW",
-    "JOB_REGION": aws.get_region().name,
+    "JOB_REGION": aws.get_region().region,
 }
 
 # Optional non-secret config
@@ -371,32 +397,3 @@ if enable_infisical and infisical_principal_arn:
 if tailscale_stack:
     pulumi.export("tailscale_instance_id", tailscale_stack["instance_id"])
     pulumi.export("tailscale_private_ip", tailscale_stack["private_ip"])
-
-# =============================================================================
-# GITHUB ACTIONS (CI/CD)
-# =============================================================================
-
-from aws import github_actions
-
-# Deployment policies for the existing writer-aws-deployment-role
-# The role itself is managed by aws-account-automation CloudFormation stackset
-# We only attach cerebro-specific permissions here
-#
-# OIDC flow:
-#   GitHub Actions -> OIDC Role (533267360238) -> Broker Role -> writer-aws-deployment-role (this account)
-
-ecs_service_arns = [ecs_stack["api_service"].id]
-if worker_stack:
-    ecs_service_arns.append(worker_stack["service"].id)
-
-deployment_policy = github_actions.attach_deployment_policies(
-    name="cerebro",
-    ecr_repository_arn="arn:aws:ecr:us-east-1:073877318660:repository/cerebro",
-    ecs_cluster_arn=ecs_stack["cluster"].arn,
-    ecs_service_arns=ecs_service_arns,
-    log_group_arns=[ecs_stack["log_group"].arn],
-    sqs_queue_arns=[job_queue_stack["queue_arn"]],
-    dynamodb_table_arns=[job_store_stack["table_arn"]],
-)
-
-pulumi.export("deployment_policy_arn", deployment_policy.arn)

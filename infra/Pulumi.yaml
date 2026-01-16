@@ -1,12 +1,15 @@
 name: cerebro
-runtime: python
+runtime:
+  name: python
+  options:
+    toolchain: uv
+    virtualenv: .venv
 description: Infrastructure for Cerebro Security Platform (Go)
 
 config:
   cerebro:environment:
     type: string
-    default: production
-    description: Environment name (dev, staging, production)
+    description: Environment name override (derived from stack name if not set)
 
   cerebro:domain:
     type: string
@@ -15,13 +18,12 @@ config:
 
   cerebro:containerImage:
     type: string
-    description: Container image URI (ECR)
+    default: "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
+    description: Container image URI (ECR), defaults to latest in ECR
 
-  # Snowflake connection (required)
-  cerebro:snowflakeConnectionString:
-    type: string
-    secret: true
-    description: Snowflake connection string
+  # Snowflake connection - NOT defined in schema so it's truly optional
+  # Set via: pulumi config set --secret cerebro:snowflakeConnectionString "..."
+  # App falls back to SQLite when not provided
 
   cerebro:snowflakeDatabase:
     type: string

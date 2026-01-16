@@ -183,32 +183,36 @@ def _create_execution_role(
 
     if external_secrets_prefix:
         # External secrets mode: allow access to Infisical-synced secrets
-        secrets_resource = f"arn:aws:secretsmanager:{region.name}:{caller.account_id}:secret:{external_secrets_prefix}/*"
-    else:
+        secrets_resource = f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{external_secrets_prefix}/*"
+    elif secrets_arn:
         # Pulumi-managed secret
         secrets_resource = secrets_arn
+    else:
+        # No secrets configured - skip secrets policy
+        secrets_resource = None
 
-    aws.iam.RolePolicy(
-        f"{name}-exec-secrets",
-        role=role.name,
-        policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
-            lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": ["secretsmanager:GetSecretValue"],
-                        "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": ["kms:Decrypt"],
-                        "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
-                    },
-                ],
-            })
-        ),
-    )
+    if secrets_resource:
+        aws.iam.RolePolicy(
+            f"{name}-exec-secrets",
+            role=role.name,
+            policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
+                lambda args: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["secretsmanager:GetSecretValue"],
+                            "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": ["kms:Decrypt"],
+                            "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
+                        },
+                    ],
+                })
+            ),
+        )
 
     return role
 
@@ -262,7 +266,7 @@ def _create_task_definition(
 ) -> aws.ecs.TaskDefinition:
     """Create ECS task definition."""
     region_obj = aws.get_region()
-    region = region_obj.name
+    region = region_obj.region
     caller = aws.get_caller_identity()
 
     # Build secrets list dynamically based on what's configured
@@ -276,12 +280,15 @@ def _create_task_definition(
             }
             for key in secret_keys
         ]
-    else:
+    elif secrets_arn and secret_keys:
         # Pulumi-managed single secret with multiple keys
         secrets_list = [
             {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
             for key in secret_keys
         ]
+    else:
+        # No secrets configured
+        secrets_list = []
 
     # Build static environment vars
     env_list = [{"name": k, "value": str(v)} for k, v in environment.items()]

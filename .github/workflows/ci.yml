@@ -95,26 +95,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
-          role-chaining: true
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Assume deployment role via broker
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
-          role-chaining: true
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Assume target account role
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
-          role-chaining: true
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -155,26 +139,10 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::533267360238:role/533267360238-writerinternal-cerebro-gha-oidc-role
-          role-chaining: true
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Assume deployment role via broker
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::533267360238:role/writer-aws-deployment-broker-role
-          role-chaining: true
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Assume target account role
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
-          role-chaining: true
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Force new deployment
         run: |

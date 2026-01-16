@@ -132,7 +132,7 @@ def create_worker_service(
     Create ECS Fargate service for job workers.
     """
     region_obj = aws.get_region()
-    region = region_obj.name
+    region = region_obj.region
     caller = aws.get_caller_identity()
 
     # Worker execution role
@@ -157,30 +157,33 @@ def create_worker_service(
 
     if external_secrets_prefix:
         secrets_resource = f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/*"
-    else:
+    elif secrets_arn:
         secrets_resource = secrets_arn
+    else:
+        secrets_resource = None
 
-    aws.iam.RolePolicy(
-        f"{name}-worker-exec-secrets",
-        role=execution_role.name,
-        policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
-            lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": ["secretsmanager:GetSecretValue"],
-                        "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": ["kms:Decrypt"],
-                        "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
-                    },
-                ],
-            })
-        ),
-    )
+    if secrets_resource:
+        aws.iam.RolePolicy(
+            f"{name}-worker-exec-secrets",
+            role=execution_role.name,
+            policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
+                lambda args: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["secretsmanager:GetSecretValue"],
+                            "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": ["kms:Decrypt"],
+                            "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
+                        },
+                    ],
+                })
+            ),
+        )
 
     # Worker task role with SQS + DynamoDB permissions
     task_role = aws.iam.Role(
@@ -321,11 +324,13 @@ def create_worker_service(
             }
             for key in (secret_keys or [])
         ]
-    else:
+    elif secrets_arn and secret_keys:
         secrets_list = [
             {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
-            for key in (secret_keys or [])
+            for key in secret_keys
         ]
+    else:
+        secrets_list = []
 
     container_def = pulumi.Output.all(queue_url, table_name, log_group_name).apply(
         lambda args: json.dumps([{

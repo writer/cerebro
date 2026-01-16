@@ -31,3 +31,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+infra/__pycache__/*
+infra/aws/__pycache__/*
