@@ -56,6 +56,11 @@ jobs:
           organization: writer-ai
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
+      - name: Set Infisical External ID
+        run: |
+          cd infra
+          uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+
       - name: Pulumi Preview
         uses: pulumi/actions@v5
         with:
@@ -91,6 +96,11 @@ jobs:
         uses: writerInternal/aws-git-roles@v2
         with:
           assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
+
+      - name: Set Infisical External ID
+        run: |
+          cd infra
+          uv run pulumi config set --stack ${{ github.event.inputs.environment }} --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Up
         uses: pulumi/actions@v5

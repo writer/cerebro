@@ -3,3 +3,5 @@ config:
   cerebro:environment: go-production
   cerebro:enableTailscale: true
   cerebro:enableInfisicalSyncRole: true
+  cerebro:useExternalSecrets: true
+  cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
