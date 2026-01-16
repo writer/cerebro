@@ -288,7 +288,7 @@ func (a *CircleCIToAWSAdapter) MapToCloud(ctx context.Context, identity ServiceI
 
 // AnalyzeTrustChain analyzes the full trust chain from CI/CD to cloud resources
 func (m *ServiceIdentityMapper) AnalyzeTrustChain(ctx context.Context, identities []ServiceIdentity, iamRoles []map[string]interface{}) []TrustEdge {
-	var edges []TrustEdge
+	edges := make([]TrustEdge, 0, len(identities)*len(iamRoles))
 
 	// Build index of IAM roles by trust policy patterns
 	rolePatterns := make(map[string][]map[string]interface{})
