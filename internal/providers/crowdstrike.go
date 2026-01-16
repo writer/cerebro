@@ -163,7 +163,7 @@ func (c *CrowdStrikeProvider) authenticate(ctx context.Context) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -196,7 +196,7 @@ func (c *CrowdStrikeProvider) syncHosts(ctx context.Context) (*TableResult, erro
 	if err != nil {
 		return result, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var queryResult struct {
 		Resources []string `json:"resources"`
@@ -222,7 +222,7 @@ func (c *CrowdStrikeProvider) syncDetections(ctx context.Context) (*TableResult,
 	if err != nil {
 		return result, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var queryResult struct {
 		Resources []string `json:"resources"`

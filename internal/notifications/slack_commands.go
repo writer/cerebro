@@ -101,10 +101,10 @@ func (h *SlackCommandHandler) findingsCommand(args []string) SlackResponse {
 
 	// Parse arguments
 	for _, arg := range args {
-		switch {
-		case arg == "critical" || arg == "high" || arg == "medium" || arg == "low":
+		switch arg {
+		case "critical", "high", "medium", "low":
 			filter.Severity = arg
-		case arg == "open" || arg == "resolved" || arg == "suppressed":
+		case "open", "resolved", "suppressed":
 			filter.Status = arg
 		}
 	}

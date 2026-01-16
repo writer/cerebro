@@ -86,7 +86,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	Info("Running: cloudquery %s", strings.Join(cqArgs, " "))
 	fmt.Println()
 
-	cqCmd := exec.Command("cloudquery", cqArgs...)
+	cqCmd := exec.CommandContext(context.Background(), "cloudquery", cqArgs...) //#nosec G204 -- cqArgs contains controlled CLI arguments
 	cqCmd.Stdout = os.Stdout
 	cqCmd.Stderr = os.Stderr
 	cqCmd.Env = os.Environ()
@@ -128,7 +128,7 @@ func ensureCloudQueryTables(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Import cloudquery package for TableManager
 	// For now, just verify connection
@@ -152,7 +152,7 @@ func getTableRowCounts(ctx context.Context) map[string]int64 {
 	if err != nil {
 		return counts
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Check key tables
 	tables := []string{"aws_s3_buckets", "aws_ec2_instances", "aws_iam_users"}
@@ -189,7 +189,7 @@ func runPostSyncScan(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
 		return fmt.Errorf("snowflake not configured")

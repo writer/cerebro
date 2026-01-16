@@ -55,7 +55,7 @@ func (st *SecurityTools) handleGCPStorage(ctx context.Context, projectID, action
 	if err != nil {
 		return "", err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	switch action {
 	case "list-buckets":
@@ -129,7 +129,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 		if err != nil {
 			return "", err
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		var input struct {
 			Zone string `json:"zone"`
@@ -181,7 +181,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 		if err != nil {
 			return "", err
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		var input struct {
 			Zone     string `json:"zone"`
@@ -214,7 +214,7 @@ func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action str
 	if err != nil {
 		return "", err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	switch action {
 	case "list-service-accounts":
@@ -244,7 +244,7 @@ func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action st
 	if err != nil {
 		return "", err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	switch action {
 	case "list-projects":

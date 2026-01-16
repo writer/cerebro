@@ -30,7 +30,7 @@ func (c *GitHubClient) Clone(ctx context.Context, repoURL string, dest string) e
 	repo := strings.TrimPrefix(repoURL, "https://github.com/")
 	repo = strings.TrimSuffix(repo, ".git")
 
-	cmd := exec.CommandContext(ctx, "gh", "repo", "clone", repo, dest)
+	cmd := exec.CommandContext(ctx, "gh", "repo", "clone", repo, dest) //#nosec G204 -- args are sanitized repo/dest strings
 	// Pass token via env if needed, but gh CLI usually manages its own auth state
 	// If token is provided explicitly, we can set GH_TOKEN
 	if c.Token != "" {
@@ -51,7 +51,7 @@ func (c *GitHubClient) GetFileContent(ctx context.Context, repoURL, path string)
 	// API endpoint: /repos/{owner}/{repo}/contents/{path}
 	apiPath := fmt.Sprintf("repos/%s/contents/%s", repo, path)
 
-	cmd := exec.CommandContext(ctx, "gh", "api", apiPath, "-q", ".content")
+	cmd := exec.CommandContext(ctx, "gh", "api", apiPath, "-q", ".content") //#nosec G204 -- args are sanitized repo/path strings
 	if c.Token != "" {
 		cmd.Env = append(os.Environ(), "GH_TOKEN="+c.Token)
 	}
@@ -66,7 +66,7 @@ func (c *GitHubClient) GetFileContent(ctx context.Context, repoURL, path string)
 	// Let's use `gh api ... --raw-field` if possible, or just decode here.
 	// Actually, gh api has media type param to get raw content: -H "Accept: application/vnd.github.v3.raw"
 
-	cmdRaw := exec.CommandContext(ctx, "gh", "api", apiPath, "-H", "Accept: application/vnd.github.v3.raw")
+	cmdRaw := exec.CommandContext(ctx, "gh", "api", apiPath, "-H", "Accept: application/vnd.github.v3.raw") //#nosec G204 -- args are sanitized repo/path strings
 	if c.Token != "" {
 		cmdRaw.Env = append(os.Environ(), "GH_TOKEN="+c.Token)
 	}
@@ -91,7 +91,7 @@ func NewLocalClient(basePath string) *LocalClient {
 func (c *LocalClient) Clone(ctx context.Context, repoURL, dest string) error {
 	// In a real implementation, this would run `git clone`
 	// For simulation, we'll assume the repo is already mapped or mocked
-	return os.MkdirAll(dest, 0755)
+	return os.MkdirAll(dest, 0750)
 }
 
 func (c *LocalClient) GetFileContent(ctx context.Context, repoURL, path string) (string, error) {

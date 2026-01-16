@@ -35,7 +35,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	// 2. Initialize Provider (Anthropic)
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")

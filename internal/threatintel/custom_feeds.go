@@ -109,7 +109,7 @@ func (m *CustomFeedManager) SyncFeed(ctx context.Context, feedID string) (*FeedP
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	return m.UploadFeed(ctx, feedID, data)
 }

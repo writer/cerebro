@@ -120,7 +120,7 @@ func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	findings := make([]*FindingRecord, 0, 100)
 	for rows.Next() {
@@ -311,7 +311,7 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	entries := make([]*AuditEntry, 0, limit)
 	for rows.Next() {

@@ -15,7 +15,7 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_tailscale as tailscale
 
-from aws import compute, infisical, jobs, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
+from aws import compute, ecr, infisical, jobs, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
 
 # Configuration
 config = pulumi.Config()
@@ -397,3 +397,18 @@ if enable_infisical and infisical_principal_arn:
 if tailscale_stack:
     pulumi.export("tailscale_instance_id", tailscale_stack["instance_id"])
     pulumi.export("tailscale_private_ip", tailscale_stack["private_ip"])
+
+# =============================================================================
+# ECR REPOSITORY
+# =============================================================================
+
+ecr_repository = ecr.create_ecr_repository(
+    name="cerebro",
+    enable_immutable_tags=True,  # Tags are immutable except for 'latest'
+    scan_on_push=True,
+    lifecycle_policy_days=30,
+    kms_key_arn="arn:aws:kms:us-east-1:073877318660:key/454a4c79-083a-4bb3-af2a-09539082d416",
+)
+
+pulumi.export("ecr_repository_url", ecr_repository.repository_url)
+pulumi.export("ecr_repository_arn", ecr_repository.arn)

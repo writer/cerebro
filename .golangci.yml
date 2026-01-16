@@ -1,18 +1,18 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
 linters:
+  default: none
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
     - gosec
-    - gofmt
-    - goimports
     - misspell
     - unconvert
     - unparam
@@ -20,74 +20,79 @@ linters:
     - noctx
     - prealloc
 
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: false
-  
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment  # too strict
-  
-  gosec:
-    excludes:
-      - G104  # Audit errors not checked (too noisy)
-      - G115  # Integer overflow conversion - false positives on bounded values
-      - G304  # File path from variable (needed for config)
-  
-  goimports:
-    local-prefixes: github.com/writerinternal/cerebro
-  
-  misspell:
-    locale: US
-    ignore-words:
-      - mitre  # MITRE ATT&CK framework is correct spelling
-  
-  prealloc:
-    simple: true
-    for-loops: true
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+
+    gosec:
+      excludes:
+        - G104
+        - G115
+        - G304
+
+    misspell:
+      locale: US
+      ignore-rules:
+        - mitre
+
+    prealloc:
+      simple: true
+      for-loops: true
+
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+          - errcheck
+
+      - path: internal/api/server\.go
+        linters:
+          - funlen
+
+      - path: internal/cache/cache\.go
+        linters:
+          - errcheck
+
+      - path: internal/findings/snowflake_store\.go
+        linters:
+          - errcheck
+          - gosec
+
+      - path: internal/snowflake/.*\.go
+        linters:
+          - gosec
+
+      - path: internal/lineage/mapper\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/writerinternal/cerebro
 
 issues:
-  exclude-rules:
-    # Exclude some linters from running on tests
-    - path: _test\.go
-      linters:
-        - gosec
-        - unparam
-        - errcheck  # tests often ignore errors intentionally
-    
-    # Exclude known issues in generated files
-    - path: internal/api/server\.go
-      linters:
-        - funlen  # handlers can be long
-    
-    # Type assertions in cache are safe (controlled internally)
-    - path: internal/cache/cache\.go
-      linters:
-        - errcheck
-    
-    # JSON unmarshal in store is best-effort
-    - path: internal/findings/snowflake_store\.go
-      linters:
-        - errcheck
-        - gosec  # SQL uses internal schema names, not user input
-    
-    # Snowflake repository uses internal schema names for SQL
-    - path: internal/snowflake/.*\.go
-      linters:
-        - gosec  # G201/G202 - schema names are trusted internal values
-    
-    # Lineage mapper uses type assertions on dynamic data
-    - path: internal/lineage/mapper\.go
-      linters:
-        - errcheck  # Type assertions on interface{} maps are intentionally unchecked
-    
   max-issues-per-linter: 50
   max-same-issues: 3
 
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
+    text:
+      path: stdout
+      colors: true
+      print-issued-lines: true
+      print-linter-name: true

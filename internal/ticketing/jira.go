@@ -122,7 +122,7 @@ func (j *JiraProvider) CreateTicket(ctx context.Context, ticket *Ticket) (*Ticke
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -177,7 +177,7 @@ func (j *JiraProvider) UpdateTicket(ctx context.Context, id string, update *Tick
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -199,7 +199,7 @@ func (j *JiraProvider) GetTicket(ctx context.Context, id string) (*Ticket, error
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("jira API error %d", resp.StatusCode)
@@ -238,7 +238,7 @@ func (j *JiraProvider) ListTickets(ctx context.Context, filter TicketFilter) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result struct {
 		Issues []jiraIssue `json:"issues"`
@@ -287,7 +287,7 @@ func (j *JiraProvider) AddComment(ctx context.Context, ticketID string, comment 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("jira API error %d", resp.StatusCode)
@@ -308,7 +308,7 @@ func (j *JiraProvider) Close(ctx context.Context, id string, resolution string) 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var transitions struct {
 		Transitions []struct {
@@ -349,7 +349,7 @@ func (j *JiraProvider) Close(ctx context.Context, id string, resolution string) 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("jira API error %d", resp.StatusCode)

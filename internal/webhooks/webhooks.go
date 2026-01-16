@@ -219,7 +219,7 @@ func (s *Service) deliver(ctx context.Context, webhook *Webhook, event Event) {
 		delivery.ResponseBody = err.Error()
 		delivery.Success = false
 	} else {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		delivery.ResponseStatus = resp.StatusCode
 		delivery.Success = resp.StatusCode >= 200 && resp.StatusCode < 300
 	}
@@ -370,7 +370,7 @@ func (s *Service) Handler() http.Handler {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": resp.StatusCode >= 200 && resp.StatusCode < 300,

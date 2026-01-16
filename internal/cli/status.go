@@ -37,7 +37,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	status := map[string]interface{}{
 		"version":   "1.0.0",

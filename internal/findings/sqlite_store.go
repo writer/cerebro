@@ -26,7 +26,7 @@ type SQLiteStore struct {
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, fmt.Errorf("create directory: %w", err)
 	}
 
@@ -37,7 +37,7 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 
 	// Initialize schema
 	if err := initSchema(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
@@ -67,7 +67,7 @@ func initSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
 	CREATE INDEX IF NOT EXISTS idx_findings_policy_id ON findings(policy_id);
 	`
-	_, err := db.Exec(schema)
+	_, err := db.ExecContext(context.Background(), schema)
 	return err
 }
 
@@ -179,7 +179,7 @@ func (s *SQLiteStore) Get(id string) (*Finding, bool) {
 	var resourceData []byte
 	var resolvedAt sql.NullTime
 
-	err := s.db.QueryRow("SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen, resolved_at FROM findings WHERE id = ?", id).
+	err := s.db.QueryRowContext(context.Background(), "SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen, resolved_at FROM findings WHERE id = ?", id).
 		Scan(&f.ID, &f.PolicyID, &f.PolicyName, &f.Severity, &f.Status, &f.ResourceID, &f.ResourceType, &resourceData, &f.Description, &f.FirstSeen, &f.LastSeen, &resolvedAt)
 
 	if err == sql.ErrNoRows {
@@ -221,12 +221,12 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 		args = append(args, filter.PolicyID)
 	}
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.db.QueryContext(context.Background(), query, args...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to list findings: %v\n", err)
 		return []*Finding{}
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make([]*Finding, 0, 100) // Pre-allocate for common case
 	for rows.Next() {
@@ -256,7 +256,7 @@ func (s *SQLiteStore) Resolve(id string) bool {
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	res, err := s.db.Exec("UPDATE findings SET status = 'resolved', resolved_at = ? WHERE id = ?", now, id)
+	res, err := s.db.ExecContext(context.Background(), "UPDATE findings SET status = 'resolved', resolved_at = ? WHERE id = ?", now, id)
 	if err != nil {
 		return false
 	}
@@ -268,7 +268,7 @@ func (s *SQLiteStore) Suppress(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res, err := s.db.Exec("UPDATE findings SET status = 'suppressed' WHERE id = ?", id)
+	res, err := s.db.ExecContext(context.Background(), "UPDATE findings SET status = 'suppressed' WHERE id = ?", id)
 	if err != nil {
 		return false
 	}
@@ -287,10 +287,10 @@ func (s *SQLiteStore) Stats() Stats {
 	}
 
 	// Total
-	_ = s.db.QueryRow("SELECT COUNT(*) FROM findings").Scan(&stats.Total)
+	_ = s.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM findings").Scan(&stats.Total)
 
 	// By Severity
-	rows, _ := s.db.Query("SELECT severity, COUNT(*) FROM findings GROUP BY severity")
+	rows, _ := s.db.QueryContext(context.Background(), "SELECT severity, COUNT(*) FROM findings GROUP BY severity")
 	if rows != nil {
 		for rows.Next() {
 			var k string
@@ -298,11 +298,11 @@ func (s *SQLiteStore) Stats() Stats {
 			_ = rows.Scan(&k, &v)
 			stats.BySeverity[k] = v
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	// By Status
-	rows, _ = s.db.Query("SELECT status, COUNT(*) FROM findings GROUP BY status")
+	rows, _ = s.db.QueryContext(context.Background(), "SELECT status, COUNT(*) FROM findings GROUP BY status")
 	if rows != nil {
 		for rows.Next() {
 			var k string
@@ -310,11 +310,11 @@ func (s *SQLiteStore) Stats() Stats {
 			_ = rows.Scan(&k, &v)
 			stats.ByStatus[k] = v
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	// By Policy
-	rows, _ = s.db.Query("SELECT policy_id, COUNT(*) FROM findings GROUP BY policy_id")
+	rows, _ = s.db.QueryContext(context.Background(), "SELECT policy_id, COUNT(*) FROM findings GROUP BY policy_id")
 	if rows != nil {
 		for rows.Next() {
 			var k string
@@ -322,7 +322,7 @@ func (s *SQLiteStore) Stats() Stats {
 			_ = rows.Scan(&k, &v)
 			stats.ByPolicy[k] = v
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	return stats

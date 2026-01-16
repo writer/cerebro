@@ -195,7 +195,7 @@ func (s *SnykProvider) request(ctx context.Context, path string) ([]byte, error)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)

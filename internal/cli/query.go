@@ -51,7 +51,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("connect to snowflake: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	query := strings.Join(args, " ")
 	if !strings.Contains(strings.ToUpper(query), "LIMIT") && queryLimit > 0 {

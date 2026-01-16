@@ -169,11 +169,11 @@ func scanRepositoryForResources(root, repoURL string) (*RepoAnalysis, error) {
 			return nil
 		}
 
-		file, err := os.Open(path)
+		file, err := os.Open(path) //#nosec G304 -- path is from controlled filepath.WalkDir
 		if err != nil {
 			return nil
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		analysis.FilesScanned++
 

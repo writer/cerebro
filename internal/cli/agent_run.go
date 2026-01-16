@@ -70,7 +70,7 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	scmClient := scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN"))
 	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scmClient)
@@ -280,12 +280,15 @@ func printJobResults(results []*jobs.Job) {
 				resource = payload.Resource.Identifier
 			}
 		}
-		statusLabel := string(job.Status)
-		if job.Status == jobs.StatusSucceeded {
+		var statusLabel string
+		switch job.Status {
+		case jobs.StatusSucceeded:
 			statusLabel = statusColor("passed")
-		} else if job.Status == jobs.StatusFailed {
+		case jobs.StatusFailed:
 			statusLabel = statusColor("failed")
 			failed++
+		default:
+			statusLabel = string(job.Status)
 		}
 		tw.AddRow(resource, statusLabel, job.Error)
 	}

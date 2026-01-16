@@ -182,7 +182,7 @@ func (p *AnthropicProvider) Complete(ctx context.Context, messages []agents.Mess
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -330,7 +330,7 @@ func (p *AnthropicProvider) Stream(ctx context.Context, messages []agents.Messag
 			events <- agents.StreamEvent{Error: err, Done: true}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)

@@ -233,7 +233,7 @@ func (s *SentinelOneProvider) request(ctx context.Context, path string) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)

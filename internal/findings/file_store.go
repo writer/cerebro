@@ -27,7 +27,7 @@ type FileStore struct {
 func NewFileStore(filePath string) (*FileStore, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, fmt.Errorf("create directory: %w", err)
 	}
 

@@ -418,7 +418,7 @@ func (l *LinearProvider) graphQL(ctx context.Context, query string, variables ma
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

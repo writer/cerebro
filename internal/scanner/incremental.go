@@ -151,7 +151,7 @@ func (s *WatermarkStore) LoadWatermarks(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("query watermarks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

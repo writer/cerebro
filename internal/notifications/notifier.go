@@ -145,7 +145,7 @@ func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return fmt.Errorf("slack rate limited: %d", resp.StatusCode)
@@ -250,7 +250,7 @@ func (p *PagerDutyNotifier) Send(ctx context.Context, event Event) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return fmt.Errorf("pagerduty rate limited: %d", resp.StatusCode)
@@ -314,7 +314,7 @@ func (w *WebhookNotifier) Send(ctx context.Context, event Event) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
