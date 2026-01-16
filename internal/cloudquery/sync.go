@@ -48,7 +48,7 @@ func (m *TableManager) EnsureTables(ctx context.Context) error {
 
 // EnsureAWSTables creates only AWS CloudQuery tables
 func (m *TableManager) EnsureAWSTables(ctx context.Context) error {
-	tables := GetAllTableDefinitions()
+	tables := GetAllAWSTableDefinitions()
 
 	for _, table := range tables {
 		sql := GenerateCreateTableSQL(table)

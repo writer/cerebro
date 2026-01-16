@@ -27,8 +27,8 @@ type AssetFilter struct {
 }
 
 func (c *Client) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
-	// Validate table name to prevent SQL injection
-	if err := ValidateTableName(table); err != nil {
+	// Use strict validation to ensure table is a known CloudQuery/Cerebro table
+	if err := ValidateTableNameStrict(table); err != nil {
 		return nil, fmt.Errorf("invalid table name: %w", err)
 	}
 
@@ -98,6 +98,11 @@ func (c *Client) GetAssetByID(ctx context.Context, table, id string) (map[string
 }
 
 func (c *Client) CountAssets(ctx context.Context, table string) (int64, error) {
+	// Use strict validation for table names
+	if err := ValidateTableNameStrict(table); err != nil {
+		return 0, fmt.Errorf("invalid table name: %w", err)
+	}
+
 	tableRef, err := SafeTableRef(c.database, c.schema, table)
 	if err != nil {
 		return 0, err
@@ -110,8 +115,25 @@ func (c *Client) CountAssets(ctx context.Context, table string) (int64, error) {
 	if len(result.Rows) == 0 {
 		return 0, nil
 	}
-	if count, ok := result.Rows[0]["COUNT"].(int64); ok {
-		return count, nil
+
+	// Handle various numeric types that Snowflake may return
+	countVal := result.Rows[0]["COUNT"]
+	switch v := countVal.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	case float32:
+		return int64(v), nil
+	case string:
+		var count int64
+		if _, err := fmt.Sscanf(v, "%d", &count); err == nil {
+			return count, nil
+		}
 	}
 	return 0, nil
 }

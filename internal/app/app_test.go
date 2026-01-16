@@ -46,8 +46,12 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		t.Errorf("expected default database CEREBRO, got %s", cfg.SnowflakeDatabase)
 	}
 
-	if cfg.SnowflakeSchema != "CEREBRO" {
-		t.Errorf("expected default schema CEREBRO, got %s", cfg.SnowflakeSchema)
+	if cfg.SnowflakeSchema != "RAW" {
+		t.Errorf("expected default schema RAW, got %s", cfg.SnowflakeSchema)
+	}
+
+	if cfg.SnowflakeAppSchema != "CEREBRO" {
+		t.Errorf("expected default app schema CEREBRO, got %s", cfg.SnowflakeAppSchema)
 	}
 }
 

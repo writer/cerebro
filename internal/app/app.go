@@ -132,7 +132,8 @@ type Config struct {
 	// Snowflake
 	SnowflakeConnectionString string
 	SnowflakeDatabase         string
-	SnowflakeSchema           string
+	SnowflakeSchema           string // Schema for CloudQuery asset tables (default: RAW)
+	SnowflakeAppSchema        string // Schema for Cerebro app tables (default: CEREBRO)
 	SnowflakeWarehouse        string
 
 	// Policies
@@ -247,7 +248,8 @@ func LoadConfig() *Config {
 		LogLevel:                  getEnv("LOG_LEVEL", "info"),
 		SnowflakeConnectionString: getEnv("SNOWFLAKE_CONNECTION_STRING", ""),
 		SnowflakeDatabase:         getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
-		SnowflakeSchema:           getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
+		SnowflakeSchema:           getEnv("SNOWFLAKE_SCHEMA", "RAW"),         // CloudQuery assets schema
+		SnowflakeAppSchema:        getEnv("SNOWFLAKE_APP_SCHEMA", "CEREBRO"), // Cerebro app tables schema
 		SnowflakeWarehouse:        getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
 		PoliciesPath:              getEnv("POLICIES_PATH", "policies"),
 		AnthropicAPIKey:           getEnv("ANTHROPIC_API_KEY", ""),
@@ -373,11 +375,12 @@ func (a *App) initSnowflake(ctx context.Context) error {
 		return fmt.Errorf("SNOWFLAKE_CONNECTION_STRING not set")
 	}
 
-	client, err := snowflake.NewClient(
-		a.Config.SnowflakeConnectionString,
-		a.Config.SnowflakeDatabase,
-		a.Config.SnowflakeSchema,
-	)
+	client, err := snowflake.NewClient(snowflake.ClientConfig{
+		ConnectionString: a.Config.SnowflakeConnectionString,
+		Database:         a.Config.SnowflakeDatabase,
+		Schema:           a.Config.SnowflakeSchema,
+		Warehouse:        a.Config.SnowflakeWarehouse,
+	})
 	if err != nil {
 		return err
 	}
@@ -773,10 +776,11 @@ func (a *App) initSnowflakeFindings(ctx context.Context) {
 		return
 	}
 
+	// Use SnowflakeAppSchema for Cerebro app tables (findings, tickets, audit)
 	a.SnowflakeFindings = findings.NewSnowflakeStore(
 		a.Snowflake.DB(),
 		a.Config.SnowflakeDatabase,
-		a.Config.SnowflakeSchema,
+		a.Config.SnowflakeAppSchema,
 	)
 
 	// Load existing findings from Snowflake

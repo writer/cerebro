@@ -124,7 +124,11 @@ func ensureCloudQueryTables(ctx context.Context) error {
 		return fmt.Errorf("SNOWFLAKE_CONNECTION_STRING not set")
 	}
 
-	client, err := snowflake.NewClient(connStr, os.Getenv("SNOWFLAKE_DATABASE"), os.Getenv("SNOWFLAKE_SCHEMA"))
+	client, err := snowflake.NewClient(snowflake.ClientConfig{
+		ConnectionString: connStr,
+		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
+		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
+	})
 	if err != nil {
 		return err
 	}
@@ -148,7 +152,11 @@ func getTableRowCounts(ctx context.Context) map[string]int64 {
 		return counts
 	}
 
-	client, err := snowflake.NewClient(connStr, os.Getenv("SNOWFLAKE_DATABASE"), os.Getenv("SNOWFLAKE_SCHEMA"))
+	client, err := snowflake.NewClient(snowflake.ClientConfig{
+		ConnectionString: connStr,
+		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
+		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
+	})
 	if err != nil {
 		return counts
 	}
