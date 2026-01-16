@@ -47,7 +47,12 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("SNOWFLAKE_CONNECTION_STRING not set")
 	}
 
-	client, err := snowflake.NewClient(cfg.SnowflakeConnection, cfg.SnowflakeDatabase, cfg.SnowflakeSchema)
+	client, err := snowflake.NewClient(snowflake.ClientConfig{
+		ConnectionString: cfg.SnowflakeConnection,
+		Database:         cfg.SnowflakeDatabase,
+		Schema:           cfg.SnowflakeSchema,
+		Warehouse:        cfg.SnowflakeWarehouse,
+	})
 	if err != nil {
 		return fmt.Errorf("connect to snowflake: %w", err)
 	}

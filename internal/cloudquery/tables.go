@@ -577,6 +577,35 @@ func GetAllTables() []TableDefinition {
 	return tables
 }
 
+// GetAllAWSTableDefinitions returns only AWS table definitions
+func GetAllAWSTableDefinitions() map[string]TableDefinition {
+	all := make(map[string]TableDefinition)
+
+	for k, v := range AWSIAMTables {
+		all[k] = v
+	}
+	for k, v := range AWSS3Tables {
+		all[k] = v
+	}
+	for k, v := range AWSEC2Tables {
+		all[k] = v
+	}
+	for k, v := range AWSRDSTables {
+		all[k] = v
+	}
+	for k, v := range AWSCloudTrailTables {
+		all[k] = v
+	}
+	for k, v := range AWSKMSTables {
+		all[k] = v
+	}
+	for k, v := range AWSLambdaTables {
+		all[k] = v
+	}
+
+	return all
+}
+
 // GetTableByName returns a table definition by name
 func GetTableByName(name string) (TableDefinition, bool) {
 	all := GetAllTableDefinitions()

@@ -75,6 +75,10 @@ infisical_external_id = config.get("infisicalExternalId")
 use_external_secrets = _config_bool("useExternalSecrets", False)
 external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{environment}"
 
+# Per-secret ARN overrides - allows sourcing specific secrets from AWS Secrets Manager
+# without enabling full external secrets mode. Use for hybrid deployments.
+snowflake_secret_arn = config.get("snowflakeSecretArn")
+
 # Tailscale subnet router for internal access
 enable_tailscale = _config_bool("enableTailscale", False)
 tailscale_hostname = config.get("tailscaleHostname") or f"cerebro-{environment}"
@@ -113,6 +117,13 @@ kms_key = kms.create_kms_key(
 # SECRETS
 # =============================================================================
 
+# Build per-secret ARN overrides map for hybrid mode
+# This allows specific secrets to be sourced from AWS Secrets Manager
+# while others remain Pulumi-managed or use external_secrets_prefix
+secret_arns = {}
+if snowflake_secret_arn:
+    secret_arns["SNOWFLAKE_CONNECTION_STRING"] = snowflake_secret_arn
+
 # When using external secrets (Infisical), secrets are synced to AWS Secrets Manager
 # and referenced by ARN. Otherwise, we create our own secret from Pulumi config.
 if use_external_secrets:
@@ -137,17 +148,17 @@ if use_external_secrets:
         if config.get_bool(f"enable{key.replace('_', ' ').title().replace(' ', '')}"):
             secret_keys.append(key)
 else:
-    # Pulumi-managed secrets mode
-    # Snowflake is optional - Go app falls back to SQLite when not provided
+    # Pulumi-managed secrets mode (or hybrid with secret_arns overrides)
+    # Snowflake connection comes from AWS Secrets Manager via snowflakeSecretArn
+    # - NOT from Pulumi config to avoid storing credentials in state
     secrets_dict = {}
     secret_keys = []
 
-    snowflake_conn = config.get_secret("snowflakeConnectionString")
-    if snowflake_conn:
-        secrets_dict["SNOWFLAKE_CONNECTION_STRING"] = snowflake_conn
+    # If snowflake secret ARN is provided, include it in secret_keys for injection
+    if snowflake_secret_arn:
         secret_keys.append("SNOWFLAKE_CONNECTION_STRING")
 
-    # Optional secrets - only add if configured
+    # Optional secrets - only add if configured in Pulumi config
     if config.get_secret("anthropicApiKey"):
         secrets_dict["ANTHROPIC_API_KEY"] = config.get_secret("anthropicApiKey")
         secret_keys.append("ANTHROPIC_API_KEY")
@@ -168,7 +179,7 @@ else:
         secrets_dict["LINEAR_API_KEY"] = config.get_secret("linearApiKey")
         secret_keys.append("LINEAR_API_KEY")
 
-    # Only create secrets resource if we have secrets to store
+    # Only create secrets resource if we have Pulumi-managed secrets to store
     if secrets_dict:
         cerebro_secrets = secrets.create_secrets(
             name=f"cerebro-{environment}",
@@ -257,6 +268,7 @@ ecs_stack = compute.create_ecs_cluster(
     environment=app_environment,
     secret_keys=secret_keys,
     external_secrets_prefix=external_secrets_prefix if use_external_secrets else None,
+    secret_arns=secret_arns if secret_arns else None,
     job_queue_url=job_queue_stack["queue_url"],
     job_table_name=job_store_stack["table_name"],
 )
@@ -285,6 +297,7 @@ if enable_workers:
         environment=app_environment,
         secret_keys=secret_keys,
         external_secrets_prefix=external_secrets_prefix if use_external_secrets else None,
+        secret_arns=secret_arns if secret_arns else None,
     )
 
 # Job queue alarms

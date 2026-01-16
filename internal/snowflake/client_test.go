@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewClient_EmptyConnectionString(t *testing.T) {
-	_, err := NewClient("", "", "")
+	_, err := NewClient(ClientConfig{})
 	if err == nil {
 		t.Error("expected error for empty connection string")
 	}

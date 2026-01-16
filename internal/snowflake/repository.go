@@ -18,7 +18,7 @@ type FindingRepository struct {
 func NewFindingRepository(client *Client) *FindingRepository {
 	return &FindingRepository{
 		client: client,
-		schema: fmt.Sprintf("%s.%s", client.database, SchemaName),
+		schema: fmt.Sprintf("%s.%s", client.Database(), client.AppSchema()),
 	}
 }
 
@@ -198,7 +198,7 @@ type TicketRepository struct {
 func NewTicketRepository(client *Client) *TicketRepository {
 	return &TicketRepository{
 		client: client,
-		schema: fmt.Sprintf("%s.%s", client.database, SchemaName),
+		schema: fmt.Sprintf("%s.%s", client.Database(), client.AppSchema()),
 	}
 }
 
@@ -246,7 +246,7 @@ type AuditRepository struct {
 func NewAuditRepository(client *Client) *AuditRepository {
 	return &AuditRepository{
 		client: client,
-		schema: fmt.Sprintf("%s.%s", client.database, SchemaName),
+		schema: fmt.Sprintf("%s.%s", client.Database(), client.AppSchema()),
 	}
 }
 

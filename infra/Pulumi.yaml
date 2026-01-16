@@ -21,9 +21,6 @@ config:
     default: "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
     description: Container image URI (ECR), defaults to latest in ECR
 
-  # Snowflake connection - NOT defined in schema so it's truly optional
-  # Set via: pulumi config set --secret cerebro:snowflakeConnectionString "..."
-  # App falls back to SQLite when not provided
 
   cerebro:snowflakeDatabase:
     type: string

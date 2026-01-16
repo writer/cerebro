@@ -18,11 +18,22 @@ const (
 	opListTables = cerrors.Op("snowflake.ListTables")
 )
 
+// ClientConfig holds configuration for creating a Snowflake client.
+type ClientConfig struct {
+	ConnectionString string
+	Database         string
+	Schema           string // Schema for CloudQuery assets (default: RAW)
+	AppSchema        string // Schema for Cerebro app tables (default: CEREBRO)
+	Warehouse        string
+}
+
 // Client wraps database/sql.DB with Snowflake-specific functionality.
 type Client struct {
-	db       *sql.DB
-	database string
-	schema   string
+	db        *sql.DB
+	database  string
+	schema    string
+	appSchema string
+	warehouse string
 }
 
 // QueryResult holds query results in a structured format.
@@ -33,21 +44,24 @@ type QueryResult struct {
 }
 
 // NewClient creates a new Snowflake client.
-func NewClient(connectionString, database, schema string) (*Client, error) {
-	if connectionString == "" {
+func NewClient(config ClientConfig) (*Client, error) {
+	if config.ConnectionString == "" {
 		return nil, cerrors.E(opNewClient, cerrors.ErrMissingRequired, "connection string is required")
 	}
 
-	cfg, err := sf.ParseDSN(connectionString)
+	cfg, err := sf.ParseDSN(config.ConnectionString)
 	if err != nil {
 		return nil, cerrors.Wrapf(opNewClient, err, "invalid connection string")
 	}
 
-	if database != "" {
-		cfg.Database = database
+	if config.Database != "" {
+		cfg.Database = config.Database
 	}
-	if schema != "" {
-		cfg.Schema = schema
+	if config.Schema != "" {
+		cfg.Schema = config.Schema
+	}
+	if config.Warehouse != "" {
+		cfg.Warehouse = config.Warehouse
 	}
 
 	dsn, err := sf.DSN(cfg)
@@ -66,10 +80,18 @@ func NewClient(connectionString, database, schema string) (*Client, error) {
 	db.SetConnMaxLifetime(5 * time.Minute)
 	db.SetConnMaxIdleTime(1 * time.Minute)
 
+	// Default app schema to CEREBRO if not specified
+	appSchema := config.AppSchema
+	if appSchema == "" {
+		appSchema = SchemaName // Use constant default (CEREBRO)
+	}
+
 	return &Client{
-		db:       db,
-		database: cfg.Database,
-		schema:   cfg.Schema,
+		db:        db,
+		database:  cfg.Database,
+		schema:    cfg.Schema,
+		appSchema: appSchema,
+		warehouse: cfg.Warehouse,
 	}, nil
 }
 
@@ -91,9 +113,14 @@ func (c *Client) Database() string {
 	return c.database
 }
 
-// Schema returns the configured schema name.
+// Schema returns the configured schema name (for CloudQuery assets).
 func (c *Client) Schema() string {
 	return c.schema
+}
+
+// AppSchema returns the configured app schema name (for Cerebro tables).
+func (c *Client) AppSchema() string {
+	return c.appSchema
 }
 
 // Ping verifies the database connection is alive.
