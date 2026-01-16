@@ -237,7 +237,7 @@ func (s *ThreatIntelService) SyncFeed(ctx context.Context, feedID string) error 
 	if err != nil {
 		return fmt.Errorf("fetch feed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("feed returned status %d", resp.StatusCode)

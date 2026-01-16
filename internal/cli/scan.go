@@ -46,7 +46,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
 		return fmt.Errorf("snowflake not configured - set SNOWFLAKE_CONNECTION_STRING")

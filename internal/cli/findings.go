@@ -81,7 +81,7 @@ func runFindingsList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	filter := findings.FindingFilter{
 		Severity: findingsSeverity,
@@ -155,7 +155,7 @@ func runFindingsStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	stats := application.Findings.Stats()
 
@@ -191,7 +191,7 @@ func runFindingsResolve(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	if application.Findings.Resolve(findingID) {
 		Success("Finding %s marked as resolved", findingID)
@@ -208,7 +208,7 @@ func runFindingsSuppress(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	if application.Findings.Suppress(findingID) {
 		Success("Finding %s suppressed", findingID)

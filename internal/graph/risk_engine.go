@@ -606,7 +606,8 @@ func estimateEffort(steps []*RemediationStep) string {
 }
 
 func pathToAssets(path *ScoredAttackPath) []string {
-	assets := []string{path.EntryPoint.ID, path.Target.ID}
+	assets := make([]string, 0, 2+len(path.Steps))
+	assets = append(assets, path.EntryPoint.ID, path.Target.ID)
 	for _, step := range path.Steps {
 		assets = append(assets, step.ToNode)
 	}

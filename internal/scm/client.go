@@ -91,7 +91,7 @@ func NewLocalClient(basePath string) *LocalClient {
 func (c *LocalClient) Clone(ctx context.Context, repoURL, dest string) error {
 	// In a real implementation, this would run `git clone`
 	// For simulation, we'll assume the repo is already mapped or mocked
-	return os.MkdirAll(dest, 0755)
+	return os.MkdirAll(dest, 0750)
 }
 
 func (c *LocalClient) GetFileContent(ctx context.Context, repoURL, path string) (string, error) {

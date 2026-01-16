@@ -91,7 +91,7 @@ func TestServer_Handler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if !called {
 		t.Error("expected handler to be called")

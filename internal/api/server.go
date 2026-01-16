@@ -1191,9 +1191,8 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build messages with system prompt
-	messages := []agents.Message{
-		{Role: "system", Content: "You are a security analyst assistant. Help investigate security findings and incidents. Use the available tools to query data and take actions."},
-	}
+	messages := make([]agents.Message, 0, len(session.Messages)+1)
+	messages = append(messages, agents.Message{Role: "system", Content: "You are a security analyst assistant. Help investigate security findings and incidents. Use the available tools to query data and take actions."})
 	messages = append(messages, session.Messages...)
 
 	// Call LLM
@@ -1506,10 +1505,13 @@ func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
 		sas = []map[string]interface{}{}
 	}
 
-	var allFindings []identity.StaleAccessFinding
-	allFindings = append(allFindings, detector.DetectStaleUsers(r.Context(), users)...)
-	allFindings = append(allFindings, detector.DetectUnusedAccessKeys(r.Context(), creds)...)
-	allFindings = append(allFindings, detector.DetectStaleServiceAccounts(r.Context(), sas)...)
+	staleUsers := detector.DetectStaleUsers(r.Context(), users)
+	unusedKeys := detector.DetectUnusedAccessKeys(r.Context(), creds)
+	staleSAs := detector.DetectStaleServiceAccounts(r.Context(), sas)
+	allFindings := make([]identity.StaleAccessFinding, 0, len(staleUsers)+len(unusedKeys)+len(staleSAs))
+	allFindings = append(allFindings, staleUsers...)
+	allFindings = append(allFindings, unusedKeys...)
+	allFindings = append(allFindings, staleSAs...)
 
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"findings": allFindings,

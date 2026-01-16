@@ -50,7 +50,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	queueURL := workerQueueURL
 	if queueURL == "" {

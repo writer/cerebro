@@ -31,7 +31,11 @@ func CreateSnapshot(g *Graph) *Snapshot {
 		nodes = append(nodes, n)
 	}
 
-	var edges []*Edge
+	edgeCount := 0
+	for _, edgeList := range g.outEdges {
+		edgeCount += len(edgeList)
+	}
+	edges := make([]*Edge, 0, edgeCount)
 	for _, edgeList := range g.outEdges {
 		edges = append(edges, edgeList...)
 	}
@@ -65,7 +69,7 @@ func RestoreFromSnapshot(snapshot *Snapshot) *Graph {
 // SaveToFile saves a snapshot to a compressed file
 func (s *Snapshot) SaveToFile(path string) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
@@ -73,10 +77,10 @@ func (s *Snapshot) SaveToFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gw := gzip.NewWriter(f)
-	defer gw.Close()
+	defer func() { _ = gw.Close() }()
 
 	encoder := json.NewEncoder(gw)
 	if err := encoder.Encode(s); err != nil {
@@ -92,13 +96,13 @@ func LoadSnapshotFromFile(path string) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, fmt.Errorf("create gzip reader: %w", err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	var snapshot Snapshot
 	decoder := json.NewDecoder(gr)
@@ -209,7 +213,7 @@ func (s *SnapshotStore) cleanup() error {
 	// Files are named with timestamp, so lexical sort works
 	toDelete := len(files) - s.maxSnapshots
 	for i := 0; i < toDelete; i++ {
-		os.Remove(files[i])
+		_ = os.Remove(files[i])
 	}
 
 	return nil

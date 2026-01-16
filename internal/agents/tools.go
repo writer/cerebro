@@ -465,7 +465,7 @@ func (st *SecurityTools) analyzeRepository(ctx context.Context, repoURL string) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	if cloneErr := st.scm.Clone(ctx, repoURL, tempDir); cloneErr != nil {
 		return nil, fmt.Errorf("failed to clone repo: %w", cloneErr)

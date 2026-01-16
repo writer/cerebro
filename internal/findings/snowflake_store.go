@@ -47,7 +47,7 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load findings: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

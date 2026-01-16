@@ -123,15 +123,15 @@ func (t *TableWriter) Render() {
 
 	// Header
 	for i, col := range t.columns {
-		fmt.Fprintf(t.w, "%-*s  ", t.widths[i], bold(strings.ToUpper(col)))
+		_, _ = fmt.Fprintf(t.w, "%-*s  ", t.widths[i], bold(strings.ToUpper(col)))
 	}
-	fmt.Fprintln(t.w)
+	_, _ = fmt.Fprintln(t.w)
 
 	// Separator
 	for i := range t.columns {
-		fmt.Fprint(t.w, strings.Repeat("-", t.widths[i])+"  ")
+		_, _ = fmt.Fprint(t.w, strings.Repeat("-", t.widths[i])+"  ")
 	}
-	fmt.Fprintln(t.w)
+	_, _ = fmt.Fprintln(t.w)
 
 	// Rows
 	for _, row := range t.rows {
@@ -149,9 +149,9 @@ func (t *TableWriter) Render() {
 			if padding < 0 {
 				padding = 0
 			}
-			fmt.Fprintf(t.w, "%s%s  ", display, strings.Repeat(" ", padding))
+			_, _ = fmt.Fprintf(t.w, "%s%s  ", display, strings.Repeat(" ", padding))
 		}
-		fmt.Fprintln(t.w)
+		_, _ = fmt.Fprintln(t.w)
 	}
 }
 

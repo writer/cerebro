@@ -44,7 +44,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize application: %w", err)
 	}
-	defer application.Close()
+	defer func() { _ = application.Close() }()
 
 	if application.Snowflake == nil {
 		Error("Snowflake not configured")

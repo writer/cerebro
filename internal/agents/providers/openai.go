@@ -137,7 +137,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, messages []agents.Message
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -232,7 +232,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, messages []agents.Message, 
 			events <- agents.StreamEvent{Error: err, Done: true}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)

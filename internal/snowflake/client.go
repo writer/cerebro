@@ -116,7 +116,7 @@ func (c *Client) Query(ctx context.Context, query string, args ...interface{}) (
 		}
 		return nil, cerrors.E(opQuery, cerrors.ErrDBQuery, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	columns, err := rows.Columns()
 	if err != nil {
@@ -178,7 +178,7 @@ func (c *Client) ListTables(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, cerrors.E(opListTables, cerrors.ErrDBQuery, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []string
 	for rows.Next() {
