@@ -7,6 +7,7 @@ on:
     branches: [main]
 
 env:
+  AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: "073877318660"
   ECR_REPOSITORY: cerebro
   ECS_CLUSTER: cerebro-go-production-cluster
@@ -21,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Download dependencies
         run: go mod download
@@ -52,7 +53,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -73,7 +74,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Build
         run: go build -o cerebro ./cmd/cerebro

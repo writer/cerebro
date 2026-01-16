@@ -277,7 +277,7 @@ func (w *WizProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, 
 
 	result.CompletedAt = time.Now()
 	result.Duration = result.CompletedAt.Sub(start)
-	
+
 	if len(result.Errors) > 0 {
 		return result, fmt.Errorf("sync completed with %d errors", len(result.Errors))
 	}

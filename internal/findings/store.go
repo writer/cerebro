@@ -90,7 +90,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		if len(pf.Resource) > 0 {
 			existing.Resource = pf.Resource
 		}
-		
+
 		if existing.Status == "resolved" {
 			existing.Status = "open"
 			existing.ResolvedAt = nil

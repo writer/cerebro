@@ -195,7 +195,7 @@ type PagerDutyConfig struct {
 func NewPagerDutyNotifier(cfg PagerDutyConfig) *PagerDutyNotifier {
 	// Default limiter if none provided, though usually initialized in struct
 	limiter := rate.NewLimiter(rate.Limit(2), 10)
-	
+
 	return &PagerDutyNotifier{
 		routingKey: cfg.RoutingKey,
 		client: &http.Client{

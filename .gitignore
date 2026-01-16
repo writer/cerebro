@@ -5,10 +5,8 @@ bin/
 *.so
 *.dylib
 
-# Allow gosnowflake minicore stubs (empty files for go:embed)
-!vendor/github.com/snowflakedb/gosnowflake/*.so
-!vendor/github.com/snowflakedb/gosnowflake/*.dll
-!vendor/github.com/snowflakedb/gosnowflake/*.dylib
+# But keep vendor .so files (required for Snowflake driver)
+!vendor/**/*.so
 
 # Go
 *.test
@@ -33,7 +31,3 @@ Thumbs.db
 
 # Logs
 *.log
-
-#local pycache 
-infra/__pycache__/*
-infra/aws/__pycache__/*

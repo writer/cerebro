@@ -112,13 +112,13 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			LastSeen:     now,
 		}
 
-		_, execErr := tx.ExecContext(ctx, `
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO findings (id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status, f.ResourceID, f.ResourceType, resourceData, f.Description, f.FirstSeen, f.LastSeen)
 
-		if execErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to insert finding: %v\n", execErr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to insert finding: %v\n", err)
 			return nil
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
@@ -126,9 +126,8 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			return nil
 		}
 		return f
-	}
 
-	if err != nil {
+	} else if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to query finding: %v\n", err)
 		return nil
 	}
@@ -141,18 +140,18 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		resolvedAtVal = sql.NullTime{Valid: false}
 	}
 
-	_, updateErr := tx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		UPDATE findings 
 		SET last_seen = ?, resource_data = ?, status = ?, resolved_at = ?
 		WHERE id = ?
 	`, now, resourceData, status, resolvedAtVal, pf.ID)
 
-	if updateErr != nil {
-		fmt.Fprintf(os.Stderr, "failed to update finding: %v\n", updateErr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to update finding: %v\n", err)
 		return nil
 	}
-	if commitErr := tx.Commit(); commitErr != nil {
-		fmt.Fprintf(os.Stderr, "failed to commit update: %v\n", commitErr)
+	if err := tx.Commit(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to commit update: %v\n", err)
 		return nil
 	}
 
@@ -229,7 +228,7 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 	}
 	defer rows.Close()
 
-	result := make([]*Finding, 0)
+	result := make([]*Finding, 0, 100) // Pre-allocate for common case
 	for rows.Next() {
 		var f Finding
 		var resourceData []byte

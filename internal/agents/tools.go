@@ -103,6 +103,58 @@ func (st *SecurityTools) GetTools() []Tool {
 			Handler: st.gcpInspect,
 		},
 		{
+			Name:        "inspect_cloud_resource",
+			Description: "Inspect a specific cloud resource by identifier (auto-detects AWS or GCP)",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"resource": map[string]interface{}{
+						"type":        "string",
+						"description": "Resource identifier (ARN, s3://bucket, gs://bucket, etc.)",
+					},
+					"provider": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional override for provider (aws or gcp)",
+						"enum":        []string{"aws", "gcp"},
+					},
+					"service": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional override for service (s3, lambda, ecs, iam, storage, compute, resourcemanager)",
+					},
+					"identifier": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional override for resource identifier",
+					},
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "GCP project ID (required for GCP inspection unless encoded in resource)",
+					},
+					"region": map[string]interface{}{
+						"type":        "string",
+						"description": "AWS region override",
+					},
+					"cluster": map[string]interface{}{
+						"type":        "string",
+						"description": "ECS cluster name for service inspection",
+					},
+					"zone": map[string]interface{}{
+						"type":        "string",
+						"description": "GCP zone for compute instance inspection",
+					},
+					"action": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional action override (runs single action instead of full inspection)",
+					},
+					"params": map[string]interface{}{
+						"type":        "object",
+						"description": "Parameters for action override",
+					},
+				},
+				"required": []string{"resource"},
+			},
+			Handler: st.inspectCloudResource,
+		},
+		{
 			Name:        "query_assets",
 			Description: "Query cloud assets from the security data lake using SQL",
 			Parameters: map[string]interface{}{
@@ -381,18 +433,6 @@ func (st *SecurityTools) analyzeRepo(ctx context.Context, args json.RawMessage) 
 		return "", fmt.Errorf("SCM integration not configured")
 	}
 
-	// Temporary workspace for cloning
-	tempDir, err := os.MkdirTemp("", "cerebro-repo-*")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Clone the repo (or simulate cloning)
-	if err := st.scm.Clone(ctx, params.RepoURL, tempDir); err != nil {
-		return "", fmt.Errorf("failed to clone repo: %w", err)
-	}
-
 	// If specific file requested, return content
 	if params.FilePath != "" {
 		content, err := st.scm.GetFileContent(ctx, params.RepoURL, params.FilePath)
@@ -406,5 +446,39 @@ func (st *SecurityTools) analyzeRepo(ctx context.Context, args json.RawMessage) 
 		return fmt.Sprintf("File content for %s:\n%s", params.FilePath, content), nil
 	}
 
-	return fmt.Sprintf("Repository %s is accessible. Use file_path to read specific files.", params.RepoURL), nil
+	analysis, err := st.analyzeRepository(ctx, params.RepoURL)
+	if err != nil {
+		return "", err
+	}
+
+	output, _ := json.MarshalIndent(analysis, "", "  ")
+	return string(output), nil
+}
+
+func (st *SecurityTools) analyzeRepository(ctx context.Context, repoURL string) (*RepoAnalysis, error) {
+	if st.scm == nil {
+		return nil, fmt.Errorf("SCM integration not configured")
+	}
+
+	// Temporary workspace for cloning
+	tempDir, err := os.MkdirTemp("", "cerebro-repo-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	if cloneErr := st.scm.Clone(ctx, repoURL, tempDir); cloneErr != nil {
+		return nil, fmt.Errorf("failed to clone repo: %w", cloneErr)
+	}
+
+	analysis, err := scanRepositoryForResources(tempDir, repoURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return analysis, nil
+}
+
+func (st *SecurityTools) AnalyzeRepository(ctx context.Context, repoURL string) (*RepoAnalysis, error) {
+	return st.analyzeRepository(ctx, repoURL)
 }

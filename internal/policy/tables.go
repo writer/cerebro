@@ -115,13 +115,13 @@ func (p *Policy) GetRequiredTables() []string {
 	if tables, ok := ResourceToTableMapping[p.Resource]; ok {
 		return tables
 	}
-	
+
 	// Fallback: If it contains an underscore, treat it as a direct table name
 	// This supports policies that reference tables directly (e.g. "aws_s3_buckets")
 	if strings.Contains(p.Resource, "_") {
 		return []string{p.Resource}
 	}
-	
+
 	return nil
 }
 

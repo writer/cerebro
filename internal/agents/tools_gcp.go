@@ -2,13 +2,16 @@ package agents
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
 	compute "cloud.google.com/go/compute/apiv1"
 	"cloud.google.com/go/compute/apiv1/computepb"
+	cloudiam "cloud.google.com/go/iam"
 	iam "cloud.google.com/go/iam/admin/apiv1"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"cloud.google.com/go/storage"
@@ -89,6 +92,30 @@ func (st *SecurityTools) handleGCPStorage(ctx context.Context, projectID, action
 			objects = append(objects, o.Name)
 		}
 		return toJSON(objects)
+	case "get-bucket-attrs":
+		var input struct {
+			Bucket string `json:"bucket"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		attrs, err := client.Bucket(input.Bucket).Attrs(ctx)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(bucketAttrsToMap(attrs))
+	case "get-bucket-iam":
+		var input struct {
+			Bucket string `json:"bucket"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		policy, err := client.Bucket(input.Bucket).IAM().Policy(ctx)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(iamPolicyToMap(policy))
 	default:
 		return "", fmt.Errorf("unsupported storage action: %s", action)
 	}
@@ -149,7 +176,34 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 			}
 			return toJSON(instances)
 		}
+	case "get-instance":
+		client, err := compute.NewInstancesRESTClient(ctx)
+		if err != nil {
+			return "", err
+		}
+		defer client.Close()
 
+		var input struct {
+			Zone     string `json:"zone"`
+			Instance string `json:"instance"`
+		}
+		if unmarshalErr := json.Unmarshal(args, &input); unmarshalErr != nil {
+			return "", unmarshalErr
+		}
+		if input.Zone == "" || input.Instance == "" {
+			return "", fmt.Errorf("zone and instance are required")
+		}
+
+		req := &computepb.GetInstanceRequest{
+			Project:  projectID,
+			Zone:     input.Zone,
+			Instance: input.Instance,
+		}
+		instance, err := client.Get(ctx, req)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(instanceSummary(instance))
 	default:
 		return "", fmt.Errorf("unsupported compute action: %s", action)
 	}
@@ -185,7 +239,7 @@ func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action str
 	}
 }
 
-func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action string, _ json.RawMessage) (string, error) {
+func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action string, args json.RawMessage) (string, error) {
 	client, err := resourcemanager.NewProjectsClient(ctx)
 	if err != nil {
 		return "", err
@@ -209,7 +263,141 @@ func (st *SecurityTools) handleGCPResourceManager(ctx context.Context, action st
 			projects = append(projects, p.ProjectId)
 		}
 		return toJSON(projects)
+	case "get-project":
+		var input struct {
+			Project string `json:"project"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		if input.Project == "" {
+			return "", fmt.Errorf("project is required")
+		}
+		req := &resourcemanagerpb.GetProjectRequest{
+			Name: fmt.Sprintf("projects/%s", input.Project),
+		}
+		project, err := client.GetProject(ctx, req)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(projectSummary(project))
+	case "get-project-iam":
+		var input struct {
+			Project string `json:"project"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", err
+		}
+		if input.Project == "" {
+			return "", fmt.Errorf("project is required")
+		}
+		req := &iampb.GetIamPolicyRequest{
+			Resource: fmt.Sprintf("projects/%s", input.Project),
+		}
+		policy, err := client.GetIamPolicy(ctx, req)
+		if err != nil {
+			return "", err
+		}
+		return toJSON(iamPolicyProtoToMap(policy))
 	default:
 		return "", fmt.Errorf("unsupported resourcemanager action: %s", action)
+	}
+}
+
+func bucketAttrsToMap(attrs *storage.BucketAttrs) map[string]interface{} {
+	if attrs == nil {
+		return nil
+	}
+
+	acl := make([]map[string]string, 0, len(attrs.ACL))
+	for _, rule := range attrs.ACL {
+		acl = append(acl, map[string]string{
+			"entity": string(rule.Entity),
+			"role":   string(rule.Role),
+		})
+	}
+
+	return map[string]interface{}{
+		"name":                        attrs.Name,
+		"location":                    attrs.Location,
+		"storage_class":               attrs.StorageClass,
+		"public_access_prevention":    fmt.Sprintf("%v", attrs.PublicAccessPrevention),
+		"uniform_bucket_level_access": attrs.UniformBucketLevelAccess.Enabled,
+		"versioning_enabled":          attrs.VersioningEnabled,
+		"labels":                      attrs.Labels,
+		"logging":                     attrs.Logging,
+		"acl":                         acl,
+	}
+}
+
+func iamPolicyToMap(policy *cloudiam.Policy) map[string]interface{} {
+	if policy == nil || policy.InternalProto == nil {
+		return nil
+	}
+	return iamPolicyProtoToMap(policy.InternalProto)
+}
+
+func iamPolicyProtoToMap(policy *iampb.Policy) map[string]interface{} {
+	if policy == nil {
+		return nil
+	}
+	bindings := make([]map[string]interface{}, 0, len(policy.Bindings))
+	for _, binding := range policy.Bindings {
+		entry := map[string]interface{}{
+			"role":    binding.Role,
+			"members": binding.Members,
+		}
+		if binding.Condition != nil {
+			entry["condition"] = map[string]interface{}{
+				"title":       binding.Condition.Title,
+				"description": binding.Condition.Description,
+				"expression":  binding.Condition.Expression,
+			}
+		}
+		bindings = append(bindings, entry)
+	}
+
+	etag := ""
+	if len(policy.Etag) > 0 {
+		etag = base64.StdEncoding.EncodeToString(policy.Etag)
+	}
+
+	return map[string]interface{}{
+		"version":  policy.Version,
+		"etag":     etag,
+		"bindings": bindings,
+	}
+}
+
+func instanceSummary(instance *computepb.Instance) map[string]interface{} {
+	if instance == nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"name":         instance.GetName(),
+		"id":           instance.GetId(),
+		"status":       instance.GetStatus(),
+		"zone":         instance.GetZone(),
+		"machine_type": instance.GetMachineType(),
+		"labels":       instance.GetLabels(),
+	}
+}
+
+func projectSummary(project *resourcemanagerpb.Project) map[string]interface{} {
+	if project == nil {
+		return nil
+	}
+
+	createTime := ""
+	if project.CreateTime != nil {
+		createTime = project.CreateTime.AsTime().Format("2006-01-02T15:04:05Z")
+	}
+
+	return map[string]interface{}{
+		"project_id":   project.ProjectId,
+		"display_name": project.DisplayName,
+		"state":        project.State.String(),
+		"create_time":  createTime,
 	}
 }

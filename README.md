@@ -16,6 +16,8 @@ Cerebro is a comprehensive security platform that combines cloud asset discovery
 - **Parallel Scanning** - High-performance scanning with configurable worker pools
 - **Compliance Frameworks** - Pre-built mappings for SOC 2, CIS, PCI DSS, HIPAA, NIST 800-53
 - **AI Agents** - LLM-powered security investigation with Anthropic Claude and OpenAI GPT
+- **Deep Research Agent** - Code-to-cloud security analysis bridging source code and live cloud inspection
+- **Distributed Job Queue** - SQS + DynamoDB based job system for scalable distributed processing
 - **Identity Governance** - Access reviews, stale access detection, and risk scoring
 - **Attack Path Analysis** - Graph-based visualization of potential attack paths
 - **Integrations** - Jira, Linear, Slack, PagerDuty, and custom webhooks
@@ -116,6 +118,16 @@ make dev
 ```bash
 # Start API server
 cerebro serve
+
+# Start distributed job worker
+cerebro worker
+
+# Run code-to-cloud security analysis
+cerebro agent run --repo-url https://github.com/org/repo
+cerebro agent run --resource arn:aws:s3:::my-bucket --aws-region us-east-1
+
+# Run distributed analysis (enqueue jobs to SQS)
+cerebro agent run --repo-url https://github.com/org/repo --distributed --wait
 
 # Sync cloud data via CloudQuery
 cerebro sync
@@ -299,6 +311,63 @@ curl -X POST http://localhost:8080/api/v1/webhooks \
 
 ---
 
+## Distributed Job System
+
+Cerebro includes a distributed job queue for scalable security analysis across large repositories and cloud environments.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DISTRIBUTED JOB SYSTEM                               │
+│                                                                              │
+│  ┌──────────────┐        ┌──────────────┐        ┌──────────────┐          │
+│  │  API/CLI     │───────▶│    SQS       │◀───────│   Workers    │          │
+│  │ (Orchestrator)│       │   Queue      │        │  (N instances)│          │
+│  └──────────────┘        └──────────────┘        └──────┬───────┘          │
+│         │                       │                        │                   │
+│         │                       ▼                        │                   │
+│         │               ┌──────────────┐                │                   │
+│         └──────────────▶│  DynamoDB    │◀───────────────┘                   │
+│                         │  Job Store   │                                     │
+│                         └──────────────┘                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+- **Job Manager**: Enqueues inspection jobs and tracks batch completion
+- **SQS Queue**: Distributes work with visibility timeout and dead-letter queue
+- **DynamoDB Store**: Persists job state with lease-based claiming for exactly-once execution
+- **Workers**: Poll SQS, claim jobs, execute inspections, update results
+
+### Usage
+
+```bash
+# Set up infrastructure (via Pulumi)
+cd infra && pulumi up --stack prod
+
+# Run orchestrator to enqueue jobs
+cerebro agent run --repo-url https://github.com/org/repo --distributed
+
+# Run workers (scale horizontally)
+cerebro worker --concurrency 4
+
+# Or wait for completion
+cerebro agent run --repo-url https://github.com/org/repo --distributed --wait
+```
+
+### Infrastructure (Pulumi)
+
+The distributed job infrastructure is managed via Pulumi in `infra/`:
+
+- SQS queue with dead-letter queue for failed jobs
+- DynamoDB table with GSI for group/status queries
+- Worker ECS service with auto-scaling based on queue depth
+- CloudWatch alarms for DLQ messages and queue backlog
+
+---
+
 ## Development
 
 ```bash
@@ -345,6 +414,10 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 | `JIRA_BASE_URL` | Jira instance | - |
 | `SLACK_WEBHOOK_URL` | Slack webhook | - |
 | `SCAN_INTERVAL` | Scan frequency | - |
+| `JOB_QUEUE_URL` | SQS queue URL for distributed jobs | - |
+| `JOB_TABLE_NAME` | DynamoDB table for job state | - |
+| `JOB_REGION` | AWS region for job infrastructure | - |
+| `JOB_WORKER_CONCURRENCY` | Concurrent jobs per worker | `4` |
 
 See [Configuration](docs/CONFIGURATION.md) for all options.
 
