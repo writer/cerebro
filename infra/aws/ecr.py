@@ -8,7 +8,7 @@ import pulumi_aws as aws
 
 def create_ecr_repository(
     name: str,
-    image_tag_mutability: str = "MUTABLE",
+    enable_immutable_tags: bool = True,
     scan_on_push: bool = True,
     lifecycle_policy_days: int = 30,
     kms_key_arn: str = None,
@@ -18,7 +18,7 @@ def create_ecr_repository(
     
     Args:
         name: Repository name
-        image_tag_mutability: MUTABLE or IMMUTABLE
+        enable_immutable_tags: If True, tags are immutable except for 'latest' (default True)
         scan_on_push: Enable vulnerability scanning on push
         lifecycle_policy_days: Days to keep untagged images before cleanup
         kms_key_arn: Optional KMS key ARN for encryption (uses KMS if provided, AES256 otherwise)
@@ -33,10 +33,22 @@ def create_ecr_repository(
         encryption_type="AES256",
     )]
     
+    # Use IMMUTABLE_WITH_EXCLUSION to allow :latest to be mutable while protecting other tags
+    image_tag_mutability = "IMMUTABLE_WITH_EXCLUSION" if enable_immutable_tags else "MUTABLE"
+    
+    # When using IMMUTABLE_WITH_EXCLUSION, configure exclusion filter for :latest tag
+    exclusion_filters = [
+        aws.ecr.RepositoryImageTagMutabilityExclusionFilterArgs(
+            filter="latest",
+            filter_type="WILDCARD",
+        ),
+    ] if enable_immutable_tags else None
+    
     repository = aws.ecr.Repository(
         f"{name}-ecr",
         name=name,
         image_tag_mutability=image_tag_mutability,
+        image_tag_mutability_exclusion_filters=exclusion_filters,
         image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
             scan_on_push=scan_on_push,
         ),

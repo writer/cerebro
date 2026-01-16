@@ -404,7 +404,7 @@ if tailscale_stack:
 
 ecr_repository = ecr.create_ecr_repository(
     name="cerebro",
-    image_tag_mutability="MUTABLE",
+    enable_immutable_tags=True,  # Tags are immutable except for 'latest'
     scan_on_push=True,
     lifecycle_policy_days=30,
     kms_key_arn="arn:aws:kms:us-east-1:073877318660:key/454a4c79-083a-4bb3-af2a-09539082d416",
