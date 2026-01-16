@@ -22,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Download dependencies
         run: go mod download
@@ -53,7 +53,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -74,7 +74,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Build
         run: go build -o cerebro ./cmd/cerebro
@@ -95,11 +95,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-cerebro
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -140,11 +139,10 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-cerebro
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Force new deployment
         run: |

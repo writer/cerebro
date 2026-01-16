@@ -5,6 +5,9 @@ bin/
 *.so
 *.dylib
 
+# But keep vendor .so files (required for Snowflake driver)
+!vendor/**/*.so
+
 # Go
 *.test
 go.work
@@ -28,3 +31,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+infra/__pycache__/*
+infra/aws/__pycache__/*

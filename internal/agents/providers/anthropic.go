@@ -127,9 +127,9 @@ func (p *AnthropicProvider) Complete(ctx context.Context, messages []agents.Mess
 				}
 
 				content = append(content, map[string]interface{}{
-					"type": "tool_use",
-					"id":   tc.ID,
-					"name": tc.Name,
+					"type":  "tool_use",
+					"id":    tc.ID,
+					"name":  tc.Name,
 					"input": input,
 				})
 			}
@@ -269,9 +269,9 @@ func (p *AnthropicProvider) Stream(ctx context.Context, messages []agents.Messag
 				}
 
 				content = append(content, map[string]interface{}{
-					"type": "tool_use",
-					"id":   tc.ID,
-					"name": tc.Name,
+					"type":  "tool_use",
+					"id":    tc.ID,
+					"name":  tc.Name,
 					"input": input,
 				})
 			}

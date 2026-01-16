@@ -1,3 +1,0 @@
-pulumi>=3.100.0
-pulumi-aws>=6.20.0
-pulumi-random>=4.16.0

@@ -18,6 +18,8 @@ on:
 env:
   PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
   AWS_REGION: us-east-1
+  TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+  TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
 
 jobs:
   preview:
@@ -31,21 +33,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          cd infra
-          pip install -r requirements.txt
+        run: uv sync --directory infra
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::073877318660:role/github-actions-cerebro-infra
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Set Infisical External ID
+        run: |
+          cd infra
+          uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Preview
         uses: pulumi/actions@v5
@@ -66,21 +80,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          cd infra
-          pip install -r requirements.txt
+        run: uv sync --directory infra
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: writerInternal/aws-git-roles@v2
         with:
-          role-to-assume: arn:aws:iam::073877318660:role/github-actions-cerebro-infra
-          aws-region: ${{ env.AWS_REGION }}
+          assume-role-arn: arn:aws:iam::073877318660:role/writer-aws-deployment-role
+
+      - name: Set Infisical External ID
+        run: |
+          cd infra
+          uv run pulumi config set --stack ${{ github.event.inputs.environment }} --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Pulumi Up
         uses: pulumi/actions@v5

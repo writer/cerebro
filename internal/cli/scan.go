@@ -101,7 +101,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\n%s Scanning %s...\n", color(colorCyan, "→"), table)
 
 		filter := snowflake.AssetFilter{Limit: scanLimit}
-		
+
 		// Use incremental scanning if available and not dry run
 		// Note: scanWatermarks is available in application but not currently exposed in CLI
 		// We'll check the watermark store directly
@@ -133,7 +133,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		if application.ScanWatermarks != nil {
 			application.ScanWatermarks.SetWatermark(table, time.Now().UTC(), result.Scanned)
 			// Persist watermarks (best effort)
-			go application.ScanWatermarks.PersistWatermarks(ctx)
+			go func() {
+				_ = application.ScanWatermarks.PersistWatermarks(ctx)
+			}()
 		}
 
 		// Persist findings

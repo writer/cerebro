@@ -25,6 +25,8 @@ def create_ecs_cluster(
     environment: dict = None,
     secret_keys: list[str] = None,
     external_secrets_prefix: str = None,
+    job_queue_url: pulumi.Output[str] = None,
+    job_table_name: pulumi.Output[str] = None,
 ) -> dict:
     """
     Create ECS cluster with Fargate service for Go API.
@@ -67,6 +69,8 @@ def create_ecs_cluster(
         environment=environment or {},
         secret_keys=secret_keys or ["SNOWFLAKE_CONNECTION_STRING"],
         external_secrets_prefix=external_secrets_prefix,
+        job_queue_url=job_queue_url,
+        job_table_name=job_table_name,
     )
 
     # ECS Service
@@ -179,32 +183,36 @@ def _create_execution_role(
 
     if external_secrets_prefix:
         # External secrets mode: allow access to Infisical-synced secrets
-        secrets_resource = f"arn:aws:secretsmanager:{region.name}:{caller.account_id}:secret:{external_secrets_prefix}/*"
-    else:
+        secrets_resource = f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{external_secrets_prefix}/*"
+    elif secrets_arn:
         # Pulumi-managed secret
         secrets_resource = secrets_arn
+    else:
+        # No secrets configured - skip secrets policy
+        secrets_resource = None
 
-    aws.iam.RolePolicy(
-        f"{name}-exec-secrets",
-        role=role.name,
-        policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
-            lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": ["secretsmanager:GetSecretValue"],
-                        "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": ["kms:Decrypt"],
-                        "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
-                    },
-                ],
-            })
-        ),
-    )
+    if secrets_resource:
+        aws.iam.RolePolicy(
+            f"{name}-exec-secrets",
+            role=role.name,
+            policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
+                lambda args: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["secretsmanager:GetSecretValue"],
+                            "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": ["kms:Decrypt"],
+                            "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
+                        },
+                    ],
+                })
+            ),
+        )
 
     return role
 
@@ -253,10 +261,12 @@ def _create_task_definition(
     environment: dict,
     secret_keys: list[str],
     external_secrets_prefix: str = None,
+    job_queue_url: pulumi.Output[str] = None,
+    job_table_name: pulumi.Output[str] = None,
 ) -> aws.ecs.TaskDefinition:
     """Create ECS task definition."""
     region_obj = aws.get_region()
-    region = region_obj.name
+    region = region_obj.region
     caller = aws.get_caller_identity()
 
     # Build secrets list dynamically based on what's configured
@@ -270,36 +280,56 @@ def _create_task_definition(
             }
             for key in secret_keys
         ]
-    else:
+    elif secrets_arn and secret_keys:
         # Pulumi-managed single secret with multiple keys
         secrets_list = [
             {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
             for key in secret_keys
         ]
+    else:
+        # No secrets configured
+        secrets_list = []
 
-    container_def = {
-        "name": "cerebro",
-        "image": container_image,
-        "essential": True,
-        "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
-        "logConfiguration": {
-            "logDriver": "awslogs",
-            "options": {
-                "awslogs-group": log_group_name,
-                "awslogs-region": region,
-                "awslogs-stream-prefix": "ecs",
+    # Build static environment vars
+    env_list = [{"name": k, "value": str(v)} for k, v in environment.items()]
+
+    # Build container definition with dynamic job queue values
+    def build_container_def(queue_url, table_name, log_group):
+        env = env_list.copy()
+        if queue_url:
+            env.append({"name": "JOB_QUEUE_URL", "value": queue_url})
+        if table_name:
+            env.append({"name": "JOB_TABLE_NAME", "value": table_name})
+        
+        return [{
+            "name": "cerebro",
+            "image": container_image,
+            "essential": True,
+            "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": log_group,
+                    "awslogs-region": region,
+                    "awslogs-stream-prefix": "ecs",
+                },
             },
-        },
-        "environment": [{"name": k, "value": str(v)} for k, v in environment.items()],
-        "secrets": secrets_list,
-        "healthCheck": {
-            "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"],
-            "interval": 30,
-            "timeout": 5,
-            "retries": 3,
-            "startPeriod": 60,
-        },
-    }
+            "environment": env,
+            "secrets": secrets_list,
+            "healthCheck": {
+                "command": ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60,
+            },
+        }]
+
+    container_definitions = pulumi.Output.all(
+        job_queue_url or "",
+        job_table_name or "",
+        log_group_name,
+    ).apply(lambda args: json.dumps(build_container_def(args[0], args[1], args[2])))
 
     return aws.ecs.TaskDefinition(
         f"{name}-task",
@@ -314,6 +344,6 @@ def _create_task_definition(
         ),
         execution_role_arn=execution_role_arn,
         task_role_arn=task_role_arn,
-        container_definitions=pulumi.Output.json_dumps([container_def]),
+        container_definitions=container_definitions,
         tags={"Name": f"{name}-task"},
     )

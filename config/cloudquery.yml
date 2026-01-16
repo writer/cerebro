@@ -4,6 +4,43 @@
 # This config syncs cloud assets to Snowflake for analysis.
 # Run: cloudquery sync config/cloudquery.yml
 
+# =============================================================================
+# CEREBRO's OWN INFRASTRUCTURE (dogfooding)
+# Account: 073877318660
+# =============================================================================
+kind: source
+spec:
+  name: aws-cerebro
+  path: cloudquery/aws
+  registry: cloudquery
+  version: "v27.0.0"
+  tables:
+    - aws_ec2_*
+    - aws_ecs_*
+    - aws_ecr_*
+    - aws_elasticloadbalancing*
+    - aws_iam_*
+    - aws_kms_*
+    - aws_lambda_*
+    - aws_s3_*
+    - aws_secretsmanager_*
+    - aws_sqs_*
+    - aws_dynamodb_*
+    - aws_cloudwatch_*
+    - aws_wafv2_*
+  destinations: ["snowflake"]
+  spec:
+    # Cerebro's account - uses AWS_PROFILE=cerebro-prod
+    accounts:
+      - id: "073877318660"
+        role_arn: ""  # Use direct credentials (SSO)
+    regions:
+      - us-east-1
+
+---
+# =============================================================================
+# ORGANIZATION-WIDE SCANNING
+# =============================================================================
 kind: source
 spec:
   name: aws

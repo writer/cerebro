@@ -467,8 +467,8 @@ func (st *SecurityTools) analyzeRepository(ctx context.Context, repoURL string) 
 	}
 	defer os.RemoveAll(tempDir)
 
-	if err := st.scm.Clone(ctx, repoURL, tempDir); err != nil {
-		return nil, fmt.Errorf("failed to clone repo: %w", err)
+	if cloneErr := st.scm.Clone(ctx, repoURL, tempDir); cloneErr != nil {
+		return nil, fmt.Errorf("failed to clone repo: %w", cloneErr)
 	}
 
 	analysis, err := scanRepositoryForResources(tempDir, repoURL)
@@ -477,4 +477,8 @@ func (st *SecurityTools) analyzeRepository(ctx context.Context, repoURL string) 
 	}
 
 	return analysis, nil
+}
+
+func (st *SecurityTools) AnalyzeRepository(ctx context.Context, repoURL string) (*RepoAnalysis, error) {
+	return st.analyzeRepository(ctx, repoURL)
 }

@@ -10,12 +10,12 @@ import (
 	"cloud.google.com/go/compute/apiv1/computepb"
 	cloudiam "cloud.google.com/go/iam"
 	iam "cloud.google.com/go/iam/admin/apiv1"
+	"cloud.google.com/go/iam/admin/apiv1/adminpb"
 	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
-	adminpb "google.golang.org/genproto/googleapis/iam/admin/v1"
 )
 
 // gcpInspect executes read-only GCP commands to verify infrastructure state
@@ -135,7 +135,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 			Zone string `json:"zone"`
 		}
 		// If zone not provided, we might need to use AggregatedList
-		json.Unmarshal(args, &input) // Optional
+		_ = json.Unmarshal(args, &input) // Optional
 
 		if input.Zone != "" {
 			req := &computepb.ListInstancesRequest{
@@ -187,8 +187,8 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 			Zone     string `json:"zone"`
 			Instance string `json:"instance"`
 		}
-		if err := json.Unmarshal(args, &input); err != nil {
-			return "", err
+		if unmarshalErr := json.Unmarshal(args, &input); unmarshalErr != nil {
+			return "", unmarshalErr
 		}
 		if input.Zone == "" || input.Instance == "" {
 			return "", fmt.Errorf("zone and instance are required")
@@ -209,7 +209,7 @@ func (st *SecurityTools) handleGCPCompute(ctx context.Context, projectID, action
 	}
 }
 
-func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action string, args json.RawMessage) (string, error) {
+func (st *SecurityTools) handleGCPIAM(ctx context.Context, projectID, action string, _ json.RawMessage) (string, error) {
 	client, err := iam.NewIamClient(ctx)
 	if err != nil {
 		return "", err

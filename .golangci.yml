@@ -33,6 +33,7 @@ linters-settings:
   gosec:
     excludes:
       - G104  # Audit errors not checked (too noisy)
+      - G115  # Integer overflow conversion - false positives on bounded values
       - G304  # File path from variable (needed for config)
   
   goimports:

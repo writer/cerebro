@@ -80,7 +80,7 @@ def create_infisical_sync_role(
                 "secretsmanager:TagResource",
                 "secretsmanager:UntagResource",
             ],
-            "Resource": f"arn:aws:secretsmanager:{region.name}:{caller.account_id}:secret:{name}/*",
+            "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{name}/*",
         },
         {
             "Sid": "ListKMSAliases",
@@ -149,7 +149,7 @@ def create_infisical_sync_role(
                             "secretsmanager:TagResource",
                             "secretsmanager:UntagResource",
                         ],
-                        "Resource": f"arn:aws:secretsmanager:{region.name}:{caller.account_id}:secret:{name}/*",
+                        "Resource": f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{name}/*",
                     },
                     {
                         "Sid": "ListKMSAliases",

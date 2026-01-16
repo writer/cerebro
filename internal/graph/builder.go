@@ -1274,7 +1274,7 @@ func (b *Builder) buildSCMInference() {
 
 		if repoURL != "" {
 			b.ensureRepoNode(repoURL)
-			
+
 			b.graph.AddEdge(&Edge{
 				ID:     node.ID + "->deployed_from->" + repoURL,
 				Source: node.ID,
