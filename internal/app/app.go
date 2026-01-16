@@ -379,6 +379,7 @@ func (a *App) initSnowflake(ctx context.Context) error {
 		ConnectionString: a.Config.SnowflakeConnectionString,
 		Database:         a.Config.SnowflakeDatabase,
 		Schema:           a.Config.SnowflakeSchema,
+		AppSchema:        a.Config.SnowflakeAppSchema,
 		Warehouse:        a.Config.SnowflakeWarehouse,
 	})
 	if err != nil {

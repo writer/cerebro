@@ -128,6 +128,7 @@ func ensureCloudQueryTables(ctx context.Context) error {
 		ConnectionString: connStr,
 		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
 		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
+		Warehouse:        os.Getenv("SNOWFLAKE_WAREHOUSE"),
 	})
 	if err != nil {
 		return err
@@ -156,6 +157,7 @@ func getTableRowCounts(ctx context.Context) map[string]int64 {
 		ConnectionString: connStr,
 		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
 		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
+		Warehouse:        os.Getenv("SNOWFLAKE_WAREHOUSE"),
 	})
 	if err != nil {
 		return counts

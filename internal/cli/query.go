@@ -51,6 +51,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		ConnectionString: cfg.SnowflakeConnection,
 		Database:         cfg.SnowflakeDatabase,
 		Schema:           cfg.SnowflakeSchema,
+		Warehouse:        cfg.SnowflakeWarehouse,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to snowflake: %w", err)

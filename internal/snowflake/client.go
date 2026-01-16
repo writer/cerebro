@@ -22,7 +22,8 @@ const (
 type ClientConfig struct {
 	ConnectionString string
 	Database         string
-	Schema           string
+	Schema           string // Schema for CloudQuery assets (default: RAW)
+	AppSchema        string // Schema for Cerebro app tables (default: CEREBRO)
 	Warehouse        string
 }
 
@@ -31,6 +32,7 @@ type Client struct {
 	db        *sql.DB
 	database  string
 	schema    string
+	appSchema string
 	warehouse string
 }
 
@@ -78,10 +80,17 @@ func NewClient(config ClientConfig) (*Client, error) {
 	db.SetConnMaxLifetime(5 * time.Minute)
 	db.SetConnMaxIdleTime(1 * time.Minute)
 
+	// Default app schema to CEREBRO if not specified
+	appSchema := config.AppSchema
+	if appSchema == "" {
+		appSchema = SchemaName // Use constant default (CEREBRO)
+	}
+
 	return &Client{
 		db:        db,
 		database:  cfg.Database,
 		schema:    cfg.Schema,
+		appSchema: appSchema,
 		warehouse: cfg.Warehouse,
 	}, nil
 }
@@ -104,9 +113,14 @@ func (c *Client) Database() string {
 	return c.database
 }
 
-// Schema returns the configured schema name.
+// Schema returns the configured schema name (for CloudQuery assets).
 func (c *Client) Schema() string {
 	return c.schema
+}
+
+// AppSchema returns the configured app schema name (for Cerebro tables).
+func (c *Client) AppSchema() string {
+	return c.appSchema
 }
 
 // Ping verifies the database connection is alive.
