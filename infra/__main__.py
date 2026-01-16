@@ -19,7 +19,22 @@ from aws import compute, infisical, jobs, kms, load_balancer, monitoring, networ
 
 # Configuration
 config = pulumi.Config()
-environment = config.get("environment") or "production"
+
+# Derive environment from stack name to maintain stable resource names
+# Stack "go-prod" -> environment "go-production"
+# Stack "go-dev" -> environment "go-dev"
+# Falls back to config or "production" if not matching pattern
+def _get_environment() -> str:
+    if config.get("environment"):
+        return config.get("environment")
+    stack = pulumi.get_stack()
+    if stack == "go-prod":
+        return "go-production"
+    elif stack.startswith("go-"):
+        return stack.replace("-prod", "-production")
+    return "production"
+
+environment = _get_environment()
 domain = config.get("domain") or ""
 
 # Container image - default to ECR latest if not provided
@@ -209,7 +224,7 @@ app_environment = {
     "CEDAR_POLICIES_PATH": "/app/policies",
     "SNOWFLAKE_DATABASE": config.get("snowflakeDatabase") or "CEREBRO",
     "SNOWFLAKE_SCHEMA": config.get("snowflakeSchema") or "RAW",
-    "JOB_REGION": aws.get_region().name,
+    "JOB_REGION": aws.get_region().region,
 }
 
 # Optional non-secret config

@@ -9,8 +9,7 @@ description: Infrastructure for Cerebro Security Platform (Go)
 config:
   cerebro:environment:
     type: string
-    default: production
-    description: Environment name (dev, staging, production)
+    description: Environment name override (derived from stack name if not set)
 
   cerebro:domain:
     type: string
@@ -22,11 +21,9 @@ config:
     default: "073877318660.dkr.ecr.us-east-1.amazonaws.com/cerebro:latest"
     description: Container image URI (ECR), defaults to latest in ECR
 
-  # Snowflake connection (optional - app falls back to SQLite)
-  cerebro:snowflakeConnectionString:
-    type: string
-    secret: true
-    description: Snowflake connection string (optional, uses SQLite if not set)
+  # Snowflake connection - NOT defined in schema so it's truly optional
+  # Set via: pulumi config set --secret cerebro:snowflakeConnectionString "..."
+  # App falls back to SQLite when not provided
 
   cerebro:snowflakeDatabase:
     type: string

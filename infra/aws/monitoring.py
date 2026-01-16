@@ -152,7 +152,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", alb_arn, {"stat": "Sum"}]
                     ],
                     "period": 60,
-                    "region": aws.get_region().name,
+                    "region": aws.get_region().region,
                 },
             },
             {
@@ -164,7 +164,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", alb_arn, {"stat": "Average"}]
                     ],
                     "period": 60,
-                    "region": aws.get_region().name,
+                    "region": aws.get_region().region,
                 },
             },
             {
@@ -176,7 +176,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         ["AWS/ECS", "CPUUtilization", "ClusterName", cluster, "ServiceName", service]
                     ],
                     "period": 60,
-                    "region": aws.get_region().name,
+                    "region": aws.get_region().region,
                 },
             },
             {
@@ -188,7 +188,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         ["AWS/ECS", "MemoryUtilization", "ClusterName", cluster, "ServiceName", service]
                     ],
                     "period": 60,
-                    "region": aws.get_region().name,
+                    "region": aws.get_region().region,
                 },
             },
             {
@@ -200,7 +200,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", alb_arn, "TargetGroup", tg_arn, {"stat": "Sum"}]
                     ],
                     "period": 60,
-                    "region": aws.get_region().name,
+                    "region": aws.get_region().region,
                 },
             },
             {
@@ -212,7 +212,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         ["AWS/ApplicationELB", "HealthyHostCount", "LoadBalancer", alb_arn, "TargetGroup", tg_arn]
                     ],
                     "period": 60,
-                    "region": aws.get_region().name,
+                    "region": aws.get_region().region,
                 },
             },
         ],
