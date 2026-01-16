@@ -1,3 +1,5 @@
 config:
   aws:region: us-east-1
   cerebro:environment: go-production
+  cerebro:enableTailscale: true
+  cerebro:enableInfisicalSyncRole: true
