@@ -25,6 +25,7 @@ def create_ecs_cluster(
     environment: dict = None,
     secret_keys: list[str] = None,
     external_secrets_prefix: str = None,
+    secret_arns: dict[str, str] = None,
     job_queue_url: pulumi.Output[str] = None,
     job_table_name: pulumi.Output[str] = None,
 ) -> dict:
@@ -45,7 +46,7 @@ def create_ecs_cluster(
     )
 
     # IAM roles
-    execution_role = _create_execution_role(name, secrets_arn, kms_key_id, external_secrets_prefix)
+    execution_role = _create_execution_role(name, secrets_arn, kms_key_id, external_secrets_prefix, secret_arns)
     task_role = _create_task_role(name, kms_key_id)
 
     # CloudWatch log group
@@ -67,8 +68,9 @@ def create_ecs_cluster(
         log_group_name=log_group.name,
         secrets_arn=secrets_arn,
         environment=environment or {},
-        secret_keys=secret_keys or ["SNOWFLAKE_CONNECTION_STRING"],
+        secret_keys=secret_keys or [],
         external_secrets_prefix=external_secrets_prefix,
+        secret_arns=secret_arns,
         job_queue_url=job_queue_url,
         job_table_name=job_table_name,
     )
@@ -156,6 +158,7 @@ def _create_execution_role(
     secrets_arn: pulumi.Output[str],
     kms_key_id: pulumi.Output[str],
     external_secrets_prefix: str = None,
+    secret_arns: dict[str, str] = None,
 ) -> aws.iam.Role:
     """Create IAM execution role for ECS."""
     role = aws.iam.Role(
@@ -181,28 +184,36 @@ def _create_execution_role(
     caller = aws.get_caller_identity()
     region = aws.get_region()
 
+    # Build list of secret ARN resources that need access
+    secrets_resources = []
+    
     if external_secrets_prefix:
         # External secrets mode: allow access to Infisical-synced secrets
-        secrets_resource = f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{external_secrets_prefix}/*"
-    elif secrets_arn:
-        # Pulumi-managed secret
-        secrets_resource = secrets_arn
-    else:
-        # No secrets configured - skip secrets policy
-        secrets_resource = None
+        secrets_resources.append(f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{external_secrets_prefix}/*")
+    
+    if secrets_arn:
+        # Pulumi-managed secret (single secret with multiple keys)
+        secrets_resources.append(secrets_arn)
+    
+    if secret_arns:
+        # Per-key ARN overrides (e.g., snowflakeSecretArn)
+        # These are direct ARNs to specific secrets in Secrets Manager
+        for arn in secret_arns.values():
+            # Add wildcard suffix for secret version
+            secrets_resources.append(f"{arn}*" if not arn.endswith("*") else arn)
 
-    if secrets_resource:
+    if secrets_resources:
         aws.iam.RolePolicy(
             f"{name}-exec-secrets",
             role=role.name,
-            policy=pulumi.Output.all(secrets_resource, kms_key_id).apply(
+            policy=pulumi.Output.all(secrets_resources, kms_key_id).apply(
                 lambda args: json.dumps({
                     "Version": "2012-10-17",
                     "Statement": [
                         {
                             "Effect": "Allow",
                             "Action": ["secretsmanager:GetSecretValue"],
-                            "Resource": args[0] if isinstance(args[0], str) else f"{args[0]}*",
+                            "Resource": args[0],
                         },
                         {
                             "Effect": "Allow",
@@ -261,6 +272,7 @@ def _create_task_definition(
     environment: dict,
     secret_keys: list[str],
     external_secrets_prefix: str = None,
+    secret_arns: dict[str, str] = None,
     job_queue_url: pulumi.Output[str] = None,
     job_table_name: pulumi.Output[str] = None,
 ) -> aws.ecs.TaskDefinition:
@@ -268,27 +280,33 @@ def _create_task_definition(
     region_obj = aws.get_region()
     region = region_obj.region
     caller = aws.get_caller_identity()
+    
+    # Normalize secret_arns to empty dict if None
+    secret_arns_map = secret_arns or {}
 
     # Build secrets list dynamically based on what's configured
-    if external_secrets_prefix:
-        # External secrets mode: each secret is a separate Secrets Manager secret
-        # synced by Infisical to {prefix}/{KEY}
-        secrets_list = [
-            {
+    # Priority: secret_arns (per-key override) > external_secrets_prefix > secrets_arn
+    secrets_list = []
+    for key in secret_keys:
+        if key in secret_arns_map:
+            # Per-key ARN override takes precedence
+            secrets_list.append({
                 "name": key,
-                "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}"
-            }
-            for key in secret_keys
-        ]
-    elif secrets_arn and secret_keys:
-        # Pulumi-managed single secret with multiple keys
-        secrets_list = [
-            {"name": key, "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::")}
-            for key in secret_keys
-        ]
-    else:
-        # No secrets configured
-        secrets_list = []
+                "valueFrom": secret_arns_map[key],
+            })
+        elif external_secrets_prefix:
+            # External secrets mode: each secret is a separate Secrets Manager secret
+            # synced by Infisical to {prefix}/{KEY}
+            secrets_list.append({
+                "name": key,
+                "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}",
+            })
+        elif secrets_arn:
+            # Pulumi-managed single secret with multiple keys
+            secrets_list.append({
+                "name": key,
+                "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::"),
+            })
 
     # Build static environment vars
     env_list = [{"name": k, "value": str(v)} for k, v in environment.items()]
