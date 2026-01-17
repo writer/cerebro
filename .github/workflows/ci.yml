@@ -11,7 +11,7 @@ env:
   AWS_ACCOUNT_ID: "073877318660"
   ECR_REPOSITORY: cerebro
   ECS_CLUSTER: cerebro-go-production-cluster
-  ECS_SERVICE: cerebro-go-production-api
+  ECS_SERVICES: "cerebro-go-production-api cerebro-go-production-worker"
 
 jobs:
   test:
@@ -146,30 +146,37 @@ jobs:
 
       - name: Force new deployment
         run: |
-          aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
-            --force-new-deployment
+          for service in ${{ env.ECS_SERVICES }}; do
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service $service \
+              --force-new-deployment
+          done
 
       - name: Wait for deployment
         timeout-minutes: 15
         run: |
           echo "Waiting for ECS deployment to stabilize..."
-          # Poll until new deployment is primary with desired count
-          for i in {1..60}; do
-            STATUS=$(aws ecs describe-services \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --services ${{ env.ECS_SERVICE }} \
-              --query 'services[0].deployments[?status==`PRIMARY`] | [0].{running:runningCount,desired:desiredCount}' \
-              --output json)
-            RUNNING=$(echo $STATUS | jq -r '.running')
-            DESIRED=$(echo $STATUS | jq -r '.desired')
-            echo "Attempt $i: $RUNNING/$DESIRED tasks running"
-            if [ "$RUNNING" = "$DESIRED" ] && [ "$RUNNING" != "0" ]; then
-              echo "Deployment complete!"
-              exit 0
+          for service in ${{ env.ECS_SERVICES }}; do
+            echo "Waiting for $service to stabilize..."
+            # Poll until new deployment is primary with desired count
+            for i in {1..60}; do
+              STATUS=$(aws ecs describe-services \
+                --cluster ${{ env.ECS_CLUSTER }} \
+                --services $service \
+                --query 'services[0].deployments[?status==`PRIMARY`] | [0].{running:runningCount,desired:desiredCount}' \
+                --output json)
+              RUNNING=$(echo $STATUS | jq -r '.running')
+              DESIRED=$(echo $STATUS | jq -r '.desired')
+              echo "Attempt $i ($service): $RUNNING/$DESIRED tasks running"
+              if [ "$RUNNING" = "$DESIRED" ] && [ "$RUNNING" != "0" ]; then
+                echo "Deployment complete for $service!"
+                break
+              fi
+              sleep 15
+            done
+            if [ "$RUNNING" != "$DESIRED" ] || [ "$RUNNING" = "0" ]; then
+              echo "Deployment did not stabilize in time for $service"
+              exit 1
             fi
-            sleep 15
           done
-          echo "Deployment did not stabilize in time"
-          exit 1
