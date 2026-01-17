@@ -1,5 +1,5 @@
 # Build stage - use buildx cross-compilation (no QEMU needed)
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
