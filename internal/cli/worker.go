@@ -28,7 +28,10 @@ var (
 	workerRegion            string
 	workerConcurrency       int
 	workerVisibilityTimeout string
+	workerJobTimeout        string
+	workerDrainTimeout      string
 	workerPollWait          string
+	workerHealthPort        int
 )
 
 func init() {
@@ -38,8 +41,11 @@ func init() {
 	workerCmd.Flags().StringVar(&workerTableName, "table", "", "DynamoDB table name")
 	workerCmd.Flags().StringVar(&workerRegion, "region", "", "AWS region override")
 	workerCmd.Flags().IntVar(&workerConcurrency, "concurrency", 0, "Number of concurrent job workers")
-	workerCmd.Flags().StringVar(&workerVisibilityTimeout, "visibility-timeout", "", "SQS visibility timeout (e.g. 30s)")
-	workerCmd.Flags().StringVar(&workerPollWait, "poll-wait", "", "SQS long poll wait time (e.g. 10s)")
+	workerCmd.Flags().StringVar(&workerVisibilityTimeout, "visibility-timeout", "", "SQS visibility timeout (e.g. 60s)")
+	workerCmd.Flags().StringVar(&workerJobTimeout, "job-timeout", "", "Maximum time per job (e.g. 5m)")
+	workerCmd.Flags().StringVar(&workerDrainTimeout, "drain-timeout", "", "Graceful shutdown drain timeout (e.g. 30s)")
+	workerCmd.Flags().StringVar(&workerPollWait, "poll-wait", "", "SQS long poll wait time (e.g. 20s)")
+	workerCmd.Flags().IntVar(&workerHealthPort, "health-port", 8081, "HTTP port for health check endpoints")
 }
 
 func runWorker(cmd *cobra.Command, args []string) error {
@@ -91,6 +97,24 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		pollWait = pollParsed
 	}
 
+	var jobTimeout time.Duration
+	if workerJobTimeout != "" {
+		jobParsed, jobErr := time.ParseDuration(workerJobTimeout)
+		if jobErr != nil {
+			return jobErr
+		}
+		jobTimeout = jobParsed
+	}
+
+	var drainTimeout time.Duration
+	if workerDrainTimeout != "" {
+		drainParsed, drainErr := time.ParseDuration(workerDrainTimeout)
+		if drainErr != nil {
+			return drainErr
+		}
+		drainTimeout = drainParsed
+	}
+
 	concurrency := workerConcurrency
 	if concurrency <= 0 {
 		concurrency = application.Config.JobWorkerConcurrency
@@ -103,14 +127,54 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	queue := jobs.NewSQSQueue(awsCfg, queueURL)
 	store := jobs.NewDynamoStore(awsCfg, tableName)
-	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN")))
-	workerService := jobs.NewWorker(queue, store, tools, jobs.WorkerOptions{
-		Concurrency:       concurrency,
-		VisibilityTimeout: visibilityTimeout,
-		PollWait:          pollWait,
-		Logger:            application.Logger,
+
+	// Create security tools for job execution
+	tools := agents.NewSecurityTools(
+		application.Snowflake,
+		application.Findings,
+		application.Policy,
+		scm.NewGitHubClient(os.Getenv("GITHUB_TOKEN")),
+	)
+
+	// Create job registry and register handlers
+	registry := jobs.NewJobRegistry()
+	registry.Register(jobs.JobTypeInspectResource, jobs.NewInspectResourceHandler(tools))
+
+	// Create metrics collector
+	metrics := jobs.NewMetrics(application.Logger, jobs.MetricsConfig{
+		Namespace: "Cerebro/Worker",
+		WorkerID:  fmt.Sprintf("worker-%s", region),
 	})
 
-	Info("Worker started (queue=%s table=%s)", queueURL, tableName)
+	// Create circuit breaker
+	circuit := jobs.NewCircuitBreaker(jobs.CircuitBreakerConfig{
+		FailureThreshold: 5,
+		SuccessThreshold: 2,
+		Timeout:          30 * time.Second,
+	})
+
+	workerService := jobs.NewWorker(queue, store, registry, jobs.WorkerOptions{
+		Concurrency:       concurrency,
+		VisibilityTimeout: visibilityTimeout,
+		JobTimeout:        jobTimeout,
+		DrainTimeout:      drainTimeout,
+		PollWait:          pollWait,
+		Logger:            application.Logger,
+		Metrics:           metrics,
+		CircuitBreaker:    circuit,
+	})
+
+	// Start health check server
+	healthServer := jobs.NewHealthServer(workerService, fmt.Sprintf(":%d", workerHealthPort), application.Logger)
+	if err := healthServer.Start(); err != nil {
+		return fmt.Errorf("failed to start health server: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = healthServer.Shutdown(shutdownCtx)
+	}()
+
+	Info("Worker started (queue=%s table=%s concurrency=%d health=:%d)", queueURL, tableName, concurrency, workerHealthPort)
 	return workerService.Start(ctx)
 }

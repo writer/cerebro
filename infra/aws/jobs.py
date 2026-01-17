@@ -17,6 +17,10 @@ def create_job_queue(
 ) -> dict:
     """
     Create SQS queue with dead-letter queue for job processing.
+
+    Failed messages (after maxReceiveCount attempts) are moved to the DLQ.
+    The DLQ has a redrive-allow-policy that permits moving messages back
+    to the main queue for reprocessing.
     """
     # Dead-letter queue for failed jobs
     dlq = aws.sqs.Queue(
@@ -42,6 +46,18 @@ def create_job_queue(
             })
         ),
         tags={"Name": f"{name}-jobs"},
+    )
+
+    # Allow moving messages from DLQ back to main queue (for reprocessing)
+    aws.sqs.RedriveAllowPolicy(
+        f"{name}-dlq-redrive-allow",
+        queue_url=dlq.url,
+        redrive_allow_policy=queue.arn.apply(
+            lambda arn: json.dumps({
+                "redrivePermission": "byQueue",
+                "sourceQueueArns": [arn],
+            })
+        ),
     )
 
     return {
@@ -71,6 +87,7 @@ def create_job_store(
             aws.dynamodb.TableAttributeArgs(name="job_id", type="S"),
             aws.dynamodb.TableAttributeArgs(name="group_id", type="S"),
             aws.dynamodb.TableAttributeArgs(name="status", type="S"),
+            aws.dynamodb.TableAttributeArgs(name="lease_expires_at", type="N"),
         ],
         global_secondary_indexes=[
             aws.dynamodb.TableGlobalSecondaryIndexArgs(
@@ -83,6 +100,12 @@ def create_job_store(
                 name="status-index",
                 hash_key="status",
                 projection_type="KEYS_ONLY",
+            ),
+            aws.dynamodb.TableGlobalSecondaryIndexArgs(
+                name="status-lease-index",
+                hash_key="status",
+                range_key="lease_expires_at",
+                projection_type="ALL",
             ),
         ],
         ttl=aws.dynamodb.TableTtlArgs(
@@ -114,7 +137,6 @@ def create_worker_service(
     container_image: str,
     queue_url: pulumi.Output[str],
     table_name: pulumi.Output[str],
-    secrets_arn: pulumi.Output[str],
     kms_key_id: pulumi.Output[str],
     log_group_name: pulumi.Output[str],
     queue_arn: pulumi.Output[str],
@@ -127,7 +149,6 @@ def create_worker_service(
     environment: dict = None,
     secret_keys: list[str] = None,
     external_secrets_prefix: str = None,
-    secret_arns: dict[str, str] = None,
 ) -> dict:
     """
     Create ECS Fargate service for job workers.
@@ -135,6 +156,9 @@ def create_worker_service(
     region_obj = aws.get_region()
     region = region_obj.region
     caller = aws.get_caller_identity()
+
+    if not external_secrets_prefix:
+        raise ValueError("external_secrets_prefix is required for Infisical-managed secrets")
 
     # Worker execution role
     execution_role = aws.iam.Role(
@@ -156,19 +180,9 @@ def create_worker_service(
         policy_arn="arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
     )
 
-    # Build list of secret ARN resources that need access
-    secrets_resources = []
-    
-    if external_secrets_prefix:
-        secrets_resources.append(f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/*")
-    
-    if secrets_arn:
-        secrets_resources.append(secrets_arn)
-    
-    if secret_arns:
-        # Per-key ARN overrides (e.g., snowflakeSecretArn)
-        for arn in secret_arns.values():
-            secrets_resources.append(f"{arn}*" if not arn.endswith("*") else arn)
+    secrets_resources = [
+        f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/*"
+    ]
 
     if secrets_resources:
         aws.iam.RolePolicy(
@@ -324,28 +338,13 @@ def create_worker_service(
     }
 
     # Build secrets list
-    # Priority: secret_arns (per-key override) > external_secrets_prefix > secrets_arn
-    secret_arns_map = secret_arns or {}
-    secrets_list = []
-    for key in (secret_keys or []):
-        if key in secret_arns_map:
-            # Per-key ARN override takes precedence
-            secrets_list.append({
-                "name": key,
-                "valueFrom": secret_arns_map[key],
-            })
-        elif external_secrets_prefix:
-            # External secrets mode
-            secrets_list.append({
-                "name": key,
-                "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}",
-            })
-        elif secrets_arn:
-            # Pulumi-managed single secret with multiple keys
-            secrets_list.append({
-                "name": key,
-                "valueFrom": pulumi.Output.concat(secrets_arn, f":{key}::"),
-            })
+    secrets_list = [
+        {
+            "name": key,
+            "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}",
+        }
+        for key in (secret_keys or [])
+    ]
 
     container_def = pulumi.Output.all(queue_url, table_name, log_group_name).apply(
         lambda args: json.dumps([{

@@ -35,11 +35,20 @@ type Job struct {
 	LeaseExpiresAt int64   `json:"lease_expires_at,omitempty" dynamodbav:"lease_expires_at,omitempty"`
 	CreatedAt      int64   `json:"created_at" dynamodbav:"created_at"`
 	UpdatedAt      int64   `json:"updated_at" dynamodbav:"updated_at"`
+
+	// Tracing fields
+	CorrelationID string `json:"correlation_id,omitempty" dynamodbav:"correlation_id,omitempty"`
+	ParentID      string `json:"parent_id,omitempty" dynamodbav:"parent_id,omitempty"`
 }
 
 type JobMessage struct {
-	JobID   string `json:"job_id"`
-	GroupID string `json:"group_id,omitempty"`
+	JobID         string `json:"job_id"`
+	GroupID       string `json:"group_id,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
+	// Attempt number for retry tracking (used in deduplication ID generation)
+	Attempt int `json:"attempt,omitempty"`
+	// DeduplicationID for FIFO queues - if empty, generates unique ID from job_id:attempt:timestamp
+	DeduplicationID string `json:"deduplication_id,omitempty"`
 }
 
 type ResourceRef struct {

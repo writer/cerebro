@@ -15,7 +15,7 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_tailscale as tailscale
 
-from aws import compute, ecr, infisical, jobs, kms, load_balancer, monitoring, networking, secrets, tailscale as ts, waf
+from aws import compute, ecr, infisical, jobs, kms, load_balancer, monitoring, networking, tailscale as ts, waf
 
 # Configuration
 config = pulumi.Config()
@@ -70,14 +70,8 @@ enable_infisical = _config_bool("enableInfisicalSyncRole", False)
 infisical_principal_arn = config.get("infisicalAssumeRolePrincipalArn")
 infisical_external_id = config.get("infisicalExternalId")
 
-# External secrets (Infisical-synced) - when enabled, secrets are read from 
-# AWS Secrets Manager instead of Pulumi config
-use_external_secrets = _config_bool("useExternalSecrets", False)
+# External secrets (Infisical-synced) - secrets are read from AWS Secrets Manager
 external_secrets_prefix = config.get("externalSecretsPrefix") or f"cerebro-{environment}"
-
-# Per-secret ARN overrides - allows sourcing specific secrets from AWS Secrets Manager
-# without enabling full external secrets mode. Use for hybrid deployments.
-snowflake_secret_arn = config.get("snowflakeSecretArn")
 
 # Tailscale subnet router for internal access
 enable_tailscale = _config_bool("enableTailscale", False)
@@ -117,77 +111,19 @@ kms_key = kms.create_kms_key(
 # SECRETS
 # =============================================================================
 
-# Build per-secret ARN overrides map for hybrid mode
-# This allows specific secrets to be sourced from AWS Secrets Manager
-# while others remain Pulumi-managed or use external_secrets_prefix
-secret_arns = {}
-if snowflake_secret_arn:
-    secret_arns["SNOWFLAKE_CONNECTION_STRING"] = snowflake_secret_arn
+# Infisical-synced secrets (each key is a dedicated secret)
+secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
 
-# When using external secrets (Infisical), secrets are synced to AWS Secrets Manager
-# and referenced by ARN. Otherwise, we create our own secret from Pulumi config.
-if use_external_secrets:
-    # External secrets mode: reference Infisical-synced secrets
-    # Secrets should be synced to: {prefix}/SNOWFLAKE_CONNECTION_STRING, etc.
-    cerebro_secrets = None  # No Pulumi-managed secret
-    
-    # List of secret keys that will be injected from external secrets
-    secret_keys = ["SNOWFLAKE_CONNECTION_STRING"]
-    
-    # Optional external secrets - check if they exist
-    optional_secrets = [
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-        "SLACK_WEBHOOK_URL",
-        "JIRA_API_TOKEN",
-        "LINEAR_API_KEY",
-    ]
-    # In external mode, we assume all configured secrets exist
-    # The actual existence is validated at runtime by ECS
-    for key in optional_secrets:
-        if config.get_bool(f"enable{key.replace('_', ' ').title().replace(' ', '')}"):
-            secret_keys.append(key)
-else:
-    # Pulumi-managed secrets mode (or hybrid with secret_arns overrides)
-    # Snowflake connection comes from AWS Secrets Manager via snowflakeSecretArn
-    # - NOT from Pulumi config to avoid storing credentials in state
-    secrets_dict = {}
-    secret_keys = []
-
-    # If snowflake secret ARN is provided, include it in secret_keys for injection
-    if snowflake_secret_arn:
-        secret_keys.append("SNOWFLAKE_CONNECTION_STRING")
-
-    # Optional secrets - only add if configured in Pulumi config
-    if config.get_secret("anthropicApiKey"):
-        secrets_dict["ANTHROPIC_API_KEY"] = config.get_secret("anthropicApiKey")
-        secret_keys.append("ANTHROPIC_API_KEY")
-
-    if config.get_secret("openaiApiKey"):
-        secrets_dict["OPENAI_API_KEY"] = config.get_secret("openaiApiKey")
-        secret_keys.append("OPENAI_API_KEY")
-
-    if config.get_secret("slackWebhookUrl"):
-        secrets_dict["SLACK_WEBHOOK_URL"] = config.get_secret("slackWebhookUrl")
-        secret_keys.append("SLACK_WEBHOOK_URL")
-
-    if config.get_secret("jiraApiToken"):
-        secrets_dict["JIRA_API_TOKEN"] = config.get_secret("jiraApiToken")
-        secret_keys.append("JIRA_API_TOKEN")
-
-    if config.get_secret("linearApiKey"):
-        secrets_dict["LINEAR_API_KEY"] = config.get_secret("linearApiKey")
-        secret_keys.append("LINEAR_API_KEY")
-
-    # Only create secrets resource if we have Pulumi-managed secrets to store
-    if secrets_dict:
-        cerebro_secrets = secrets.create_secrets(
-            name=f"cerebro-{environment}",
-            secrets=secrets_dict,
-            kms_key_arn=kms_key.arn,
-        )
-    else:
-        cerebro_secrets = None
+optional_secrets = [
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "SLACK_WEBHOOK_URL",
+    "JIRA_API_TOKEN",
+    "LINEAR_API_KEY",
+]
+for key in optional_secrets:
+    if config.get_bool(f"enable{key.replace('_', ' ').title().replace(' ', '')}"):
+        secret_keys.append(key)
 
 # =============================================================================
 # LOAD BALANCER
@@ -256,7 +192,6 @@ ecs_stack = compute.create_ecs_cluster(
     vpc_id=vpc_stack["vpc_id"],
     subnet_ids=vpc_stack["private_subnet_ids"],
     security_group_id=vpc_stack["app_security_group_id"],
-    secrets_arn=cerebro_secrets.arn if cerebro_secrets else None,
     kms_key_id=kms_key.id,
     target_group_arn=alb_stack["target_group"].arn,
     container_image=container_image,
@@ -267,8 +202,7 @@ ecs_stack = compute.create_ecs_cluster(
     log_retention_days=log_retention_days,
     environment=app_environment,
     secret_keys=secret_keys,
-    external_secrets_prefix=external_secrets_prefix if use_external_secrets else None,
-    secret_arns=secret_arns if secret_arns else None,
+    external_secrets_prefix=external_secrets_prefix,
     job_queue_url=job_queue_stack["queue_url"],
     job_table_name=job_store_stack["table_name"],
 )
@@ -284,7 +218,6 @@ if enable_workers:
         container_image=container_image,
         queue_url=job_queue_stack["queue_url"],
         table_name=job_store_stack["table_name"],
-        secrets_arn=cerebro_secrets.arn if cerebro_secrets else None,
         kms_key_id=kms_key.id,
         log_group_name=ecs_stack["log_group"].name,
         queue_arn=job_queue_stack["queue_arn"],
@@ -296,8 +229,7 @@ if enable_workers:
         worker_concurrency=worker_concurrency,
         environment=app_environment,
         secret_keys=secret_keys,
-        external_secrets_prefix=external_secrets_prefix if use_external_secrets else None,
-        secret_arns=secret_arns if secret_arns else None,
+        external_secrets_prefix=external_secrets_prefix,
     )
 
 # Job queue alarms
@@ -367,8 +299,6 @@ pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
-if cerebro_secrets:
-    pulumi.export("secrets_arn", cerebro_secrets.arn)
 pulumi.export("kms_key_id", kms_key.id)
 
 pulumi.export(

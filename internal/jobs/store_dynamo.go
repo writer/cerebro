@@ -16,6 +16,7 @@ type Store interface {
 	CreateJob(ctx context.Context, job *Job) error
 	GetJob(ctx context.Context, jobID string) (*Job, error)
 	ClaimJob(ctx context.Context, jobID, workerID string, lease time.Duration) (*Job, bool, error)
+	ExtendLease(ctx context.Context, jobID, workerID string, lease time.Duration) error
 	CompleteJob(ctx context.Context, jobID, result string) error
 	FailJob(ctx context.Context, jobID, message string) error
 	RetryJob(ctx context.Context, jobID, message string) error
@@ -121,6 +122,44 @@ func (s *DynamoStore) ClaimJob(ctx context.Context, jobID, workerID string, leas
 	}
 
 	return &job, true, nil
+}
+
+func (s *DynamoStore) ExtendLease(ctx context.Context, jobID, workerID string, lease time.Duration) error {
+	if jobID == "" {
+		return fmt.Errorf("job id required")
+	}
+	if workerID == "" {
+		return fmt.Errorf("worker id required")
+	}
+
+	now := time.Now().UTC().Unix()
+	leaseUntil := now + int64(lease.Seconds())
+
+	_, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"job_id": &types.AttributeValueMemberS{Value: jobID},
+		},
+		UpdateExpression:    aws.String("SET lease_expires_at = :lease, updated_at = :now"),
+		ConditionExpression: aws.String("#status = :running AND worker_id = :worker"),
+		ExpressionAttributeNames: map[string]string{
+			"#status": "status",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":running": &types.AttributeValueMemberS{Value: string(StatusRunning)},
+			":worker":  &types.AttributeValueMemberS{Value: workerID},
+			":lease":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", leaseUntil)},
+			":now":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
+		},
+	})
+	if err != nil {
+		var conditional *types.ConditionalCheckFailedException
+		if errors.As(err, &conditional) {
+			return fmt.Errorf("job not owned by this worker or not running")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *DynamoStore) CompleteJob(ctx context.Context, jobID, result string) error {
