@@ -3,13 +3,55 @@
   "name": "EBS Encryption by Default",
   "description": "EBS encryption should be enabled by default in each region",
   "effect": "forbid",
-  "principal": "*",
-  "action": "ec2:EnableEbsEncryptionByDefault",
   "resource": "aws::ec2::ebs_encryption_by_default",
   "conditions": [
     "ebs_encryption_enabled != true"
   ],
   "severity": "medium",
-  "tags": ["cis-aws-2.2.1", "ebs", "encryption", "data-protection"],
-  "remediation": "Enable EBS encryption by default in each region using the EC2 console or EnableEbsEncryptionByDefault API."
+  "remediation": "Enable EBS encryption by default in each region using the EC2 console or EnableEbsEncryptionByDefault API.",
+  "tags": [
+    "cis-aws-2.2.1",
+    "ebs",
+    "encryption",
+    "data-protection"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": [
+        "2.2.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

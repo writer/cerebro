@@ -8,6 +8,37 @@
     "iam_policy contains 'allUsers'"
   ],
   "severity": "high",
-  "tags": ["api", "cloud-run", "gcp", "authentication", "serverless"],
-  "remediation": "Remove allUsers IAM binding and require authentication."
+  "remediation": "Remove allUsers IAM binding and require authentication.",
+  "tags": [
+    "api",
+    "cloud-run",
+    "gcp",
+    "authentication",
+    "serverless"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6"
+      ]
+    }
+  ]
 }

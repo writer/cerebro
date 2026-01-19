@@ -8,6 +8,37 @@
     "image_scanning_configuration.scan_on_push != true"
   ],
   "severity": "medium",
-  "tags": ["cicd", "ecr", "container-security", "vulnerability-scanning"],
-  "remediation": "Enable scan on push for the ECR repository."
+  "remediation": "Enable scan on push for the ECR repository.",
+  "tags": [
+    "cicd",
+    "ecr",
+    "container-security",
+    "vulnerability-scanning"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION",
+    "VULNERABILITY"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "7"
+      ]
+    }
+  ]
 }

@@ -10,5 +10,42 @@
   ],
   "severity": "medium",
   "remediation": "Configure HTTP listeners to redirect to HTTPS. Remove plain HTTP listeners if not needed for redirects.",
-  "tags": ["aws", "elb", "encryption", "transport-security"]
+  "tags": [
+    "aws",
+    "elb",
+    "encryption",
+    "transport-security"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Discovery",
+      "technique": "T1087"
+    }
+  ]
 }

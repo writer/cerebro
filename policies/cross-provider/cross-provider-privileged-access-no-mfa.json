@@ -10,5 +10,56 @@
   ],
   "severity": "critical",
   "remediation": "Immediately enable MFA for all accounts with administrative access. Consider using hardware security keys for privileged accounts. Implement just-in-time access for admin roles.",
-  "tags": ["cross-provider", "identity", "privileged-access", "mfa"]
+  "tags": [
+    "cross-provider",
+    "identity",
+    "privileged-access",
+    "mfa"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5",
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4",
+        "7.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6",
+        "5"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

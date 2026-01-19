@@ -8,6 +8,43 @@
     "output_data_config.kms_key_id == null"
   ],
   "severity": "high",
-  "tags": ["ai", "sagemaker", "encryption", "training-data"],
-  "remediation": "Configure KMS encryption for training job output data."
+  "remediation": "Configure KMS encryption for training job output data.",
+  "tags": [
+    "ai",
+    "sagemaker",
+    "encryption",
+    "training-data"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

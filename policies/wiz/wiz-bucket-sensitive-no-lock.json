@@ -11,5 +11,20 @@
   ],
   "severity": "medium",
   "remediation": "Enable S3 Object Lock to prevent deletion or modification of sensitive data.",
-  "tags": ["wiz", "storage", "sensitive-data", "object-lock"]
+  "tags": [
+    "wiz",
+    "storage",
+    "sensitive-data",
+    "object-lock"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

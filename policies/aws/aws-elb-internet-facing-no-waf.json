@@ -3,8 +3,6 @@
   "name": "Internet-Facing ALB Without WAF",
   "description": "Application Load Balancer is internet-facing without AWS WAF protection",
   "effect": "forbid",
-  "principal": "*",
-  "action": "elasticloadbalancing:CreateLoadBalancer",
   "resource": "aws::elbv2::load_balancer",
   "conditions": [
     "scheme == 'internet-facing'",
@@ -12,6 +10,49 @@
     "waf_web_acl_arn == null"
   ],
   "severity": "high",
-  "tags": ["alb", "waf", "exposure", "network"],
-  "remediation": "Associate an AWS WAF WebACL with the Application Load Balancer to protect against common web exploits."
+  "remediation": "Associate an AWS WAF WebACL with the Application Load Balancer to protect against common web exploits.",
+  "tags": [
+    "alb",
+    "waf",
+    "exposure",
+    "network"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
 }

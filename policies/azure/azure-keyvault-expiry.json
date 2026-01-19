@@ -8,6 +8,36 @@
     "attributes.expires == null"
   ],
   "severity": "medium",
-  "tags": ["cis-azure-8.1", "keyvault", "keys", "rotation"],
-  "remediation": "Set an expiration date on the key to enforce rotation."
+  "remediation": "Set an expiration date on the key to enforce rotation.",
+  "tags": [
+    "cis-azure-8.1",
+    "keyvault",
+    "keys",
+    "rotation"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-5",
+        "SC-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "8.6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    }
+  ]
 }

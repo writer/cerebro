@@ -5,9 +5,43 @@
   "effect": "forbid",
   "resource": "aws::elbv2::listener",
   "conditions": [
-    "certificates ANY (not_after_days < 30)"
+    "certificates ANY (not_after_days \u003c 30)"
   ],
   "severity": "high",
   "remediation": "Renew or replace the SSL certificate before expiration. Consider using ACM for automatic certificate renewal.",
-  "tags": ["aws", "elb", "certificates", "operational"]
+  "tags": [
+    "aws",
+    "elb",
+    "certificates",
+    "operational"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Discovery",
+      "technique": "T1087"
+    }
+  ]
 }

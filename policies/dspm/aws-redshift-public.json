@@ -8,6 +8,60 @@
     "publicly_accessible == true"
   ],
   "severity": "critical",
-  "tags": ["dspm", "redshift", "database", "data-exposure", "public-access"],
-  "remediation": "Disable public accessibility and access via VPC only."
+  "remediation": "Disable public accessibility and access via VPC only.",
+  "tags": [
+    "dspm",
+    "redshift",
+    "database",
+    "data-exposure",
+    "public-access"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

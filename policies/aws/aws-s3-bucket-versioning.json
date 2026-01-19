@@ -8,6 +8,21 @@
     "versioning.status != 'Enabled'"
   ],
   "severity": "medium",
-  "tags": ["s3", "data-protection", "versioning", "backup"],
-  "remediation": "Enable versioning on the S3 bucket to protect against accidental deletion."
+  "remediation": "Enable versioning on the S3 bucket to protect against accidental deletion.",
+  "tags": [
+    "s3",
+    "data-protection",
+    "versioning",
+    "backup"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

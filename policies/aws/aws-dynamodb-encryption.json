@@ -9,5 +9,48 @@
   ],
   "severity": "medium",
   "remediation": "Enable encryption with a customer-managed KMS key for sensitive data. Update the table's SSE specification.",
-  "tags": ["aws", "dynamodb", "encryption", "data-protection"]
+  "tags": [
+    "aws",
+    "dynamodb",
+    "encryption",
+    "data-protection"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28",
+        "IA-5"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2",
+        "8.6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

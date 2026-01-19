@@ -8,6 +8,21 @@
     "spec.host_network == true"
   ],
   "severity": "high",
-  "tags": ["cis-k8s-5.2.4", "pod-security", "network"],
-  "remediation": "Remove hostNetwork: true from pod spec."
+  "remediation": "Remove hostNetwork: true from pod spec.",
+  "tags": [
+    "cis-k8s-5.2.4",
+    "pod-security",
+    "network"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS Kubernetes Benchmark",
+      "controls": [
+        "5.2.4"
+      ]
+    }
+  ]
 }

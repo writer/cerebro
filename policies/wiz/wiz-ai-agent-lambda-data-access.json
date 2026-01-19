@@ -10,5 +10,52 @@
   ],
   "severity": "high",
   "remediation": "Restrict Lambda function permissions. Implement data access controls for AI agent actions.",
-  "tags": ["wiz", "ai", "agent", "lambda", "data-access"]
+  "tags": [
+    "wiz",
+    "ai",
+    "agent",
+    "lambda",
+    "data-access"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Execution",
+      "technique": "T1059"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

@@ -9,6 +9,32 @@
     "spec.containers.security_context.run_as_user == 0"
   ],
   "severity": "high",
-  "tags": ["cis-k8s-5.2.6", "pod-security", "root"],
-  "remediation": "Set runAsNonRoot: true and specify a non-zero runAsUser."
+  "remediation": "Set runAsNonRoot: true and specify a non-zero runAsUser.",
+  "tags": [
+    "cis-k8s-5.2.6",
+    "pod-security",
+    "root"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS Kubernetes Benchmark",
+      "controls": [
+        "5.2.6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

@@ -9,6 +9,21 @@
     "engine != 'aurora'"
   ],
   "severity": "medium",
-  "tags": ["rds", "database", "availability", "disaster-recovery"],
-  "remediation": "Enable Multi-AZ deployment for the RDS instance."
+  "remediation": "Enable Multi-AZ deployment for the RDS instance.",
+  "tags": [
+    "rds",
+    "database",
+    "availability",
+    "disaster-recovery"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

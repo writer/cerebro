@@ -10,5 +10,38 @@
   ],
   "severity": "medium",
   "remediation": "Set organization default workflow permissions to 'read'. Disable 'Allow GitHub Actions to create and approve pull requests'. Let repositories opt-in to write permissions explicitly.",
-  "tags": ["github", "actions", "organization", "supply-chain"]
+  "tags": [
+    "github",
+    "actions",
+    "organization",
+    "supply-chain"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ]
 }

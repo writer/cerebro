@@ -9,6 +9,13 @@
     "spec.containers.resources.limits.cpu == null"
   ],
   "severity": "medium",
-  "tags": ["pod-security", "resources", "availability"],
-  "remediation": "Define CPU and memory limits for all containers."
+  "remediation": "Define CPU and memory limits for all containers.",
+  "tags": [
+    "pod-security",
+    "resources",
+    "availability"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
 }

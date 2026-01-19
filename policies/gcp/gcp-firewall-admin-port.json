@@ -11,5 +11,50 @@
   ],
   "severity": "high",
   "remediation": "Restrict source ranges to specific IP addresses or CIDR blocks. Use Identity-Aware Proxy (IAP) for SSH/RDP access. Consider using OS Login.",
-  "tags": ["gcp", "firewall", "network", "admin-access", "cis-gcp-3.6"]
+  "tags": [
+    "gcp",
+    "firewall",
+    "network",
+    "admin-access",
+    "cis-gcp-3.6"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

@@ -10,5 +10,26 @@
   ],
   "severity": "medium",
   "remediation": "Review and validate all cross-account trust relationships. Remove unknown accounts.",
-  "tags": ["wiz", "aws", "identity", "trust", "cross-account"]
+  "tags": [
+    "wiz",
+    "aws",
+    "identity",
+    "trust",
+    "cross-account"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "LATERAL_MOVEMENT",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
 }

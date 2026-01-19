@@ -8,6 +8,53 @@
     "environment.privileged_mode == true"
   ],
   "severity": "high",
-  "tags": ["cicd", "codebuild", "container-security", "privilege-escalation"],
-  "remediation": "Disable privileged mode unless Docker builds are required."
+  "remediation": "Disable privileged mode unless Docker builds are required.",
+  "tags": [
+    "cicd",
+    "codebuild",
+    "container-security",
+    "privilege-escalation"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Execution",
+      "technique": "T1059"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

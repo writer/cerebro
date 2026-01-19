@@ -10,5 +10,13 @@
   ],
   "severity": "medium",
   "remediation": "Apply Pod Security Standards labels to all namespaces. Use 'restricted' or 'baseline' policy.",
-  "tags": ["wiz", "kubernetes", "pss", "pod-security"]
+  "tags": [
+    "wiz",
+    "kubernetes",
+    "pss",
+    "pod-security"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
 }

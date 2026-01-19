@@ -6,9 +6,63 @@
   "resource": "aws::iam::user",
   "conditions": [
     "attached_policies != null",
-    "attached_policies.length > 0"
+    "attached_policies.length \u003e 0"
   ],
   "severity": "low",
-  "tags": ["cis-aws-1.15", "iam", "best-practice", "least-privilege"],
-  "remediation": "Detach policies from user and attach to a group. Add user to the group."
+  "remediation": "Detach policies from user and attach to a group. Add user to the group.",
+  "tags": [
+    "cis-aws-1.15",
+    "iam",
+    "best-practice",
+    "least-privilege"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "MISCONFIGURATION",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": [
+        "1.15"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

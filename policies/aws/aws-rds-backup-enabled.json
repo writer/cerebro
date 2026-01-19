@@ -5,9 +5,24 @@
   "effect": "forbid",
   "resource": "aws::rds::db_instance",
   "conditions": [
-    "backup_retention_period < 7"
+    "backup_retention_period \u003c 7"
   ],
   "severity": "medium",
-  "tags": ["rds", "database", "backup", "disaster-recovery"],
-  "remediation": "Enable automated backups with at least 7 days retention period."
+  "remediation": "Enable automated backups with at least 7 days retention period.",
+  "tags": [
+    "rds",
+    "database",
+    "backup",
+    "disaster-recovery"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

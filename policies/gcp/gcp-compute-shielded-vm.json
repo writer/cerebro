@@ -9,6 +9,14 @@
     "shielded_instance_config.enable_vtpm != true"
   ],
   "severity": "medium",
-  "tags": ["cis-gcp-4.8", "compute", "security", "shielded-vm"],
-  "remediation": "Enable Secure Boot, vTPM, and Integrity Monitoring on the instance."
+  "remediation": "Enable Secure Boot, vTPM, and Integrity Monitoring on the instance.",
+  "tags": [
+    "cis-gcp-4.8",
+    "compute",
+    "security",
+    "shielded-vm"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
 }

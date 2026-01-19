@@ -11,5 +11,25 @@
   ],
   "severity": "high",
   "remediation": "Replace cluster-admin with more restrictive custom roles. Use namespaced roles when possible.",
-  "tags": ["wiz", "gke", "kubernetes", "rbac", "admin"]
+  "tags": [
+    "wiz",
+    "gke",
+    "kubernetes",
+    "rbac",
+    "admin"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

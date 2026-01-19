@@ -10,6 +10,20 @@
     "metadata.annotations['cloud.google.com/load-balancer-type'] != 'Internal'"
   ],
   "severity": "medium",
-  "tags": ["service", "network", "exposure"],
-  "remediation": "Use internal load balancer annotations or switch to ClusterIP with Ingress."
+  "remediation": "Use internal load balancer annotations or switch to ClusterIP with Ingress.",
+  "tags": [
+    "service",
+    "network",
+    "exposure"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
 }

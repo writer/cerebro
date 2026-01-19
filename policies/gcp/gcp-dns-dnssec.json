@@ -9,5 +9,13 @@
   ],
   "severity": "medium",
   "remediation": "Enable DNSSEC on the managed zone. Ensure DS records are properly configured with the domain registrar.",
-  "tags": ["gcp", "dns", "dnssec", "integrity"]
+  "tags": [
+    "gcp",
+    "dns",
+    "dnssec",
+    "integrity"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
 }

@@ -10,5 +10,41 @@
   ],
   "severity": "high",
   "remediation": "Update OpenSSL to version 3.0.7 or later.",
-  "tags": ["wiz", "compute", "vulnerability", "openssl"]
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "openssl"
+  ],
+  "risk_categories": [
+    "VULNERABILITY"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28",
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2",
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3",
+        "7"
+      ]
+    }
+  ]
 }

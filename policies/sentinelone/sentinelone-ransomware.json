@@ -9,5 +9,37 @@
   ],
   "severity": "critical",
   "remediation": "Immediately isolate endpoint. Do NOT pay ransom. Engage incident response and legal. Restore from clean backups. Report to law enforcement if required. Conduct root cause analysis.",
-  "tags": ["sentinelone", "edr", "ransomware", "threat-detection", "mitre-ta0040"]
+  "tags": [
+    "sentinelone",
+    "edr",
+    "ransomware",
+    "threat-detection",
+    "mitre-ta0040"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ]
 }

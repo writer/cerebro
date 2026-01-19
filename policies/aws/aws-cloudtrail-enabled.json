@@ -3,12 +3,59 @@
   "name": "CloudTrail Enabled",
   "description": "CloudTrail should be enabled in all regions",
   "effect": "forbid",
-  "principal": "aws::cloudtrail::trail",
-  "action": "audit",
   "resource": "*",
   "conditions": [
     "is_multi_region_trail != true"
   ],
   "severity": "critical",
-  "tags": ["cis-aws-3.1", "security", "cloudtrail", "audit"]
+  "tags": [
+    "cis-aws-3.1",
+    "security",
+    "cloudtrail",
+    "audit"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": [
+        "3.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AU-2",
+        "AU-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "10.2",
+        "10.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC4",
+        "CC7"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "8"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Defense Evasion",
+      "technique": "T1562"
+    }
+  ]
 }

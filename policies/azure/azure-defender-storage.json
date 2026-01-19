@@ -9,5 +9,19 @@
   ],
   "severity": "medium",
   "remediation": "Enable Microsoft Defender for Storage in Security Center. This provides threat detection for storage accounts.",
-  "tags": ["azure", "storage", "defender", "threat-detection"]
+  "tags": [
+    "azure",
+    "storage",
+    "defender",
+    "threat-detection"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

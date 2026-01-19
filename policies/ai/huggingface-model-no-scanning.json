@@ -9,6 +9,21 @@
     "security_scan_status != 'passed'"
   ],
   "severity": "high",
-  "tags": ["ai", "model-security", "supply-chain", "malicious-model"],
-  "remediation": "Scan external models for malicious payloads before deployment."
+  "remediation": "Scan external models for malicious payloads before deployment.",
+  "tags": [
+    "ai",
+    "model-security",
+    "supply-chain",
+    "malicious-model"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "LATERAL_MOVEMENT"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    }
+  ]
 }

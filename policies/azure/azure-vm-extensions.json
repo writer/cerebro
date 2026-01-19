@@ -8,6 +8,13 @@
     "type not_in ['MicrosoftMonitoringAgent', 'OmsAgentForLinux', 'DependencyAgentWindows', 'DependencyAgentLinux']"
   ],
   "severity": "medium",
-  "tags": ["compute", "extensions", "compliance"],
-  "remediation": "Review and remove unapproved VM extensions."
+  "remediation": "Review and remove unapproved VM extensions.",
+  "tags": [
+    "compute",
+    "extensions",
+    "compliance"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
 }

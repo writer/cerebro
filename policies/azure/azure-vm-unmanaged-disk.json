@@ -9,5 +9,16 @@
   ],
   "severity": "medium",
   "remediation": "Convert unmanaged disks to Managed Disks. Managed Disks provide better reliability, encryption options, and RBAC integration.",
-  "tags": ["azure", "compute", "storage", "best-practice"]
+  "tags": [
+    "azure",
+    "compute",
+    "storage",
+    "best-practice"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

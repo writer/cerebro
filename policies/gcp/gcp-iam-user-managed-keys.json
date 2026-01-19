@@ -8,6 +8,57 @@
     "key_type == 'USER_MANAGED'"
   ],
   "severity": "medium",
-  "tags": ["cis-gcp-1.4", "iam", "service-account", "keys"],
-  "remediation": "Use workload identity or GCP-managed keys. If user-managed keys are required, implement rotation."
+  "remediation": "Use workload identity or GCP-managed keys. If user-managed keys are required, implement rotation.",
+  "tags": [
+    "cis-gcp-1.4",
+    "iam",
+    "service-account",
+    "keys"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6",
+        "IA-5",
+        "SC-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2",
+        "3.5",
+        "8.6"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    }
+  ]
 }

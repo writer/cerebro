@@ -5,10 +5,17 @@
   "effect": "forbid",
   "resource": "kubernetes::deployment",
   "conditions": [
-    "spec.replicas < 2",
+    "spec.replicas \u003c 2",
     "metadata.namespace != 'kube-system'"
   ],
   "severity": "low",
-  "tags": ["deployment", "availability", "ha"],
-  "remediation": "Increase replica count to at least 2 for high availability."
+  "remediation": "Increase replica count to at least 2 for high availability.",
+  "tags": [
+    "deployment",
+    "availability",
+    "ha"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
 }

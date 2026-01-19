@@ -8,6 +8,19 @@
     "default_branch_protection.enabled != true"
   ],
   "severity": "high",
-  "tags": ["devsecops", "github", "branch-protection", "cis-github-1.1.3"],
-  "remediation": "Enable branch protection rules for the default branch requiring reviews and status checks."
+  "remediation": "Enable branch protection rules for the default branch requiring reviews and status checks.",
+  "tags": [
+    "devsecops",
+    "github",
+    "branch-protection",
+    "cis-github-1.1.3"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS GitHub Benchmark",
+      "controls": [
+        "1.1.3"
+      ]
+    }
+  ]
 }

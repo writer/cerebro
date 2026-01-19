@@ -9,6 +9,42 @@
     "default_actions not contains { type: 'authenticate-cognito' }"
   ],
   "severity": "medium",
-  "tags": ["api", "alb", "authentication", "network"],
-  "remediation": "Add Cognito or OIDC authentication action to the ALB listener."
+  "remediation": "Add Cognito or OIDC authentication action to the ALB listener.",
+  "tags": [
+    "api",
+    "alb",
+    "authentication",
+    "network"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Discovery",
+      "technique": "T1087"
+    }
+  ]
 }

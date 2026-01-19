@@ -9,6 +9,63 @@
     "attached_policies contains 'AdministratorAccess'"
   ],
   "severity": "critical",
-  "tags": ["iam", "cross-account", "admin", "lateral-movement"],
-  "remediation": "Reduce permissions on cross-account roles or restrict trust to specific principals."
+  "remediation": "Reduce permissions on cross-account roles or restrict trust to specific principals.",
+  "tags": [
+    "iam",
+    "cross-account",
+    "admin",
+    "lateral-movement"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "IDENTITY_RISK",
+    "LATERAL_MOVEMENT",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
 }

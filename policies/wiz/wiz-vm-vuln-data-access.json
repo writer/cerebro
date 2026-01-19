@@ -12,5 +12,64 @@
   ],
   "severity": "critical",
   "remediation": "Patch vulnerabilities immediately. Remove data access until vulnerabilities are resolved.",
-  "tags": ["wiz", "compute", "vulnerability", "data-access"]
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "data-access"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "UNPROTECTED_DATA",
+    "VULNERABILITY"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-2",
+        "AC-6",
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "1.3",
+        "1.4",
+        "7.2",
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "12",
+        "13",
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

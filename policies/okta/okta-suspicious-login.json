@@ -6,9 +6,17 @@
   "resource": "okta::system_log",
   "conditions": [
     "event_type == 'user.session.start'",
-    "security_context.is_proxy == true OR geographic_context.impossible_travel == true OR behavior_detection.anomaly_score > 0.8"
+    "security_context.is_proxy == true OR geographic_context.impossible_travel == true OR behavior_detection.anomaly_score \u003e 0.8"
   ],
   "severity": "high",
   "remediation": "Investigate the login event. Verify with the user. Consider forcing password reset and MFA re-enrollment. Review session for suspicious activity.",
-  "tags": ["okta", "identity", "threat-detection", "anomaly"]
+  "tags": [
+    "okta",
+    "identity",
+    "threat-detection",
+    "anomaly"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK"
+  ]
 }

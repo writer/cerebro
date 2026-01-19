@@ -9,5 +9,21 @@
   ],
   "severity": "high",
   "remediation": "Enable GuardDuty in all regions. Consider enabling S3 protection, EKS protection, and Malware Protection features.",
-  "tags": ["aws", "guardduty", "threat-detection", "cis-aws-4.15"]
+  "tags": [
+    "aws",
+    "guardduty",
+    "threat-detection",
+    "cis-aws-4.15"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": [
+        "4.15"
+      ]
+    }
+  ]
 }

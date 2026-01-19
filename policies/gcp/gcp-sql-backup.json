@@ -8,6 +8,21 @@
     "settings.backup_configuration.enabled != true"
   ],
   "severity": "medium",
-  "tags": ["cis-gcp-6.7", "cloudsql", "database", "backup"],
-  "remediation": "Enable automated backups in the Cloud SQL instance settings."
+  "remediation": "Enable automated backups in the Cloud SQL instance settings.",
+  "tags": [
+    "cis-gcp-6.7",
+    "cloudsql",
+    "database",
+    "backup"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

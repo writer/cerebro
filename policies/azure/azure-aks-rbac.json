@@ -8,6 +8,14 @@
     "enable_rbac != true"
   ],
   "severity": "high",
-  "tags": ["cis-aks-5.1.1", "aks", "kubernetes", "rbac"],
-  "remediation": "Enable Kubernetes RBAC when creating the cluster (cannot be changed after)."
+  "remediation": "Enable Kubernetes RBAC when creating the cluster (cannot be changed after).",
+  "tags": [
+    "cis-aks-5.1.1",
+    "aks",
+    "kubernetes",
+    "rbac"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ]
 }

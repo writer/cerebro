@@ -6,9 +6,57 @@
   "resource": "m365::directory::user",
   "conditions": [
     "directory_roles ANY (is_privileged == true)",
-    "sign_in_activity.last_sign_in_days_ago > 90"
+    "sign_in_activity.last_sign_in_days_ago \u003e 90"
   ],
   "severity": "medium",
   "remediation": "Review dormant admin accounts. Remove admin privileges if no longer needed. Disable accounts for departed users. Implement regular access certification.",
-  "tags": ["m365", "identity", "privileged-access", "hygiene", "access-review"]
+  "tags": [
+    "m365",
+    "identity",
+    "privileged-access",
+    "hygiene",
+    "access-review"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

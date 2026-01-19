@@ -8,6 +8,20 @@
     "deletion_protection != true"
   ],
   "severity": "medium",
-  "tags": ["rds", "database", "data-protection"],
-  "remediation": "Enable deletion protection to prevent accidental database deletion."
+  "remediation": "Enable deletion protection to prevent accidental database deletion.",
+  "tags": [
+    "rds",
+    "database",
+    "data-protection"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

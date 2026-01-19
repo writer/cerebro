@@ -8,6 +8,20 @@
     "vpc_config.subnet_ids == null"
   ],
   "severity": "low",
-  "tags": ["lambda", "serverless", "network", "vpc"],
-  "remediation": "Configure Lambda function to run within a VPC with appropriate security groups."
+  "remediation": "Configure Lambda function to run within a VPC with appropriate security groups.",
+  "tags": [
+    "lambda",
+    "serverless",
+    "network",
+    "vpc"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Execution",
+      "technique": "T1059"
+    }
+  ]
 }

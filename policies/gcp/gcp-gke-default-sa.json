@@ -9,5 +9,48 @@
   ],
   "severity": "medium",
   "remediation": "Create a dedicated service account with minimal permissions for the node pool. Update the node pool configuration.",
-  "tags": ["gcp", "gke", "kubernetes", "least-privilege", "cis-gcp-7.17"]
+  "tags": [
+    "gcp",
+    "gke",
+    "kubernetes",
+    "least-privilege",
+    "cis-gcp-7.17"
+  ],
+  "risk_categories": [
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

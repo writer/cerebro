@@ -6,9 +6,51 @@
   "effect": "forbid",
   "resource": "gcp::artifact_registry::repository|gcp::container_registry::registry",
   "conditions": [
-    "iam_policy.bindings ANY (role IN ('roles/artifactregistry.admin', 'roles/artifactregistry.writer') AND members_count > 10)"
+    "iam_policy.bindings ANY (role IN ('roles/artifactregistry.admin', 'roles/artifactregistry.writer') AND members_count \u003e 10)"
   ],
   "severity": "high",
   "remediation": "Restrict registry write access. Implement CI/CD-only push policies.",
-  "tags": ["wiz", "gcp", "container-registry", "excessive-privileges"]
+  "tags": [
+    "wiz",
+    "gcp",
+    "container-registry",
+    "excessive-privileges"
+  ],
+  "risk_categories": [
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }

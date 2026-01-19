@@ -8,6 +8,21 @@
     "spec.containers.security_context.capabilities.drop not_contains 'ALL'"
   ],
   "severity": "medium",
-  "tags": ["cis-k8s-5.2.7", "pod-security", "capabilities"],
-  "remediation": "Add capabilities.drop: ['ALL'] and explicitly add only required capabilities."
+  "remediation": "Add capabilities.drop: ['ALL'] and explicitly add only required capabilities.",
+  "tags": [
+    "cis-k8s-5.2.7",
+    "pod-security",
+    "capabilities"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS Kubernetes Benchmark",
+      "controls": [
+        "5.2.7"
+      ]
+    }
+  ]
 }

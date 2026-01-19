@@ -9,5 +9,37 @@
   ],
   "severity": "medium",
   "remediation": "Enable 'HTTPS Only' in App Service configuration. This redirects all HTTP traffic to HTTPS.",
-  "tags": ["azure", "app-service", "encryption", "transport-security"]
+  "tags": [
+    "azure",
+    "app-service",
+    "encryption",
+    "transport-security"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ]
 }

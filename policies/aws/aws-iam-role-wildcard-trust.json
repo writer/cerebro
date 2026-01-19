@@ -8,6 +8,58 @@
     "assume_role_policy_document.Statement.Principal.AWS == '*'"
   ],
   "severity": "critical",
-  "tags": ["iam", "trust-policy", "lateral-movement", "privilege-escalation"],
-  "remediation": "Restrict trust policy to specific accounts, roles, or services with conditions."
+  "remediation": "Restrict trust policy to specific accounts, roles, or services with conditions.",
+  "tags": [
+    "iam",
+    "trust-policy",
+    "lateral-movement",
+    "privilege-escalation"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "LATERAL_MOVEMENT",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    },
+    {
+      "tactic": "Lateral Movement",
+      "technique": "T1021"
+    }
+  ]
 }

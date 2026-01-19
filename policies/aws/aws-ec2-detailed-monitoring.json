@@ -8,6 +8,42 @@
     "monitoring.state != 'enabled'"
   ],
   "severity": "low",
-  "tags": ["ec2", "monitoring", "observability"],
-  "remediation": "Enable detailed monitoring on the EC2 instance for 1-minute CloudWatch metrics."
+  "remediation": "Enable detailed monitoring on the EC2 instance for 1-minute CloudWatch metrics.",
+  "tags": [
+    "ec2",
+    "monitoring",
+    "observability"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AU-2",
+        "AU-12"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "10.2",
+        "10.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC4",
+        "CC7"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "8"
+      ]
+    }
+  ]
 }

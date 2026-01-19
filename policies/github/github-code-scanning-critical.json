@@ -9,6 +9,17 @@
     "state == 'open'"
   ],
   "severity": "critical",
-  "tags": ["devsecops", "sast", "code-scanning", "codeql"],
-  "remediation": "Fix the vulnerability identified by the code scanner."
+  "remediation": "Fix the vulnerability identified by the code scanner.",
+  "tags": [
+    "devsecops",
+    "sast",
+    "code-scanning",
+    "codeql"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Execution",
+      "technique": "T1059"
+    }
+  ]
 }

@@ -10,6 +10,36 @@
     "annotations not contains 'traefik.ingress.kubernetes.io/router.middlewares'"
   ],
   "severity": "medium",
-  "tags": ["api", "kubernetes", "ingress", "authentication"],
-  "remediation": "Configure external authentication via ingress annotations or use a service mesh."
+  "remediation": "Configure external authentication via ingress annotations or use a service mesh.",
+  "tags": [
+    "api",
+    "kubernetes",
+    "ingress",
+    "authentication"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6"
+      ]
+    }
+  ]
 }

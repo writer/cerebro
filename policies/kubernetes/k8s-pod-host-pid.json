@@ -8,6 +8,21 @@
     "spec.host_pid == true"
   ],
   "severity": "high",
-  "tags": ["cis-k8s-5.2.2", "pod-security", "namespace"],
-  "remediation": "Remove hostPID: true from pod spec."
+  "remediation": "Remove hostPID: true from pod spec.",
+  "tags": [
+    "cis-k8s-5.2.2",
+    "pod-security",
+    "namespace"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS Kubernetes Benchmark",
+      "controls": [
+        "5.2.2"
+      ]
+    }
+  ]
 }

@@ -6,9 +6,33 @@
   "resource": "m365::sharepoint::site",
   "conditions": [
     "external_sharing_enabled == true",
-    "external_user_count > 0"
+    "external_user_count \u003e 0"
   ],
   "severity": "medium",
   "remediation": "Review external sharing permissions. Remove unauthorized external access. Use expiring sharing links. Configure tenant-level sharing restrictions.",
-  "tags": ["m365", "sharepoint", "data-exposure", "external-sharing", "nist-ac-3"]
+  "tags": [
+    "m365",
+    "sharepoint",
+    "data-exposure",
+    "external-sharing",
+    "nist-ac-3"
+  ],
+  "risk_categories": [
+    "EXTERNAL_EXPOSURE",
+    "UNPROTECTED_DATA"
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Initial Access",
+      "technique": "T1190"
+    },
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

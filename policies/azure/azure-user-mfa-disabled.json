@@ -10,5 +10,42 @@
   ],
   "severity": "high",
   "remediation": "Enable MFA for the user via Conditional Access policies. Use Security Defaults for baseline MFA. Enroll users in self-service MFA registration.",
-  "tags": ["azure", "identity", "mfa", "authentication", "cis-azure-1.1.1"]
+  "tags": [
+    "azure",
+    "identity",
+    "mfa",
+    "authentication",
+    "cis-azure-1.1.1"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2",
+        "IA-5"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "8.3",
+        "8.4"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Persistence",
+      "technique": "T1098"
+    }
+  ]
 }

@@ -8,6 +8,47 @@
     "iam_configuration.uniform_bucket_level_access.enabled != true"
   ],
   "severity": "medium",
-  "tags": ["cis-gcp-5.2", "storage", "access-control"],
-  "remediation": "Enable uniform bucket-level access to use IAM consistently for access control."
+  "remediation": "Enable uniform bucket-level access to use IAM consistently for access control.",
+  "tags": [
+    "cis-gcp-5.2",
+    "storage",
+    "access-control"
+  ],
+  "risk_categories": [
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

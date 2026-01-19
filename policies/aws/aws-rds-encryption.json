@@ -3,12 +3,48 @@
   "name": "RDS Encryption Enabled",
   "description": "RDS instances should have encryption at rest enabled",
   "effect": "forbid",
-  "principal": "aws::rds::instance",
-  "action": "data-access",
   "resource": "*",
   "conditions": [
     "storage_encrypted != true"
   ],
   "severity": "high",
-  "tags": ["cis-aws-2.3.1", "security", "rds", "encryption"]
+  "tags": [
+    "cis-aws-2.3.1",
+    "security",
+    "rds",
+    "encryption"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA",
+    "MISCONFIGURATION"
+  ],
+  "frameworks": [
+    {
+      "name": "CIS AWS Foundations Benchmark v2.0",
+      "controls": [
+        "2.3.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ]
 }

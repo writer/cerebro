@@ -8,6 +8,50 @@
     "default_encryption_configuration.kms_key_name == null"
   ],
   "severity": "medium",
-  "tags": ["dspm", "bigquery", "gcp", "encryption", "cmek"],
-  "remediation": "Configure customer-managed encryption key (CMEK) for the dataset."
+  "remediation": "Configure customer-managed encryption key (CMEK) for the dataset.",
+  "tags": [
+    "dspm",
+    "bigquery",
+    "gcp",
+    "encryption",
+    "cmek"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28",
+        "IA-5"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2",
+        "8.6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Credential Access",
+      "technique": "T1552"
+    },
+    {
+      "tactic": "Collection",
+      "technique": "T1530"
+    }
+  ]
 }

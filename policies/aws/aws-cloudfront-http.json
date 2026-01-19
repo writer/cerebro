@@ -9,5 +9,36 @@
   ],
   "severity": "medium",
   "remediation": "Update the distribution's viewer protocol policy to 'redirect-to-https' or 'https-only'. Ensure a valid SSL certificate is configured.",
-  "tags": ["aws", "cloudfront", "encryption", "transport-security"]
+  "tags": [
+    "aws",
+    "cloudfront",
+    "encryption",
+    "transport-security"
+  ],
+  "risk_categories": [
+    "UNPROTECTED_DATA"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SC-12",
+        "SC-13",
+        "SC-28"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "3.5",
+        "4.2"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "3"
+      ]
+    }
+  ]
 }

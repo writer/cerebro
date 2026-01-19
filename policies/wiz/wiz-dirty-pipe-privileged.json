@@ -11,5 +11,55 @@
   ],
   "severity": "critical",
   "remediation": "Update the Linux kernel to 5.16.11, 5.15.25, or 5.10.102 or later.",
-  "tags": ["wiz", "compute", "vulnerability", "kernel", "dirty-pipe"]
+  "tags": [
+    "wiz",
+    "compute",
+    "vulnerability",
+    "kernel",
+    "dirty-pipe"
+  ],
+  "risk_categories": [
+    "IDENTITY_RISK",
+    "VULNERABILITY",
+    "PRIVILEGE_ESCALATION"
+  ],
+  "frameworks": [
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "AC-2",
+        "AC-6",
+        "RA-5",
+        "SI-2"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0.1",
+      "controls": [
+        "7.2",
+        "6.3",
+        "11.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6"
+      ]
+    },
+    {
+      "name": "CIS Controls v8",
+      "controls": [
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  ],
+  "mitre_attack": [
+    {
+      "tactic": "Privilege Escalation",
+      "technique": "T1078"
+    }
+  ]
 }
