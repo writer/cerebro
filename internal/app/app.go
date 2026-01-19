@@ -252,7 +252,7 @@ func LoadConfig() *Config {
 		SnowflakeConnectionString: getEnv("SNOWFLAKE_CONNECTION_STRING", ""),
 		SnowflakeAccount:          getEnv("SNOWFLAKE_ACCOUNT", ""),
 		SnowflakeUser:             getEnv("SNOWFLAKE_USER", ""),
-		SnowflakePrivateKey:       getEnv("SNOWFLAKE_PRIVATE_KEY", ""),
+		SnowflakePrivateKey:       normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", "")),
 		SnowflakeDatabase:         getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
 		SnowflakeSchema:           getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
 		SnowflakeWarehouse:        getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
@@ -1176,4 +1176,22 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	})
 
 	return nil
+}
+
+// normalizePrivateKey cleans up PEM-encoded private key strings that may have
+// escaped newlines or extra whitespace from environment variable storage.
+func normalizePrivateKey(value string) string {
+	if value == "" {
+		return value
+	}
+	if strings.Contains(value, "\\n") {
+		value = strings.ReplaceAll(value, "\\n", "\n")
+	}
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	lines := strings.Split(value, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimSpace(line)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }

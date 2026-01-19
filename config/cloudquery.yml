@@ -18,7 +18,7 @@ spec:
     - aws_ec2_*
     - aws_ecs_*
     - aws_ecr_*
-    - aws_elasticloadbalancing*
+    - aws_elbv2_*
     - aws_iam_*
     - aws_kms_*
     - aws_lambda_*
@@ -491,7 +491,7 @@ spec:
   name: snowflake
   path: cloudquery/snowflake
   registry: cloudquery
-  version: "v7.0.0"
+  version: "v5.2.0"
   spec:
     connection_string: "${SNOWFLAKE_CONNECTION_STRING}"
     database: CEREBRO
