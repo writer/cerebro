@@ -147,6 +147,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 
 	if existing, ok := s.findings[pf.ID]; ok {
 		existing.LastSeen = now
+		existing.UpdatedAt = now
 		// Only update fields that might change
 		if pf.Description != "" {
 			existing.Description = pf.Description
@@ -158,26 +159,54 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			existing.Resource = pf.Resource
 		}
 
-		if existing.Status == "resolved" {
-			existing.Status = "open"
+		// Reopen resolved findings if they recur
+		if existing.Status == "RESOLVED" || existing.Status == "resolved" {
+			existing.Status = "OPEN"
 			existing.ResolvedAt = nil
+			existing.StatusChangedAt = &now
 		}
 		return existing
 	}
 
-	resourceID := extractResourceID(pf.Resource)
-	resourceType := extractResourceType(pf.Resource)
+	// Use enhanced fields from policy finding if available, fall back to extraction
+	resourceID := pf.ResourceID
+	if resourceID == "" {
+		resourceID = extractResourceID(pf.Resource)
+	}
+	resourceType := pf.ResourceType
+	if resourceType == "" {
+		resourceType = extractResourceType(pf.Resource)
+	}
+	resourceName := pf.ResourceName
+	if resourceName == "" {
+		resourceName = extractResourceName(pf.Resource)
+	}
+
+	// Extract frameworks as strings for the finding
+	var frameworks []string
+	for _, fm := range pf.Frameworks {
+		frameworks = append(frameworks, fm.Name)
+	}
 
 	f := &Finding{
 		ID:           pf.ID,
+		IssueID:      pf.ID, // Use same ID as issue ID for now
+		ControlID:    pf.ControlID,
 		PolicyID:     pf.PolicyID,
 		PolicyName:   pf.PolicyName,
+		Title:        pf.Title,
 		Severity:     pf.Severity,
-		Status:       "open",
+		Status:       "OPEN",
 		ResourceID:   resourceID,
+		ResourceName: resourceName,
 		ResourceType: resourceType,
 		Resource:     pf.Resource,
 		Description:  pf.Description,
+		Remediation:  pf.Remediation,
+		RiskCategories:     pf.RiskCategories,
+		SecurityFrameworks: frameworks,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 		FirstSeen:    now,
 		LastSeen:     now,
 	}
@@ -198,6 +227,29 @@ func extractResourceID(resource map[string]interface{}) string {
 	}
 
 	for _, field := range idFields {
+		if val, ok := resource[field]; ok && val != nil {
+			if s, ok := val.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// extractResourceName extracts a human-readable name from the resource
+func extractResourceName(resource map[string]interface{}) string {
+	nameFields := []string{
+		"name",
+		"role_name",
+		"user_name",
+		"bucket_name",
+		"function_name",
+		"instance_id",
+		"display_name",
+		"title",
+	}
+
+	for _, field := range nameFields {
 		if val, ok := resource[field]; ok && val != nil {
 			if s, ok := val.(string); ok && s != "" {
 				return s
@@ -273,8 +325,10 @@ func (s *Store) Resolve(id string) bool {
 		return false
 	}
 	now := time.Now()
-	f.Status = "resolved"
+	f.Status = "RESOLVED"
 	f.ResolvedAt = &now
+	f.StatusChangedAt = &now
+	f.UpdatedAt = now
 	return true
 }
 
@@ -286,7 +340,10 @@ func (s *Store) Suppress(id string) bool {
 	if !ok {
 		return false
 	}
-	f.Status = "suppressed"
+	now := time.Now()
+	f.Status = "SUPPRESSED"
+	f.StatusChangedAt = &now
+	f.UpdatedAt = now
 	return true
 }
 

@@ -133,6 +133,18 @@ type Finding struct {
 	Resource    map[string]interface{} `json:"resource"`
 	Description string                 `json:"description"`
 	Remediation string                 `json:"remediation"`
+
+	// Enhanced fields for Wiz parity
+	Title          string   `json:"title,omitempty"`
+	ControlID      string   `json:"control_id,omitempty"`       // Wiz control ID
+	RiskCategories []string `json:"risk_categories,omitempty"` // Risk categorization
+	ResourceType   string   `json:"resource_type,omitempty"`
+	ResourceID     string   `json:"resource_id,omitempty"`
+	ResourceName   string   `json:"resource_name,omitempty"`
+
+	// Compliance mapping
+	Frameworks []FrameworkMapping `json:"frameworks,omitempty"`
+	MitreAttack []MitreMapping    `json:"mitre_attack,omitempty"`
 }
 
 func NewEngine() *Engine {
@@ -243,13 +255,26 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 		}
 
 		if violation := e.checkAssetViolation(p, asset); violation != "" {
+			// Extract resource identifiers
+			resourceID := extractResourceID(asset)
+			resourceName := extractResourceName(asset)
+
 			findings = append(findings, Finding{
-				ID:          fmt.Sprintf("%s-%v", p.ID, asset["_cq_id"]),
-				PolicyID:    p.ID,
-				PolicyName:  p.Name,
-				Severity:    p.Severity,
-				Resource:    asset,
-				Description: violation,
+				ID:             fmt.Sprintf("%s-%v", p.ID, asset["_cq_id"]),
+				PolicyID:       p.ID,
+				PolicyName:     p.Name,
+				Title:          p.Name,
+				Severity:       p.Severity,
+				Resource:       asset,
+				Description:    violation,
+				Remediation:    p.Remediation,
+				ControlID:      p.WizControlID,
+				RiskCategories: p.RiskCategories,
+				ResourceType:   p.Resource,
+				ResourceID:     resourceID,
+				ResourceName:   resourceName,
+				Frameworks:     p.Frameworks,
+				MitreAttack:    p.MitreAttack,
 			})
 		}
 	}
@@ -481,4 +506,32 @@ func parseFloat64(s string) (float64, error) {
 	var f float64
 	_, err := fmt.Sscanf(s, "%f", &f)
 	return f, err
+}
+
+// extractResourceID extracts the resource identifier from an asset
+func extractResourceID(asset map[string]interface{}) string {
+	// Try common ID fields in order of preference
+	keys := []string{"arn", "_cq_id", "id", "resource_id", "instance_id", "role_id", "user_id", "bucket_name", "function_name"}
+	for _, key := range keys {
+		if val, ok := asset[key]; ok {
+			if str, ok := val.(string); ok && str != "" {
+				return str
+			}
+		}
+	}
+	return ""
+}
+
+// extractResourceName extracts the resource name from an asset
+func extractResourceName(asset map[string]interface{}) string {
+	// Try common name fields
+	keys := []string{"name", "role_name", "user_name", "bucket_name", "function_name", "instance_id", "display_name", "title"}
+	for _, key := range keys {
+		if val, ok := asset[key]; ok {
+			if str, ok := val.(string); ok && str != "" {
+				return str
+			}
+		}
+	}
+	return ""
 }
