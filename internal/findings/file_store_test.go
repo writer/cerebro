@@ -99,8 +99,8 @@ func TestFileStoreResolve(t *testing.T) {
 
 	// Verify status changed
 	f, _ := store.Get("test-finding-2")
-	if f.Status != "resolved" {
-		t.Errorf("expected status resolved, got %s", f.Status)
+	if f.Status != "RESOLVED" {
+		t.Errorf("expected status RESOLVED, got %s", f.Status)
 	}
 }
 

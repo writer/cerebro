@@ -26,8 +26,8 @@ func TestStoreUpsert(t *testing.T) {
 	if f.ID != "test-finding-1" {
 		t.Errorf("expected ID 'test-finding-1', got '%s'", f.ID)
 	}
-	if f.Status != "open" {
-		t.Errorf("expected status 'open', got '%s'", f.Status)
+	if f.Status != "OPEN" {
+		t.Errorf("expected status 'OPEN', got '%s'", f.Status)
 	}
 	if f.Severity != "high" {
 		t.Errorf("expected severity 'high', got '%s'", f.Severity)
@@ -69,8 +69,8 @@ func TestStoreResolve(t *testing.T) {
 	}
 
 	f, _ := store.Get("test-finding-1")
-	if f.Status != "resolved" {
-		t.Errorf("expected status 'resolved', got '%s'", f.Status)
+	if f.Status != "RESOLVED" {
+		t.Errorf("expected status 'RESOLVED', got '%s'", f.Status)
 	}
 	if f.ResolvedAt == nil {
 		t.Error("expected ResolvedAt to be set")
@@ -91,8 +91,8 @@ func TestStoreSuppress(t *testing.T) {
 	}
 
 	f, _ := store.Get("test-finding-1")
-	if f.Status != "suppressed" {
-		t.Errorf("expected status 'suppressed', got '%s'", f.Status)
+	if f.Status != "SUPPRESSED" {
+		t.Errorf("expected status 'SUPPRESSED', got '%s'", f.Status)
 	}
 }
 
@@ -138,11 +138,11 @@ func TestStoreStats(t *testing.T) {
 	if stats.BySeverity["high"] != 2 {
 		t.Errorf("expected 2 high severity, got %d", stats.BySeverity["high"])
 	}
-	if stats.ByStatus["open"] != 2 {
-		t.Errorf("expected 2 open, got %d", stats.ByStatus["open"])
+	if stats.ByStatus["OPEN"] != 2 {
+		t.Errorf("expected 2 open, got %d", stats.ByStatus["OPEN"])
 	}
-	if stats.ByStatus["resolved"] != 1 {
-		t.Errorf("expected 1 resolved, got %d", stats.ByStatus["resolved"])
+	if stats.ByStatus["RESOLVED"] != 1 {
+		t.Errorf("expected 1 resolved, got %d", stats.ByStatus["RESOLVED"])
 	}
 }
 
@@ -186,7 +186,7 @@ func TestStoreUpsert_ReopenResolved(t *testing.T) {
 	store.Resolve("test-finding")
 
 	f, _ := store.Get("test-finding")
-	if f.Status != "resolved" {
+	if f.Status != "RESOLVED" {
 		t.Error("finding should be resolved")
 	}
 
@@ -194,8 +194,8 @@ func TestStoreUpsert_ReopenResolved(t *testing.T) {
 	store.Upsert(context.Background(), pf)
 
 	f, _ = store.Get("test-finding")
-	if f.Status != "open" {
-		t.Errorf("expected status 'open' after reopening, got '%s'", f.Status)
+	if f.Status != "OPEN" {
+		t.Errorf("expected status 'OPEN' after reopening, got '%s'", f.Status)
 	}
 	if f.ResolvedAt != nil {
 		t.Error("ResolvedAt should be nil after reopening")
@@ -209,12 +209,12 @@ func TestStoreList_FilterByStatus(t *testing.T) {
 	store.Upsert(context.Background(), policy.Finding{ID: "f2", PolicyID: "p1", Severity: "high"})
 	store.Resolve("f1")
 
-	open := store.List(FindingFilter{Status: "open"})
+	open := store.List(FindingFilter{Status: "OPEN"})
 	if len(open) != 1 {
 		t.Errorf("expected 1 open finding, got %d", len(open))
 	}
 
-	resolved := store.List(FindingFilter{Status: "resolved"})
+	resolved := store.List(FindingFilter{Status: "RESOLVED"})
 	if len(resolved) != 1 {
 		t.Errorf("expected 1 resolved finding, got %d", len(resolved))
 	}
