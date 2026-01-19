@@ -53,12 +53,27 @@ var findingsSuppressCmd = &cobra.Command{
 	RunE:  runFindingsSuppress,
 }
 
+var findingsExportCmd = &cobra.Command{
+	Use:   "export",
+	Short: "Export findings in Wiz-compatible format",
+	Long: `Export findings to CSV or JSON format compatible with Wiz exports.
+
+Examples:
+  cerebro findings export --format csv > findings.csv
+  cerebro findings export --format json --pretty > findings.json
+  cerebro findings export --severity critical,high --format csv`,
+	RunE: runFindingsExport,
+}
+
 var (
-	findingsSeverity string
-	findingsStatus   string
-	findingsPolicyID string
-	findingsLimit    int
-	findingsOutput   string
+	findingsSeverity   string
+	findingsStatus     string
+	findingsPolicyID   string
+	findingsLimit      int
+	findingsOutput     string
+	findingsExportFmt  string
+	findingsExportFile string
+	findingsPretty     bool
 )
 
 func init() {
@@ -66,12 +81,19 @@ func init() {
 	findingsCmd.AddCommand(findingsStatsCmd)
 	findingsCmd.AddCommand(findingsResolveCmd)
 	findingsCmd.AddCommand(findingsSuppressCmd)
+	findingsCmd.AddCommand(findingsExportCmd)
 
 	findingsListCmd.Flags().StringVarP(&findingsSeverity, "severity", "s", "", "Filter by severity (critical,high,medium,low)")
 	findingsListCmd.Flags().StringVar(&findingsStatus, "status", "open", "Filter by status (open,resolved,suppressed)")
 	findingsListCmd.Flags().StringVarP(&findingsPolicyID, "policy", "p", "", "Filter by policy ID")
 	findingsListCmd.Flags().IntVarP(&findingsLimit, "limit", "l", 100, "Maximum number of findings to show")
 	findingsListCmd.Flags().StringVarP(&findingsOutput, "output", "o", "table", "Output format (table,json,csv,wide)")
+
+	findingsExportCmd.Flags().StringVarP(&findingsExportFmt, "format", "f", "csv", "Export format (csv,json)")
+	findingsExportCmd.Flags().StringVarP(&findingsExportFile, "output", "o", "", "Output file (default: stdout)")
+	findingsExportCmd.Flags().BoolVar(&findingsPretty, "pretty", false, "Pretty print JSON output")
+	findingsExportCmd.Flags().StringVarP(&findingsSeverity, "severity", "s", "", "Filter by severity")
+	findingsExportCmd.Flags().StringVar(&findingsStatus, "status", "", "Filter by status")
 }
 
 func runFindingsList(cmd *cobra.Command, args []string) error {
@@ -215,6 +237,53 @@ func runFindingsSuppress(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("finding not found: %s", findingID)
+}
+
+func runFindingsExport(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	application, err := app.New(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
+	}
+	defer func() { _ = application.Close() }()
+
+	filter := findings.FindingFilter{
+		Severity: findingsSeverity,
+		Status:   findingsStatus,
+	}
+
+	list := application.Findings.List(filter)
+
+	// Enrich findings with cloud URLs, tags, etc.
+	for _, f := range list {
+		findings.EnrichFinding(f)
+	}
+
+	var data []byte
+	switch findingsExportFmt {
+	case "json":
+		exporter := findings.NewJSONExporter(findingsPretty)
+		data, err = exporter.Export(list)
+	default:
+		exporter := findings.NewCSVExporter()
+		data, err = exporter.Export(list)
+	}
+
+	if err != nil {
+		return fmt.Errorf("export failed: %w", err)
+	}
+
+	if findingsExportFile != "" {
+		if err := os.WriteFile(findingsExportFile, data, 0644); err != nil {
+			return fmt.Errorf("write file: %w", err)
+		}
+		Success("Exported %d findings to %s", len(list), findingsExportFile)
+	} else {
+		fmt.Print(string(data))
+	}
+
+	return nil
 }
 
 func truncateStr(s string, maxLen int) string {

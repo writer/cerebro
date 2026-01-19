@@ -99,10 +99,15 @@ func (s *Server) setupRoutes() {
 		r.Route("/findings", func(r chi.Router) {
 			r.Get("/", s.listFindings)
 			r.Get("/stats", s.findingsStats)
+			r.Get("/export", s.exportFindings)
 			r.Get("/{id}", s.getFinding)
 			r.Post("/scan", s.scanFindings)
 			r.Post("/{id}/resolve", s.resolveFinding)
 			r.Post("/{id}/suppress", s.suppressFinding)
+			r.Put("/{id}/assign", s.assignFinding)
+			r.Put("/{id}/due", s.setFindingDueDate)
+			r.Post("/{id}/notes", s.addFindingNote)
+			r.Post("/{id}/tickets", s.linkFindingTicket)
 		})
 
 		// Compliance endpoints
@@ -784,6 +789,140 @@ func (s *Server) suppressFinding(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.error(w, http.StatusNotFound, "finding not found")
 	}
+}
+
+func (s *Server) exportFindings(w http.ResponseWriter, r *http.Request) {
+	filter := findings.FindingFilter{
+		Severity: r.URL.Query().Get("severity"),
+		Status:   r.URL.Query().Get("status"),
+		PolicyID: r.URL.Query().Get("policy_id"),
+	}
+	list := s.app.Findings.List(filter)
+
+	// Enrich findings with cloud URLs, tags, etc.
+	for _, f := range list {
+		findings.EnrichFinding(f)
+	}
+
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "csv"
+	}
+
+	var data []byte
+	var err error
+	var contentType string
+
+	switch format {
+	case "json":
+		exporter := findings.NewJSONExporter(r.URL.Query().Get("pretty") == "true")
+		data, err = exporter.Export(list)
+		contentType = "application/json"
+	default:
+		exporter := findings.NewCSVExporter()
+		data, err = exporter.Export(list)
+		contentType = "text/csv"
+	}
+
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=findings.%s", format))
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func (s *Server) assignFinding(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Assignee string `json:"assignee"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	mgr := findings.NewIssueManager(s.app.Findings)
+	if err := mgr.Assign(id, req.Assignee); err != nil {
+		if err == findings.ErrIssueNotFound {
+			s.error(w, http.StatusNotFound, "finding not found")
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "assigned", "assignee": req.Assignee})
+}
+
+func (s *Server) setFindingDueDate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		DueAt time.Time `json:"due_at"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	mgr := findings.NewIssueManager(s.app.Findings)
+	if err := mgr.SetDueDate(id, req.DueAt); err != nil {
+		if err == findings.ErrIssueNotFound {
+			s.error(w, http.StatusNotFound, "finding not found")
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (s *Server) addFindingNote(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Note string `json:"note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	mgr := findings.NewIssueManager(s.app.Findings)
+	if err := mgr.AddNote(id, req.Note); err != nil {
+		if err == findings.ErrIssueNotFound {
+			s.error(w, http.StatusNotFound, "finding not found")
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "note added"})
+}
+
+func (s *Server) linkFindingTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		URL        string `json:"url"`
+		Name       string `json:"name"`
+		ExternalID string `json:"external_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	mgr := findings.NewIssueManager(s.app.Findings)
+	if err := mgr.LinkTicket(id, req.URL, req.Name, req.ExternalID); err != nil {
+		if err == findings.ErrIssueNotFound {
+			s.error(w, http.StatusNotFound, "finding not found")
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "ticket linked"})
 }
 
 // Compliance endpoints

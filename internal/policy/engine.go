@@ -68,7 +68,49 @@ type Policy struct {
 	Severity    string   `json:"severity"`      // critical, high, medium, low
 	Tags        []string `json:"tags"`          // Tags for categorization
 	Raw         string   `json:"raw,omitempty"` // Raw Cedar policy text (optional)
+
+	// Wiz compatibility fields
+	WizControlID string `json:"wiz_control_id,omitempty"` // Wiz control ID (e.g., "wc-id-1211")
+
+	// Remediation guidance
+	Remediation      string   `json:"remediation,omitempty"`       // Markdown remediation guidance
+	RemediationSteps []string `json:"remediation_steps,omitempty"` // Step-by-step remediation
+
+	// Risk categorization (matches Wiz's Risks field)
+	RiskCategories []string `json:"risk_categories,omitempty"` // EXTERNAL_EXPOSURE, UNPROTECTED_DATA, etc.
+
+	// Compliance framework mappings
+	Frameworks []FrameworkMapping `json:"frameworks,omitempty"`
+
+	// MITRE ATT&CK mapping
+	MitreAttack []MitreMapping `json:"mitre_attack,omitempty"`
 }
+
+// FrameworkMapping maps a policy to a compliance framework's controls
+type FrameworkMapping struct {
+	Name     string   `json:"name"`     // Framework name (e.g., "CIS Controls v8", "NIST 800-53")
+	Controls []string `json:"controls"` // Control IDs within the framework
+}
+
+// MitreMapping maps a policy to MITRE ATT&CK tactics and techniques
+type MitreMapping struct {
+	Tactic    string `json:"tactic"`    // ATT&CK tactic (e.g., "Initial Access")
+	Technique string `json:"technique"` // ATT&CK technique ID (e.g., "T1190")
+}
+
+// Risk category constants matching Wiz's risk categorization
+const (
+	RiskExternalExposure      = "EXTERNAL_EXPOSURE"
+	RiskExternalAttackSurface = "EXTERNAL_ATTACK_SURFACE"
+	RiskUnprotectedData       = "UNPROTECTED_DATA"
+	RiskUnprotectedPrincipal  = "UNPROTECTED_PRINCIPAL"
+	RiskVulnerability         = "VULNERABILITY"
+	RiskMisconfiguration      = "MISCONFIGURATION"
+	RiskIdentityRisk          = "IDENTITY_RISK"
+	RiskDataExfiltration      = "DATA_EXFILTRATION"
+	RiskLateralMovement       = "LATERAL_MOVEMENT"
+	RiskPrivilegeEscalation   = "PRIVILEGE_ESCALATION"
+)
 
 type EvalRequest struct {
 	Principal map[string]interface{} `json:"principal"`

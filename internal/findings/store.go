@@ -47,18 +47,85 @@ type FindingStore interface {
 }
 
 type Finding struct {
-	ID           string                 `json:"id"`
-	PolicyID     string                 `json:"policy_id"`
-	PolicyName   string                 `json:"policy_name"`
-	Severity     string                 `json:"severity"`
-	Status       string                 `json:"status"` // open, resolved, suppressed
-	ResourceID   string                 `json:"resource_id"`
-	ResourceType string                 `json:"resource_type"`
-	Resource     map[string]interface{} `json:"resource"`
-	Description  string                 `json:"description"`
-	FirstSeen    time.Time              `json:"first_seen"`
-	LastSeen     time.Time              `json:"last_seen"`
-	ResolvedAt   *time.Time             `json:"resolved_at,omitempty"`
+	// Core identification
+	ID        string `json:"id"`
+	IssueID   string `json:"issue_id,omitempty"`   // Unique issue identifier (for Wiz compatibility)
+	ControlID string `json:"control_id,omitempty"` // Policy control ID
+
+	// Policy info
+	PolicyID    string `json:"policy_id"`
+	PolicyName  string `json:"policy_name"`
+	Title       string `json:"title,omitempty"` // Human-readable issue title
+	Description string `json:"description"`
+	Severity    string `json:"severity"`
+
+	// Status & lifecycle
+	Status          string     `json:"status"`                      // OPEN, RESOLVED, SUPPRESSED, IN_PROGRESS
+	Resolution      string     `json:"resolution,omitempty"`        // How it was resolved
+	ResolvedAt      *time.Time `json:"resolved_at,omitempty"`       // When resolved
+	DueAt           *time.Time `json:"due_at,omitempty"`            // Due date for remediation
+	StatusChangedAt *time.Time `json:"status_changed_at,omitempty"` // When status last changed
+
+	// Timestamps
+	CreatedAt time.Time `json:"created_at,omitempty"` // When first created (alias for FirstSeen)
+	UpdatedAt time.Time `json:"updated_at,omitempty"` // Last update time
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
+
+	// Resource details
+	ResourceID         string                 `json:"resource_id"`
+	ResourceName       string                 `json:"resource_name,omitempty"`
+	ResourceType       string                 `json:"resource_type"`
+	ResourceExternalID string                 `json:"resource_external_id,omitempty"` // ARN, GCP resource path, etc.
+	ResourceRegion     string                 `json:"resource_region,omitempty"`
+	ResourceStatus     string                 `json:"resource_status,omitempty"` // Active, Deleted, etc.
+	ResourcePlatform   string                 `json:"resource_platform,omitempty"`
+	ResourceTags       map[string]string      `json:"resource_tags,omitempty"`
+	Resource           map[string]interface{} `json:"resource"`
+	ResourceJSON       map[string]interface{} `json:"resource_original_json,omitempty"` // Full resource JSON
+
+	// Cloud context
+	SubscriptionID   string   `json:"subscription_id,omitempty"`   // AWS Account ID, GCP Project, etc.
+	SubscriptionName string   `json:"subscription_name,omitempty"` // Account/Project name
+	ProjectIDs       []string `json:"project_ids,omitempty"`
+	ProjectNames     []string `json:"project_names,omitempty"`
+
+	// Kubernetes context (if applicable)
+	KubernetesCluster   string `json:"kubernetes_cluster,omitempty"`
+	KubernetesNamespace string `json:"kubernetes_namespace,omitempty"`
+	ContainerService    string `json:"container_service,omitempty"`
+
+	// Risk & threat analysis
+	RiskCategories []string `json:"risks,omitempty"`   // EXTERNAL_EXPOSURE, UNPROTECTED_DATA, etc.
+	Threats        []string `json:"threats,omitempty"` // Threat indicators
+
+	// Remediation
+	Remediation string `json:"remediation_recommendation,omitempty"`
+
+	// Compliance mapping
+	SecurityFrameworks []string `json:"security_frameworks,omitempty"`
+	SecurityCategories []string `json:"security_categories,omitempty"`
+
+	// Evidence
+	Evidence []Evidence `json:"evidence,omitempty"`
+
+	// Links
+	WizURL           string `json:"wiz_url,omitempty"`
+	CloudProviderURL string `json:"cloud_provider_url,omitempty"`
+
+	// Assignment & ticketing
+	AssigneeName      string   `json:"assignee_name,omitempty"`
+	TicketURLs        []string `json:"ticket_urls,omitempty"`
+	TicketNames       []string `json:"ticket_names,omitempty"`
+	TicketExternalIDs []string `json:"ticket_external_ids,omitempty"`
+	Notes             string   `json:"note,omitempty"`
+}
+
+// Evidence stores proof data for a finding
+type Evidence struct {
+	Type        string                 `json:"type"`
+	Description string                 `json:"description"`
+	Data        map[string]interface{} `json:"data,omitempty"`
 }
 
 type Store struct {
