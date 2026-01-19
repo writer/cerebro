@@ -2,17 +2,23 @@ package findings
 
 import (
 	"sort"
+	"strings"
+
+	"github.com/writerinternal/cerebro/internal/policy"
 )
 
 // ComplianceReport summarizes findings by compliance framework
 type ComplianceReport struct {
-	Framework       string                   `json:"framework"`
-	TotalControls   int                      `json:"total_controls"`
-	PassingControls int                      `json:"passing_controls"`
-	FailingControls int                      `json:"failing_controls"`
-	CoveragePercent float64                  `json:"coverage_percent"`
-	ControlStatus   map[string]ControlStatus `json:"control_status"`
-	FindingsByControl map[string][]string    `json:"findings_by_control"`
+	Framework           string                   `json:"framework"`
+	TotalControls       int                      `json:"total_controls"`
+	AssessedControls    int                      `json:"assessed_controls"`
+	PassingControls     int                      `json:"passing_controls"`
+	FailingControls     int                      `json:"failing_controls"`
+	NotAssessedControls int                      `json:"not_assessed_controls"`
+	CoveragePercent     float64                  `json:"coverage_percent"`
+	CompliancePercent   float64                  `json:"compliance_percent"`
+	ControlStatus       map[string]ControlStatus `json:"control_status"`
+	FindingsByControl   map[string][]string      `json:"findings_by_control"`
 }
 
 // ControlStatus tracks the status of a specific control
@@ -37,17 +43,24 @@ type RiskSummary struct {
 
 // ComplianceReporter generates compliance reports from findings
 type ComplianceReporter struct {
-	store FindingStore
+	store    FindingStore
+	policies *policy.Engine
+	registry *policy.ComplianceRegistry
 }
 
 // NewComplianceReporter creates a new compliance reporter
-func NewComplianceReporter(store FindingStore) *ComplianceReporter {
-	return &ComplianceReporter{store: store}
+func NewComplianceReporter(store FindingStore, policies *policy.Engine) *ComplianceReporter {
+	return &ComplianceReporter{
+		store:    store,
+		policies: policies,
+		registry: policy.NewComplianceRegistry(),
+	}
 }
 
 // GenerateFrameworkReport generates a compliance report for a specific framework
 func (r *ComplianceReporter) GenerateFrameworkReport(framework string) *ComplianceReport {
 	findings := r.store.List(FindingFilter{})
+	frameworkDef, _ := r.registry.FindFramework(framework)
 
 	report := &ComplianceReport{
 		Framework:         framework,
@@ -55,47 +68,101 @@ func (r *ComplianceReporter) GenerateFrameworkReport(framework string) *Complian
 		FindingsByControl: make(map[string][]string),
 	}
 
-	// Track controls that have findings
-	controlFindings := make(map[string][]*Finding)
+	// Seed control statuses from registry if available
+	if frameworkDef != nil {
+		for controlID, control := range frameworkDef.Controls {
+			report.ControlStatus[controlID] = ControlStatus{
+				ControlID:   controlID,
+				ControlName: control.Name,
+				Status:      "NOT_ASSESSED",
+			}
+		}
+	}
+
+	if r.policies != nil {
+		for _, p := range r.policies.ListPolicies() {
+			for _, mapping := range p.Frameworks {
+				if !frameworkMatches(framework, frameworkDef, mapping.Name) {
+					continue
+				}
+				for _, controlID := range mapping.Controls {
+					status := report.ControlStatus[controlID]
+					status.ControlID = controlID
+					if status.ControlName == "" && frameworkDef != nil {
+						if control, ok := frameworkDef.Controls[controlID]; ok {
+							status.ControlName = control.Name
+						}
+					}
+					if status.Status == "" || status.Status == "NOT_ASSESSED" {
+						status.Status = "PASS"
+					}
+					status.PolicyIDs = appendUnique(status.PolicyIDs, p.ID)
+					report.ControlStatus[controlID] = status
+				}
+			}
+		}
+	}
 
 	for _, f := range findings {
-		if f.Status != "OPEN" && f.Status != "open" {
-			continue // Only count open findings
+		if normalizeStatus(f.Status) != "OPEN" {
+			continue
 		}
 
-		// Check if finding maps to this framework
-		for _, fw := range f.SecurityFrameworks {
-			if fw == framework {
-				// This finding applies to this framework
-				// We need policy data to get control mappings
-				// For now, track by policy
-				controlFindings[f.PolicyID] = append(controlFindings[f.PolicyID], f)
+		mappings := f.ComplianceMappings
+		if r.policies != nil {
+			if p, ok := r.policies.GetPolicy(f.PolicyID); ok {
+				mappings = p.Frameworks
+			}
+		}
+
+		for _, mapping := range mappings {
+			if !frameworkMatches(framework, frameworkDef, mapping.Name) {
+				continue
+			}
+			for _, controlID := range mapping.Controls {
+				status := report.ControlStatus[controlID]
+				status.ControlID = controlID
+				status.Status = "FAIL"
+				status.Findings++
+				status.PolicyIDs = appendUnique(status.PolicyIDs, f.PolicyID)
+				status.Severity = maxSeverity(status.Severity, f.Severity)
+				if status.ControlName == "" && frameworkDef != nil {
+					if control, ok := frameworkDef.Controls[controlID]; ok {
+						status.ControlName = control.Name
+					}
+				}
+				report.ControlStatus[controlID] = status
+				report.FindingsByControl[controlID] = append(report.FindingsByControl[controlID], f.ID)
 			}
 		}
 	}
 
-	// Build control status
-	for policyID, policyFindings := range controlFindings {
-		maxSeverity := "low"
-		for _, f := range policyFindings {
-			if severityRank(f.Severity) > severityRank(maxSeverity) {
-				maxSeverity = f.Severity
-			}
-			report.FindingsByControl[policyID] = append(report.FindingsByControl[policyID], f.ID)
+	for _, status := range report.ControlStatus {
+		switch status.Status {
+		case "FAIL":
+			report.FailingControls++
+		case "PASS":
+			report.PassingControls++
+		case "NOT_ASSESSED":
+			report.NotAssessedControls++
 		}
-
-		report.ControlStatus[policyID] = ControlStatus{
-			ControlID: policyID,
-			Status:    "FAIL",
-			Findings:  len(policyFindings),
-			Severity:  maxSeverity,
-		}
-		report.FailingControls++
 	}
 
-	report.TotalControls = report.PassingControls + report.FailingControls
+	if frameworkDef != nil {
+		report.TotalControls = len(frameworkDef.Controls)
+		report.AssessedControls = report.PassingControls + report.FailingControls
+		report.NotAssessedControls = report.TotalControls - report.AssessedControls
+	} else {
+		report.TotalControls = len(report.ControlStatus)
+		report.AssessedControls = report.PassingControls + report.FailingControls
+		report.NotAssessedControls = report.TotalControls - report.AssessedControls
+	}
+
 	if report.TotalControls > 0 {
-		report.CoveragePercent = float64(report.PassingControls) / float64(report.TotalControls) * 100
+		report.CoveragePercent = float64(report.AssessedControls) / float64(report.TotalControls) * 100
+	}
+	if report.AssessedControls > 0 {
+		report.CompliancePercent = float64(report.PassingControls) / float64(report.AssessedControls) * 100
 	}
 
 	return report
@@ -109,7 +176,7 @@ func (r *ComplianceReporter) GenerateRiskSummary() []RiskSummary {
 	categoryStats := make(map[string]*RiskSummary)
 
 	for _, f := range findings {
-		if f.Status != "OPEN" && f.Status != "open" {
+		if normalizeStatus(f.Status) != "OPEN" {
 			continue
 		}
 
@@ -157,10 +224,10 @@ func (r *ComplianceReporter) GenerateExecutiveSummary() *ExecutiveSummary {
 	stats := r.store.Stats()
 
 	summary := &ExecutiveSummary{
-		TotalFindings:   stats.Total,
-		OpenFindings:    stats.ByStatus["OPEN"] + stats.ByStatus["open"],
-		ResolvedFindings: stats.ByStatus["RESOLVED"] + stats.ByStatus["resolved"],
-		SuppressedFindings: stats.ByStatus["SUPPRESSED"] + stats.ByStatus["suppressed"],
+		TotalFindings:      stats.Total,
+		OpenFindings:       stats.ByStatus["OPEN"],
+		ResolvedFindings:   stats.ByStatus["RESOLVED"],
+		SuppressedFindings: stats.ByStatus["SUPPRESSED"],
 		BySeverity: SeverityBreakdown{
 			Critical: stats.BySeverity["critical"],
 			High:     stats.BySeverity["high"],
@@ -228,4 +295,43 @@ func severityRank(s string) int {
 		return 1
 	}
 	return 0
+}
+
+func maxSeverity(current, candidate string) string {
+	if current == "" {
+		return candidate
+	}
+	if severityRank(candidate) > severityRank(current) {
+		return candidate
+	}
+	return current
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func frameworkMatches(target string, def *policy.ComplianceFramework, mappingName string) bool {
+	if strings.EqualFold(mappingName, target) {
+		return true
+	}
+	if def != nil {
+		if strings.EqualFold(mappingName, def.Name) || strings.EqualFold(mappingName, def.ID) {
+			return true
+		}
+		if strings.EqualFold(mappingName, def.Name+" "+def.Version) || strings.EqualFold(mappingName, def.Name+" v"+def.Version) {
+			return true
+		}
+	}
+	return normalizeFrameworkLabel(mappingName) == normalizeFrameworkLabel(target)
+}
+
+func normalizeFrameworkLabel(label string) string {
+	cleaned := strings.ToLower(strings.TrimSpace(label))
+	return strings.Join(strings.Fields(cleaned), " ")
 }

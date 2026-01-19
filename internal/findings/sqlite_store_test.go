@@ -43,8 +43,8 @@ func TestSQLiteStore(t *testing.T) {
 	if f1.ID != finding1.ID {
 		t.Errorf("expected ID %s, got %s", finding1.ID, f1.ID)
 	}
-	if f1.Status != "open" {
-		t.Errorf("expected status open, got %s", f1.Status)
+	if f1.Status != "OPEN" {
+		t.Errorf("expected status OPEN, got %s", f1.Status)
 	}
 
 	// Test Get
@@ -85,8 +85,8 @@ func TestSQLiteStore(t *testing.T) {
 	}
 
 	got, _ = store.Get(finding1.ID)
-	if got.Status != "resolved" {
-		t.Errorf("expected status resolved, got %s", got.Status)
+	if got.Status != "RESOLVED" {
+		t.Errorf("expected status RESOLVED, got %s", got.Status)
 	}
 	if got.ResolvedAt == nil {
 		t.Error("expected ResolvedAt to be set")
@@ -94,8 +94,8 @@ func TestSQLiteStore(t *testing.T) {
 
 	// Test Upsert re-opening resolved finding
 	f1Reopened := store.Upsert(ctx, finding1)
-	if f1Reopened.Status != "open" {
-		t.Errorf("expected status open after re-occurrence, got %s", f1Reopened.Status)
+	if f1Reopened.Status != "OPEN" {
+		t.Errorf("expected status OPEN after re-occurrence, got %s", f1Reopened.Status)
 	}
 	if f1Reopened.ResolvedAt != nil {
 		t.Error("expected ResolvedAt to be nil after re-opening")
@@ -106,8 +106,8 @@ func TestSQLiteStore(t *testing.T) {
 	if stats.Total != 1 {
 		t.Errorf("expected 1 total finding, got %d", stats.Total)
 	}
-	if stats.ByStatus["open"] != 1 {
-		t.Errorf("expected 1 open finding, got %d", stats.ByStatus["open"])
+	if stats.ByStatus["OPEN"] != 1 {
+		t.Errorf("expected 1 open finding, got %d", stats.ByStatus["OPEN"])
 	}
 
 	// Test Persistence (close and reopen)

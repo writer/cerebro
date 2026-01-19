@@ -5,11 +5,14 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/writerinternal/cerebro/internal/policy"
 )
 
-// CSVExporter exports findings in Wiz-compatible CSV format
+// CSVExporter exports findings in CSV format
 type CSVExporter struct{}
 
 // NewCSVExporter creates a new CSV exporter
@@ -17,12 +20,12 @@ func NewCSVExporter() *CSVExporter {
 	return &CSVExporter{}
 }
 
-// Export exports findings to CSV format matching Wiz's output
+// Export exports findings to CSV format
 func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 
-	// Write header row (matching Wiz's CSV columns)
+	// Write header row
 	headers := []string{
 		"Created At",
 		"Title",
@@ -30,6 +33,7 @@ func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 		"Status",
 		"Description",
 		"Resource Type",
+		"Resource ID",
 		"Resource external ID",
 		"Subscription ID",
 		"Project IDs",
@@ -55,6 +59,7 @@ func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 		"Container Service",
 		"Risks",
 		"Threats",
+		"MITRE ATT&CK",
 		"Status Changed At",
 		"Updated At",
 		"Assignee Name",
@@ -62,6 +67,7 @@ func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 		"Ticket External IDs",
 		"Security Frameworks",
 		"Security Categories",
+		"Compliance Mappings",
 		"Evidence",
 	}
 
@@ -78,6 +84,7 @@ func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 			f.Status,
 			f.Description,
 			f.ResourceType,
+			f.ResourceID,
 			f.ResourceExternalID,
 			f.SubscriptionID,
 			strings.Join(f.ProjectIDs, "|"),
@@ -103,6 +110,7 @@ func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 			f.ContainerService,
 			strings.Join(f.RiskCategories, "|"),
 			strings.Join(f.Threats, "|"),
+			formatMitreAttack(f.MitreAttack),
 			formatTimePtr(f.StatusChangedAt),
 			formatTime(f.UpdatedAt),
 			f.AssigneeName,
@@ -110,6 +118,7 @@ func (e *CSVExporter) Export(findings []*Finding) ([]byte, error) {
 			strings.Join(f.TicketExternalIDs, "|"),
 			strings.Join(f.SecurityFrameworks, "|"),
 			strings.Join(f.SecurityCategories, "|"),
+			formatComplianceMappings(f.ComplianceMappings),
 			formatEvidence(f.Evidence),
 		}
 		if err := writer.Write(row); err != nil {
@@ -190,4 +199,51 @@ func formatEvidence(evidence []Evidence) string {
 		return ""
 	}
 	return string(b)
+}
+
+func formatComplianceMappings(mappings []policy.FrameworkMapping) string {
+	if len(mappings) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(mappings))
+	for _, mapping := range mappings {
+		if len(mapping.Controls) == 0 {
+			continue
+		}
+		controls := append([]string{}, mapping.Controls...)
+		sort.Strings(controls)
+		parts = append(parts, fmt.Sprintf("%s:%s", mapping.Name, strings.Join(controls, ",")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
+}
+
+func formatMitreAttack(mappings []policy.MitreMapping) string {
+	if len(mappings) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(mappings))
+	for _, mapping := range mappings {
+		if mapping.Tactic == "" && mapping.Technique == "" {
+			continue
+		}
+		if mapping.Tactic != "" && mapping.Technique != "" {
+			parts = append(parts, fmt.Sprintf("%s:%s", mapping.Tactic, mapping.Technique))
+			continue
+		}
+		if mapping.Tactic != "" {
+			parts = append(parts, mapping.Tactic)
+			continue
+		}
+		parts = append(parts, mapping.Technique)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,8 +78,14 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 
 	now := time.Now()
 	resourceData, _ := json.Marshal(pf.Resource)
-	resourceID := extractResourceID(pf.Resource)
-	resourceType := extractResourceType(pf.Resource)
+	resourceID := pf.ResourceID
+	if resourceID == "" {
+		resourceID = extractResourceID(pf.Resource)
+	}
+	resourceType := pf.ResourceType
+	if resourceType == "" {
+		resourceType = extractResourceType(pf.Resource)
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -103,7 +110,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			PolicyID:     pf.PolicyID,
 			PolicyName:   pf.PolicyName,
 			Severity:     pf.Severity,
-			Status:       "open",
+			Status:       "OPEN",
 			ResourceID:   resourceID,
 			ResourceType: resourceType,
 			Resource:     pf.Resource,
@@ -111,6 +118,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 			FirstSeen:    now,
 			LastSeen:     now,
 		}
+		EnrichFinding(f)
 
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO findings (id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, first_seen, last_seen)
@@ -133,10 +141,10 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	}
 
 	// Update existing
-	status := existing.Status
+	status := normalizeStatus(existing.Status)
 	resolvedAtVal := resolvedAt
-	if status == "resolved" {
-		status = "open"
+	if status == "RESOLVED" {
+		status = "OPEN"
 		resolvedAtVal = sql.NullTime{Valid: false}
 	}
 
@@ -167,6 +175,7 @@ func (s *SQLiteStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	existing.PolicyName = pf.PolicyName
 	existing.Severity = pf.Severity
 	existing.Description = pf.Description
+	EnrichFinding(&existing)
 
 	return &existing
 }
@@ -197,6 +206,8 @@ func (s *SQLiteStore) Get(id string) (*Finding, bool) {
 		t := resolvedAt.Time
 		f.ResolvedAt = &t
 	}
+	f.Status = normalizeStatus(f.Status)
+	EnrichFinding(&f)
 
 	return &f, true
 }
@@ -213,8 +224,8 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 		args = append(args, filter.Severity)
 	}
 	if filter.Status != "" {
-		query += " AND status = ?"
-		args = append(args, filter.Status)
+		query += " AND UPPER(status) = ?"
+		args = append(args, strings.ToUpper(filter.Status))
 	}
 	if filter.PolicyID != "" {
 		query += " AND policy_id = ?"
@@ -245,6 +256,8 @@ func (s *SQLiteStore) List(filter FindingFilter) []*Finding {
 			t := resolvedAt.Time
 			f.ResolvedAt = &t
 		}
+		f.Status = normalizeStatus(f.Status)
+		EnrichFinding(&f)
 		result = append(result, &f)
 	}
 
@@ -256,7 +269,7 @@ func (s *SQLiteStore) Resolve(id string) bool {
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	res, err := s.db.ExecContext(context.Background(), "UPDATE findings SET status = 'resolved', resolved_at = ? WHERE id = ?", now, id)
+	res, err := s.db.ExecContext(context.Background(), "UPDATE findings SET status = 'RESOLVED', resolved_at = ? WHERE id = ?", now, id)
 	if err != nil {
 		return false
 	}
@@ -268,7 +281,7 @@ func (s *SQLiteStore) Suppress(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res, err := s.db.ExecContext(context.Background(), "UPDATE findings SET status = 'suppressed' WHERE id = ?", id)
+	res, err := s.db.ExecContext(context.Background(), "UPDATE findings SET status = 'SUPPRESSED' WHERE id = ?", id)
 	if err != nil {
 		return false
 	}
@@ -302,7 +315,7 @@ func (s *SQLiteStore) Stats() Stats {
 	}
 
 	// By Status
-	rows, _ = s.db.QueryContext(context.Background(), "SELECT status, COUNT(*) FROM findings GROUP BY status")
+	rows, _ = s.db.QueryContext(context.Background(), "SELECT UPPER(status), COUNT(*) FROM findings GROUP BY UPPER(status)")
 	if rows != nil {
 		for rows.Next() {
 			var k string

@@ -239,7 +239,7 @@ func TestFinding_Fields(t *testing.T) {
 		PolicyID:     "policy-1",
 		PolicyName:   "Test Policy",
 		Severity:     "critical",
-		Status:       "resolved",
+		Status:       "RESOLVED",
 		ResourceID:   "resource-1",
 		ResourceType: "aws_s3_bucket",
 		Resource:     resource,
@@ -261,7 +261,7 @@ func TestFinding_Fields(t *testing.T) {
 	if f.Severity != "critical" {
 		t.Error("Severity field incorrect")
 	}
-	if f.Status != "resolved" {
+	if f.Status != "RESOLVED" {
 		t.Error("Status field incorrect")
 	}
 	if f.ResourceID != "resource-1" {
@@ -290,14 +290,14 @@ func TestFinding_Fields(t *testing.T) {
 func TestFindingFilter_Fields(t *testing.T) {
 	filter := FindingFilter{
 		Severity: "high",
-		Status:   "open",
+		Status:   "OPEN",
 		PolicyID: "policy-1",
 	}
 
 	if filter.Severity != "high" {
 		t.Error("Severity field incorrect")
 	}
-	if filter.Status != "open" {
+	if filter.Status != "OPEN" {
 		t.Error("Status field incorrect")
 	}
 	if filter.PolicyID != "policy-1" {
@@ -309,7 +309,7 @@ func TestStats_Fields(t *testing.T) {
 	stats := Stats{
 		Total:      10,
 		BySeverity: map[string]int{"critical": 2, "high": 5, "medium": 3},
-		ByStatus:   map[string]int{"open": 8, "resolved": 2},
+		ByStatus:   map[string]int{"OPEN": 8, "RESOLVED": 2},
 		ByPolicy:   map[string]int{"p1": 6, "p2": 4},
 	}
 
@@ -319,7 +319,7 @@ func TestStats_Fields(t *testing.T) {
 	if stats.BySeverity["critical"] != 2 {
 		t.Error("BySeverity field incorrect")
 	}
-	if stats.ByStatus["open"] != 8 {
+	if stats.ByStatus["OPEN"] != 8 {
 		t.Error("ByStatus field incorrect")
 	}
 	if stats.ByPolicy["p1"] != 6 {

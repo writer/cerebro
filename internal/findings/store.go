@@ -49,7 +49,7 @@ type FindingStore interface {
 type Finding struct {
 	// Core identification
 	ID        string `json:"id"`
-	IssueID   string `json:"issue_id,omitempty"`   // Unique issue identifier (for Wiz compatibility)
+	IssueID   string `json:"issue_id,omitempty"`
 	ControlID string `json:"control_id,omitempty"` // Policy control ID
 
 	// Policy info
@@ -103,14 +103,15 @@ type Finding struct {
 	Remediation string `json:"remediation_recommendation,omitempty"`
 
 	// Compliance mapping
-	SecurityFrameworks []string `json:"security_frameworks,omitempty"`
-	SecurityCategories []string `json:"security_categories,omitempty"`
+	SecurityFrameworks []string                  `json:"security_frameworks,omitempty"`
+	SecurityCategories []string                  `json:"security_categories,omitempty"`
+	ComplianceMappings []policy.FrameworkMapping `json:"compliance_mappings,omitempty"`
+	MitreAttack        []policy.MitreMapping     `json:"mitre_attack,omitempty"`
 
 	// Evidence
 	Evidence []Evidence `json:"evidence,omitempty"`
 
 	// Links
-	WizURL           string `json:"wiz_url,omitempty"`
 	CloudProviderURL string `json:"cloud_provider_url,omitempty"`
 
 	// Assignment & ticketing
@@ -146,6 +147,7 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 	now := time.Now()
 
 	if existing, ok := s.findings[pf.ID]; ok {
+		existing.Status = normalizeStatus(existing.Status)
 		existing.LastSeen = now
 		existing.UpdatedAt = now
 		// Only update fields that might change
@@ -155,16 +157,54 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		if pf.Severity != "" {
 			existing.Severity = pf.Severity
 		}
+		if pf.ControlID != "" {
+			existing.ControlID = pf.ControlID
+		}
+		if pf.Title != "" {
+			existing.Title = pf.Title
+		}
+		if pf.Remediation != "" {
+			existing.Remediation = pf.Remediation
+		}
 		if len(pf.Resource) > 0 {
 			existing.Resource = pf.Resource
 		}
+		if pf.ResourceID != "" {
+			existing.ResourceID = pf.ResourceID
+		}
+		if pf.ResourceType != "" {
+			existing.ResourceType = pf.ResourceType
+		}
+		if pf.ResourceName != "" {
+			existing.ResourceName = pf.ResourceName
+		}
+		if len(pf.RiskCategories) > 0 {
+			existing.RiskCategories = pf.RiskCategories
+		}
+		if len(pf.Frameworks) > 0 {
+			frameworks := make([]string, 0, len(pf.Frameworks))
+			securityCategories := make([]string, 0)
+			for _, fm := range pf.Frameworks {
+				frameworks = append(frameworks, fm.Name)
+				for _, control := range fm.Controls {
+					securityCategories = append(securityCategories, fm.Name+":"+control)
+				}
+			}
+			existing.SecurityFrameworks = frameworks
+			existing.SecurityCategories = securityCategories
+			existing.ComplianceMappings = pf.Frameworks
+		}
+		if len(pf.MitreAttack) > 0 {
+			existing.MitreAttack = pf.MitreAttack
+		}
 
 		// Reopen resolved findings if they recur
-		if existing.Status == "RESOLVED" || existing.Status == "resolved" {
+		if normalizeStatus(existing.Status) == "RESOLVED" {
 			existing.Status = "OPEN"
 			existing.ResolvedAt = nil
 			existing.StatusChangedAt = &now
 		}
+		EnrichFinding(existing)
 		return existing
 	}
 
@@ -182,36 +222,53 @@ func (s *Store) Upsert(ctx context.Context, pf policy.Finding) *Finding {
 		resourceName = extractResourceName(pf.Resource)
 	}
 
-	// Extract frameworks as strings for the finding
-	var frameworks []string
+	// Extract frameworks and controls for the finding
+	frameworks := make([]string, 0, len(pf.Frameworks))
+	securityCategories := make([]string, 0)
 	for _, fm := range pf.Frameworks {
 		frameworks = append(frameworks, fm.Name)
+		for _, control := range fm.Controls {
+			securityCategories = append(securityCategories, fm.Name+":"+control)
+		}
 	}
 
 	f := &Finding{
-		ID:           pf.ID,
-		IssueID:      pf.ID, // Use same ID as issue ID for now
-		ControlID:    pf.ControlID,
-		PolicyID:     pf.PolicyID,
-		PolicyName:   pf.PolicyName,
-		Title:        pf.Title,
-		Severity:     pf.Severity,
-		Status:       "OPEN",
-		ResourceID:   resourceID,
-		ResourceName: resourceName,
-		ResourceType: resourceType,
-		Resource:     pf.Resource,
-		Description:  pf.Description,
-		Remediation:  pf.Remediation,
+		ID:                 pf.ID,
+		IssueID:            pf.ID, // Use same ID as issue ID for now
+		ControlID:          pf.ControlID,
+		PolicyID:           pf.PolicyID,
+		PolicyName:         pf.PolicyName,
+		Title:              pf.Title,
+		Severity:           pf.Severity,
+		Status:             "OPEN",
+		ResourceID:         resourceID,
+		ResourceName:       resourceName,
+		ResourceType:       resourceType,
+		Resource:           pf.Resource,
+		Description:        pf.Description,
+		Remediation:        pf.Remediation,
 		RiskCategories:     pf.RiskCategories,
 		SecurityFrameworks: frameworks,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		FirstSeen:    now,
-		LastSeen:     now,
+		SecurityCategories: securityCategories,
+		ComplianceMappings: pf.Frameworks,
+		MitreAttack:        pf.MitreAttack,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		FirstSeen:          now,
+		LastSeen:           now,
 	}
+	f.StatusChangedAt = &now
+
+	EnrichFinding(f)
 	s.findings[pf.ID] = f
 	return f
+}
+
+func normalizeStatus(status string) string {
+	if status == "" {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(status))
 }
 
 // extractResourceID tries multiple fields to find a suitable resource identifier
@@ -300,12 +357,14 @@ func (s *Store) List(filter FindingFilter) []*Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	statusFilter := normalizeStatus(filter.Status)
+
 	result := make([]*Finding, 0)
 	for _, f := range s.findings {
 		if filter.Severity != "" && f.Severity != filter.Severity {
 			continue
 		}
-		if filter.Status != "" && f.Status != filter.Status {
+		if statusFilter != "" && normalizeStatus(f.Status) != statusFilter {
 			continue
 		}
 		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
@@ -360,7 +419,7 @@ func (s *Store) Stats() Stats {
 	for _, f := range s.findings {
 		stats.Total++
 		stats.BySeverity[f.Severity]++
-		stats.ByStatus[f.Status]++
+		stats.ByStatus[normalizeStatus(f.Status)]++
 		stats.ByPolicy[f.PolicyID]++
 	}
 

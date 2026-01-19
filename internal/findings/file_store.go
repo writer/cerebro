@@ -67,6 +67,8 @@ func (fs *FileStore) load() error {
 	// Load into in-memory store
 	fs.store.mu.Lock()
 	for _, f := range findings {
+		f.Status = normalizeStatus(f.Status)
+		EnrichFinding(f)
 		fs.store.findings[f.ID] = f
 	}
 	fs.store.mu.Unlock()
@@ -205,7 +207,7 @@ func (fs *FileStore) Cleanup(maxAge time.Duration) int {
 	removed := 0
 
 	for id, f := range fs.store.findings {
-		if f.LastSeen.Before(cutoff) && f.Status == "resolved" {
+		if f.LastSeen.Before(cutoff) && normalizeStatus(f.Status) == "RESOLVED" {
 			delete(fs.store.findings, id)
 			removed++
 		}

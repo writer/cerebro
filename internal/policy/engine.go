@@ -136,15 +136,15 @@ type Finding struct {
 
 	// Enhanced fields for Wiz parity
 	Title          string   `json:"title,omitempty"`
-	ControlID      string   `json:"control_id,omitempty"`       // Wiz control ID
+	ControlID      string   `json:"control_id,omitempty"`      // Wiz control ID
 	RiskCategories []string `json:"risk_categories,omitempty"` // Risk categorization
 	ResourceType   string   `json:"resource_type,omitempty"`
 	ResourceID     string   `json:"resource_id,omitempty"`
 	ResourceName   string   `json:"resource_name,omitempty"`
 
 	// Compliance mapping
-	Frameworks []FrameworkMapping `json:"frameworks,omitempty"`
-	MitreAttack []MitreMapping    `json:"mitre_attack,omitempty"`
+	Frameworks  []FrameworkMapping `json:"frameworks,omitempty"`
+	MitreAttack []MitreMapping     `json:"mitre_attack,omitempty"`
 }
 
 func NewEngine() *Engine {
@@ -156,6 +156,8 @@ func NewEngine() *Engine {
 func (e *Engine) LoadPolicies(dir string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	registry := NewComplianceRegistry()
 
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -170,12 +172,22 @@ func (e *Engine) LoadPolicies(dir string) error {
 			return fmt.Errorf("read %s: %w", path, err)
 		}
 
-		var policy Policy
-		if err := json.Unmarshal(data, &policy); err != nil {
+		var policyDef Policy
+		if err := json.Unmarshal(data, &policyDef); err != nil {
 			return fmt.Errorf("parse %s: %w", path, err)
 		}
 
-		e.policies[policy.ID] = &policy
+		if len(policyDef.Frameworks) == 0 {
+			policyDef.Frameworks = MapPolicyToFrameworks(&policyDef, registry)
+		}
+		if len(policyDef.RiskCategories) == 0 {
+			policyDef.RiskCategories = InferRiskCategories(&policyDef)
+		}
+		if len(policyDef.MitreAttack) == 0 {
+			policyDef.MitreAttack = InferMitreAttack(&policyDef)
+		}
+
+		e.policies[policyDef.ID] = &policyDef
 		return nil
 	})
 }

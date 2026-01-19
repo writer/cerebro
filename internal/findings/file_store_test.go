@@ -119,7 +119,7 @@ func TestFileStoreCleanup(t *testing.T) {
 	store.store.findings["old-finding"] = &Finding{
 		ID:       "old-finding",
 		PolicyID: "test",
-		Status:   "resolved",
+		Status:   "RESOLVED",
 		LastSeen: time.Now().Add(-30 * 24 * time.Hour), // 30 days old
 	}
 	store.store.mu.Unlock()

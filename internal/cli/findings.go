@@ -55,8 +55,8 @@ var findingsSuppressCmd = &cobra.Command{
 
 var findingsExportCmd = &cobra.Command{
 	Use:   "export",
-	Short: "Export findings in Wiz-compatible format",
-	Long: `Export findings to CSV or JSON format compatible with Wiz exports.
+	Short: "Export findings in CSV or JSON format",
+	Long: `Export findings to CSV or JSON format.
 
 Examples:
   cerebro findings export --format csv > findings.csv
@@ -84,7 +84,7 @@ func init() {
 	findingsCmd.AddCommand(findingsExportCmd)
 
 	findingsListCmd.Flags().StringVarP(&findingsSeverity, "severity", "s", "", "Filter by severity (critical,high,medium,low)")
-	findingsListCmd.Flags().StringVar(&findingsStatus, "status", "open", "Filter by status (open,resolved,suppressed)")
+	findingsListCmd.Flags().StringVar(&findingsStatus, "status", "OPEN", "Filter by status (OPEN,RESOLVED,SUPPRESSED)")
 	findingsListCmd.Flags().StringVarP(&findingsPolicyID, "policy", "p", "", "Filter by policy ID")
 	findingsListCmd.Flags().IntVarP(&findingsLimit, "limit", "l", 100, "Maximum number of findings to show")
 	findingsListCmd.Flags().StringVarP(&findingsOutput, "output", "o", "table", "Output format (table,json,csv,wide)")
@@ -198,9 +198,9 @@ func runFindingsStats(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	fmt.Println(bold("By Status"))
-	fmt.Printf("  %s        %d\n", statusColor("open"), stats.ByStatus["open"])
-	fmt.Printf("  %s    %d\n", statusColor("resolved"), stats.ByStatus["resolved"])
-	fmt.Printf("  %s  %d\n", statusColor("suppressed"), stats.ByStatus["suppressed"])
+	fmt.Printf("  %s        %d\n", statusColor("OPEN"), stats.ByStatus["OPEN"])
+	fmt.Printf("  %s    %d\n", statusColor("RESOLVED"), stats.ByStatus["RESOLVED"])
+	fmt.Printf("  %s  %d\n", statusColor("SUPPRESSED"), stats.ByStatus["SUPPRESSED"])
 
 	return nil
 }

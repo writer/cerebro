@@ -13,23 +13,41 @@ func EnrichFinding(f *Finding) {
 	}
 
 	// Extract resource metadata
-	f.ResourceExternalID = extractString(f.Resource, "arn", "_cq_id")
-	f.ResourceName = extractString(f.Resource, "name", "role_name", "bucket_name", "function_name", "instance_id")
-	f.ResourceRegion = extractString(f.Resource, "region", "location")
-	f.ResourcePlatform = detectPlatform(f.Resource)
-	f.ResourceStatus = extractString(f.Resource, "state", "status")
+	if f.ResourceExternalID == "" {
+		f.ResourceExternalID = extractString(f.Resource, "arn", "_cq_id")
+	}
+	if f.ResourceName == "" {
+		f.ResourceName = extractString(f.Resource, "name", "role_name", "bucket_name", "function_name", "instance_id")
+	}
+	if f.ResourceRegion == "" {
+		f.ResourceRegion = extractString(f.Resource, "region", "location")
+	}
+	if f.ResourcePlatform == "" {
+		f.ResourcePlatform = detectPlatform(f.Resource)
+	}
+	if f.ResourceStatus == "" {
+		f.ResourceStatus = extractString(f.Resource, "state", "status")
+	}
 
 	// Extract account/subscription info
-	f.SubscriptionID = extractString(f.Resource, "account_id", "project_id", "subscription_id")
+	if f.SubscriptionID == "" {
+		f.SubscriptionID = extractString(f.Resource, "account_id", "project_id", "subscription_id")
+	}
 
 	// Extract tags
-	f.ResourceTags = extractTags(f.Resource)
+	if f.ResourceTags == nil {
+		f.ResourceTags = extractTags(f.Resource)
+	}
 
 	// Generate cloud provider URL
-	f.CloudProviderURL = GenerateCloudProviderURL(f.Resource, f.ResourceType, f.ResourcePlatform)
+	if f.CloudProviderURL == "" {
+		f.CloudProviderURL = GenerateCloudProviderURL(f.Resource, f.ResourceType, f.ResourcePlatform)
+	}
 
 	// Store full resource JSON for export
-	f.ResourceJSON = f.Resource
+	if f.ResourceJSON == nil {
+		f.ResourceJSON = f.Resource
+	}
 
 	// Set timestamps
 	if f.CreatedAt.IsZero() && !f.FirstSeen.IsZero() {

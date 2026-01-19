@@ -22,7 +22,7 @@ var TableDDLs = map[string]string{
 			policy_id VARCHAR(128) NOT NULL,
 			policy_name VARCHAR(256),
 			severity VARCHAR(32),
-			status VARCHAR(32) DEFAULT 'open',
+			status VARCHAR(32) DEFAULT 'OPEN',
 			resource_id VARCHAR(256),
 			resource_type VARCHAR(128),
 			resource_data VARIANT,

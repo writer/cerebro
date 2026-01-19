@@ -117,10 +117,6 @@ func (s *Server) setupRoutes() {
 			r.Get("/compliance/{framework}", s.frameworkComplianceReport)
 		})
 
-		// Findings-based attack path endpoints
-		r.Get("/findings-attack-paths", s.listFindingsAttackPaths)
-		r.Get("/findings-toxic-combinations", s.listFindingsToxicCombinations)
-
 		// Compliance endpoints
 		r.Route("/compliance", func(r chi.Router) {
 			r.Get("/frameworks", s.listFrameworks)
@@ -939,42 +935,22 @@ func (s *Server) linkFindingTicket(w http.ResponseWriter, r *http.Request) {
 // Reporting endpoints
 
 func (s *Server) executiveSummary(w http.ResponseWriter, r *http.Request) {
-	reporter := findings.NewComplianceReporter(s.app.Findings)
+	reporter := findings.NewComplianceReporter(s.app.Findings, s.app.Policy)
 	summary := reporter.GenerateExecutiveSummary()
 	s.json(w, http.StatusOK, summary)
 }
 
 func (s *Server) riskSummary(w http.ResponseWriter, r *http.Request) {
-	reporter := findings.NewComplianceReporter(s.app.Findings)
+	reporter := findings.NewComplianceReporter(s.app.Findings, s.app.Policy)
 	risks := reporter.GenerateRiskSummary()
 	s.json(w, http.StatusOK, map[string]interface{}{"risks": risks, "count": len(risks)})
 }
 
 func (s *Server) frameworkComplianceReport(w http.ResponseWriter, r *http.Request) {
 	framework := chi.URLParam(r, "framework")
-	reporter := findings.NewComplianceReporter(s.app.Findings)
+	reporter := findings.NewComplianceReporter(s.app.Findings, s.app.Policy)
 	report := reporter.GenerateFrameworkReport(framework)
 	s.json(w, http.StatusOK, report)
-}
-
-// Findings-based attack path endpoints
-
-func (s *Server) listFindingsAttackPaths(w http.ResponseWriter, r *http.Request) {
-	analyzer := findings.NewAttackPathAnalyzer(s.app.Findings)
-	paths := analyzer.GenerateAttackPaths()
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"attack_paths": paths,
-		"count":        len(paths),
-	})
-}
-
-func (s *Server) listFindingsToxicCombinations(w http.ResponseWriter, r *http.Request) {
-	analyzer := findings.NewAttackPathAnalyzer(s.app.Findings)
-	combos := analyzer.FindToxicCombinations()
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"toxic_combinations": combos,
-		"count":              len(combos),
-	})
 }
 
 // Compliance endpoints

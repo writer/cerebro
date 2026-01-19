@@ -86,11 +86,15 @@ func (m *IssueManager) SetStatus(issueID, status string) error {
 	}
 
 	now := time.Now()
-	f.Status = status
+	normalized := normalizeStatus(status)
+	if normalized == "" {
+		normalized = status
+	}
+	f.Status = normalized
 	f.StatusChangedAt = &now
 	f.UpdatedAt = now
 
-	if status == "RESOLVED" || status == "resolved" {
+	if normalizeStatus(status) == "RESOLVED" {
 		f.ResolvedAt = &now
 	}
 

@@ -2,8 +2,10 @@ package snowflake
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +34,8 @@ type FindingRecord struct {
 	ResourceType string                 `json:"resource_type"`
 	ResourceData map[string]interface{} `json:"resource_data"`
 	Description  string                 `json:"description"`
+	Remediation  string                 `json:"remediation,omitempty"`
+	Metadata     json.RawMessage        `json:"metadata,omitempty"`
 	FirstSeen    time.Time              `json:"first_seen"`
 	LastSeen     time.Time              `json:"last_seen"`
 	ResolvedAt   *time.Time             `json:"resolved_at"`
@@ -50,20 +54,33 @@ func (r *FindingRepository) Upsert(ctx context.Context, f *FindingRecord) error 
 			last_seen = CURRENT_TIMESTAMP(),
 			status = ?,
 			resource_data = PARSE_JSON(?),
+			description = ?,
+			remediation = ?,
+			metadata = PARSE_JSON(?),
 			_updated_at = CURRENT_TIMESTAMP()
 		WHEN NOT MATCHED THEN INSERT (
 			id, policy_id, policy_name, severity, status,
 			resource_id, resource_type, resource_data, description,
-			first_seen, last_seen
-		) VALUES (?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+			remediation, metadata, first_seen, last_seen
+		) VALUES (?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?, PARSE_JSON(?), CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
 	`
+
+	metadata := f.Metadata
+	if len(metadata) == 0 {
+		metadata = []byte("{}")
+	}
 
 	_, err := r.client.db.ExecContext(ctx, query,
 		f.ID,
-		f.Status,
+		strings.ToUpper(f.Status),
 		string(resourceJSON),
-		f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status,
+		f.Description,
+		f.Remediation,
+		string(metadata),
+		f.ID, f.PolicyID, f.PolicyName, f.Severity, strings.ToUpper(f.Status),
 		f.ResourceID, f.ResourceType, string(resourceJSON), f.Description,
+		f.Remediation,
+		string(metadata),
 	)
 	return err
 }
@@ -73,7 +90,7 @@ func (r *FindingRepository) Get(ctx context.Context, id string) (*FindingRecord,
 	query := `
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, resource_data, description,
-			   first_seen, last_seen, resolved_at
+			   remediation, metadata, first_seen, last_seen, resolved_at
 		FROM ` + r.schema + `.findings WHERE id = ?
 	`
 
@@ -81,11 +98,19 @@ func (r *FindingRepository) Get(ctx context.Context, id string) (*FindingRecord,
 
 	var f FindingRecord
 	var resourceData []byte
+	var metadataData []byte
+	var remediation sql.NullString
 	err := row.Scan(&f.ID, &f.PolicyID, &f.PolicyName, &f.Severity, &f.Status,
 		&f.ResourceID, &f.ResourceType, &resourceData, &f.Description,
-		&f.FirstSeen, &f.LastSeen, &f.ResolvedAt)
+		&remediation, &metadataData, &f.FirstSeen, &f.LastSeen, &f.ResolvedAt)
 	if err != nil {
 		return nil, err
+	}
+	if remediation.Valid {
+		f.Remediation = remediation.String
+	}
+	if len(metadataData) > 0 {
+		f.Metadata = metadataData
 	}
 
 	_ = json.Unmarshal(resourceData, &f.ResourceData)
@@ -106,8 +131,8 @@ func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*
 		args = append(args, filter.Severity)
 	}
 	if filter.Status != "" {
-		query += " AND status = ?"
-		args = append(args, filter.Status)
+		query += " AND UPPER(status) = ?"
+		args = append(args, strings.ToUpper(filter.Status))
 	}
 	if filter.PolicyID != "" {
 		query += " AND policy_id = ?"
@@ -135,6 +160,7 @@ func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*
 }
 
 func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string) error {
+	normalized := strings.ToUpper(status)
 	// nolint:gosec // G201 - schema name is trusted internal value, not user input
 	query := fmt.Sprintf(`
 		UPDATE %s.findings 
@@ -142,7 +168,7 @@ func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string)
 		WHERE id = ?
 	`, r.schema)
 
-	if status == "resolved" {
+	if normalized == "RESOLVED" {
 		// nolint:gosec // G201 - schema name is trusted internal value
 		query = fmt.Sprintf(`
 			UPDATE %s.findings 
@@ -151,7 +177,7 @@ func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string)
 		`, r.schema)
 	}
 
-	_, err := r.client.db.ExecContext(ctx, query, status, id)
+	_, err := r.client.db.ExecContext(ctx, query, normalized, id)
 	return err
 }
 
@@ -159,9 +185,9 @@ func (r *FindingRepository) Stats(ctx context.Context) (map[string]interface{}, 
 	query := fmt.Sprintf(`
 		SELECT 
 			COUNT(*) as total,
-			COUNT(CASE WHEN status = 'open' THEN 1 END) as open,
-			COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved,
-			COUNT(CASE WHEN status = 'suppressed' THEN 1 END) as suppressed,
+			COUNT(CASE WHEN UPPER(status) = 'OPEN' THEN 1 END) as open,
+			COUNT(CASE WHEN UPPER(status) = 'RESOLVED' THEN 1 END) as resolved,
+			COUNT(CASE WHEN UPPER(status) = 'SUPPRESSED' THEN 1 END) as suppressed,
 			COUNT(CASE WHEN severity = 'critical' THEN 1 END) as critical,
 			COUNT(CASE WHEN severity = 'high' THEN 1 END) as high,
 			COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium,
@@ -178,7 +204,7 @@ func (r *FindingRepository) Stats(ctx context.Context) (map[string]interface{}, 
 
 	return map[string]interface{}{
 		"total":       total,
-		"by_status":   map[string]int{"open": open, "resolved": resolved, "suppressed": suppressed},
+		"by_status":   map[string]int{"OPEN": open, "RESOLVED": resolved, "SUPPRESSED": suppressed},
 		"by_severity": map[string]int{"critical": critical, "high": high, "medium": medium, "low": low},
 	}, nil
 }

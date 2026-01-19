@@ -36,9 +36,10 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 	query := fmt.Sprintf(`
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, resource_data, description,
+			   remediation, metadata,
 			   first_seen, last_seen, resolved_at, suppressed_at
 		FROM %s.findings
-		WHERE status != 'resolved' OR resolved_at > DATEADD(day, -30, CURRENT_TIMESTAMP())
+		WHERE UPPER(status) != 'RESOLVED' OR resolved_at > DATEADD(day, -30, CURRENT_TIMESTAMP())
 		ORDER BY last_seen DESC
 		LIMIT 10000
 	`, s.schema)
@@ -55,11 +56,14 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 	for rows.Next() {
 		var f Finding
 		var resourceData []byte
+		var metadataData []byte
 		var resolvedAt, suppressedAt sql.NullTime
+		var remediation sql.NullString
 
 		err := rows.Scan(
 			&f.ID, &f.PolicyID, &f.PolicyName, &f.Severity, &f.Status,
 			&f.ResourceID, &f.ResourceType, &resourceData, &f.Description,
+			&remediation, &metadataData,
 			&f.FirstSeen, &f.LastSeen, &resolvedAt, &suppressedAt,
 		)
 		if err != nil {
@@ -72,6 +76,12 @@ func (s *SnowflakeStore) Load(ctx context.Context) error {
 		if resourceData != nil {
 			json.Unmarshal(resourceData, &f.Resource)
 		}
+		if remediation.Valid {
+			f.Remediation = remediation.String
+		}
+		applyFindingMetadata(&f, metadataData)
+		f.Status = normalizeStatus(f.Status)
+		EnrichFinding(&f)
 
 		s.cache[f.ID] = &f
 	}
@@ -87,38 +97,114 @@ func (s *SnowflakeStore) Upsert(ctx context.Context, pf policy.Finding) *Finding
 	now := time.Now()
 
 	if existing, ok := s.cache[pf.ID]; ok {
+		existing.Status = normalizeStatus(existing.Status)
 		existing.LastSeen = now
-		existing.Resource = pf.Resource
-		if existing.Status == "resolved" {
-			existing.Status = "open"
-			existing.ResolvedAt = nil
+		if len(pf.Resource) > 0 {
+			existing.Resource = pf.Resource
 		}
+		existing.UpdatedAt = now
+		if pf.Description != "" {
+			existing.Description = pf.Description
+		}
+		if pf.Severity != "" {
+			existing.Severity = pf.Severity
+		}
+		if pf.ControlID != "" {
+			existing.ControlID = pf.ControlID
+		}
+		if pf.Title != "" {
+			existing.Title = pf.Title
+		}
+		if pf.Remediation != "" {
+			existing.Remediation = pf.Remediation
+		}
+		if pf.ResourceID != "" {
+			existing.ResourceID = pf.ResourceID
+		}
+		if pf.ResourceType != "" {
+			existing.ResourceType = pf.ResourceType
+		}
+		if pf.ResourceName != "" {
+			existing.ResourceName = pf.ResourceName
+		}
+		if len(pf.RiskCategories) > 0 {
+			existing.RiskCategories = pf.RiskCategories
+		}
+		if len(pf.Frameworks) > 0 {
+			frameworks := make([]string, 0, len(pf.Frameworks))
+			securityCategories := make([]string, 0)
+			for _, fm := range pf.Frameworks {
+				frameworks = append(frameworks, fm.Name)
+				for _, control := range fm.Controls {
+					securityCategories = append(securityCategories, fm.Name+":"+control)
+				}
+			}
+			existing.SecurityFrameworks = frameworks
+			existing.SecurityCategories = securityCategories
+			existing.ComplianceMappings = pf.Frameworks
+		}
+		if len(pf.MitreAttack) > 0 {
+			existing.MitreAttack = pf.MitreAttack
+		}
+		if normalizeStatus(existing.Status) == "RESOLVED" {
+			existing.Status = "OPEN"
+			existing.ResolvedAt = nil
+			existing.StatusChangedAt = &now
+		}
+		EnrichFinding(existing)
 		s.dirty[pf.ID] = true
 		return existing
 	}
 
-	resourceID := ""
-	if id, ok := pf.Resource["_cq_id"].(string); ok {
-		resourceID = id
+	resourceID := pf.ResourceID
+	if resourceID == "" {
+		resourceID = extractResourceID(pf.Resource)
 	}
-	resourceType := ""
-	if rt, ok := pf.Resource["_cq_table"].(string); ok {
-		resourceType = rt
+	resourceType := pf.ResourceType
+	if resourceType == "" {
+		resourceType = extractResourceType(pf.Resource)
+	}
+	resourceName := pf.ResourceName
+	if resourceName == "" {
+		resourceName = extractResourceName(pf.Resource)
+	}
+
+	frameworks := make([]string, 0, len(pf.Frameworks))
+	securityCategories := make([]string, 0)
+	for _, fm := range pf.Frameworks {
+		frameworks = append(frameworks, fm.Name)
+		for _, control := range fm.Controls {
+			securityCategories = append(securityCategories, fm.Name+":"+control)
+		}
 	}
 
 	f := &Finding{
-		ID:           pf.ID,
-		PolicyID:     pf.PolicyID,
-		PolicyName:   pf.PolicyName,
-		Severity:     pf.Severity,
-		Status:       "open",
-		ResourceID:   resourceID,
-		ResourceType: resourceType,
-		Resource:     pf.Resource,
-		Description:  pf.Description,
-		FirstSeen:    now,
-		LastSeen:     now,
+		ID:                 pf.ID,
+		IssueID:            pf.ID,
+		ControlID:          pf.ControlID,
+		PolicyID:           pf.PolicyID,
+		PolicyName:         pf.PolicyName,
+		Title:              pf.Title,
+		Severity:           pf.Severity,
+		Status:             "OPEN",
+		ResourceID:         resourceID,
+		ResourceName:       resourceName,
+		ResourceType:       resourceType,
+		Resource:           pf.Resource,
+		Description:        pf.Description,
+		Remediation:        pf.Remediation,
+		RiskCategories:     pf.RiskCategories,
+		SecurityFrameworks: frameworks,
+		SecurityCategories: securityCategories,
+		ComplianceMappings: pf.Frameworks,
+		MitreAttack:        pf.MitreAttack,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		FirstSeen:          now,
+		LastSeen:           now,
 	}
+	f.StatusChangedAt = &now
+	EnrichFinding(f)
 
 	s.cache[pf.ID] = f
 	s.dirty[pf.ID] = true
@@ -136,12 +222,14 @@ func (s *SnowflakeStore) List(filter FindingFilter) []*Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	statusFilter := normalizeStatus(filter.Status)
+
 	result := make([]*Finding, 0)
 	for _, f := range s.cache {
 		if filter.Severity != "" && f.Severity != filter.Severity {
 			continue
 		}
-		if filter.Status != "" && f.Status != filter.Status {
+		if statusFilter != "" && normalizeStatus(f.Status) != statusFilter {
 			continue
 		}
 		if filter.PolicyID != "" && f.PolicyID != filter.PolicyID {
@@ -161,8 +249,10 @@ func (s *SnowflakeStore) Resolve(id string) bool {
 		return false
 	}
 	now := time.Now()
-	f.Status = "resolved"
+	f.Status = "RESOLVED"
 	f.ResolvedAt = &now
+	f.StatusChangedAt = &now
+	f.UpdatedAt = now
 	s.dirty[id] = true
 	return true
 }
@@ -175,7 +265,10 @@ func (s *SnowflakeStore) Suppress(id string) bool {
 	if !ok {
 		return false
 	}
-	f.Status = "suppressed"
+	now := time.Now()
+	f.Status = "SUPPRESSED"
+	f.StatusChangedAt = &now
+	f.UpdatedAt = now
 	s.dirty[id] = true
 	return true
 }
@@ -193,7 +286,7 @@ func (s *SnowflakeStore) Stats() Stats {
 	for _, f := range s.cache {
 		stats.Total++
 		stats.BySeverity[f.Severity]++
-		stats.ByStatus[f.Status]++
+		stats.ByStatus[normalizeStatus(f.Status)]++
 		stats.ByPolicy[f.PolicyID]++
 	}
 
@@ -236,6 +329,10 @@ func (s *SnowflakeStore) Sync(ctx context.Context) error {
 
 func (s *SnowflakeStore) upsertFinding(ctx context.Context, f *Finding) error {
 	resourceJSON, _ := json.Marshal(f.Resource)
+	metadataJSON, _ := buildFindingMetadata(f)
+	if len(metadataJSON) == 0 {
+		metadataJSON = []byte("{}")
+	}
 
 	query := fmt.Sprintf(`
 		MERGE INTO %s.findings t
@@ -245,13 +342,16 @@ func (s *SnowflakeStore) upsertFinding(ctx context.Context, f *Finding) error {
 			last_seen = ?,
 			status = ?,
 			resource_data = PARSE_JSON(?),
+			description = ?,
+			remediation = ?,
+			metadata = PARSE_JSON(?),
 			resolved_at = ?,
 			_updated_at = CURRENT_TIMESTAMP()
 		WHEN NOT MATCHED THEN INSERT (
 			id, policy_id, policy_name, severity, status,
 			resource_id, resource_type, resource_data, description,
-			first_seen, last_seen, resolved_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?, ?, ?)
+			remediation, metadata, first_seen, last_seen, resolved_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?, PARSE_JSON(?), ?, ?, ?)
 	`, s.schema)
 
 	var resolvedAt interface{}
@@ -263,11 +363,11 @@ func (s *SnowflakeStore) upsertFinding(ctx context.Context, f *Finding) error {
 		// USING
 		f.ID,
 		// WHEN MATCHED
-		f.LastSeen, f.Status, string(resourceJSON), resolvedAt,
+		f.LastSeen, normalizeStatus(f.Status), string(resourceJSON), f.Description, f.Remediation, string(metadataJSON), resolvedAt,
 		// WHEN NOT MATCHED
-		f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status,
+		f.ID, f.PolicyID, f.PolicyName, f.Severity, normalizeStatus(f.Status),
 		f.ResourceID, f.ResourceType, string(resourceJSON), f.Description,
-		f.FirstSeen, f.LastSeen, resolvedAt,
+		f.Remediation, string(metadataJSON), f.FirstSeen, f.LastSeen, resolvedAt,
 	)
 	return err
 }
