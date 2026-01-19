@@ -10,9 +10,13 @@ type Config struct {
 	Port                int
 	LogLevel            string
 	SnowflakeConnection string
+	SnowflakeAccount    string
+	SnowflakeUser       string
+	SnowflakePrivateKey string
 	SnowflakeWarehouse  string
 	SnowflakeDatabase   string
 	SnowflakeSchema     string
+	SnowflakeRole       string
 	CedarPoliciesPath   string
 
 	// Rate limiting
@@ -30,9 +34,13 @@ func Load() *Config {
 		Port:                getEnvInt("API_PORT", 8080),
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
 		SnowflakeConnection: getEnv("SNOWFLAKE_CONNECTION_STRING", ""),
+		SnowflakeAccount:    getEnv("SNOWFLAKE_ACCOUNT", ""),
+		SnowflakeUser:       getEnv("SNOWFLAKE_USER", ""),
+		SnowflakePrivateKey: getEnv("SNOWFLAKE_PRIVATE_KEY", ""),
 		SnowflakeWarehouse:  getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
 		SnowflakeDatabase:   getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
 		SnowflakeSchema:     getEnv("SNOWFLAKE_SCHEMA", "RAW"),
+		SnowflakeRole:       getEnv("SNOWFLAKE_ROLE", ""),
 		CedarPoliciesPath:   getEnv("CEDAR_POLICIES_PATH", "policies"),
 
 		RateLimitEnabled:  getEnvBool("RATE_LIMIT_ENABLED", false),

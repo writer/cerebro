@@ -131,10 +131,13 @@ type Config struct {
 
 	// Snowflake
 	SnowflakeConnectionString string
+	SnowflakeAccount          string
+	SnowflakeUser             string
+	SnowflakePrivateKey       string
 	SnowflakeDatabase         string
-	SnowflakeSchema           string // Schema for CloudQuery asset tables (default: RAW)
-	SnowflakeAppSchema        string // Schema for Cerebro app tables (default: CEREBRO)
+	SnowflakeSchema           string
 	SnowflakeWarehouse        string
+	SnowflakeRole             string
 
 	// Policies
 	PoliciesPath string
@@ -247,10 +250,13 @@ func LoadConfig() *Config {
 		Port:                      getEnvInt("API_PORT", 8080),
 		LogLevel:                  getEnv("LOG_LEVEL", "info"),
 		SnowflakeConnectionString: getEnv("SNOWFLAKE_CONNECTION_STRING", ""),
+		SnowflakeAccount:          getEnv("SNOWFLAKE_ACCOUNT", ""),
+		SnowflakeUser:             getEnv("SNOWFLAKE_USER", ""),
+		SnowflakePrivateKey:       getEnv("SNOWFLAKE_PRIVATE_KEY", ""),
 		SnowflakeDatabase:         getEnv("SNOWFLAKE_DATABASE", "CEREBRO"),
-		SnowflakeSchema:           getEnv("SNOWFLAKE_SCHEMA", "RAW"),         // CloudQuery assets schema
-		SnowflakeAppSchema:        getEnv("SNOWFLAKE_APP_SCHEMA", "CEREBRO"), // Cerebro app tables schema
+		SnowflakeSchema:           getEnv("SNOWFLAKE_SCHEMA", "CEREBRO"),
 		SnowflakeWarehouse:        getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+		SnowflakeRole:             getEnv("SNOWFLAKE_ROLE", ""),
 		PoliciesPath:              getEnv("POLICIES_PATH", "policies"),
 		AnthropicAPIKey:           getEnv("ANTHROPIC_API_KEY", ""),
 		OpenAIAPIKey:              getEnv("OPENAI_API_KEY", ""),
@@ -371,16 +377,24 @@ func New(ctx context.Context) (*App, error) {
 }
 
 func (a *App) initSnowflake(ctx context.Context) error {
-	if a.Config.SnowflakeConnectionString == "" {
-		return fmt.Errorf("SNOWFLAKE_CONNECTION_STRING not set")
+	// Check if key-pair auth is configured
+	hasKeyPairAuth := a.Config.SnowflakePrivateKey != "" &&
+		a.Config.SnowflakeAccount != "" &&
+		a.Config.SnowflakeUser != ""
+
+	if !hasKeyPairAuth && a.Config.SnowflakeConnectionString == "" {
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
 	}
 
 	client, err := snowflake.NewClient(snowflake.ClientConfig{
 		ConnectionString: a.Config.SnowflakeConnectionString,
+		Account:          a.Config.SnowflakeAccount,
+		User:             a.Config.SnowflakeUser,
+		PrivateKey:       a.Config.SnowflakePrivateKey,
 		Database:         a.Config.SnowflakeDatabase,
 		Schema:           a.Config.SnowflakeSchema,
-		AppSchema:        a.Config.SnowflakeAppSchema,
 		Warehouse:        a.Config.SnowflakeWarehouse,
+		Role:             a.Config.SnowflakeRole,
 	})
 	if err != nil {
 		return err
@@ -777,11 +791,10 @@ func (a *App) initSnowflakeFindings(ctx context.Context) {
 		return
 	}
 
-	// Use SnowflakeAppSchema for Cerebro app tables (findings, tickets, audit)
 	a.SnowflakeFindings = findings.NewSnowflakeStore(
 		a.Snowflake.DB(),
 		a.Config.SnowflakeDatabase,
-		a.Config.SnowflakeAppSchema,
+		a.Config.SnowflakeSchema,
 	)
 
 	// Load existing findings from Snowflake

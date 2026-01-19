@@ -43,20 +43,29 @@ func init() {
 func runQuery(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 
-	if cfg.SnowflakeConnection == "" {
-		return fmt.Errorf("SNOWFLAKE_CONNECTION_STRING not set")
+	// Check if key-pair auth is configured
+	hasKeyPairAuth := cfg.SnowflakePrivateKey != "" &&
+		cfg.SnowflakeAccount != "" &&
+		cfg.SnowflakeUser != ""
+
+	if !hasKeyPairAuth && cfg.SnowflakeConnection == "" {
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
 	}
 
 	client, err := snowflake.NewClient(snowflake.ClientConfig{
 		ConnectionString: cfg.SnowflakeConnection,
+		Account:          cfg.SnowflakeAccount,
+		User:             cfg.SnowflakeUser,
+		PrivateKey:       cfg.SnowflakePrivateKey,
 		Database:         cfg.SnowflakeDatabase,
 		Schema:           cfg.SnowflakeSchema,
 		Warehouse:        cfg.SnowflakeWarehouse,
+		Role:             cfg.SnowflakeRole,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to snowflake: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	defer client.Close()
 
 	query := strings.Join(args, " ")
 	if !strings.Contains(strings.ToUpper(query), "LIMIT") && queryLimit > 0 {

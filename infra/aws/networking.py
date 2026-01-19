@@ -185,6 +185,7 @@ def create_vpc(
         "vpc_id": vpc.id,
         "public_subnet_ids": [s.id for s in public_subnets],
         "private_subnet_ids": [s.id for s in private_subnets],
+        "private_subnet_cidrs": [s.cidr_block for s in private_subnets],
         "alb_security_group_id": alb_sg.id,
         "app_security_group_id": app_sg.id,
     }

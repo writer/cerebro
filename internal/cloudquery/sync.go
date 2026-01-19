@@ -13,6 +13,7 @@ package cloudquery
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/writerinternal/cerebro/internal/snowflake"
@@ -151,7 +152,8 @@ func (m *TableManager) ListAvailableTables(ctx context.Context) ([]string, error
 		if err := rows.Scan(&name); err != nil {
 			continue
 		}
-		tables = append(tables, name)
+		// Normalize to lowercase for case-insensitive matching with policy table mappings
+		tables = append(tables, strings.ToLower(name))
 	}
 
 	return tables, rows.Err()

@@ -179,7 +179,27 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 
 	var findings []Finding
 
+	// Get the asset's table name for filtering applicable policies
+	assetTable := ""
+	if t, ok := asset["_cq_table"].(string); ok {
+		assetTable = strings.ToLower(t)
+	}
+
 	for _, p := range e.policies {
+		// Only apply policies whose resource type maps to this asset's table
+		if assetTable != "" && p.Resource != "" {
+			policyTable := mapResourceToTable(p.Resource)
+			// If policy has a specific resource type:
+			// - If it maps to a known table, only apply if table matches
+			// - If it doesn't map (unknown type), skip it for this asset
+			if policyTable == "" {
+				continue // Unknown resource type - don't apply to all assets
+			}
+			if policyTable != assetTable {
+				continue // Policy doesn't apply to this asset type
+			}
+		}
+
 		if violation := e.checkAssetViolation(p, asset); violation != "" {
 			findings = append(findings, Finding{
 				ID:          fmt.Sprintf("%s-%v", p.ID, asset["_cq_id"]),

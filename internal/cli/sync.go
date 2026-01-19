@@ -86,7 +86,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	Info("Running: cloudquery %s", strings.Join(cqArgs, " "))
 	fmt.Println()
 
-	cqCmd := exec.CommandContext(context.Background(), "cloudquery", cqArgs...) //#nosec G204 -- cqArgs contains controlled CLI arguments
+	cqCmd := exec.Command("cloudquery", cqArgs...)
 	cqCmd.Stdout = os.Stdout
 	cqCmd.Stderr = os.Stderr
 	cqCmd.Env = os.Environ()
@@ -119,21 +119,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 }
 
 func ensureCloudQueryTables(ctx context.Context) error {
-	connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING")
-	if connStr == "" {
-		return fmt.Errorf("SNOWFLAKE_CONNECTION_STRING not set")
-	}
-
-	client, err := snowflake.NewClient(snowflake.ClientConfig{
-		ConnectionString: connStr,
-		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
-		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
-		Warehouse:        os.Getenv("SNOWFLAKE_WAREHOUSE"),
-	})
+	client, err := createSnowflakeClient()
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer client.Close()
 
 	// Import cloudquery package for TableManager
 	// For now, just verify connection
@@ -145,24 +135,37 @@ func ensureCloudQueryTables(ctx context.Context) error {
 	return nil
 }
 
-func getTableRowCounts(ctx context.Context) map[string]int64 {
-	counts := make(map[string]int64)
-
+func createSnowflakeClient() (*snowflake.Client, error) {
+	privateKey := os.Getenv("SNOWFLAKE_PRIVATE_KEY")
+	account := os.Getenv("SNOWFLAKE_ACCOUNT")
+	user := os.Getenv("SNOWFLAKE_USER")
 	connStr := os.Getenv("SNOWFLAKE_CONNECTION_STRING")
-	if connStr == "" {
-		return counts
+
+	hasKeyPairAuth := privateKey != "" && account != "" && user != ""
+	if !hasKeyPairAuth && connStr == "" {
+		return nil, fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY/ACCOUNT/USER or SNOWFLAKE_CONNECTION_STRING")
 	}
 
-	client, err := snowflake.NewClient(snowflake.ClientConfig{
+	return snowflake.NewClient(snowflake.ClientConfig{
 		ConnectionString: connStr,
+		Account:          account,
+		User:             user,
+		PrivateKey:       privateKey,
 		Database:         os.Getenv("SNOWFLAKE_DATABASE"),
 		Schema:           os.Getenv("SNOWFLAKE_SCHEMA"),
 		Warehouse:        os.Getenv("SNOWFLAKE_WAREHOUSE"),
+		Role:             os.Getenv("SNOWFLAKE_ROLE"),
 	})
+}
+
+func getTableRowCounts(ctx context.Context) map[string]int64 {
+	counts := make(map[string]int64)
+
+	client, err := createSnowflakeClient()
 	if err != nil {
 		return counts
 	}
-	defer func() { _ = client.Close() }()
+	defer client.Close()
 
 	// Check key tables
 	tables := []string{"aws_s3_buckets", "aws_ec2_instances", "aws_iam_users"}
@@ -199,7 +202,7 @@ func runPostSyncScan(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-	defer func() { _ = application.Close() }()
+	defer application.Close()
 
 	if application.Snowflake == nil {
 		return fmt.Errorf("snowflake not configured")

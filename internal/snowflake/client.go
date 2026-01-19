@@ -2,7 +2,10 @@ package snowflake
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"database/sql"
+	"encoding/pem"
 	"fmt"
 	"time"
 
@@ -19,12 +22,26 @@ const (
 )
 
 // ClientConfig holds configuration for creating a Snowflake client.
+// Supports both connection string (password auth) and key-pair authentication.
 type ClientConfig struct {
+	// ConnectionString is the traditional DSN (user:password@account/db/schema)
 	ConnectionString string
-	Database         string
-	Schema           string // Schema for CloudQuery assets (default: RAW)
-	AppSchema        string // Schema for Cerebro app tables (default: CEREBRO)
-	Warehouse        string
+	// Account is the Snowflake account identifier (e.g., "ykc27695.us-east-1")
+	Account string
+	// User is the Snowflake username
+	User string
+	// PrivateKey is the PEM-encoded private key for key-pair authentication
+	PrivateKey string
+	// Role is the default role
+	Role string
+	// Database is the default database
+	Database string
+	// Schema is the default schema for CloudQuery assets (default: RAW)
+	Schema string
+	// AppSchema is the schema for Cerebro app tables (default: CEREBRO)
+	AppSchema string
+	// Warehouse is the default warehouse
+	Warehouse string
 }
 
 // Client wraps database/sql.DB with Snowflake-specific functionality.
@@ -44,24 +61,46 @@ type QueryResult struct {
 }
 
 // NewClient creates a new Snowflake client.
+// Supports both connection string (password auth) and key-pair authentication.
+// Key-pair auth is used when Account, User, and PrivateKey are all provided.
 func NewClient(config ClientConfig) (*Client, error) {
-	if config.ConnectionString == "" {
-		return nil, cerrors.E(opNewClient, cerrors.ErrMissingRequired, "connection string is required")
-	}
+	var cfg *sf.Config
+	var err error
 
-	cfg, err := sf.ParseDSN(config.ConnectionString)
-	if err != nil {
-		return nil, cerrors.Wrapf(opNewClient, err, "invalid connection string")
-	}
+	// Key-pair authentication takes precedence
+	if config.PrivateKey != "" && config.Account != "" && config.User != "" {
+		privateKey, err := parsePrivateKey(config.PrivateKey)
+		if err != nil {
+			return nil, cerrors.Wrapf(opNewClient, err, "failed to parse private key")
+		}
 
-	if config.Database != "" {
-		cfg.Database = config.Database
-	}
-	if config.Schema != "" {
-		cfg.Schema = config.Schema
-	}
-	if config.Warehouse != "" {
-		cfg.Warehouse = config.Warehouse
+		cfg = &sf.Config{
+			Account:       config.Account,
+			User:          config.User,
+			Authenticator: sf.AuthTypeJwt,
+			PrivateKey:    privateKey,
+			Database:      config.Database,
+			Schema:        config.Schema,
+			Warehouse:     config.Warehouse,
+			Role:          config.Role,
+		}
+	} else if config.ConnectionString != "" {
+		// Fall back to connection string (password auth)
+		cfg, err = sf.ParseDSN(config.ConnectionString)
+		if err != nil {
+			return nil, cerrors.Wrapf(opNewClient, err, "invalid connection string")
+		}
+		if config.Database != "" {
+			cfg.Database = config.Database
+		}
+		if config.Schema != "" {
+			cfg.Schema = config.Schema
+		}
+		if config.Warehouse != "" {
+			cfg.Warehouse = config.Warehouse
+		}
+	} else {
+		return nil, cerrors.E(opNewClient, cerrors.ErrMissingRequired, "either connection string or key-pair config (account, user, private_key) is required")
 	}
 
 	dsn, err := sf.DSN(cfg)
@@ -93,6 +132,32 @@ func NewClient(config ClientConfig) (*Client, error) {
 		appSchema: appSchema,
 		warehouse: cfg.Warehouse,
 	}, nil
+}
+
+// parsePrivateKey parses a PEM-encoded RSA private key.
+// Supports both PKCS8 and PKCS1 formats.
+func parsePrivateKey(pemData string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(pemData))
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
+	}
+
+	// Try PKCS8 first (most common for Snowflake)
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err == nil {
+		rsaKey, ok := key.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("key is not an RSA private key")
+		}
+		return rsaKey, nil
+	}
+
+	// Fall back to PKCS1
+	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+	return rsaKey, nil
 }
 
 // Close closes the database connection.

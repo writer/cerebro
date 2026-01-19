@@ -9,11 +9,14 @@ import pulumi
 import pulumi_aws as aws
 
 
+from typing import Union
+
+
 def create_tailscale_subnet_router(
     name: str,
     vpc_id: pulumi.Output[str],
     subnet_id: pulumi.Output[str],
-    advertise_routes: list[str],
+    advertise_routes: Union[list[str], pulumi.Output[list[str]]],
     tailscale_auth_key: pulumi.Output[str],
     tailscale_hostname: str,
     tailscale_version: str = "1.76.6",
@@ -93,12 +96,17 @@ def create_tailscale_subnet_router(
         ],
     )
 
-    # Build routes string
-    routes_str = ",".join(advertise_routes)
-
-    # User data script
-    user_data = tailscale_auth_key.apply(
-        lambda auth_key: f"""#!/bin/bash
+    # User data script - handle both static list and Output types for routes
+    def build_user_data(args):
+        if isinstance(args, tuple):
+            auth_key, routes = args
+        else:
+            auth_key = args
+            routes = advertise_routes if isinstance(advertise_routes, list) else []
+        
+        routes_str = ",".join(routes) if isinstance(routes, list) else routes
+        
+        return f"""#!/bin/bash
 set -euo pipefail
 
 LOG_FILE="/var/log/tailscale-userdata.log"
@@ -215,7 +223,12 @@ systemctl start tailscale-monitor.timer
 echo "=== Tailscale Setup Completed at $(date) ==="
 tailscale status
 """
-    )
+
+    # Build user_data from auth key and routes (handling Output types)
+    if isinstance(advertise_routes, pulumi.Output):
+        user_data = pulumi.Output.all(tailscale_auth_key, advertise_routes).apply(build_user_data)
+    else:
+        user_data = tailscale_auth_key.apply(build_user_data)
 
     # EC2 instance
     instance = aws.ec2.Instance(

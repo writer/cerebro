@@ -30,6 +30,7 @@ var (
 	scanLimit  int
 	scanDryRun bool
 	scanOutput string
+	scanFull   bool
 )
 
 func init() {
@@ -37,6 +38,7 @@ func init() {
 	scanCmd.Flags().IntVarP(&scanLimit, "limit", "l", 500, "Maximum assets to scan per table")
 	scanCmd.Flags().BoolVar(&scanDryRun, "dry-run", false, "Show what would be scanned without scanning")
 	scanCmd.Flags().StringVarP(&scanOutput, "output", "o", "table", "Output format (table,json)")
+	scanCmd.Flags().BoolVar(&scanFull, "full", false, "Force full scan, ignoring watermarks")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -102,16 +104,19 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 		filter := snowflake.AssetFilter{Limit: scanLimit}
 
-		// Use incremental scanning if available and not dry run
+		// Use incremental scanning if available and not forced full scan
 		// Note: scanWatermarks is available in application but not currently exposed in CLI
 		// We'll check the watermark store directly
-		if application.ScanWatermarks != nil {
+		if !scanFull && application.ScanWatermarks != nil {
 			if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
 				// Check if full scan is forced or needed (e.g. schema change, very old watermark)
 				// For now, simple logic: if watermark exists and we aren't forcing full scan
 				filter.Since = wm.LastScanTime
 				fmt.Printf("  Incremental scan (since %s)\n", wm.LastScanTime.Format(time.RFC3339))
 			}
+		}
+		if scanFull {
+			fmt.Printf("  Full scan (--full flag set)\n")
 		}
 
 		assets, err := application.Snowflake.GetAssets(ctx, table, filter)
