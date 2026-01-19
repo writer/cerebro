@@ -7,15 +7,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/writerinternal/cerebro/internal/attackpath"
 	"github.com/writerinternal/cerebro/internal/policy"
 )
 
 // Scanner performs parallel policy evaluation across assets
 type Scanner struct {
-	engine    *policy.Engine
-	workers   int
-	batchSize int
-	logger    *slog.Logger
+	engine       *policy.Engine
+	toxicDetector *attackpath.ToxicCombinationDetector
+	workers      int
+	batchSize    int
+	logger       *slog.Logger
 }
 
 type ScanConfig struct {
@@ -31,10 +33,11 @@ func NewScanner(engine *policy.Engine, cfg ScanConfig, logger *slog.Logger) *Sca
 		cfg.BatchSize = 100
 	}
 	return &Scanner{
-		engine:    engine,
-		workers:   cfg.Workers,
-		batchSize: cfg.BatchSize,
-		logger:    logger,
+		engine:        engine,
+		toxicDetector: attackpath.NewToxicCombinationDetector(),
+		workers:       cfg.Workers,
+		batchSize:     cfg.BatchSize,
+		logger:        logger,
 	}
 }
 
@@ -146,6 +149,308 @@ func (s *Scanner) ScanAssets(ctx context.Context, assets []map[string]interface{
 	)
 
 	return result
+}
+
+// ScanWithToxicCombinations runs policy evaluation AND toxic combination detection
+func (s *Scanner) ScanWithToxicCombinations(ctx context.Context, assets []map[string]interface{}) *EnhancedScanResult {
+	// First run standard policy scan
+	policyResult := s.ScanAssets(ctx, assets)
+
+	// Build risk profiles from assets
+	profiles := make([]attackpath.ResourceRiskProfile, 0, len(assets))
+	for _, asset := range assets {
+		profile := s.buildRiskProfile(asset)
+		if len(profile.RiskFactors) > 0 {
+			profiles = append(profiles, profile)
+		}
+	}
+
+	// Detect toxic combinations
+	toxicCombos := s.toxicDetector.Detect(ctx, profiles)
+
+	// Convert toxic combinations to findings
+	toxicFindings := make([]policy.Finding, 0, len(toxicCombos))
+	for _, combo := range toxicCombos {
+		finding := policy.Finding{
+			ID:           combo.ID,
+			PolicyID:     "toxic-combination",
+			PolicyName:   "Toxic Combination Detection",
+			Title:        combo.Title,
+			Severity:     string(combo.Severity),
+			Resource:     map[string]interface{}{"id": combo.ResourceID, "name": combo.ResourceName, "type": combo.ResourceType},
+			Description:  combo.Description,
+			Remediation:  combo.Remediation,
+			ControlID:    combo.ControlID,
+			ResourceType: combo.ResourceType,
+			ResourceID:   combo.ResourceID,
+			ResourceName: combo.ResourceName,
+		}
+		
+		// Add risk categories from factors
+		for _, f := range combo.RiskFactors {
+			finding.RiskCategories = append(finding.RiskCategories, string(f.Type))
+		}
+
+		// Add MITRE ATT&CK
+		for _, m := range combo.MitreAttack {
+			finding.MitreAttack = append(finding.MitreAttack, policy.MitreMapping{
+				Technique: m,
+			})
+		}
+
+		toxicFindings = append(toxicFindings, finding)
+	}
+
+	s.logger.Info("toxic combination scan complete",
+		"profiles_analyzed", len(profiles),
+		"toxic_combinations", len(toxicCombos),
+	)
+
+	return &EnhancedScanResult{
+		ScanResult:        policyResult,
+		ToxicCombinations: toxicFindings,
+		TotalFindings:     int64(len(policyResult.Findings)) + int64(len(toxicFindings)),
+	}
+}
+
+// EnhancedScanResult includes both policy findings and toxic combinations
+type EnhancedScanResult struct {
+	*ScanResult
+	ToxicCombinations []policy.Finding
+	TotalFindings     int64
+}
+
+// AllFindings returns combined policy and toxic combination findings
+func (r *EnhancedScanResult) AllFindings() []policy.Finding {
+	all := make([]policy.Finding, 0, len(r.Findings)+len(r.ToxicCombinations))
+	all = append(all, r.Findings...)
+	all = append(all, r.ToxicCombinations...)
+	return all
+}
+
+// buildRiskProfile extracts a risk profile from an asset's properties
+func (s *Scanner) buildRiskProfile(asset map[string]interface{}) attackpath.ResourceRiskProfile {
+	// Extract resource identifiers
+	resourceID := getStringField(asset, "_cq_id", "arn", "id", "resource_id")
+	resourceName := getStringField(asset, "name", "resource_name", "title")
+	resourceType := getStringField(asset, "_cq_table", "resource_type", "type")
+	provider := inferProvider(resourceType)
+	region := getStringField(asset, "region", "location")
+
+	// Build properties map for risk factor detection
+	props := make(map[string]interface{})
+
+	// Network exposure detection
+	if isPublic, ok := asset["public"].(bool); ok {
+		props["public"] = isPublic
+	}
+	if scheme, ok := asset["scheme"].(string); ok && scheme == "internet-facing" {
+		props["internet_facing"] = true
+	}
+	if publiclyAccessible, ok := asset["publicly_accessible"].(bool); ok {
+		props["public"] = publiclyAccessible
+	}
+
+	// Public access for storage (S3, etc.)
+	if blockPublicAcls, ok := asset["block_public_acls"].(bool); ok && !blockPublicAcls {
+		props["public_access"] = true
+	}
+
+	// High privilege detection
+	if adminAccess, ok := asset["administrator_access"].(bool); ok {
+		props["admin"] = adminAccess
+	}
+	if permissionBoundary, ok := asset["permissions_boundary"].(string); ok && permissionBoundary == "" {
+		// No permission boundary on admin role is a risk
+		if isAdmin, _ := asset["is_admin"].(bool); isAdmin {
+			props["high_privilege"] = true
+		}
+	}
+	// Check for wildcards in policy statements
+	if policies := asset["attached_policies"]; policies != nil {
+		props["high_privilege"] = hasHighPrivilege(policies)
+	}
+
+	// Data access
+	if dataClassification, ok := asset["data_classification"].(string); ok && dataClassification != "" {
+		props["sensitive_data"] = true
+		props["data_access"] = true
+	}
+	// S3/storage with sensitive patterns in name
+	if name, ok := asset["name"].(string); ok {
+		if containsSensitivePattern(name) {
+			props["sensitive_data"] = true
+		}
+	}
+
+	// Container-specific
+	if containerDefs, ok := asset["container_definitions"].([]interface{}); ok {
+		for _, cd := range containerDefs {
+			if def, ok := cd.(map[string]interface{}); ok {
+				if priv, ok := def["privileged"].(bool); ok && priv {
+					props["privileged"] = true
+				}
+				if user, ok := def["user"].(string); ok && (user == "" || user == "root" || user == "0") {
+					props["root_user"] = true
+				}
+				// Check for secrets in env vars
+				if envVars, ok := def["environment"].([]interface{}); ok {
+					for _, env := range envVars {
+						if e, ok := env.(map[string]interface{}); ok {
+							if name, ok := e["name"].(string); ok {
+								if containsSecretPattern(name) {
+									props["secrets_in_env"] = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Secrets/credentials
+	if accessKeyLastRotated, ok := asset["access_key_1_last_rotated"].(string); ok {
+		if isKeyOld(accessKeyLastRotated) {
+			props["keys_unrotated"] = true
+		}
+	}
+
+	// Logging
+	if loggingEnabled, ok := asset["logging_enabled"].(bool); ok && !loggingEnabled {
+		props["logging_disabled"] = true
+	}
+	if logConfiguration, ok := asset["log_configuration"]; ok && logConfiguration == nil {
+		props["logging_disabled"] = true
+	}
+
+	// Authentication
+	if authType, ok := asset["authentication_type"].(string); ok && authType == "NONE" {
+		props["authentication_disabled"] = true
+	}
+
+	return attackpath.BuildRiskProfile(resourceID, resourceName, resourceType, provider, region, props)
+}
+
+func getStringField(asset map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := asset[key].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func inferProvider(resourceType string) string {
+	switch {
+	case len(resourceType) >= 3 && resourceType[:3] == "aws":
+		return "aws"
+	case len(resourceType) >= 3 && resourceType[:3] == "gcp":
+		return "gcp"
+	case len(resourceType) >= 5 && resourceType[:5] == "azure":
+		return "azure"
+	case len(resourceType) >= 2 && resourceType[:2] == "k8":
+		return "kubernetes"
+	default:
+		return "unknown"
+	}
+}
+
+func hasHighPrivilege(policies interface{}) bool {
+	// Check if any attached policies indicate high privilege
+	// This is a simplified check - in production, you'd analyze the policy documents
+	if plist, ok := policies.([]interface{}); ok {
+		for _, p := range plist {
+			if ps, ok := p.(string); ok {
+				if containsAdminPattern(ps) {
+					return true
+				}
+			}
+			if pm, ok := p.(map[string]interface{}); ok {
+				if name, ok := pm["policy_name"].(string); ok {
+					if containsAdminPattern(name) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func containsAdminPattern(s string) bool {
+	patterns := []string{"Admin", "admin", "PowerUser", "FullAccess", "*"}
+	for _, p := range patterns {
+		if len(s) >= len(p) {
+			for i := 0; i <= len(s)-len(p); i++ {
+				if s[i:i+len(p)] == p {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func containsSensitivePattern(s string) bool {
+	patterns := []string{"pii", "pci", "phi", "sensitive", "confidential", "secret", "password", "credential"}
+	lower := ""
+	for _, c := range s {
+		if c >= 'A' && c <= 'Z' {
+			lower += string(c + 32)
+		} else {
+			lower += string(c)
+		}
+	}
+	for _, p := range patterns {
+		if len(lower) >= len(p) {
+			for i := 0; i <= len(lower)-len(p); i++ {
+				if lower[i:i+len(p)] == p {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func containsSecretPattern(s string) bool {
+	patterns := []string{"password", "passwd", "secret", "api_key", "apikey", "access_key", "token", "credential", "aws_"}
+	lower := ""
+	for _, c := range s {
+		if c >= 'A' && c <= 'Z' {
+			lower += string(c + 32)
+		} else {
+			lower += string(c)
+		}
+	}
+	for _, p := range patterns {
+		if len(lower) >= len(p) {
+			for i := 0; i <= len(lower)-len(p); i++ {
+				if lower[i:i+len(p)] == p {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func isKeyOld(lastRotated string) bool {
+	// Simple check - if the string doesn't look recent, consider it old
+	// In production, parse the date and compare to 90 days
+	if lastRotated == "" || lastRotated == "N/A" {
+		return true
+	}
+	// Check if it contains a year that's not current
+	currentYear := "2026"
+	if len(lastRotated) >= 4 && lastRotated[:4] != currentYear {
+		// Check if it's last year
+		if lastRotated[:4] < currentYear {
+			return true
+		}
+	}
+	return false
 }
 
 // StreamScan scans assets as they're received (for large datasets)
